@@ -52,6 +52,11 @@ type InventoryCountLine struct {
 	CountedAt        *time.Time
 }
 
+type InventoryCounter struct {
+	CounterName string
+	NextValue   int64
+}
+
 type InventoryEvent struct {
 	ID           int64
 	EntityKind   string
@@ -144,4 +149,68 @@ type InventorySite struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	FulfilsOrders bool
+}
+
+type InventoryTransfer struct {
+	ID               int64
+	Number           int64
+	FromSiteID       int64
+	ToSiteID         int64
+	Status           string
+	Reference        *string
+	Note             *string
+	ExpectedArrival  pgtype.Date
+	CloseReason      *string
+	CloseNote        *string
+	Revision         int32
+	CreatedByUserID  *uuid.UUID
+	CreatedByDisplay *string
+	CreatedAt        time.Time
+	SentAt           *time.Time
+	SentByUserID     *uuid.UUID
+	SentByDisplay    *string
+	ClosedAt         *time.Time
+	ClosedByUserID   *uuid.UUID
+	ClosedByDisplay  *string
+	UpdatedAt        time.Time
+}
+
+type InventoryTransferAction struct {
+	ID              int64
+	TransferID      int64
+	Kind            string
+	ClientRequestID uuid.UUID
+	RequestHash     []byte
+	MovementID      *int64
+	CloseReason     *string
+	CloseNote       *string
+	PostedByUserID  *uuid.UUID
+	PostedByDisplay *string
+	PostedAt        time.Time
+}
+
+type InventoryTransferActionLine struct {
+	ActionID       int64
+	TransferLineID int64
+	Kind           string
+	Quantity       pgtype.Numeric
+	LocationID     *int64
+}
+
+type InventoryTransferLine struct {
+	ID             int64
+	TransferID     int64
+	LineNo         int32
+	VariantID      int32
+	Sku            string
+	ProductName    string
+	Unit           *string
+	Quantity       pgtype.Numeric
+	Entered        []byte
+	Suggestion     []byte
+	FromLocationID *int64
+	Sent           pgtype.Numeric
+	Received       pgtype.Numeric
+	Missing        pgtype.Numeric
+	Returned       pgtype.Numeric
 }

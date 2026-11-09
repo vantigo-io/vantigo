@@ -70,19 +70,19 @@ func (e InventoryAdjustmentReason) Valid() bool {
 
 // Defines values for InventoryCountStatus.
 const (
-	Cancelled InventoryCountStatus = "cancelled"
-	Counting  InventoryCountStatus = "counting"
-	Posted    InventoryCountStatus = "posted"
+	InventoryCountStatusCancelled InventoryCountStatus = "cancelled"
+	InventoryCountStatusCounting  InventoryCountStatus = "counting"
+	InventoryCountStatusPosted    InventoryCountStatus = "posted"
 )
 
 // Valid indicates whether the value is a known member of the InventoryCountStatus enum.
 func (e InventoryCountStatus) Valid() bool {
 	switch e {
-	case Cancelled:
+	case InventoryCountStatusCancelled:
 		return true
-	case Counting:
+	case InventoryCountStatusCounting:
 		return true
-	case Posted:
+	case InventoryCountStatusPosted:
 		return true
 	default:
 		return false
@@ -185,6 +185,7 @@ func (e InventoryLocationKind) Valid() bool {
 // Defines values for InventoryLookupMatchKind.
 const (
 	Location InventoryLookupMatchKind = "location"
+	Transfer InventoryLookupMatchKind = "transfer"
 	Variant  InventoryLookupMatchKind = "variant"
 )
 
@@ -192,6 +193,8 @@ const (
 func (e InventoryLookupMatchKind) Valid() bool {
 	switch e {
 	case Location:
+		return true
+	case Transfer:
 		return true
 	case Variant:
 		return true
@@ -202,11 +205,13 @@ func (e InventoryLookupMatchKind) Valid() bool {
 
 // Defines values for InventoryMovementKind.
 const (
-	Adjustment InventoryMovementKind = "adjustment"
-	Count      InventoryMovementKind = "count"
-	Issue      InventoryMovementKind = "issue"
-	Move       InventoryMovementKind = "move"
-	Receipt    InventoryMovementKind = "receipt"
+	Adjustment  InventoryMovementKind = "adjustment"
+	Count       InventoryMovementKind = "count"
+	Issue       InventoryMovementKind = "issue"
+	Move        InventoryMovementKind = "move"
+	Receipt     InventoryMovementKind = "receipt"
+	TransferIn  InventoryMovementKind = "transfer_in"
+	TransferOut InventoryMovementKind = "transfer_out"
 )
 
 // Valid indicates whether the value is a known member of the InventoryMovementKind enum.
@@ -221,6 +226,10 @@ func (e InventoryMovementKind) Valid() bool {
 	case Move:
 		return true
 	case Receipt:
+		return true
+	case TransferIn:
+		return true
+	case TransferOut:
 		return true
 	default:
 		return false
@@ -247,13 +256,16 @@ func (e InventorySiteKind) Valid() bool {
 
 // Defines values for InventoryStatsAttentionItemType.
 const (
-	CountOpenLong InventoryStatsAttentionItemType = "countOpenLong"
+	CountOpenLong   InventoryStatsAttentionItemType = "countOpenLong"
+	TransferOverdue InventoryStatsAttentionItemType = "transferOverdue"
 )
 
 // Valid indicates whether the value is a known member of the InventoryStatsAttentionItemType enum.
 func (e InventoryStatsAttentionItemType) Valid() bool {
 	switch e {
 	case CountOpenLong:
+		return true
+	case TransferOverdue:
 		return true
 	default:
 		return false
@@ -272,6 +284,132 @@ func (e InventoryStatus) Valid() bool {
 	case Active:
 		return true
 	case Archived:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTransferActionKind.
+const (
+	Cancel  InventoryTransferActionKind = "cancel"
+	Receive InventoryTransferActionKind = "receive"
+	Send    InventoryTransferActionKind = "send"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTransferActionKind enum.
+func (e InventoryTransferActionKind) Valid() bool {
+	switch e {
+	case Cancel:
+		return true
+	case Receive:
+		return true
+	case Send:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTransferActionLineKind.
+const (
+	InventoryTransferActionLineKindMissing  InventoryTransferActionLineKind = "missing"
+	InventoryTransferActionLineKindReceived InventoryTransferActionLineKind = "received"
+	InventoryTransferActionLineKindReturned InventoryTransferActionLineKind = "returned"
+	InventoryTransferActionLineKindSent     InventoryTransferActionLineKind = "sent"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTransferActionLineKind enum.
+func (e InventoryTransferActionLineKind) Valid() bool {
+	switch e {
+	case InventoryTransferActionLineKindMissing:
+		return true
+	case InventoryTransferActionLineKindReceived:
+		return true
+	case InventoryTransferActionLineKindReturned:
+		return true
+	case InventoryTransferActionLineKindSent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTransferCloseReason.
+const (
+	InventoryTransferCloseReasonDamaged   InventoryTransferCloseReason = "damaged"
+	InventoryTransferCloseReasonLost      InventoryTransferCloseReason = "lost"
+	InventoryTransferCloseReasonNotPacked InventoryTransferCloseReason = "not_packed"
+	InventoryTransferCloseReasonOther     InventoryTransferCloseReason = "other"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTransferCloseReason enum.
+func (e InventoryTransferCloseReason) Valid() bool {
+	switch e {
+	case InventoryTransferCloseReasonDamaged:
+		return true
+	case InventoryTransferCloseReasonLost:
+		return true
+	case InventoryTransferCloseReasonNotPacked:
+		return true
+	case InventoryTransferCloseReasonOther:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTransferStatus.
+const (
+	InventoryTransferStatusCancelled      InventoryTransferStatus = "cancelled"
+	InventoryTransferStatusDraft          InventoryTransferStatus = "draft"
+	InventoryTransferStatusPartlyReceived InventoryTransferStatus = "partly_received"
+	InventoryTransferStatusReceived       InventoryTransferStatus = "received"
+	InventoryTransferStatusSent           InventoryTransferStatus = "sent"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTransferStatus enum.
+func (e InventoryTransferStatus) Valid() bool {
+	switch e {
+	case InventoryTransferStatusCancelled:
+		return true
+	case InventoryTransferStatusDraft:
+		return true
+	case InventoryTransferStatusPartlyReceived:
+		return true
+	case InventoryTransferStatusReceived:
+		return true
+	case InventoryTransferStatusSent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTransferStatusFilter.
+const (
+	InventoryTransferStatusFilterCancelled      InventoryTransferStatusFilter = "cancelled"
+	InventoryTransferStatusFilterDraft          InventoryTransferStatusFilter = "draft"
+	InventoryTransferStatusFilterOpen           InventoryTransferStatusFilter = "open"
+	InventoryTransferStatusFilterPartlyReceived InventoryTransferStatusFilter = "partly_received"
+	InventoryTransferStatusFilterReceived       InventoryTransferStatusFilter = "received"
+	InventoryTransferStatusFilterSent           InventoryTransferStatusFilter = "sent"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTransferStatusFilter enum.
+func (e InventoryTransferStatusFilter) Valid() bool {
+	switch e {
+	case InventoryTransferStatusFilterCancelled:
+		return true
+	case InventoryTransferStatusFilterDraft:
+		return true
+	case InventoryTransferStatusFilterOpen:
+		return true
+	case InventoryTransferStatusFilterPartlyReceived:
+		return true
+	case InventoryTransferStatusFilterReceived:
+		return true
+	case InventoryTransferStatusFilterSent:
 		return true
 	default:
 		return false
@@ -664,12 +802,15 @@ type InventoryLocationUpdate struct {
 	Status    InventoryStatus `json:"status"`
 }
 
-// InventoryLookupMatch One match of the lookup (I28): a location by its LOC token or full code, or a variant by its SKU or barcode.
+// InventoryLookupMatch One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, or a transfer by its TRF token to a caller holding both views (I52).
 type InventoryLookupMatch struct {
 	Kind InventoryLookupMatchKind `json:"kind"`
 
 	// Location A location as other answers name it.
 	Location *InventoryLocationRef `json:"location,omitempty"`
+
+	// Transfer A transfer as other answers name it.
+	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
 
 	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
 	Variant *InventoryVariantRef `json:"variant,omitempty"`
@@ -683,7 +824,7 @@ type InventoryLookupResult struct {
 	Matches []InventoryLookupMatch `json:"matches"`
 }
 
-// InventoryMeta What the app needs to start (§5): the caller's six capabilities.
+// InventoryMeta What the app needs to start (§5): the caller's seven capabilities.
 type InventoryMeta struct {
 	// CanAdjust inventory:stock-adjust — adjustments and moves.
 	CanAdjust bool `json:"canAdjust"`
@@ -696,6 +837,9 @@ type InventoryMeta struct {
 
 	// CanReceive inventory:receipts-manage — goods receipts.
 	CanReceive bool `json:"canReceive"`
+
+	// CanTransfer inventory:transfers-manage — transfers between sites.
+	CanTransfer bool `json:"canTransfer"`
 
 	// CanViewLocations inventory:locations-view — sites and locations, without quantities.
 	CanViewLocations bool `json:"canViewLocations"`
@@ -725,7 +869,7 @@ type InventoryMoveLine struct {
 	VariantId    int32    `json:"variantId"`
 }
 
-// InventoryMovement A posted movement (I8): never edited or deleted.
+// InventoryMovement A posted movement (I8): never edited or deleted. A transfer's movements name it in transfer (I45).
 type InventoryMovement struct {
 	ClientRequestId openapi_types.UUID `json:"clientRequestId"`
 
@@ -733,7 +877,7 @@ type InventoryMovement struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); production and transfer join later.
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.
 	Kind     InventoryMovementKind   `json:"kind"`
 	Lines    []InventoryMovementLine `json:"lines"`
 	Note     *string                 `json:"note,omitempty"`
@@ -750,9 +894,12 @@ type InventoryMovement struct {
 	Source            *InventorySourceRef `json:"source,omitempty"`
 	SupplierName      *string             `json:"supplierName,omitempty"`
 	SupplierReference *string             `json:"supplierReference,omitempty"`
+
+	// Transfer A transfer as other answers name it.
+	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
 }
 
-// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); production and transfer join later.
+// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.
 type InventoryMovementKind string
 
 // InventoryMovementLine A quantity of a variant from a location, to one, or both (I9).
@@ -788,7 +935,7 @@ type InventoryMovementSummary struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); production and transfer join later.
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.
 	Kind      InventoryMovementKind `json:"kind"`
 	LineCount int32                 `json:"lineCount"`
 	Note      *string               `json:"note,omitempty"`
@@ -802,6 +949,9 @@ type InventoryMovementSummary struct {
 	Site              InventorySiteRef `json:"site"`
 	SupplierName      *string          `json:"supplierName,omitempty"`
 	SupplierReference *string          `json:"supplierReference,omitempty"`
+
+	// Transfer A transfer as other answers name it.
+	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
 }
 
 // InventoryPackaging A packaging of the variant as the catalog answers it (I24): what it holds in the variant's unit. The app breaks quantities down in them (I26).
@@ -815,7 +965,16 @@ type InventoryPackaging struct {
 	Quantity float64 `json:"quantity"`
 }
 
-// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// InventoryPlacement A variant's placement at a site (delivery B, I54): its primary location, reorder point and maximum, and whether it is low (I56).
+type InventoryPlacement struct {
+	Low               bool     `json:"low"`
+	Maximum           *float64 `json:"maximum"`
+	PrimaryLocationId *int64   `json:"primaryLocationId"`
+	ReorderPoint      *float64 `json:"reorderPoint"`
+	Revision          int32    `json:"revision"`
+}
+
+// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point, placement_empty and placement_location_invalid (400: a placement's rules, delivery B), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type InventoryProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -889,6 +1048,9 @@ type InventorySite struct {
 	FulfilsOrders bool  `json:"fulfilsOrders"`
 	Id            int64 `json:"id"`
 
+	// IncomingTransfers Open transfers to the site (sent or partly received); present to a caller holding inventory:stock-view.
+	IncomingTransfers *int32 `json:"incomingTransfers,omitempty"`
+
 	// Kind Changes the suggested location kinds and the words on screen, never a rule (I1).
 	Kind InventorySiteKind `json:"kind"`
 
@@ -898,6 +1060,9 @@ type InventorySite struct {
 	// LocationCount Its active locations, the root excluded.
 	LocationCount int32  `json:"locationCount"`
 	Name          string `json:"name"`
+
+	// OutgoingTransfers Open transfers from the site (sent or partly received); present to a caller holding inventory:stock-view.
+	OutgoingTransfers *int32 `json:"outgoingTransfers,omitempty"`
 
 	// Revision Send it back as If-Match on PUT /sites/{id}.
 	Revision int32 `json:"revision"`
@@ -946,11 +1111,14 @@ type InventorySiteRef struct {
 	Status InventoryStatus   `json:"status"`
 }
 
-// InventorySiteStock One variant's stock in one site.
+// InventorySiteStock One variant's stock in one site; a site with only incoming has a row with nothing on hand.
 type InventorySiteStock struct {
 	// Available On hand less reserved; negative when a correction took on hand below what is reserved.
 	Available float64 `json:"available"`
-	OnHand    float64 `json:"onHand"`
+
+	// Incoming In transit to the site on open transfers (I46).
+	Incoming float64 `json:"incoming"`
+	OnHand   float64 `json:"onHand"`
 
 	// Reserved What other modules' documents (orders) have reserved of it at the site (orders design O45).
 	Reserved float64 `json:"reserved"`
@@ -1005,7 +1173,7 @@ type InventoryStats struct {
 	StockLines int32 `json:"stockLines"`
 }
 
-// InventoryStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views; entityId is the count's id.
+// InventoryStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date (I62).
 type InventoryStatsAttentionItem struct {
 	// Count How many the item stands for, when more than one.
 	Count      *int32                          `json:"count,omitempty"`
@@ -1022,17 +1190,306 @@ type InventoryStatsAttentionItemType string
 // InventoryStatus defines model for InventoryStatus.
 type InventoryStatus string
 
+// InventoryStockAtSite One variant at one site (I53): what lies there, what is reserved, and what is on its way to it.
+type InventoryStockAtSite struct {
+	// Available On hand less reserved.
+	Available float64 `json:"available"`
+
+	// Incoming In transit to the site on open transfers (I46).
+	Incoming float64 `json:"incoming"`
+
+	// Locations The locations holding it, most first.
+	Locations []InventoryStockAtSiteLocation `json:"locations"`
+	OnHand    float64                        `json:"onHand"`
+
+	// Placement A variant's placement at a site (delivery B, I54): its primary location, reorder point and maximum, and whether it is low (I56).
+	Placement *InventoryPlacement `json:"placement,omitempty"`
+	Reserved  float64             `json:"reserved"`
+	SiteId    int64               `json:"siteId"`
+	VariantId int32               `json:"variantId"`
+}
+
+// InventoryStockAtSiteLocation What lies of the variant on one location of the site.
+type InventoryStockAtSiteLocation struct {
+	// Location A location as other answers name it.
+	Location InventoryLocationRef `json:"location"`
+	OnHand   float64              `json:"onHand"`
+
+	// Primary The variant's primary location at the site (delivery B); absent until then.
+	Primary *bool `json:"primary,omitempty"`
+}
+
+// InventoryStockAtSites One row per variant and site asked for, whether or not anything lies there.
+type InventoryStockAtSites struct {
+	Stock []InventoryStockAtSite `json:"stock"`
+}
+
 // InventoryStockTotal A variant's on hand across every location, what is reserved of it across every site, and the difference.
 type InventoryStockTotal struct {
 	Available float64 `json:"available"`
+
+	// InTransit On its way between sites on open transfers (I46); not part of onHand.
+	InTransit float64 `json:"inTransit"`
 	OnHand    float64 `json:"onHand"`
 	Reserved  float64 `json:"reserved"`
 	VariantId int32   `json:"variantId"`
 }
 
-// InventoryStockTotals One total per variant asked for that has stock or a reservation; a variant with neither is absent.
+// InventoryStockTotals One total per variant asked for that has stock, a reservation or something in transit; a variant with none is absent.
 type InventoryStockTotals struct {
 	Totals []InventoryStockTotal `json:"totals"`
+}
+
+// InventoryTransfer A transfer of stock from one site to another (I36), with its lines and its actions.
+type InventoryTransfer struct {
+	// Actions Oldest first.
+	Actions   []InventoryTransferAction `json:"actions"`
+	CloseNote *string                   `json:"closeNote,omitempty"`
+
+	// CloseReason Why what was not received is missing (I42).
+	CloseReason *InventoryTransferCloseReason `json:"closeReason,omitempty"`
+	ClosedAt    *time.Time                    `json:"closedAt,omitempty"`
+
+	// ClosedBy Who posted, as snapshotted when they did.
+	ClosedBy  *InventoryActor `json:"closedBy,omitempty"`
+	CreatedAt time.Time       `json:"createdAt"`
+
+	// CreatedBy Who posted, as snapshotted when they did.
+	CreatedBy       InventoryActor      `json:"createdBy"`
+	ExpectedArrival *openapi_types.Date `json:"expectedArrival,omitempty"`
+
+	// FromSite A site as other answers name it.
+	FromSite InventorySiteRef `json:"fromSite"`
+	Id       int64            `json:"id"`
+
+	// InTransit The lines' in transit, summed.
+	InTransit float64 `json:"inTransit"`
+
+	// Lines By line number.
+	Lines     []InventoryTransferLine `json:"lines"`
+	Note      *string                 `json:"note,omitempty"`
+	Number    int64                   `json:"number"`
+	Reference *string                 `json:"reference,omitempty"`
+
+	// Revision Send it back as If-Match on every write but receive (I41).
+	Revision int32      `json:"revision"`
+	SentAt   *time.Time `json:"sentAt,omitempty"`
+
+	// SentBy Who posted, as snapshotted when they did.
+	SentBy *InventoryActor `json:"sentBy,omitempty"`
+
+	// Status A transfer's status (I36): draft holds nothing and may be edited and deleted (I37); sent is in transit; partly_received has had some of it received; received has nothing outstanding — every line received, or its difference closed (I42); cancelled was sent and returned whole to the from site (I44).
+	Status InventoryTransferStatus `json:"status"`
+
+	// ToSite A site as other answers name it.
+	ToSite    InventorySiteRef `json:"toSite"`
+	UpdatedAt time.Time        `json:"updatedAt"`
+}
+
+// InventoryTransferAction One send, receive or cancel (I38): who, when, the movement it posted, and its lines.
+type InventoryTransferAction struct {
+	CloseNote *string `json:"closeNote,omitempty"`
+
+	// CloseReason Why what was not received is missing (I42).
+	CloseReason *InventoryTransferCloseReason `json:"closeReason,omitempty"`
+	Id          int64                         `json:"id"`
+	Kind        InventoryTransferActionKind   `json:"kind"`
+	Lines       []InventoryTransferActionLine `json:"lines"`
+
+	// MovementId Absent on a close-only receive, which posts no movement.
+	MovementId *int64    `json:"movementId,omitempty"`
+	PostedAt   time.Time `json:"postedAt"`
+
+	// PostedBy Who posted, as snapshotted when they did.
+	PostedBy InventoryActor `json:"postedBy"`
+}
+
+// InventoryTransferActionKind defines model for InventoryTransferActionKind.
+type InventoryTransferActionKind string
+
+// InventoryTransferActionLine What one action did to one line: the source location for sent and returned, the destination for received, none for missing (I38).
+type InventoryTransferActionLine struct {
+	Kind   InventoryTransferActionLineKind `json:"kind"`
+	LineId int64                           `json:"lineId"`
+
+	// Location A location as other answers name it.
+	Location *InventoryLocationRef `json:"location,omitempty"`
+	Quantity float64               `json:"quantity"`
+}
+
+// InventoryTransferActionLineKind defines model for InventoryTransferActionLineKind.
+type InventoryTransferActionLineKind string
+
+// InventoryTransferCancelInput Cancelling a sent transfer with nothing received or missing (I44).
+type InventoryTransferCancelInput struct {
+	// ClientRequestId A UUID made when the dialog opens and kept across retries (D I14).
+	ClientRequestId openapi_types.UUID `json:"clientRequestId"`
+}
+
+// InventoryTransferClose Closing the difference (I42): after the quantities, every line's remaining outstanding is recorded as missing and the transfer is received.
+type InventoryTransferClose struct {
+	Note *string `json:"note,omitempty"`
+
+	// Reason Why what was not received is missing (I42).
+	Reason InventoryTransferCloseReason `json:"reason"`
+}
+
+// InventoryTransferCloseReason Why what was not received is missing (I42).
+type InventoryTransferCloseReason string
+
+// InventoryTransferDestination Where one line is received: a location at the to site, its root included (D I3).
+type InventoryTransferDestination struct {
+	LineId       int64 `json:"lineId"`
+	ToLocationId int64 `json:"toLocationId"`
+}
+
+// InventoryTransferInput A draft transfer's header and lines, replaced whole on PUT (I36, I37): two different active sites, 1–500 lines. A field left out is empty.
+type InventoryTransferInput struct {
+	ExpectedArrival *openapi_types.Date          `json:"expectedArrival,omitempty"`
+	FromSiteId      int64                        `json:"fromSiteId"`
+	Lines           []InventoryTransferLineInput `json:"lines"`
+	Note            *string                      `json:"note,omitempty"`
+	Reference       *string                      `json:"reference,omitempty"`
+	ToSiteId        int64                        `json:"toSiteId"`
+}
+
+// InventoryTransferLine A transfer line (I36, I46): what was asked for and the running totals. inTransit is sent − received − missing − returned, 0 on every line of a received or cancelled transfer.
+type InventoryTransferLine struct {
+	// Entered What a line was entered as, as it was at posting: each packaging's name, count and content then, and the loose rest (I25).
+	Entered *InventoryEnteredSnapshot `json:"entered,omitempty"`
+
+	// FromLocation A location as other answers name it.
+	FromLocation *InventoryLocationRef `json:"fromLocation,omitempty"`
+	Id           int64                 `json:"id"`
+	InTransit    float64               `json:"inTransit"`
+	LineNo       int32                 `json:"lineNo"`
+	Missing      float64               `json:"missing"`
+
+	// Quantity More than 0, in the variant's unit.
+	Quantity float64 `json:"quantity"`
+	Received float64 `json:"received"`
+	Returned float64 `json:"returned"`
+	Sent     float64 `json:"sent"`
+
+	// Suggestion The low-stock list's suggestion a line was drafted from (I57): what was needed, and the smallest packaging it was rounded up to and how many of it. Kept until the line is edited, which clears it; stored and returned as given.
+	Suggestion *InventoryTransferSuggestion `json:"suggestion,omitempty"`
+
+	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
+	Variant InventoryVariantRef `json:"variant"`
+}
+
+// InventoryTransferLineInput A draft line: a variant and a quantity of it, in its own unit or entered in packagings (I25). Exactly one of quantity and entered is given. A variant may appear on several lines.
+type InventoryTransferLineInput struct {
+	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
+	Entered *InventoryEntered `json:"entered,omitempty"`
+
+	// Quantity A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11).
+	Quantity *float64 `json:"quantity,omitempty"`
+
+	// Suggestion The low-stock list's suggestion a line was drafted from (I57): what was needed, and the smallest packaging it was rounded up to and how many of it. Kept until the line is edited, which clears it; stored and returned as given.
+	Suggestion *InventoryTransferSuggestion `json:"suggestion,omitempty"`
+	VariantId  int32                        `json:"variantId"`
+}
+
+// InventoryTransferPage Transfers newest first.
+type InventoryTransferPage struct {
+	// Next Pass as cursor for the next page; absent on the last.
+	Next      *string                    `json:"next,omitempty"`
+	Transfers []InventoryTransferSummary `json:"transfers"`
+}
+
+// InventoryTransferReceiveInput A receive (I40–I42): the quantities that arrived now and, optionally, the difference closed. No If-Match (I41): two receivers both land, each judged against the other's result.
+type InventoryTransferReceiveInput struct {
+	// ClientRequestId A UUID made when the page opens and kept across retries (D I14).
+	ClientRequestId openapi_types.UUID `json:"clientRequestId"`
+
+	// Close Closing the difference (I42): after the quantities, every line's remaining outstanding is recorded as missing and the transfer is received.
+	Close *InventoryTransferClose        `json:"close,omitempty"`
+	Lines []InventoryTransferReceiveLine `json:"lines"`
+}
+
+// InventoryTransferReceiveLine What arrived now of one line and where it goes (I40): at most the line's outstanding, in the variant's unit or entered in packagings as they are today. Exactly one of quantity and entered is given; 0 receives nothing of the line.
+type InventoryTransferReceiveLine struct {
+	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
+	Entered *InventoryEntered `json:"entered,omitempty"`
+	LineId  int64             `json:"lineId"`
+
+	// Quantity 0 or more, at most three decimals.
+	Quantity     *float64 `json:"quantity,omitempty"`
+	ToLocationId int64    `json:"toLocationId"`
+}
+
+// InventoryTransferRef A transfer as other answers name it.
+type InventoryTransferRef struct {
+	Id int64 `json:"id"`
+
+	// Number From the module's own series, shown as Transfer 1042 and TRF-1042 (I36).
+	Number int64 `json:"number"`
+}
+
+// InventoryTransferSendInput Sending a draft (I39): a source location for every line. The client request id is derived from the transfer, so a retried send replays.
+type InventoryTransferSendInput struct {
+	Lines []InventoryTransferSendLine `json:"lines"`
+
+	// Receive Send and receive (I43): a destination for every line, or receive_incomplete; everything sent is received in the same transaction.
+	Receive *InventoryTransferSendReceive `json:"receive,omitempty"`
+}
+
+// InventoryTransferSendLine Where one line is sent from: a location at the from site. A line of the transfer without one is from_location_required.
+type InventoryTransferSendLine struct {
+	FromLocationId *int64 `json:"fromLocationId,omitempty"`
+	LineId         int64  `json:"lineId"`
+}
+
+// InventoryTransferSendReceive Send and receive (I43): a destination for every line, or receive_incomplete; everything sent is received in the same transaction.
+type InventoryTransferSendReceive struct {
+	Lines []InventoryTransferDestination `json:"lines"`
+}
+
+// InventoryTransferStatus A transfer's status (I36): draft holds nothing and may be edited and deleted (I37); sent is in transit; partly_received has had some of it received; received has nothing outstanding — every line received, or its difference closed (I42); cancelled was sent and returned whole to the from site (I44).
+type InventoryTransferStatus string
+
+// InventoryTransferStatusFilter A status, or open: draft, sent and partly_received together.
+type InventoryTransferStatusFilter string
+
+// InventoryTransferSuggestion The low-stock list's suggestion a line was drafted from (I57): what was needed, and the smallest packaging it was rounded up to and how many of it. Kept until the line is edited, which clears it; stored and returned as given.
+type InventoryTransferSuggestion struct {
+	// Count How many of the packaging; null when the variant has no packagings.
+	Count *int32 `json:"count"`
+
+	// Needed What the rule found needed, in the variant's unit.
+	Needed float64 `json:"needed"`
+
+	// PackagingId The smallest packaging; null when the variant has none.
+	PackagingId *int32 `json:"packagingId"`
+}
+
+// InventoryTransferSummary A transfer without its lines and actions, for the list.
+type InventoryTransferSummary struct {
+	CreatedAt       time.Time           `json:"createdAt"`
+	ExpectedArrival *openapi_types.Date `json:"expectedArrival,omitempty"`
+
+	// FromSite A site as other answers name it.
+	FromSite  InventorySiteRef `json:"fromSite"`
+	Id        int64            `json:"id"`
+	InTransit float64          `json:"inTransit"`
+	LineCount int32            `json:"lineCount"`
+
+	// Missing What its closed difference recorded as missing, summed over the lines.
+	Missing float64 `json:"missing"`
+	Number  int64   `json:"number"`
+
+	// Overdue Sent or partly received and past its expected arrival, or without one sent more than 7 days ago (I62).
+	Overdue   bool       `json:"overdue"`
+	Reference *string    `json:"reference,omitempty"`
+	SentAt    *time.Time `json:"sentAt,omitempty"`
+
+	// Status A transfer's status (I36): draft holds nothing and may be edited and deleted (I37); sent is in transit; partly_received has had some of it received; received has nothing outstanding — every line received, or its difference closed (I42); cancelled was sent and returned whole to the from site (I44).
+	Status InventoryTransferStatus `json:"status"`
+
+	// ToSite A site as other answers name it.
+	ToSite    InventorySiteRef `json:"toSite"`
+	UpdatedAt time.Time        `json:"updatedAt"`
 }
 
 // InventoryUncounted What posting does with a line nobody counted: keep its balance, or count it as zero (I19).
@@ -1063,7 +1520,7 @@ type InventoryVariantRef struct {
 
 // InventoryVariantStock One variant's stock by site (I27).
 type InventoryVariantStock struct {
-	// Sites Sites holding stock or a reservation of it, by code.
+	// Sites Sites holding stock, a reservation or incoming of it, by code.
 	Sites []InventorySiteStock `json:"sites"`
 
 	// TotalAvailable Total on hand less total reserved.
@@ -1157,6 +1614,63 @@ type ListInventoryStockTotalsParams struct {
 	VariantIds []int32 `form:"variantIds" json:"variantIds"`
 }
 
+// ListInventoryStockAtSitesParams defines parameters for ListInventoryStockAtSites.
+type ListInventoryStockAtSitesParams struct {
+	// VariantIds Comma-separated, at most 100.
+	VariantIds []int32 `form:"variantIds" json:"variantIds"`
+
+	// SiteIds Comma-separated, at most 20.
+	SiteIds []int64 `form:"siteIds" json:"siteIds"`
+}
+
+// ListInventoryTransfersParams defines parameters for ListInventoryTransfers.
+type ListInventoryTransfersParams struct {
+	// Status A status, or open (the default when absent is every status).
+	Status *InventoryTransferStatusFilter `form:"status,omitempty" json:"status,omitempty"`
+
+	// FromSiteId Only those from this site.
+	FromSiteId *int64 `form:"fromSiteId,omitempty" json:"fromSiteId,omitempty"`
+
+	// ToSiteId Only those to this site.
+	ToSiteId *int64 `form:"toSiteId,omitempty" json:"toSiteId,omitempty"`
+
+	// VariantId Only those with a line of this variant.
+	VariantId *int32 `form:"variantId,omitempty" json:"variantId,omitempty"`
+
+	// WithMissing Only those with something recorded missing (of variantId, when given).
+	WithMissing *bool `form:"withMissing,omitempty" json:"withMissing,omitempty"`
+
+	// Q A transfer number, or a line's SKU.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Cursor The previous page's next.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// DeleteInventoryTransferParams defines parameters for DeleteInventoryTransfer.
+type DeleteInventoryTransferParams struct {
+	// IfMatch The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// PutInventoryTransferParams defines parameters for PutInventoryTransfer.
+type PutInventoryTransferParams struct {
+	// IfMatch The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// CancelInventoryTransferParams defines parameters for CancelInventoryTransfer.
+type CancelInventoryTransferParams struct {
+	// IfMatch The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// SendInventoryTransferParams defines parameters for SendInventoryTransfer.
+type SendInventoryTransferParams struct {
+	// IfMatch The revision the transfer was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
 // SearchInventoryVariantsParams defines parameters for SearchInventoryVariants.
 type SearchInventoryVariantsParams struct {
 	// Q The text to look for.
@@ -1199,6 +1713,21 @@ type CreateInventorySiteJSONRequestBody = InventorySiteInput
 
 // PutInventorySiteJSONRequestBody defines body for PutInventorySite for application/json ContentType.
 type PutInventorySiteJSONRequestBody = InventorySiteUpdate
+
+// CreateInventoryTransferJSONRequestBody defines body for CreateInventoryTransfer for application/json ContentType.
+type CreateInventoryTransferJSONRequestBody = InventoryTransferInput
+
+// PutInventoryTransferJSONRequestBody defines body for PutInventoryTransfer for application/json ContentType.
+type PutInventoryTransferJSONRequestBody = InventoryTransferInput
+
+// CancelInventoryTransferJSONRequestBody defines body for CancelInventoryTransfer for application/json ContentType.
+type CancelInventoryTransferJSONRequestBody = InventoryTransferCancelInput
+
+// ReceiveInventoryTransferJSONRequestBody defines body for ReceiveInventoryTransfer for application/json ContentType.
+type ReceiveInventoryTransferJSONRequestBody = InventoryTransferReceiveInput
+
+// SendInventoryTransferJSONRequestBody defines body for SendInventoryTransfer for application/json ContentType.
+type SendInventoryTransferJSONRequestBody = InventoryTransferSendInput
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -1295,6 +1824,36 @@ type ServerInterface interface {
 	// ListInventoryStockTotals Stock totals of variants
 	// (GET /api/v1/inventory/stock)
 	ListInventoryStockTotals(w http.ResponseWriter, r *http.Request, params ListInventoryStockTotalsParams)
+	// ListInventoryStockAtSites Stock of variants at sites
+	// (GET /api/v1/inventory/stock/sites)
+	ListInventoryStockAtSites(w http.ResponseWriter, r *http.Request, params ListInventoryStockAtSitesParams)
+	// ListInventoryTransfers List transfers
+	// (GET /api/v1/inventory/transfers)
+	ListInventoryTransfers(w http.ResponseWriter, r *http.Request, params ListInventoryTransfersParams)
+	// CreateInventoryTransfer Create a transfer
+	// (POST /api/v1/inventory/transfers)
+	CreateInventoryTransfer(w http.ResponseWriter, r *http.Request)
+	// DeleteInventoryTransfer Delete a draft transfer
+	// (DELETE /api/v1/inventory/transfers/{id})
+	DeleteInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64, params DeleteInventoryTransferParams)
+	// GetInventoryTransfer Get a transfer
+	// (GET /api/v1/inventory/transfers/{id})
+	GetInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64)
+	// PutInventoryTransfer Change a draft transfer
+	// (PUT /api/v1/inventory/transfers/{id})
+	PutInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64, params PutInventoryTransferParams)
+	// CancelInventoryTransfer Cancel a transfer
+	// (POST /api/v1/inventory/transfers/{id}/cancel)
+	CancelInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64, params CancelInventoryTransferParams)
+	// GetInventoryTransferNote Print a transfer note
+	// (GET /api/v1/inventory/transfers/{id}/note.pdf)
+	GetInventoryTransferNote(w http.ResponseWriter, r *http.Request, id int64)
+	// ReceiveInventoryTransfer Receive a transfer
+	// (POST /api/v1/inventory/transfers/{id}/receive)
+	ReceiveInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64)
+	// SendInventoryTransfer Send a transfer
+	// (POST /api/v1/inventory/transfers/{id}/send)
+	SendInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64, params SendInventoryTransferParams)
 	// SearchInventoryVariants Search goods variants
 	// (GET /api/v1/inventory/variants)
 	SearchInventoryVariants(w http.ResponseWriter, r *http.Request, params SearchInventoryVariantsParams)
@@ -2246,6 +2805,471 @@ func (siw *ServerInterfaceWrapper) ListInventoryStockTotals(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// ListInventoryStockAtSites operation middleware
+func (siw *ServerInterfaceWrapper) ListInventoryStockAtSites(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInventoryStockAtSitesParams
+
+	// ------------- Required query parameter "variantIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, true, "variantIds", r.URL.Query(), &params.VariantIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "variantIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "siteIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, true, "siteIds", r.URL.Query(), &params.SiteIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteIds", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInventoryStockAtSites(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInventoryTransfers operation middleware
+func (siw *ServerInterfaceWrapper) ListInventoryTransfers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInventoryTransfersParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "fromSiteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "fromSiteId", r.URL.Query(), &params.FromSiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "fromSiteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fromSiteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "toSiteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "toSiteId", r.URL.Query(), &params.ToSiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "toSiteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "toSiteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "variantId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "variantId", r.URL.Query(), &params.VariantId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "variantId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "withMissing" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "withMissing", r.URL.Query(), &params.WithMissing, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "withMissing"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "withMissing", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInventoryTransfers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInventoryTransfer operation middleware
+func (siw *ServerInterfaceWrapper) CreateInventoryTransfer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInventoryTransfer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInventoryTransfer operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInventoryTransfer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteInventoryTransferParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInventoryTransfer(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInventoryTransfer operation middleware
+func (siw *ServerInterfaceWrapper) GetInventoryTransfer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInventoryTransfer(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInventoryTransfer operation middleware
+func (siw *ServerInterfaceWrapper) PutInventoryTransfer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutInventoryTransferParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInventoryTransfer(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelInventoryTransfer operation middleware
+func (siw *ServerInterfaceWrapper) CancelInventoryTransfer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CancelInventoryTransferParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelInventoryTransfer(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInventoryTransferNote operation middleware
+func (siw *ServerInterfaceWrapper) GetInventoryTransferNote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInventoryTransferNote(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReceiveInventoryTransfer operation middleware
+func (siw *ServerInterfaceWrapper) ReceiveInventoryTransfer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReceiveInventoryTransfer(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendInventoryTransfer operation middleware
+func (siw *ServerInterfaceWrapper) SendInventoryTransfer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SendInventoryTransferParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendInventoryTransfer(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SearchInventoryVariants operation middleware
 func (siw *ServerInterfaceWrapper) SearchInventoryVariants(w http.ResponseWriter, r *http.Request) {
 
@@ -2469,6 +3493,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stats", wrapper.GetInventoryStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stats/attention", wrapper.GetInventoryStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stock", wrapper.ListInventoryStockTotals)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stock/sites", wrapper.ListInventoryStockAtSites)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/transfers", wrapper.ListInventoryTransfers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/transfers", wrapper.CreateInventoryTransfer)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}", wrapper.DeleteInventoryTransfer)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}", wrapper.GetInventoryTransfer)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}", wrapper.PutInventoryTransfer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}/cancel", wrapper.CancelInventoryTransfer)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}/note.pdf", wrapper.GetInventoryTransferNote)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}/receive", wrapper.ReceiveInventoryTransfer)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}/send", wrapper.SendInventoryTransfer)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants", wrapper.SearchInventoryVariants)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/stock", wrapper.GetInventoryVariantStock)
 
@@ -4809,6 +5843,892 @@ func (response ListInventoryStockTotals403JSONResponse) VisitListInventoryStockT
 	return err
 }
 
+type ListInventoryStockAtSitesRequestObject struct {
+	Params ListInventoryStockAtSitesParams
+}
+
+type ListInventoryStockAtSitesResponseObject interface {
+	VisitListInventoryStockAtSitesResponse(w http.ResponseWriter) error
+}
+
+type ListInventoryStockAtSites200JSONResponse InventoryStockAtSites
+
+func (response ListInventoryStockAtSites200JSONResponse) VisitListInventoryStockAtSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryStockAtSites400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryStockAtSites400ApplicationProblemPlusJSONResponse) VisitListInventoryStockAtSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryStockAtSites401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryStockAtSites401JSONResponse) VisitListInventoryStockAtSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryStockAtSites403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryStockAtSites403JSONResponse) VisitListInventoryStockAtSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryStockAtSites503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryStockAtSites503ApplicationProblemPlusJSONResponse) VisitListInventoryStockAtSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryTransfersRequestObject struct {
+	Params ListInventoryTransfersParams
+}
+
+type ListInventoryTransfersResponseObject interface {
+	VisitListInventoryTransfersResponse(w http.ResponseWriter) error
+}
+
+type ListInventoryTransfers200JSONResponse InventoryTransferPage
+
+func (response ListInventoryTransfers200JSONResponse) VisitListInventoryTransfersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryTransfers400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryTransfers400ApplicationProblemPlusJSONResponse) VisitListInventoryTransfersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryTransfers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryTransfers401JSONResponse) VisitListInventoryTransfersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryTransfers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryTransfers403JSONResponse) VisitListInventoryTransfersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryTransfers503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryTransfers503ApplicationProblemPlusJSONResponse) VisitListInventoryTransfersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInventoryTransferRequestObject struct {
+	Body *CreateInventoryTransferJSONRequestBody
+}
+
+type CreateInventoryTransferResponseObject interface {
+	VisitCreateInventoryTransferResponse(w http.ResponseWriter) error
+}
+
+type CreateInventoryTransfer201JSONResponse InventoryTransfer
+
+func (response CreateInventoryTransfer201JSONResponse) VisitCreateInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInventoryTransfer400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response CreateInventoryTransfer400ApplicationProblemPlusJSONResponse) VisitCreateInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInventoryTransfer401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateInventoryTransfer401JSONResponse) VisitCreateInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInventoryTransfer403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateInventoryTransfer403JSONResponse) VisitCreateInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInventoryTransfer503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response CreateInventoryTransfer503ApplicationProblemPlusJSONResponse) VisitCreateInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryTransferRequestObject struct {
+	Id     int64 `json:"id"`
+	Params DeleteInventoryTransferParams
+}
+
+type DeleteInventoryTransferResponseObject interface {
+	VisitDeleteInventoryTransferResponse(w http.ResponseWriter) error
+}
+
+type DeleteInventoryTransfer204Response struct {
+}
+
+func (response DeleteInventoryTransfer204Response) VisitDeleteInventoryTransferResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInventoryTransfer400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response DeleteInventoryTransfer400ApplicationProblemPlusJSONResponse) VisitDeleteInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryTransfer401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInventoryTransfer401JSONResponse) VisitDeleteInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryTransfer403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInventoryTransfer403JSONResponse) VisitDeleteInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryTransfer404Response struct {
+}
+
+func (response DeleteInventoryTransfer404Response) VisitDeleteInventoryTransferResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteInventoryTransfer409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response DeleteInventoryTransfer409ApplicationProblemPlusJSONResponse) VisitDeleteInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryTransfer503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response DeleteInventoryTransfer503ApplicationProblemPlusJSONResponse) VisitDeleteInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTransferRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetInventoryTransferResponseObject interface {
+	VisitGetInventoryTransferResponse(w http.ResponseWriter) error
+}
+
+type GetInventoryTransfer200JSONResponse InventoryTransfer
+
+func (response GetInventoryTransfer200JSONResponse) VisitGetInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTransfer401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryTransfer401JSONResponse) VisitGetInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTransfer403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryTransfer403JSONResponse) VisitGetInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTransfer404Response struct {
+}
+
+func (response GetInventoryTransfer404Response) VisitGetInventoryTransferResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInventoryTransfer503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response GetInventoryTransfer503ApplicationProblemPlusJSONResponse) VisitGetInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryTransferRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutInventoryTransferParams
+	Body   *PutInventoryTransferJSONRequestBody
+}
+
+type PutInventoryTransferResponseObject interface {
+	VisitPutInventoryTransferResponse(w http.ResponseWriter) error
+}
+
+type PutInventoryTransfer200JSONResponse InventoryTransfer
+
+func (response PutInventoryTransfer200JSONResponse) VisitPutInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryTransfer400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryTransfer400ApplicationProblemPlusJSONResponse) VisitPutInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryTransfer401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryTransfer401JSONResponse) VisitPutInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryTransfer403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryTransfer403JSONResponse) VisitPutInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryTransfer404Response struct {
+}
+
+func (response PutInventoryTransfer404Response) VisitPutInventoryTransferResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutInventoryTransfer409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryTransfer409ApplicationProblemPlusJSONResponse) VisitPutInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryTransfer503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryTransfer503ApplicationProblemPlusJSONResponse) VisitPutInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryTransferRequestObject struct {
+	Id     int64 `json:"id"`
+	Params CancelInventoryTransferParams
+	Body   *CancelInventoryTransferJSONRequestBody
+}
+
+type CancelInventoryTransferResponseObject interface {
+	VisitCancelInventoryTransferResponse(w http.ResponseWriter) error
+}
+
+type CancelInventoryTransfer200JSONResponse InventoryTransfer
+
+func (response CancelInventoryTransfer200JSONResponse) VisitCancelInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryTransfer400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response CancelInventoryTransfer400ApplicationProblemPlusJSONResponse) VisitCancelInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryTransfer401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelInventoryTransfer401JSONResponse) VisitCancelInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryTransfer403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelInventoryTransfer403JSONResponse) VisitCancelInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryTransfer404Response struct {
+}
+
+func (response CancelInventoryTransfer404Response) VisitCancelInventoryTransferResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CancelInventoryTransfer409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response CancelInventoryTransfer409ApplicationProblemPlusJSONResponse) VisitCancelInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelInventoryTransfer503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response CancelInventoryTransfer503ApplicationProblemPlusJSONResponse) VisitCancelInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTransferNoteRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetInventoryTransferNoteResponseObject interface {
+	VisitGetInventoryTransferNoteResponse(w http.ResponseWriter) error
+}
+
+type GetInventoryTransferNote200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetInventoryTransferNote200ApplicationpdfResponse) VisitGetInventoryTransferNoteResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInventoryTransferNote401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryTransferNote401JSONResponse) VisitGetInventoryTransferNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTransferNote403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryTransferNote403JSONResponse) VisitGetInventoryTransferNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTransferNote404Response struct {
+}
+
+func (response GetInventoryTransferNote404Response) VisitGetInventoryTransferNoteResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInventoryTransferNote503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response GetInventoryTransferNote503ApplicationProblemPlusJSONResponse) VisitGetInventoryTransferNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveInventoryTransferRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ReceiveInventoryTransferJSONRequestBody
+}
+
+type ReceiveInventoryTransferResponseObject interface {
+	VisitReceiveInventoryTransferResponse(w http.ResponseWriter) error
+}
+
+type ReceiveInventoryTransfer200JSONResponse InventoryTransfer
+
+func (response ReceiveInventoryTransfer200JSONResponse) VisitReceiveInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveInventoryTransfer400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ReceiveInventoryTransfer400ApplicationProblemPlusJSONResponse) VisitReceiveInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveInventoryTransfer401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReceiveInventoryTransfer401JSONResponse) VisitReceiveInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveInventoryTransfer403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReceiveInventoryTransfer403JSONResponse) VisitReceiveInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveInventoryTransfer404Response struct {
+}
+
+func (response ReceiveInventoryTransfer404Response) VisitReceiveInventoryTransferResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReceiveInventoryTransfer409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ReceiveInventoryTransfer409ApplicationProblemPlusJSONResponse) VisitReceiveInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReceiveInventoryTransfer503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ReceiveInventoryTransfer503ApplicationProblemPlusJSONResponse) VisitReceiveInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendInventoryTransferRequestObject struct {
+	Id     int64 `json:"id"`
+	Params SendInventoryTransferParams
+	Body   *SendInventoryTransferJSONRequestBody
+}
+
+type SendInventoryTransferResponseObject interface {
+	VisitSendInventoryTransferResponse(w http.ResponseWriter) error
+}
+
+type SendInventoryTransfer200JSONResponse InventoryTransfer
+
+func (response SendInventoryTransfer200JSONResponse) VisitSendInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendInventoryTransfer400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response SendInventoryTransfer400ApplicationProblemPlusJSONResponse) VisitSendInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendInventoryTransfer401JSONResponse externalRef0.AuthErrorResponse
+
+func (response SendInventoryTransfer401JSONResponse) VisitSendInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendInventoryTransfer403JSONResponse externalRef0.AuthErrorResponse
+
+func (response SendInventoryTransfer403JSONResponse) VisitSendInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendInventoryTransfer404Response struct {
+}
+
+func (response SendInventoryTransfer404Response) VisitSendInventoryTransferResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type SendInventoryTransfer409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response SendInventoryTransfer409ApplicationProblemPlusJSONResponse) VisitSendInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendInventoryTransfer503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response SendInventoryTransfer503ApplicationProblemPlusJSONResponse) VisitSendInventoryTransferResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SearchInventoryVariantsRequestObject struct {
 	Params SearchInventoryVariantsParams
 }
@@ -5054,6 +6974,36 @@ type StrictServerInterface interface {
 	// ListInventoryStockTotals Stock totals of variants
 	// (GET /api/v1/inventory/stock)
 	ListInventoryStockTotals(ctx context.Context, request ListInventoryStockTotalsRequestObject) (ListInventoryStockTotalsResponseObject, error)
+	// ListInventoryStockAtSites Stock of variants at sites
+	// (GET /api/v1/inventory/stock/sites)
+	ListInventoryStockAtSites(ctx context.Context, request ListInventoryStockAtSitesRequestObject) (ListInventoryStockAtSitesResponseObject, error)
+	// ListInventoryTransfers List transfers
+	// (GET /api/v1/inventory/transfers)
+	ListInventoryTransfers(ctx context.Context, request ListInventoryTransfersRequestObject) (ListInventoryTransfersResponseObject, error)
+	// CreateInventoryTransfer Create a transfer
+	// (POST /api/v1/inventory/transfers)
+	CreateInventoryTransfer(ctx context.Context, request CreateInventoryTransferRequestObject) (CreateInventoryTransferResponseObject, error)
+	// DeleteInventoryTransfer Delete a draft transfer
+	// (DELETE /api/v1/inventory/transfers/{id})
+	DeleteInventoryTransfer(ctx context.Context, request DeleteInventoryTransferRequestObject) (DeleteInventoryTransferResponseObject, error)
+	// GetInventoryTransfer Get a transfer
+	// (GET /api/v1/inventory/transfers/{id})
+	GetInventoryTransfer(ctx context.Context, request GetInventoryTransferRequestObject) (GetInventoryTransferResponseObject, error)
+	// PutInventoryTransfer Change a draft transfer
+	// (PUT /api/v1/inventory/transfers/{id})
+	PutInventoryTransfer(ctx context.Context, request PutInventoryTransferRequestObject) (PutInventoryTransferResponseObject, error)
+	// CancelInventoryTransfer Cancel a transfer
+	// (POST /api/v1/inventory/transfers/{id}/cancel)
+	CancelInventoryTransfer(ctx context.Context, request CancelInventoryTransferRequestObject) (CancelInventoryTransferResponseObject, error)
+	// GetInventoryTransferNote Print a transfer note
+	// (GET /api/v1/inventory/transfers/{id}/note.pdf)
+	GetInventoryTransferNote(ctx context.Context, request GetInventoryTransferNoteRequestObject) (GetInventoryTransferNoteResponseObject, error)
+	// ReceiveInventoryTransfer Receive a transfer
+	// (POST /api/v1/inventory/transfers/{id}/receive)
+	ReceiveInventoryTransfer(ctx context.Context, request ReceiveInventoryTransferRequestObject) (ReceiveInventoryTransferResponseObject, error)
+	// SendInventoryTransfer Send a transfer
+	// (POST /api/v1/inventory/transfers/{id}/send)
+	SendInventoryTransfer(ctx context.Context, request SendInventoryTransferRequestObject) (SendInventoryTransferResponseObject, error)
 	// SearchInventoryVariants Search goods variants
 	// (GET /api/v1/inventory/variants)
 	SearchInventoryVariants(ctx context.Context, request SearchInventoryVariantsRequestObject) (SearchInventoryVariantsResponseObject, error)
@@ -5968,6 +7918,303 @@ func (sh *strictHandler) ListInventoryStockTotals(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListInventoryStockTotalsResponseObject); ok {
 		if err := validResponse.VisitListInventoryStockTotalsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInventoryStockAtSites operation middleware
+func (sh *strictHandler) ListInventoryStockAtSites(w http.ResponseWriter, r *http.Request, params ListInventoryStockAtSitesParams) {
+	var request ListInventoryStockAtSitesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInventoryStockAtSites(ctx, request.(ListInventoryStockAtSitesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInventoryStockAtSites")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInventoryStockAtSitesResponseObject); ok {
+		if err := validResponse.VisitListInventoryStockAtSitesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInventoryTransfers operation middleware
+func (sh *strictHandler) ListInventoryTransfers(w http.ResponseWriter, r *http.Request, params ListInventoryTransfersParams) {
+	var request ListInventoryTransfersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInventoryTransfers(ctx, request.(ListInventoryTransfersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInventoryTransfers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInventoryTransfersResponseObject); ok {
+		if err := validResponse.VisitListInventoryTransfersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateInventoryTransfer operation middleware
+func (sh *strictHandler) CreateInventoryTransfer(w http.ResponseWriter, r *http.Request) {
+	var request CreateInventoryTransferRequestObject
+
+	var body CreateInventoryTransferJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInventoryTransfer(ctx, request.(CreateInventoryTransferRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInventoryTransfer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateInventoryTransferResponseObject); ok {
+		if err := validResponse.VisitCreateInventoryTransferResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInventoryTransfer operation middleware
+func (sh *strictHandler) DeleteInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64, params DeleteInventoryTransferParams) {
+	var request DeleteInventoryTransferRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInventoryTransfer(ctx, request.(DeleteInventoryTransferRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInventoryTransfer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInventoryTransferResponseObject); ok {
+		if err := validResponse.VisitDeleteInventoryTransferResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInventoryTransfer operation middleware
+func (sh *strictHandler) GetInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetInventoryTransferRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInventoryTransfer(ctx, request.(GetInventoryTransferRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInventoryTransfer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInventoryTransferResponseObject); ok {
+		if err := validResponse.VisitGetInventoryTransferResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInventoryTransfer operation middleware
+func (sh *strictHandler) PutInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64, params PutInventoryTransferParams) {
+	var request PutInventoryTransferRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutInventoryTransferJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInventoryTransfer(ctx, request.(PutInventoryTransferRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInventoryTransfer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInventoryTransferResponseObject); ok {
+		if err := validResponse.VisitPutInventoryTransferResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelInventoryTransfer operation middleware
+func (sh *strictHandler) CancelInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64, params CancelInventoryTransferParams) {
+	var request CancelInventoryTransferRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body CancelInventoryTransferJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelInventoryTransfer(ctx, request.(CancelInventoryTransferRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelInventoryTransfer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelInventoryTransferResponseObject); ok {
+		if err := validResponse.VisitCancelInventoryTransferResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInventoryTransferNote operation middleware
+func (sh *strictHandler) GetInventoryTransferNote(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetInventoryTransferNoteRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInventoryTransferNote(ctx, request.(GetInventoryTransferNoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInventoryTransferNote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInventoryTransferNoteResponseObject); ok {
+		if err := validResponse.VisitGetInventoryTransferNoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReceiveInventoryTransfer operation middleware
+func (sh *strictHandler) ReceiveInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ReceiveInventoryTransferRequestObject
+
+	request.Id = id
+
+	var body ReceiveInventoryTransferJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReceiveInventoryTransfer(ctx, request.(ReceiveInventoryTransferRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReceiveInventoryTransfer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReceiveInventoryTransferResponseObject); ok {
+		if err := validResponse.VisitReceiveInventoryTransferResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendInventoryTransfer operation middleware
+func (sh *strictHandler) SendInventoryTransfer(w http.ResponseWriter, r *http.Request, id int64, params SendInventoryTransferParams) {
+	var request SendInventoryTransferRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body SendInventoryTransferJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendInventoryTransfer(ctx, request.(SendInventoryTransferRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendInventoryTransfer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendInventoryTransferResponseObject); ok {
+		if err := validResponse.VisitSendInventoryTransferResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -179,6 +179,37 @@ WHERE s.q IS DISTINCT FROM b.on_hand`); n != 0 {
 	if n := h.Count(t, `SELECT count(*) FROM inventory.balances WHERE on_hand <= 0`); n != 0 {
 		t.Errorf("%d balance(s) at or below zero", n)
 	}
+	// A transfer's running totals are its action lines summed by kind
+	// (phase 2 design I38), and its movements carry them: transfer_out what
+	// was sent, transfer_in what was received or returned.
+	if n := h.Count(t, `
+SELECT count(*) FROM inventory.transfer_lines l
+LEFT JOIN (SELECT transfer_line_id,
+                  sum(quantity) FILTER (WHERE kind = 'sent') AS sent,
+                  sum(quantity) FILTER (WHERE kind = 'received') AS received,
+                  sum(quantity) FILTER (WHERE kind = 'missing') AS missing,
+                  sum(quantity) FILTER (WHERE kind = 'returned') AS returned
+           FROM inventory.transfer_action_lines GROUP BY transfer_line_id) a ON a.transfer_line_id = l.id
+WHERE l.sent <> coalesce(a.sent, 0) OR l.received <> coalesce(a.received, 0)
+   OR l.missing <> coalesce(a.missing, 0) OR l.returned <> coalesce(a.returned, 0)`); n != 0 {
+		t.Errorf("%d transfer line(s) whose totals differ from their action lines", n)
+	}
+	if n := h.Count(t, `
+WITH moved AS (
+    SELECT a.transfer_id,
+           coalesce(sum(ml.quantity) FILTER (WHERE m.kind = 'transfer_out'), 0) AS out_q,
+           coalesce(sum(ml.quantity) FILTER (WHERE m.kind = 'transfer_in'), 0) AS in_q
+    FROM inventory.transfer_actions a
+    JOIN inventory.movements m ON m.id = a.movement_id
+    JOIN inventory.movement_lines ml ON ml.movement_id = m.id
+    GROUP BY a.transfer_id
+), totals AS (
+    SELECT transfer_id, sum(sent) AS sent, sum(received + returned) AS came FROM inventory.transfer_lines GROUP BY transfer_id
+)
+SELECT count(*) FROM totals t LEFT JOIN moved m ON m.transfer_id = t.transfer_id
+WHERE coalesce(m.out_q, 0) <> t.sent OR coalesce(m.in_q, 0) <> t.came`); n != 0 {
+		t.Errorf("%d transfer(s) whose movements differ from their lines' totals", n)
+	}
 }
 
 // eventKinds is the record's kinds, in order.

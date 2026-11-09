@@ -35,7 +35,11 @@ import (
 //     replay is answered even if its variant has since been discontinued.
 //  2. ProductCatalog.LockVariants takes FOR SHARE on the variants and their
 //     products, in variant id order, on the posting's own transaction (I22):
-//     Products' rows before any of Inventory's, everywhere.
+//     Products' rows before any of Inventory's — but for the two documents
+//     whose own row is taken first, a count's at its post (count_post.go) and
+//     a transfer's at its send, receive and cancel, with its two sites FOR
+//     SHARE after it (phase 2 design I38, transfer_actions.go). There is no
+//     cycle: Products never waits on a count, a transfer or a site.
 //  3. The key is claimed by writing the movement's header, INSERT … ON
 //     CONFLICT DO NOTHING RETURNING. A conflict means a concurrent first
 //     attempt committed; it is read back and answered as in step 1.
@@ -67,9 +71,12 @@ type postOptions struct {
 	// receipt refuses a Discontinued product's variant (I12).
 	receipt bool
 	// check, when set, judges the posting once its variants and balances are
-	// locked and before any line is applied: the count post's moved lines
-	// (I19). A refusal it answers rolls the posting back.
-	check func(variants map[int32]contracts.VariantEntry, balances map[balanceKey]*big.Rat) error
+	// locked, its entries resolved to units, and before any line is applied:
+	// the count post's moved lines (I19), a transfer action's per-line rules
+	// (phase 2 design I38–I44: a receive's outstanding, a send's goods). A
+	// refusal it answers rolls the posting back. lines are the posting's own,
+	// resolved; the check reads them and changes nothing.
+	check func(lines []engineLine, variants map[int32]contracts.VariantEntry, balances map[balanceKey]*big.Rat) error
 }
 
 // maxAPILines is the most lines a movement posted through the API has.
@@ -89,8 +96,10 @@ type movementHeader struct {
 	supplierReference *string
 	countID           *int64
 	poster            actor
-	// source is the document of another module the movement was posted for
-	// (an issue's, orders design O45); nil for the module's own postings.
+	// source is the document the movement was posted for: another module's
+	// (an issue's, orders design O45), or a transfer's, whose movements name
+	// the transfer and, as the line, the action that posted them (phase 2
+	// design I45). It is nil for every other posting of the module's own.
 	source *movementSource
 }
 
@@ -303,7 +312,7 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 		return postResult{}, err
 	}
 	if opts.check != nil {
-		if err := opts.check(variants, balances); err != nil {
+		if err := opts.check(lines, variants, balances); err != nil {
 			return postResult{}, err
 		}
 	}

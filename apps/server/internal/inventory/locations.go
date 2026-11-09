@@ -354,6 +354,21 @@ func (s *server) changeLocation(ctx context.Context, txq *store.Queries, who act
 		if err := stockRefusal(ctx, txq, "The location "+cur.FullCode, sub.ids, in.seesStock); err != nil {
 			return store.InventoryLocation{}, err
 		}
+		// The source of a line still in transit: a cancel brings it back
+		// there (phase 2 design I48).
+		inTransit, err := txq.SubtreeInTransit(ctx, cur.ID)
+		if err != nil {
+			return store.InventoryLocation{}, fmt.Errorf("inventory: read the transfers sent from location %d: %w", cur.ID, err)
+		}
+		if inTransit {
+			// Without stock-view the refusal says what the rule is, not
+			// that stock is on its way, as stockRefusal does.
+			detail := fmt.Sprintf("The location %s, or one below it, is still needed by a transfer. Ask someone who can see stock to receive or cancel it before archiving.", cur.FullCode)
+			if in.seesStock {
+				detail = fmt.Sprintf("The location %s, or one below it, is where a transfer still on its way was sent from. Receive or cancel it before archiving.", cur.FullCode)
+			}
+			return store.InventoryLocation{}, refuse(problem(http.StatusConflict, codeLocationInTransit, "Location is in use by a transfer", detail))
+		}
 	}
 	if reactivate && parent.Status != string(gen.Active) {
 		return store.InventoryLocation{}, parentInvalid("status",

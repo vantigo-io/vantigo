@@ -19,8 +19,10 @@ import (
 // coded as the site, in the same transaction; renaming its code renames the
 // root and every full code below it (I4). Archiving a site archives every
 // location in it and is refused while anything in it holds stock;
-// reactivating it reactivates it and its root alone. A site is deleted only
-// when no movement was ever posted in it.
+// reactivating it reactivates it and its root alone. Archiving is refused,
+// too, while a transfer from or to it is on its way (phase 2 design I48). A
+// site is deleted only when no movement was ever posted in it and no
+// transfer names it.
 
 // siteFields is a site's request judged: the code normalised, the name
 // trimmed, the kind and the address.
@@ -245,6 +247,18 @@ func (s *server) PutInventorySite(ctx context.Context, req gen.PutInventorySiteR
 			if err := stockRefusal(ctx, txq, "The site "+cur.Code, ids, seesStock); err != nil {
 				return err
 			}
+			// A transfer on its way from or to the site (phase 2 design
+			// I48); a draft does not hold it, its send is refused instead.
+			// A send or a receive holds the site FOR SHARE, so this read,
+			// under the site's FOR UPDATE, sees every one committed.
+			inTransit, err := txq.SiteHasOpenTransfers(ctx, cur.ID)
+			if err != nil {
+				return fmt.Errorf("inventory: read the open transfers of site %d: %w", cur.ID, err)
+			}
+			if inTransit {
+				return refuse(problem(http.StatusConflict, codeSiteHasOpenTransfers, "Site has open transfers",
+					fmt.Sprintf("The site %s is the from or to site of a transfer still on its way. Receive or cancel it before archiving.", cur.Code)))
+			}
 		}
 		fulfils := cur.FulfilsOrders
 		if req.Body.FulfilsOrders != nil {
@@ -364,6 +378,14 @@ func (s *server) DeleteInventorySite(ctx context.Context, req gen.DeleteInventor
 			return refuse(problem(http.StatusConflict, codeLocationHasHistory, "Site has history",
 				fmt.Sprintf("The site %s has movements and cannot be deleted; archive it instead.", site.Code)))
 		}
+		named, err := txq.SiteHasTransfers(ctx, site.ID)
+		if err != nil {
+			return fmt.Errorf("inventory: read the transfers of site %d: %w", site.ID, err)
+		}
+		if named {
+			return refuse(problem(http.StatusConflict, codeSiteHasTransfers, "Site has transfers",
+				fmt.Sprintf("A transfer names the site %s, so it cannot be deleted; delete the draft or archive the site instead.", site.Code)))
+		}
 		locations, err := txq.LockSiteLocations(ctx, site.ID)
 		if err != nil {
 			return fmt.Errorf("inventory: lock the locations of site %d: %w", site.ID, err)
@@ -417,11 +439,23 @@ func (s *server) withFigures(ctx context.Context, q *store.Queries, sites []gen.
 		figures[r.ID] = r
 	}
 	seesStock := s.has(ctx, permStockView)
+	open := map[int64]store.OpenTransferCountsRow{}
+	if seesStock {
+		rows, err := q.OpenTransferCounts(ctx, ids)
+		if err != nil {
+			return fmt.Errorf("inventory: read the sites' open transfers: %w", err)
+		}
+		for _, r := range rows {
+			open[r.SiteID] = r
+		}
+	}
 	for i := range sites {
 		f := figures[sites[i].Id]
 		sites[i].LocationCount = f.LocationCount
 		if seesStock {
 			sites[i].StockLines, sites[i].LastReceiptAt = ptr(f.StockLines), f.LastReceiptAt
+			o := open[sites[i].Id]
+			sites[i].IncomingTransfers, sites[i].OutgoingTransfers = ptr(o.Incoming), ptr(o.Outgoing)
 		}
 	}
 	return nil

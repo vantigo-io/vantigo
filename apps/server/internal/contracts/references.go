@@ -96,13 +96,20 @@ const (
 	VariantHoldKindStock         = "stock"
 	VariantHoldKindOpenDocuments = "open_documents"
 	VariantHoldKindReserved      = "reserved"
+	// VariantHoldKindInTransit is stock on its way between two sites on an
+	// Inventory transfer: sent, and neither received, recorded missing nor
+	// returned (inventory phase 2 design I46, I47). It is answered after
+	// stock and reserved, for both purposes.
+	VariantHoldKindInTransit = "in_transit"
 )
 
 // VariantHold is what a holder keeps of a variant. Kind says which: "stock"
 // is a quantity in the variant's own unit, as a decimal, and the number of
 // places it lies in; "reserved" is a quantity reserved for other modules'
 // documents (contracts.StockLedger), as a decimal, and the number of sites
-// it is reserved at, in Locations; "open_documents" is the number of open
+// it is reserved at, in Locations; "in_transit" is a quantity on its way
+// between sites, as a decimal, and the number of transfers carrying it, in
+// Locations; "open_documents" is the number of open
 // documents (quotes, orders, subscriptions) that name it (orders design O30).
 type VariantHold struct {
 	Kind      string

@@ -62,6 +62,7 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 		lines     []store.InventoryMovementLine
 		site      store.InventorySite
 		locations = map[int64]store.InventoryLocation{}
+		transfer  *gen.InventoryTransferRef
 	)
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -95,6 +96,11 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 		for _, r := range rows {
 			locations[r.ID] = r
 		}
+		refs, err := transferRefsOf(ctx, q, []int64{id})
+		if err != nil {
+			return err
+		}
+		transfer = refs[id]
 		return nil
 	})
 	if err != nil {
@@ -116,7 +122,7 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 		Id: m.ID, ClientRequestId: m.ClientRequestID, Kind: gen.InventoryMovementKind(m.Kind), Site: siteRefOf(site),
 		Reason: reasonOf(m.Reason), Note: m.Note, SupplierName: m.SupplierName, SupplierReference: m.SupplierReference,
 		Source: sourceOf(m), PostedBy: posterOf(m.PostedByUserID, m.PostedByDisplay), PostedAt: m.PostedAt, CountId: m.CountID,
-		Lines: make([]gen.InventoryMovementLine, 0, len(lines)),
+		Transfer: transfer, Lines: make([]gen.InventoryMovementLine, 0, len(lines)),
 	}
 	for _, l := range lines {
 		ref, ok := refs[l.VariantID]
@@ -164,7 +170,7 @@ func (s *server) ListInventoryMovements(ctx context.Context, req gen.ListInvento
 	params := store.ListMovementsParams{SiteID: p.SiteId, VariantID: p.VariantId, LocationID: p.LocationId, RowLimit: defaultMovementPage + 1}
 	if p.Kind != nil {
 		if !p.Kind.Valid() {
-			f.add("kind", "The kind must be adjustment, move, receipt, count or issue")
+			f.add("kind", "The kind must be adjustment, move, receipt, count, issue, transfer_out or transfer_in")
 		}
 		params.Kind = ptr(string(*p.Kind))
 	}
@@ -222,14 +228,40 @@ func (s *server) ListInventoryMovements(ctx context.Context, req gen.ListInvento
 	for _, s := range sites {
 		byID[s.ID] = s
 	}
+	movementIDs := make([]int64, 0, len(rows))
+	for _, r := range rows {
+		movementIDs = append(movementIDs, r.ID)
+	}
+	transfers, err := transferRefsOf(ctx, store.New(s.deps.Pool), movementIDs)
+	if err != nil {
+		return nil, err
+	}
 	for _, r := range rows {
 		out.Movements = append(out.Movements, gen.InventoryMovementSummary{
 			Id: r.ID, Kind: gen.InventoryMovementKind(r.Kind), Site: siteRefOf(byID[r.SiteID]), LineCount: r.LineCount,
 			Reason: reasonOf(r.Reason), Note: r.Note, SupplierName: r.SupplierName, SupplierReference: r.SupplierReference,
 			PostedBy: posterOf(r.PostedByUserID, r.PostedByDisplay), PostedAt: r.PostedAt, CountId: r.CountID,
+			Transfer: transfers[r.ID],
 		})
 	}
 	return gen.ListInventoryMovements200JSONResponse(out), nil
+}
+
+// transferRefsOf is, per movement of ids a transfer posted, the transfer it
+// links back to (phase 2 design I45).
+func transferRefsOf(ctx context.Context, q *store.Queries, ids []int64) (map[int64]*gen.InventoryTransferRef, error) {
+	out := map[int64]*gen.InventoryTransferRef{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.TransferRefsOfMovements(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the transfers of movements: %w", err)
+	}
+	for _, r := range rows {
+		out[r.MovementID] = &gen.InventoryTransferRef{Id: r.TransferID, Number: r.Number}
+	}
+	return out, nil
 }
 
 // startOfDay is the instant a civil day begins in zone.

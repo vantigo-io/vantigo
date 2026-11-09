@@ -27,10 +27,12 @@ type balance struct {
 
 // stockSnapshot is the balances a read found, with their locations and sites,
 // and — for a variant's or a product's stock — what is reserved of the
-// variants per site (orders design O45).
+// variants per site (orders design O45) and what is on its way to each site
+// on open transfers (phase 2 design I46).
 type stockSnapshot struct {
 	balances  []balance
 	reserved  map[siteKey]*big.Rat
+	incoming  map[siteKey]*big.Rat
 	locations map[int64]store.InventoryLocation
 	sites     map[int64]store.InventorySite
 }
@@ -61,6 +63,9 @@ func (sn *stockSnapshot) readPlaces(ctx context.Context, q *store.Queries) error
 	for k := range sn.reserved {
 		siteIDs = append(siteIDs, k.siteID)
 	}
+	for k := range sn.incoming {
+		siteIDs = append(siteIDs, k.siteID)
+	}
 	sites, err := q.SitesByIDs(ctx, distinct(siteIDs))
 	if err != nil {
 		return fmt.Errorf("inventory: read the sites of balances: %w", err)
@@ -80,8 +85,9 @@ func (sn *stockSnapshot) row(b balance, ref gen.InventoryVariantRef) gen.Invento
 // variantStock is one variant's stock by site, sites by code and rows by full
 // code, with the totals summed exactly: on hand, reserved, and available —
 // on hand less reserved, negative when a correction took on hand below what
-// is reserved (orders design O45). A site holding only a reservation is
-// listed with no rows.
+// is reserved (orders design O45) — and incoming per site, in transit to it
+// (I46). A site holding only a reservation, or only incoming, is listed with
+// no rows.
 func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.InventoryVariantStock {
 	total, totalReserved := new(big.Rat), new(big.Rat)
 	bySite := map[int64]*big.Rat{}
@@ -107,6 +113,11 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 		}
 		totalReserved.Add(totalReserved, q)
 	}
+	for k := range sn.incoming {
+		if k.variantID == ref.Id && bySite[k.siteID] == nil {
+			bySite[k.siteID] = new(big.Rat)
+		}
+	}
 	out := gen.InventoryVariantStock{
 		Variant: ref, TotalOnHand: wireQuantity(total), TotalReserved: wireQuantity(totalReserved),
 		TotalAvailable: wireQuantity(new(big.Rat).Sub(total, totalReserved)), Sites: make([]gen.InventorySiteStock, 0, len(bySite)),
@@ -119,20 +130,27 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 		slices.SortFunc(r, func(a, b gen.InventoryBalanceRow) int {
 			return strings.Compare(a.Location.FullCode, b.Location.FullCode)
 		})
-		reserved := sn.reserved[siteKey{ref.Id, siteID}]
-		if reserved == nil {
-			reserved = new(big.Rat)
-		}
+		reserved := orZero(sn.reserved[siteKey{ref.Id, siteID}])
 		out.Sites = append(out.Sites, gen.InventorySiteStock{
 			Site: siteRefOf(sn.sites[siteID]), OnHand: wireQuantity(onHand), Reserved: wireQuantity(reserved),
 			Available: wireQuantity(new(big.Rat).Sub(onHand, reserved)), Rows: r,
+			Incoming: wireQuantity(orZero(sn.incoming[siteKey{ref.Id, siteID}])),
 		})
 	}
 	slices.SortFunc(out.Sites, func(a, b gen.InventorySiteStock) int { return strings.Compare(a.Site.Code, b.Site.Code) })
 	return out
 }
 
-// balancesOf reads the variants' balances and their places in one snapshot.
+// orZero is q, or 0 for none.
+func orZero(q *big.Rat) *big.Rat {
+	if q == nil {
+		return new(big.Rat)
+	}
+	return q
+}
+
+// balancesOf reads the variants' balances, what is reserved and incoming of
+// them, and their places in one snapshot.
 func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx context.Context, q *store.Queries) error) (stockSnapshot, error) {
 	var sn stockSnapshot
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
@@ -150,6 +168,14 @@ func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx cont
 		sn.reserved = make(map[siteKey]*big.Rat, len(reserved))
 		for _, r := range reserved {
 			sn.reserved[siteKey{r.VariantID, r.SiteID}] = ratFromText(r.Reserved)
+		}
+		incoming, err := q.IncomingOfVariants(ctx, ids)
+		if err != nil {
+			return fmt.Errorf("inventory: read what is incoming: %w", err)
+		}
+		sn.incoming = make(map[siteKey]*big.Rat, len(incoming))
+		for _, r := range incoming {
+			sn.incoming[siteKey{r.VariantID, r.SiteID}] = ratFromText(r.Incoming)
 		}
 		if err := sn.readPlaces(ctx, q); err != nil {
 			return err

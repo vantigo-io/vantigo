@@ -160,6 +160,18 @@ const (
 	countLineInputSchema   = "InventoryCountLineInput"
 	countPostInputSchema   = "InventoryCountPostInput"
 	labelsInputSchema      = "InventoryLabelsInput"
+
+	transferInputSchema        = "InventoryTransferInput"
+	transferLineInputSchema    = "InventoryTransferLineInput"
+	transferSuggestionSchema   = "InventoryTransferSuggestion"
+	transferSendInputSchema    = "InventoryTransferSendInput"
+	transferSendLineSchema     = "InventoryTransferSendLine"
+	transferSendReceiveSchema  = "InventoryTransferSendReceive"
+	transferDestinationSchema  = "InventoryTransferDestination"
+	transferReceiveInputSchema = "InventoryTransferReceiveInput"
+	transferReceiveLineSchema  = "InventoryTransferReceiveLine"
+	transferCloseSchema        = "InventoryTransferClose"
+	transferCancelInputSchema  = "InventoryTransferCancelInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -170,6 +182,9 @@ var closedSchemas = []string{
 	adjustmentInputSchema, adjustmentLineSchema, moveInputSchema, moveLineSchema, receiptInputSchema, receiptLineSchema,
 	enteredSchema, enteredPackagingSchema, countInputSchema, countLinesInputSchema, countLineInputSchema, countPostInputSchema,
 	labelsInputSchema,
+	transferInputSchema, transferLineInputSchema, transferSuggestionSchema, transferSendInputSchema, transferSendLineSchema,
+	transferSendReceiveSchema, transferDestinationSchema, transferReceiveInputSchema, transferReceiveLineSchema,
+	transferCloseSchema, transferCancelInputSchema,
 }
 
 // closedItems is, per closed request schema, its array properties whose
@@ -182,15 +197,26 @@ var closedItems = map[string]map[string]string{
 	receiptInputSchema:    {"lines": receiptLineSchema},
 	countLinesInputSchema: {"lines": countLineInputSchema},
 	enteredSchema:         {"packagings": enteredPackagingSchema},
+
+	transferInputSchema:        {"lines": transferLineInputSchema},
+	transferSendInputSchema:    {"lines": transferSendLineSchema},
+	transferSendReceiveSchema:  {"lines": transferDestinationSchema},
+	transferReceiveInputSchema: {"lines": transferReceiveLineSchema},
 }
 
 // closedObjects is, per closed schema, its object properties that are closed
-// schemas of their own: a line's entry (I25).
+// schemas of their own: a line's entry (I25), a transfer line's suggestion
+// (I57), a send's receive (I43) and a receive's close (I42).
 var closedObjects = map[string]map[string]string{
 	adjustmentLineSchema: {"entered": enteredSchema},
 	moveLineSchema:       {"entered": enteredSchema},
 	receiptLineSchema:    {"entered": enteredSchema},
 	countLineInputSchema: {"entered": enteredSchema},
+
+	transferLineInputSchema:    {"entered": enteredSchema, "suggestion": transferSuggestionSchema},
+	transferSendInputSchema:    {"receive": transferSendReceiveSchema},
+	transferReceiveLineSchema:  {"entered": enteredSchema},
+	transferReceiveInputSchema: {"close": transferCloseSchema},
 }
 
 // checkClosedSchemas fails the mount unless the contract has every schema of
