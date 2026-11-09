@@ -180,7 +180,7 @@ func newRunRigWith(t *testing.T, mode string, extra []modtest.Option, turns ...m
 	roleID := uuid.MustParse(ag.Roles[0].ID)
 
 	r := &runRig{h: h, owner: owner, fake: fake, script: sc, agentID: agentID, userID: userID, roleID: roleID}
-	r.staff = h.SignIn(t, "communications:channels-manage", "communications:conversations-view", "communications:conversations-manage",
+	r.staff = h.SignIn(t, "agents:view", "communications:channels-manage", "communications:conversations-view", "communications:conversations-manage",
 		"communications:conversations-reply", "customers:view")
 
 	r.address = fmt.Sprintf("front-%s@example.test", uuid.NewString()[:8])
