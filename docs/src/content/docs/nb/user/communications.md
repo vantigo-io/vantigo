@@ -472,14 +472,15 @@ Over teksten i notatet er **Nevn en kollega med @** en liste over de aktive bruk
 notatet, og det er valget som gjør det til en omtale, så et navn skrevet for hånd er bare tekst. Opptil ti kolleger
 kan nevnes i ett notat. Sletter du et navn fra notatet før du legger det til, er den kollegaen ikke nevnt.
 
-- **En person du nevner** får en e-post som sier at du nevnte vedkommende i et notat, med en lenke til samtalen. Den
+- **Bare et navn valgt fra listen teller.** Notatet må inneholde **@Navn** for hver kollega du valgte, ellers legges ikke notatet til; og du kan nevne en virtuell ansatt bare hvis du har `agents:view`.
+- **En person du nevner** (som har lov til å lese samtaler) får en e-post som sier at du nevnte vedkommende i et notat, med en lenke til samtalen. Den
   inneholder ingenting fra notatet eller samtalen, så den er trygg å lese der samtalen ikke er det. Vedkommende ser
   notatet bare hvis de har lov til å lese samtalen.
 - **En virtuell ansatt du nevner** vekkes for denne samtalen, med en gang, og leser notatet ditt som en kollegas
   forespørsel: den svarer deg med et internt notat, og skriver til kunden bare hvis du ber den om det, som alltid
   gjennom svarmodusen i rollen sin og gjennomgangskøen. Den gjør dette i rollen den har på samtalens kanal: en
   virtuell ansatt som ikke har noen rolle der, gjør ingenting, og en som er på pause, eller hvis samtale er
-  overlevert, blir latt i fred. Den handler selv om samtalen er tildelt deg, men tar den aldri fra deg.
+  overlevert, blir latt i fred. Er samtalen tildelt en person, leser den den bare og svarer deg med notater: den sender, merker og tildeler ingenting og overleverer den ikke. Flere omtaler før den starter blir alle lest.
 - **Et notat en agent skriver** nevner ingen.
 
 ## Etter at du har sendt

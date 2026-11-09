@@ -629,7 +629,8 @@ people or agents, that the author picked with the @ picker (virtual employees de
 for its readers; the ids are what the module acts on, so a name typed by hand mentions no one.
 
 - **Validation.** The author is left out and a repeat counts once. Every other id must be a user the
-  `contracts.UserDirectory` knows who is active, or the answer is **400** with a field error under `mentions`; so are more
+  `contracts.UserDirectory` knows who is active, **whose `@` and display name stand in the note's text**, and, for an agent, the
+  author must hold `agents:view`; otherwise the answer is **400** with a field error under `mentions`. So are more
   than ten. The directory is asked before the transaction opens.
 - **Storage and event.** In the note's transaction the ids go to `conversation_message_mentions (message_id, user_id)`
   (migration `00152`; no foreign key to the user, cascade from the message) and one
@@ -637,7 +638,7 @@ for its readers; the ids are what the module acts on, so a name typed by hand me
   that mentions no one publishes nothing.
 - **A note written through an agent grant mentions no one**: its `mentions` are ignored, so that the agents cannot wake
   each other. The agents module's own `note` tool sends none.
-- **The mail.** Once the note is committed, each *person* mentioned is mailed through `UserDirectory.Notify` in English and
+- **The mail.** Once the note is committed, each *person* mentioned who holds `communications:conversations-view` is mailed through `UserDirectory.Notify` in English and
   Norwegian, naming the author and linking `/communications/inbox?conversationId=…`; it holds nothing of the note or of the
   conversation, because it leaves the application and the person may not read the conversation. An agent is not mailed
   (its address never routes): the [agents module wakes it](/en/reference/agents/#mentions). A mail that fails is logged and

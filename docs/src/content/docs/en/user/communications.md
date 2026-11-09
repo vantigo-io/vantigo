@@ -472,14 +472,15 @@ Above the note's text, **Mention a colleague with @** is a list of the active us
 Up to ten colleagues can be mentioned in one note. If you delete a name from the note before you add it, that
 colleague is not mentioned.
 
-- **A person you mention** gets a mail that says you mentioned them in a note and links to the conversation. It
+- **Only a name picked from the list counts.** The note must hold the **@Name** of each colleague you picked, or the note is not added; and you can mention a virtual employee only if you hold `agents:view`.
+- **A person you mention** (who may read conversations) gets a mail that says you mentioned them in a note and links to the conversation. It
   holds nothing of the note or the conversation, so it is safe to read where the conversation is not. They see
   the note only if they may read the conversation.
 - **A virtual employee you mention** is woken for this conversation, at once, and reads your note as a colleague's
   request: it answers you with an internal note, and writes to the customer only if you ask it to, as always through
   the reply mode of its role and its review queue. It does this as the role it has on this conversation's
   channel: a virtual employee that has no role there does nothing, and one that is paused, or whose conversation
-  was handed off, is left alone. It acts even if the conversation is assigned to you, but it never takes it from you.
+  was handed off, is left alone. If the conversation is assigned to a person, it only reads it and answers you with notes: it sends, tags and assigns nothing and does not hand it off. Several mentions before it starts are all read.
 - **A note an agent writes** mentions no one.
 
 ## After you send

@@ -466,7 +466,7 @@ person's list **intersected** with the agent's, so a change is offered only when
 person's list; one the person may use and the agent may not is not in the agent's. Either is refused as
 `operation_unavailable`, as for the Assistant.
 
-**Persona, not modes.** The system prompt (frozen at the first run, as always) says the model is the agent, an AI,
+**Persona, not modes.** The system prompt is frozen at the conversation's first run, as always, so the agent's persona (style) is the one it had then: a later change of the persona applies to new conversations, not to this one. It says the model is the agent, an AI,
 working for a colleague in the panel, carries the agent's style, and states the rules above; Knowledge is read through
 the operations, as the Assistant reads it. The agent's modes (Review, Auto) do not apply: a change is the Assistant's
 [confirmation card](#changes-with-confirmation), and a bulk change (`propose_bulk`) is not offered.
