@@ -25,9 +25,25 @@ import (
 // response, and returns a *brregClient wired to it with a zero backoff (no
 // test here waits out a real retry) and the standard 15s production timeout
 // (ample for a loopback server). t.Cleanup closes the server.
+//
+// Only a request that looks like the client's own reaches handler: a GET for
+// an entity path with the v2 media type. The server listens on an ephemeral
+// loopback port the kernel may just have taken back from another test's
+// closed server — in this process or in another package's, which go test runs
+// alongside — and anything still dialing that old address lands here. Such a
+// stray once counted as a second attempt in TestEntity_UnknownOn404 under
+// -race in CI, although entity returns on a 404 before it could retry. A
+// stray gets 421 Misdirected Request and never touches a test's counters.
 func entityServer(t *testing.T, handler http.HandlerFunc) *brregClient {
 	t.Helper()
-	srv := httptest.NewServer(handler)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, brregPath+"/") || r.Header.Get("Accept") != brregEntityMediaType {
+			t.Logf("entityServer: ignoring a request that is not the client's: %s %s (Accept %q)", r.Method, r.URL.Path, r.Header.Get("Accept"))
+			w.WriteHeader(http.StatusMisdirectedRequest)
+			return
+		}
+		handler(w, r)
+	}))
 	t.Cleanup(srv.Close)
 	return newBrregClient(srv.URL, 15*time.Second, nil, zeroBackoffEntity)
 }
