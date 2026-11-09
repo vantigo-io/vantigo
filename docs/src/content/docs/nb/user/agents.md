@@ -378,6 +378,20 @@ En kjøring krever `agents:activity`, `communications:conversations-view` og les
 Kjøringer og utskrifter slettes etter oppbevaringstiden administratoren satte, og slettes sammen med kunden
 de hører til ([Virtuelle ansatte](/nb/admin/agents/#oppbevaring-og-sletting)).
 
+## Snakk med en agent, eller nevn den
+
+Kolleger kan be en agent om hjelp på to måter, i tillegg til arbeidet den gjør på egen hånd:
+
+- **I Assistent-panelet.** Alle som har `agents:view` kan velge en aktiv agent å snakke med når de starter en samtale.
+  Agenten jobber for den personen der: bare det begge har lov til å se, ingen kunde, og hver endring er et kort
+  personen bekrefter ([Assistent](/nb/user/assistant/#snakk-med-en-virtuell-ansatt)). En slik samtale er ikke en av
+  agentens kjøringer, så den står ikke i aktiviteten eller bruken dens.
+- **Med @ i et internt notat.** Nevn agenten i et notat i en samtale, så vekkes den for den samtalen i rollen sin på
+  samtalens kanal, og leser notatet som en kollegas forespørsel
+  ([Kommunikasjon](/nb/user/communications/#nevn-en-kollega)). Den svarer med et notat, og skriver til kunden bare hvis den
+  blir bedt om det, fortsatt gjennom modusene og gjennomgangskøen. En agent på pause, en agent uten rolle på den
+  kanalen og en overlevert samtale blir latt i fred.
+
 ## Hvor du ser KI-merket
 
 En agents avatar har et lite **KI**-merke overalt den vises, så ingen tar den for en

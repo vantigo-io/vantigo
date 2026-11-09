@@ -164,7 +164,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `AboutCustomer` answers one entry per agent with its notes newest first; consumer-gated — Customers asks
    for `agents:view` before it calls; optional for its consumer, nil when Agents is off, which it reads as
    "nothing is remembered"; resolved by Compose after `ContactChannels`, never by `module.Workers`;
-   `modtest.WithAgentMemory` presets one), and `AIModels` (`contracts.AIModels`,
+   `modtest.WithAgentMemory` presets one), `AgentColleagues` (`contracts.AgentColleagues`, agents — who the
+   Assistant's panel may let a person talk to and what each may do itself: `Agents`, `Agent`, `Names`, `Operations`;
+   consumer-gated — the Assistant asks for `agents:view` before it calls; optional for its consumer, nil when Agents is
+   off, which it reads as "no agent to talk to"; resolved by `Compose` once the operations dispatcher exists, with the
+   dispatcher on the provider's Deps, never by `module.Workers`; `modtest.WithAgentColleagues` presets one), and `AIModels` (`contracts.AIModels`,
    identity — the model an Owner chose for each AI task, which the platform AI client asks
    and no module calls; [The AI platform](#the-ai-platform)), and `AssistantGrants`
    (`contracts.AssistantGrants`, identity — issues and ends the grants the assistant acts

@@ -1,6 +1,6 @@
 ---
 title: Kommunikasjon
-description: Delte postkasser, samtaler med kunder, mottak og sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, e-post mottatt i en Microsoft 365-kanal, svar og svar alle, sending fra din egen Outlook- eller Gmail-adresse, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender — og chat-samtaler på en Facebook Messenger-kanal, med svaralternativer og vinduet et svar kan sendes i.
+description: Delte postkasser, samtaler med kunder, mottak og sending av e-post og blokkeringer — kanaler på SMTP eller på en delt postboks i Microsoft 365, e-post mottatt i en Microsoft 365-kanal, svar og svar alle, sending fra din egen Outlook- eller Gmail-adresse, å bytte en kanal til Microsoft 365, og størrelsen en Microsoft 365-kanal sender — og chat-samtaler på en Facebook Messenger-kanal, med svaralternativer og vinduet et svar kan sendes i — og interne notater som nevner en kollega eller en virtuell ansatt.
 sidebar:
   order: 80
 sources:
@@ -464,6 +464,23 @@ unna til en person svarer i samtalen eller tildeler den.
 **Legg til notat** bytter skrivefeltet til **Internt notat**. Et notat ligger i samtalen
 for kollegene dine og sendes aldri til kunden. Skriv det og klikk **Legg til notat**;
 knappen **Svar** bytter tilbake. Notater krever `communications:conversations-manage`.
+
+### Nevn en kollega
+
+Over teksten i notatet er **Nevn en kollega med @** en liste over de aktive brukerne, personer og
+[virtuelle ansatte](/nb/user/agents/) (de siste med **KI**-merket). Søk på navn og velg en: **@Navn** settes inn i
+notatet, og det er valget som gjør det til en omtale, så et navn skrevet for hånd er bare tekst. Opptil ti kolleger
+kan nevnes i ett notat. Sletter du et navn fra notatet før du legger det til, er den kollegaen ikke nevnt.
+
+- **En person du nevner** får en e-post som sier at du nevnte vedkommende i et notat, med en lenke til samtalen. Den
+  inneholder ingenting fra notatet eller samtalen, så den er trygg å lese der samtalen ikke er det. Vedkommende ser
+  notatet bare hvis de har lov til å lese samtalen.
+- **En virtuell ansatt du nevner** vekkes for denne samtalen, med en gang, og leser notatet ditt som en kollegas
+  forespørsel: den svarer deg med et internt notat, og skriver til kunden bare hvis du ber den om det, som alltid
+  gjennom svarmodusen i rollen sin og gjennomgangskøen. Den gjør dette i rollen den har på samtalens kanal: en
+  virtuell ansatt som ikke har noen rolle der, gjør ingenting, og en som er på pause, eller hvis samtale er
+  overlevert, blir latt i fred. Den handler selv om samtalen er tildelt deg, men tar den aldri fra deg.
+- **Et notat en agent skriver** nevner ingen.
 
 ## Etter at du har sendt
 

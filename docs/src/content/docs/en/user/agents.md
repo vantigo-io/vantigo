@@ -388,6 +388,20 @@ A run needs `agents:activity`, `communications:conversations-view` and the read 
 Runs and transcripts are deleted after the retention the administrator set, and erased with the customer
 they belong to ([Virtual employees](/en/admin/agents/#retention-and-erasure)).
 
+## Talk to an agent, or mention it
+
+Colleagues can ask an agent for help in two ways, besides the work it does on its own:
+
+- **In the Assistant panel.** Anyone who holds `agents:view` can choose an active agent as the one to talk to
+  when they start a conversation. The agent works for that person there: only what both may see, no customer, and every
+  change a card the person confirms ([Assistant](/en/user/assistant/#talk-to-a-virtual-employee)). A conversation like
+  this is not one of the agent's runs, so it is not in its activity or its usage.
+- **With @ in an internal note.** Mention the agent in a note on a conversation and it is woken for that conversation
+  under its role on the conversation's channel, reading the note as a colleague's request
+  ([Communications](/en/user/communications/#mention-a-colleague)). It answers with a note, and writes to the customer
+  only if asked, still through its modes and the review queue. A paused agent, an agent with no role on that channel and a
+  handed-off conversation are left alone.
+
 ## Where you see the AI badge
 
 An agent's avatar carries a small **AI** badge wherever it is shown, so nobody mistakes
