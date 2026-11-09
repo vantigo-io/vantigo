@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,6 +62,7 @@ func eventHandlers(d module.Deps) []events.Handler {
 			{Name: contracts.ConversationMessageReceived{}.EventName(), Version: 1},
 			{Name: contracts.ConversationAssigned{}.EventName(), Version: 1},
 			{Name: contracts.ConversationReplied{}.EventName(), Version: 1},
+			{Name: contracts.ConversationNoteMentioned{}.EventName(), Version: 1},
 			{Name: contracts.QuoteSent{}.EventName(), Version: 1},
 			{Name: contracts.QuoteAccepted{}.EventName(), Version: 1},
 			{Name: contracts.WeekUnsubmitted{}.EventName(), Version: 1},
@@ -94,6 +96,12 @@ func (t *trigger) handle(ctx context.Context, tx pgx.Tx, ev events.Delivered) er
 			return fmt.Errorf("agents: decode event %d: %w", ev.ID, err)
 		}
 		return t.assigned(ctx, q, e)
+	case contracts.ConversationNoteMentioned{}.EventName():
+		var e contracts.ConversationNoteMentioned
+		if err := json.Unmarshal(ev.Payload, &e); err != nil {
+			return fmt.Errorf("agents: decode event %d: %w", ev.ID, err)
+		}
+		return t.noteMentioned(ctx, q, e)
 	case contracts.QuoteSent{}.EventName():
 		var e contracts.QuoteSent
 		if err := json.Unmarshal(ev.Payload, &e); err != nil {
@@ -204,6 +212,49 @@ func (t *trigger) assigned(ctx context.Context, q *store.Queries, e contracts.Co
 	now := t.clock()
 	return q.UpsertRunRequest(ctx, store.UpsertRunRequestParams{
 		RoleID: role.RoleID, ConversationID: e.ConversationID, Reason: reasonAssigned,
+		NotBefore: now, DueBy: now.Add(maxWait), Now: now,
+	})
+}
+
+// mentionNotePrefix marks a request's note as the id of the internal note that
+// woke the run, which the run reads from the conversation: the event carries no
+// text (V32).
+const mentionNotePrefix = "mention:"
+
+// mentionOf is the note a request's note marks as the one that woke the run.
+func mentionOf(note string) (uuid.UUID, bool) {
+	rest, ok := strings.CutPrefix(note, mentionNotePrefix)
+	if !ok {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(rest)
+	return id, err == nil
+}
+
+// noteMentioned wakes the agent an internal note mentioned (V32), for that
+// conversation, under its role on the conversation's channel, and at once: a
+// colleague asked. An agent with no role on the channel, a paused one, one
+// that answers no conversations, and a conversation handed off are left alone,
+// as for a message. A person's mention is Communications' to mail.
+func (t *trigger) noteMentioned(ctx context.Context, q *store.Queries, e contracts.ConversationNoteMentioned) error {
+	// An agent's note wakes no one: two agents must not answer each other (V23).
+	if _, err := q.GetAgentByUser(ctx, e.ByUserID); err == nil {
+		return nil
+	} else if !isNoRows(err) {
+		return fmt.Errorf("agents: read the author of a note: %w", err)
+	}
+	if _, err := q.GetHandedOff(ctx, e.ConversationID); err == nil {
+		return nil
+	} else if !isNoRows(err) {
+		return fmt.Errorf("agents: read the hand-off: %w", err)
+	}
+	role, ok, err := t.answers(ctx, q, e.ChannelID, nil)
+	if err != nil || !ok || !slices.Contains(e.MentionedUserIDs, role.AgentUserID) {
+		return err
+	}
+	now := t.clock()
+	return q.UpsertRunRequest(ctx, store.UpsertRunRequestParams{
+		RoleID: role.RoleID, ConversationID: e.ConversationID, Reason: reasonMessage, Note: mentionNotePrefix + e.MessageID.String(),
 		NotBefore: now, DueBy: now.Add(maxWait), Now: now,
 	})
 }
