@@ -26,6 +26,7 @@ export { InventoryHomePage } from "./pages/home";
 export { ImportPage } from "./pages/import";
 export { LocationPage } from "./pages/location";
 export { LookupPage } from "./pages/lookup";
+export { LowStockPage } from "./pages/low-stock";
 export { MovementPage } from "./pages/movement";
 export { MovementsPage } from "./pages/movements";
 export { NewAdjustmentPage } from "./pages/new-adjustment";

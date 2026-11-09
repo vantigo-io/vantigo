@@ -88,6 +88,10 @@ export const refusalCodes = [
   "site_has_open_transfers",
   "location_in_transit",
   "site_has_transfers",
+  // Phase 2, delivery B: placements.
+  "maximum_below_reorder_point",
+  "placement_empty",
+  "placement_location_invalid",
 ] as const;
 
 export interface MovementsFilter {

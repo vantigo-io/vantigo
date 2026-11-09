@@ -2,13 +2,14 @@ import {
   COUNTS_ROUTE_PATH,
   IMPORT_ROUTE_PATH,
   INVENTORY_HOME_ROUTE_PATH,
+  LOW_STOCK_ROUTE_PATH,
   MOVEMENTS_ROUTE_PATH,
   TRANSFERS_ROUTE_PATH,
 } from "./routes";
 
 /** One sidebar destination of the app; the host owns its label and icon. */
 export interface InventoryNavItem {
-  key: "overview" | "transfers" | "movements" | "receipts" | "counts" | "import";
+  key: "overview" | "transfers" | "movements" | "receipts" | "counts" | "lowStock" | "import";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -58,6 +59,14 @@ export const inventoryNavItems: readonly InventoryNavItem[] = [
     to: COUNTS_ROUTE_PATH,
     requiredPermissions: ["inventory:counts-manage"],
     requiredAllPermissions: ["inventory:locations-view", "inventory:stock-view"],
+  },
+  {
+    // The low-stock list is a read: both views alone (phase 2 design §7); Create transfer needs transfers-manage.
+    key: "lowStock",
+    label: "navLowStock",
+    to: LOW_STOCK_ROUTE_PATH,
+    requiredPermissions: ["inventory:stock-view"],
+    requiredAllPermissions: stockViews,
   },
   {
     key: "import",

@@ -140,6 +140,11 @@
     "description": "The field on the Import page where the CSV of opening balances — location, sku and quantity — is chosen before a dry run."
   },
   {
+    "key": "inventory.low-stock.list",
+    "route": "/inventory/low-stock",
+    "description": "The list on the Low stock page: every item at or below its reorder point at a site, filtered by site and searched by SKU or name, with what is available and incoming, the suggested quantity and how it was rounded up to whole packagings, and what other sites have. Choose rows at one site to create a transfer to it, or export the list as CSV."
+  },
+  {
     "key": "inventory.site.bulk-add",
     "route": "/inventory/sites/{siteId}",
     "description": "The button on a site's page that creates a grid of locations at once, such as aisles, racks and shelves."

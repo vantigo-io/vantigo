@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { renderRoute } from "../test/route-tree";
@@ -100,5 +100,25 @@ describe("the product's Stock card", () => {
     expect(screen.getByLabelText("In transit")).toHaveTextContent("In transit 30 pcs");
     // Bergen holds nothing yet, but has a row for what is on its way (I46).
     expect(screen.getByRole("button", { name: /BGO · Bergen butikk/ })).toHaveTextContent("+30 pcs incoming");
+  });
+
+  it("shows a site's reorder point, red while it is low (I54, I56)", async () => {
+    stubInventoryApi({
+      balances: [
+        { variantId: 201, locationId: 12, onHand: 30 },
+        { variantId: 201, locationId: 21, onHand: 4 },
+      ],
+      placements: [
+        { variantId: 201, siteId: 1, primaryLocationId: null, reorderPoint: 10, maximum: null, revision: 1 },
+        { variantId: 201, siteId: 2, primaryLocationId: 21, reorderPoint: 10, maximum: 40, revision: 1 },
+      ],
+    });
+    renderRoute("/products/2");
+    const oslo = await screen.findByRole("button", { name: /OSL · Oslo lager/ });
+    const bergen = screen.getByRole("button", { name: /BGO · Bergen butikk/ });
+    expect(oslo).toHaveTextContent("reorder ≤ 10 pcs");
+    expect(bergen).toHaveTextContent("reorder ≤ 10 pcs");
+    expect(within(bergen).getByText("reorder ≤ 10 pcs")).toHaveStyle({ color: "var(--mantine-color-red-text)" });
+    expect(within(oslo).getByText("reorder ≤ 10 pcs")).not.toHaveStyle({ color: "var(--mantine-color-red-text)" });
   });
 });

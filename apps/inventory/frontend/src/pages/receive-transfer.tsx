@@ -32,6 +32,7 @@ import {
   TRANSFERS_ROUTE_PATH,
   transferLinkOptions,
 } from "../lib/routes";
+import { stockAtKey, useStockAtSites } from "../lib/stock-at-sites";
 import { askToLeave, isReceivable } from "../lib/transfer-actions";
 
 /** A line's row is drawn at about this height before it is measured. */
@@ -99,8 +100,17 @@ const ReceiveLines = ({ transfer, rootLocationId }: { transfer: InventoryTransfe
   // The lines still in transit; a refusal reloads the transfer and the counts stay on their lines.
   const rows = transfer.lines.filter((line) => line.inTransit > 0);
   const countOf = (line: InventoryTransferLine) => arrived[line.id] ?? none;
+  // Each line goes to its primary location at the to site by default, else the site's root (I55).
+  const toStock = useStockAtSites(
+    transfer.lines.map((line) => line.variant.id),
+    [transfer.toSite.id],
+  );
   const destinationOf = (line: InventoryTransferLine) =>
-    destinations[line.id] !== undefined ? destinations[line.id] : (rootLocationId ?? null);
+    destinations[line.id] !== undefined
+      ? destinations[line.id]
+      : (toStock.data?.get(stockAtKey(line.variant.id, transfer.toSite.id))?.placement?.primaryLocationId ??
+        rootLocationId ??
+        null);
   const remaining = rows
     .map((line) => ({ line, rest: roundQuantity(line.inTransit - arrivedTotal(line, countOf(line))) }))
     .filter((one) => one.rest > 0);
@@ -223,6 +233,8 @@ const ReceiveLines = ({ transfer, rootLocationId }: { transfer: InventoryTransfe
   });
 
   const submit = (close?: { reason: InventoryTransferCloseReason; note?: string }) => {
+    // The lines' default destinations are the primary locations, read with the to site's stock: not before it answers.
+    if (toStock.isPending) return;
     const gaps = new Map<number, string>();
     const lines: InventoryTransferReceiveLine[] = [];
     // Every line counted, even one an earlier try may already have taken out of transit: that try is replayed whole.
@@ -405,10 +417,14 @@ const ReceiveLines = ({ transfer, rootLocationId }: { transfer: InventoryTransfe
         <Button variant="default" renderRoot={(props) => <Link {...transferLinkOptions(transfer.id)} {...props} />}>
           {t("back")}
         </Button>
-        <Button onClick={() => submit()} loading={receiving.isPending && !closing} disabled={!anything}>
+        <Button
+          onClick={() => submit()}
+          loading={(receiving.isPending && !closing) || toStock.isPending}
+          disabled={!anything}
+        >
           {t("receiveTransfer")}
         </Button>
-        <Button variant="light" onClick={() => setClosing(true)} disabled={remaining.length === 0}>
+        <Button variant="light" onClick={() => setClosing(true)} disabled={remaining.length === 0 || toStock.isPending}>
           {t("receiveAndCloseEllipsis")}
         </Button>
       </Group>
@@ -435,8 +451,8 @@ const ReceiveLines = ({ transfer, rootLocationId }: { transfer: InventoryTransfe
  * Receiving a transfer (phase 2 design §7, I40–I42): a scan field — each scan
  * of an item counts one more on its line, the følgeseddel's `TRF-…` opens its
  * transfer — Accept all, and per line what arrived now and where it goes at
- * the to site, its root by default. Receive posts what was counted, and the
- * rest stays in transit; Receive and close the difference… records the rest
+ * the to site — its primary location there by default, else the site's
+ * root. Receive posts what was counted, and the rest stays in transit; Receive and close the difference… records the rest
  * as missing with a reason. Only the lines near the window are drawn, as a
  * long transfer may hold hundreds. Needs `inventory:transfers-manage` (I63).
  */

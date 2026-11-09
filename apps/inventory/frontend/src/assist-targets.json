@@ -154,5 +154,17 @@
       "en": "The field at the top of a transfer's receive page: each scan of a SKU or barcode counts one more on its line; the transfer note's barcode opens its transfer.",
       "nb": "Feltet øverst på mottakssiden for en overføring: hver skanning av et varenummer eller en strekkode teller én til på linjen; følgeseddelens strekkode åpner overføringen."
     }
+  },
+  {
+    "key": "inventory.low-stock.list",
+    "route": "/inventory/low-stock",
+    "label": {
+      "en": "Low stock",
+      "nb": "Lav beholdning"
+    },
+    "description": {
+      "en": "The list on the Low stock page: every item at or below its reorder point at a site, filtered by site and searched by SKU or name, with what is available and incoming, the suggested quantity and how it was rounded up to whole packagings, and what other sites have. Choose rows at one site to create a transfer to it, or export the list as CSV.",
+      "nb": "Listen på siden Lav beholdning: alle varer på eller under bestillingspunktet på et lagersted, filtrert på lagersted og søkbar på varenummer eller navn, med det som er disponibelt og innkommende, foreslått antall og hvordan det er rundet opp til hele pakninger, og hva andre lagersteder har. Velg rader på ett lagersted for å opprette en overføring dit, eller eksporter listen som CSV."
+    }
   }
 ]

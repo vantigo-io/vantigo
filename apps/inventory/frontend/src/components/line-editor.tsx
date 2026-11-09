@@ -4,6 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type Dispatch, type ReactNode, type SetStateAction, useRef, useState } from "react";
 import { lookupQueryOptions } from "../api/lookup";
 import type { InventoryAdjustmentMode } from "../api/movements";
+import type { InventoryVariantRef } from "../api/stock";
+import { stockAtSitesQueryOptions } from "../api/transfers";
 import { QUANTITY_DECIMALS, refusalMessage, useInventoryFormat } from "../lib/format";
 import {
   type EditorKind,
@@ -74,6 +76,25 @@ export const LineEditor = ({
       current.map((line) => (line.key === key ? { ...line, ...change, suggestion: undefined } : line)),
     );
 
+  // A receipt line goes to the variant's primary location at the site by default (I55): a picked
+  // variant carries it from the search, a scanned one is read from its stock at the site.
+  const primaryOf = async (variant: InventoryVariantRef): Promise<number | null> => {
+    if (kind !== "receipt" || siteId === undefined) return null;
+    try {
+      const [here] = await queryClient.fetchQuery(stockAtSitesQueryOptions([variant.id], [siteId]));
+      return here?.placement?.primaryLocationId ?? null;
+    } catch {
+      return null;
+    }
+  };
+  // Picking another variant on a receipt line moves it to that variant's primary location, unless the person chose one.
+  const picked = (line: EditorLine, variant: InventoryVariantRef | undefined) => {
+    const change: Partial<EditorLine> = { variant, packs: {}, decrease: false };
+    if (kind === "receipt" && (line.locationId === null || line.locationId === line.variant?.primaryLocationId))
+      change.locationId = variant?.primaryLocationId ?? null;
+    update(line.key, change);
+  };
+
   // The field empties as Enter is pressed, so a scanner's next code starts
   // afresh while this one is looked up; each lands on the lines as they are
   // when its answer comes, so a fast second scan is neither lost nor merged.
@@ -93,9 +114,18 @@ export const LineEditor = ({
       }
       // The lookup answers the variant a packaging's barcode belongs to; its packagings say which one it was.
       const packaging = variant.packagings?.find((one) => one.barcode === code);
+      const primary = await primaryOf(variant);
       onChange((current) => {
         const existing = current.find((line) => line.variant?.id === variant.id);
-        if (!existing) return [...current, newEditorLine(kind, defaultLocationId, variant, packaging?.id)];
+        if (!existing) {
+          const line = newEditorLine(kind, defaultLocationId, variant, packaging?.id);
+          return [
+            ...current,
+            primary === null
+              ? line
+              : { ...line, variant: { ...variant, primaryLocationId: primary }, locationId: primary },
+          ];
+        }
         return current.map((line) =>
           line.key !== existing.key
             ? line
@@ -178,7 +208,8 @@ export const LineEditor = ({
                         compact
                         label={t("itemOfLine", { n })}
                         value={line.variant}
-                        onChange={(variant) => update(line.key, { variant, packs: {}, decrease: false })}
+                        siteId={kind === "receipt" ? siteId : undefined}
+                        onChange={(variant) => picked(line, variant)}
                       />
                       {line.variant?.deleted && (
                         <Text size="xs" c="red" mt={4}>

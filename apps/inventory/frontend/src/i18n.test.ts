@@ -5,6 +5,7 @@ import { importOutcomes } from "./api/imports";
 import { labelLayouts } from "./api/labels";
 import { locationKinds } from "./api/locations";
 import { adjustmentModes, adjustmentReasons, movementKinds, refusalCodes } from "./api/movements";
+import { placementImportOutcomes } from "./api/placements";
 import { siteKinds, statuses } from "./api/sites";
 import { closeReasons, transferStatuses } from "./api/transfers";
 import { inventoryCatalog } from "./i18n";
@@ -78,6 +79,11 @@ describe("the inventory catalog", () => {
       ...countStatuses.map((value) => `countStatus_${value}`),
       ...uncountedChoices.map((value) => `uncounted_${value}`),
       ...importOutcomes.map((value) => `importOutcome_${value}`),
+      ...placementImportOutcomes.map((value) => `placementOutcome_${value}`),
+      ...["inner", "case", "pallet", "other"].flatMap((value) => [
+        `packagingKind_${value}_one`,
+        `packagingKind_${value}_other`,
+      ]),
       ...labelLayouts.map((value) => `labelLayout_${value}`),
       ...inventoryNavItems.map((item) => item.label),
     ];
@@ -100,6 +106,7 @@ describe("the inventory catalog", () => {
     expect([...countStatuses].sort()).toEqual(enumOf("InventoryCountStatus").sort());
     expect([...uncountedChoices].sort()).toEqual(enumOf("InventoryUncounted").sort());
     expect([...importOutcomes].sort()).toEqual(enumOf("InventoryImportOutcome").sort());
+    expect([...placementImportOutcomes].sort()).toEqual(enumOf("InventoryPlacementImportOutcome").sort());
     expect([...labelLayouts].sort()).toEqual(enumOf("InventoryLabelLayout").sort());
   });
 

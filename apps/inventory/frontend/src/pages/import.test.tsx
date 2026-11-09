@@ -99,3 +99,69 @@ describe("the opening-balance import (I32)", () => {
     expect(fileInput()).toBeNull();
   });
 });
+
+describe("the placements import (I61)", () => {
+  const placementsFile = (text: string) => new File([text], "placements.csv", { type: "text/csv" });
+  const posts = (fetchMock: Parameters<typeof sent>[0]) => sent(fetchMock, "POST", /\/imports\/placements/);
+
+  it("dry-runs a file of every site, offers no commit while a row fails, and commits a clean one", async () => {
+    const fetchMock = stubInventoryApi();
+    renderRoute("/inventory/import");
+    await userEvent.click(await screen.findByRole("radio", { name: "Placements" }));
+    expect(screen.queryByRole("combobox", { name: "Site" })).not.toBeInTheDocument();
+
+    await userEvent.upload(
+      fileInput(),
+      placementsFile("sku,site,primary_location,reorder_point,maximum\nTS-M,OSL,OSL-A-01,5,20\nTS-M,TRD,,5,\n"),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Dry run" }));
+    expect(await screen.findByText("1 row cannot be imported. Fix the file and try again.")).toBeInTheDocument();
+    expect(screen.getByText("No such site")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
+    expect(posts(fetchMock)[0].url).toContain("/imports/placements?dryRun=true");
+
+    await userEvent.upload(
+      fileInput(),
+      placementsFile("sku,site,primary_location,reorder_point,maximum\nTS-M,OSL,OSL-A-01,5,20\nBOLT-10,BGO,,2,\n"),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Dry run" }));
+    expect(await screen.findByText("All 2 rows are ready to import.")).toBeInTheDocument();
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("OSL-A-01")).toBeInTheDocument();
+    expect(fetchMock.state.placements).toEqual([]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Commit" }));
+    expect(await screen.findByText("2 set, 0 removed.")).toBeInTheDocument();
+    expect(posts(fetchMock)[2].url).toContain("dryRun=false");
+    expect(fetchMock.state.placements).toEqual([
+      { variantId: 101, siteId: 1, primaryLocationId: 12, reorderPoint: 5, maximum: 20, revision: 1 },
+      { variantId: 201, siteId: 2, primaryLocationId: null, reorderPoint: 2, maximum: null, revision: 1 },
+    ]);
+  });
+
+  it("says the same file was already imported when the server replays it", async () => {
+    const fetchMock = stubInventoryApi();
+    renderRoute("/inventory/import");
+    await userEvent.click(await screen.findByRole("radio", { name: "Placements" }));
+    const text = "sku,site,primary_location,reorder_point,maximum\nTS-M,OSL,,5,20\n";
+    for (const _ of [1, 2]) {
+      await userEvent.upload(fileInput(), placementsFile(text));
+      await userEvent.click(screen.getByRole("button", { name: "Dry run" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Commit" }));
+      await waitFor(() => expect(posts(fetchMock).filter((one) => one.url.includes("dryRun=false"))).toHaveLength(_));
+    }
+    expect(await screen.findByText("Already imported")).toBeInTheDocument();
+    expect(screen.getByText("This file was imported before, so nothing was written this time.")).toBeInTheDocument();
+    expect(screen.queryByText("Placements imported")).not.toBeInTheDocument();
+  });
+
+  it("offers a template of the placements' header", async () => {
+    const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:template");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    stubInventoryApi();
+    renderRoute("/inventory/import");
+    await userEvent.click(await screen.findByRole("radio", { name: "Placements" }));
+    await userEvent.click(screen.getByRole("button", { name: "Download template" }));
+    expect(await createObjectURL.mock.calls[0][0].text()).toBe("sku,site,primary_location,reorder_point,maximum\n");
+  });
+});

@@ -120,6 +120,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/imports/placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import placements
+         * @description Reads a CSV of sku, site (code), primary_location (full code), reorder_point and maximum, at most 5000 rows, the SKUs resolved in one catalog lookup (I61). Each row sets all three fields of the variant's placement at the site, an empty cell clearing its field, and a row clearing all three removes the placement. A dry run answers each row's outcome; a commit writes every row, last wins, bumping each revision — or, when any row fails, writes nothing and answers the rows with ok false. The same file posted twice writes once.
+         */
+        post: operations["importInventoryPlacements"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/labels": {
         parameters: {
             query?: never;
@@ -240,6 +260,46 @@ export interface paths {
          * @description Matches a scanned or typed code (I28): a LOC token, then a location's full code — with inventory:locations-view — then a SKU or variant barcode — with inventory:locations-view and inventory:stock-view. A caller holding neither gets no matches.
          */
         get: operations["lookupInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/low-stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List low stock
+         * @description Every low placement at active sites (I56, I58): available plus incoming at or below the reorder point, by site code, then the SKU, by cursor. Each row carries what is needed to reach the target — the maximum, or one above the reorder point — the suggestion rounded up to whole packagings (I57), what the other active sites have available, and the draft transfers already open to the site for the variant. Variants gone from the catalog are skipped.
+         */
+        get: operations["listInventoryLowStock"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/low-stock.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export low stock as CSV
+         * @description The low-stock list as CSV (I60), with the list's filter: site, sku, name, barcode, available, incoming, reorder_point, maximum, needed, suggested, packaging, packaging_count — every row, unpaged.
+         */
+        get: operations["exportInventoryLowStock"];
         put?: never;
         post?: never;
         delete?: never;
@@ -672,12 +732,36 @@ export interface paths {
         };
         /**
          * Search goods variants
-         * @description Goods variants by SKU, product name or barcode, for the line editor's picker (I22).
+         * @description Goods variants by SKU, product name or barcode, for the line editor's picker (I22); with siteId, each carries its primary location at that site, the line's default (I55).
          */
         get: operations["searchInventoryVariants"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/variants/{variantId}/placements/{siteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a placement
+         * @description Sets the variant's placement at the site (I54, I61): its primary location, reorder point and maximum. If-None-Match * creates it, and a placement already there is a 409 revision_conflict; If-Match changes it. Neither header, or both, is a 400. The variant's SKU and name are snapshotted for the low-stock list.
+         */
+        put: operations["putInventoryPlacement"];
+        post?: never;
+        /**
+         * Remove a placement
+         * @description Removes the variant's placement at the site (I54); the variant keeps no primary location, reorder point or maximum there.
+         */
+        delete: operations["deleteInventoryPlacement"];
         options?: never;
         head?: never;
         patch?: never;
@@ -759,6 +843,8 @@ export interface components {
             location: components["schemas"]["InventoryLocationRef"];
             /** Format: double */
             onHand: number;
+            /** @description The variant's primary location at the site (I55); set on a site's stock rows, absent elsewhere. */
+            primary?: boolean;
             variant: components["schemas"]["InventoryVariantRef"];
         };
         /** @description A grid of locations under a parent (I5): every combination of the levels' codes, the first level under the parent, each next level under every location of the one before. */
@@ -1076,6 +1162,76 @@ export interface components {
         InventoryLookupResult: {
             matches: components["schemas"]["InventoryLookupMatch"][];
         };
+        /** @description What another active site has available of the variant. */
+        InventoryLowStockElsewhere: {
+            /** Format: double */
+            available: number;
+            /** Format: int64 */
+            siteId: number;
+            siteName: string;
+        };
+        /** @description The variant's smallest packaging, which the suggestion was rounded up to (I57): fewest units, then sort order, then id. */
+        InventoryLowStockPackaging: {
+            /**
+             * Format: int32
+             * @description How many of it the suggestion is.
+             */
+            count: number;
+            /** Format: int32 */
+            id: number;
+            /** @description inner, case, pallet or other; the screen names the packaging by its kind. */
+            kind: string;
+            name: string;
+            /**
+             * Format: double
+             * @description What one holds, in the variant's unit.
+             */
+            quantity: number;
+        };
+        /** @description Low placements by site code, then SKU. */
+        InventoryLowStockPage: {
+            /** @description Pass as cursor for the next page; absent on the last. */
+            next?: string;
+            rows: components["schemas"]["InventoryLowStockRow"][];
+        };
+        /** @description One low placement (I56–I58): the variant at an active site whose available plus incoming is at or below its reorder point, what it needs to reach its target — the maximum, or one above the reorder point — and the suggestion rounded up to whole packagings. */
+        InventoryLowStockRow: {
+            /**
+             * Format: double
+             * @description On hand less reserved.
+             */
+            available: number;
+            /** @description Every other active site's available, by site code. */
+            elsewhere: components["schemas"]["InventoryLowStockElsewhere"][];
+            /**
+             * Format: double
+             * @description In transit to the site on open transfers.
+             */
+            incoming: number;
+            /** Format: double */
+            maximum: number | null;
+            /**
+             * Format: double
+             * @description The target less available plus incoming; at least 1.
+             */
+            needed: number;
+            /** Format: double */
+            onHand: number;
+            /** @description The numbers of the draft transfers to the site with a line of the variant (I59). */
+            openDrafts: number[];
+            packaging: components["schemas"]["InventoryLowStockPackaging"] | null;
+            /** Format: double */
+            reorderPoint: number;
+            /** Format: double */
+            reserved: number;
+            site: components["schemas"]["InventorySiteRef"];
+            /**
+             * Format: double
+             * @description Needed, rounded up to a whole number of the packaging; needed when the variant has none. It may pass the maximum.
+             */
+            suggested: number;
+            variant: components["schemas"]["InventoryVariantRef"];
+        };
         /** @description What the app needs to start (§5): the caller's seven capabilities. */
         InventoryMeta: {
             /** @description inventory:stock-adjust — adjustments and moves. */
@@ -1202,19 +1358,76 @@ export interface components {
             /** Format: double */
             quantity: number;
         };
-        /** @description A variant's placement at a site (delivery B, I54): its primary location, reorder point and maximum, and whether it is low (I56). */
+        /** @description A variant's placement at a site (I54): its primary location, reorder point and maximum, and whether it is low (I56) — available plus incoming at or below the reorder point. */
         InventoryPlacement: {
+            /** @description The reorder point is set and available plus incoming is at or below it (I56). */
             low: boolean;
+            /**
+             * Format: double
+             * @description What a suggestion fills up to; never below the reorder point.
+             */
+            maximum: number | null;
+            /**
+             * Format: int64
+             * @description An active location of the site, the default where the variant is put and taken (I55).
+             */
+            primaryLocationId: number | null;
+            /**
+             * Format: double
+             * @description Low at or below it; zero or more.
+             */
+            reorderPoint: number | null;
+            /**
+             * Format: int32
+             * @description Checked by If-Match on a change or a removal.
+             */
+            revision: number;
+        };
+        /** @enum {string} */
+        InventoryPlacementImportOutcome: "ok" | "site_not_found" | "site_archived" | "placement_location_invalid" | "variant_not_found" | "variant_not_stockable" | "quantity_invalid" | "maximum_below_reorder_point";
+        /** @description The placements import's answer (I61): every row's outcome, and on a committed import how many placements it set and cleared. */
+        InventoryPlacementImportResult: {
+            /**
+             * Format: int32
+             * @description Placements removed by a row clearing all three fields; absent on a dry run or a refused import.
+             */
+            cleared?: number;
+            /** @description Every row is ok. */
+            ok: boolean;
+            rows: components["schemas"]["InventoryPlacementImportRow"][];
+            /**
+             * Format: int32
+             * @description Placements created or changed; absent on a dry run or a refused import.
+             */
+            set?: number;
+        };
+        /** @description One row of the placements file and its outcome (I61). Every cell is as written; an empty one clears its field. */
+        InventoryPlacementImportRow: {
+            detail?: string;
+            maximum: string;
+            outcome: components["schemas"]["InventoryPlacementImportOutcome"];
+            /** @description The location's full code. */
+            primaryLocation: string;
+            reorderPoint: string;
+            /**
+             * Format: int32
+             * @description The row in the file, the header being row 1.
+             */
+            row: number;
+            /** @description The site's code. */
+            site: string;
+            sku: string;
+        };
+        /** @description A placement's three fields (I54), each null to leave it unset; all three null is placement_empty — remove the placement instead. The maximum is never below the reorder point (maximum_below_reorder_point); the primary location is an active location of the site (placement_location_invalid). */
+        InventoryPlacementInput: {
             /** Format: double */
             maximum: number | null;
             /** Format: int64 */
             primaryLocationId: number | null;
             /** Format: double */
             reorderPoint: number | null;
-            /** Format: int32 */
-            revision: number;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point, placement_empty and placement_location_invalid (400: a placement's rules, delivery B), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         InventoryProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1377,12 +1590,13 @@ export interface components {
             incoming: number;
             /** Format: double */
             onHand: number;
+            placement?: components["schemas"]["InventoryPlacement"];
             /**
              * Format: double
              * @description What other modules' documents (orders) have reserved of it at the site (orders design O45).
              */
             reserved: number;
-            /** @description By full code. */
+            /** @description The primary location first, then by full code. */
             rows: components["schemas"]["InventoryBalanceRow"][];
             site: components["schemas"]["InventorySiteRef"];
         };
@@ -1432,7 +1646,7 @@ export interface components {
              */
             stockLines: number;
         };
-        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date (I62). */
+        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date; lowStock, one per active site with items at or below their reorder point, to a caller with both views, entityId the site's id, count the items and occurredAt the time of the read (I62). */
         InventoryStatsAttentionItem: {
             /**
              * Format: int32
@@ -1445,7 +1659,7 @@ export interface components {
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "countOpenLong" | "transferOverdue";
+            type: "countOpenLong" | "transferOverdue" | "lowStock";
         };
         /** @enum {string} */
         InventoryStatus: "active" | "archived";
@@ -1478,8 +1692,8 @@ export interface components {
             location: components["schemas"]["InventoryLocationRef"];
             /** Format: double */
             onHand: number;
-            /** @description The variant's primary location at the site (delivery B); absent until then. */
-            primary?: boolean;
+            /** @description The variant's primary location at the site (I55). */
+            primary: boolean;
         };
         /** @description One row per variant and site asked for, whether or not anything lies there. */
         InventoryStockAtSites: {
@@ -1782,6 +1996,11 @@ export interface components {
             id: number;
             /** @description The variant's packagings, by sort order; absent on a deleted variant. */
             packagings?: components["schemas"]["InventoryPackaging"][];
+            /**
+             * Format: int64
+             * @description The variant's primary location at the search's siteId; absent without one, or when the search named no site.
+             */
+            primaryLocationId?: number;
             /**
              * Format: int32
              * @description Absent on a deleted variant.
@@ -2292,6 +2511,77 @@ export interface operations {
             };
         };
     };
+    importInventoryPlacements: {
+        parameters: {
+            query?: {
+                dryRun?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "text/csv": string;
+            };
+        };
+        responses: {
+            /** @description OK — a dry run, a commit refused for its rows (ok false, nothing written), or a replay of a file already written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryPlacementImportResult"];
+                };
+            };
+            /** @description Created — the placements were written. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryPlacementImportResult"];
+                };
+            };
+            /** @description Bad Request — a file that does not read, a header other than sku, site, primary_location, reorder_point, maximum, or more than 5000 rows. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
     printInventoryLabels: {
         parameters: {
             query?: never;
@@ -2714,6 +3004,130 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InventoryLookupResult"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    listInventoryLowStock: {
+        parameters: {
+            query?: {
+                /** @description Only this site. */
+                siteId?: number;
+                /** @description A SKU or a name, as the placement last saw them. */
+                q?: string;
+                /** @description The previous page's next. */
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLowStockPage"];
+                };
+            };
+            /** @description Bad Request — field errors, a cursor that does not read. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    exportInventoryLowStock: {
+        parameters: {
+            query?: {
+                /** @description Only this site. */
+                siteId?: number;
+                /** @description A SKU or a name, as the placement last saw them. */
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named low-stock-<today>.csv (YYYY-MM-DD), and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
                 };
             };
             /** @description Bad Request — field errors. */
@@ -4359,6 +4773,8 @@ export interface operations {
                 /** @description The text to look for. */
                 q: string;
                 limit?: number;
+                /** @description A site, for each variant's primary location there. */
+                siteId?: number;
             };
             header?: never;
             path?: never;
@@ -4404,6 +4820,166 @@ export interface operations {
             };
             /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    putInventoryPlacement: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The revision the placement was read at, bare (3) or quoted ("3"), to change it. A revision that has moved on is a 409 revision_conflict. */
+                "If-Match"?: string;
+                /** @description *, to create the placement. */
+                "If-None-Match"?: string;
+            };
+            path: {
+                variantId: number;
+                siteId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryPlacementInput"];
+            };
+        };
+        responses: {
+            /** @description OK — changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryPlacement"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryPlacement"];
+                };
+            };
+            /** @description Bad Request — field errors; neither or both of If-Match and If-None-Match, or one that does not parse; placement_empty, maximum_below_reorder_point, placement_location_invalid, site_archived, variant_not_found or variant_not_stockable. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such site, or an If-Match on a placement that does not exist. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    deleteInventoryPlacement: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the placement was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                variantId: number;
+                siteId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request — an If-Match that does not parse. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no placement of the variant at the site. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
