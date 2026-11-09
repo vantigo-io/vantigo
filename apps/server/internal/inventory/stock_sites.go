@@ -15,8 +15,9 @@ import (
 // Stock of variants at sites (phase 2 design I53): one batch read for the
 // transfer form's two columns and the send dialog's defaults — per variant
 // and site asked for, what lies there, what is reserved, available, what is
-// on its way to it, and the locations holding it, most first. Every pair
-// asked for has its row, whether or not anything lies there.
+// on its way to it, and the locations holding it, most first, the primary
+// location marked; and the placement there (I54). Every pair asked for has
+// its row, whether or not anything lies there.
 
 // The most a request names.
 const (
@@ -92,15 +93,24 @@ func (sn *stockSnapshot) atSites(variantIDs []int32, siteIDs []int64) gen.Invent
 			slices.SortFunc(held, func(a, b balance) int {
 				return cmp.Or(b.onHand.Cmp(a.onHand), strings.Compare(sn.locations[a.locationID].FullCode, sn.locations[b.locationID].FullCode))
 			})
+			placement, placed := sn.placements[k]
 			rows := make([]gen.InventoryStockAtSiteLocation, 0, len(held))
 			for _, b := range held {
-				rows = append(rows, gen.InventoryStockAtSiteLocation{Location: locationRefOf(sn.locations[b.locationID]), OnHand: wireQuantity(b.onHand)})
+				rows = append(rows, gen.InventoryStockAtSiteLocation{
+					Location: locationRefOf(sn.locations[b.locationID]), OnHand: wireQuantity(b.onHand),
+					Primary: placed && placement.PrimaryLocationID != nil && *placement.PrimaryLocationID == b.locationID,
+				})
 			}
-			out.Stock = append(out.Stock, gen.InventoryStockAtSite{
+			incoming := orZero(sn.incoming[k])
+			row := gen.InventoryStockAtSite{
 				VariantId: v, SiteId: site, OnHand: wireQuantity(here), Reserved: wireQuantity(reserved),
-				Available: wireQuantity(new(big.Rat).Sub(here, reserved)), Incoming: wireQuantity(orZero(sn.incoming[k])),
+				Available: wireQuantity(new(big.Rat).Sub(here, reserved)), Incoming: wireQuantity(incoming),
 				Locations: rows,
-			})
+			}
+			if placed {
+				row.Placement = ptr(placementOf(placement, sn.sites[site], here, reserved, incoming))
+			}
+			out.Stock = append(out.Stock, row)
 		}
 	}
 	return out

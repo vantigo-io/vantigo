@@ -293,6 +293,13 @@ func (s *server) PutInventorySite(ctx context.Context, req gen.PutInventorySiteR
 			if err := txq.SetSiteLocationsStatus(ctx, store.SetSiteLocationsStatusParams{Status: status, Ids: touched, Now: now}); err != nil {
 				return fmt.Errorf("inventory: set the status of site %d's locations: %w", cur.ID, err)
 			}
+			// Every location archived with the site is no one's primary any
+			// more (phase 2 I55); the reorder points and maximums stay.
+			if status == string(gen.Archived) && root.ID != 0 {
+				if err := s.clearPrimaries(ctx, txq, who, []int64{root.ID}, eventSiteArchived); err != nil {
+					return err
+				}
+			}
 		}
 		if root.ID == 0 {
 			if root, err = txq.GetRootLocation(ctx, cur.ID); err != nil {

@@ -35,6 +35,9 @@ type stockSnapshot struct {
 	incoming  map[siteKey]*big.Rat
 	locations map[int64]store.InventoryLocation
 	sites     map[int64]store.InventorySite
+	// placements are the variants' placements per site (I54), for a
+	// variant's or a product's stock and I53's batch.
+	placements map[siteKey]store.InventoryPlacement
 }
 
 // siteKey names a variant at a site: where a reservation is held.
@@ -66,6 +69,9 @@ func (sn *stockSnapshot) readPlaces(ctx context.Context, q *store.Queries) error
 	for k := range sn.incoming {
 		siteIDs = append(siteIDs, k.siteID)
 	}
+	for k := range sn.placements {
+		siteIDs = append(siteIDs, k.siteID)
+	}
 	sites, err := q.SitesByIDs(ctx, distinct(siteIDs))
 	if err != nil {
 		return fmt.Errorf("inventory: read the sites of balances: %w", err)
@@ -86,8 +92,9 @@ func (sn *stockSnapshot) row(b balance, ref gen.InventoryVariantRef) gen.Invento
 // code, with the totals summed exactly: on hand, reserved, and available —
 // on hand less reserved, negative when a correction took on hand below what
 // is reserved (orders design O45) — and incoming per site, in transit to it
-// (I46). A site holding only a reservation, or only incoming, is listed with
-// no rows.
+// (I46). A site holding only a reservation, only incoming, or only a
+// placement at an active site is listed with no rows. A site's placement rides on its row, and
+// its primary location's row comes first, marked (I55).
 func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.InventoryVariantStock {
 	total, totalReserved := new(big.Rat), new(big.Rat)
 	bySite := map[int64]*big.Rat{}
@@ -118,6 +125,11 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 			bySite[k.siteID] = new(big.Rat)
 		}
 	}
+	for k := range sn.placements {
+		if k.variantID == ref.Id && bySite[k.siteID] == nil && sn.sites[k.siteID].Status == string(gen.Active) {
+			bySite[k.siteID] = new(big.Rat)
+		}
+	}
 	out := gen.InventoryVariantStock{
 		Variant: ref, TotalOnHand: wireQuantity(total), TotalReserved: wireQuantity(totalReserved),
 		TotalAvailable: wireQuantity(new(big.Rat).Sub(total, totalReserved)), Sites: make([]gen.InventorySiteStock, 0, len(bySite)),
@@ -127,15 +139,24 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 		if r == nil {
 			r = []gen.InventoryBalanceRow{}
 		}
+		k := siteKey{ref.Id, siteID}
+		placement, placed := sn.placements[k]
+		for i := range r {
+			r[i].Primary = ptr(placed && placement.PrimaryLocationID != nil && *placement.PrimaryLocationID == r[i].Location.Id)
+		}
 		slices.SortFunc(r, func(a, b gen.InventoryBalanceRow) int {
-			return strings.Compare(a.Location.FullCode, b.Location.FullCode)
+			return cmp.Or(-cmpBool(*a.Primary, *b.Primary), strings.Compare(a.Location.FullCode, b.Location.FullCode))
 		})
-		reserved := orZero(sn.reserved[siteKey{ref.Id, siteID}])
-		out.Sites = append(out.Sites, gen.InventorySiteStock{
+		reserved, incoming := orZero(sn.reserved[k]), orZero(sn.incoming[k])
+		row := gen.InventorySiteStock{
 			Site: siteRefOf(sn.sites[siteID]), OnHand: wireQuantity(onHand), Reserved: wireQuantity(reserved),
 			Available: wireQuantity(new(big.Rat).Sub(onHand, reserved)), Rows: r,
-			Incoming: wireQuantity(orZero(sn.incoming[siteKey{ref.Id, siteID}])),
-		})
+			Incoming: wireQuantity(incoming),
+		}
+		if placed {
+			row.Placement = ptr(placementOf(placement, sn.sites[siteID], onHand, reserved, incoming))
+		}
+		out.Sites = append(out.Sites, row)
 	}
 	slices.SortFunc(out.Sites, func(a, b gen.InventorySiteStock) int { return strings.Compare(a.Site.Code, b.Site.Code) })
 	return out
@@ -176,6 +197,14 @@ func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx cont
 		sn.incoming = make(map[siteKey]*big.Rat, len(incoming))
 		for _, r := range incoming {
 			sn.incoming[siteKey{r.VariantID, r.SiteID}] = ratFromText(r.Incoming)
+		}
+		placements, err := q.PlacementsOfVariants(ctx, ids)
+		if err != nil {
+			return fmt.Errorf("inventory: read placements: %w", err)
+		}
+		sn.placements = make(map[siteKey]store.InventoryPlacement, len(placements))
+		for _, p := range placements {
+			sn.placements[siteKey{p.VariantID, p.SiteID}] = p
 		}
 		if err := sn.readPlaces(ctx, q); err != nil {
 			return err

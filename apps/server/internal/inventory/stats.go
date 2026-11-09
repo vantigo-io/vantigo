@@ -59,7 +59,10 @@ const countOpenLongAfter = 7 * 24 * time.Hour
 //     with both views);
 //   - transferOverdue: a transfer on its way past its expected arrival, or
 //     without one sent more than a week ago, oldest first — to a caller who
-//     could receive it (transfers-manage with both views).
+//     could receive it (transfers-manage with both views);
+//   - lowStock: one per active site with placements at or below their
+//     reorder point, by site code, the count I58's statement's — to a caller
+//     with both views.
 //
 // At most 20 items in all.
 func (s *server) GetInventoryStatsAttention(ctx context.Context, _ gen.GetInventoryStatsAttentionRequestObject) (gen.GetInventoryStatsAttentionResponseObject, error) {
@@ -87,6 +90,13 @@ func (s *server) GetInventoryStatsAttention(ctx context.Context, _ gen.GetInvent
 			return nil, err
 		}
 		items = append(items, overdue...)
+	}
+	if views && len(items) < maxAttentionItems {
+		low, err := s.lowStockItems(ctx, q, now)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, low...)
 	}
 	if len(items) > maxAttentionItems {
 		items = items[:maxAttentionItems]
