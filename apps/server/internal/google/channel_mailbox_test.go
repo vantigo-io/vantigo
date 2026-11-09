@@ -415,12 +415,15 @@ func TestChannelMailbox_SendReadsTheMessageIDBack(t *testing.T) {
 		t.Errorf("403: %v, want ErrMailboxDenied", err)
 	}
 	f.g.FailOn("POST /messages/send", 0)
-	// A 5xx is not sent again.
+	// A 5xx is not sent again. The failure is put on the send, not on the
+	// next request: a parallel test whose clock is a day on may have
+	// forgotten the process's cached token, and the token fetch come first.
 	before = len(f.gmailCalls(0))
-	f.g.FailNext(http.StatusServiceUnavailable)
+	f.g.FailOn("POST /messages/send", http.StatusServiceUnavailable)
 	if _, err := f.p.Send(ctx, gid, mailFrom("<e@vantigo.invalid>", "", "x"), nil); err == nil {
 		t.Error("a 503 answered nil")
 	}
+	f.g.FailOn("POST /messages/send", 0)
 	if n := len(f.gmailCalls(0)) - before; n != 1 {
 		t.Errorf("a 503 was tried %d times, want once", n)
 	}
