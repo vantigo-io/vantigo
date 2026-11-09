@@ -1312,6 +1312,7 @@ func TestCommunicationsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 		"channel_sync", // 00092's
 		"channels",
 		"conversation_customer_candidates",
+		"conversation_message_mentions", // 00152's
 		"conversation_messages",
 		"conversation_participants",
 		"conversation_read_states",

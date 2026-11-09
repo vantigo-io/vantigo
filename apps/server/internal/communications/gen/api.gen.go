@@ -633,7 +633,9 @@ type MessengerLink struct {
 
 // NoteRequest defines model for NoteRequest.
 type NoteRequest struct {
-	TextBody *string `json:"textBody"`
+	// Mentions The users, people or agents, the note mentions, picked with the @ picker (at most 10). Each must be a known, active user. A person mentioned is mailed; an agent mentioned is woken for the conversation. A note written by an agent mentions no one.
+	Mentions *[]openapi_types.UUID `json:"mentions,omitempty"`
+	TextBody *string               `json:"textBody"`
 }
 
 // PaginatedResponseOfConversationListItem defines model for PaginatedResponseOfConversationListItem.

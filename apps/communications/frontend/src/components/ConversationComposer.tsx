@@ -16,9 +16,11 @@ import {
   replyToConversation,
   stageConversationAttachment,
 } from "../api/conversations";
+import { type Mention, mentionsIn, mentionText } from "../lib/mentions";
 import { ChatComposer } from "./ChatComposer";
 import { isChat } from "./chat";
 import { personalSenderLabel, returnHere } from "./conversationHelpers";
+import { MentionSelect } from "./MentionSelect";
 import { useDraftingSignal } from "./useDraftingSignal";
 
 export type ConnectionButtonProps = {
@@ -80,6 +82,8 @@ function EmailComposer({ conversation, onSent, connectionButton, onDraftingChang
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiDraft, setAiDraft] = useState(false);
   const [typed, setTyped] = useState(false);
+  // The colleagues picked with the @ picker for the note being written (design V32).
+  const [picked, setPicked] = useState<Mention[]>([]);
   const editor = useEditor({ extensions: [StarterKit], content: "" });
   const drafting = useDraftingSignal(typed || body.trim() !== "", onDraftingChange);
   const statusQueries = useQueries({
@@ -89,7 +93,7 @@ function EmailComposer({ conversation, onSent, connectionButton, onDraftingChang
   const send = useMutation({
     mutationFn: () =>
       noteMode
-        ? addConversationNote(conversation.id, editor?.getText() || body)
+        ? addConversationNote(conversation.id, editor?.getText() || body, mentionsIn(editor?.getText() || body, picked))
         : replyToConversation(
             conversation.id,
             {
@@ -104,6 +108,7 @@ function EmailComposer({ conversation, onSent, connectionButton, onDraftingChang
     onSuccess: async () => {
       setBody("");
       editor?.commands.clearContent();
+      setPicked([]);
       setUploads([]);
       setTyped(false);
       await onSent();
@@ -226,6 +231,19 @@ function EmailComposer({ conversation, onSent, connectionButton, onDraftingChang
         <Text size="xs" c="dimmed" mb="xs">
           {t("noMessageToReplyTo")}
         </Text>
+      )}
+      {noteMode && (
+        <MentionSelect
+          onPick={(mention) => {
+            setPicked((all) => [...all.filter((one) => one.userId !== mention.userId), mention]);
+            editor
+              ?.chain()
+              .focus()
+              .insertContent(`${mentionText(mention.displayName)} `)
+              .run();
+            setTyped(true);
+          }}
+        />
       )}
       <RichTextEditor editor={editor}>
         <RichTextEditor.Toolbar sticky stickyOffset={0}>

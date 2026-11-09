@@ -144,6 +144,11 @@ type CommunicationsConversationMessage struct {
 	AgentID              *uuid.UUID
 }
 
+type CommunicationsConversationMessageMention struct {
+	MessageID uuid.UUID
+	UserID    uuid.UUID
+}
+
 type CommunicationsConversationParticipant struct {
 	ConversationID uuid.UUID
 	ParticipantID  uuid.UUID
