@@ -78,3 +78,14 @@ export const validateNewTransferSearch = (search: Record<string, unknown>): NewT
   fromSiteId: positive(search.fromSiteId),
   toSiteId: positive(search.toSiteId),
 });
+
+/** The low-stock list's search (phase 2 design §7): the site it is filtered to, and what it is searched for. */
+export interface LowStockSearch {
+  siteId?: number;
+  /** A SKU or a name, as the list's search took it (≤ 100 characters, as the contract allows). */
+  q?: string;
+}
+export const validateLowStockSearch = (search: Record<string, unknown>): LowStockSearch => ({
+  siteId: positive(search.siteId),
+  q: typeof search.q === "string" && search.q.trim() !== "" ? search.q.trim().slice(0, 100) : undefined,
+});

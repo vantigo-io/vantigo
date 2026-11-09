@@ -1441,4 +1441,24 @@ describe("the dashboard's inventory card", () => {
       "En overføring har passert forventet ankomst",
     );
   });
+
+  // Low stock is one item per site (phase 2 design I62): its entityId is the
+  // site's id and the link opens the low-stock list filtered to the site; its
+  // title is the server's, which names the count and the site.
+  it("links a site's low stock to the low-stock list filtered to it, and shows the server's title", () => {
+    expect(attentionHref({ module: "inventory", type: "lowStock", entityId: "2" })).toBe(
+      "/inventory/low-stock?siteId=2",
+    );
+    for (const entityId of ["", "0", "-1", "abc", "1.5"])
+      expect(attentionHref({ module: "inventory", type: "lowStock", entityId })).toBe("/inventory/low-stock");
+    expect(attentionTitleKey({ module: "inventory", type: "lowStock" })).toBeUndefined();
+    const title = "3 items at or below their reorder point at Bergen butikk";
+    expect(
+      attentionTitle(
+        { module: "inventory", type: "lowStock", entityId: "2", title, count: 3 },
+        (key) => key,
+        () => "unused",
+      ),
+    ).toBe(title);
+  });
 });

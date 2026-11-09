@@ -3,6 +3,7 @@ import type { InventoryImportRow } from "../api/imports";
 import type { InventoryLocation, InventoryLocationRef } from "../api/locations";
 import type { InventoryMeta } from "../api/meta";
 import type { InventoryMovement, InventoryMovementKind } from "../api/movements";
+import type { InventoryLowStockRow, InventoryPlacement, InventoryPlacementImportRow } from "../api/placements";
 import type { InventorySite, InventorySiteRef } from "../api/sites";
 import type { InventoryProductStock, InventoryVariantRef, InventoryVariantStock } from "../api/stock";
 import type { InventoryTransfer, InventoryTransferLine } from "../api/transfers";
@@ -87,6 +88,16 @@ export interface Balance {
   onHand: number;
 }
 
+/** A variant's placement at a site (I54), as the fixtures write it. */
+export interface Placement {
+  variantId: number;
+  siteId: number;
+  primaryLocationId: number | null;
+  reorderPoint: number | null;
+  maximum: number | null;
+  revision: number;
+}
+
 /** What orders have reserved of a variant at a site (orders design O45). */
 export interface Reservation {
   variantId: number;
@@ -107,6 +118,10 @@ export interface InventoryServer {
   productStock?: Record<number, InventoryProductStock>;
   counts?: InventoryCount[];
   transfers?: InventoryTransfer[];
+  placements?: Placement[];
+  /** Answers `GET /low-stock` from these rows, filtered by site and search, `lowStockPageSize` at a time. */
+  lowStock?: InventoryLowStockRow[];
+  lowStockPageSize?: number;
   /** How many locations a site's list answers before it says it was truncated; 10,000 as the server's. */
   locationLimit?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
@@ -121,6 +136,7 @@ export interface InventoryState {
   movements: InventoryMovement[];
   counts: InventoryCount[];
   transfers: InventoryTransfer[];
+  placements: Placement[];
 }
 
 /** A transfer line as the fixtures write it: a variant, what was asked, and what has happened to it so far. */
@@ -223,9 +239,12 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     movements: server.movements ?? [],
     counts: server.counts ?? [],
     transfers: server.transfers ?? [],
+    placements: server.placements ?? [],
   };
   const catalog = server.variants ?? variants();
   let nextId = 900;
+  /** The placements files committed so far: the same file again writes nothing and answers 200 (I61). */
+  const importedPlacements = new Set<string>();
 
   const meta: InventoryMeta = {
     canViewLocations: true,
@@ -341,6 +360,17 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       .flatMap((one) => one.lines)
       .filter((line) => line.variant.id === variantId)
       .reduce((sum, line) => sum + line.inTransit, 0);
+  const placementAt = (variantId: number, siteId: number) =>
+    state.placements.find((one) => one.variantId === variantId && one.siteId === siteId);
+  /** A placement as the reads answer it, low when available plus incoming is at or below its reorder point (I56). */
+  const placementAnswer = (one: Placement | undefined, available: number, incoming: number) =>
+    one && {
+      primaryLocationId: one.primaryLocationId,
+      reorderPoint: one.reorderPoint,
+      maximum: one.maximum,
+      revision: one.revision,
+      low: one.reorderPoint !== null && available + incoming <= one.reorderPoint,
+    };
   const variantStock = (variant: InventoryVariantRef): InventoryVariantStock => {
     const rows = rowsOf(state.balances.filter((one) => one.variantId === variant.id));
     const reservedAt = (siteId?: number) =>
@@ -353,7 +383,20 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         const onHand = here.reduce((sum, row) => sum + row.onHand, 0);
         const reserved = reservedAt(site.id);
         const incoming = incomingAt(variant.id, site.id);
-        return { site: siteRef(site), onHand, reserved, available: onHand - reserved, incoming, rows: here };
+        const placement = placementAt(variant.id, site.id);
+        // The primary location first, marked (I55).
+        const ordered = here
+          .map((row) => ({ ...row, primary: row.location.id === placement?.primaryLocationId }))
+          .sort((a, b) => Number(b.primary) - Number(a.primary));
+        return {
+          site: siteRef(site),
+          onHand,
+          reserved,
+          available: onHand - reserved,
+          incoming,
+          rows: ordered,
+          ...(placement ? { placement: placementAnswer(placement, onHand - reserved, incoming) } : {}),
+        };
       })
       .filter((one) => one.rows.length > 0 || one.reserved !== 0 || one.incoming !== 0);
     const totalOnHand = rows.reduce((sum, row) => sum + row.onHand, 0);
@@ -437,17 +480,21 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
             const reserved = state.reservations
               .filter((one) => one.variantId === variantId && one.siteId === siteId)
               .reduce((sum, one) => sum + one.quantity, 0);
+            const placement = placementAt(variantId, siteId);
+            const incoming = incomingAt(variantId, siteId);
             return {
               variantId,
               siteId,
               onHand,
               reserved,
               available: onHand - reserved,
-              incoming: incomingAt(variantId, siteId),
+              incoming,
               locations: held.map((one) => ({
                 location: ref(locationOf(one.locationId) as InventoryLocation),
                 onHand: one.onHand,
+                primary: one.locationId === placement?.primaryLocationId,
               })),
+              ...(placement ? { placement: placementAnswer(placement, onHand - reserved, incoming) } : {}),
             };
           }),
         ),
@@ -833,11 +880,122 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     }
     if (path === "/variants") {
       const q = (query.get("q") ?? "").toLowerCase();
+      const siteId = Number(query.get("siteId") ?? 0);
       return jsonResponse(200, {
-        variants: catalog.filter(
-          (one) => one.sku.toLowerCase().includes(q) || one.productName.toLowerCase().includes(q) || one.barcode === q,
-        ),
+        variants: catalog
+          .filter(
+            (one) =>
+              one.sku.toLowerCase().includes(q) || one.productName.toLowerCase().includes(q) || one.barcode === q,
+          )
+          .map((one) => {
+            const primary = siteId ? placementAt(one.id, siteId)?.primaryLocationId : undefined;
+            return primary ? { ...one, primaryLocationId: primary } : one;
+          }),
       });
+    }
+    match = /^\/variants\/(\d+)\/placements\/(\d+)$/.exec(path);
+    if (match && (method === "PUT" || method === "DELETE")) {
+      const variantId = Number(match[1]);
+      const siteId = Number(match[2]);
+      const existing = placementAt(variantId, siteId);
+      const ifMatch = headers.get("If-Match");
+      if (method === "DELETE") {
+        if (!existing) return new Response(null, { status: 404 });
+        if (ifMatch !== String(existing.revision))
+          return inventoryProblem(409, "revision_conflict", { title: "Revision conflict" });
+        state.placements = state.placements.filter((one) => one !== existing);
+        return new Response(null, { status: 204 });
+      }
+      const input = body as Omit<Placement, "variantId" | "siteId" | "revision">;
+      if (headers.get("If-None-Match") === "*") {
+        if (existing) return inventoryProblem(409, "revision_conflict", { title: "Revision conflict" });
+      } else if (!existing) return new Response(null, { status: 404 });
+      else if (ifMatch !== String(existing.revision))
+        return inventoryProblem(409, "revision_conflict", { title: "Revision conflict" });
+      if (input.primaryLocationId === null && input.reorderPoint === null && input.maximum === null)
+        return inventoryProblem(400, "placement_empty");
+      if (input.maximum !== null && input.reorderPoint !== null && input.maximum < input.reorderPoint)
+        return inventoryProblem(400, "maximum_below_reorder_point");
+      const saved: Placement = { ...input, variantId, siteId, revision: (existing?.revision ?? 0) + 1 };
+      state.placements = [...state.placements.filter((one) => one !== existing), saved];
+      return jsonResponse(existing ? 200 : 201, placementAnswer(saved, 0, 0) as InventoryPlacement);
+    }
+    if (path === "/low-stock" || path === "/low-stock.csv") {
+      const siteId = Number(query.get("siteId") ?? 0);
+      const q = (query.get("q") ?? "").toLowerCase();
+      const rows = (server.lowStock ?? []).filter(
+        (one) =>
+          (!siteId || one.site.id === siteId) &&
+          (!q || one.variant.sku.toLowerCase().includes(q) || one.variant.productName.toLowerCase().includes(q)),
+      );
+      if (path === "/low-stock.csv")
+        return new Response(
+          ["site,sku,suggested", ...rows.map((one) => `${one.site.code},${one.variant.sku},${one.suggested}`)].join(
+            "\n",
+          ),
+          { status: 200, headers: { "Content-Type": "text/csv" } },
+        );
+      const size = server.lowStockPageSize ?? 50;
+      const from = Number(query.get("cursor") ?? 0);
+      const next = from + size < rows.length ? String(from + size) : undefined;
+      return jsonResponse(200, { rows: rows.slice(from, from + size), ...(next ? { next } : {}) });
+    }
+    if (path === "/imports/placements" && method === "POST") {
+      const dryRun = query.get("dryRun") !== "false";
+      const [header, ...lines] = String(body).trim().split(/\r?\n/);
+      if (header.trim() !== "sku,site,primary_location,reorder_point,maximum")
+        return inventoryProblem(400, undefined, {
+          detail: "The header must be sku,site,primary_location,reorder_point,maximum.",
+        });
+      const parsed = lines.map((text, index) => {
+        const [sku = "", site = "", primaryLocation = "", reorderPoint = "", maximum = ""] = text
+          .split(",")
+          .map((cell) => cell.trim());
+        const where = state.sites.find((one) => one.code === site.toUpperCase());
+        const what = catalog.find((one) => one.sku.toUpperCase() === sku.toUpperCase());
+        const spot = state.locations.find(
+          (one) => one.siteId === where?.id && one.fullCode === primaryLocation.toUpperCase(),
+        );
+        const outcome: InventoryPlacementImportRow["outcome"] = !what
+          ? "variant_not_found"
+          : !where
+            ? "site_not_found"
+            : primaryLocation && !spot
+              ? "placement_location_invalid"
+              : "ok";
+        const row: InventoryPlacementImportRow = {
+          row: index + 2,
+          sku,
+          site,
+          primaryLocation,
+          reorderPoint,
+          maximum,
+          outcome,
+        };
+        return { row, where, what, spot, reorderPoint, maximum };
+      });
+      const rows = parsed.map((one) => one.row);
+      const ok = rows.every((row) => row.outcome === "ok");
+      if (dryRun || !ok) return jsonResponse(200, { ok, rows });
+      if (importedPlacements.has(String(body))) return jsonResponse(200, { ok, rows });
+      importedPlacements.add(String(body));
+      for (const one of parsed) {
+        const variantId = one.what?.id ?? 0;
+        const siteId = one.where?.id ?? 0;
+        const existing = placementAt(variantId, siteId);
+        state.placements = [
+          ...state.placements.filter((p) => p !== existing),
+          {
+            variantId,
+            siteId,
+            primaryLocationId: one.spot?.id ?? null,
+            reorderPoint: one.reorderPoint === "" ? null : Number(one.reorderPoint),
+            maximum: one.maximum === "" ? null : Number(one.maximum),
+            revision: (existing?.revision ?? 0) + 1,
+          },
+        ];
+      }
+      return jsonResponse(201, { ok, rows, set: parsed.length, cleared: 0 });
     }
     match = /^\/products\/(\d+)\/stock$/.exec(path);
     if (match) {

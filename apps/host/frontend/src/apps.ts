@@ -53,6 +53,7 @@ import {
   IconTemplate,
   IconTransfer,
   IconTrash,
+  IconTrendingDown,
   IconTruckDelivery,
   IconUser,
   IconUserPlus,
@@ -243,6 +244,7 @@ const inventoryNavPresentation: Record<InventoryNavItem["key"], Pick<NavItem, "l
   movements: { label: "navigation.inventoryMovements", icon: IconTransfer },
   receipts: { label: "navigation.inventoryReceipts", icon: IconPackageImport },
   counts: { label: "navigation.inventoryCounts", icon: IconClipboardCheck },
+  lowStock: { label: "navigation.inventoryLowStock", icon: IconTrendingDown },
   import: { label: "navigation.inventoryImport", icon: IconFileImport },
 };
 

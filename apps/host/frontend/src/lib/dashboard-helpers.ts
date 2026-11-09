@@ -19,6 +19,8 @@ import type { InventoryStats } from "@vantigo/inventory-ui/api/stats";
 import {
   COUNTS_ROUTE_PATH,
   countLinkOptions,
+  LOW_STOCK_ROUTE_PATH,
+  lowStockLinkOptions,
   TRANSFERS_ROUTE_PATH,
   transferLinkOptions,
 } from "@vantigo/inventory-ui/lib/routes";
@@ -444,8 +446,9 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     return "/planning";
   }
   // A count open for a long time carries the count's id and opens the count,
-  // an overdue transfer the transfer's (phase 2 design I62); an id that is not
-  // one lands on the counts or the transfers.
+  // an overdue transfer the transfer's, low stock the site's (phase 2 design
+  // I62); an id that is not one lands on the counts, the transfers or the
+  // whole low-stock list.
   if (item.module === "inventory") {
     const id = Number(item.entityId);
     const valid = /^\d+$/.test(item.entityId) && Number.isSafeInteger(id) && id > 0;
@@ -458,6 +461,12 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
       if (!valid) return TRANSFERS_ROUTE_PATH;
       const { to, params } = transferLinkOptions(id);
       return to.replace("$transferId", params.transferId);
+    }
+    // Low stock carries the site's id and opens the low-stock list filtered to it.
+    if (item.type === "lowStock") {
+      if (!valid) return LOW_STOCK_ROUTE_PATH;
+      const { to, search } = lowStockLinkOptions({ siteId: id });
+      return `${to}?siteId=${search.siteId}`;
     }
     return "/inventory";
   }
@@ -484,7 +493,8 @@ const planningAttentionTitleKeys: Record<string, string> = {
  * Inventory's sentences (inventory design §7, B; phase 2 design I62): a count
  * open for a long time and a transfer past its expected arrival are worded
  * here, in the reader's language, and name nothing — the link opens the count
- * or the transfer.
+ * or the transfer. Low stock has no key: its title is the server's, which
+ * names the count and the site, and the link opens the site's low-stock list.
  */
 const inventoryAttentionTitleKeys: Record<string, string> = {
   countOpenLong: "dashboard.inventoryCountOpenLong",

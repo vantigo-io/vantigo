@@ -9,12 +9,15 @@ export type InventoryVariantStock = Schemas["InventoryVariantStock"];
 export type InventorySiteStock = Schemas["InventorySiteStock"];
 export type InventoryProductStock = Schemas["InventoryProductStock"];
 
-/** Goods variants by SKU, product name or barcode, for the line editor's picker (≤ 50). */
-export const variantSearchQueryOptions = (q: string, limit = 20) =>
+/**
+ * Goods variants by SKU, product name or barcode, for the line editor's picker
+ * (≤ 50); with a site, each carries its primary location there (I55).
+ */
+export const variantSearchQueryOptions = (q: string, limit = 20, siteId?: number) =>
   queryOptions({
-    queryKey: [INVENTORY_QUERY_KEY, "variants", q, limit],
+    queryKey: [INVENTORY_QUERY_KEY, "variants", q, limit, siteId],
     queryFn: ({ signal }) =>
-      request<Schemas["InventoryVariantList"]>(`/api/v1/inventory/variants${queryString({ q, limit })}`, {
+      request<Schemas["InventoryVariantList"]>(`/api/v1/inventory/variants${queryString({ q, limit, siteId })}`, {
         signal,
       }).then((answer) => answer.variants),
   });

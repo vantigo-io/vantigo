@@ -14,6 +14,8 @@ export interface VariantPickerProps {
   error?: string;
   /** Shown without a label, as in a line editor's row. */
   compact?: boolean;
+  /** A site, so each variant found carries its primary location there (I55). */
+  siteId?: number;
 }
 
 /**
@@ -22,13 +24,16 @@ export interface VariantPickerProps {
  * worker needs none of Products' keys. Nothing is listed until something is
  * typed.
  */
-export const VariantPicker = ({ label, value, onChange, error, compact }: VariantPickerProps) => {
+export const VariantPicker = ({ label, value, onChange, error, compact, siteId }: VariantPickerProps) => {
   const { t } = useInventoryFormat();
   const [search, setSearch] = useState("");
   // Picking an option writes its label into the search box; that is not a search.
   const term = value && search === variantLabel(value) ? "" : search.trim();
   const [debounced] = useDebouncedValue(term, SEARCH_DEBOUNCE_MS);
-  const { data, isFetching } = useQuery({ ...variantSearchQueryOptions(debounced), enabled: debounced !== "" });
+  const { data, isFetching } = useQuery({
+    ...variantSearchQueryOptions(debounced, undefined, siteId),
+    enabled: debounced !== "",
+  });
   const found = debounced === "" ? [] : (data ?? []);
   const options = found.map((variant) => ({ value: String(variant.id), label: variantLabel(variant) }));
   if (value && !options.some((option) => option.value === String(value.id)))

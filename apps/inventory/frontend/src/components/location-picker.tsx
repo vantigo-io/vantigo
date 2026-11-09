@@ -12,6 +12,8 @@ export interface LocationPickerProps {
   error?: string;
   required?: boolean;
   placeholder?: string;
+  /** A line of help under the label. */
+  description?: string;
   /** Locations that may not be picked: a location's own subtree, when it is re-parented. */
   exclude?: ReadonlySet<number>;
   /** Shown without a label, as in a line editor's row. */
@@ -31,6 +33,7 @@ export const LocationPicker = ({
   error,
   required,
   placeholder,
+  description,
   exclude,
   compact,
 }: LocationPickerProps) => {
@@ -49,6 +52,7 @@ export const LocationPicker = ({
     <Select
       label={compact ? undefined : label}
       aria-label={label}
+      description={compact ? undefined : description}
       placeholder={placeholder ?? t("pickLocation")}
       searchable
       clearable={!required}

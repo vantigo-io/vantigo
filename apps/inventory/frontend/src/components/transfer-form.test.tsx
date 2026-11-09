@@ -3,7 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { choose, retype, scan, sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
-import { inventoryProblem, stubInventoryApi, transferFixture, transferLine, variants } from "../test/server";
+import {
+  inventoryProblem,
+  packagings,
+  stubInventoryApi,
+  transferFixture,
+  transferLine,
+  variants,
+} from "../test/server";
 
 const scanField = () => screen.findByRole("textbox", { name: "Scan an item" });
 
@@ -93,6 +100,28 @@ describe("a transfer's draft", () => {
     ]);
     // Back on the transfer, as saved.
     expect(await screen.findByRole("button", { name: "Edit" })).toBeInTheDocument();
+  });
+
+  it("says how a line drafted from the low-stock list was found, until the line is edited (I57)", async () => {
+    const [, , bolt] = variants();
+    const boxed = { ...bolt, packagings: packagings() };
+    stubInventoryApi({
+      variants: [...variants().slice(0, 2), boxed],
+      placements: [{ variantId: 201, siteId: 2, primaryLocationId: null, reorderPoint: 5, maximum: 24, revision: 1 }],
+      transfers: [
+        transferFixture({
+          id: 5,
+          lines: [{ ...transferLine(1, boxed, 30), suggestion: { needed: 21, packagingId: 72, count: 2 } }],
+        }),
+      ],
+    });
+    renderRoute("/inventory/transfers/5");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(
+      await screen.findByText("21 needed, rounded up to 2 cases of 15 = 30, 9 above the maximum of 24"),
+    ).toBeInTheDocument();
+    await retype(screen.getByRole("textbox", { name: "Loose, line 1" }), "25");
+    expect(screen.queryByText(/21 needed/)).not.toBeInTheDocument();
   });
 
   it("closes the edit on the transfer as it is now when someone else changed it", async () => {

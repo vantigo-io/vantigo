@@ -12,6 +12,7 @@ describe("the sidebar entries", () => {
       "transfers",
       "movements",
       "receipts",
+      "lowStock",
     ]);
   });
 
@@ -23,12 +24,14 @@ describe("the sidebar entries", () => {
       "movements",
       "receipts",
       "counts",
+      "lowStock",
     ]);
     expect(keys([...views, "inventory:stock-adjust"])).toEqual([
       "overview",
       "transfers",
       "movements",
       "receipts",
+      "lowStock",
       "import",
     ]);
     expect(keys(["inventory:locations-view", "inventory:counts-manage", "inventory:stock-adjust"])).toEqual([
@@ -37,7 +40,7 @@ describe("the sidebar entries", () => {
   });
 
   it("offers everything to a holder of every permission, and nothing to nobody", () => {
-    expect(keys(["*"])).toEqual(["overview", "transfers", "movements", "receipts", "counts", "import"]);
+    expect(keys(["*"])).toEqual(["overview", "transfers", "movements", "receipts", "counts", "lowStock", "import"]);
     expect(keys(undefined)).toEqual([]);
   });
 });

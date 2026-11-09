@@ -1,4 +1,4 @@
-import { Anchor, Table, Text } from "@mantine/core";
+import { Anchor, Badge, Table, Text } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 import type { InventoryBalanceRow } from "../api/locations";
 import { useInventoryFormat } from "../lib/format";
@@ -15,7 +15,8 @@ export interface StockTableProps {
 
 /**
  * Balance rows (I10): the variant, its SKU and product, the location it lies
- * on and the quantity there, broken down in the variant's packagings (I26).
+ * on — marked when it is the variant's primary location there (I55) — and
+ * the quantity there, broken down in the variant's packagings (I26).
  */
 export const StockTable = ({ rows, hideVariant, hideLocation }: StockTableProps) => {
   const { t } = useInventoryFormat();
@@ -58,6 +59,11 @@ export const StockTable = ({ rows, hideVariant, hideLocation }: StockTableProps)
                       {" "}
                       {row.location.name}
                     </Text>
+                  )}
+                  {row.primary && (
+                    <Badge size="xs" variant="light" ml="xs">
+                      {t("primary")}
+                    </Badge>
                   )}
                 </Table.Td>
               )}

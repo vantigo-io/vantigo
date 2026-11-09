@@ -6,6 +6,7 @@ import {
   IconFileImport,
   IconPackageImport,
   IconTransfer,
+  IconTrendingDown,
   IconTruckDelivery,
   IconUsersGroup,
 } from "@tabler/icons-react";
@@ -149,6 +150,7 @@ describe("the app registry", () => {
       "/inventory/movements",
       "/inventory/movements",
       "/inventory/counts",
+      "/inventory/low-stock",
       "/inventory/import",
       "/energy/metering-points",
       "/energy/prices",
@@ -676,6 +678,14 @@ describe("the app registry", () => {
         undefined,
       ],
       [
+        "navigation.inventoryLowStock",
+        "/inventory/low-stock",
+        undefined,
+        ["inventory:stock-view"],
+        ["inventory:locations-view", "inventory:stock-view"],
+        undefined,
+      ],
+      [
         "navigation.inventoryImport",
         "/inventory/import",
         undefined,
@@ -690,6 +700,7 @@ describe("the app registry", () => {
       IconTransfer,
       IconPackageImport,
       IconClipboardCheck,
+      IconTrendingDown,
       IconFileImport,
     ]);
     expect(items.map((item) => item.to)).toEqual(inventoryNavItems.map((item) => item.to));
@@ -723,6 +734,7 @@ describe("the app registry", () => {
       "navigation.inventoryTransfers",
       "navigation.inventoryMovements",
       "navigation.inventoryReceipts",
+      "navigation.inventoryLowStock",
     ]);
     expect(
       paths(["inventory:locations-view", "inventory:stock-view", "inventory:counts-manage", "inventory:stock-adjust"]),
@@ -732,6 +744,7 @@ describe("the app registry", () => {
       "navigation.inventoryMovements",
       "navigation.inventoryReceipts",
       "navigation.inventoryCounts",
+      "navigation.inventoryLowStock",
       "navigation.inventoryImport",
     ]);
     expect(paths(["inventory:locations-view", "inventory:counts-manage"])).toEqual(["navigation.inventoryOverview"]);

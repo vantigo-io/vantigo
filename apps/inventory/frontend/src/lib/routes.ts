@@ -79,3 +79,9 @@ export const newTransferLinkOptions = (search: { fromSiteId?: number; toSiteId?:
   to: NEW_TRANSFER_ROUTE_PATH,
   search,
 });
+
+// Phase 2, delivery B: placement and the low-stock list.
+export const LOW_STOCK_ROUTE_PATH = "/inventory/low-stock";
+
+/** The low-stock list, filtered to a site when one is given. */
+export const lowStockLinkOptions = (search: { siteId?: number } = {}) => ({ to: LOW_STOCK_ROUTE_PATH, search });

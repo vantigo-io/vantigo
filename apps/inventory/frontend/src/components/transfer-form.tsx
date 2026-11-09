@@ -11,10 +11,12 @@ import type { InventorySite } from "../api/sites";
 import { createTransfer, type InventoryTransfer, type InventoryTransferInput, putTransfer } from "../api/transfers";
 import { refusalMessage, useInvalidateInventory, useInventoryFormat } from "../lib/format";
 import { type EditorLine, editorLinesOf, lineGap, lineQuantity, transferLinesBody } from "../lib/lines";
+import { suggestionOfLine } from "../lib/low-stock";
 import { stockAtKey, useStockAtSites } from "../lib/stock-at-sites";
 import { askToLeave, useTransferActions } from "../lib/transfer-actions";
 import { LineEditor } from "./line-editor";
 import { SendTransferDialog } from "./send-transfer-dialog";
+import { SuggestionNote } from "./suggestion-note";
 
 export interface TransferFormProps {
   /** The active sites to choose among. */
@@ -302,30 +304,43 @@ export const TransferForm = ({
             cell: (line) => {
               if (!line.variant || toSiteId === undefined) return null;
               const there = stock.data?.get(stockAtKey(line.variant.id, toSiteId));
+              // A line drafted from the low-stock list says how its quantity was found, until it is edited (I57).
+              const note = line.suggestion && (
+                <SuggestionNote
+                  {...suggestionOfLine(line.suggestion, line.variant.packagings)}
+                  maximum={there?.placement?.maximum}
+                />
+              );
               if (!there)
                 return (
-                  <Text size="sm" c="dimmed">
-                    …
-                  </Text>
+                  <Stack gap={2}>
+                    <Text size="sm" c="dimmed">
+                      …
+                    </Text>
+                    {note}
+                  </Stack>
                 );
               const reorderPoint = there.placement?.reorderPoint;
               return (
-                <Group gap={4} wrap="nowrap">
-                  <Text size="sm">
-                    {[
-                      quantity(there.available, line.variant.unit),
-                      ...(there.incoming > 0 ? [t("incomingQuantity", { quantity: quantity(there.incoming) })] : []),
-                      ...(reorderPoint !== null && reorderPoint !== undefined
-                        ? [t("reorderAt", { quantity: quantity(reorderPoint) })]
-                        : []),
-                    ].join(" · ")}
-                  </Text>
-                  {there.placement?.low && (
-                    <Badge size="xs" variant="light" color="red">
-                      {t("low")}
-                    </Badge>
-                  )}
-                </Group>
+                <Stack gap={2}>
+                  <Group gap={4} wrap="nowrap">
+                    <Text size="sm">
+                      {[
+                        quantity(there.available, line.variant.unit),
+                        ...(there.incoming > 0 ? [t("incomingQuantity", { quantity: quantity(there.incoming) })] : []),
+                        ...(reorderPoint !== null && reorderPoint !== undefined
+                          ? [t("reorderAt", { quantity: quantity(reorderPoint) })]
+                          : []),
+                      ].join(" · ")}
+                    </Text>
+                    {there.placement?.low && (
+                      <Badge size="xs" variant="light" color="red">
+                        {t("low")}
+                      </Badge>
+                    )}
+                  </Group>
+                  {note}
+                </Stack>
               );
             },
           },

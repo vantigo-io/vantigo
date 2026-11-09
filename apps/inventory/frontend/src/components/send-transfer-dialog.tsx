@@ -25,7 +25,8 @@ type Marks = ReadonlyMap<number, string>;
 
 /**
  * Sending a draft (I39): a source location at the from site for every line,
- * defaulted to the location holding most of it (I53); a warning, never a
+ * defaulted to its primary location there when that holds some, else to the
+ * location holding most of it (I53, I55); a warning, never a
  * refusal, when a variant takes more than is available because orders have
  * reserved it; and whether to print the følgeseddel once it is sent (I51).
  * With `withReceive` each line also gets its destination at the to site and
@@ -39,7 +40,7 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
   const lines = transfer.lines;
   const stock = useStockAtSites(
     lines.map((line) => line.variant.id),
-    [transfer.fromSite.id],
+    withReceive ? [transfer.fromSite.id, transfer.toSite.id] : [transfer.fromSite.id],
   );
   const [sources, setSources] = useState<Record<number, number | null>>({});
   const [destinations, setDestinations] = useState<Record<number, number | null>>({});
@@ -48,9 +49,20 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
   const [problem, setProblem] = useState<string>();
 
   const at = (variantId: number) => stock.data?.get(stockAtKey(variantId, transfer.fromSite.id));
-  // The location holding most is the default until the person picks another (I53; B puts the primary first).
+  // The variant's primary location at the from site is the default when it holds some, else the location holding
+  // most (I53, I55), until the person picks another.
+  const defaultSource = (variantId: number): number | null => {
+    const here = at(variantId);
+    const primary = here?.locations.find((one) => one.primary || one.location.id === here.placement?.primaryLocationId);
+    return (primary ?? here?.locations[0])?.location.id ?? null;
+  };
   const sourceOf = (lineId: number, variantId: number): number | null =>
-    sources[lineId] !== undefined ? sources[lineId] : (at(variantId)?.locations[0]?.location.id ?? null);
+    sources[lineId] !== undefined ? sources[lineId] : defaultSource(variantId);
+  // Send and receive puts each line on its primary location at the to site until a destination is chosen (I55).
+  const destinationOf = (lineId: number, variantId: number): number | null =>
+    destinations[lineId] !== undefined
+      ? destinations[lineId]
+      : (stock.data?.get(stockAtKey(variantId, transfer.toSite.id))?.placement?.primaryLocationId ?? null);
 
   // What the transfer takes of each variant, every line of it together.
   const wanted = new Map<number, number>();
@@ -93,7 +105,10 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
           ...(withReceive
             ? {
                 receive: {
-                  lines: lines.map((line) => ({ lineId: line.id, toLocationId: destinations[line.id] ?? 0 })),
+                  lines: lines.map((line) => ({
+                    lineId: line.id,
+                    toLocationId: destinationOf(line.id, line.variant.id) ?? 0,
+                  })),
                 },
               }
             : {}),
@@ -142,7 +157,7 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
     const gaps = new Map<number, string>();
     for (const line of lines) {
       if (sourceOf(line.id, line.variant.id) === null) gaps.set(line.id, t("refusal.from_location_required"));
-      else if (withReceive && !destinations[line.id]) gaps.set(line.id, t("pickDestination"));
+      else if (withReceive && !destinationOf(line.id, line.variant.id)) gaps.set(line.id, t("pickDestination"));
     }
     setMarks(gaps);
     if (gaps.size > 0) {
@@ -240,7 +255,7 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
                           required
                           siteId={transfer.toSite.id}
                           label={t("destinationOfLine", { n: line.lineNo })}
-                          value={destinations[line.id] ?? null}
+                          value={destinationOf(line.id, line.variant.id)}
                           onChange={(locationId) =>
                             setDestinations((current) => ({ ...current, [line.id]: locationId }))
                           }

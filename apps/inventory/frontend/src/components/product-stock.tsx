@@ -76,6 +76,8 @@ const SiteStock = ({
 }) => {
   const { t, quantity } = useInventoryFormat();
   const rows = [...stock.rows].sort((a, b) => a.location.fullCode.localeCompare(b.location.fullCode));
+  // The site's reorder point, when its placement has one (I54); red while it is low (I56).
+  const reorderPoint = stock.placement?.reorderPoint;
   return (
     <Accordion.Item value={String(stock.site.id)}>
       <Accordion.Control>
@@ -93,6 +95,11 @@ const SiteStock = ({
               </Text>
             )}
             <ReservedAvailable reserved={stock.reserved} available={stock.available} unit={unit} />
+            {reorderPoint !== null && reorderPoint !== undefined && (
+              <Text size="xs" c={stock.placement?.low ? "red" : "dimmed"}>
+                {t("reorderAt", { quantity: quantity(reorderPoint, unit) })}
+              </Text>
+            )}
           </Stack>
         </Group>
       </Accordion.Control>
