@@ -26,6 +26,7 @@ type fakeStock struct {
 	sites     []contracts.StockSite
 	onHand    map[stockSpot]*big.Rat // per (variant, location)
 	locations map[int64]stockLocation
+	primary   map[stockSpot]bool // the variants' primary locations (inventory phase 2 I55)
 	reserved  map[stockLineKey]*big.Rat
 	variants  map[stockLineKey]int32
 	issued    map[contracts.StockSource]int64
@@ -67,6 +68,7 @@ func newFakeStock() *fakeStock {
 			{ID: siteStore, Code: "SHOP", Name: "Shop", FulfilsOrders: false, Active: true},
 		},
 		onHand:    map[stockSpot]*big.Rat{},
+		primary:   map[stockSpot]bool{},
 		locations: map[int64]stockLocation{locA1: {siteOslo, "OSL-A-01"}, locA2: {siteOslo, "OSL-A-02"}, locB1: {siteBergen, "BGO-B-01"}},
 		reserved:  map[stockLineKey]*big.Rat{},
 		variants:  map[stockLineKey]int32{},
@@ -90,6 +92,13 @@ func ratText(r *big.Rat) string {
 		return "0"
 	}
 	return s
+}
+
+// setPrimary makes location the variant's primary location at its site.
+func (f *fakeStock) setPrimary(variant int32, location int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.primary[stockSpot{variant, location}] = true
 }
 
 // put sets what a location holds of a variant.
@@ -199,7 +208,8 @@ func (f *fakeStock) Locations(ctx context.Context, ids []int32, site int64) ([]c
 	for k, q := range f.onHand {
 		loc := f.locations[k.location]
 		if loc.site == site && slices.Contains(ids, k.variant) && q.Sign() > 0 {
-			out = append(out, contracts.StockLocation{VariantID: k.variant, LocationID: k.location, FullCode: loc.code, Quantity: ratText(q)})
+			out = append(out, contracts.StockLocation{VariantID: k.variant, LocationID: k.location, FullCode: loc.code, Quantity: ratText(q),
+				Primary: f.primary[k]})
 		}
 	}
 	slices.SortFunc(out, func(a, b contracts.StockLocation) int {

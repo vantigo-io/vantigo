@@ -221,8 +221,9 @@ func readDelivery(ctx context.Context, q *store.Queries, id int64) (deliveryRead
 
 // deliveryLocations are the site's locations holding the delivery's
 // variants, read through contracts.Stock outside any transaction: a draft's
-// picker and the pick list. None for a delivery no longer a draft, or when
-// stock is not kept.
+// picker and the pick list, each variant's primary location first
+// (stockLocations). None for a delivery no longer a draft, or when stock is
+// not kept.
 func (s *server) deliveryLocations(ctx context.Context, r deliveryRead, always bool) (map[int32][]contracts.StockLocation, error) {
 	if (r.d.Status != deliveryDraft && !always) || len(r.dlines) == 0 {
 		return nil, nil
@@ -326,7 +327,8 @@ func (s *server) deliveryOut(ctx context.Context, id int64) (gen.OrdersDelivery,
 // the site: what the line holds reserved, and what is available there beyond
 // every reservation, shared in line order between the lines of one variant —
 // never more than is open. Each proposed line is picked from the first
-// location, by full code, that holds all of it, else none. Lines nothing can
+// location that holds all of it — the variant's primary location at the
+// site first, then by full code (stockLocations) — else none. Lines nothing can
 // go of are left out; an order nothing can go of is refused
 // (nothing_to_deliver).
 func (s *server) CreateDelivery(ctx context.Context, req gen.CreateDeliveryRequestObject) (gen.CreateDeliveryResponseObject, error) {

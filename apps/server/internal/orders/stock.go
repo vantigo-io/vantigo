@@ -510,6 +510,20 @@ func (s *server) stockLocations(ctx context.Context, variantIDs []int32, siteID 
 	for _, r := range rows {
 		out[r.VariantID] = append(out[r.VariantID], r)
 	}
+	// The primary location first (inventory phase 2 I55): the draft's
+	// picker, its proposal and the pick list all start where the variant is
+	// meant to be taken from; the rest keep Stock's order, by full code.
+	for _, held := range out {
+		slices.SortStableFunc(held, func(a, b contracts.StockLocation) int {
+			switch {
+			case a.Primary == b.Primary:
+				return 0
+			case a.Primary:
+				return -1
+			}
+			return 1
+		})
+	}
 	return out, nil
 }
 
