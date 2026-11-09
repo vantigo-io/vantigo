@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/google/gen"
+	"github.com/vantigo-io/vantigo/server/internal/google/googletest"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -105,11 +106,25 @@ func TestSkus_GoogleUnavailableIs503(t *testing.T) {
 	}
 	h.g.Delegate(saClientID, everyScope...)
 	testConnection(t, o)
-	h.g.FailNext(http.StatusInternalServerError, http.StatusInternalServerError)
-	// A token is fetched first; the Licensing call then fails twice.
+	// The Licensing call fails, and so does its one retry. The failure is
+	// put on the Licensing path, not on the next requests: the token cache
+	// is the process's, and a parallel test whose clock is a day on forgets
+	// this test's token, so a token fetch may come between the two.
+	const licensing = "GET /apps/licensing/v1/product/Google-Apps/users"
+	h.g.FailOn(licensing, http.StatusInternalServerError)
+	before := len(h.g.Calls())
 	r = m.Do(http.MethodGet, "/api/v1/google/connection/skus", nil)
-	if r.Status != http.StatusServiceUnavailable {
+	if r.Status != http.StatusServiceUnavailable || codeOf(t, r) != "google_unreachable" {
 		t.Errorf("Google failing: %d %s", r.Status, r.Body)
+	}
+	var failed int
+	for _, c := range h.g.Calls()[before:] {
+		if c.Host == googletest.LicensingHost && c.Status == http.StatusInternalServerError {
+			failed++
+		}
+	}
+	if failed != 2 {
+		t.Errorf("the Licensing call was tried %d times, want twice", failed)
 	}
 }
 
