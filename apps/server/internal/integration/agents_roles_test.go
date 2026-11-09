@@ -553,8 +553,8 @@ func TestProjectDigest_TheScheduleWakesTheRoleAndTheNoticeGoesToTheChosenPerson(
 	}
 }
 
-// toolResults are the results the run on conv got back from its tools.
-func (r *runRig) toolResults(t *testing.T, conv uuid.UUID) []string {
+// toolResultTexts are the results the run on conv got back from its tools.
+func (r *runRig) toolResultTexts(t *testing.T, conv uuid.UUID) []string {
 	t.Helper()
 	rows, err := r.h.Pool().Query(context.Background(),
 		`SELECT m.text FROM agents.run_messages m JOIN agents.runs r ON r.id = m.run_id WHERE r.conversation_id = $1 AND m.role = 'tool' ORDER BY m.id`, conv)
@@ -611,7 +611,7 @@ func TestFollowUp_IsAboutTheRunsOwnConversationAndAtMostThirtyDaysAhead(t *testi
 	conv := r.mail(t, "Kari Nordmann <kari@example.test>", "", "Spørsmål", "Hei, kan dere ringe meg neste uke?", "")
 	r.await(t, conv)
 
-	results := r.toolResults(t, conv)
+	results := r.toolResultTexts(t, conv)
 	if len(results) != 4 || !strings.Contains(results[0], "out_of_range") || !strings.Contains(results[1], "out_of_range") ||
 		!strings.Contains(results[2], "scheduled") || !strings.Contains(results[3], "scheduled") {
 		t.Fatalf("tool results = %v, want two refused and two scheduled", results)
