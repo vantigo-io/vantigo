@@ -1,6 +1,6 @@
 ---
 title: Communications
-description: Shared mailboxes, conversations with customers, receiving and sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, mail received into a Microsoft 365 channel, reply and reply all, sending from your own Outlook or Gmail address, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends — and chat conversations on a Facebook Messenger channel, with answer options and the window in which a reply can be sent.
+description: Shared mailboxes, conversations with customers, receiving and sending email and suppressions — channels on SMTP or on a Microsoft 365 shared mailbox, mail received into a Microsoft 365 channel, reply and reply all, sending from your own Outlook or Gmail address, switching a channel to Microsoft 365, and the size a Microsoft 365 channel sends — and chat conversations on a Facebook Messenger channel, with answer options and the window in which a reply can be sent — and internal notes that mention a colleague or a virtual employee.
 sidebar:
   order: 80
 sources:
@@ -463,6 +463,24 @@ click the agent stays away until a person replies in the conversation or assigns
 conversation for your colleagues and is never sent to the customer. Write it and click
 **Add note**; the button **Reply** switches back. Notes need
 `communications:conversations-manage`.
+
+### Mention a colleague
+
+Above the note's text, **Mention a colleague with @** is a list of the active users, people and
+[virtual employees](/en/user/agents/) (the latter with the **AI** badge). Search by name and pick one: their
+**@Name** is put in the note, and picking is what makes it a mention, so a name typed by hand is only text.
+Up to ten colleagues can be mentioned in one note. If you delete a name from the note before you add it, that
+colleague is not mentioned.
+
+- **A person you mention** gets a mail that says you mentioned them in a note and links to the conversation. It
+  holds nothing of the note or the conversation, so it is safe to read where the conversation is not. They see
+  the note only if they may read the conversation.
+- **A virtual employee you mention** is woken for this conversation, at once, and reads your note as a colleague's
+  request: it answers you with an internal note, and writes to the customer only if you ask it to, as always through
+  the reply mode of its role and its review queue. It does this as the role it has on this conversation's
+  channel: a virtual employee that has no role there does nothing, and one that is paused, or whose conversation
+  was handed off, is left alone. It acts even if the conversation is assigned to you, but it never takes it from you.
+- **A note an agent writes** mentions no one.
 
 ## After you send
 
