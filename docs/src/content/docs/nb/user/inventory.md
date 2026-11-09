@@ -1,6 +1,6 @@
 ---
 title: Lager
-description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, varetelling, import av inngående beholdning, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
+description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, varetelling, import av inngående beholdning, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
 sidebar:
   order: 65
 sources:
@@ -17,7 +17,9 @@ et **varemottak** av leverte varer, en **justering** med en årsak, eller en **f
 fra én lokasjon til en annen — og en bevegelse endres aldri etter at den er bokført: en
 feil rettes med en ny justering. En **varetelling** sjekker hva som faktisk ligger i
 hyllene, og bokfører avvikene, og en **overføring** sender varer fra ett lagersted til et
-annet, der de er **under transport** til de er mottatt. Varene kommer fra [Produkter](/nb/user/products/): bare
+annet, der de er **under transport** til de er mottatt. En **påfylling** sier, per vare og
+lagersted, hvor varen hører hjemme — **hovedlokasjonen** — og når den blir lav —
+**bestillingspunktet** — og **Lav beholdning** lister det som har blitt det. Varene kommer fra [Produkter](/nb/user/products/): bare
 **varer** holdes på lager, aldri tjenester. Reglene bak hvert skjermbilde — kodene,
 avvisningene og rettigheten hver forespørsel sjekkes mot — står i
 [referansen for Lager-modulen](/en/reference/inventory/); denne siden handler om hva du
@@ -36,7 +38,8 @@ Sidemenyen viser:
 | **Bevegelser** | `inventory:locations-view` og `inventory:stock-view` |
 | **Varemottak** — listen over bevegelser med bare varemottak | `inventory:locations-view` og `inventory:stock-view` |
 | **Varetellinger** — varetellingene | `inventory:counts-manage`, med begge visningsrettighetene |
-| **Importer inngående beholdning** — et lagersteds første beholdning fra et regneark | `inventory:stock-adjust`, med begge visningsrettighetene |
+| **Lav beholdning** — varene på eller under bestillingspunktet | `inventory:locations-view` og `inventory:stock-view` |
+| **Importer inngående beholdning** — et lagersteds første beholdning, eller påfyllingen, fra et regneark | `inventory:stock-adjust`, med begge visningsrettighetene |
 
 Det rettighetene dine ikke tillater, vises ikke i det hele tatt: en knapp du ikke ser, er
 en rettighet du ikke har. Knappene som bokfører — varemottak, justeringer og flyttinger —
@@ -202,8 +205,10 @@ på en vare (det krever **Motta varer**, `inventory:receipts-manage`). Velg
 **Lagersted** og **Motta til**, lokasjonen varene skal til; eventuelt **Leverandør**,
 **Leverandørens referanse** — for eksempel følgeseddelens nummer — og et **Notat**.
 Legg så til linjene med [linjeredigeringen](#linjeredigeringen): hver linjes
-**Lokasjon** er *Som varemottaket* med mindre du velger en annen. Trykk **Bokfør
-varemottak**.
+**Lokasjon** er *Som varemottaket* med mindre du velger en annen — eller, for en vare
+med en [hovedlokasjon](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare) på
+lagerstedet, den lokasjonen: linjen til en skannet eller valgt vare går dit til du velger
+en annen. Trykk **Bokfør varemottak**.
 
 En tjeneste kan ikke mottas, og heller ikke en vare der produktet er utgått.
 
@@ -326,7 +331,13 @@ skriver:
   disponibelt på fra-lagerstedet. Å sende mer enn en lokasjon har, avvises.* Utkastet
   kan likevel lagres.
 - **På BGN: disponibelt · innkommende** — det som er disponibelt på til-lagerstedet og,
-  etter *+… innkommende*, det som allerede er på vei dit i andre overføringer.
+  etter *+… innkommende*, det som allerede er på vei dit i andre overføringer; deretter,
+  når varen har et [bestillingspunkt](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare)
+  der, *bestill ved ≤ …*, merket **Lav** mens den er lav.
+
+En linje [laget fra listen over lav beholdning](#opprett-en-overføring-fra-listen) sier
+også hvordan antallet ble funnet — *21 trengs, rundet opp til 2 kartonger à 15 = 30* —
+til du endrer linjen.
 
 Kan ikke beholdningen leses, sier skjemaet det, og utkastet kan likevel lagres.
 
@@ -341,7 +352,8 @@ På siden for overføringen, eller rett fra skjemaet, trykker du **Send …** (s
 lagrer først det du har endret). Dialogen **Send overføring 1042 til BGN** ber deg velge
 lokasjonen på fra-lagerstedet hver linje plukkes fra: i kolonnen **Fra en lokasjon på
 OSL** tilbyr hver linje lokasjonene på fra-lagerstedet der varen ligger, med hva som
-ligger der, og starter på den som har mest. En vare som ikke ligger noe sted på
+ligger der, og starter på varens hovedlokasjon der, merket *(hovedlokasjon)*, når den har
+noe av varen — ellers på den som har mest. En vare som ikke ligger noe sted på
 lagerstedet, sier *Ingenting av den ligger på lagerstedet*.
 
 Dialogen varsler deg før du sender:
@@ -378,7 +390,8 @@ mottakssiden — åpner overføringen.
 Når de to lagerstedene ligger vegg i vegg — en butikk og bakrommet i en annen bygning,
 for eksempel — og varene kommer fram idet du sender dem, trykker du **Send og motta …** i
 stedet. Dialogen **Send og motta overføring 1042 på BGN** har, i tillegg til hver linjes
-fra-lokasjon, en kolonne **Til en lokasjon på BGN** der hver linje settes på plass;
+fra-lokasjon, en kolonne **Til en lokasjon på BGN** der hver linje settes på plass, med
+varens hovedlokasjon der som utgangspunkt når den har en;
 **Motta alle linjene på en lokasjon på BGN** setter samme lokasjon på hver linje. Hver
 linje må ha en (*Velg hvor hver linje skal mottas.*). Trykk **Send og motta 3 linjer**:
 *Overføring sendt og mottatt*. Varene forlater fra-lagerstedet og kommer til
@@ -407,7 +420,8 @@ lister hver linje som fortsatt er under transport: **Vare**, **Sendt**, **Mottat
 - **Godta alt** fyller hver linje med alt som fortsatt er under transport — for en
   leveranse du har sjekket er komplett.
 
-Hver linje settes på plass på til-lagerstedets egen lokasjon med mindre du velger en
+Hver linje settes på plass på varens hovedlokasjon på til-lagerstedet — eller, uten en,
+på til-lagerstedets egen lokasjon — med mindre du velger en
 annen i **Til en lokasjon på BGN**. En linje kan ikke ta mer enn det som fortsatt er
 under transport på den (*Mer enn det som fortsatt er under transport på linjen.*). Under
 linjene forteller *2 linjer vil fortsatt være under transport.* hva du ikke har talt
@@ -512,6 +526,103 @@ med de to lagerstedene du filtrerte på, allerede valgt.
 Siden for et lagersted viser, med **Se beholdning**, **Innkommende** og **Utgående**:
 antallet overføringer på vei til og fra lagerstedet — *2 åpne overføringer* — som hver
 åpner listen filtrert på lagerstedet.
+
+## Angi hovedlokasjon og bestillingspunkt for en vare
+
+En **påfylling** er tre innstillinger for én vare på ett lagersted, hver av dem valgfri:
+
+- **Hovedlokasjon** — *Der varen mottas og plukkes som standard. Varer kan fortsatt ligge
+  hvor som helst.* Den er et forslag, aldri en regel: en varemottakslinje, sendingen og
+  mottaket av en overføring og en ordres leveranse starter på den, og du kan alltid velge
+  en annen.
+- **Bestillingspunkt** — *Lav når tilgjengelig + innkommende er på eller under det.* Null
+  eller mer, i varens enhet.
+- **Maksbeholdning** — *Forslaget fyller opp til den.* Mer enn 0, og aldri lavere enn
+  bestillingspunktet.
+
+Åpne varens beholdningsside (fra oppslaget eller **Beholdning**-kortet på produktsiden).
+Under hvert lagersted viser den lagerstedets **Bestillingspunkt** og **Maksbeholdning** når
+de er satt, og **Lav** mens varen er lav der. Trykk **Endre påfylling** under lagerstedet
+(det krever **Justere beholdning** og begge visningsrettighetene); et lagersted som ikke
+har noe av varen, er også med, så du kan angi påfyllingen før det første varemottaket.
+Dialogen **Påfylling på Sentrallageret** har de tre feltene; trykk **Lagre** — *Påfylling
+lagret*. **Fjern** sletter påfyllingen — *Påfylling fjernet* — og varen har ikke lenger
+noen hovedlokasjon, noe bestillingspunkt eller noen maksbeholdning på lagerstedet.
+
+Dialogen avviser det den ikke kan ta vare på:
+
+- en maksbeholdning på 0 — *Maksbeholdningen må være mer enn 0.*;
+- en maksbeholdning lavere enn bestillingspunktet — *Maksbeholdningen kan ikke være lavere
+  enn bestillingspunktet.*;
+- ingenting satt — *Velg en hovedlokasjon, et bestillingspunkt eller en maksbeholdning —
+  eller fjern påfyllingen.*;
+- en hovedlokasjon som er arkivert i mellomtiden — *Hovedlokasjonen må være en aktiv
+  lokasjon på dette lagerstedet.*
+
+Har noen andre endret påfyllingen siden du åpnet den, lastes siden på nytt og sier
+*Endret av noen andre*: gjør endringen din på nytt.
+
+Å arkivere eller slette en lokasjon fjerner den som hovedlokasjon for alle varer; en
+påfylling som ikke hadde noe annet satt, fjernes. Å arkivere et lagersted gjør det samme
+for alle lokasjonene og beholder bestillingspunktene og maksbeholdningene, men et arkivert
+lagersted kommer aldri på listen over lav beholdning.
+
+## Listen over lav beholdning
+
+**Lav beholdning** i sidemenyen — *Varer på eller under bestillingspunktet på hvert
+lagersted, og hva som fyller dem opp.* — lister hver vare som har blitt lav på et aktivt
+lagersted. En vare er **lav** på et lagersted når det som er **disponibelt** der —
+beholdningen over alle lagerstedets lokasjoner, minus det ordrer har
+[reservert](#reservert-og-disponibelt) — pluss det som er **innkommende** på overføringer
+til lagerstedet, er på eller under bestillingspunktet. Varer som allerede er på vei,
+teller med: så snart en overføring som bringer nok er sendt, forsvinner varen fra listen.
+
+Hver rad viser **Vare**, **Lagersted** (når listen ikke er filtrert på ett),
+**Disponibelt** (rødt når det er negativt), **Innkommende**, **Bestillingspunkt**,
+**Maksbeholdning**, **Foreslått** antall og **Andre steder** — det hvert annet
+aktivt lagersted der varen ligger eller er reservert har disponibelt, *Bergen butikk 12 ·
+Trondheim butikk 0*. Et utkast til overføring til lagerstedet som allerede har varen,
+vises under den som *Utkast 1043 åpent*. Filtrer på **Lagersted** (eller **Alle
+lagersteder**) og søk etter et varenummer eller navn (trykk Enter); radene står etter
+lagerstedskode og så varenummer, og **Last flere** henter neste side. Er ingenting lavt,
+står det *Ingenting er på eller under bestillingspunktet.*
+
+**Forslaget.** Listen foreslår det som fyller varen opp: til **maksbeholdningen**, eller,
+uten en, til **én over bestillingspunktet**, slik at et mottak av forslaget tar raden ut
+av listen — å fylle bare *til* bestillingspunktet ville latt den være lav. Det er alltid
+minst 1. Når varen har [pakninger](/nb/user/products/#pakninger), rundes forslaget **opp**
+til et helt antall av den **minste** pakningen, og raden sier det under antallet:
+
+- *21 trengs* — ingenting å runde av;
+- *21 trengs, rundet opp til 2 kartonger à 15 = 30* — pakningen nevnt ved typen
+  (innerpakning, kartong, pall);
+- *25 trengs, rundet opp til 2 kartonger à 15 = 30, 5 over maksbeholdningen på 40* — når
+  avrundingen går forbi maksbeholdningen, med hvor mye.
+
+### Opprett en overføring fra listen
+
+Med **Overføre varer** har hver rad en avkrysningsboks. Kryss av radene for **ett**
+lagersted — radene for andre lagersteder kan ikke krysses av når én er det — og linjen
+under sier *3 valgt*. I **Opprett overføring til Bergen butikk fra** velger du lagerstedet
+det skal sendes fra; det starter på lagerstedet som har mest disponibelt av de valgte
+varene. Trykk **Opprett overføring**: et utkast lages med det foreslåtte antallet av hver
+vare — *Utkast lagret* — og åpnes, og hver linje sier hvordan antallet ble funnet til du
+endrer den. Ingenting begrenses: utkastet viser fra-lagerstedets beholdning ved siden av
+hver linje, og [sendingen](#send-en-overføring) avviser det en lokasjon ikke har.
+
+Er et utkast til lagerstedet allerede åpent for en av de valgte varene, spør **Opprett
+overføring** først — *Et utkast er allerede åpent*: *Et utkast til overføring til Bergen
+butikk er allerede åpent for noen av disse varene. Opprette et til?* — og **Opprett et
+nytt utkast** lager et til.
+
+### Eksporter listen
+
+**Eksporter CSV** laster ned listen slik den er filtrert — lagerstedet og søket — med
+alle radene, som `low-stock-2026-11-09.csv`, med kolonnene `site` (koden), `sku`, `name`,
+`barcode`, `available`, `incoming`, `reorder_point`, `maximum`, `needed`, `suggested`,
+`packaging` (pakningens navn) og `packaging_count`. Kolonnene er skilt med semikolon og
+antallene har desimalkomma, så Excel åpner den som den er. Det er ingen
+leverandørkolonne: en leverandør er fritekst på et varemottak.
 
 ## Tell varer
 
@@ -623,6 +734,37 @@ Laster du opp **den samme filen igjen til samme lagersted**, bokføres ingenting
 svaret er bevegelsen som alt er bokført — så en import kan ikke dobles ved et uhell. En
 endret fil er en ny bokføring.
 
+## Importer påfylling
+
+For å angi mange [påfyllinger](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare) på en
+gang, på tvers av alle lagersteder, åpner du **Importer inngående beholdning** i
+sidemenyen (det krever **Justere beholdning** og begge visningsrettighetene) og velger
+**Påfylling** under **Hva som skal importeres**.
+
+1. Trykk **Last ned mal** for `placements.csv`, med overskriften
+   `sku,site,primary_location,reorder_point,maximum` — nøyaktig de fem kolonnene, i
+   hvilken som helst rekkefølge. Fyll inn én rad per vare og lagersted: varens
+   **varenummer**, lagerstedets **kode** (`OSL`), hovedlokasjonens **fulle kode**
+   (`OSL-A-03-2`), **bestillingspunktet** og **maksbeholdningen**, i varens enhet.
+   Skilletegn, desimalkomma og grensen på 5000 rader er som for
+   [inngående beholdning](#importer-inngående-beholdning).
+2. **Hver rad setter alle tre feltene.** En tom celle tømmer feltet, og en rad der alle
+   tre er tomme, **fjerner** påfyllingen. Nevner en fil samme vare og lagersted to ganger,
+   gjelder den siste raden.
+3. Velg **CSV-fil** og trykk **Prøvekjøring**. Ingenting skrives: hver rad viser
+   **Varenummer**, **Lagersted**, **Hovedlokasjon**, **Bestillingspunkt**,
+   **Maksbeholdning** og **Resultat** — **OK**, **Lagerstedet finnes ikke**,
+   **Lagerstedet er arkivert**, **Ikke en aktiv lokasjon på lagerstedet**,
+   **Varenummeret finnes ikke**, **En tjeneste, holdes ikke på lager**, **Ikke et gyldig
+   antall** eller **Maksbeholdningen er lavere enn bestillingspunktet**.
+4. Når alle radene er OK (*Alle 120 rader er klare til import.*), trykker du
+   **Importer**: **Påfylling importert** — *118 satt, 2 fjernet.* Feiler en rad (*3 rader
+   kan ikke importeres. Rett filen og prøv igjen.*), skrives ingenting.
+
+Laster du opp **den samme filen igjen**, skrives ingenting nytt, så en import kan ikke
+dobles ved et uhell. Blir et lagersted eller en lokasjon i filen arkivert mellom
+prøvekjøringen og importen, avvises importen og skriver ingenting: prøvekjør på nytt.
+
 ## Se hva som ligger på en lokasjon
 
 Siden for en lokasjon viser stien øverst, den fulle koden med typen, og faktaene:
@@ -641,7 +783,12 @@ lokasjonene der varen ligger, det ordrene har [reservert](#reservert-og-disponib
 og det som er disponibelt, og varens bevegelser, nyeste først. Under et lagersted som
 en [overføring](#overfør-varer-mellom-lagersteder) er på vei til med mer, sier
 *+… innkommende* hvor mye som er på vei dit; et lagersted med varer på vei og ingenting
-på lager ennå har også en rad. **Motta** og **Juster** tilbys etter rettighetene dine. En
+på lager ennå har også en rad. Varens
+[hovedlokasjon](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare) på et lagersted står
+først blant lokasjonene, merket *hovedlokasjon*, og hvert lagersted viser
+**Bestillingspunkt** og **Maksbeholdning**, **Lav** mens varen er lav der og, med
+**Justere beholdning**, **Endre påfylling**. **Motta** og **Juster** tilbys etter
+rettighetene dine. En
 vare som er slettet fra katalogen, viser fortsatt historikken sin, merket *Slettet fra
 katalogen*.
 
@@ -679,7 +826,9 @@ et produkt med flere varianter, det samme for hvert varenummer, med **Beholdning
 bevegelser for …** til beholdningssiden. Varer på vei mellom lagersteder i en overføring
 vises som *Under transport …* ved siden av totalen, og *+… innkommende* under
 lagerstedet de skal til; de er ikke med i samlet beholdning, som er det som ligger i
-hyllene. Er ingenting på lager og ingenting på vei, står det **Ingen beholdning**, og
+hyllene. Under et lagersted der varen har et
+[bestillingspunkt](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare), sier *bestill
+ved ≤ 10 stk* hva det er, i rødt mens varen er lav der. Er ingenting på lager og ingenting på vei, står det **Ingen beholdning**, og
 **Motta** eller **Juster** tilbys etter det du har lov til. En tjeneste
 har ikke noe Beholdning-kort. Se [produktsiden](/nb/user/products/#produktsiden).
 
@@ -729,6 +878,11 @@ der forventet ankomst er passert, eller som ble sendt for mer enn 7 dager siden 
 trykk på den for å åpne overføringen, og [motta den](#motta-en-overføring),
 [avslutt med avvik](#avslutt-med-avvik) eller [avbryt den](#avbryt-en-overføring).
 
+Med begge visningsrettighetene viser **Trenger oppfølging**, for hvert aktivt lagersted
+med noe lavt, *4 varer på eller under bestillingspunktet på et lagersted*; trykk på den
+for å åpne [listen over lav beholdning](#listen-over-lav-beholdning) filtrert på det
+lagerstedet.
+
 ## Hvem ser hva
 
 | Hva | Se lagersteder | Se beholdning | Administrere lagersteder | Justere beholdning | Motta varer | Telle varer | Overføre varer |
@@ -737,16 +891,18 @@ trykk på den for å åpne overføringen, og [motta den](#motta-en-overføring),
 | Lagerstedene, lokasjonene deres og siden for en lokasjon; lokasjoner i oppslaget og **Finn lokasjon eller vare**; **Skriv ut etiketter** | ✓ | – | – | – | – | – | – |
 | Antall: **Innhold**, beholdningssiden for en vare, **Bevegelser** og **Varemottak**, **Beholdning**-kortet på produktsiden, kolonnen **Beholdning** i produktlisten, tallene på dashbordet, varer i oppslaget | ✓ | ✓ | – | – | – | – | – |
 | **Nytt lagersted**, **Ny lokasjon**, **Legg til mange**, **Rediger**, **Arkiver**, **Gjenåpne**, **Slett** | ✓ | – | ✓ | – | – | – | – |
-| **Ny justering**, **Juster**, **Ny flytting**, **Flytt herfra** — i Oversikt, på en lokasjon, en vare, bevegelsene og produktets Beholdning-kort; **Importer inngående beholdning** | ✓ | ✓ | – | ✓ | – | – | – |
+| **Lav beholdning**, **Eksporter CSV**; punktet om lav beholdning på dashbordet | ✓ | ✓ | – | – | – | – | – |
+| **Ny justering**, **Juster**, **Ny flytting**, **Flytt herfra** — i Oversikt, på en lokasjon, en vare, bevegelsene og produktets Beholdning-kort; **Endre påfylling**; **Importer inngående beholdning**, begge slagene | ✓ | ✓ | – | ✓ | – | – | – |
 | **Nytt varemottak**, **Motta her**, **Motta** — der de enn vises | ✓ | ✓ | – | – | ✓ | – | – |
 | **Varetellinger**, **Åpne varetelling**, **Tell**, **Start varetelling**, telling, bokføring og avbrytelse; **En varetelling har vært åpen lenge** på dashbordet | ✓ | ✓ | – | – | – | ✓ | – |
 | **Overføringer**, siden for en overføring og historikken, **Skriv ut følgeseddel**, overføringer i oppslaget, **Innkommende** og **Utgående** på et lagersted, **Avvik på overføringer** på en vare | ✓ | ✓ | – | – | – | – | – |
-| **Ny overføring**, **Rediger**, **Lagre utkast**, **Send …**, **Send og motta …**, **Slett utkast**, **Motta …**, å avslutte med avvik, **Avbryt overføring**; **En overføring har passert forventet ankomst** på dashbordet | ✓ | ✓ | – | – | – | – | ✓ |
+| **Ny overføring**, **Rediger**, **Lagre utkast**, **Send …**, **Send og motta …**, **Slett utkast**, **Motta …**, å avslutte med avvik, **Avbryt overføring**; **En overføring har passert forventet ankomst** på dashbordet; **Opprett overføring** på listen over lav beholdning | ✓ | ✓ | – | – | – | – | ✓ |
 
 Hver av de andre radene krever hver rettighet den krysser av: knappene som bokfører og
 teller, vises bare for den som har begge visningsrettighetene **og** skriverettigheten.
 Å skrive ut etiketter krever bare **Se lagersteder**: en etikett viser ikke noe siden for
 lokasjonen ikke viser. Å motta en overføring krever **Overføre varer**, ikke **Motta
 varer**: den flytter dine egne varer mellom dine lagersteder og er ikke et mottak fra en
-leverandør. Ingen av de sju rettighetene er sensitive. Hele tabellen står
+leverandør. Å angi en påfylling krever **Justere beholdning**: den er en innstilling for
+beholdningen, aldri beholdning i seg selv. Ingen av de sju rettighetene er sensitive. Hele tabellen står
 under [rettighetene](/en/reference/inventory/#permissions) i referansen.

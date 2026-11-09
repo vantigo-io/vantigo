@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items; the seven permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the seven permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00110_inventory_counts.sql
   - apps/server/internal/db/migrations/00125_inventory_reservations.sql
   - apps/server/internal/db/migrations/00152_inventory_transfers.sql
+  - apps/server/internal/db/migrations/00155_inventory_placements.sql
   - apps/server/internal/contracts/stock.go
   - apps/host/frontend/src/routes/inventory
 ---
@@ -39,15 +40,16 @@ the read of on hand and available, and **`contracts.StockLedger`**, the write of
 [reservations and issues](#reservations-and-issues) on Orders' own transaction.
 
 This page describes phase 1, deliveries A and B, the reservations Orders' delivery C
-added, and phase 2's delivery A, [transfers between sites](#transfers), designed in
+added, and phase 2 — delivery A, [transfers between sites](#transfers), and delivery B,
+[placement and the low-stock list](#placement) — designed in
 [`2026-11-08-inventory-phase2-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-08-inventory-phase2-design.md)
-(decisions I35–I53 and I62–I65): the [contracts](#contracts-consumed),
+(decisions I35–I65): the [contracts](#contracts-consumed),
 [the schema](#the-schema), the [permissions](#permissions),
 [sites and locations](#sites-and-locations), [the ledger](#the-ledger),
 [entering in packagings](#entering-in-packagings), [counts](#counts),
 [labels](#labels), [the opening-balance import](#the-opening-balance-import),
 [reservations and issues](#reservations-and-issues), [transfers](#transfers),
-[the locks](#locks),
+[placement](#placement), [the locks](#locks),
 [the reads](#reads), the [personal data](#personal-data) it keeps,
 [how a refusal looks](#refusals), [the switch](#enabling-and-disabling),
 [what comes next](#what-comes-next) and the [endpoints](#endpoints).
@@ -149,8 +151,10 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     whether it fulfils orders and whether it is active: what Orders offers as an order's
     site and checks one against;
   - `Locations(ctx, variantIDs, siteID)` — per variant, every active location of the site
-    holding more than 0 of it, by full code, with its id, full code and on hand: where
-    Orders' pick list and delivery editor take a line from.
+    holding more than 0 of it, by full code, with its id, full code and on hand, and
+    **`Primary`** — whether it is the variant's [primary location](#placement) at the
+    site (phase 2 I55): where Orders' pick list and delivery editor take a line from,
+    the primary first.
 
   `OnHand` and `Available` read on the pool in one snapshot, answer every variant asked
   in the order asked (one with nothing at `"0"` and no sites), as exact decimal text,
@@ -288,6 +292,25 @@ tables carry CHECK constraints that state facts the code also keeps:
   destination for `received`, none for `missing`. The key is
   `(action_id, transfer_line_id, kind)`.
 
+`00155_inventory_placements.sql` (phase 2, delivery B) adds one table for
+[placements](#placement), kept apart from the balances: a placement is a setting, never
+stock.
+
+- **`placements`** — keyed by **`(variant_id, site_id)`**: `site_id` (references `sites`,
+  on delete cascade — a site is deleted only when it never held stock),
+  `primary_location_id` (references `locations`, **on delete set null**, the backstop
+  behind [clearPrimaries](#the-primary-location)), `reorder_point` and `maximum`
+  (`numeric(14,3)`, each nullable), the snapshots **`sku`** and **`product_name`**
+  (written with the placement and refreshed by the list, for its order and search),
+  `revision`, the last writer (`updated_by_user_id`, `updated_by_display`) and
+  `updated_at`. Four CHECKs: `reorder_point >= 0`, `maximum > 0`,
+  `maximum >= reorder_point` when both are set, and **`num_nonnulls(primary_location_id,
+  reorder_point, maximum) > 0`** — a placement with nothing set is never stored. Two
+  indexes: **`ix_placements_site_sku`** on `(site_id, sku, variant_id) WHERE
+  reorder_point IS NOT NULL`, which serves the low-stock statement's per-site filter and
+  the dashboard's count, and `ix_placements_primary_location` on `primary_location_id`,
+  which serves clearing the primaries of an archived or deleted location.
+
 ## Permissions
 
 | Key | Display | Grants |
@@ -315,16 +338,18 @@ stock role is `locations-view` + `stock-view` (+ `stock-adjust`, `receipts-manag
 `locations-view` alone gives the structure without quantities. The tile and the app's
 home are offered with either view; Movements, Receipts, Counts, Transfers and Import
 opening balances in the sidebar, the product page's Stock card, the product list's
-*On hand* column and the dashboard's figures with both. **Seeing a transfer and printing
+*On hand* column and the dashboard's figures with both — and **Low stock**, a read, with
+both views alone; its *Create transfer* is hidden without `transfers-manage`, and
+*Edit placement* and the placements import without `stock-adjust`. **Seeing a transfer and printing
 its følgeseddel need both views alone**; *New transfer*, *Send*, *Receive* and *Cancel*
 are hidden without `transfers-manage`.
 
 | Reads and writes | `locations-view` | + `stock-view` | + `locations-manage` | + `stock-adjust` | + `receipts-manage` | + `counts-manage` | + `transfers-manage` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Sites, their location trees, a location, the lookup's location matches, [labels](#labels) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Contents, a product's and a variant's stock, the stock totals, the stock at sites, the movements, the variant search, the stats, the lookup's item and transfer matches; the transfers, one transfer and its følgeseddel | – | ✓ | – | ✓ | ✓ | ✓ | ✓ |
+| Contents, a product's and a variant's stock, the stock totals, the stock at sites, the movements, the variant search, the stats, the lookup's item and transfer matches; the transfers, one transfer and its følgeseddel; the low-stock list, its CSV and the `lowStock` item | – | ✓ | – | ✓ | ✓ | ✓ | ✓ |
 | Create, change, archive, reactivate and delete sites and locations; bulk | – | – | ✓ | – | – | – | – |
-| Adjustments and moves; the opening-balance import | – | – | – | ✓ | – | – | – |
+| Adjustments and moves; the opening-balance import; placements — set, remove, import | – | – | – | ✓ | – | – | – |
 | Goods receipts | – | – | – | – | ✓ | – | – |
 | Counts: list, open, count, post, cancel; the `countOpenLong` item | – | – | – | – | – | ✓ | – |
 | Transfers: create, change and delete a draft, send, receive, close, cancel; the `transferOverdue` item | – | – | – | – | – | – | ✓ |
@@ -1045,6 +1070,209 @@ the transfer (`kind: transfer`) for a caller holding both views, so scanning the
 følgeseddel opens it; the receive page's scan field takes it too, and the
 [transfer list's](#the-transfer-list) search takes a number with or without it.
 
+## Placement
+
+A **placement** is one row per variant and site (phase 2 delivery B, I54–I61;
+`placements.go`, `low_rule.go`, `low_stock.go`, `import_placements.go`): where at the site
+the variant belongs and when it has run low there. It is a setting, kept apart from the
+balances, and changes no stock.
+
+### The placement
+
+Its three fields are each optional (I54):
+
+- **`primaryLocationId`** — an **active location of the site**, or null; anything else
+  is `placement_location_invalid` (400);
+- **`reorderPoint`** — a quantity (I11) of 0 or more, or null;
+- **`maximum`** — a quantity of more than 0, or null, and **never below the reorder
+  point**: `maximum_below_reorder_point` (400).
+
+A placement with all three null is **deleted, never stored**: a `PUT` of three nulls is
+`placement_empty` (400) — `DELETE` removes it — and the table's CHECK holds it. The write
+snapshots the variant's **SKU and name** for the [low-stock list](#the-low-stock-list)'s
+order and search; the list shows the catalog's current values.
+
+**`PUT /variants/{variantId}/placements/{siteId}`** (`stock-adjust` with both views)
+writes it, its body `{primaryLocationId, reorderPoint, maximum}`, an unknown property
+refused (I61):
+
+- with **`If-None-Match: *`** it **creates** the placement and answers **201**; one
+  already there — or created concurrently, the insert waiting on the key — is
+  `revision_conflict` (409);
+- with **`If-Match`** it **changes** it, moving the revision on, and answers **200**; a
+  revision that has moved on is `revision_conflict`, a placement that is not there 404;
+- **neither header, both, or one that does not parse** is the 400 a bad `If-Match`
+  answers everywhere.
+
+The variant is read from the catalog **before** the transaction: one the catalog does not
+know is `variant_not_found` and a Service's `variant_not_stockable`, both 400 on
+`variantId`. Inside it the site is taken `FOR SHARE` — none is the 404, an archived one
+`site_archived` (400) — and the primary location `FOR SHARE`, which must be an active
+location of that site. The answer is the placement with **`low`** judged on what lies at
+the site after the write. **`DELETE`** (`If-Match`, `stock-adjust` with both views)
+removes it and answers 204; 404 when there is none.
+
+### The primary location
+
+The primary location is **a suggestion, never a rule** (I55): nothing refuses taking
+stock elsewhere. It is the default
+
+- **to** location of a receipt line at the site — `GET /variants?siteId=` answers each
+  variant's `primaryLocationId` there, which the line editor reads;
+- **from** location of a transfer line sent from the site, when it holds some of the
+  variant — else the location holding most;
+- **to** location of a transfer line received at the site, and of a send and receive's
+  line — else the site's root;
+- **first row** of the variant's stock at the site, marked `primary`;
+- **first location of Orders' pick list** and of a delivery's proposal: each
+  `contracts.StockLocation` that [`Stock.Locations`](#contracts-provided) answers
+  carries `Primary`, and Orders sorts it first
+  ([the pick list](/en/reference/orders/#the-pick-list-and-the-packing-slip)).
+
+**Archiving or deleting a location clears it** (`clearPrimaries`), inside the write's
+transaction and before a delete's rows go, for the location and every location below it:
+a placement whose only field was that primary location is **removed**, every other one
+**loses** its primary location, and each is a `placement_cleared` event naming why
+(`location_archived`, `location_deleted` or `site_archived`). Archiving a site clears
+the primaries of all its locations and **keeps** the reorder points and maximums; the
+list reads active sites only. The foreign key's `ON DELETE SET NULL` is only the
+backstop: alone it would leave a primary-only placement empty and fail the table's
+CHECK.
+
+### The rule
+
+Per variant and **active** site (I56; `judgeLow`, one pure function the list, its CSV,
+the dashboard's count and a site's stock row all judge by — the statement filters on the
+same inequality):
+
+```
+available = onHand − reserved                 onHand over the site's locations,
+                                              reserved at the site
+incoming  = Σ inTransit of the transfer lines to the site
+projected = available + incoming
+low       = reorderPoint is set and projected ≤ reorderPoint
+target    = maximum, or reorderPoint + 1 when there is no maximum
+needed    = target − projected, at least 1 when low
+```
+
+Without a maximum the target is **one above** the reorder point, so filling it takes the
+row off the list; filling *to* the reorder point would leave it low. A placement with no
+reorder point is never low.
+
+### Rounding to whole packagings
+
+When the variant has [packagings](/en/reference/products/#packagings) (I57), the
+**suggested** quantity is `needed` rounded **up** to a whole number of its **smallest**
+packaging — the fewest units, then `sort_order`, then id, among those holding more than
+0 — that is, `⌈needed ÷ size⌉ × size`; without one it is `needed`. The row carries
+`needed`, `suggested` and the packaging with its count, and the screen says so wherever a
+suggestion appears, the packaging named by its **kind**'s label, not its free name:
+
+- *21 needed, rounded up to 2 cases of 15 = 30* / *21 trengs, rundet opp til 2
+  kartonger à 15 = 30*;
+- and when `projected + suggested` passes the maximum, *…, 5 above the maximum of 40* /
+  *…, 5 over maksbeholdningen på 40*.
+
+A transfer line drafted from the list keeps its `suggestion {needed, packagingId,
+count}` (stored and answered as given, `transfer_lines.suggestion`) and shows the same
+sentence until the line is edited, which clears it.
+
+### The low-stock list
+
+**`GET /low-stock?siteId&q&cursor`** (both views) answers every low placement at active
+sites (I58), **by site code, then the placement's SKU snapshot, then the variant id**,
+50 a page, with an opaque `next` cursor on that triple. `siteId` restricts it to one
+site; `q` (trimmed) matches a part of the snapshot's SKU or name, ignoring case. A filter
+or cursor that does not parse is a 400.
+
+One SQL statement within the schema computes it (`LowStock`): the placements with a
+reorder point — `ix_placements_site_sku` serves the per-site filter, while the order is
+by the joined site code — joined to the sums of balances over the site's locations, of
+reservations at the site and of in-transit lines to the site, each grouped on the
+placement's `(variant_id, site_id)`; its cost is the number of placements with a reorder
+point, not the catalog. Then, per page:
+
+- the variants through **`ProductCatalog.Variants`** in one call; a variant gone from
+  the catalog is **skipped** and its placement left (variant ids are never reused);
+- the **snapshots refreshed**: a page whose catalog read finds a SKU or name changed
+  writes the catalog's over it, so a rename in Products is searchable from the next read
+  after one shows it;
+- **`elsewhere`** — every other active site's available for the page's variants, where
+  the variant lies or is reserved (`AvailableAtActiveSites`), a site without a
+  placement too;
+- **`openDrafts`** — the numbers of the draft transfers to the site with a line of the
+  variant (`OpenDraftsTo`).
+
+Each row carries the site, the variant, `onHand`, `reserved`, `available`, `incoming`,
+`reorderPoint`, `maximum`, `needed`, `suggested`, the `packaging` (`{id, name, kind,
+quantity, count}`), `elsewhere` and `openDrafts`. A missing catalog is 503.
+
+**Create transfer** is the UI's (I59): rows at **one** site are chosen and a from site —
+by default the site with most available across the selection — and `POST /transfers`
+makes the draft with the suggested quantities and their suggestions. A row with an open
+draft says *Draft 1043 open*, and *Create transfer* asks before making a second. Nothing
+is capped: the draft shows the source's stock beside each line ([I53](#stock)), and the
+send refuses what a location does not hold. It is hidden without `transfers-manage`.
+
+### The CSV
+
+**`GET /low-stock.csv?siteId&q`** (both views) is the list with its filter, **every row,
+unpaged** — the statement read in pages of a thousand, each judged as the list's is
+(I60). It is UTF-8 with a byte-order mark, **semicolon-separated** with CRLF, quantities
+with a **decimal comma**, each cell guarded against a spreadsheet reading it as a formula
+— the customers export's way — and served as the attachment `low-stock-<YYYY-MM-DD>.csv`
+(today in the business zone), `Cache-Control: private, no-store`. Its columns:
+
+`site` (code), `sku`, `name`, `barcode`, `available`, `incoming`, `reorder_point`,
+`maximum`, `needed`, `suggested`, `packaging` (the packaging's name), `packaging_count`.
+
+No supplier column: suppliers are free text on receipts until Products phase 5.
+
+### The placements import
+
+**`POST /imports/placements?dryRun=…`** (`stock-adjust` with both views) takes a **CSV**
+body (`text/csv`) and sets placements across every site (I61):
+
+- **The file** is read by `srv/fileimport` as the
+  [opening-balance import](#the-opening-balance-import)'s is — encoding, separator,
+  4 MiB, **5000 rows** — and its header names **exactly** `sku`, `site`,
+  `primary_location`, `reorder_point` and `maximum`, in any order and any case; anything
+  else is a 400 on `file`.
+- **Each row** is resolved before any transaction — the SKUs in **one `LookupSKUs`**, the
+  sites by code and the locations by full code in one read each — and judged as a `PUT`
+  would judge it, the first failure its outcome: a cell beyond the header
+  `quantity_invalid`; the `site` code `site_not_found` or `site_archived`; the `sku`
+  `variant_not_found` or `variant_not_stockable` (a SKU two variants match ignoring case
+  resolves to the first by id); `primary_location`, when given, a full code of an
+  active location of that site, else `placement_location_invalid`; `reorder_point` 0 or
+  more and `maximum` more than 0, at most three decimals, else `quantity_invalid`; and
+  `maximum_below_reorder_point`.
+- **Each row sets all three fields**, an empty cell clearing its field, and a row
+  clearing all three **deletes** the placement. A variant and site named twice: the last
+  row wins.
+- **A dry run** — `dryRun` defaults to **true** — answers 200 with every row and `ok`.
+  A commit with any failing row writes **nothing** and answers 200 with `ok: false`.
+- **A commit** with every row ok writes them all and answers **201** with `set` and
+  `cleared`. In one lock order: a transaction-scoped **advisory lock**, so commits run
+  one at a time; every site the file names `FOR SHARE` in id order, each still there and
+  active; the primary locations `FOR SHARE` in id order, each still active; then the
+  removals and the upsert, sorted by (variant, site), each bumping the placement's
+  revision with its `placement_set` or `placement_cleared` event. A site or location
+  **archived or deleted since the rows were resolved** refuses the whole file —
+  `site_archived` or `placement_location_invalid` (400), nothing written.
+- **Idempotent by the file**: the commit records one **`placements_imported`** event
+  keyed by the file's **SHA-256** (the first eight bytes as its entity id, the full hash
+  in its payload), and a file committed before answers **200** with what that commit set
+  and cleared, writing nothing. A different file — one cell changed — is a new import.
+
+### Events
+
+A placement's events carry the variant as their entity (`entity_kind` `placement`) and its
+site: **`placement_set`** on a create or a change that changed something, with the SKU
+and the changed fields; **`placement_cleared`** on a `DELETE` (`removed: true`), on an
+import row clearing it, and on `clearPrimaries` with the reason; and the import's one
+**`placements_imported`**, with the file's hash and what it set and cleared.
+
 ## Locks
 
 **A posting** (`posting.go`), in this order:
@@ -1121,6 +1349,15 @@ transfers, which an action's `FOR SHARE` on the site makes it wait for; a locati
 archive takes the subtree `FOR UPDATE` and reads the lines in transit sent from it, which
 a send's `FOR SHARE` on its source locations makes it wait for. Neither misses a send.
 
+**A placement** (`placements.go`, `import_placements.go`) keeps one order — sites, then
+locations, then placements. A `PUT` takes the site `FOR SHARE`, then the primary location
+`FOR SHARE`, then the placement row (its insert, or `FOR UPDATE` for a change); a
+`DELETE` the placement row alone. The import's commit takes its advisory lock first, then
+the sites and the primary locations `FOR SHARE` in id order, then the placements sorted
+by (variant, site). An archive of a site or a location takes them `FOR UPDATE` and then
+[clears the primaries](#the-primary-location) naming them, so it is ordered against a
+write that named them: whichever commits second sees the other.
+
 **A ledger call** (`ledger.go`) runs on Orders' transaction, after Orders has called
 `ProductCatalog.LockVariants` and locked its own rows (rule 24). It takes
 `LockVariants` again for the variants' types — already held, so it waits for nothing.
@@ -1156,17 +1393,22 @@ against packagings that hold until the commit.
   site and the variant's totals carry `reserved` — what orders hold there — and
   `available`, on hand less reserved, which may be negative; each site carries
   `incoming`, what is [in transit](#in-transit) to it on transfers. A site where the
-  variant is reserved, or incoming, but lies nowhere is listed with no rows. A product the catalog does not
+  variant is reserved, or incoming, but lies nowhere is listed with no rows, and so is an
+  active site where it only has a [placement](#placement). Each site carries its
+  **`placement`** — `{primaryLocationId, reorderPoint, maximum, revision, low}`, `low`
+  judged by [the rule](#the-rule) — and its rows the **`primary`** flag, the primary
+  location's row first. A product the catalog does not
   know is the 404; a Service product answers no variants.
 - **`GET /variants/{variantId}/stock`** — one variant's stock by site and location,
-  with `reserved` and `available` per site and in total and `incoming` per site, as
-  above. A
+  with `reserved` and `available` per site and in total, `incoming`, the placement and
+  the primary location first per site, as above. A
   variant the catalog **no longer knows** is named by its latest movement line's
   snapshot and marked deleted; one neither the catalog nor the ledger knows is the 404.
   Stock cannot outlive its variant (I23), so the fallback names history.
 - **`GET /variants`** — the line editor's picker, `q` of 1 to 100 characters and
   `limit` up to 50 (20 by default), through the catalog's `SearchVariants`, which does
-  not search packaging barcodes.
+  not search packaging barcodes. With **`siteId`**, each variant carries its
+  **`primaryLocationId`** at that site, or null: the receipt line's default.
 - **`GET /stock?variantIds=`** — the product list's *On hand* column (I33): each
   variant's on hand across every location, summed exactly, with `reserved` across every
   site and `available`, and **`inTransit`** — what is on its way between sites, which is
@@ -1181,8 +1423,10 @@ against packagings that hold until the commit.
   for the transfer form's columns and the send dialog's defaults: at most **100**
   variants and **20** sites (none, more, or an unknown site is a 400 on its field), and
   one row per variant and site asked, in the order asked, whether or not anything lies
-  there — `onHand`, `reserved`, `available`, `incoming`, and the locations holding it,
-  the most first, then by full code.
+  there — `onHand`, `reserved`, `available`, `incoming`, the locations holding it, the
+  most first, then by full code, each with **`primary`**, and the **`placement`** there,
+  or none: the send dialog's default source and a send and receive's default
+  destination.
 
 Each reads the balances, the reservations and what is incoming in one snapshot and names
 the variants through the catalog outside it.
@@ -1262,12 +1506,24 @@ days*; the dashboard shows it as *A transfer is past its expected arrival* and l
 the transfer. It is raised only to a caller who could
 receive it — `transfers-manage` with both views.
 
+And **`lowStock`** (I62): one item per **active site** with any placement low by
+[the rule](#the-rule), by site code — the count is [the list](#the-low-stock-list)'s
+statement counted per site (`LowStockCounts`), so the two never disagree. Its `id` is
+`lowStock/<siteId>`, `entityId` the site's id, **`count`** the items, `occurredAt` the
+time of the read — a placement does not record when it went low — and `title` *4 items
+at or below their reorder point at Bergen store*; the dashboard shows it as *4 items at
+or below their reorder point at a site* and links to the low-stock list filtered to the
+site. It is raised to a caller with **both views**, after the other types, the whole
+answer still cut at 20 items. Every item keeps the shape every module shares; the enum
+gained the two phase 2 types and nothing else.
+
 ## Personal data
 
 The module stores about a person their **user id and display name** as a movement's
 poster (`posted_by_user_id`, `posted_by_display`) and as an event's actor
 (`actor_user_id`, `actor_display`), and since phase 2 as a transfer's creator, sender
-and closer and an action's poster (`*_by_user_id`, `*_by_display`), and nothing else. A movement is an **immutable
+and closer and an action's poster (`*_by_user_id`, `*_by_display`), and a placement's
+last writer (`updated_by_user_id`, `updated_by_display`), and nothing else. A movement is an **immutable
 record of the stock ledger**, an event the record of a structural write, and a
 transfer and its actions the record of who sent and received what; all keep
 the poster's or the actor's id and name **after the person is erased** — they are
@@ -1289,7 +1545,8 @@ overlaps*, *Count not open*, *Count lines moved* and *Location has an open count
 their 409s. Transfers answer *Invalid transfer* for their 400s, and *Transfer is not a
 draft*, *Transfer is not receivable*, *Transfer is not cancellable*, *Nothing to close*,
 *Site has open transfers*, *Site has transfers* and *Location has stock in transit* for
-their 409s.
+their 409s. A placement's write answers *Invalid placement* for its 400s, and the
+placements import *Invalid import*, as the opening-balance import does.
 
 | Code | Status | When |
 | --- | --- | --- |
@@ -1311,7 +1568,10 @@ their 409s.
 | `move_crosses_sites` | 400 (line) | A line naming a location outside the movement's site. |
 | `same_location` | 400 (line) | A move's from and to the same location. |
 | `transfer_same_site` | 400 | A transfer's `toSiteId` the same as its `fromSiteId` (a field error with the code). |
-| `site_archived` | 400 | A transfer's write — a draft's create or change, a send, a receive, a cancel — naming a from or to site that is archived (a field error on `fromSiteId` or `toSiteId` with the code). |
+| `site_archived` | 400 | A transfer's write — a draft's create or change, a send, a receive, a cancel — naming a from or to site that is archived (a field error on `fromSiteId` or `toSiteId` with the code); a placement's `PUT` at an archived site; a placements import's commit when a site the file names was archived or deleted after it was read. |
+| `maximum_below_reorder_point` | 400 | A placement's `maximum` below its `reorderPoint` (a field error on `maximum` with the code). |
+| `placement_empty` | 400 | A placement's `PUT` with no primary location, reorder point or maximum: remove it with `DELETE` instead (a field error on `primaryLocationId` with the code). |
+| `placement_location_invalid` | 400 | A placement's primary location that is archived, or not a location of its site (a field error on `primaryLocationId` with the code); a placements import's commit when a primary location was archived or deleted after the file was read. |
 | `transfer_line_unknown` | 400 | A send's, a send and receive's or a receive's `lineId` that is not on the transfer (a field error on `lines[i].lineId` with the code; a line named twice is a field error too). |
 | `receive_incomplete` | 400 | A send and receive that names no destination for some line; the detail names their line numbers. |
 | `from_location_required` | 400 (line) | A send's line with no source location; the index is the line's place on the transfer. |
@@ -1336,7 +1596,7 @@ their 409s.
 | `site_has_open_transfers` | 409 | Archiving a site that is the from or to site of a transfer sent or partly received. |
 | `site_has_transfers` | 409 | Deleting a site any transfer names, a draft included. |
 | `location_in_transit` | 409 | Archiving a location when it, or one below it, is the source of a transfer line still in transit. |
-| `revision_conflict` | 409 | The `If-Match` revision of a site, a location or a transfer has moved on; for a transfer, judged after its status. |
+| `revision_conflict` | 409 | The `If-Match` revision of a site, a location, a transfer or a placement has moved on; for a transfer, judged after its status. A placement's `PUT` with `If-None-Match: *` when one is already there. |
 | `dependency_unavailable` | 503 | The catalog is not composed — never so in a running `inventory`, which `MODULES` refuses without `products`. |
 
 An unknown id is a bare 404, and a caller without the operation's permission the
@@ -1346,8 +1606,10 @@ The [stock ledger](#reservations-and-issues) answers no HTTP: its refusals are
 `*contracts.StockRefusal` values for Orders to turn into its own problems.
 
 An import's rows are not refusals: a row that fails is its outcome — `location_not_found`,
-`variant_not_found`, `variant_not_stockable` or `quantity_invalid` — in a 200 with
-`ok: false`.
+`variant_not_found`, `variant_not_stockable` or `quantity_invalid` for the opening
+balances; `site_not_found`, `site_archived`, `placement_location_invalid`,
+`variant_not_found`, `variant_not_stockable`, `quantity_invalid` or
+`maximum_below_reorder_point` for the placements — in a 200 with `ok: false`.
 
 **400 and 409, not 422 and 412.** The design's §4 gives its field and line rules 422
 and a stale `If-Match` 412 (`revision_mismatch`). The house answers a rule about the
@@ -1374,6 +1636,7 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `inventory.transfers.list` | `/inventory/transfers` | The transfer list |
 | `inventory.transfers.new` | `/inventory/transfers` | New transfer |
 | `inventory.transfer-receive.scan` | `/inventory/transfers/{transferId}/receive` | The scan field (Scan an item or the transfer note) |
+| `inventory.low-stock.list` | `/inventory/low-stock` | The low-stock list, its filters and Create transfer |
 
 ## Enabling and disabling
 
@@ -1426,15 +1689,19 @@ issues](#reservations-and-issues)).
 Inventory's own document, not Orders' as phase 1's §11 had it, with its draft, send,
 receive in parts, closed difference, send and receive and cancel, its stock in transit,
 the `in_transit` hold, the stock at sites, the følgeseddel and the `TRF-` lookup, and the
-overdue item. **Placement** is phase 2's delivery B, next: a variant's primary location,
-reorder point and maximum per site, the low-stock list and its CSV, *Create transfer*
-from it, and the placements import.
+overdue item. **Placement** came with delivery B ([placement](#placement)): a variant's
+primary location, reorder point and maximum per site, the primary location as every
+form's and the pick list's default, the low-stock rule and its rounding to whole
+packagings, the low-stock list and its CSV, *Create transfer* from it, the placements
+import and the `lowStock` item. **Phase 2 is complete.**
 
 **Later** (phase 1 §11 and phase 2 §11), each waiting for what it names:
 lots, serials and expiry, on a transfer too (Manufacturing); negative stock by a setting
 (point of sale); purchase orders from the low-stock list and incoming from them
-(Purchasing); `inventory.transfer.*` domain events (a consumer); transfer lines from a
-spreadsheet, a shelf-level minimum and a daily low-stock mail (demand); per-site
+(Purchasing); a supplier column in the CSV (supplier records, Products phase 5);
+`inventory.transfer.*` and low-stock domain events (a consumer); transfer lines from a
+spreadsheet, a shelf-level minimum, a reorder point per location and a daily low-stock
+mail (demand); when an item went low, which a placement does not record; per-site
 permissions, so only the destination receives (the platform); units beyond packagings and supplier records
 (Products phase 5); camera scanning; thermal label printers; valuation; the store flag
 *sells at the till* (point of sale).
@@ -1466,17 +1733,21 @@ requires, all of them.
 | `DELETE /locations/{id}` | `locations-manage` + `locations-view` | Delete a location and its subtree, with no history. |
 | `GET /locations/{id}/contents` | `locations-view` + `stock-view` | What lies on the location, and below it unless `subtree=false`. |
 | `GET /products/{productId}/stock` | `locations-view` + `stock-view` | Every goods variant of a product with its stock. |
-| `GET /variants` | `locations-view` + `stock-view` | Goods variants by SKU, name or barcode. |
+| `GET /variants` | `locations-view` + `stock-view` | Goods variants by SKU, name or barcode; with `siteId`, each with its primary location there. |
 | `GET /stock` | `locations-view` + `stock-view` | On hand of up to 100 variants across every location. |
 | `GET /variants/{variantId}/stock` | `locations-view` + `stock-view` | One variant's stock, a deleted one by its snapshot. |
-| `GET /stock/sites` | `locations-view` + `stock-view` | Up to 100 variants' stock at up to 20 sites, with incoming and the locations holding it. |
+| `GET /stock/sites` | `locations-view` + `stock-view` | Up to 100 variants' stock at up to 20 sites, with incoming, the locations holding it — the primary marked — and the placement. |
+| `PUT /variants/{variantId}/placements/{siteId}` | `locations-view` + `stock-view` + `stock-adjust` | Create a placement with `If-None-Match: *` (201) or change it with `If-Match` (200). |
+| `DELETE /variants/{variantId}/placements/{siteId}` | `locations-view` + `stock-view` + `stock-adjust` | Remove a placement, with `If-Match`; 204. |
+| `GET /low-stock` | `locations-view` + `stock-view` | The low placements at active sites, 50 a page, by site code and SKU, by `siteId` and `q`. |
+| `GET /low-stock.csv` | `locations-view` + `stock-view` | The low-stock list as CSV, every row, with the list's filter. |
 | `GET /movements` | `locations-view` + `stock-view` | Movements by site, location, variant, kind and business day, newest first. |
 | `GET /movements/{id}` | `locations-view` + `stock-view` | One movement with its lines. |
 | `POST /movements/adjustments` | `locations-view` + `stock-view` + `stock-adjust` | Post an adjustment; 201, or 200 for a replay. |
 | `POST /movements/moves` | `locations-view` + `stock-view` + `stock-adjust` | Post a move; 201, or 200 for a replay. |
 | `POST /movements/receipts` | `locations-view` + `stock-view` + `receipts-manage` | Post a goods receipt; 201, or 200 for a replay. |
 | `GET /stats` | `locations-view` + `stock-view` | The dashboard card's figures. |
-| `GET /stats/attention` | session | `countOpenLong`, to `counts-manage` + both views; `transferOverdue`, to `transfers-manage` + both views. |
+| `GET /stats/attention` | session | `countOpenLong`, to `counts-manage` + both views; `transferOverdue`, to `transfers-manage` + both views; `lowStock`, to both views. |
 | `GET /counts` | `counts-manage` + `locations-view` + `stock-view` | Counts newest first, at most 200, by status and site. |
 | `POST /counts` | `counts-manage` + `locations-view` + `stock-view` | Open a count of a site or a subtree; 201. |
 | `GET /counts/{id}` | `counts-manage` + `locations-view` + `stock-view` | One count with its lines. |
@@ -1485,6 +1756,7 @@ requires, all of them.
 | `POST /counts/{id}/cancel` | `counts-manage` + `locations-view` + `stock-view` | Cancel a count still counting. |
 | `POST /labels` | `locations-view` | A PDF of up to 1000 location labels. |
 | `POST /imports/opening-balances` | `locations-view` + `stock-view` + `stock-adjust` | Dry run or commit a CSV of opening balances; 201, or 200 for a dry run, a refused commit or a replay. |
+| `POST /imports/placements` | `locations-view` + `stock-view` + `stock-adjust` | Dry run or commit a CSV of placements across every site; 201, or 200 for a dry run, a refused commit or a replay of the same file. |
 | `GET /transfers` | `locations-view` + `stock-view` | Transfers newest first, 50 a page, by status (`open` among them), sites, variant, missing and `q`. |
 | `POST /transfers` | `locations-view` + `stock-view` + `transfers-manage` | Create a draft transfer; 201. |
 | `GET /transfers/{id}` | `locations-view` + `stock-view` | One transfer with its lines and actions. |

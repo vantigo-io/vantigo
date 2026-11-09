@@ -877,7 +877,7 @@ page show reserved and available. Documented in
 [Inventory](docs/src/content/docs/en/user/inventory.md#reserved-and-available) and
 [the reference](docs/src/content/docs/en/reference/inventory.md#reservations-and-issues).
 
-### Phase 2 — Transfers and placement
+### Phase 2 — Transfers and placement (done)
 
 Researched in
 [`docs/superpowers/research/2026-11-08-inventory-phase2.md`](docs/superpowers/research/2026-11-08-inventory-phase2.md) and designed in
@@ -899,9 +899,20 @@ stock*; a site with a transfer on its way cannot be archived; the dashboard rais
 overdue transfer; the lookup opens a transfer by its token. Documented in
 [the reference](docs/src/content/docs/en/reference/inventory.md#transfers).
 
-**B — Placement, next**: a variant's primary location, reorder point and maximum per
-site, the low-stock list with its suggestions and CSV, *Create transfer* from it, the
-placements import, and Orders' pick list taking the primary location first.
+**B — Placement, done** (migration `00155`): a placement is a variant's primary
+location, reorder point and maximum per site, set in a dialog on the variant's stock page
+or in bulk by the placements import (dry run, then commit, idempotent by the file). The
+primary location is a suggestion, never a rule: the default of a receipt line, a
+transfer's send and receive, the first row of the variant's stock and the first location
+of Orders' pick list (`contracts.StockLocation.Primary`); archiving or deleting the
+location clears it. An item is low when available plus incoming is at or below its
+reorder point; the suggestion fills to the maximum, or to one above the reorder point,
+rounded up to whole packagings of the smallest, and the screen says how. The low-stock
+list, filtered by site and searched, makes a draft transfer of the chosen rows at one
+site and exports as CSV; the dashboard raises low stock per site. Documented in
+[the reference](docs/src/content/docs/en/reference/inventory.md#placement).
+
+**Phase 2 is complete.**
 
 ### Later
 
@@ -909,9 +920,12 @@ placements import, and Orders' pick list taking the primary location first.
 on a transfer too.
 **Negative stock**, allowed per site by an administrator, waits for Point of sale.
 **Purchase orders from the low-stock list**, and incoming from open purchase orders, wait
-for Purchasing; **transfer domain events** for a consumer; **per-site permissions** (only
+for Purchasing; **transfer and low-stock domain events** for a consumer; **a daily
+low-stock mail, a shelf-level minimum, a reorder point per location and transfer lines
+from a spreadsheet** for demand; **per-site permissions** (only
 the destination receives) for the platform. **Units other than packagings** (kg, litre, purchase units) wait for
-Products phase 5, and **supplier records on receipts** for the same phase with Orders.
+Products phase 5, and **supplier records on receipts** — and with them a supplier column
+in the low-stock CSV — for the same phase with Orders.
 **Camera scanning** waits for browser support of `BarcodeDetector`, **thermal label
 printers** (ZPL) for demand, **valuation** for a ledger, and the store flag *sells at
 the till* for Point of sale.
