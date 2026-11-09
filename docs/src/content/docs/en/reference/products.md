@@ -112,11 +112,14 @@ locking the variants. Its `VariantHeld(tx, variantID, purpose)` is told which wr
 asks — `delete` or `type_change` — and answers nil, or a `VariantHold` whose `Kind` is
 `stock` — the quantity the holder keeps in the variant's unit and the number of
 locations it lies at —, `reserved` — a quantity orders have reserved of it with nothing
-on hand, and the number of sites ([Inventory](/en/reference/inventory/#reservations-and-issues)) —
+on hand, and the number of sites ([Inventory](/en/reference/inventory/#reservations-and-issues)) —,
+`in_transit` — a quantity on its way between two sites on an Inventory transfer, with
+nothing on hand or reserved, and the number of transfers
+([Inventory](/en/reference/inventory/#in-transit)) —
 or `open_documents`, the number of open quotes, orders and subscriptions that name the
 variant. A holder may stop one write and not the other:
-open orders will stop a delete but never a change to Service (orders design O30). Today
-Inventory is the one holder, and its stock, and its reservations, stop both.
+open orders will stop a delete but never a change to Service (orders design O30).
+Inventory's stock, its reservations and its stock in transit stop both.
 
 **Deleting a variant** (`DELETE /api/v1/products/{id}/variants/{variantId}`) is one
 transaction:
@@ -131,6 +134,9 @@ transaction:
    variant, and *location* in the singular for one. A `reserved` hold is the same 409
    *Variant has stock*, "This variant still has 5 pcs reserved for orders at 1 site.
    Deliver or cancel the orders that reserve it before you delete the variant." An
+   `in_transit` hold is the same 409 *Variant has stock*, "This variant still has 12 pcs
+   in transit between sites in 1 transfer. Receive or cancel the transfer before you
+   delete the variant." (*transfers* and "the transfers" for more than one). An
    `open_documents` hold is 409
    *Variant is on open documents*, "This variant is on 3 open quotes or orders. Finish
    or cancel them before you delete the variant." (*1 open quote or order* for one).
@@ -147,7 +153,9 @@ holders variant by variant and refuses on the first that holds: 409 *Product has
 "Variant {sku} still has 34 pcs in stock at 3 locations. Move the stock or adjust it to
 zero before you make the product a service." — for a `reserved` hold, "… still has 5 pcs
 reserved for orders at 1 site. Deliver or cancel the orders that reserve it before you
-make the product a service." —, or, for an `open_documents` hold, 409
+make the product a service." —, for an `in_transit` hold, "… still has 12 pcs on its way
+between sites in 1 transfer. Receive or cancel the transfer before you make the product a
+service." —, or, for an `open_documents` hold, 409
 *Product is on open documents*, "Variant {sku} is on 3 open quotes or orders. Finish or
 cancel them before you make the product a service." Otherwise the product is updated, and
 then, on the same transaction, its variants are listed again and the holders asked about

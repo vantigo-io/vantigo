@@ -877,13 +877,40 @@ page show reserved and available. Documented in
 [Inventory](docs/src/content/docs/en/user/inventory.md#reserved-and-available) and
 [the reference](docs/src/content/docs/en/reference/inventory.md#reservations-and-issues).
 
+### Phase 2 — Transfers and placement
+
+Researched in
+[`docs/superpowers/research/2026-11-08-inventory-phase2.md`](docs/superpowers/research/2026-11-08-inventory-phase2.md) and designed in
+[`docs/superpowers/specs/2026-11-08-inventory-phase2-design.md`](docs/superpowers/specs/2026-11-08-inventory-phase2-design.md)
+([the plan](docs/superpowers/plans/2026-11-08-inventory-phase2-plan.md)). **Transfers
+belong to Inventory**, not Orders.
+
+**A — Transfers between sites, done** (migration `00152`): a transfer is Inventory's own
+document with its number series (`TRF-1042` on its følgeseddel); a draft holds nothing;
+the send posts a `transfer_out` at the from site from each line's source location, the
+receive a `transfer_in` at the to site, in parts, with no `If-Match` so two people can
+scan one delivery; a difference is closed with a reason (lost, damaged, not packed,
+other); a send and receive does both at once, and a cancel brings a sent transfer back to
+where it left. Every action is recorded with its lines, idempotent by a key derived from
+the transfer (send) or the client's (receive, cancel). Stock in transit is a quantity on
+the line, shown as incoming at the to site and in transit on the totals, and Products
+refuses to delete a variant on its way (`in_transit`). A seventh permission, *Transfer
+stock*; a site with a transfer on its way cannot be archived; the dashboard raises an
+overdue transfer; the lookup opens a transfer by its token. Documented in
+[the reference](docs/src/content/docs/en/reference/inventory.md#transfers).
+
+**B — Placement, next**: a variant's primary location, reorder point and maximum per
+site, the low-stock list with its suggestions and CSV, *Create transfer* from it, the
+placements import, and Orders' pick list taking the primary location first.
+
 ### Later
 
-**Transfers between sites** (sent, in transit, received) wait for Orders.
-**Lots, serials, expiry, FEFO and traceability** wait for [Manufacturing](#manufacturing).
+**Lots, serials, expiry, FEFO and traceability** wait for [Manufacturing](#manufacturing),
+on a transfer too.
 **Negative stock**, allowed per site by an administrator, waits for Point of sale.
-**Placement** — a primary location, min and max, a low-stock list — waits for the
-owner's call. **Units other than packagings** (kg, litre, purchase units) wait for
+**Purchase orders from the low-stock list**, and incoming from open purchase orders, wait
+for Purchasing; **transfer domain events** for a consumer; **per-site permissions** (only
+the destination receives) for the platform. **Units other than packagings** (kg, litre, purchase units) wait for
 Products phase 5, and **supplier records on receipts** for the same phase with Orders.
 **Camera scanning** waits for browser support of `BarcodeDetector`, **thermal label
 printers** (ZPL) for demand, **valuation** for a ledger, and the store flag *sells at

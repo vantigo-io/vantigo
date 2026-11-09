@@ -1,6 +1,6 @@
 ---
 title: Lager
-description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, varetelling, import av inngående beholdning, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktet og hurtighandlingene, og hvem som ser hva.
+description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, varetelling, import av inngående beholdning, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
 sidebar:
   order: 65
 sources:
@@ -16,7 +16,8 @@ gang, en reol, en hylle. Beholdningen endres bare når noen bokfører en **beveg
 et **varemottak** av leverte varer, en **justering** med en årsak, eller en **flytting**
 fra én lokasjon til en annen — og en bevegelse endres aldri etter at den er bokført: en
 feil rettes med en ny justering. En **varetelling** sjekker hva som faktisk ligger i
-hyllene, og bokfører avvikene. Varene kommer fra [Produkter](/nb/user/products/): bare
+hyllene, og bokfører avvikene, og en **overføring** sender varer fra ett lagersted til et
+annet, der de er **under transport** til de er mottatt. Varene kommer fra [Produkter](/nb/user/products/): bare
 **varer** holdes på lager, aldri tjenester. Reglene bak hvert skjermbilde — kodene,
 avvisningene og rettigheten hver forespørsel sjekkes mot — står i
 [referansen for Lager-modulen](/en/reference/inventory/); denne siden handler om hva du
@@ -31,6 +32,7 @@ Sidemenyen viser:
 | Område i sidemenyen | Hvem ser det |
 | --- | --- |
 | **Oversikt** — oppslaget og lagerstedene | `inventory:locations-view` eller `inventory:stock-view` |
+| **Overføringer** — varer sendt mellom lagersteder | `inventory:locations-view` og `inventory:stock-view` |
 | **Bevegelser** | `inventory:locations-view` og `inventory:stock-view` |
 | **Varemottak** — listen over bevegelser med bare varemottak | `inventory:locations-view` og `inventory:stock-view` |
 | **Varetellinger** — varetellingene | `inventory:counts-manage`, med begge visningsrettighetene |
@@ -39,7 +41,8 @@ Sidemenyen viser:
 Det rettighetene dine ikke tillater, vises ikke i det hele tatt: en knapp du ikke ser, er
 en rettighet du ikke har. Knappene som bokfører — varemottak, justeringer og flyttinger —
 krever begge visningsrettighetene i tillegg til **Motta varer** eller **Justere
-beholdning**; varetelling krever begge visningsrettighetene og **Telle varer**. Antall krever begge visningsrettighetene, fordi ethvert sted
+beholdning**; varetelling krever begge visningsrettighetene og **Telle varer**; å opprette, sende,
+motta og avbryte overføringer krever begge visningsrettighetene og **Overføre varer**. Antall krever begge visningsrettighetene, fordi ethvert sted
 beholdning ligger, er en lokasjon; **Se lagersteder** alene viser lagerstedene og
 lokasjonene deres uten antall.
 
@@ -51,12 +54,14 @@ eller skann ett av disse og trykk Enter:
 - en lokasjons **fulle kode**, som `OSL-A-03-2`, med store eller små bokstaver;
 - en lokasjons **etikettkode**, `LOC` og et tall;
 - en vares **varenummer** eller **strekkode**, eller strekkoden til en av pakningene
-  dens — en eske eller en pall åpner varen.
+  dens — en eske eller en pall åpner varen;
+- en overførings kode, `TRF` og nummeret, slik den står under strekkoden på
+  [følgeseddelen](#skriv-ut-følgeseddelen) — den åpner overføringen.
 
 Ett treff åpnes med en gang: en lokasjon åpner siden sin, en vare beholdningssiden sin.
 Flere treff listes opp, hvert merket **Lokasjon** eller **Vare**, så du kan velge. Ingen
 treff gir *Ingenting passer med «…».*, og det du skrev, blir stående så du kan rette
-det.
+det. Overføringer, som varer, vises bare for dem som har begge visningsrettighetene.
 
 En **håndskanner** virker i feltet som den er: skanneren skriver koden den leser og
 trykker Enter, og det er nettopp det oppslaget venter på. Varer vises bare for dem som
@@ -140,7 +145,11 @@ dens — med **Administrere lagersteder**:
   koden eller navnet er alltid tillatt.
 - **Arkiver** arkiverer lokasjonen og alt under den. Arkiverte lokasjoner tar ikke imot
   beholdning og forsvinner fra velgerne. Det avvises så lenge det ligger beholdning på
-  lokasjonen eller under den: flytt den eller juster den til null først.
+  lokasjonen eller under den: flytt den eller juster den til null først. Det avvises
+  også mens en [overføring](#overfør-varer-mellom-lagersteder) som fortsatt er under
+  transport, ble sendt fra lokasjonen eller fra noe under den — *En linje under
+  transport ble sendt fra denne lokasjonen; avbrytes den, kommer den tilbake hit. Motta
+  eller avbryt den først.*
 - **Gjenåpne** henter tilbake bare lokasjonen selv — ikke det som ligger under — og bare
   under en aktiv overordnet.
 - **Slett** fjerner lokasjonen og alt under den for godt. Det avvises så snart det noen
@@ -149,10 +158,14 @@ dens — med **Administrere lagersteder**:
 Lagerstedets egen lokasjon — toppen av treet — kan ikke arkiveres eller slettes alene;
 da arkiveres eller slettes lagerstedet. I lagerstedets **…**-meny: **Rediger lagersted**
 (endrer du lagerstedets kode, endres hver full kode på det — trykte etiketter kan
-fortsatt skannes), **Arkiver** (avvises mens lagerstedet har beholdning; arkiverer hver
+fortsatt skannes), **Arkiver** (avvises mens lagerstedet har beholdning, og mens en
+overføring til eller fra det fortsatt er under transport — *En overføring til eller fra
+lagerstedet er fortsatt under transport. Motta eller avbryt den først.*; arkiverer hver
 lokasjon på det), **Gjenåpne** (lagerstedet og dets egen lokasjon; lokasjonene under
 gjenåpnes én og én) og **Slett** (bare for et lagersted det aldri er bokført en
-bevegelse på). Hver av dem ber deg bekrefte først.
+bevegelse på, og som ingen overføring nevner — *En overføring nevner lagerstedet, så det
+kan bare arkiveres.*). Et utkast stopper ikke arkiveringen; det kan da ikke lenger
+sendes. Hver av dem ber deg bekrefte først.
 
 I kortet **Lokasjoner** åpnes treet ett nivå om gangen. **Vis arkiverte** tar med
 arkiverte lokasjoner, og **Søk på kode eller navn** finner en — mens du skriver på et
@@ -274,6 +287,231 @@ lokasjon, beholdningssiden for en vare, kortet **Beholdning** på produktsiden o
 varetellingen — vises et antall av en vare med pakninger også fordelt, største pakning
 først: 1 830 pcs med en pall på 600 og en eske på 15 blir *3 Euro pallet, 2 Box*, under
 selve antallet.
+
+## Overfør varer mellom lagersteder
+
+En **overføring** sender varer fra ett lagersted — **Fra lagersted** — til et annet —
+**Til lagersted**: fra sentrallageret til en butikk, for eksempel. Den går gjennom disse
+statusene:
+
+- **Utkast** — under forberedelse. Et utkast holder ingenting: ingen beholdning settes
+  av og ingenting flyttes, så det kan endres og slettes fritt.
+- **Sendt** — varene har forlatt lokasjonene sine på fra-lagerstedet og er **under
+  transport**: de ligger ikke i noen hylle, på ingen av lagerstedene, før de er mottatt.
+- **Delvis mottatt** — noe har kommet og er satt på plass; resten er fortsatt under
+  transport.
+- **Mottatt** — alt har kommet, eller det som ikke kom, er
+  [avsluttet med avvik](#avslutt-med-avvik).
+- **Avbrutt** — overføringen ble kalt tilbake, og alt gikk tilbake dit det kom fra.
+
+Overføringer krever **Overføre varer** (`inventory:transfers-manage`) i tillegg til begge
+visningsrettighetene. Uten den kan du fortsatt åpne **Overføringer**, siden for en
+overføring og følgeseddelen, men ikke opprette, sende, motta eller avbryte en.
+
+### Lag et utkast
+
+I **Overføringer** trykker du **Ny overføring** — *Send varer fra ett lagersted til et
+annet. Et utkast holder ingenting før det er sendt.* Velg **Fra lagersted** og **Til
+lagersted**, som må være forskjellige (*Fra- og til-lagerstedet må være forskjellige.*),
+og om du vil, **Forventet ankomst**, en **Referanse** og et **Notat**. Legg så til
+linjene med [linjeredigeringen](#linjeredigeringen): skann eller søk etter hver vare og
+skriv antallet, i varens enhet eller [i pakninger](#registrer-antall-i-pakninger). En
+vare kan stå på flere linjer — slik reiser varer fra to lokasjoner i én overføring.
+
+Ved siden av hver linje viser to kolonner beholdningen på begge lagerstedene mens du
+skriver:
+
+- **På OSL: disponibelt** — det som er disponibelt av varen på fra-lagerstedet. En linje
+  som ber om mer, merkes **For lite**: *Overføringen ber om mer enn det som er
+  disponibelt på fra-lagerstedet. Å sende mer enn en lokasjon har, avvises.* Utkastet
+  kan likevel lagres.
+- **På BGN: disponibelt · innkommende** — det som er disponibelt på til-lagerstedet og,
+  etter *+… innkommende*, det som allerede er på vei dit i andre overføringer.
+
+Kan ikke beholdningen leses, sier skjemaet det, og utkastet kan likevel lagres.
+
+Trykk **Lagre utkast**: *Utkast lagret*, og siden for overføringen åpnes med nummeret —
+*Overføring 1042*. På siden for et utkast endrer **Rediger** det, og **Slett utkast**
+spør *Slette utkastet til overføring 1042?* — *Utkastet og linjene slettes. Ingenting
+ble sendt, så ingen beholdning endres.*
+
+### Send en overføring
+
+På siden for overføringen, eller rett fra skjemaet, trykker du **Send …** (skjemaet
+lagrer først det du har endret). Dialogen **Send overføring 1042 til BGN** ber deg velge
+lokasjonen på fra-lagerstedet hver linje plukkes fra: i kolonnen **Fra en lokasjon på
+OSL** tilbyr hver linje lokasjonene på fra-lagerstedet der varen ligger, med hva som
+ligger der, og starter på den som har mest. En vare som ikke ligger noe sted på
+lagerstedet, sier *Ingenting av den ligger på lagerstedet*.
+
+Dialogen varsler deg før du sender:
+
+- *Lokasjonen har bare …; sendingen vil bli avvist.* — velg en annen lokasjon, eller del
+  linjen i utkastet;
+- *Bare … av … ligger på OSL; sendingen vil bli avvist.* — lagerstedet har mindre enn
+  overføringen tar;
+- *… av … er reservert for ordrer på OSL; sendingen gjør at de mangler.* — sendingen
+  tar varer som [ordrer har reservert](#reservert-og-disponibelt). Dette er bare et
+  varsel: sendingen går gjennom, og disponibelt på fra-lagerstedet blir negativt.
+
+**Skriv ut følgeseddelen** er krysset av. Trykk **Send 3 linjer**: *Overføring sendt*.
+Varene forlater de valgte lokasjonene med en gang, bokført som én bevegelse **Overføring
+ut** på fra-lagerstedet, statusen blir **Sendt**, og følgeseddelen lastes ned. En sending
+som avvises, sender ingenting; de avviste linjene merkes med årsaken. Å trykke på nytt
+etter et brudd i forbindelsen sender aldri to ganger.
+
+En vare som er slettet fra katalogen, eller der produktet er blitt en tjeneste, etter at
+utkastet ble skrevet, avvises ved sending.
+
+### Skriv ut følgeseddelen
+
+Når en overføring er sendt, laster **Skriv ut følgeseddel** på siden ned følgeseddelen
+som PDF, `folgeseddel-TRF-1042.pdf`, som følger varene: nummeret, de to lagerstedene med adressene
+sine, når den ble sendt og av hvem, forventet ankomst, referansen, hver linje med
+varenummer, navn, antall (og pakningene det ble registrert i) og lokasjonen den ble
+plukket fra, en linje for mottakerens signatur, og en strekkode for overføringens kode,
+`TRF-1042`. Å skanne den strekkoden — i **Finn lokasjon eller vare** eller på
+mottakssiden — åpner overføringen.
+
+### Send og motta på en gang
+
+Når de to lagerstedene ligger vegg i vegg — en butikk og bakrommet i en annen bygning,
+for eksempel — og varene kommer fram idet du sender dem, trykker du **Send og motta …** i
+stedet. Dialogen **Send og motta overføring 1042 på BGN** har, i tillegg til hver linjes
+fra-lokasjon, en kolonne **Til en lokasjon på BGN** der hver linje settes på plass;
+**Motta alle linjene på en lokasjon på BGN** setter samme lokasjon på hver linje. Hver
+linje må ha en (*Velg hvor hver linje skal mottas.*). Trykk **Send og motta 3 linjer**:
+*Overføring sendt og mottatt*. Varene forlater fra-lagerstedet og kommer til
+til-lagerstedet i ett steg — en bevegelse **Overføring ut** og en **Overføring inn** — og
+overføringen er **Mottatt** med en gang. **Skriv ut følgeseddelen** er ikke krysset av
+her; kryss av om du vil ha følgeseddelen.
+
+## Motta en overføring
+
+Når varene kommer, åpner du overføringen — fra **Overføringer**, fra til-lagerstedets
+**Innkommende**, eller ved å skanne følgeseddelens strekkode i **Finn lokasjon eller
+vare** — og trykker **Motta …**. Den tilbys mens overføringen er **Sendt** eller **Delvis
+mottatt**, til dem som har **Overføre varer**.
+
+Siden **Motta overføring 1042 fra OSL** sier når overføringen ble sendt og av hvem, og
+lister hver linje som fortsatt er under transport: **Vare**, **Sendt**, **Mottatt før**,
+**Nå** og **Til en lokasjon på BGN**. Tell det som har kommet:
+
+- **Skann** i feltet **Skann en vare eller følgeseddelen**: hver skanning av et
+  varenummer eller en strekkode teller én til på linjen, og en eskes eller palls
+  strekkode én eske eller pall. Å skanne strekkoden på en annen overførings følgeseddel
+  åpner mottakssiden for den overføringen. En vare som ikke er på overføringen, sier
+  *«…» er ikke på denne overføringen, eller ingenting av den er fortsatt under
+  transport.*
+- **Skriv** antallet i **Nå**, i varens enhet eller i pakningene.
+- **Godta alt** fyller hver linje med alt som fortsatt er under transport — for en
+  leveranse du har sjekket er komplett.
+
+Hver linje settes på plass på til-lagerstedets egen lokasjon med mindre du velger en
+annen i **Til en lokasjon på BGN**. En linje kan ikke ta mer enn det som fortsatt er
+under transport på den (*Mer enn det som fortsatt er under transport på linjen.*). Under
+linjene forteller *2 linjer vil fortsatt være under transport.* hva du ikke har talt
+ennå.
+
+Trykk **Motta**. Varene bokføres som én bevegelse **Overføring inn** på til-lagerstedet,
+på lokasjonene du valgte, og siden for overføringen åpnes: *Overføring mottatt* når
+ingenting er igjen under transport, *Overføring delvis mottatt* når noe er det.
+
+### Motta i deler
+
+En overføring kan mottas i så mange deler som varene kommer i: motta det som kom i dag,
+og trykk **Motta …** igjen for neste del. Hver del telles bare mot det som fortsatt er
+under transport.
+
+To personer kan motta samme overføring samtidig — én skanner pallene, en annen de løse
+eskene. Begge mottakene går gjennom, og hvert av dem vurderes mot det den andre
+allerede har mottatt. Kom den andre først, og tellingene dine nå blir mer enn det som
+fortsatt er under transport, merkes linjene som gikk over, ingenting av ditt bokføres,
+og siden viser det som fortsatt er under transport med tellingene dine bevart: rett dem
+og trykk **Motta** igjen. Brøt forbindelsen etter at et mottak var bokført, sier siden
+*Et tidligere mottak fra denne siden er allerede bokført; svaret kan ha gått tapt på
+veien.* og viser linjene slik de er nå — sjekk dem før du mottar igjen. Å trykke
+**Motta** på nytt etter et brudd i forbindelsen mottar aldri to ganger.
+
+## Avslutt med avvik
+
+Når leveransen mangler noe og resten ikke kommer — tapt på veien, knust, aldri pakket —
+mottar du det som kom og avslutter resten med avvik. På mottakssiden trykker du **Motta
+og avslutt med avvik …**; den tilbys så lenge noe fortsatt ville være under transport
+etter det du har talt.
+
+Dialogen **Avslutt med avvik** lister det som ikke blir mottatt, linje for linje —
+*3 ikke mottatt* — og spør **Hva skjedde?**: **Tapt under transport**, **Skadet**,
+**Aldri pakket** eller **Annet**, med en **Merknad (valgfritt)**. *Det som gjenstår,
+føres som ikke mottatt på overføring 1042 og legges ikke til noen beholdning.
+Overføringen er da mottatt.* Trykk **Avslutt overføring 1042**: det du talte, mottas,
+resten føres som **Ikke mottatt**, og overføringen er **Mottatt**.
+
+Varene som mangler, forlot fra-lagerstedet allerede da overføringen ble sendt, så å
+avslutte med avvik endrer ingen beholdning noe sted — det er ingenting å justere på noen
+av lagerstedene. Avviket står på overføringen, under **Ikke mottatt** og **Avsluttet med
+avvik** med årsaken og merknaden, og på varens beholdningsside under
+[Avvik på overføringer](#se-en-vares-beholdning-og-bevegelser). Dukker varene likevel
+opp senere, bokfører du dem med en [justering](#juster-beholdning) med årsaken
+**Funnet**.
+
+## Avbryt en overføring
+
+En overføring som ble sendt ved en feil, kan kalles tilbake så lenge **ingenting av den
+er mottatt eller ført som ikke mottatt**: trykk **Avbryt overføring** på siden. *Avbryte
+overføring 1042? Alt som ble sendt, går tilbake til lokasjonene det kom fra på OSL.
+Dette kan ikke angres.* Trykk **Avbryt overføring** for å bekrefte, eller **Behold
+overføringen**. Hver linje går tilbake til lokasjonen den ble sendt fra, bokført som en
+bevegelse **Overføring inn** på fra-lagerstedet, og overføringen er **Avbrutt**:
+*Overføring avbrutt*.
+
+Så snart noe av den er mottatt, kan overføringen ikke lenger avbrytes (*Bare en sendt
+overføring der ingenting er mottatt eller mangler, kan avbrytes; slett et utkast i
+stedet.*): motta resten, eller avslutt med avvik, og send tilbake det som ikke skulle
+vært sendt, med en ny overføring. Et utkast avbrytes ikke, men slettes.
+
+## Siden for en overføring
+
+Siden for en overføring viser nummeret med statusen og, mens den er på vei, *Under
+transport …*; fra-lagerstedet og til-lagerstedet, som hver lenker til lagerstedet sitt;
+**Referanse**, **Forventet ankomst**, **Opprettet av** og **Sendt av** med når, og for en
+overføring avsluttet med avvik, **Avsluttet med avvik** med årsaken og merknaden; og
+notatet.
+
+Linjene viser **Varenummer**, **Produkt**, **Fra** — lokasjonen hver linje ble plukket
+fra —, **Sendt** (**Antall** på et utkast), **Mottatt**, **Ikke mottatt** og **Under
+transport**, med **Registrert som** for en linje registrert i pakninger. Et varenummer
+åpner varens beholdningsside.
+
+**Historikk** lister, eldste først, hver sending, hvert mottak, hvert avvik og hver
+avbrytelse: når, av hvem og på hvilket lagersted — *Sendt av Kari Nordmann fra OSL*,
+*Mottatt av Ola Hansen på BGN*, *Avsluttet med avvik av Ola Hansen*, *Avbrutt av Kari
+Nordmann, tilbake til OSL* —, hver linje den berørte med lokasjonen den gikk til eller
+kom fra, og en lenke til bevegelsen den bokførte. Siden for bevegelsen lenker tilbake
+til overføringen.
+
+Knappene følger statusen: **Rediger**, **Send …**, **Send og motta …** og **Slett
+utkast** på et utkast; **Motta …** mens den er sendt eller delvis mottatt; **Avbryt
+overføring** så lenge ingenting av den er mottatt; **Skriv ut følgeseddel** når den er
+sendt.
+
+## Listen over overføringer
+
+**Overføringer** i sidemenyen — *Varer sendt fra ett lagersted til et annet, under
+transport til de er mottatt.* — lister overføringene, nyeste først: **Overføring** (med
+referansen), **Fra lagersted**, **Til lagersted**, **Status**, **Linjer** og **Forventet
+ankomst**. En overføring som har passert forventet ankomst, eller ble sendt for mer enn
+7 dager siden uten en, og ennå ikke er mottatt, merkes **Forsinket**.
+
+Filtrer på **Status** — **Åpne**, standardvalget, er utkast, sendte og delvis mottatte
+overføringer sammen; eller én status; eller **Alle statuser** —, på **Fra lagersted** og
+**Til lagersted**, og med **Søk**, et overføringsnummer eller et varenummer på en av
+linjene (trykk Enter). **Last flere** henter neste side. **Ny overføring** åpner skjemaet
+med de to lagerstedene du filtrerte på, allerede valgt.
+
+Siden for et lagersted viser, med **Se beholdning**, **Innkommende** og **Utgående**:
+antallet overføringer på vei til og fra lagerstedet — *2 åpne overføringer* — som hver
+åpner listen filtrert på lagerstedet.
 
 ## Tell varer
 
@@ -400,23 +638,35 @@ filtrert på den.
 Beholdningssiden for en vare — fra oppslaget, Beholdning-kortet på produktsiden eller
 en bevegelse — viser varenummeret og produktet, samlet beholdning, hvert lagersted med
 lokasjonene der varen ligger, det ordrene har [reservert](#reservert-og-disponibelt) der
-og det som er disponibelt, og varens bevegelser, nyeste først. **Motta** og
-**Juster** tilbys etter rettighetene dine. En vare som er slettet fra katalogen, viser
-fortsatt historikken sin, merket *Slettet fra katalogen*.
+og det som er disponibelt, og varens bevegelser, nyeste først. Under et lagersted som
+en [overføring](#overfør-varer-mellom-lagersteder) er på vei til med mer, sier
+*+… innkommende* hvor mye som er på vei dit; et lagersted med varer på vei og ingenting
+på lager ennå har også en rad. **Motta** og **Juster** tilbys etter rettighetene dine. En
+vare som er slettet fra katalogen, viser fortsatt historikken sin, merket *Slettet fra
+katalogen*.
+
+**Avvik på overføringer** lister overføringene av varen som ble
+[avsluttet med noe som ikke ble mottatt](#avslutt-med-avvik) — *Overføringer av denne
+varen som ble avsluttet med noe som ikke ble mottatt.* — med hvor mye av varen som ikke
+ble mottatt på hver; uten noen står det *Ingen overføring av denne varen har avvik.*
 
 ## Bevegelser
 
-**Bevegelser** lister alle justeringer, flyttinger, varemottak, varetellinger og uttak,
-nyeste først. Et **Uttak** er varer tatt ut til en ordres leveranse; det viser ordrens
-dokument som kilde og bokføres fra Ordrer, aldri her. Filtrer på **Lagersted**,
-**Lokasjon** (som tar med alt under den), **Vare**,
-**Type** (**Justering**, **Flytting**, **Varemottak**, **Varetelling**, **Uttak**) og **Bokført mellom**, to dager i
+**Bevegelser** lister alle justeringer, flyttinger, varemottak, varetellinger, uttak og
+overføringsbevegelser, nyeste først. Et **Uttak** er varer tatt ut til en ordres
+leveranse; det viser ordrens dokument som kilde og bokføres fra Ordrer, aldri her. En
+**Overføring ut** er sendingen av en overføring, tatt fra fra-lagerstedets lokasjoner; en
+**Overføring inn** er mottaket av en overføring på til-lagerstedet, eller avbrytelsen
+som legger varene tilbake på fra-lagerstedet. Begge lenker til overføringen og bokføres
+fra den, aldri her. Filtrer på **Lagersted**, **Lokasjon** (som tar med alt under den),
+**Vare**, **Type** (**Justering**, **Flytting**, **Varemottak**, **Varetelling**,
+**Uttak**, **Overføring ut**, **Overføring inn**) og **Bokført mellom**, to dager i
 organisasjonens tidssone. **Last flere** henter neste side. **Varemottak** i sidemenyen
 er den samme listen med bare varemottak.
 
 Siden for en bevegelse viser typen, lagerstedet, når og av hvem den ble bokført,
 årsaken eller leverandøren og leverandørens referanse, notatet, varetellingen den
-bokførte, og linjene: **Varenummer**, **Produkt**, **Fra**, **Til** og **Antall**, med
+bokførte eller overføringen den hører til (**Overføring**), og linjene: **Varenummer**, **Produkt**, **Fra**, **Til** og **Antall**, med
 **Registrert som** for en linje registrert i pakninger. En bevegelse redigeres eller
 slettes aldri.
 
@@ -426,14 +676,18 @@ Når Lager er i bruk og du har både **Se lagersteder** og **Se beholdning**, ha
 produkts side i Produkter kortet **Beholdning**: samlet beholdning per enhet, hvert
 lagersted som åpnes til lokasjonene der varen ligger — med full kode og navn — og, for
 et produkt med flere varianter, det samme for hvert varenummer, med **Beholdning og
-bevegelser for …** til beholdningssiden. Er ingenting på lager, står det **Ingen
-beholdning**, og **Motta** eller **Juster** tilbys etter det du har lov til. En tjeneste
+bevegelser for …** til beholdningssiden. Varer på vei mellom lagersteder i en overføring
+vises som *Under transport …* ved siden av totalen, og *+… innkommende* under
+lagerstedet de skal til; de er ikke med i samlet beholdning, som er det som ligger i
+hyllene. Er ingenting på lager og ingenting på vei, står det **Ingen beholdning**, og
+**Motta** eller **Juster** tilbys etter det du har lov til. En tjeneste
 har ikke noe Beholdning-kort. Se [produktsiden](/nb/user/products/#produktsiden).
 
 En variant som fortsatt har beholdning, kan ikke slettes i Produkter, og et produkt med
 beholdning kan ikke gjøres om til en tjeneste: flytt beholdningen eller juster den til
 null her først. Det samme gjelder en variant som ordrer har reservert: lever eller
-kanseller de ordrene først.
+kanseller de ordrene først — og en variant som er på vei mellom lagersteder i en
+overføring: motta eller avbryt overføringen først.
 
 ## Reservert og disponibelt
 
@@ -469,20 +723,30 @@ varetelling har vært åpen lenge** for hver varetelling som fortsatt telles en 
 at den ble åpnet; trykk på den for å åpne varetellingen, og bokfør eller avbryt den.
 Søket i toppfeltet tilbyr **Start varetelling** til de samme.
 
+Med **Overføre varer** og begge visningsrettighetene viser **Trenger oppfølging** **En
+overføring har passert forventet ankomst** for hver overføring som ennå ikke er mottatt,
+der forventet ankomst er passert, eller som ble sendt for mer enn 7 dager siden uten en;
+trykk på den for å åpne overføringen, og [motta den](#motta-en-overføring),
+[avslutt med avvik](#avslutt-med-avvik) eller [avbryt den](#avbryt-en-overføring).
+
 ## Hvem ser hva
 
-| Hva | Se lagersteder | Se beholdning | Administrere lagersteder | Justere beholdning | Motta varer | Telle varer |
-| --- | --- | --- | --- | --- | --- | --- |
-| Flisen og **Oversikt** med oppslaget — én av visningsrettighetene er nok | ✓ | ✓ | – | – | – | – |
-| Lagerstedene, lokasjonene deres og siden for en lokasjon; lokasjoner i oppslaget og **Finn lokasjon eller vare**; **Skriv ut etiketter** | ✓ | – | – | – | – | – |
-| Antall: **Innhold**, beholdningssiden for en vare, **Bevegelser** og **Varemottak**, **Beholdning**-kortet på produktsiden, kolonnen **Beholdning** i produktlisten, tallene på dashbordet, varer i oppslaget | ✓ | ✓ | – | – | – | – |
-| **Nytt lagersted**, **Ny lokasjon**, **Legg til mange**, **Rediger**, **Arkiver**, **Gjenåpne**, **Slett** | ✓ | – | ✓ | – | – | – |
-| **Ny justering**, **Juster**, **Ny flytting**, **Flytt herfra** — i Oversikt, på en lokasjon, en vare, bevegelsene og produktets Beholdning-kort; **Importer inngående beholdning** | ✓ | ✓ | – | ✓ | – | – |
-| **Nytt varemottak**, **Motta her**, **Motta** — der de enn vises | ✓ | ✓ | – | – | ✓ | – |
-| **Varetellinger**, **Åpne varetelling**, **Tell**, **Start varetelling**, telling, bokføring og avbrytelse; **En varetelling har vært åpen lenge** på dashbordet | ✓ | ✓ | – | – | – | ✓ |
+| Hva | Se lagersteder | Se beholdning | Administrere lagersteder | Justere beholdning | Motta varer | Telle varer | Overføre varer |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Flisen og **Oversikt** med oppslaget — én av visningsrettighetene er nok | ✓ | ✓ | – | – | – | – | – |
+| Lagerstedene, lokasjonene deres og siden for en lokasjon; lokasjoner i oppslaget og **Finn lokasjon eller vare**; **Skriv ut etiketter** | ✓ | – | – | – | – | – | – |
+| Antall: **Innhold**, beholdningssiden for en vare, **Bevegelser** og **Varemottak**, **Beholdning**-kortet på produktsiden, kolonnen **Beholdning** i produktlisten, tallene på dashbordet, varer i oppslaget | ✓ | ✓ | – | – | – | – | – |
+| **Nytt lagersted**, **Ny lokasjon**, **Legg til mange**, **Rediger**, **Arkiver**, **Gjenåpne**, **Slett** | ✓ | – | ✓ | – | – | – | – |
+| **Ny justering**, **Juster**, **Ny flytting**, **Flytt herfra** — i Oversikt, på en lokasjon, en vare, bevegelsene og produktets Beholdning-kort; **Importer inngående beholdning** | ✓ | ✓ | – | ✓ | – | – | – |
+| **Nytt varemottak**, **Motta her**, **Motta** — der de enn vises | ✓ | ✓ | – | – | ✓ | – | – |
+| **Varetellinger**, **Åpne varetelling**, **Tell**, **Start varetelling**, telling, bokføring og avbrytelse; **En varetelling har vært åpen lenge** på dashbordet | ✓ | ✓ | – | – | – | ✓ | – |
+| **Overføringer**, siden for en overføring og historikken, **Skriv ut følgeseddel**, overføringer i oppslaget, **Innkommende** og **Utgående** på et lagersted, **Avvik på overføringer** på en vare | ✓ | ✓ | – | – | – | – | – |
+| **Ny overføring**, **Rediger**, **Lagre utkast**, **Send …**, **Send og motta …**, **Slett utkast**, **Motta …**, å avslutte med avvik, **Avbryt overføring**; **En overføring har passert forventet ankomst** på dashbordet | ✓ | ✓ | – | – | – | – | ✓ |
 
 Hver av de andre radene krever hver rettighet den krysser av: knappene som bokfører og
 teller, vises bare for den som har begge visningsrettighetene **og** skriverettigheten.
 Å skrive ut etiketter krever bare **Se lagersteder**: en etikett viser ikke noe siden for
-lokasjonen ikke viser. Ingen av de seks rettighetene er sensitive. Hele tabellen står
+lokasjonen ikke viser. Å motta en overføring krever **Overføre varer**, ikke **Motta
+varer**: den flytter dine egne varer mellom dine lagersteder og er ikke et mottak fra en
+leverandør. Ingen av de sju rettighetene er sensitive. Hele tabellen står
 under [rettighetene](/en/reference/inventory/#permissions) i referansen.

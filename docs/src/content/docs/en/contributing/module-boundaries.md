@@ -1102,7 +1102,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     variant's own unit as a decimal and the number of places it lies in, or
     `open_documents`, the number of open quotes, orders and subscriptions that name it,
     or `reserved`, a quantity orders have reserved (rule 24) and, in `Locations`, the
-    number of sites.
+    number of sites, or `in_transit` (`contracts.VariantHoldKindInTransit`), a quantity on
+    its way between two sites on an Inventory transfer and, in `Locations`, the number of
+    transfers — Inventory answers it after `stock` and `reserved`, for both purposes.
     The first hold refuses the write with 409 — *Variant has stock* and *Product has
     stock*, the unit in the refusal from Products' own row, or *Variant is on open
     documents* and *Product is on open documents*, naming how many. The holder keeps

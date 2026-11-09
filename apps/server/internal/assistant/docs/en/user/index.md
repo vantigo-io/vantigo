@@ -28,8 +28,10 @@ with a confirmed booking this week, their confirmed load with the tentative besi
 the open requests and the people unbooked, for `planning:view`
 ([the dashboard](/en/user/planning/#the-dashboard)); Inventory's, the stock lines with the
 goods receipts posted this week beside them, for `inventory:locations-view` with
-`inventory:stock-view`, and, with `inventory:counts-manage` too, a count left open more
-than a week in the list below ([Inventory](/en/user/inventory/#the-dashboard)).
+`inventory:stock-view`, and in the list below, with `inventory:counts-manage` too, a count
+left open more than a week, and, with `inventory:transfers-manage`, a transfer between
+sites past its expected arrival or on its way more than a week
+([Inventory](/en/user/inventory/#the-dashboard)).
 Its **Needs attention**
 list gathers the apps' items that wait for someone — Invoices' among them: overdue
 invoices, money owed back on an invoice, and, with `invoices:payments`, bank lines in the
