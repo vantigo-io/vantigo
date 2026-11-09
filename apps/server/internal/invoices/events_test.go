@@ -1,6 +1,7 @@
 package invoices_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -82,6 +83,8 @@ func TestPaymentReceived_IsPublishedByTheRegistrationAndByNothingElse(t *testing
 		t.Errorf("the event is not under the payment's aggregate")
 	}
 
+	assertPaymentEvents(t, h)
+
 	// A registration the invoice refuses (more than is open) publishes nothing: the event is on the same transaction.
 	res := payer(t, h).Do(http.MethodPost, paymentsPath(inv.ID), pay(5000, "2026-09-12"))
 	refusedAs(t, "an overpayment", res, "payment_exceeds_open")
@@ -105,9 +108,10 @@ func containsFold(s, sub string) bool {
 func TestInvoiceOverdue_IsAnnouncedOnceForEachInvoiceThatBecameOverdue(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
-	late := plantOverdue(t, h, overdueSpec{number: 9001, customer: customerAcme, issue: "2026-07-01", due: "2026-08-01"})
+	late := plantOverdue(t, h, overdueSpec{number: 9001, customer: customerAcme, issue: "2026-07-01", due: "2026-09-08"})
+	plantOverdue(t, h, overdueSpec{number: 9004, customer: customerAcme, issue: "2026-06-01", due: "2026-07-01"}) // a backlog, not news
 	plantOverdue(t, h, overdueSpec{number: 9002, customer: customerAcme, issue: "2026-09-01", due: "2026-10-15"}) // not due yet
-	paid := plantOverdue(t, h, overdueSpec{number: 9003, customer: customerAcme, issue: "2026-07-01", due: "2026-08-01", gross: "500"})
+	paid := plantOverdue(t, h, overdueSpec{number: 9003, customer: customerAcme, issue: "2026-07-01", due: "2026-09-08", gross: "500"})
 	h.Exec(t, `INSERT INTO invoices.payments (invoice_id, paid_on, amount, currency, registered_by_user_id, registered_at)
 	           VALUES ($1, '2026-08-05', 500, 'NOK', gen_random_uuid(), now())`, paid)
 	// The payment above published its event; this test is about the overdue ones.
@@ -127,7 +131,7 @@ func TestInvoiceOverdue_IsAnnouncedOnceForEachInvoiceThatBecameOverdue(t *testin
 	if err := json.Unmarshal(got[0], &ev); err != nil {
 		t.Fatal(err)
 	}
-	if ev.InvoiceID != late || ev.Number != 9001 || ev.CustomerID != customerAcme || ev.DueDate != "2026-08-01" || ev.Day != "2026-09-12" || ev.Currency == "" || ev.GrossTotal != "1000.00" {
+	if ev.InvoiceID != late || ev.Number != 9001 || ev.CustomerID != customerAcme || ev.DueDate != "2026-09-08" || ev.Day != "2026-09-12" || ev.Currency == "" || ev.GrossTotal != "1000.00" {
 		t.Errorf("event = %+v, want the late invoice's figures on the business day", ev)
 	}
 	want := map[string]bool{"invoiceId": true, "number": true, "customerId": true, "dueDate": true, "day": true, "currency": true, "grossTotal": true}
@@ -138,5 +142,62 @@ func TestInvoiceOverdue_IsAnnouncedOnceForEachInvoiceThatBecameOverdue(t *testin
 	}
 	if containsFold(string(got[0]), "Kunde") || containsFold(string(got[0]), "Selger") {
 		t.Errorf("the event carries a name: %s", got[0])
+	}
+}
+
+// assertPaymentEvents holds every payment of the installation, whichever way it was
+// registered (a person, a matched or applied bank line, a Vipps capture), to the
+// event: one invoices.payment.received for it, under the contract's name, version
+// and aggregate, whose payload decodes into contracts.PaymentReceived with no field
+// unknown to it. Any insert into invoices.payments publishes: the trigger cannot know
+// the path, and each path holds the invoice's lock.
+func assertPaymentEvents(t *testing.T, h *harness) {
+	t.Helper()
+	rows, err := h.Pool().Query(context.Background(), `SELECT id, invoice_id, amount::text, source FROM invoices.payments ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type pay struct {
+		id, invoice int64
+		amount, src string
+	}
+	var pays []pay
+	for rows.Next() {
+		var p pay
+		if err := rows.Scan(&p.id, &p.invoice, &p.amount, &p.src); err != nil {
+			t.Fatal(err)
+		}
+		pays = append(pays, p)
+	}
+	rows.Close()
+	if len(pays) == 0 {
+		t.Fatal("the test registered no payment")
+	}
+	for _, p := range pays {
+		var name, aggregate, module string
+		var version int
+		var raw []byte
+		err := h.Pool().QueryRow(context.Background(),
+			`SELECT name, version, module, aggregate, payload FROM platform.events WHERE name = 'invoices.payment.received' AND aggregate_id = $1`,
+			strconv.FormatInt(p.id, 10)).Scan(&name, &version, &module, &aggregate, &raw)
+		if err != nil {
+			t.Fatalf("payment %d (%s) has no event: %v", p.id, p.src, err)
+		}
+		var want contracts.PaymentReceived
+		if name != want.EventName() || version != want.EventVersion() || module != "invoices" || aggregate != "invoices.payment" {
+			t.Errorf("payment %d: event %s v%d by %s under %s, want the contract's", p.id, name, version, module, aggregate)
+		}
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		var ev contracts.PaymentReceived
+		if err := dec.Decode(&ev); err != nil {
+			t.Fatalf("payment %d: the payload does not decode into contracts.PaymentReceived: %v", p.id, err)
+		}
+		if ev.PaymentID != p.id || ev.InvoiceID != p.invoice || ev.Source != p.src || ev.Currency != "NOK" {
+			t.Errorf("payment %d: event %+v, want its id, invoice, source and currency", p.id, ev)
+		}
+	}
+	if n := h.Count(t, `SELECT count(*) FROM platform.events WHERE name = 'invoices.payment.received'`); n != len(pays) {
+		t.Errorf("%d events for %d payments, want one each", n, len(pays))
 	}
 }

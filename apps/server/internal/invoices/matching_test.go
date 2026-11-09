@@ -532,6 +532,7 @@ func TestMatch_PrincipalThenCharges(t *testing.T) {
 		t.Errorf("a line short of the open amount = %v and %v, want the principal alone", got, charges)
 	}
 	chargesAre(t, "the short line's invoice", receivablesOf(t, h, short.ID), 35, 0, 0, 35, nil)
+	assertPaymentEvents(t, h)
 }
 
 // issueOn issues an invoice of 1000.00 with its KID while the seller banks

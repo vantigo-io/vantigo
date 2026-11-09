@@ -10,6 +10,11 @@ CREATE TABLE invoices.overdue_announced (
     announced_at timestamptz NOT NULL
 );
 
+-- Invoices that are already past due when this migration runs are not announced: the event is for the
+-- invoice that becomes overdue, and a backlog of old ones would wake every follow-up at once.
+INSERT INTO invoices.overdue_announced (invoice_id, announced_on, announced_at)
+SELECT id, current_date, now() FROM invoices.invoices WHERE kind = 'invoice' AND status = 'issued' AND due_date < current_date;
+
 -- Four write paths register a payment (a person, a bank line matched, a bank line
 -- applied, a Vipps capture), and each holds the invoice FOR UPDATE; the event is
 -- written by the insert itself, so it commits with the payment or not at all, and

@@ -5687,7 +5687,7 @@ in `invoices.overdue_announced`, `FOR UPDATE OF` the invoice row with `SKIP LOCK
 its row in `overdue_announced` and publishes the event in the same transaction, up to 200 a pass. **`payment.received`** is published
 by a trigger on `invoices.payments` (`tr_payments_received`, migration 00150), because four write paths register payments, two of
 them without the transaction in hand; every one holds the invoice `FOR UPDATE` and the event commits with the payment or not at all.
-The aggregate of the payment event is the payment.
+The aggregate of the payment event is the payment. Any insert into `invoices.payments` publishes, whichever path made it: the trigger cannot know the path. The overdue worker announces only an invoice that fell due in the last seven days, and migration 00150 marks the invoices already past due when it runs as announced, so a backlog of old invoices does not wake every follow-up at once.
 
 ## Agents and the customer scope
 

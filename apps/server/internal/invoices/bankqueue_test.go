@@ -674,6 +674,7 @@ func TestBankQueue_ApplyAcrossThreeInvoicesInDescendingId(t *testing.T) {
 	if got, _ := queueList(t, h, "unapplied=true"); !slices.Equal(lineIDsOf(got), []int64{line}) {
 		t.Errorf("?unapplied=true = %v, want the line with its 65 left", lineIDsOf(got))
 	}
+	assertPaymentEvents(t, h)
 }
 
 // TestBankQueue_ApplyAPossibleDuplicate (m12): Task 8's genuine second

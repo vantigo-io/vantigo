@@ -648,6 +648,7 @@ func TestPaymentWorker_PaidOnIsTheCaptureEvent(t *testing.T) {
 		if got := vippsPaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{want}) {
 			t.Errorf("the event log read %v: payments %v, want %s", logRead, got, want)
 		}
+		assertPaymentEvents(t, h)
 	}
 }
 
