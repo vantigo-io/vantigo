@@ -400,6 +400,10 @@ func (s *server) changeLocation(ctx context.Context, txq *store.Queries, who act
 		if err := txq.ArchiveSubtree(ctx, store.ArchiveSubtreeParams{ID: cur.ID, Now: now}); err != nil {
 			return store.InventoryLocation{}, fmt.Errorf("inventory: archive the subtree of location %d: %w", cur.ID, err)
 		}
+		// An archived location is no one's primary any more (phase 2 I55).
+		if err := s.clearPrimaries(ctx, txq, who, []int64{cur.ID}, eventLocationArchived); err != nil {
+			return store.InventoryLocation{}, err
+		}
 	}
 	return out, s.recordLocationChanges(ctx, txq, who, cur, out, len(sub.ids))
 }
@@ -528,6 +532,12 @@ func (s *server) DeleteInventoryLocation(ctx context.Context, req gen.DeleteInve
 			return err
 		}
 		if err := historyRefusal(ctx, txq, "The location "+sub.node.FullCode, sub.ids); err != nil {
+			return err
+		}
+		// The primaries naming the subtree are cleared, with their events,
+		// before its rows go (phase 2 I55): the foreign key's set null alone
+		// would leave a primary-only placement empty.
+		if err := s.clearPrimaries(ctx, txq, who, []int64{sub.node.ID}, eventLocationDeleted); err != nil {
 			return err
 		}
 		if err := txq.DeleteLocations(ctx, sub.ids); err != nil {

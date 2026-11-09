@@ -29,3 +29,19 @@ func SetTransferNoteHook(hook func(rows [][]string)) {
 	}
 	noteRowsBuilt.Store(&hook)
 }
+
+// SetLowStockExportPage sets how many rows the low-stock CSV reads at a
+// time, answering the size it had; a test reads several pages of few rows.
+func SetLowStockExportPage(n int) int {
+	return int(lowStockExportPage.Swap(int32(n)))
+}
+
+// SetPlacementsResolvedHook installs the hook a placements commit runs
+// between resolving its rows and opening its transaction; nil removes it.
+func SetPlacementsResolvedHook(hook func()) {
+	if hook == nil {
+		placementsResolved.Store(nil)
+		return
+	}
+	placementsResolved.Store(&hook)
+}

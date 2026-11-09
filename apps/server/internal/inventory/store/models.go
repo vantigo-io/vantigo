@@ -121,6 +121,20 @@ type InventoryMovementLine struct {
 	Entered        []byte
 }
 
+type InventoryPlacement struct {
+	VariantID         int32
+	SiteID            int64
+	PrimaryLocationID *int64
+	ReorderPoint      pgtype.Numeric
+	Maximum           pgtype.Numeric
+	Sku               string
+	ProductName       string
+	Revision          int32
+	UpdatedByUserID   *uuid.UUID
+	UpdatedByDisplay  *string
+	UpdatedAt         time.Time
+}
+
 type InventoryReservation struct {
 	ID           int64
 	VariantID    int32

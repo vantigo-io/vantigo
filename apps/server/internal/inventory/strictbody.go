@@ -172,6 +172,8 @@ const (
 	transferReceiveLineSchema  = "InventoryTransferReceiveLine"
 	transferCloseSchema        = "InventoryTransferClose"
 	transferCancelInputSchema  = "InventoryTransferCancelInput"
+
+	placementInputSchema = "InventoryPlacementInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -185,6 +187,7 @@ var closedSchemas = []string{
 	transferInputSchema, transferLineInputSchema, transferSuggestionSchema, transferSendInputSchema, transferSendLineSchema,
 	transferSendReceiveSchema, transferDestinationSchema, transferReceiveInputSchema, transferReceiveLineSchema,
 	transferCloseSchema, transferCancelInputSchema,
+	placementInputSchema,
 }
 
 // closedItems is, per closed request schema, its array properties whose

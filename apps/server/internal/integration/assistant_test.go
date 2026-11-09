@@ -421,6 +421,8 @@ var filesOrRedirects = []string{
 	"postInvoicesBankFiles",
 	"printInventoryLabels",
 	"getInventoryTransferNote",
+	"exportInventoryLowStock",
+	"importInventoryPlacements",
 	"getQuotePdf",
 	"getQuoteProforma",
 	"getSalesOrderPdf",

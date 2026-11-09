@@ -96,19 +96,36 @@ func (st stock) Sites(ctx context.Context) ([]contracts.StockSite, error) {
 }
 
 // Locations answers, per variant, the site's active locations holding more
-// than 0 of it, by full code.
+// than 0 of it, by full code, each marked when it is the variant's primary
+// location at the site (phase 2 I55) — the caller puts it first.
 func (st stock) Locations(ctx context.Context, variantIDs []int32, siteID int64) ([]contracts.StockLocation, error) {
 	if err := contracts.ValidateStockVariants(variantIDs); err != nil {
 		return nil, err
 	}
-	rows, err := store.New(st.s.deps.Pool).StockLocationsAt(ctx, store.StockLocationsAtParams{VariantIds: variantIDs, SiteID: siteID})
+	var rows []store.StockLocationsAtRow
+	primary := map[int32]int64{}
+	err := st.s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
+		var err error
+		if rows, err = q.StockLocationsAt(ctx, store.StockLocationsAtParams{VariantIds: variantIDs, SiteID: siteID}); err != nil {
+			return fmt.Errorf("inventory: read the locations holding stock: %w", err)
+		}
+		placed, err := q.PrimaryLocationsAt(ctx, store.PrimaryLocationsAtParams{SiteID: siteID, VariantIds: variantIDs})
+		if err != nil {
+			return fmt.Errorf("inventory: read the primary locations: %w", err)
+		}
+		for _, p := range placed {
+			primary[p.VariantID] = p.PrimaryLocationID
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("inventory: read the locations holding stock: %w", err)
+		return nil, err
 	}
 	out := make([]contracts.StockLocation, 0, len(rows))
 	for _, r := range rows {
+		id, placed := primary[r.VariantID]
 		out = append(out, contracts.StockLocation{VariantID: r.VariantID, LocationID: r.LocationID, FullCode: r.FullCode,
-			Quantity: decimalText(ratFromText(r.OnHand))})
+			Quantity: decimalText(ratFromText(r.OnHand)), Primary: placed && id == r.LocationID})
 	}
 	return out, nil
 }

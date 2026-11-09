@@ -59,22 +59,30 @@ var importQuantityPattern = regexp.MustCompile(`^[0-9]+([.,][0-9]+)?$`)
 // parseImportQuantity is a row's quantity as an exact decimal, or why it is
 // not one.
 func parseImportQuantity(text string) (*big.Rat, string) {
+	q, msg := parseImportDecimal(text, "quantity")
+	if msg == "" && q.Sign() <= 0 {
+		return nil, "The quantity must be more than 0"
+	}
+	return q, msg
+}
+
+// parseImportDecimal is a cell as an exact decimal of 0 or more, or why it
+// is not one, naming the cell as what.
+func parseImportDecimal(text, what string) (*big.Rat, string) {
 	t := strings.TrimSpace(text)
 	if !importQuantityPattern.MatchString(t) {
-		return nil, "The quantity is not a number such as 12 or 2.5"
+		return nil, "The " + what + " is not a number such as 12 or 2.5"
 	}
 	t = strings.Replace(t, ",", ".", 1)
 	if _, decimals, ok := strings.Cut(t, "."); ok && len(decimals) > quantityPlaces {
-		return nil, fmt.Sprintf("The quantity %s has more than three decimals", t)
+		return nil, fmt.Sprintf("The %s %s has more than three decimals", what, t)
 	}
 	q, ok := new(big.Rat).SetString(t)
 	switch {
 	case !ok:
-		return nil, "The quantity is not a number such as 12 or 2.5"
-	case q.Sign() <= 0:
-		return nil, "The quantity must be more than 0"
+		return nil, "The " + what + " is not a number such as 12 or 2.5"
 	case q.Cmp(maxQuantity) > 0:
-		return nil, "The quantity is more than 99,999,999,999.999"
+		return nil, "The " + what + " is more than 99,999,999,999.999"
 	}
 	return q, ""
 }
@@ -223,7 +231,7 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 	for i, r := range file.Rows {
 		row := gen.InventoryImportRow{
 			Row: int32(r.Row + 1), Location: cell(r, "location"), Sku: cell(r, "sku"), Quantity: cell(r, "quantity"),
-			Outcome: gen.Ok,
+			Outcome: gen.InventoryImportOutcomeOk,
 		}
 		loc, locOK := byCode[strings.ToUpper(row.Location)]
 		v, variantOK := bySKU[strings.ToLower(row.Sku)]
@@ -232,17 +240,17 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 		case extraCells(r, len(file.Header)):
 			// A decimal comma in a comma-separated file splits the quantity:
 			// "2,5" read as 2 and a fifth cell would import the wrong amount.
-			row.Outcome, row.Detail = gen.QuantityInvalid, ptr("The row has more cells than the header. Put a quantity with a decimal comma in quotes, such as \"2,5\", or separate the columns with ;")
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeQuantityInvalid, ptr("The row has more cells than the header. Put a quantity with a decimal comma in quotes, such as \"2,5\", or separate the columns with ;")
 		case !locOK:
-			row.Outcome, row.Detail = gen.LocationNotFound, ptr("No location of this site has this full code")
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeLocationNotFound, ptr("No location of this site has this full code")
 		case loc.Status != string(gen.Active):
-			row.Outcome, row.Detail = gen.LocationNotFound, ptr(loc.FullCode+" is archived and takes no stock")
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeLocationNotFound, ptr(loc.FullCode+" is archived and takes no stock")
 		case !variantOK:
-			row.Outcome, row.Detail = gen.VariantNotFound, ptr("No variant has this SKU")
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeVariantNotFound, ptr("No variant has this SKU")
 		case !v.stockable:
-			row.Outcome, row.Detail = gen.VariantNotStockable, ptr(row.Sku+" is a service; only goods are kept in stock")
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeVariantNotStockable, ptr(row.Sku+" is a service; only goods are kept in stock")
 		case msg != "":
-			row.Outcome, row.Detail = gen.QuantityInvalid, &msg
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeQuantityInvalid, &msg
 		default:
 			to := loc.ID
 			lines = append(lines, engineLine{index: i, variantID: v.id, to: &to, quantity: q})

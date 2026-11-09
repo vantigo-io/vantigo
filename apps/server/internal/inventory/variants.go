@@ -89,7 +89,8 @@ func distinct[T comparable](ids []T) []T {
 //
 // The line editor's picker (I22): goods variants by SKU, product name or
 // barcode, through the catalog's own search, so a warehouse worker needs no
-// Products key to pick what they receive.
+// Products key to pick what they receive; with siteId, each with its
+// primary location there (phase 2 I55), the line editor's default.
 func (s *server) SearchInventoryVariants(ctx context.Context, req gen.SearchInventoryVariantsRequestObject) (gen.SearchInventoryVariantsResponseObject, error) {
 	var f fieldErrors
 	q := strings.TrimSpace(req.Params.Q)
@@ -116,9 +117,27 @@ func (s *server) SearchInventoryVariants(ctx context.Context, req gen.SearchInve
 	if err != nil {
 		return nil, err
 	}
+	primary := map[int32]int64{}
+	if req.Params.SiteId != nil && len(entries) > 0 {
+		ids := make([]int32, 0, len(entries))
+		for _, e := range entries {
+			ids = append(ids, e.ID)
+		}
+		rows, err := store.New(s.deps.Pool).PrimaryLocationsAt(ctx, store.PrimaryLocationsAtParams{SiteID: *req.Params.SiteId, VariantIds: ids})
+		if err != nil {
+			return nil, fmt.Errorf("inventory: read the primary locations at site %d: %w", *req.Params.SiteId, err)
+		}
+		for _, r := range rows {
+			primary[r.VariantID] = r.PrimaryLocationID
+		}
+	}
 	out := gen.InventoryVariantList{Variants: make([]gen.InventoryVariantRef, 0, len(entries))}
 	for _, e := range entries {
-		out.Variants = append(out.Variants, variantRefOf(e))
+		ref := variantRefOf(e)
+		if id, ok := primary[e.ID]; ok {
+			ref.PrimaryLocationId = &id
+		}
+		out.Variants = append(out.Variants, ref)
 	}
 	return gen.SearchInventoryVariants200JSONResponse(out), nil
 }

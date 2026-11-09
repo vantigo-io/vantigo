@@ -91,25 +91,25 @@ func (e InventoryCountStatus) Valid() bool {
 
 // Defines values for InventoryImportOutcome.
 const (
-	LocationNotFound    InventoryImportOutcome = "location_not_found"
-	Ok                  InventoryImportOutcome = "ok"
-	QuantityInvalid     InventoryImportOutcome = "quantity_invalid"
-	VariantNotFound     InventoryImportOutcome = "variant_not_found"
-	VariantNotStockable InventoryImportOutcome = "variant_not_stockable"
+	InventoryImportOutcomeLocationNotFound    InventoryImportOutcome = "location_not_found"
+	InventoryImportOutcomeOk                  InventoryImportOutcome = "ok"
+	InventoryImportOutcomeQuantityInvalid     InventoryImportOutcome = "quantity_invalid"
+	InventoryImportOutcomeVariantNotFound     InventoryImportOutcome = "variant_not_found"
+	InventoryImportOutcomeVariantNotStockable InventoryImportOutcome = "variant_not_stockable"
 )
 
 // Valid indicates whether the value is a known member of the InventoryImportOutcome enum.
 func (e InventoryImportOutcome) Valid() bool {
 	switch e {
-	case LocationNotFound:
+	case InventoryImportOutcomeLocationNotFound:
 		return true
-	case Ok:
+	case InventoryImportOutcomeOk:
 		return true
-	case QuantityInvalid:
+	case InventoryImportOutcomeQuantityInvalid:
 		return true
-	case VariantNotFound:
+	case InventoryImportOutcomeVariantNotFound:
 		return true
-	case VariantNotStockable:
+	case InventoryImportOutcomeVariantNotStockable:
 		return true
 	default:
 		return false
@@ -236,6 +236,42 @@ func (e InventoryMovementKind) Valid() bool {
 	}
 }
 
+// Defines values for InventoryPlacementImportOutcome.
+const (
+	InventoryPlacementImportOutcomeMaximumBelowReorderPoint InventoryPlacementImportOutcome = "maximum_below_reorder_point"
+	InventoryPlacementImportOutcomeOk                       InventoryPlacementImportOutcome = "ok"
+	InventoryPlacementImportOutcomePlacementLocationInvalid InventoryPlacementImportOutcome = "placement_location_invalid"
+	InventoryPlacementImportOutcomeQuantityInvalid          InventoryPlacementImportOutcome = "quantity_invalid"
+	InventoryPlacementImportOutcomeSiteArchived             InventoryPlacementImportOutcome = "site_archived"
+	InventoryPlacementImportOutcomeSiteNotFound             InventoryPlacementImportOutcome = "site_not_found"
+	InventoryPlacementImportOutcomeVariantNotFound          InventoryPlacementImportOutcome = "variant_not_found"
+	InventoryPlacementImportOutcomeVariantNotStockable      InventoryPlacementImportOutcome = "variant_not_stockable"
+)
+
+// Valid indicates whether the value is a known member of the InventoryPlacementImportOutcome enum.
+func (e InventoryPlacementImportOutcome) Valid() bool {
+	switch e {
+	case InventoryPlacementImportOutcomeMaximumBelowReorderPoint:
+		return true
+	case InventoryPlacementImportOutcomeOk:
+		return true
+	case InventoryPlacementImportOutcomePlacementLocationInvalid:
+		return true
+	case InventoryPlacementImportOutcomeQuantityInvalid:
+		return true
+	case InventoryPlacementImportOutcomeSiteArchived:
+		return true
+	case InventoryPlacementImportOutcomeSiteNotFound:
+		return true
+	case InventoryPlacementImportOutcomeVariantNotFound:
+		return true
+	case InventoryPlacementImportOutcomeVariantNotStockable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InventorySiteKind.
 const (
 	Store     InventorySiteKind = "store"
@@ -257,6 +293,7 @@ func (e InventorySiteKind) Valid() bool {
 // Defines values for InventoryStatsAttentionItemType.
 const (
 	CountOpenLong   InventoryStatsAttentionItemType = "countOpenLong"
+	LowStock        InventoryStatsAttentionItemType = "lowStock"
 	TransferOverdue InventoryStatsAttentionItemType = "transferOverdue"
 )
 
@@ -264,6 +301,8 @@ const (
 func (e InventoryStatsAttentionItemType) Valid() bool {
 	switch e {
 	case CountOpenLong:
+		return true
+	case LowStock:
 		return true
 	case TransferOverdue:
 		return true
@@ -487,6 +526,9 @@ type InventoryBalanceRow struct {
 	// Location A location as other answers name it.
 	Location InventoryLocationRef `json:"location"`
 	OnHand   float64              `json:"onHand"`
+
+	// Primary The variant's primary location at the site (I55); set on a site's stock rows, absent elsewhere.
+	Primary *bool `json:"primary,omitempty"`
 
 	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
 	Variant InventoryVariantRef `json:"variant"`
@@ -824,6 +866,66 @@ type InventoryLookupResult struct {
 	Matches []InventoryLookupMatch `json:"matches"`
 }
 
+// InventoryLowStockElsewhere What another active site has available of the variant.
+type InventoryLowStockElsewhere struct {
+	Available float64 `json:"available"`
+	SiteId    int64   `json:"siteId"`
+	SiteName  string  `json:"siteName"`
+}
+
+// InventoryLowStockPackaging The variant's smallest packaging, which the suggestion was rounded up to (I57): fewest units, then sort order, then id.
+type InventoryLowStockPackaging struct {
+	// Count How many of it the suggestion is.
+	Count int32 `json:"count"`
+	Id    int32 `json:"id"`
+
+	// Kind inner, case, pallet or other; the screen names the packaging by its kind.
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+
+	// Quantity What one holds, in the variant's unit.
+	Quantity float64 `json:"quantity"`
+}
+
+// InventoryLowStockPage Low placements by site code, then SKU.
+type InventoryLowStockPage struct {
+	// Next Pass as cursor for the next page; absent on the last.
+	Next *string                `json:"next,omitempty"`
+	Rows []InventoryLowStockRow `json:"rows"`
+}
+
+// InventoryLowStockRow One low placement (I56–I58): the variant at an active site whose available plus incoming is at or below its reorder point, what it needs to reach its target — the maximum, or one above the reorder point — and the suggestion rounded up to whole packagings.
+type InventoryLowStockRow struct {
+	// Available On hand less reserved.
+	Available float64 `json:"available"`
+
+	// Elsewhere Every other active site's available, by site code.
+	Elsewhere []InventoryLowStockElsewhere `json:"elsewhere"`
+
+	// Incoming In transit to the site on open transfers.
+	Incoming float64  `json:"incoming"`
+	Maximum  *float64 `json:"maximum"`
+
+	// Needed The target less available plus incoming; at least 1.
+	Needed float64 `json:"needed"`
+	OnHand float64 `json:"onHand"`
+
+	// OpenDrafts The numbers of the draft transfers to the site with a line of the variant (I59).
+	OpenDrafts   []int64                     `json:"openDrafts"`
+	Packaging    *InventoryLowStockPackaging `json:"packaging"`
+	ReorderPoint float64                     `json:"reorderPoint"`
+	Reserved     float64                     `json:"reserved"`
+
+	// Site A site as other answers name it.
+	Site InventorySiteRef `json:"site"`
+
+	// Suggested Needed, rounded up to a whole number of the packaging; needed when the variant has none. It may pass the maximum.
+	Suggested float64 `json:"suggested"`
+
+	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
+	Variant InventoryVariantRef `json:"variant"`
+}
+
 // InventoryMeta What the app needs to start (§5): the caller's seven capabilities.
 type InventoryMeta struct {
 	// CanAdjust inventory:stock-adjust — adjustments and moves.
@@ -965,16 +1067,66 @@ type InventoryPackaging struct {
 	Quantity float64 `json:"quantity"`
 }
 
-// InventoryPlacement A variant's placement at a site (delivery B, I54): its primary location, reorder point and maximum, and whether it is low (I56).
+// InventoryPlacement A variant's placement at a site (I54): its primary location, reorder point and maximum, and whether it is low (I56) — available plus incoming at or below the reorder point.
 type InventoryPlacement struct {
-	Low               bool     `json:"low"`
+	// Low The reorder point is set and available plus incoming is at or below it (I56).
+	Low bool `json:"low"`
+
+	// Maximum What a suggestion fills up to; never below the reorder point.
+	Maximum *float64 `json:"maximum"`
+
+	// PrimaryLocationId An active location of the site, the default where the variant is put and taken (I55).
+	PrimaryLocationId *int64 `json:"primaryLocationId"`
+
+	// ReorderPoint Low at or below it; zero or more.
+	ReorderPoint *float64 `json:"reorderPoint"`
+
+	// Revision Checked by If-Match on a change or a removal.
+	Revision int32 `json:"revision"`
+}
+
+// InventoryPlacementImportOutcome defines model for InventoryPlacementImportOutcome.
+type InventoryPlacementImportOutcome string
+
+// InventoryPlacementImportResult The placements import's answer (I61): every row's outcome, and on a committed import how many placements it set and cleared.
+type InventoryPlacementImportResult struct {
+	// Cleared Placements removed by a row clearing all three fields; absent on a dry run or a refused import.
+	Cleared *int32 `json:"cleared,omitempty"`
+
+	// Ok Every row is ok.
+	Ok   bool                          `json:"ok"`
+	Rows []InventoryPlacementImportRow `json:"rows"`
+
+	// Set Placements created or changed; absent on a dry run or a refused import.
+	Set *int32 `json:"set,omitempty"`
+}
+
+// InventoryPlacementImportRow One row of the placements file and its outcome (I61). Every cell is as written; an empty one clears its field.
+type InventoryPlacementImportRow struct {
+	Detail  *string                         `json:"detail,omitempty"`
+	Maximum string                          `json:"maximum"`
+	Outcome InventoryPlacementImportOutcome `json:"outcome"`
+
+	// PrimaryLocation The location's full code.
+	PrimaryLocation string `json:"primaryLocation"`
+	ReorderPoint    string `json:"reorderPoint"`
+
+	// Row The row in the file, the header being row 1.
+	Row int32 `json:"row"`
+
+	// Site The site's code.
+	Site string `json:"site"`
+	Sku  string `json:"sku"`
+}
+
+// InventoryPlacementInput A placement's three fields (I54), each null to leave it unset; all three null is placement_empty — remove the placement instead. The maximum is never below the reorder point (maximum_below_reorder_point); the primary location is an active location of the site (placement_location_invalid).
+type InventoryPlacementInput struct {
 	Maximum           *float64 `json:"maximum"`
 	PrimaryLocationId *int64   `json:"primaryLocationId"`
 	ReorderPoint      *float64 `json:"reorderPoint"`
-	Revision          int32    `json:"revision"`
 }
 
-// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point, placement_empty and placement_location_invalid (400: a placement's rules, delivery B), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type InventoryProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1120,10 +1272,13 @@ type InventorySiteStock struct {
 	Incoming float64 `json:"incoming"`
 	OnHand   float64 `json:"onHand"`
 
+	// Placement A variant's placement at a site (I54): its primary location, reorder point and maximum, and whether it is low (I56) — available plus incoming at or below the reorder point.
+	Placement *InventoryPlacement `json:"placement,omitempty"`
+
 	// Reserved What other modules' documents (orders) have reserved of it at the site (orders design O45).
 	Reserved float64 `json:"reserved"`
 
-	// Rows By full code.
+	// Rows The primary location first, then by full code.
 	Rows []InventoryBalanceRow `json:"rows"`
 
 	// Site A site as other answers name it.
@@ -1173,7 +1328,7 @@ type InventoryStats struct {
 	StockLines int32 `json:"stockLines"`
 }
 
-// InventoryStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date (I62).
+// InventoryStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date; lowStock, one per active site with items at or below their reorder point, to a caller with both views, entityId the site's id, count the items and occurredAt the time of the read (I62).
 type InventoryStatsAttentionItem struct {
 	// Count How many the item stands for, when more than one.
 	Count      *int32                          `json:"count,omitempty"`
@@ -1202,7 +1357,7 @@ type InventoryStockAtSite struct {
 	Locations []InventoryStockAtSiteLocation `json:"locations"`
 	OnHand    float64                        `json:"onHand"`
 
-	// Placement A variant's placement at a site (delivery B, I54): its primary location, reorder point and maximum, and whether it is low (I56).
+	// Placement A variant's placement at a site (I54): its primary location, reorder point and maximum, and whether it is low (I56) — available plus incoming at or below the reorder point.
 	Placement *InventoryPlacement `json:"placement,omitempty"`
 	Reserved  float64             `json:"reserved"`
 	SiteId    int64               `json:"siteId"`
@@ -1215,8 +1370,8 @@ type InventoryStockAtSiteLocation struct {
 	Location InventoryLocationRef `json:"location"`
 	OnHand   float64              `json:"onHand"`
 
-	// Primary The variant's primary location at the site (delivery B); absent until then.
-	Primary *bool `json:"primary,omitempty"`
+	// Primary The variant's primary location at the site (I55).
+	Primary bool `json:"primary"`
 }
 
 // InventoryStockAtSites One row per variant and site asked for, whether or not anything lies there.
@@ -1511,6 +1666,9 @@ type InventoryVariantRef struct {
 	// Packagings The variant's packagings, by sort order; absent on a deleted variant.
 	Packagings *[]InventoryPackaging `json:"packagings,omitempty"`
 
+	// PrimaryLocationId The variant's primary location at the search's siteId; absent without one, or when the search named no site.
+	PrimaryLocationId *int64 `json:"primaryLocationId,omitempty"`
+
 	// ProductId Absent on a deleted variant.
 	ProductId   *int32 `json:"productId,omitempty"`
 	ProductName string `json:"productName"`
@@ -1544,6 +1702,11 @@ type ImportInventoryOpeningBalancesParams struct {
 	DryRun *bool `form:"dryRun,omitempty" json:"dryRun,omitempty"`
 }
 
+// ImportInventoryPlacementsParams defines parameters for ImportInventoryPlacements.
+type ImportInventoryPlacementsParams struct {
+	DryRun *bool `form:"dryRun,omitempty" json:"dryRun,omitempty"`
+}
+
 // PutInventoryLocationParams defines parameters for PutInventoryLocation.
 type PutInventoryLocationParams struct {
 	// IfMatch The revision the location was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
@@ -1560,6 +1723,27 @@ type GetInventoryLocationContentsParams struct {
 type LookupInventoryParams struct {
 	// Q The code as scanned or typed.
 	Q string `form:"q" json:"q"`
+}
+
+// ListInventoryLowStockParams defines parameters for ListInventoryLowStock.
+type ListInventoryLowStockParams struct {
+	// SiteId Only this site.
+	SiteId *int64 `form:"siteId,omitempty" json:"siteId,omitempty"`
+
+	// Q A SKU or a name, as the placement last saw them.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Cursor The previous page's next.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ExportInventoryLowStockParams defines parameters for ExportInventoryLowStock.
+type ExportInventoryLowStockParams struct {
+	// SiteId Only this site.
+	SiteId *int64 `form:"siteId,omitempty" json:"siteId,omitempty"`
+
+	// Q A SKU or a name, as the placement last saw them.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
 // ListInventoryMovementsParams defines parameters for ListInventoryMovements.
@@ -1676,6 +1860,24 @@ type SearchInventoryVariantsParams struct {
 	// Q The text to look for.
 	Q     string `form:"q" json:"q"`
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// SiteId A site, for each variant's primary location there.
+	SiteId *int64 `form:"siteId,omitempty" json:"siteId,omitempty"`
+}
+
+// DeleteInventoryPlacementParams defines parameters for DeleteInventoryPlacement.
+type DeleteInventoryPlacementParams struct {
+	// IfMatch The revision the placement was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// PutInventoryPlacementParams defines parameters for PutInventoryPlacement.
+type PutInventoryPlacementParams struct {
+	// IfMatch The revision the placement was read at, bare (3) or quoted ("3"), to change it. A revision that has moved on is a 409 revision_conflict.
+	IfMatch *string `json:"If-Match,omitempty"`
+
+	// IfNoneMatch *, to create the placement.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
 // OpenInventoryCountJSONRequestBody defines body for OpenInventoryCount for application/json ContentType.
@@ -1729,6 +1931,9 @@ type ReceiveInventoryTransferJSONRequestBody = InventoryTransferReceiveInput
 // SendInventoryTransferJSONRequestBody defines body for SendInventoryTransfer for application/json ContentType.
 type SendInventoryTransferJSONRequestBody = InventoryTransferSendInput
 
+// PutInventoryPlacementJSONRequestBody defines body for PutInventoryPlacement for application/json ContentType.
+type PutInventoryPlacementJSONRequestBody = InventoryPlacementInput
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListInventoryCounts List counts
@@ -1752,6 +1957,9 @@ type ServerInterface interface {
 	// ImportInventoryOpeningBalances Import opening balances
 	// (POST /api/v1/inventory/imports/opening-balances)
 	ImportInventoryOpeningBalances(w http.ResponseWriter, r *http.Request, params ImportInventoryOpeningBalancesParams)
+	// ImportInventoryPlacements Import placements
+	// (POST /api/v1/inventory/imports/placements)
+	ImportInventoryPlacements(w http.ResponseWriter, r *http.Request, params ImportInventoryPlacementsParams)
 	// PrintInventoryLabels Print location labels
 	// (POST /api/v1/inventory/labels)
 	PrintInventoryLabels(w http.ResponseWriter, r *http.Request)
@@ -1776,6 +1984,12 @@ type ServerInterface interface {
 	// LookupInventory Find a location or an item
 	// (GET /api/v1/inventory/lookup)
 	LookupInventory(w http.ResponseWriter, r *http.Request, params LookupInventoryParams)
+	// ListInventoryLowStock List low stock
+	// (GET /api/v1/inventory/low-stock)
+	ListInventoryLowStock(w http.ResponseWriter, r *http.Request, params ListInventoryLowStockParams)
+	// ExportInventoryLowStock Export low stock as CSV
+	// (GET /api/v1/inventory/low-stock.csv)
+	ExportInventoryLowStock(w http.ResponseWriter, r *http.Request, params ExportInventoryLowStockParams)
 	// GetInventoryMeta Inventory capabilities
 	// (GET /api/v1/inventory/meta)
 	GetInventoryMeta(w http.ResponseWriter, r *http.Request)
@@ -1857,6 +2071,12 @@ type ServerInterface interface {
 	// SearchInventoryVariants Search goods variants
 	// (GET /api/v1/inventory/variants)
 	SearchInventoryVariants(w http.ResponseWriter, r *http.Request, params SearchInventoryVariantsParams)
+	// DeleteInventoryPlacement Remove a placement
+	// (DELETE /api/v1/inventory/variants/{variantId}/placements/{siteId})
+	DeleteInventoryPlacement(w http.ResponseWriter, r *http.Request, variantId int32, siteId int64, params DeleteInventoryPlacementParams)
+	// PutInventoryPlacement Set a placement
+	// (PUT /api/v1/inventory/variants/{variantId}/placements/{siteId})
+	PutInventoryPlacement(w http.ResponseWriter, r *http.Request, variantId int32, siteId int64, params PutInventoryPlacementParams)
 	// GetInventoryVariantStock Get a variant's stock
 	// (GET /api/v1/inventory/variants/{variantId}/stock)
 	GetInventoryVariantStock(w http.ResponseWriter, r *http.Request, variantId int32)
@@ -2081,6 +2301,39 @@ func (siw *ServerInterfaceWrapper) ImportInventoryOpeningBalances(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// ImportInventoryPlacements operation middleware
+func (siw *ServerInterfaceWrapper) ImportInventoryPlacements(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ImportInventoryPlacementsParams
+
+	// ------------- Optional query parameter "dryRun" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dryRun", r.URL.Query(), &params.DryRun, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dryRun"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dryRun", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportInventoryPlacements(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PrintInventoryLabels operation middleware
 func (siw *ServerInterfaceWrapper) PrintInventoryLabels(w http.ResponseWriter, r *http.Request) {
 
@@ -2295,6 +2548,111 @@ func (siw *ServerInterfaceWrapper) LookupInventory(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LookupInventory(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInventoryLowStock operation middleware
+func (siw *ServerInterfaceWrapper) ListInventoryLowStock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInventoryLowStockParams
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInventoryLowStock(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportInventoryLowStock operation middleware
+func (siw *ServerInterfaceWrapper) ExportInventoryLowStock(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportInventoryLowStockParams
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportInventoryLowStock(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3305,8 +3663,162 @@ func (siw *ServerInterfaceWrapper) SearchInventoryVariants(w http.ResponseWriter
 		return
 	}
 
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SearchInventoryVariants(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInventoryPlacement operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInventoryPlacement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "variantId" -------------
+	var variantId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variantId", r.PathValue("variantId"), &variantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "siteId" -------------
+	var siteId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "siteId", r.PathValue("siteId"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteInventoryPlacementParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInventoryPlacement(w, r, variantId, siteId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInventoryPlacement operation middleware
+func (siw *ServerInterfaceWrapper) PutInventoryPlacement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "variantId" -------------
+	var variantId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variantId", r.PathValue("variantId"), &variantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "siteId" -------------
+	var siteId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "siteId", r.PathValue("siteId"), &siteId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutInventoryPlacementParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInventoryPlacement(w, r, variantId, siteId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3469,6 +3981,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/inventory/counts/{id}/lines", wrapper.PutInventoryCountLines)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/counts/{id}/post", wrapper.PostInventoryCount)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/imports/opening-balances", wrapper.ImportInventoryOpeningBalances)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/imports/placements", wrapper.ImportInventoryPlacements)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/labels", wrapper.PrintInventoryLabels)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/locations", wrapper.CreateInventoryLocation)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/inventory/locations/{id}", wrapper.DeleteInventoryLocation)
@@ -3477,6 +3990,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/locations/{id}/contents", wrapper.GetInventoryLocationContents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/locations/bulk", wrapper.BulkCreateInventoryLocations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lookup", wrapper.LookupInventory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/low-stock", wrapper.ListInventoryLowStock)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/low-stock.csv", wrapper.ExportInventoryLowStock)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/meta", wrapper.GetInventoryMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/movements", wrapper.ListInventoryMovements)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/movements/{id}", wrapper.GetInventoryMovement)
@@ -3504,6 +4019,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}/receive", wrapper.ReceiveInventoryTransfer)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}/send", wrapper.SendInventoryTransfer)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants", wrapper.SearchInventoryVariants)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/placements/{siteId}", wrapper.DeleteInventoryPlacement)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/placements/{siteId}", wrapper.PutInventoryPlacement)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/stock", wrapper.GetInventoryVariantStock)
 
 	return m
@@ -4118,6 +4635,99 @@ func (response ImportInventoryOpeningBalances503ApplicationProblemPlusJSONRespon
 	return err
 }
 
+type ImportInventoryPlacementsRequestObject struct {
+	Params ImportInventoryPlacementsParams
+	Body   io.Reader
+}
+
+type ImportInventoryPlacementsResponseObject interface {
+	VisitImportInventoryPlacementsResponse(w http.ResponseWriter) error
+}
+
+type ImportInventoryPlacements200JSONResponse InventoryPlacementImportResult
+
+func (response ImportInventoryPlacements200JSONResponse) VisitImportInventoryPlacementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryPlacements201JSONResponse InventoryPlacementImportResult
+
+func (response ImportInventoryPlacements201JSONResponse) VisitImportInventoryPlacementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryPlacements400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ImportInventoryPlacements400ApplicationProblemPlusJSONResponse) VisitImportInventoryPlacementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryPlacements401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ImportInventoryPlacements401JSONResponse) VisitImportInventoryPlacementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryPlacements403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ImportInventoryPlacements403JSONResponse) VisitImportInventoryPlacementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportInventoryPlacements503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ImportInventoryPlacements503ApplicationProblemPlusJSONResponse) VisitImportInventoryPlacementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PrintInventoryLabelsRequestObject struct {
 	Body *PrintInventoryLabelsJSONRequestBody
 }
@@ -4696,6 +5306,168 @@ func (response LookupInventory403JSONResponse) VisitLookupInventoryResponse(w ht
 type LookupInventory503ApplicationProblemPlusJSONResponse InventoryProblem
 
 func (response LookupInventory503ApplicationProblemPlusJSONResponse) VisitLookupInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLowStockRequestObject struct {
+	Params ListInventoryLowStockParams
+}
+
+type ListInventoryLowStockResponseObject interface {
+	VisitListInventoryLowStockResponse(w http.ResponseWriter) error
+}
+
+type ListInventoryLowStock200JSONResponse InventoryLowStockPage
+
+func (response ListInventoryLowStock200JSONResponse) VisitListInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLowStock400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryLowStock400ApplicationProblemPlusJSONResponse) VisitListInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLowStock401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryLowStock401JSONResponse) VisitListInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLowStock403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryLowStock403JSONResponse) VisitListInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLowStock503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryLowStock503ApplicationProblemPlusJSONResponse) VisitListInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryLowStockRequestObject struct {
+	Params ExportInventoryLowStockParams
+}
+
+type ExportInventoryLowStockResponseObject interface {
+	VisitExportInventoryLowStockResponse(w http.ResponseWriter) error
+}
+
+type ExportInventoryLowStock200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportInventoryLowStock200TextcsvResponse) VisitExportInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportInventoryLowStock400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ExportInventoryLowStock400ApplicationProblemPlusJSONResponse) VisitExportInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryLowStock401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportInventoryLowStock401JSONResponse) VisitExportInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryLowStock403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportInventoryLowStock403JSONResponse) VisitExportInventoryLowStockResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryLowStock503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ExportInventoryLowStock503ApplicationProblemPlusJSONResponse) VisitExportInventoryLowStockResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6807,6 +7579,205 @@ func (response SearchInventoryVariants503ApplicationProblemPlusJSONResponse) Vis
 	return err
 }
 
+type DeleteInventoryPlacementRequestObject struct {
+	VariantId int32 `json:"variantId"`
+	SiteId    int64 `json:"siteId"`
+	Params    DeleteInventoryPlacementParams
+}
+
+type DeleteInventoryPlacementResponseObject interface {
+	VisitDeleteInventoryPlacementResponse(w http.ResponseWriter) error
+}
+
+type DeleteInventoryPlacement204Response struct {
+}
+
+func (response DeleteInventoryPlacement204Response) VisitDeleteInventoryPlacementResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInventoryPlacement400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response DeleteInventoryPlacement400ApplicationProblemPlusJSONResponse) VisitDeleteInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryPlacement401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInventoryPlacement401JSONResponse) VisitDeleteInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryPlacement403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInventoryPlacement403JSONResponse) VisitDeleteInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryPlacement404Response struct {
+}
+
+func (response DeleteInventoryPlacement404Response) VisitDeleteInventoryPlacementResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteInventoryPlacement409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response DeleteInventoryPlacement409ApplicationProblemPlusJSONResponse) VisitDeleteInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryPlacementRequestObject struct {
+	VariantId int32 `json:"variantId"`
+	SiteId    int64 `json:"siteId"`
+	Params    PutInventoryPlacementParams
+	Body      *PutInventoryPlacementJSONRequestBody
+}
+
+type PutInventoryPlacementResponseObject interface {
+	VisitPutInventoryPlacementResponse(w http.ResponseWriter) error
+}
+
+type PutInventoryPlacement200JSONResponse InventoryPlacement
+
+func (response PutInventoryPlacement200JSONResponse) VisitPutInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryPlacement201JSONResponse InventoryPlacement
+
+func (response PutInventoryPlacement201JSONResponse) VisitPutInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryPlacement400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryPlacement400ApplicationProblemPlusJSONResponse) VisitPutInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryPlacement401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryPlacement401JSONResponse) VisitPutInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryPlacement403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryPlacement403JSONResponse) VisitPutInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryPlacement404Response struct {
+}
+
+func (response PutInventoryPlacement404Response) VisitPutInventoryPlacementResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutInventoryPlacement409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryPlacement409ApplicationProblemPlusJSONResponse) VisitPutInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryPlacement503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryPlacement503ApplicationProblemPlusJSONResponse) VisitPutInventoryPlacementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetInventoryVariantStockRequestObject struct {
 	VariantId int32 `json:"variantId"`
 }
@@ -6902,6 +7873,9 @@ type StrictServerInterface interface {
 	// ImportInventoryOpeningBalances Import opening balances
 	// (POST /api/v1/inventory/imports/opening-balances)
 	ImportInventoryOpeningBalances(ctx context.Context, request ImportInventoryOpeningBalancesRequestObject) (ImportInventoryOpeningBalancesResponseObject, error)
+	// ImportInventoryPlacements Import placements
+	// (POST /api/v1/inventory/imports/placements)
+	ImportInventoryPlacements(ctx context.Context, request ImportInventoryPlacementsRequestObject) (ImportInventoryPlacementsResponseObject, error)
 	// PrintInventoryLabels Print location labels
 	// (POST /api/v1/inventory/labels)
 	PrintInventoryLabels(ctx context.Context, request PrintInventoryLabelsRequestObject) (PrintInventoryLabelsResponseObject, error)
@@ -6926,6 +7900,12 @@ type StrictServerInterface interface {
 	// LookupInventory Find a location or an item
 	// (GET /api/v1/inventory/lookup)
 	LookupInventory(ctx context.Context, request LookupInventoryRequestObject) (LookupInventoryResponseObject, error)
+	// ListInventoryLowStock List low stock
+	// (GET /api/v1/inventory/low-stock)
+	ListInventoryLowStock(ctx context.Context, request ListInventoryLowStockRequestObject) (ListInventoryLowStockResponseObject, error)
+	// ExportInventoryLowStock Export low stock as CSV
+	// (GET /api/v1/inventory/low-stock.csv)
+	ExportInventoryLowStock(ctx context.Context, request ExportInventoryLowStockRequestObject) (ExportInventoryLowStockResponseObject, error)
 	// GetInventoryMeta Inventory capabilities
 	// (GET /api/v1/inventory/meta)
 	GetInventoryMeta(ctx context.Context, request GetInventoryMetaRequestObject) (GetInventoryMetaResponseObject, error)
@@ -7007,6 +7987,12 @@ type StrictServerInterface interface {
 	// SearchInventoryVariants Search goods variants
 	// (GET /api/v1/inventory/variants)
 	SearchInventoryVariants(ctx context.Context, request SearchInventoryVariantsRequestObject) (SearchInventoryVariantsResponseObject, error)
+	// DeleteInventoryPlacement Remove a placement
+	// (DELETE /api/v1/inventory/variants/{variantId}/placements/{siteId})
+	DeleteInventoryPlacement(ctx context.Context, request DeleteInventoryPlacementRequestObject) (DeleteInventoryPlacementResponseObject, error)
+	// PutInventoryPlacement Set a placement
+	// (PUT /api/v1/inventory/variants/{variantId}/placements/{siteId})
+	PutInventoryPlacement(ctx context.Context, request PutInventoryPlacementRequestObject) (PutInventoryPlacementResponseObject, error)
 	// GetInventoryVariantStock Get a variant's stock
 	// (GET /api/v1/inventory/variants/{variantId}/stock)
 	GetInventoryVariantStock(ctx context.Context, request GetInventoryVariantStockRequestObject) (GetInventoryVariantStockResponseObject, error)
@@ -7254,6 +8240,34 @@ func (sh *strictHandler) ImportInventoryOpeningBalances(w http.ResponseWriter, r
 	}
 }
 
+// ImportInventoryPlacements operation middleware
+func (sh *strictHandler) ImportInventoryPlacements(w http.ResponseWriter, r *http.Request, params ImportInventoryPlacementsParams) {
+	var request ImportInventoryPlacementsRequestObject
+
+	request.Params = params
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportInventoryPlacements(ctx, request.(ImportInventoryPlacementsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportInventoryPlacements")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportInventoryPlacementsResponseObject); ok {
+		if err := validResponse.VisitImportInventoryPlacementsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PrintInventoryLabels operation middleware
 func (sh *strictHandler) PrintInventoryLabels(w http.ResponseWriter, r *http.Request) {
 	var request PrintInventoryLabelsRequestObject
@@ -7479,6 +8493,58 @@ func (sh *strictHandler) LookupInventory(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LookupInventoryResponseObject); ok {
 		if err := validResponse.VisitLookupInventoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInventoryLowStock operation middleware
+func (sh *strictHandler) ListInventoryLowStock(w http.ResponseWriter, r *http.Request, params ListInventoryLowStockParams) {
+	var request ListInventoryLowStockRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInventoryLowStock(ctx, request.(ListInventoryLowStockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInventoryLowStock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInventoryLowStockResponseObject); ok {
+		if err := validResponse.VisitListInventoryLowStockResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportInventoryLowStock operation middleware
+func (sh *strictHandler) ExportInventoryLowStock(w http.ResponseWriter, r *http.Request, params ExportInventoryLowStockParams) {
+	var request ExportInventoryLowStockRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportInventoryLowStock(ctx, request.(ExportInventoryLowStockRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportInventoryLowStock")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportInventoryLowStockResponseObject); ok {
+		if err := validResponse.VisitExportInventoryLowStockResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8241,6 +9307,69 @@ func (sh *strictHandler) SearchInventoryVariants(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SearchInventoryVariantsResponseObject); ok {
 		if err := validResponse.VisitSearchInventoryVariantsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInventoryPlacement operation middleware
+func (sh *strictHandler) DeleteInventoryPlacement(w http.ResponseWriter, r *http.Request, variantId int32, siteId int64, params DeleteInventoryPlacementParams) {
+	var request DeleteInventoryPlacementRequestObject
+
+	request.VariantId = variantId
+	request.SiteId = siteId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInventoryPlacement(ctx, request.(DeleteInventoryPlacementRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInventoryPlacement")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInventoryPlacementResponseObject); ok {
+		if err := validResponse.VisitDeleteInventoryPlacementResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInventoryPlacement operation middleware
+func (sh *strictHandler) PutInventoryPlacement(w http.ResponseWriter, r *http.Request, variantId int32, siteId int64, params PutInventoryPlacementParams) {
+	var request PutInventoryPlacementRequestObject
+
+	request.VariantId = variantId
+	request.SiteId = siteId
+	request.Params = params
+
+	var body PutInventoryPlacementJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInventoryPlacement(ctx, request.(PutInventoryPlacementRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInventoryPlacement")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInventoryPlacementResponseObject); ok {
+		if err := validResponse.VisitPutInventoryPlacementResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

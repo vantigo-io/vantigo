@@ -64,6 +64,10 @@ type StockLocation struct {
 	LocationID int64
 	FullCode   string
 	Quantity   string
+	// Primary reports the location as the variant's primary location at its
+	// site (inventory phase 2 I55): a suggestion, never a rule — a pick list
+	// puts it first, and nothing refuses taking stock elsewhere.
+	Primary bool
 }
 
 // StockQuantity is one variant's quantity, in total and per site.
