@@ -177,6 +177,38 @@ describe("ProductFormModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("says a product on its way between sites cannot become a service, and to receive or cancel the transfers", async () => {
+    stubFetch((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === "/api/v1/products/tax-categories")
+        return Promise.resolve(jsonResponse(200, [{ id: 1, name: "Standard", kind: "Standard", rate: 0.25 }]));
+      if (String(url) === "/api/v1/products/1" && init?.method === "PUT")
+        return Promise.resolve(
+          jsonResponse(409, {
+            title: "Product has stock",
+            status: 409,
+            detail:
+              "Variant W-1 still has 12 pcs in transit between sites in 1 transfer. Receive or cancel the transfer before you make the product a service.",
+          }),
+        );
+      return Promise.resolve(jsonResponse(200, []));
+    });
+    const onClose = vi.fn();
+    renderModal({ mode: "edit", product }, onClose);
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Type" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Service" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("The product is on its way between sites")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "A variant of this product is in transit between sites. Receive or cancel the transfers that carry it before you make the product a service.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/12 pcs/)).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("edits an existing product in one step with the type select", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
     renderModal({ mode: "edit", product });

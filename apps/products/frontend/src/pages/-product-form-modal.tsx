@@ -143,13 +143,15 @@ export const ProductFormModal = ({ state, onClose }: { state: ProductModalState 
       if (error instanceof ApiValidationError) form.setErrors(error.fieldErrors);
       // Products' problems carry no code: a Goods→Service change refused for
       // stock is told by its title, and said in the reader's language.
-      else if (error instanceof ApiConflictError && error.title === "Product has stock")
+      else if (error instanceof ApiConflictError && error.title === "Product has stock") {
+        // A variant held on its way between sites (inventory phase 2 design I47) is said by the detail Inventory's hold gives.
+        const inTransit = /in transit between sites/.test(error.detail ?? error.message);
         notifications.show({
           color: "red",
-          title: t("productForm.productHasStock"),
-          message: t("productForm.productHasStockMessage"),
+          title: t(inTransit ? "productForm.productInTransit" : "productForm.productHasStock"),
+          message: t(inTransit ? "productForm.productInTransitMessage" : "productForm.productHasStockMessage"),
         });
-      else notifications.show({ color: "red", title: t("productForm.couldNotSave"), message: error.message });
+      } else notifications.show({ color: "red", title: t("productForm.couldNotSave"), message: error.message });
     },
   });
   const submit = form.onSubmit((v) =>

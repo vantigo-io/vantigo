@@ -91,6 +91,9 @@ export const productsCatalog = {
       productHasStock: "The product has stock",
       productHasStockMessage:
         "A variant of this product still has stock. Move the stock or adjust it to zero before you make the product a service.",
+      productInTransit: "The product is on its way between sites",
+      productInTransitMessage:
+        "A variant of this product is in transit between sites. Receive or cancel the transfers that carry it before you make the product a service.",
       updated: "Product updated",
       created: "Product created",
       savedMessage: '"{{name}}" was saved.',
@@ -162,6 +165,8 @@ export const productsCatalog = {
       deleteVariantConfirm: "Delete the variant {{sku}}? Its prices are deleted with it.",
       variantHasStock: "This variant still has stock",
       variantHasStockMessage: "Move the stock or adjust it to zero before you delete the variant.",
+      variantInTransit: "This variant is on its way between sites",
+      variantInTransitMessage: "Receive or cancel the transfers that carry it before you delete the variant.",
       seeWhereItLies: "See where it lies",
       deleteTitle: "Delete price",
       deleteConfirm: "Delete the {{price}} price row? This also removes it from the price history.",
@@ -384,6 +389,9 @@ export const productsCatalog = {
       productHasStock: "Produktet har beholdning",
       productHasStockMessage:
         "En variant av produktet har fortsatt beholdning. Flytt eller juster beholdningen til null før du gjør produktet til en tjeneste.",
+      productInTransit: "Produktet er under transport mellom lagersteder",
+      productInTransitMessage:
+        "En variant av produktet er under transport mellom lagersteder. Motta eller avbryt overføringene den er på, før du gjør produktet til en tjeneste.",
       updated: "Produkt oppdatert",
       created: "Produkt opprettet",
       savedMessage: "«{{name}}» ble lagret.",
@@ -455,6 +463,8 @@ export const productsCatalog = {
       deleteVariantConfirm: "Slette varianten {{sku}}? Prisene slettes sammen med den.",
       variantHasStock: "Varianten har fortsatt beholdning",
       variantHasStockMessage: "Flytt eller juster beholdningen til null før du sletter varianten.",
+      variantInTransit: "Varianten er under transport mellom lagersteder",
+      variantInTransitMessage: "Motta eller avbryt overføringene den er på, før du sletter varianten.",
       seeWhereItLies: "Se hvor den ligger",
       deleteTitle: "Slett pris",
       deleteConfirm: "Slett prisraden {{price}}? Dette fjerner den også fra prishistorikken.",

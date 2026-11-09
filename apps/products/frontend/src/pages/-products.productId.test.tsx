@@ -92,6 +92,14 @@ const variantHasStock = () =>
       "This variant still has 34 pcs in stock at 3 locations. Move the stock or adjust it to zero before you delete the variant.",
   });
 
+const variantInTransit = () =>
+  jsonResponse(409, {
+    title: "Variant has stock",
+    status: 409,
+    detail:
+      "This variant still has 12 pcs in transit between sites in 2 transfers. Receive or cancel the transfers before you delete the variant.",
+  });
+
 describe("ProductDetailsPage variants", () => {
   afterEach(() => {
     cleanup();
@@ -171,6 +179,22 @@ describe("ProductDetailsPage variants", () => {
     expect(screen.getByText("Move the stock or adjust it to zero before you delete the variant.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See where it lies" })).toHaveAttribute("href", "/inventory/variants/1");
     expect(screen.queryByText("A product must keep at least one variant.")).not.toBeInTheDocument();
+  });
+
+  it("says a variant on its way between sites cannot be deleted until its transfers are received or cancelled", async () => {
+    stubProductFetch(twoVariants(), variantInTransit());
+    renderPage({ stockHref: (variantId) => `/inventory/variants/${variantId}` });
+
+    await deleteFirstVariant();
+
+    expect(await screen.findByText("This variant is on its way between sites")).toBeInTheDocument();
+    expect(
+      screen.getByText("Receive or cancel the transfers that carry it before you delete the variant."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Move the stock or adjust it to zero before you delete the variant."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See where it lies" })).toHaveAttribute("href", "/inventory/variants/1");
   });
 
   it("leaves the link out of the stock refusal when the host gives no stockHref", async () => {
