@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00138_communications_inbox_counts.sql
   - apps/server/internal/db/migrations/00139_communications_contact_hints.sql
   - apps/server/internal/db/migrations/00145_communications_agent_messages.sql
+  - apps/server/internal/db/migrations/00152_communications_note_mentions.sql
   - apps/server/internal/contracts/contact_channels.go
   - apps/server/internal/contracts/events_communications.go
   - apps/server/internal/contracts/outbound_mail.go
@@ -621,6 +622,27 @@ display names and the kind are answered. `kind` is `person` or `agent`: this is 
 asks the directory to include the AI agents of the virtual employees (`IncludeAgents`), and an agent is
 shown with the AI badge.
 
+## Mentions in internal notes
+
+`POST /api/v1/communications/conversations/{id}/notes` takes, besides `textBody`, an optional `mentions`: up to ten user ids,
+people or agents, that the author picked with the @ picker (virtual employees design V32). The note's text carries the names
+for its readers; the ids are what the module acts on, so a name typed by hand mentions no one.
+
+- **Validation.** The author is left out and a repeat counts once. Every other id must be a user the
+  `contracts.UserDirectory` knows who is active, or the answer is **400** with a field error under `mentions`; so are more
+  than ten. The directory is asked before the transaction opens.
+- **Storage and event.** In the note's transaction the ids go to `conversation_message_mentions (message_id, user_id)`
+  (migration `00152`; no foreign key to the user, cascade from the message) and one
+  `communications.conversation.note_mentioned` is published, with the channel of the conversation and **no text**. A note
+  that mentions no one publishes nothing.
+- **A note written through an agent grant mentions no one**: its `mentions` are ignored, so that the agents cannot wake
+  each other. The agents module's own `note` tool sends none.
+- **The mail.** Once the note is committed, each *person* mentioned is mailed through `UserDirectory.Notify` in English and
+  Norwegian, naming the author and linking `/communications/inbox?conversationId=…`; it holds nothing of the note or of the
+  conversation, because it leaves the application and the person may not read the conversation. An agent is not mailed
+  (its address never routes): the [agents module wakes it](/en/reference/agents/#mentions). A mail that fails is logged and
+  never fails the note.
+
 ## Messages an agent sends
 
 A reply made through an **agent grant** (the principal's `Via.Kind` is `agent`, set by the agents
@@ -664,7 +686,7 @@ agents module pins that operation to the run's own conversation instead.
 
 ## Events
 
-Communications publishes three events onto the
+Communications publishes four events onto the
 [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox), each on the
 transaction that makes the change and while it holds the conversation's row (rule 23 of the
 [module boundaries](/en/contributing/module-boundaries/)). A payload carries ids and states, never
@@ -677,6 +699,7 @@ conversation's messages and assignments in the order they were published, per co
 | `communications.conversation.message_received` | The mailbox import or the Messenger sync inserts an **inbound** message | `conversationId`, `messageId`, `channelId`, `channelType` (`email` or `messenger`), `autoReply`, `unreadable`, `assignedUserId` |
 | `communications.conversation.assigned` | `PATCH` changes the assignee | `conversationId`, `channelId`, `assignedUserId` (null when cleared), `previousAssignedUserId` (null when there was none), `byUserId` |
 | `communications.conversation.replied` | A reply is queued in a conversation | `conversationId`, `messageId`, `byUserId`, `byAgent` (true when it was sent through an agent grant) |
+| `communications.conversation.note_mentioned` | An internal note is added that [mentions](#mentions-in-internal-notes) at least one user | `conversationId`, `messageId`, `channelId`, `byUserId`, `mentionedUserIds` |
 
 - `communications.conversation.message_received` is published for every imported inbound message, in a new
   conversation and in an existing one. `autoReply` is the [auto-reply](#auto-replies) flag;
@@ -698,7 +721,7 @@ conversation's messages and assignments in the order they were published, per co
 
 `ChannelID` on `assigned` is the conversation's channel, so a handler can find what answers it.
 Nothing in this module handles any of the events; the [agents module](/en/reference/agents/#the-trigger)
-handles all three.
+handles all four.
 
 ## Live updates
 

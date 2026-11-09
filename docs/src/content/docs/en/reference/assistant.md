@@ -1,6 +1,6 @@
 ---
 title: "Assistant module"
-description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction (in place, or by a summary) and the frozen system prompt; the history Claude's preserved thinking needs; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; bulk changes — the selector and its paging, the frozen items, the preview, the canary of five, the job in chunks of 100, its claim and the process it runs in, its grant, its stops, the failed items and their CSV; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; Knowledge as a source; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure."
+description: "Every person's assistant (nb Assistent): the schema; availability — the instance, the mode, the person's switch; the endpoints with their rules, status codes and If-Match; conversations that only their owner can reach; runs that outlive the connection, their caps, the stream and how a client reconnects; context compaction (in place, or by a summary) and the frozen system prompt; the history Claude's preserved thinking needs; the six tools, how their results reach the model and the action log; the guided tours (`show_tour`, the target registry, the runner); the changes the model proposes, the pending action behind a confirmation card, its preview, `If-Match`, confirm, cancel and expiry; bulk changes — the selector and its paging, the frozen items, the preview, the canary of five, the job in chunks of 100, its claim and the process it runs in, its grant, its stops, the failed items and their CSV; the daily token budget and the Owner's usage view; the links an answer may carry; the documentation index behind search_docs; Knowledge as a source; the permission levels the Owner sets and the gate that applies them to the dispatcher; the Owner's audit; retention and erasure; conversations with a virtual employee in the panel — the picker, the double check of the person and the agent, no customer, the cards the person confirms."
 sources:
   - apps/server/internal/assistant
   - apps/server/internal/operations
@@ -15,6 +15,8 @@ sources:
   - apps/server/internal/db/migrations/00105_assistant_bulk.sql
   - apps/server/internal/db/migrations/00106_assistant_bulk_once.sql
   - apps/server/internal/db/migrations/00107_assistant_anthropic.sql
+  - apps/server/internal/db/migrations/00153_assistant_agent_conversations.sql
+  - apps/server/internal/contracts/agent_colleagues.go
 ---
 The Assistant module gives every person a conversation partner that answers "how do I…"
 from the documentation, reads the data the person may read and does
@@ -62,7 +64,7 @@ not planned.
 ## The schema
 
 Migration `00103_assistant_baseline.sql` creates the schema `assistant`; `00104_assistant_writes.sql`
-adds the pending actions, the usage counts and the budget, `00105_assistant_bulk.sql` the bulk jobs, `00106_assistant_bulk_once.sql` the states that make an item run at most once, and `00107_assistant_anthropic.sql` what [Claude](#claude-and-preserved-thinking) needs of a conversation. A user is identity's: the
+adds the pending actions, the usage counts and the budget, `00105_assistant_bulk.sql` the bulk jobs, `00106_assistant_bulk_once.sql` the states that make an item run at most once, and `00107_assistant_anthropic.sql` what [Claude](#claude-and-preserved-thinking) needs of a conversation, and `00153_assistant_agent_conversations.sql` the agent a [conversation is with](#talking-to-a-virtual-employee). A user is identity's: the
 module holds an opaque `user_id` with no foreign key to it ([rule 4](/en/contributing/module-boundaries/)),
 and learns that one was erased by [asking identity](#erasure).
 
@@ -71,7 +73,7 @@ and learns that one was erased by [asking identity](#erasure).
 | `settings` | One row (a unique index on `(true)` keeps it one). `mode` — `all` (the default), `per_person` or `disabled`; `retention_months` — 1 to 60, default 12; `sensitive_default` — `off` (the default) or `read`; `daily_token_budget` — a whole number of tokens, NULL for no limit; `version`, which moves on with every change of the settings **and of any permission level**, so the gate can cache by it and one `If-Match` guards both; `updated_at`, `updated_by_user_id`. |
 | `person_settings` | A person's own switch, `enabled` (default false), and `last_conversation_id` — the conversation the panel reopens on any device — with a `version`. A row exists only once the Owner set the switch or the person opened a conversation; no row is a switch that is off, at version 0. |
 | `permission_levels` | The Owner's overrides: `permission_key` (primary key), `level` — `off`, `read` or `change`. Only overrides are stored, so a permission a later release adds takes its default. |
-| `conversations` | A person's conversation: `title`, where it began (`origin_app` up to 40 characters, `origin_route` up to 300), `pinned`, `archived_at`, `created_at` and `last_activity_at`, which [retention](#retention) reads. Indexed by `(user_id, pinned DESC, last_activity_at DESC)` for the list. |
+| `conversations` | A person's conversation: `title`, where it began (`origin_app` up to 40 characters, `origin_route` up to 300), `agent_id` — the agents module's id of the virtual employee it is [with](#talking-to-a-virtual-employee), an opaque id with no foreign key, null for the Assistant's own — `pinned`, `archived_at`, `created_at` and `last_activity_at`, which [retention](#retention) reads. Indexed by `(user_id, pinned DESC, last_activity_at DESC)` for the list. |
 | `runs` | One answer to one message: `state` — `running`, `awaiting_confirmation`, `done`, `failed`, `stopped` or `expired`; `error_code`; `tool_calls` and `model_turns`, counted against the [caps](#runs); `started_at`, `ended_at`; `stop_requested`. A **partial unique index on `(conversation_id) WHERE state IN ('running', 'awaiting_confirmation')`** is what allows one active run at a time per conversation, a run that waits for the person included. |
 | `messages` | `seq` (an identity column that orders the conversation), `role` — `user`, `assistant` or `tool`; `content`, the typed [parts](#messages-and-parts) as JSON; `context`, the chip the person sent a message with; `search_text`, the words the list's search reads; `model`, `input_tokens` and `output_tokens` as the provider reported them; `cache_read_tokens` and `cache_write_tokens`, the part of the prompt Anthropic read from and wrote to its cache; and `provider`, the provider's own record of an assistant turn as `json` (never `jsonb`, which would reorder its keys), null except for Anthropic, never shown by any endpoint. |
 | `conversation_state` | One row a conversation, made at its first run: `system_prompt` and `prompt_version` — the [frozen prompt](#the-system-prompt) — and, once the conversation was summarised, `summary`, `summary_through_seq` and `summarized_at`, the [compaction marker](#context-compaction). Deleted with the conversation. |
@@ -109,7 +111,7 @@ person for whom it is false.
 All of them are under `/api/v1/assistant`. The access rule is the contract's
 `x-vantigo-access`; every operation is also `x-vantigo-assistant: never`, so the assistant can
 never call its own API. Errors are RFC 9457 problems whose `code` is one of: `assistant_unavailable`
-(403), `not_found` (404), `run_in_progress` (409), `version_conflict` (409), `invalid` (400, with
+(403), `agent_unavailable` (403 or 409, [below](#talking-to-a-virtual-employee)), `not_found` (404), `run_in_progress` (409), `version_conflict` (409), `invalid` (400, with
 the field errors in `errors`), `ai_unavailable` (503), and for changes `action_decided` (409),
 `action_expired` (409), `operation_unavailable` (403), `budget_exhausted` (429) and, for bulk jobs, `job_not_waiting` (409). A router refusal — 401, 403 for an
 Owner endpoint, 429 — is the platform's own.
@@ -117,8 +119,9 @@ Owner endpoint, 429 — is the platform's own.
 | Method and path | Rule | Does |
 | --- | --- | --- |
 | `GET /availability` | `session` | [Availability](#availability). |
+| `GET /agents` | `session` | The [virtual employees](#talking-to-a-virtual-employee) the caller may talk to: `{ items: [{ id, name }] }`, the active agents ordered by name; **empty** for a caller without `agents:view` and where the agents module is off. |
 | `GET /conversations` | `session` | The caller's conversations. `q` (up to 200 characters) matches the title or the words of any user or assistant message, case-insensitively; `archived=true` lists the archived ones instead of the live ones; `limit` is 1 to 100 (30); `cursor` is the `nextCursor` of the previous page, and a cursor this server did not issue is 400. Ordered **pinned first**, then by `last_activity_at` newest first, then by id, as a keyset page: `nextCursor` is null on the last page. |
-| `POST /conversations` | `session` | Starts an empty conversation that remembers where it began: `origin.app` (required, up to 40) and `origin.route` (starts with `/`, up to 300), both 400 otherwise. 201. It becomes the caller's last open conversation. |
+| `POST /conversations` | `session` | Starts an empty conversation that remembers where it began: `origin.app` (required, up to 40) and `origin.route` (starts with `/`, up to 300), both 400 otherwise. 201. It becomes the caller's last open conversation. An optional `agentId` starts it [with a virtual employee](#talking-to-a-virtual-employee): 403 `agent_unavailable` without `agents:view`, 404 for an agent that is unknown or not active. |
 | `GET /conversations/{id}` | `session` | The conversation, its messages in order, the run that has not ended — `running` or `awaiting_confirmation` — as `activeRun` or, when it is over, the latest run as `lastRun` (so a client that reloaded can tell a run that failed from one that finished), the [action log](#the-action-log), and `pendingActions`: every [change proposed](#pending-actions) in the conversation, oldest first, so an undecided card is live after a reload. |
 | `PATCH /conversations/{id}` | `session` | `title` (1 to 200 characters, trimmed), `pinned` and `archived`; a field left out is kept. Archiving stamps `archived_at` once; un-archiving clears it. |
 | `DELETE /conversations/{id}` | `session` | 204. **Cancels a run in progress first**, then deletes the conversation with its messages, runs and actions, and clears the caller's last-open conversation if it was this one. |
@@ -303,7 +306,7 @@ it sees is a plain-text transcript, tool calls and results cut to 600 characters
 ## The system prompt
 
 The prompt is built **once, at a conversation's first run, and frozen**: it is stored on `conversation_state`
-with its `prompt_version` (`promptVersion`, `2026-11-07.2`, bumped with any change of the rules) and sent unchanged on every
+with its `prompt_version` (`promptVersion`, `2026-11-09.1`, bumped with any change of the rules) and sent unchanged on every
 later run, whatever the code says by then. A conversation that began under an older version keeps the prompt
 it began with; a new one gets the current. This is what a Claude model's thinking needs
 ([below](#claude-and-preserved-thinking)), and it keeps Anthropic's prompt cache warm. The prompt states, in order, who the assistant is; **the
@@ -430,6 +433,49 @@ log with the conversation. It is the person's own: the Owner has no way to read 
 person and day](#daily-budget-and-usage), without content. The read a card is made from is logged as an `auto` action of the
 `GET`; a change the person confirmed is logged with the mode `confirm`, the status the router answered and
 `confirmed_by`.
+
+## Talking to a virtual employee
+
+A person can talk to a [virtual employee](/en/reference/agents/) in the panel instead of to the Assistant (virtual
+employees design V31). The conversation is the person's own, in the same tables; its `agent_id` says whom it
+is with, and `agent` on a conversation answers `{ id, name }` (the name read from the agents module, so a paused or
+renamed agent is still named), null for the Assistant's own.
+
+**Who may.** A person who holds `agents:view` — the narrowest permission that already lets them see the agents, their
+personas and roles — and only while the agents module is enabled. The module reads it as the request does
+(`contracts.HasPermission`) when it lists the agents, starts a conversation, accepts a message and confirms a card. The
+agents are `contracts.AgentColleagues`, a single-provider slot the agents module fills (`Deps.AgentColleagues`, nil when it
+is off; [module boundaries](/en/contributing/module-boundaries/)), so the Assistant imports nothing of the agents.
+
+**The run is the person's.** It is an ordinary Assistant run: the person's assistant grant on their session, so the
+router judges every call as the person (the access rule, MFA, the handler's row rules), and the Owner's
+[levels for the Assistant](#permission-levels-and-the-gate) apply as for any run. There is no agent grant and no run of
+the agents module: nothing is counted in the agent's usage or activity, and the person's token budget is the one
+that counts. The model is the Assistant's (`assistant.chat`).
+
+**The agent's half of the double check.** `AgentColleagues.Operations` says what the agent itself may use in the panel,
+by operation id: the union of the allowlists of its roles' templates, less every operation that returns a customer's
+data (it declares `x-vantigo-customer-scope`, and a panel conversation has no customer, so the scope is never widened)
+and less the two that write to a customer (`postCommunicationsConversationsByIdReply` and the one that starts a
+conversation, which belong to the agent's own work and its review), then narrowed as the agent's [gate](/en/reference/agents/#the-gate) narrows a run:
+the operation must name permissions, none in the never list, each at a level the Owner raised for the agent (`read`, or
+`change` for an operation whose mode is confirm), and held by the agent through its Identity roles. The Assistant
+wraps the dispatcher for such a run (`colleagueOps`): `search_operations` and the list the model may call are the
+person's list **intersected** with the agent's, so a change is offered only when the agent's level is `change`, and
+`call_operation` refuses what is not in both. An operation the agent may use and the person may not is not in the
+person's list; one the person may use and the agent may not is not in the agent's. Either is refused as
+`operation_unavailable`, as for the Assistant.
+
+**Persona, not modes.** The system prompt (frozen at the first run, as always) says the model is the agent, an AI,
+working for a colleague in the panel, carries the agent's style, and states the rules above; Knowledge is read through
+the operations, as the Assistant reads it. The agent's modes (Review, Auto) do not apply: a change is the Assistant's
+[confirmation card](#changes-with-confirmation), and a bulk change (`propose_bulk`) is not offered.
+
+**A card is the person's decision, rechecked.** Confirming a card of a conversation with an agent first asks again, as
+the person and for the agent, whether the person still holds `agents:view`, the agent is still active and its level
+still lets it make the change: if not, 403 `agent_unavailable` or `operation_unavailable`, and nothing is written. The
+confirmed call itself goes through the same intersection. A message to a conversation whose agent was paused or deleted,
+or whose person lost `agents:view`, is **409 `agent_unavailable`**.
 
 ## Guided tours
 

@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00148_agents_memory.sql
   - apps/server/internal/db/migrations/00149_agents_roles.sql
   - apps/server/internal/contracts/agent_memory.go
+  - apps/server/internal/contracts/agent_colleagues.go
   - apps/server/internal/identity/access.go
   - apps/server/internal/config
   - apps/agents/frontend/src
@@ -347,18 +348,55 @@ replacing the quote's pending one), `orders.quote.accepted` (removes the quote's
 `agents.trigger` is a handler of the [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox)
 (module boundaries rule 23). It runs whatever `MODULES` says and does nothing when `agents` is not
 enabled; it writes only this module's schema, on the delivery's own transaction, and reads no
-contract. It takes three events of [Communications](/en/reference/communications/#events).
+contract. It takes four events of [Communications](/en/reference/communications/#events).
 
 | Event | What it does |
 | --- | --- |
 | `message_received` | Writes a **run request** when the channel is bound to a role of an **active** agent, the conversation is unassigned or assigned to that agent, it is not handed off, and the message is not an auto-reply. An unreadable message is handed off at once, with a note. |
 | `assigned` | An assignment made by an agent (its own hand-off) is ignored. A person's assignment clears the hand-off marker; an assignment **to the agent** also writes a request. |
 | `replied` | A person's reply (`byAgent` false) clears the hand-off marker. |
+| `note_mentioned` | [An agent mentioned in an internal note](#mentions) is woken. |
 
 A request is keyed by `(role, conversation)`: a second message while one waits moves `not_before` to
 now plus **20 seconds**, and never past `due_by`, the first message plus **2 minutes**, so three short
 messages make one run and a chatty customer cannot postpone it for ever. A paused agent gets no request;
 the ones already queued stay.
+
+## Mentions
+
+An internal note that mentions an agent wakes it (virtual employees design V32). `communications.conversation.note_mentioned`
+carries the conversation, the note's message id, the channel, the author and the users mentioned, and no text. The trigger
+does nothing when the author is an agent (two agents never wake each other), when the conversation is
+[handed off](#the-hand-off), or when the channel's role does not belong to a mentioned agent: the agent is woken **under
+its role on the conversation's channel**, and one with no role there, or a paused one, is left alone. A person
+mentioned is Communications' to mail ([Events](/en/reference/communications/#events)).
+
+The request is the conversation's ordinary one — one per `(role, conversation)`, reason `message` — but due **now**, with no
+debounce, and its `note` is `mention:<message id>`. A request waiting in its wait for a customer's message becomes due
+at once, and the run sees both. The run reads the note from the conversation (the event holds no text), puts it in its
+first message as `colleagueNote`, **data** like the rest, and the first message and the system prompt say a colleague
+asked: the agent answers the colleague with `note`, and writes to the customer only if the colleague asks. Everything
+else holds: the run's role, allowlist, customer scope, the pipeline's hard rules and the role's modes. Unlike a
+message's run, a mention's goes on when the conversation is assigned to a person, or has no inbound message to answer;
+a reply to a conversation a person has is refused by Communications (`conversation_taken`) as always.
+
+## Talking to an agent in the panel
+
+`contracts.AgentColleagues` (`Module.AgentColleagues`, `agents/colleagues.go`) is what the
+[Assistant](/en/reference/assistant/#talking-to-a-virtual-employee) needs to let a person talk to an agent (design V31). It is
+consumer-gated: the Assistant asks for `agents:view` before it lists, starts, sends or confirms. It reads this module's
+schema and the dispatcher's descriptions only; Compose resolves it once the dispatcher exists and gives the provider
+the dispatcher.
+
+| Method | Answers |
+| --- | --- |
+| `Agents` | The active agents, ordered by name, with their style and languages. |
+| `Agent` | One active agent, or `ErrColleagueUnavailable` for an unknown, paused or deleted one. |
+| `Names` | The names of the agents asked for, whatever their state. |
+| `Operations` | What the agent may do in the panel, by operation id, with whether it may *change* with it: the union of its roles' allowlists less the operations that return a customer's data or write to a customer (`reply`, `start`), each narrowed by the levels the Owner gave and the permissions the agent's Identity roles hold, exactly as [the gate](#the-gate) narrows a run. A change (an operation whose contract mode is confirm) needs the level `change` for every permission it names. |
+
+The panel's run is the **person's** (an assistant grant); nothing here issues an agent grant or starts a run, and the
+agent's modes do not apply.
 
 ## Runs
 
