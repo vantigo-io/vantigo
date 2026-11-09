@@ -22,7 +22,10 @@ import (
 // has draft entries in the week, or who submitted one of the eight weeks before
 // it: Time knows no one else to expect a week from. Only the week just ended is
 // looked at, so a worker that was down for a fortnight does not announce old weeks.
-// The event is published in the transaction that records the announcement.
+// The event is published in the transaction that records the announcement. Each person and
+// week is announced once: week_announced's primary key (user_id, week_start) and
+// INSERT ... ON CONFLICT DO NOTHING make a second replica, or a second pass, find nothing to
+// write (zero rows), and only the pass that wrote the row publishes.
 
 const (
 	weeksWorkerName = "time-weeks"

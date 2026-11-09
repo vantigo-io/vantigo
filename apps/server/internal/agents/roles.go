@@ -235,6 +235,10 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 		if raises && !owner {
 			return errOwnerRequired
 		}
+		if tpl := templates[current.Template]; tpl != nil && tpl.Recipient && b.RecipientUserId != nil && *b.RecipientUserId != uuid.Nil &&
+			!s.recipientMay(ctx, tpl, *b.RecipientUserId, nil) {
+			return errRecipientMay
+		}
 		waitDays, recipient := current.WaitDays, current.RecipientUserID
 		if b.WaitDays != nil {
 			waitDays = int16(*b.WaitDays)
@@ -280,6 +284,8 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 		return versionConflict(), nil
 	case errors.Is(err, errOwnerRequired):
 		return ownerRequired(), nil
+	case errors.Is(err, errRecipientMay):
+		return invalid("The role is not valid", map[string][]string{"recipientUserId": {"recipientUserId must hold the permissions the role reads with, since the note carries what it read"}}), nil
 	case errors.Is(err, errNoSchedule):
 		return invalid("The role is not valid", map[string][]string{"schedule": {"this template has no schedule"}}), nil
 	case err != nil:
@@ -291,6 +297,9 @@ func (s *server) UpdateAgentRole(ctx context.Context, req gen.UpdateAgentRoleReq
 	}
 	return gen.UpdateAgentRole200JSONResponse(view), nil
 }
+
+// errRecipientMay marks a recipient who may not read what the role reads.
+var errRecipientMay = errors.New("agents: the recipient may not read what the role reads")
 
 // errNoSchedule marks a schedule asked of a template that has none.
 var errNoSchedule = errors.New("agents: the template has no schedule")

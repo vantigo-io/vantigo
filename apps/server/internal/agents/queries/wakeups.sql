@@ -44,3 +44,11 @@ DELETE FROM agents.wakeups WHERE customer_id = sqlc.narg(customer_id)::integer;
 
 -- name: DeleteRequestsOfCustomer :execrows
 DELETE FROM agents.run_queue WHERE customer_id = sqlc.narg(customer_id)::integer;
+
+-- name: DeleteStartItemsOfContacts :many
+-- The conversations an agent would start to an erased contact (V26): the contact's id is kept on the item.
+DELETE FROM agents.review_items WHERE kind = 'start' AND (item->>'contactId')::integer = ANY(@contact_ids::integer[])
+RETURNING run_id;
+
+-- name: DeleteRunsByIds :execrows
+DELETE FROM agents.runs WHERE id = ANY(@ids::uuid[]);

@@ -71,6 +71,15 @@ ALTER TABLE agents.runs
 DROP INDEX agents.ux_runs_active;
 CREATE UNIQUE INDEX ux_runs_active ON agents.runs (role_id, conversation_id, subject_id) WHERE state IN ('queued', 'running');
 
+-- How many runs about a subject a role handed off on a business day: the hand-off person is mailed for the
+-- first and for every tenth, with the count, so a role that hands off every run does not flood them.
+CREATE TABLE agents.handoff_notices (
+    role_id uuid    NOT NULL REFERENCES agents.roles (id) ON DELETE CASCADE,
+    day     date    NOT NULL,
+    n       integer NOT NULL,
+    PRIMARY KEY (role_id, day)
+);
+
 -- A review item may be a conversation the agent would start (V29).
 ALTER TABLE agents.review_items DROP CONSTRAINT review_items_kind_check;
 ALTER TABLE agents.review_items ADD CONSTRAINT review_items_kind_check CHECK (kind IN ('reply', 'change', 'start'));
@@ -89,6 +98,7 @@ CREATE UNIQUE INDEX ux_run_queue_untaken ON agents.run_queue (role_id, conversat
 ALTER TABLE agents.run_queue DROP CONSTRAINT run_queue_reason_check;
 ALTER TABLE agents.run_queue ADD CONSTRAINT run_queue_reason_check CHECK (reason IN ('message', 'assigned', 'retry'));
 ALTER TABLE agents.run_queue DROP COLUMN note, DROP COLUMN customer_id, DROP COLUMN subject_id, DROP COLUMN subject_type;
+DROP TABLE agents.handoff_notices;
 DROP TABLE agents.wakeups;
 ALTER TABLE agents.roles DROP CONSTRAINT roles_schedule_whole;
 ALTER TABLE agents.roles

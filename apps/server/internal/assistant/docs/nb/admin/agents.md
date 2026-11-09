@@ -202,7 +202,8 @@ er lukket, skriver en person svaret.
   ført. Den trenger at installasjonens e-post er satt opp, siden den skriver gjennom Vantigos varsler:
   der e-post ikke er satt opp, sendes ingenting.
 - **Prosjektoppsummering.** Trenger **Prosjekter**. Sett en **timeplan** og **Send notatet til**; uten en
-  person har rollen ingen å skrive til og overleverer. Timeplanen følger firmaets tidssone (satt under
+  person har rollen ingen å skrive til og overleverer. Mottakeren må ha prosjekttillatelsene oppsummeringen leser
+  med, siden notatet har med det agenten leste: en person uten dem avvises når du lagrer rollen og når notatet sendes. Timeplanen følger firmaets tidssone (satt under
   arbeidsområdet), ukentlig eller månedlig, og en forekomst sendes høyst 12 timer for sent.
 
 En overlevering fra en rolle uten samtale (tilbudet, uken, timeplanen) sender rollens overtaker en lenke

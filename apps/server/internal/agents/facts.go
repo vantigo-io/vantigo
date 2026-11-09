@@ -154,6 +154,8 @@ func (c conversation) maxText() int {
 type contactSet struct {
 	Emails []string
 	IDs    []int32
+	// ByEmail is the contact whose own e-mail address it is.
+	ByEmail map[string]int32
 }
 
 // parseContacts reads GET /customers/{id}/contacts: every contact's e-mail
@@ -164,11 +166,20 @@ func parseContacts(body []byte) contactSet {
 	walk = func(v any) {
 		switch t := v.(type) {
 		case map[string]any:
-			if id, ok := t["id"].(float64); ok && t["firstName"] != nil {
+			id, isContact := t["id"].(float64)
+			isContact = isContact && t["firstName"] != nil
+			if isContact {
 				set.IDs = append(set.IDs, int32(id))
 			}
 			if e, ok := t["email"].(string); ok && strings.TrimSpace(e) != "" {
-				set.Emails = append(set.Emails, strings.ToLower(strings.TrimSpace(e)))
+				e = strings.ToLower(strings.TrimSpace(e))
+				set.Emails = append(set.Emails, e)
+				if isContact {
+					if set.ByEmail == nil {
+						set.ByEmail = map[string]int32{}
+					}
+					set.ByEmail[e] = int32(id)
+				}
 			}
 			for _, child := range t {
 				walk(child)

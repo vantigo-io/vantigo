@@ -233,3 +233,13 @@ SELECT (
     (SELECT count(*) FROM agents.runs r WHERE r.role_id = @role_id AND r.customer_id = sqlc.narg(customer_id)::integer AND r.conversation_id = '00000000-0000-0000-0000-000000000000' AND r.sent_at >= @since::timestamptz) +
     (SELECT count(*) FROM agents.review_items i WHERE i.role_id = @role_id AND i.customer_id = sqlc.narg(customer_id)::integer AND i.kind = 'start' AND i.state IN ('waiting', 'deciding', 'sent', 'edited_sent') AND i.created_at >= @since::timestamptz)
 )::bigint;
+
+-- name: CountSentSince :one
+-- Messages a role sent since a moment in runs about a subject: its notices to colleagues (V30).
+SELECT count(*) FROM agents.runs WHERE role_id = @role_id AND conversation_id = '00000000-0000-0000-0000-000000000000' AND sent_at >= @since::timestamptz;
+
+-- name: CountHandOffNotice :one
+-- Counts one more hand-off of a role about a subject on a business day, atomically, and answers the count.
+INSERT INTO agents.handoff_notices (role_id, day, n) VALUES (@role_id, @day::date, 1)
+ON CONFLICT (role_id, day) DO UPDATE SET n = agents.handoff_notices.n + 1
+RETURNING n;

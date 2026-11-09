@@ -204,7 +204,9 @@ follow the 24-hour window: when it has closed, a person writes the reply.
   notice says the week and the hours registered. It needs the installation's e-mail to be set up, since
   it writes through Vantigo's notifications: where e-mail is not configured, nothing is sent.
 - **Project digest.** Needs **Projects**. Set a **schedule** and **Send the note to**; without a person
-  the role has no one to write to and hands off. The schedule is in the company's time zone (set under
+  the role has no one to write to and hands off. The recipient must hold the project permissions the digest reads
+  with, since the note carries what the agent read: a person without them is refused when you save the role and
+  when the note is sent. The schedule is in the company's time zone (set under
   the workspace), weekly or monthly, and an occurrence is sent at most 12 hours late.
 
 A hand-off of a role that has no conversation (the quote, the week, the schedule) mails the role's

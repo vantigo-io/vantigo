@@ -162,14 +162,33 @@ func (p personalData) EraseContactData(ctx context.Context, tx pgx.Tx, contactID
 		return zeroErased(), nil
 	}
 	q := store.New(tx)
+	// The conversations the agent would have started to them, and the runs that wrote them (V29).
+	runIDs, err := q.DeleteStartItemsOfContacts(ctx, contactIDs)
+	if err != nil {
+		return nil, fmt.Errorf("agents: erase the conversations to start to the erased contacts: %w", err)
+	}
+	var started int64
+	if len(runIDs) > 0 {
+		ids := make([]uuid.UUID, len(runIDs))
+		copy(ids, runIDs)
+		if started, err = q.DeleteRunsByIds(ctx, ids); err != nil {
+			return nil, fmt.Errorf("agents: erase the runs that wrote them: %w", err)
+		}
+	}
 	convs, err := q.ConversationsOfContacts(ctx, contactIDs)
 	if err != nil {
 		return nil, fmt.Errorf("agents: find the erased contacts' conversations: %w", err)
 	}
 	if len(convs) == 0 {
-		return zeroErased(), nil
+		out := zeroErased()
+		out[0].Count += started
+		return out, nil
 	}
-	return erase(ctx, q, convs, nil)
+	out, err := erase(ctx, q, convs, nil)
+	if err == nil && len(out) > 0 {
+		out[0].Count += started
+	}
+	return out, err
 }
 
 func zeroErased() []contracts.ErasedData {

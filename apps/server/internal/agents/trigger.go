@@ -44,7 +44,15 @@ func eventHandlers(d module.Deps) []events.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	t := &trigger{clock: d.Clock, logger: logger, enabled: func() bool {
+	zone := func(ctx context.Context) *time.Location {
+		if d.Calendar != nil {
+			if loc, err := d.Calendar.Zone(ctx); err == nil && loc != nil {
+				return loc
+			}
+		}
+		return time.UTC
+	}
+	t := &trigger{clock: d.Clock, logger: logger, zone: zone, enabled: func() bool {
 		return d.Config == nil || slices.Contains(d.Config.Modules, "agents")
 	}}
 	return []events.Handler{{
@@ -62,6 +70,7 @@ func eventHandlers(d module.Deps) []events.Handler {
 }
 
 type trigger struct {
+	zone    func(context.Context) *time.Location
 	clock   func() time.Time
 	logger  *slog.Logger
 	enabled func() bool
@@ -210,10 +219,13 @@ func (t *trigger) quoteSent(ctx context.Context, q *store.Queries, e contracts.Q
 	}
 	now := t.clock()
 	customer := e.CustomerID
+	loc := t.zone(ctx)
+	// The wait is calendar days in the business zone: the same local time across a clock change.
 	for _, r := range roles {
 		if err := q.UpsertWakeup(ctx, store.UpsertWakeupParams{
 			ID: uuid.New(), RoleID: r.ID, SubjectType: subjectQuote, SubjectID: fmt.Sprint(e.QuoteID), CustomerID: &customer,
-			At: e.SentAt.Add(time.Duration(r.WaitDays) * 24 * time.Hour), Reason: "The quote was sent " + fmt.Sprint(r.WaitDays) + " days ago.", Now: now,
+			At:     e.SentAt.In(loc).AddDate(0, 0, int(r.WaitDays)),
+			Reason: "The quote was sent " + fmt.Sprint(r.WaitDays) + " days ago.", Now: now,
 		}); err != nil {
 			return fmt.Errorf("agents: wake the sales follow-up: %w", err)
 		}

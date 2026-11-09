@@ -196,7 +196,7 @@ Endringer i en rolle gjelder fra agentens neste skritt.
 - **Varsler til kolleger.** Påminnelse om timelister og Prosjektoppsummering skriver på e-post gjennom
   Vantigos varsler, ikke gjennom Kommunikasjon. Hver melding har åpningslinjen som sier at den er en KI.
   Agenten velger ikke mottaker: en påminnelse om timelister går til personen uken gjelder, en oppsummering
-  til personen som står på rollen. Disse varslene legges ikke igjen til gjennomgang.
+  til personen som står på rollen, som bare får det hun selv har lov til å se. En rolle sender høyst 50 varsler på 24 timer, og en rolle som overleverer arbeid sender den som overtar e-post for den første overleveringen hver dag og så for hver tiende, med antallet. Disse varslene legges ikke igjen til gjennomgang.
 
 Er den som overtar deaktivert eller ikke lenger har lov til å se samtaler, går overleveringen
 til Innboksen, uten ansvarlig, og rollesiden viser en advarsel ved personen. Velg noen andre
