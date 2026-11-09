@@ -80,7 +80,13 @@ While Inventory is in use, a **Goods** product whose variants still lie in stock
 become a **Service**: saving says **The product has stock** — *A variant of this product
 still has stock. Move the stock or adjust it to zero before you make the product a
 service.* Move the stock or adjust it to zero in [Inventory](/en/user/inventory/) first.
-Changing a service into goods is always allowed.
+The same refusal holds while a variant is **in transit between sites** in a
+[transfer](/en/user/inventory/#transfer-stock-between-sites), even with nothing left on
+any shelf: the goods have left one site and not yet reached the other, and the transfer
+still has to put them somewhere. [Receive the
+transfer](/en/user/inventory/#receive-a-transfer) or [cancel
+it](/en/user/inventory/#cancel-a-transfer) first. Changing a service into goods is always
+allowed.
 
 ## The product page
 
@@ -126,6 +132,15 @@ still lies in stock cannot be deleted: the app says **This variant still has sto
 *Move the stock or adjust it to zero before you delete the variant.* When you can see
 stock, the message links **See where it lies** to the variant's stock in Inventory. A
 variant with stock movements in its history but nothing in stock may be deleted.
+
+The same refusal holds while the variant is **in transit between sites** in a
+[transfer](/en/user/inventory/#transfer-stock-between-sites) — sent from one site, not yet
+received at the other — even when it lies on no shelf: deleting it would leave the
+transfer with goods it could put nowhere. Its stock page in Inventory shows it as
+*+… incoming* under the site it is going to. [Receive the
+transfer](/en/user/inventory/#receive-a-transfer) or [cancel
+it](/en/user/inventory/#cancel-a-transfer) first. A variant only on a **draft** transfer
+is not held: a draft holds nothing, and the draft is refused when it is sent.
 
 The barcode, weight and dimensions on the product page are variant fields too, but the
 app does not edit them; they are set through the API.

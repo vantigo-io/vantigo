@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the reads — a location's contents, a product's and a variant's stock, the stock totals, the movements, the lookup by code and the dashboard's figures and attention item; the six permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items; the seven permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00108_inventory_baseline.sql
   - apps/server/internal/db/migrations/00110_inventory_counts.sql
   - apps/server/internal/db/migrations/00125_inventory_reservations.sql
+  - apps/server/internal/db/migrations/00152_inventory_transfers.sql
   - apps/server/internal/contracts/stock.go
   - apps/host/frontend/src/routes/inventory
 ---
@@ -37,13 +38,16 @@ a variant that still lies in stock, and two contracts to Orders: **`contracts.St
 the read of on hand and available, and **`contracts.StockLedger`**, the write of
 [reservations and issues](#reservations-and-issues) on Orders' own transaction.
 
-This page describes phase 1, deliveries A and B, and the reservations Orders' delivery C
-added: the [contracts](#contracts-consumed),
+This page describes phase 1, deliveries A and B, the reservations Orders' delivery C
+added, and phase 2's delivery A, [transfers between sites](#transfers), designed in
+[`2026-11-08-inventory-phase2-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-08-inventory-phase2-design.md)
+(decisions I35–I53 and I62–I65): the [contracts](#contracts-consumed),
 [the schema](#the-schema), the [permissions](#permissions),
 [sites and locations](#sites-and-locations), [the ledger](#the-ledger),
 [entering in packagings](#entering-in-packagings), [counts](#counts),
 [labels](#labels), [the opening-balance import](#the-opening-balance-import),
-[reservations and issues](#reservations-and-issues), [the locks](#locks),
+[reservations and issues](#reservations-and-issues), [transfers](#transfers),
+[the locks](#locks),
 [the reads](#reads), the [personal data](#personal-data) it keeps,
 [how a refusal looks](#refusals), [the switch](#enabling-and-disabling),
 [what comes next](#what-comes-next) and the [endpoints](#endpoints).
@@ -115,12 +119,18 @@ transaction and answers a `VariantHold` of kind `stock`
 alike: the quantity as the shortest
 decimal that says it (`"34"`, `"2.5"`, `"0.125"`) and the number of locations it lies
 on. When it lies nowhere but is [reserved](#reservations-and-issues), it answers kind
-`reserved`: the quantity reserved and, in `Locations`, the number of sites; `nil` when
-neither. The first hold refuses Products' write with 409 — *Variant has stock* or
-*Product has stock* — with the unit from Products' own row; the detail reads *5 pcs
-reserved for orders at 1 site* and asks for the orders to be delivered or cancelled
-first. The holder locks nothing of its own:
-every posting that could add to the variant holds `FOR SHARE` on it through
+`reserved`: the quantity reserved and, in `Locations`, the number of sites. When it
+lies nowhere and nothing is reserved but a [transfer](#transfers) carries it — sent and
+neither received, recorded missing nor returned — it answers kind **`in_transit`**
+(`contracts.VariantHoldKindInTransit`, phase 2 I47): the quantity in transit and, in
+`Locations`, the number of transfers; `nil` when none of the three. The first hold
+refuses Products' write with 409 — *Variant has stock* or *Product has stock* — with the
+unit from Products' own row; the detail reads *5 pcs reserved for orders at 1 site* and
+asks for the orders to be delivered or cancelled first, or *12 pcs on its way between
+sites in 1 transfer* and asks for the transfer to be received or cancelled. A draft holds
+nothing and is no hold. The holder locks nothing of its own:
+every posting that could add to the variant — a transfer's send and receive among
+them — holds `FOR SHARE` on it through
 `LockVariants`, so it has committed before Products' `FOR UPDATE` was granted, or waits
 for Products' transaction. The holder needs nothing of `Deps` and is collected
 **whether or not `inventory` is enabled** ([enabling and disabling](#enabling-and-disabling)).
@@ -189,11 +199,13 @@ is an identity from 1001.
   (`ux_locations_full_code`). A GIN index on `ancestors` finds a subtree:
   `id = X OR ancestors @> {X}`.
 - **`movements`** — `client_request_id` (unique) and `request_hash`, `site_id`, `kind`
-  (`adjustment`, `move`, `receipt`, `count` or `issue`; an open set kept as text), `reason` (an
+  (`adjustment`, `move`, `receipt`, `count`, `issue`, and since phase 2 `transfer_out` and
+  `transfer_in`; an open set kept as text), `reason` (an
   adjustment's), `note` (1000), `supplier_name` (200) and `supplier_reference` (100) (a
   receipt's), the **source reference** `source_module`, `source_kind`, `source_id`,
   `source_line_id` — set by an [issue](#reservations-and-issues) to the document it was
-  posted for, null on the module's own movements, and indexed —
+  posted for, and by a [transfer's movement](#transfers) to the transfer and its action;
+  null on the module's other movements, and indexed —
   `posted_by_user_id`, `posted_by_display` and `posted_at`.
 - **`movement_lines`** — `movement_id`, `line_no`, `variant_id`, the **snapshots**
   `sku`, `product_name` and `unit` as they were at posting, `from_location_id` and
@@ -241,6 +253,41 @@ Products' packagings are Products' table, `products.variant_packagings`
   site; set to true for every warehouse and false for every store when the migration
   ran.
 
+`00152_inventory_transfers.sql` (phase 2, delivery A) adds five tables for
+[transfers](#transfers); the movements table does not change. Unlike the baseline, these
+tables carry CHECK constraints that state facts the code also keeps:
+
+- **`counters`** — `counter_name` (the key) and `next_value`, the number the series hands
+  out next: one row, `transfer`, allocated by upsert under the row's lock in the
+  creating transaction (the Orders shape).
+- **`transfers`** — `number` (unique: `ux_transfers_number`), `from_site_id` and
+  `to_site_id` (references to `sites`, `CHECK` different), `status` (`draft`, `sent`,
+  `partly_received`, `received` or `cancelled`), `reference` (100), `note` (2000),
+  `expected_arrival` (a date), `close_reason` (`lost`, `damaged`, `not_packed` or
+  `other`) and `close_note` (500), `revision`, the creator, the sender and the closer
+  (`*_by_user_id`, `*_by_display`, `created_at`, `sent_at`, `closed_at`) and
+  `updated_at`; indexed by `(status, created_at desc)` and by each site with the status.
+- **`transfer_lines`** — `transfer_id` (on delete cascade: only a draft is deleted),
+  `line_no` (unique per transfer), `variant_id`, the snapshots `sku` and `product_name`
+  (written with the line and again at send) and `unit` (at send), `quantity`
+  (`numeric(14,3)`, more than 0), `entered` (the [entry](#the-entry) it was given in),
+  `suggestion` (kept for placement's low-stock list, stored and answered as given),
+  `from_location_id` (set at send), and the four running totals **`sent`**, **`received`**,
+  **`missing`** and **`returned`**, `numeric(14,3)` from 0, with
+  `CHECK (received + missing + returned <= sent)`. Partial indexes on `variant_id` and on
+  `from_location_id` cover the lines still in transit; one on `sku` serves the list's
+  search.
+- **`transfer_actions`** — one row per send, receive or cancel: `transfer_id`, `kind`
+  (`send`, `receive` or `cancel`), `client_request_id` (unique:
+  `ux_transfer_actions_client_request`) and `request_hash`, `movement_id` (null for a
+  receive that only closes), `close_reason` and `close_note`, the poster and
+  `posted_at`; indexed by `(transfer_id, posted_at)`.
+- **`transfer_action_lines`** — what one action did to one line: `action_id`,
+  `transfer_line_id`, `kind` (`sent`, `received`, `missing` or `returned`), `quantity`
+  (more than 0) and `location_id` — the source for `sent` and `returned`, the
+  destination for `received`, none for `missing`. The key is
+  `(action_id, transfer_line_id, kind)`.
+
 ## Permissions
 
 | Key | Display | Grants |
@@ -251,11 +298,12 @@ Products' packagings are Products' table, `products.variant_packagings`
 | `inventory:stock-adjust` | Adjust stock | "Post adjustments and moves of stock between the locations of a site." |
 | `inventory:receipts-manage` | Receive goods | "Post goods receipts, putting delivered goods on the locations of a site." |
 | `inventory:counts-manage` | Count stock | "Open, count, post and cancel stock counts." |
+| `inventory:transfers-manage` | Transfer stock | "Create, send, receive and cancel transfers of stock between sites, and close a transfer's difference." |
 
-All six are in the category "Inventory", **none is sensitive** and all are delegable;
+All seven are in the category "Inventory", **none is sensitive** and all are delegable;
 the Owner holds them through the wildcard. In Norwegian they read *Se lagersteder*,
-*Administrere lagersteder*, *Se beholdning*, *Justere beholdning*, *Motta varer* and
-*Telle varer*.
+*Administrere lagersteder*, *Se beholdning*, *Justere beholdning*, *Motta varer*,
+*Telle varer* and *Overføre varer*. `transfers-manage` came with phase 2 (I63).
 
 Access is **all-of**: an operation's `x-vantigo-access` names every key it needs,
 fully qualified (`permission:inventory:locations-view+inventory:stock-view`), and a
@@ -265,18 +313,21 @@ caller missing any gets the access layer's uniform 403.
 `stock-view`, because each shows location codes and each form picks locations. So a
 stock role is `locations-view` + `stock-view` (+ `stock-adjust`, `receipts-manage`), and
 `locations-view` alone gives the structure without quantities. The tile and the app's
-home are offered with either view; Movements, Receipts, Counts and Import opening
-balances in the sidebar, the product page's Stock card, the product list's *On hand*
-column and the dashboard's figures with both.
+home are offered with either view; Movements, Receipts, Counts, Transfers and Import
+opening balances in the sidebar, the product page's Stock card, the product list's
+*On hand* column and the dashboard's figures with both. **Seeing a transfer and printing
+its følgeseddel need both views alone**; *New transfer*, *Send*, *Receive* and *Cancel*
+are hidden without `transfers-manage`.
 
-| Reads and writes | `locations-view` | + `stock-view` | + `locations-manage` | + `stock-adjust` | + `receipts-manage` | + `counts-manage` |
-| --- | --- | --- | --- | --- | --- | --- |
-| Sites, their location trees, a location, the lookup's location matches, [labels](#labels) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Contents, a product's and a variant's stock, the stock totals, the movements, the variant search, the stats, the lookup's item matches | – | ✓ | – | ✓ | ✓ | ✓ |
-| Create, change, archive, reactivate and delete sites and locations; bulk | – | – | ✓ | – | – | – |
-| Adjustments and moves; the opening-balance import | – | – | – | ✓ | – | – |
-| Goods receipts | – | – | – | – | ✓ | – |
-| Counts: list, open, count, post, cancel; the attention item | – | – | – | – | – | ✓ |
+| Reads and writes | `locations-view` | + `stock-view` | + `locations-manage` | + `stock-adjust` | + `receipts-manage` | + `counts-manage` | + `transfers-manage` |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Sites, their location trees, a location, the lookup's location matches, [labels](#labels) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Contents, a product's and a variant's stock, the stock totals, the stock at sites, the movements, the variant search, the stats, the lookup's item and transfer matches; the transfers, one transfer and its følgeseddel | – | ✓ | – | ✓ | ✓ | ✓ | ✓ |
+| Create, change, archive, reactivate and delete sites and locations; bulk | – | – | ✓ | – | – | – | – |
+| Adjustments and moves; the opening-balance import | – | – | – | ✓ | – | – | – |
+| Goods receipts | – | – | – | – | ✓ | – | – |
+| Counts: list, open, count, post, cancel; the `countOpenLong` item | – | – | – | – | – | ✓ | – |
+| Transfers: create, change and delete a draft, send, receive, close, cancel; the `transferOverdue` item | – | – | – | – | – | – | ✓ |
 
 Each column adds to `locations-view`; the write columns assume `stock-view` too.
 **Labels need `locations-view` alone**: a label prints a location's token, code and
@@ -284,9 +335,9 @@ name, which that key already shows. The design's §5 table put labels under
 `locations-manage`; its contract and §6 say view, and view was kept — printing changes
 nothing.
 
-**`GET /meta`** is the session's: it answers the caller's six capabilities —
+**`GET /meta`** is the session's: it answers the caller's seven capabilities —
 `canViewLocations`, `canManageLocations`, `canViewStock`, `canAdjust`, `canReceive`,
-`canCount` — so the app shows only what works and a caller with none of them learns
+`canCount`, `canTransfer` — so the app shows only what works and a caller with none of them learns
 that rather than a 403.
 
 ## Sites and locations
@@ -319,21 +370,26 @@ root location** — kind `site`, coded as the site — in the same transaction. 
 - **Archiving** (`status: archived`) is refused while any [count](#counts) in the site
   is still counting (`location_has_open_count`), then while anything in the site holds
   stock (`location_has_stock`; [the detail](#refusals) gives the quantity and the
-  number of stock lines to a caller with `stock-view`), and archives every location of
-  the site.
+  number of stock lines to a caller with `stock-view`), then while the site is the from
+  or the to site of a [transfer](#transfers) sent or partly received
+  (`site_has_open_transfers`; a draft does not stop it — its send is refused instead),
+  and archives every location of the site.
 - **Reactivating** restores the site and its root **only**; the locations below stay
   archived until each is reactivated.
 - **Deleting** is refused when any movement was ever posted, or any count opened, in
   the site (`location_has_history`, *Site has history*: archive it instead); otherwise
   its locations and the site go in one transaction. A site with no movement has no
-  stock, since only a movement puts stock down.
+  stock, since only a movement puts stock down. A site any transfer names, a draft
+  included, is refused too (`site_has_transfers`: delete the draft or archive the site).
 
 `GET /sites` lists the active sites, or those of the `status` asked for. Every site it
 answers — and `GET` and `PUT /sites/{id}` — carries its **figures**, read in one
 query per request: `locationCount`, the active locations below the root, to everyone;
 and to a caller holding `stock-view`, `stockLines` (the balances in the site) and
-`lastReceiptAt` (the last receipt posted there, absent when there was none). The app's
-home draws its site cards from them with no request per card.
+`lastReceiptAt` (the last receipt posted there, absent when there was none), and
+`incomingTransfers` and `outgoingTransfers`, the number of transfers sent or partly
+received to and from it. The app's home draws its site cards from them with no request
+per card.
 
 ### The tree
 
@@ -365,7 +421,9 @@ recode, re-kind, re-sort, **re-parent** and change the status:
   for its scope the location, a location below it or one above it
   (`location_has_open_count` — the count's lines would name archived locations), then
   while stock lies anywhere in the subtree (`location_has_stock`, with the quantity and
-  the number of stock lines to a caller with `stock-view`). An archived location takes
+  the number of stock lines to a caller with `stock-view`), then while the location or
+  one below it is the source of a transfer line still in transit
+  (`location_in_transit`) — the cancel's way home. An archived location takes
   no stock (`location_archived` on a line).
 - **Reactivate** restores the location **alone**, and only under an active parent.
 - **The root** takes only a name and a sort order: a `PUT` changing its `parentId`,
@@ -407,16 +465,21 @@ Every structural write is one row in `inventory.events` with the actor: `site_cr
 `location_archived` (with how many locations the archive reached),
 `location_reactivated`, `location_deleted`; and **`locations_bulk_created`** — one event
 on the parent listing every full code the bulk made. A [count](#counts) records
-`count_opened`, `count_posted` and `count_cancelled`, with entity kind `count`.
+`count_opened`, `count_posted` and `count_cancelled`, with entity kind `count`. A
+[transfer](#transfers) records, with entity kind `transfer`, `transfer_created`,
+`transfer_updated`, `transfer_deleted`, `transfer_sent` and `transfer_cancelled` at its
+from site and `transfer_received` and `transfer_closed` at its to site, each with the
+transfer's number; a send, receive or cancel names its movement.
 
 ## The ledger
 
 ### Movements and lines
 
 Every change of stock is a **movement** (I8): a kind — `adjustment`, `move`,
-`receipt`, `count`, or `issue`, posted only through
-[`StockLedger.Issue`](#reservations-and-issues); the set is open, and `production` and
-`transfer` come with Manufacturing and transfers — a site, an adjustment's reason, an
+`receipt`, `count`, `issue`, posted only through
+[`StockLedger.Issue`](#reservations-and-issues), or `transfer_out` and `transfer_in`,
+posted only by a [transfer](#transfers); the set is open, and `production` comes with
+Manufacturing — a site, an adjustment's reason, an
 optional note, a receipt's optional supplier and supplier's reference, a count
 movement's `countId`, the poster and the time. **A movement is never edited or deleted**; a mistake is corrected
 by a new adjustment.
@@ -445,6 +508,12 @@ snapshotted, so history reads after the variant is gone. A line may be given in
 - **Issue** — posted only by another module through
   [`StockLedger.Issue`](#reservations-and-issues), never through `/movements`: lines
   with only *from*, and the source reference of the document it was posted for.
+- **Transfer out** (`transfer_out`) — posted only by a transfer's
+  [send](#send), at the from site: lines with only *from*, each a line's source location.
+- **Transfer in** (`transfer_in`) — posted only by a transfer's [receive](#receive), at
+  the to site, lines with only *to*; or by its [cancel](#cancel), at the **from** site,
+  each line back to the location it left. A transfer's movements carry the source
+  reference `inventory/transfer/<transfer id>`, with the action's id as the line.
 
 ### Balances and quantities
 
@@ -479,8 +548,12 @@ As built (I12, design §9):
 ### Within one site
 
 Every location a line names must be in the movement's site (I13): a line naming one
-outside it is `move_crosses_sites`, whatever the movement's kind. A move between sites
-waits for Orders' transfer.
+outside it is `move_crosses_sites`, whatever the movement's kind. Stock crosses sites
+only through a [transfer](#transfers), which keeps the rule: its send posts a
+`transfer_out` at the from site, its receive a `transfer_in` at the to site, and its
+cancel a `transfer_in` back at the from site, so each movement stays in one site. Between
+the two, what was sent lies on no location — it is [in transit](#in-transit), a quantity
+on the transfer's lines.
 
 ### Idempotency
 
@@ -771,6 +844,207 @@ corrections of fact: they may take on hand below what is reserved, and available
 shows negative — on the reads, and in red with a warning on the product page's Stock
 card and the variant page.
 
+## Transfers
+
+A **transfer** moves stock from one site to another (phase 2, I35–I53; `transfers.go`,
+`transfer_actions.go`, `transfer_note.go`). It is Inventory's own document — not Orders',
+as phase 1's design had it — that sends stock out of its **from site**, holds it
+[in transit](#in-transit) on its lines, and receives it at its **to site**: in parts,
+with the difference closed, or cancelled back to where it left. Every write needs
+`transfers-manage` with [both views](#permissions).
+
+### The document
+
+A transfer has a **number** from the module's own series (`inventory.counters`,
+`transfer`, from 1001), taken in the creating transaction — a create that rolls back
+gives its number back, a deleted draft's is never handed out again. The app shows it as
+*Transfer 1042*, and the [følgeseddel](#the-følgeseddel) carries it as the token
+`TRF-1042`. It names a from site and a to site — known, active and different
+(`transfer_same_site` on `toSiteId`; an archived one is `site_archived` on its field) —
+an optional `reference` (100), `note` (2000) and `expectedArrival` (a date), and
+**1 to 500 lines** (none is a field error on `lines`, more `too_many_lines`). A line is a
+variant and a quantity, or an [entry in packagings](#the-entry); a variant may appear on
+several lines, which is how stock from two source locations travels.
+
+Its **status** is `draft`, `sent`, `partly_received`, `received` or `cancelled`. Its
+`revision` is checked by `If-Match` on every write but a [receive](#receive). Who
+created, sent and closed it, and when, are snapshotted on the row.
+
+`GET /transfers/{id}` answers the transfer with its sites, every line — its variant (one
+the catalog no longer knows named by the line's snapshot), quantity, `entered`,
+`suggestion`, source location, and `sent`, `received`, `missing`, `returned` and
+`inTransit` — the transfer's `inTransit` summed, and its **actions**, each with its kind,
+movement, poster, time, close reason and note, and its lines: what it did to each line,
+of which kind, and where.
+
+### Drafts
+
+**A draft holds nothing** (I37): no balance, no reservation, no hold on the variant. It
+is created (`POST /transfers`, 201), replaced whole (`PUT /transfers/{id}`, 200) and
+deleted (`DELETE /transfers/{id}`, 204) freely, each but the create under `If-Match`. Its
+lines are judged against the catalog as it is when they are written, read before the
+transaction, every failing line at once: a variant the catalog does not answer
+(`variant_not_found`), a Service product's (`variant_not_stockable`), an entry
+`entered_invalid`, `packaging_not_found` or coming to 0 (`quantity_invalid`) — an entry is
+resolved to units now and kept as its snapshot, with the line's SKU and product name. A
+`PUT` replaces the header and every line, so the lines get new ids. A write to a transfer
+that is no longer a draft is `transfer_not_draft` (409); the status is judged **before**
+`If-Match`, so a stale revision of a sent transfer reads as what it is. The sites are
+taken `FOR SHARE` after the transfer's row and must be active.
+
+### The actions and their order
+
+A **send**, a **receive** and a **cancel** each write one **action**
+(`transfer_actions`) and, per line touched, an **action line** with its kind — `sent`,
+`received`, `missing` or `returned` — its quantity and its location (I38). The action is
+the record of who did what and where each part went; the line's four running totals are
+what every read uses. Every action runs these six steps, in one transaction, inside its
+own serialization-and-deadlock retry (up to five attempts, as a [posting](#locks)):
+
+1. **The transfer row `FOR UPDATE`** — an unknown id is the 404.
+2. **The replay check**: the action's client request id looked up in `transfer_actions`.
+   The same transfer and the same request hash answer the transfer as it is now, 200. For
+   a client's id, anything else is `client_request_reused`; for a [derived
+   id](#idempotency-of-an-action), the status refusal of step 3 first, and only then
+   `client_request_reused`.
+3. **The status, then `If-Match`** (send and cancel): a cancel after a receive is
+   `transfer_not_cancellable` whatever revision it read.
+4. **The two sites `FOR SHARE`**, and only then their status: **every action needs both
+   sites active** (`site_archived`). An archive that committed first is seen; one racing
+   the action waits for it and then finds the transfer open.
+5. **The engine's posting** on the same transaction — `LockVariants`, the movement's
+   claim, the locations, the balances — with the action's per-line rules judged once the
+   [entries](#the-entry) are resolved to units and before any line is applied.
+6. **The action**, its lines, the lines' running totals and the status.
+
+**Why the transfer row comes before Products' rows.** Everywhere else Products' rows are
+locked before any of Inventory's ([locks](#locks)). A transfer's action takes its own row
+first, and its sites, so two actions on one transfer are serial before either touches a
+variant, as a [count's post](#posting) takes its count row first. There is no cycle:
+Products never waits on a transfer, a count or a site.
+
+A failing line's `index` in the problem's `lines` is, for a send and a cancel, the line's
+place on the transfer by line number; for a receive, its place in the request. A request
+naming a line not on the transfer (`transfer_line_unknown`) or one line twice is a
+**field error** on `lines[i].lineId` (or `receive.lines[i].lineId`), not a line failure.
+
+### Send
+
+`POST /transfers/{id}/send` (I39), with `If-Match`, names each line's **source
+location** at the from site: `{lines: [{lineId, fromLocationId}]}`. A line without one is
+`from_location_required`. Each line is resolved again — its entry against the
+packagings as they are locked, its SKU, name and unit snapshotted — and checked as a
+move's line is: goods (`variant_not_stockable`), the location known, active and in the
+from site (`location_not_found`, `location_archived`, `move_crosses_sites`), and on hand
+enough (`insufficient_stock`). A Discontinued product's variant may be sent, as it may
+be moved. It posts one **`transfer_out`** at the from site, records `sent` for each line
+in full with its source location, and the transfer is `sent`, with who sent it and when.
+
+**Reserved stock is a warning, not a refusal**: the send takes on hand, never below zero,
+and may take it below what orders have reserved there; the app warns when a line takes
+more than is available.
+
+### Receive
+
+`POST /transfers/{id}/receive` (I40) carries a **`clientRequestId`** and, per line, the
+quantity that arrived now — in units or packagings as they are that day — and a
+**destination** at the to site: `{clientRequestId, lines: [{lineId, quantity | entered,
+toLocationId}], close?}`. A line's `quantity` may be 0, which skips it; below 0 is
+`quantity_invalid`. More than 500 lines is `too_many_lines`. Only a `sent` or
+`partly_received` transfer is received (`transfer_not_receivable`, 409). Each line's
+quantity is at most what of it is outstanding — in transit, in units — and more is
+`transfer_over_received`. The destination is judged as a receipt's (`location_not_found`,
+`location_archived`, `move_crosses_sites`); a Discontinued product's variant is received,
+since this is not a goods receipt. It posts one **`transfer_in`** at the to site and
+records `received` per line with its destination. The transfer is `received` when
+nothing is outstanding, and `partly_received` otherwise. No line with a quantity and no
+close is `nothing_to_post`.
+
+**A receive takes no `If-Match`** (I41): two people scanning one delivery must both land.
+The transfer's row lock makes them serial, and each is judged against the other's
+result — one may be refused `transfer_over_received` for a line the other finished.
+
+### Closing the difference
+
+A receive may carry **`close: {reason, note}`** (I42): `reason` one of `lost`,
+`damaged`, `not_packed` or `other`, `note` up to 500 characters. After the receive's own
+quantities, every line's remaining outstanding is recorded as a `missing` action line, the
+reason and note are kept on the action and the transfer, and the transfer is `received`,
+with who closed it. A receive may close with no quantities at all — it then posts **no
+movement**, and its action holds the key. Missing stock is posted nowhere: it left the
+from site when it was sent.
+
+A close that leaves **nothing outstanding** once the receive's quantities are counted is
+**`nothing_to_close`** (409), and **the whole receive rolls back** — its quantities too:
+receive it without closing. A replay of a close is answered at step 2, before this.
+
+### Send and receive
+
+A send may carry **`receive: {lines: [{lineId, toLocationId}]}`** naming a destination for
+**every** line (I43) — `receive_incomplete` (400) names the line numbers that have none.
+The send and the receive of everything sent then run in one transaction, inside the same
+retry: two movements at two sites, two actions, both with derived ids. The transfer is
+`received`.
+
+### Cancel
+
+`POST /transfers/{id}/cancel` (I44), with `If-Match` and `{clientRequestId}`, takes back
+a `sent` transfer with nothing received or recorded missing on any line — anything else is
+`transfer_not_cancellable` (409; a draft's detail says to delete it instead). It posts one
+**`transfer_in` at the from site**, each line's whole `sent` back to the location it left
+(which cannot have been archived meanwhile: [`location_in_transit`](#the-tree)), records
+`returned` per line, and the transfer is `cancelled`.
+
+### Idempotency of an action
+
+**A movement's `client_request_id` is its action's**, so one key claims both, never two.
+Where the key comes from:
+
+- **Derived from the transfer** for a send, and for a send and receive's receive: a UUID
+  made from the transfer's id and the action's kind (SHA-1, in a namespace of the
+  module's), as an [issue's](#reservations-and-issues) is from its document. A retried
+  send replays although its transfer is no longer a draft and its revision has moved on.
+  A send and receive arriving after a plain send of the same transfer finds the derived
+  send id with another hash and answers `transfer_not_draft` — never
+  `client_request_reused` for an id the caller did not choose.
+- **The client's** for a receive and a cancel: a transfer is received in parts, so a key
+  per document would replay the second part. A scanner retries with the same id.
+
+The **request hash** is the SHA-256 of the action's kind, the transfer's id and the body.
+The same id and the same body replay — a close-only receive too, since the action holds
+the id — and answer the transfer as it is now, 200; a retried receive after its own
+success is answered at step 2 and is never `transfer_over_received`. Every action
+answers the transfer, 200.
+
+### In transit
+
+**In transit is a quantity on the line, not a balance** (I46): `sent − received −
+missing − returned`, never below 0 (the table's check), and 0 on every line of a received
+or cancelled transfer. Stock in transit lies on no location and is part of no site's on
+hand. It is read on the transfer, per line and in total; as **`incoming`** per to site on
+a product's and a variant's stock and on the [stock at sites](#stock); as **`inTransit`**
+on the stock totals; and by the [holder](#contracts-provided) as kind `in_transit`.
+`contracts.Stock` is unchanged: Orders reserves and issues only what lies at a site.
+
+A send out of a location being [counted](#counts), or a receive into one, changes its
+balance as any movement does, and the count's post flags the line moved (I49).
+
+### The følgeseddel
+
+`GET /transfers/{id}/note.pdf` (I51) is the paper that travels with the goods, for a
+transfer sent or later — **a draft's answers 404**. It prints, in Norwegian and English
+together, the number and the token `TRF-<number>` as Code 128; the from and to site with
+their addresses; when it was sent, in the business time zone, and by whom; the expected
+arrival and the reference; the lines — SKU, name, the quantity sent with what was entered
+in packagings, and the source location's full code; and a line for the receiver's
+signature. It is built on demand with maroto, in the labels' fonts, never stored, and
+served as `folgeseddel-TRF-<number>.pdf`.
+
+**The `TRF-` token.** The [lookup](#the-lookup) matches `TRF-<number>`, ignoring case, as
+the transfer (`kind: transfer`) for a caller holding both views, so scanning the
+følgeseddel opens it; the receive page's scan field takes it too, and the
+[transfer list's](#the-transfer-list) search takes a number with or without it.
+
 ## Locks
 
 **A posting** (`posting.go`), in this order:
@@ -833,6 +1107,20 @@ under its site row's lock; an open takes the same lock, so neither misses the ot
 **The import** resolves every row outside any transaction, then posts as an API posting
 does, from step 1, with its derived key.
 
+**A transfer** (`transfers.go`, `transfer_actions.go`). Every write takes **the transfer
+row `FOR UPDATE` first**, then its two sites `FOR SHARE` in id order — a create, which
+has no row yet, the sites alone, then the number's counter row by its upsert. A send, a
+receive and a cancel then post through the engine on the same transaction, from step 2
+above (`LockVariants`), in the [six steps](#the-actions-and-their-order); a send and
+receive posts its two movements one after the other. So two actions on one transfer are
+serial, and a receive racing a cancel is judged against whichever committed first. The
+whole action is rerun on a deadlock or a serialization failure, as a posting is: two
+opposite sends and receives (A to B and B to A at once) may deadlock on balances, and the
+loser runs again. A site's archive takes the site row `FOR UPDATE` and then reads its open
+transfers, which an action's `FOR SHARE` on the site makes it wait for; a location's
+archive takes the subtree `FOR UPDATE` and reads the lines in transit sent from it, which
+a send's `FOR SHARE` on its source locations makes it wait for. Neither misses a send.
+
 **A ledger call** (`ledger.go`) runs on Orders' transaction, after Orders has called
 `ProductCatalog.LockVariants` and locked its own rows (rule 24). It takes
 `LockVariants` again for the variants' types — already held, so it waits for nothing.
@@ -847,7 +1135,9 @@ only make more available. So the order everywhere is Products, then Orders' rows
 Inventory's balances, then its reservations, and a reserve takes no location or site
 lock a tree write could hold.
 
-**With Products.** Products' rows are locked before Inventory's everywhere: a posting
+**With Products.** Products' rows are locked before Inventory's everywhere — but for a
+count's row at its post and a transfer's row and sites at its actions, which come first
+and which Products never waits on: a posting
 shares the variants first, and a variant's delete or a type change locks them
 `FOR UPDATE` and then asks the [holder](#contracts-provided), which reads under them. A
 packaging's write takes its variant's row `FOR UPDATE` first, so it waits for a posting
@@ -864,11 +1154,13 @@ against packagings that hold until the commit.
   **goods** variant of the product in the catalog's order, with or without stock, each
   by site (by code) and location (by full code), with the totals summed exactly. Each
   site and the variant's totals carry `reserved` — what orders hold there — and
-  `available`, on hand less reserved, which may be negative; a site where the variant
-  is reserved but lies nowhere is listed with no rows. A product the catalog does not
+  `available`, on hand less reserved, which may be negative; each site carries
+  `incoming`, what is [in transit](#in-transit) to it on transfers. A site where the
+  variant is reserved, or incoming, but lies nowhere is listed with no rows. A product the catalog does not
   know is the 404; a Service product answers no variants.
 - **`GET /variants/{variantId}/stock`** — one variant's stock by site and location,
-  with `reserved` and `available` per site and in total, as above. A
+  with `reserved` and `available` per site and in total and `incoming` per site, as
+  above. A
   variant the catalog **no longer knows** is named by its latest movement line's
   snapshot and marked deleted; one neither the catalog nor the ledger knows is the 404.
   Stock cannot outlive its variant (I23), so the fallback names history.
@@ -877,26 +1169,50 @@ against packagings that hold until the commit.
   not search packaging barcodes.
 - **`GET /stock?variantIds=`** — the product list's *On hand* column (I33): each
   variant's on hand across every location, summed exactly, with `reserved` across every
-  site and `available`, for at most **100** ids
+  site and `available`, and **`inTransit`** — what is on its way between sites, which is
+  not part of `onHand` — for at most **100** ids
   (comma-separated, de-duplicated); none or more than 100 is a 400 on `variantIds`. A
-  variant with neither stock nor a reservation is absent from `totals`. Products reads nothing of Inventory on
+  variant with no stock, no reservation and nothing in transit is absent from `totals`;
+  one wholly in transit keeps its row. Products reads nothing of Inventory on
   the server: the host composes the column into Products' list through the list's
   `extraColumns`, with one request per page, or per 100 of its variants.
 
-Each reads the balances, and the reservations, in one snapshot and names the variants
-through the catalog outside it.
+- **`GET /stock/sites?variantIds=&siteIds=`** — the stock of variants at sites (I53),
+  for the transfer form's columns and the send dialog's defaults: at most **100**
+  variants and **20** sites (none, more, or an unknown site is a 400 on its field), and
+  one row per variant and site asked, in the order asked, whether or not anything lies
+  there — `onHand`, `reserved`, `available`, `incoming`, and the locations holding it,
+  the most first, then by full code.
+
+Each reads the balances, the reservations and what is incoming in one snapshot and names
+the variants through the catalog outside it.
 
 ### Movements
 
 `GET /movements` lists the movements **newest first** by `(posted_at, id)` (I30),
 filtered by `siteId`, `locationId` (a line from or to the location **or below it**),
-`variantId`, `kind` (`count` and `issue` among them), and `from` and `to` — **business days** in the workspace's zone,
+`variantId`, `kind` (`count`, `issue`, `transfer_out` and `transfer_in` among them), and `from` and `to` — **business days** in the workspace's zone,
 `to` inclusive. `limit` is 100 by default and at most 500; `nextCursor` is an opaque
 base64url cursor. A filter or cursor that does not parse, or `to` before `from`, is a
 400. `GET /movements/{id}` answers one movement with its site, poster, source
-reference when set, `countId` for a count movement, and its lines with their variants
+reference when set, `countId` for a count movement, **`transfer`** (`{id, number}`) for
+a movement a transfer posted — the list's summaries carry it too — and its lines with their variants
 and `entered` when they were entered in packagings — a variant the catalog no longer
 knows named by the line's own snapshot.
+
+### The transfer list
+
+`GET /transfers` lists the transfers **newest first** by `(created_at, id)`, 50 a page,
+with an opaque `next` cursor, filtered by `status` — one of the five, or **`open`**: draft,
+sent and partly received together; none is every status — `fromSiteId`, `toSiteId`,
+`variantId` (a line of the variant) and **`withMissing`** (something recorded missing, of
+that variant when one is given: the variant page's closed differences). **`q`** (up to
+100 characters, trimmed) matches a transfer's **number**, given as `1042` or `TRF-1042`,
+or a line's **exact SKU** as snapshotted. Each summary carries its sites, status,
+reference, expected arrival, `lineCount`, `inTransit`, `missing`, when it was sent, and
+**`overdue`**: sent or partly received and past its expected arrival — judged against
+today in the business time zone — or, without one, sent more than seven days ago. A
+filter or cursor that does not parse is a 400.
 
 ### The lookup
 
@@ -906,12 +1222,15 @@ trimmed and matched, in order:
 1. a **`LOC` token** — `LOC` and a location's id, case-insensitive, as a
    [label](#labels) carries it;
 2. a location's **full code**, case-insensitive;
-3. a variant's **SKU or barcode**, or a **packaging's barcode**, through `LookupCode`;
+3. a transfer's **`TRF-<number>`** token, case-insensitive, as its
+   [følgeseddel](#the-følgeseddel) carries it (`kind: transfer`, with the transfer's id
+   and number);
+4. a variant's **SKU or barcode**, or a **packaging's barcode**, through `LookupCode`;
    a packaging's barcode answers its variant, once.
 
 The access is the **session**, and each kind of match is shown by its own keys: the
-location matches to `locations-view`, the item matches to `locations-view` with
-`stock-view`. A caller holding neither gets no matches rather than a 403. An empty
+location matches to `locations-view`, the transfer and item matches to `locations-view`
+with `stock-view`. A caller holding neither gets no matches rather than a 403. An empty
 text, or one longer than the limit, is a 400 on `q`.
 
 ### Stats
@@ -922,21 +1241,35 @@ stock, the *Stock lines*), and **`receiptsThisWeek`**, the receipts posted since
 **Monday 00:00** of the business week in the workspace's zone, and **`openCounts`**,
 the counts still counting.
 
-`GET /stats/attention` is the session's. It raises one item type, **`countOpenLong`**:
+`GET /stats/attention` is the session's. Each item type is **gated on its own**, so a
+caller sees only the items they could act on, at most 20 in all, the counts first. It
+raises **`countOpenLong`**:
 one item per count still counting **more than seven days** after it was opened —
 by which a count meant for a day or a weekend has been forgotten while its expected
 quantities drift — oldest first, at most 20. Its `id` is `countOpenLong/<countId>`,
 `entityId` the count's id, `occurredAt` when it was opened, and `title` *The count of
 {scope's full code} has been open for N days*; the dashboard shows it as *A count has
 been open for a long time* and links to the count. It is raised only to a caller who
-could post or cancel it — `counts-manage` with both views; anyone else gets none.
+could post or cancel it — `counts-manage` with both views.
+
+And **`transferOverdue`** (I62): one item per transfer sent or partly received past its
+expected arrival — judged against today in the business time zone — or, without one,
+sent more than **seven days** ago, oldest first. Its `id` is
+`transferOverdue/<transferId>`, `entityId` the transfer's id, `occurredAt` the start of
+the expected day in the business zone or the moment it was sent, and `title`
+*Transfer 1042 from OSL to BGO was expected 2026-11-05* or *… has been on its way for N
+days*; the dashboard shows it as *A transfer is past its expected arrival* and links to
+the transfer. It is raised only to a caller who could
+receive it — `transfers-manage` with both views.
 
 ## Personal data
 
 The module stores about a person their **user id and display name** as a movement's
 poster (`posted_by_user_id`, `posted_by_display`) and as an event's actor
-(`actor_user_id`, `actor_display`), and nothing else. A movement is an **immutable
-record of the stock ledger** and an event the record of a structural write; both keep
+(`actor_user_id`, `actor_display`), and since phase 2 as a transfer's creator, sender
+and closer and an action's poster (`*_by_user_id`, `*_by_display`), and nothing else. A movement is an **immutable
+record of the stock ledger**, an event the record of a structural write, and a
+transfer and its actions the record of who sent and received what; all keep
 the poster's or the actor's id and name **after the person is erased** — they are
 **not swept**, and the module has no erasure worker. This is the exception rule 19 of
 the [module boundaries](/en/contributing/module-boundaries/) names; that rule describes
@@ -953,20 +1286,23 @@ and — when a rule refused — `code`, which is what a client keys off, never t
 count's `PUT` and `count_lines_moved` carry `lines`. Delivery B's titles are *Invalid
 count*, *Invalid labels* and *Invalid import* for their 400s, and *Count scope
 overlaps*, *Count not open*, *Count lines moved* and *Location has an open count* for
+their 409s. Transfers answer *Invalid transfer* for their 400s, and *Transfer is not a
+draft*, *Transfer is not receivable*, *Transfer is not cancellable*, *Nothing to close*,
+*Site has open transfers*, *Site has transfers* and *Location has stock in transit* for
 their 409s.
 
 | Code | Status | When |
 | --- | --- | --- |
-| *(field error)* | 400 | A required field missing, a text too long, a kind or a reason that is none of its list, an address field out of its rule, an unknown `siteId` on a posting; any property the schema does not name, `lines[i].x` and `levels[i].x` included; a missing or invalid `If-Match`; a query filter, cursor or limit that does not parse. |
+| *(field error)* | 400 | A required field missing, a text too long, a kind or a reason that is none of its list, an address field out of its rule, an unknown `siteId` on a posting, or an unknown from or to site on a transfer; any property the schema does not name, `lines[i].x` and `levels[i].x` included; a missing or invalid `If-Match`; a query filter, cursor or limit that does not parse. |
 | `code_invalid` | 400 | A code not 1–16 `A–Z0-9` after upper-casing, or `LOC` and digits. |
 | `depth_exceeded` | 400 | A location, or a re-parented subtree's deepest, more than 8 levels below the root. |
 | `parent_invalid` | 400 | A parent that is unknown or vanished — deleted concurrently included, for a single create and a bulk alike — in another site, archived, or the location itself or below it. |
 | `bulk_too_large` | 400 | A bulk create of more than 1000 locations. |
-| `too_many_lines` | 400 | A posting through the API, or a count's `PUT`, with more than 500 lines. |
+| `too_many_lines` | 400 | A posting through the API, a count's `PUT`, a transfer or a transfer's receive with more than 500 lines. |
 | `labels_too_many` | 400 | More than 1000 labels: the ids asked for (the detail names the number), or with their subtrees (the detail says more than 1000). |
 | `entered_invalid` | 400 (line) | Both or neither of a quantity and `entered`; a packaging named twice; a count below 1; more than ten packagings; `decrease` with a quantity, or under `set`. |
 | `packaging_not_found` | 400 (line) | An entry naming a packaging the variant does not have at posting (or when the count line is recorded). |
-| `nothing_to_post` | 400 | No lines, or every `set` line already matching what lies there. |
+| `nothing_to_post` | 400 | No lines, or every `set` line already matching what lies there; a transfer's receive with no line above 0 and no close. |
 | `variant_not_found` | 400 (line) | A line's variant the catalog does not answer. |
 | `variant_not_stockable` | 400 (line) | A Service product's variant on a line that increases stock, or added to a count. |
 | `variant_discontinued` | 400 (line) | A Discontinued product's variant on a receipt. |
@@ -974,6 +1310,12 @@ their 409s.
 | `location_archived` | 400 (line) | A line's location that is archived. |
 | `move_crosses_sites` | 400 (line) | A line naming a location outside the movement's site. |
 | `same_location` | 400 (line) | A move's from and to the same location. |
+| `transfer_same_site` | 400 | A transfer's `toSiteId` the same as its `fromSiteId` (a field error with the code). |
+| `site_archived` | 400 | A transfer's write — a draft's create or change, a send, a receive, a cancel — naming a from or to site that is archived (a field error on `fromSiteId` or `toSiteId` with the code). |
+| `transfer_line_unknown` | 400 | A send's, a send and receive's or a receive's `lineId` that is not on the transfer (a field error on `lines[i].lineId` with the code; a line named twice is a field error too). |
+| `receive_incomplete` | 400 | A send and receive that names no destination for some line; the detail names their line numbers. |
+| `from_location_required` | 400 (line) | A send's line with no source location; the index is the line's place on the transfer. |
+| `transfer_over_received` | 400 (line) | A receive's line taking more than the line has outstanding; the index is the line's place in the request. |
 | `quantity_invalid` | 400 (line) | A quantity not more than 0 (a `set` or a count below 0), a `change` of 0, more than three decimals, or a line or balance above 99,999,999,999.999; an entry's loose rest out of its rule, an entry coming to 0 where more is needed, or to more than the maximum. |
 | `site_code_taken` | 409 | A site code another site holds. |
 | `location_code_taken` | 409 | A code a sibling holds; a bulk names every colliding full code. |
@@ -985,9 +1327,16 @@ their 409s.
 | `count_not_open` | 409 | A `PUT` of lines, a post or a cancel of a count already posted or cancelled. |
 | `count_lines_moved` | 409 (lines) | Posting a count without `acceptMoved` while a line that posts has a balance other than it expected; `lines` names every one. |
 | `root_location` | 409 | A root's `PUT` changing `parentId`, `kind`, `code` or `status`, or its delete. |
-| `insufficient_stock` | 409 (line) | A line taking a balance below zero; the problem's code whenever any line has it. Never raised by an import or a count, whose lines only add or set. |
-| `client_request_reused` | 409 | A `clientRequestId` posted before with a different body. |
-| `revision_conflict` | 409 | The `If-Match` revision of a site or a location has moved on. |
+| `insufficient_stock` | 409 (line) | A line taking a balance below zero — a transfer's send among them; the problem's code whenever any line has it. Never raised by an import or a count, whose lines only add or set. |
+| `client_request_reused` | 409 | A `clientRequestId` posted before with a different body — a movement's, or a transfer's receive or cancel, on this transfer or another. |
+| `transfer_not_draft` | 409 | A change, a delete or a send of a transfer that is not a draft; a send and receive after a plain send of the same transfer. |
+| `transfer_not_receivable` | 409 | A receive of a draft, a received or a cancelled transfer. |
+| `transfer_not_cancellable` | 409 | A cancel of a transfer not `sent` — a draft (delete it), one partly received, received or cancelled — or with anything received or missing on a line. |
+| `nothing_to_close` | 409 | A receive with `close` that leaves nothing outstanding once its quantities are counted; the whole receive rolls back. |
+| `site_has_open_transfers` | 409 | Archiving a site that is the from or to site of a transfer sent or partly received. |
+| `site_has_transfers` | 409 | Deleting a site any transfer names, a draft included. |
+| `location_in_transit` | 409 | Archiving a location when it, or one below it, is the source of a transfer line still in transit. |
+| `revision_conflict` | 409 | The `If-Match` revision of a site, a location or a transfer has moved on; for a transfer, judged after its status. |
 | `dependency_unavailable` | 503 | The catalog is not composed — never so in a running `inventory`, which `MODULES` refuses without `products`. |
 
 An unknown id is a bare 404, and a caller without the operation's permission the
@@ -1022,6 +1371,9 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `inventory.site.print-labels` | `/inventory/sites/{siteId}` | Print labels |
 | `inventory.counts.new` | `/inventory/counts` | Open count |
 | `inventory.import.upload` | `/inventory/import` | The CSV file |
+| `inventory.transfers.list` | `/inventory/transfers` | The transfer list |
+| `inventory.transfers.new` | `/inventory/transfers` | New transfer |
+| `inventory.transfer-receive.scan` | `/inventory/transfers/{transferId}/receive` | The scan field (Scan an item or the transfer note) |
 
 ## Enabling and disabling
 
@@ -1045,8 +1397,12 @@ Products still refuses to delete a variant, or to make its product a service, wh
 the schema holds stock of it. The **stock ledger** is composed whatever `MODULES` says,
 for the same reason: Orders' cancel, edits and manual marking still release the
 reservations made while Inventory was on, and turning it back on shows true figures.
+**A transfer in transit is frozen** while the module is off (I50): nothing can be
+received or cancelled until it is on again, and the holder still answers `in_transit`
+for what it carries, so Products still refuses to delete the variant.
 `Deps.Stock` is nil while it is off, and Orders then reserves and issues nothing. Inventory contributes **no background worker** and no
-setting — a count left open is raised on the dashboard when it is read, not by a job.
+setting — a count left open, or a transfer overdue, is raised on the dashboard when it
+is read, not by a job.
 
 ## What comes next
 
@@ -1066,9 +1422,20 @@ whole site's count of thousands of lines scrolls with the page.
 the *fulfils orders* flag came with Orders' delivery C ([reservations and
 issues](#reservations-and-issues)).
 
-**Later** (§11), each waiting for what it names: transfers between sites (Orders);
-lots, serials and expiry (Manufacturing); negative stock by a setting (point of sale);
-placement and min/max (the owner's call); units beyond packagings and supplier records
+**Transfers between sites** came with phase 2's delivery A ([transfers](#transfers)):
+Inventory's own document, not Orders' as phase 1's §11 had it, with its draft, send,
+receive in parts, closed difference, send and receive and cancel, its stock in transit,
+the `in_transit` hold, the stock at sites, the følgeseddel and the `TRF-` lookup, and the
+overdue item. **Placement** is phase 2's delivery B, next: a variant's primary location,
+reorder point and maximum per site, the low-stock list and its CSV, *Create transfer*
+from it, and the placements import.
+
+**Later** (phase 1 §11 and phase 2 §11), each waiting for what it names:
+lots, serials and expiry, on a transfer too (Manufacturing); negative stock by a setting
+(point of sale); purchase orders from the low-stock list and incoming from them
+(Purchasing); `inventory.transfer.*` domain events (a consumer); transfer lines from a
+spreadsheet, a shelf-level minimum and a daily low-stock mail (demand); per-site
+permissions, so only the destination receives (the platform); units beyond packagings and supplier records
 (Products phase 5); camera scanning; thermal label printers; valuation; the store flag
 *sells at the till* (point of sale).
 
@@ -1084,8 +1451,8 @@ requires, all of them.
 
 | Operation | Permission | |
 | --- | --- | --- |
-| `GET /meta` | session | The caller's six capabilities. |
-| `GET /lookup` | session | A location by token or full code (`locations-view`), an item by SKU or barcode (+ `stock-view`). |
+| `GET /meta` | session | The caller's seven capabilities. |
+| `GET /lookup` | session | A location by token or full code (`locations-view`), a transfer by `TRF-` token or an item by SKU or barcode (+ `stock-view`). |
 | `GET /sites` | `locations-view` | The active sites, or those of a status. |
 | `POST /sites` | `locations-manage` + `locations-view` | Create a site and its root. |
 | `GET /sites/{id}` | `locations-view` | One site with its root's id. |
@@ -1102,13 +1469,14 @@ requires, all of them.
 | `GET /variants` | `locations-view` + `stock-view` | Goods variants by SKU, name or barcode. |
 | `GET /stock` | `locations-view` + `stock-view` | On hand of up to 100 variants across every location. |
 | `GET /variants/{variantId}/stock` | `locations-view` + `stock-view` | One variant's stock, a deleted one by its snapshot. |
+| `GET /stock/sites` | `locations-view` + `stock-view` | Up to 100 variants' stock at up to 20 sites, with incoming and the locations holding it. |
 | `GET /movements` | `locations-view` + `stock-view` | Movements by site, location, variant, kind and business day, newest first. |
 | `GET /movements/{id}` | `locations-view` + `stock-view` | One movement with its lines. |
 | `POST /movements/adjustments` | `locations-view` + `stock-view` + `stock-adjust` | Post an adjustment; 201, or 200 for a replay. |
 | `POST /movements/moves` | `locations-view` + `stock-view` + `stock-adjust` | Post a move; 201, or 200 for a replay. |
 | `POST /movements/receipts` | `locations-view` + `stock-view` + `receipts-manage` | Post a goods receipt; 201, or 200 for a replay. |
 | `GET /stats` | `locations-view` + `stock-view` | The dashboard card's figures. |
-| `GET /stats/attention` | session | `countOpenLong`, to `counts-manage` + both views. |
+| `GET /stats/attention` | session | `countOpenLong`, to `counts-manage` + both views; `transferOverdue`, to `transfers-manage` + both views. |
 | `GET /counts` | `counts-manage` + `locations-view` + `stock-view` | Counts newest first, at most 200, by status and site. |
 | `POST /counts` | `counts-manage` + `locations-view` + `stock-view` | Open a count of a site or a subtree; 201. |
 | `GET /counts/{id}` | `counts-manage` + `locations-view` + `stock-view` | One count with its lines. |
@@ -1117,5 +1485,14 @@ requires, all of them.
 | `POST /counts/{id}/cancel` | `counts-manage` + `locations-view` + `stock-view` | Cancel a count still counting. |
 | `POST /labels` | `locations-view` | A PDF of up to 1000 location labels. |
 | `POST /imports/opening-balances` | `locations-view` + `stock-view` + `stock-adjust` | Dry run or commit a CSV of opening balances; 201, or 200 for a dry run, a refused commit or a replay. |
+| `GET /transfers` | `locations-view` + `stock-view` | Transfers newest first, 50 a page, by status (`open` among them), sites, variant, missing and `q`. |
+| `POST /transfers` | `locations-view` + `stock-view` + `transfers-manage` | Create a draft transfer; 201. |
+| `GET /transfers/{id}` | `locations-view` + `stock-view` | One transfer with its lines and actions. |
+| `PUT /transfers/{id}` | `locations-view` + `stock-view` + `transfers-manage` | Replace a draft's header and lines, with `If-Match`. |
+| `DELETE /transfers/{id}` | `locations-view` + `stock-view` + `transfers-manage` | Delete a draft, with `If-Match`; 204. |
+| `POST /transfers/{id}/send` | `locations-view` + `stock-view` + `transfers-manage` | Send a draft, or send and receive it, with `If-Match`; 200, a replay too. |
+| `POST /transfers/{id}/receive` | `locations-view` + `stock-view` + `transfers-manage` | Receive what arrived, and close the difference; no `If-Match`; 200, a replay too. |
+| `POST /transfers/{id}/cancel` | `locations-view` + `stock-view` + `transfers-manage` | Cancel a sent transfer back to its sources, with `If-Match`; 200, a replay too. |
+| `GET /transfers/{id}/note.pdf` | `locations-view` + `stock-view` | The følgeseddel of a transfer sent or later; a draft's is 404. |
 
 Every key is `inventory:`'s; the table leaves the prefix out.

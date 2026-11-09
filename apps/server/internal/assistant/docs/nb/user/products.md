@@ -80,7 +80,13 @@ Når Lager er i bruk, kan et produkt av typen **Varer** som fortsatt har variant
 ikke bli en **Tjeneste**: lagringen sier **Produktet har beholdning** — *En variant av
 produktet har fortsatt beholdning. Flytt eller juster beholdningen til null før du gjør
 produktet til en tjeneste.* Flytt beholdningen eller juster den til null i
-[Lager](/nb/user/inventory/) først. Å gjøre en tjeneste om til varer er alltid tillatt.
+[Lager](/nb/user/inventory/) først. Det samme avslaget gjelder mens en variant er **under
+transport mellom lagersteder** i en [overføring](/nb/user/inventory/#overfør-varer-mellom-lagersteder),
+selv om ingenting er igjen i noen hylle: varene har forlatt ett lagersted og ennå ikke
+kommet til det andre, og overføringen må fortsatt sette dem et sted. [Motta
+overføringen](/nb/user/inventory/#motta-en-overføring) eller [avbryt
+den](/nb/user/inventory/#avbryt-en-overføring) først. Å gjøre en tjeneste om til varer er
+alltid tillatt.
 
 ## Produktsiden
 
@@ -126,6 +132,16 @@ ligger på lager, kan ikke slettes: appen sier **Varianten har fortsatt beholdni
 *Flytt eller juster beholdningen til null før du sletter varianten.* Når du kan se
 beholdning, lenker meldingen **Se hvor den ligger** til variantens beholdning i Lager. En
 variant med lagerbevegelser i historikken, men ingenting på lager, kan slettes.
+
+Det samme avslaget gjelder mens varianten er **under transport mellom lagersteder** i en
+[overføring](/nb/user/inventory/#overfør-varer-mellom-lagersteder) — sendt fra ett
+lagersted, ennå ikke mottatt på det andre — selv når den ikke ligger i noen hylle: å
+slette den ville etterlate overføringen med varer den ikke kunne sette noe sted.
+Beholdningssiden i Lager viser den som *+… innkommende* under lagerstedet den skal til.
+[Motta overføringen](/nb/user/inventory/#motta-en-overføring) eller [avbryt
+den](/nb/user/inventory/#avbryt-en-overføring) først. En variant som bare står på et
+**utkast** til overføring, holdes ikke: et utkast holder ingenting, og utkastet avvises
+når det sendes.
 
 Strekkoden, vekten og dimensjonene på produktsiden er også variantfelter, men appen
 redigerer dem ikke; de settes gjennom API-et.

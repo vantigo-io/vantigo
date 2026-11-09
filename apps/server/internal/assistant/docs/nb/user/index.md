@@ -29,8 +29,10 @@ allokering denne uken, den bekreftede belastningen deres med den tentative ved s
 de åpne behovene og hvor mange som er ubemannet, for `planning:view`
 ([dashbordet](/nb/user/planning/#dashbordet)); Lagers, lagerlinjene med varemottakene
 bokført denne uken ved siden av, for `inventory:locations-view` sammen med
-`inventory:stock-view`, og, med `inventory:counts-manage` i tillegg, en varetelling som har
-stått åpen i mer enn en uke i listen nedenfor ([Lager](/nb/user/inventory/#dashbordet)).
+`inventory:stock-view`, og i listen nedenfor, med `inventory:counts-manage` i tillegg, en
+varetelling som har stått åpen i mer enn en uke, og, med `inventory:transfers-manage`, en
+overføring mellom lagersteder som har passert forventet ankomst eller har vært under
+transport i mer enn en uke ([Lager](/nb/user/inventory/#dashbordet)).
 Listen **Trenger oppfølging** samler det i
 appene som venter på noen — også fra Fakturaer: forfalte fakturaer, penger som skal
 tilbake på en faktura, og, med `invoices:payments`, banklinjer i avvikskøen, purringer

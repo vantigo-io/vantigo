@@ -1,6 +1,6 @@
 ---
 title: Inventory
-description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, counting stock, importing opening balances, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention item and the quick actions, and who sees what.
+description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, counting stock, importing opening balances, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
 sidebar:
   order: 65
 sources:
@@ -15,7 +15,9 @@ belongs to a **site** — a warehouse or a store — and a site is divided into
 only when someone posts a **movement** — a **receipt** of delivered goods, an
 **adjustment** with a reason, or a **move** from one location to another — and a
 movement, once posted, is never changed: a mistake is put right with a new adjustment.
-A **count** checks what really lies on the shelves and posts the differences.
+A **count** checks what really lies on the shelves and posts the differences, and a
+**transfer** sends stock from one site to another, where it is **in transit** until it is
+received.
 The items come from [Products](/en/user/products/): only **goods** are kept in stock,
 never services. The rules behind every screen — the codes, the refusals and the
 permission each request is checked against — are in the
@@ -31,6 +33,7 @@ The **Inventory** tile, after Products in the app switcher, is shown to everyone
 | Area in the sidebar | Who sees it |
 | --- | --- |
 | **Overview** — the lookup and the sites | `inventory:locations-view` or `inventory:stock-view` |
+| **Transfers** — stock sent between sites | `inventory:locations-view` and `inventory:stock-view` |
 | **Movements** | `inventory:locations-view` and `inventory:stock-view` |
 | **Receipts** — the movements list showing receipts only | `inventory:locations-view` and `inventory:stock-view` |
 | **Counts** — the stock counts | `inventory:counts-manage`, with both views |
@@ -39,7 +42,8 @@ The **Inventory** tile, after Products in the app switcher, is shown to everyone
 Anything your permissions do not allow is not shown at all: a button you do not see is a
 permission you do not have. The buttons that post — receipts, adjustments and moves —
 need both views as well as **Receive goods** or **Adjust stock**; counting needs both
-views and **Count stock**. Quantities need both views, because every place stock lies
+views and **Count stock**; creating, sending, receiving and cancelling transfers needs both
+views and **Transfer stock**. Quantities need both views, because every place stock lies
 is a location; **View locations** alone shows the sites and their locations without any
 quantity.
 
@@ -51,11 +55,14 @@ scan one of these and press Enter:
 - a location's **full code**, such as `OSL-A-03-2`, in capitals or not;
 - a location's **label code**, `LOC` and a number;
 - an item's **SKU** or **barcode**, or the barcode of one of its packagings — a box or
-  a pallet opens the item.
+  a pallet opens the item;
+- a transfer's token, `TRF` and its number, as printed under the barcode of its
+  [transfer note](#print-the-transfer-note) — it opens the transfer.
 
 One match opens it straight away: a location opens its page, an item its stock page.
 Several matches are listed, each marked **Location** or **Item**, for you to choose. No
 match says *Nothing matches “…”.* and keeps what you typed, so you can correct it.
+Transfers, like items, show only to those who hold both views.
 
 A **handheld scanner** works in this field as it is: a scanner types the code it reads
 and presses Enter, which is just what the lookup waits for. Items show only to those
@@ -135,7 +142,10 @@ page — with **Manage locations**:
   cancel the count first. Changing only the code or the name is always allowed.
 - **Archive** archives the location and everything below it. Archived locations take
   no stock and drop out of the pickers. It is refused while stock lies on the location
-  or below it: move it or adjust it to zero first.
+  or below it: move it or adjust it to zero first. It is refused too while a
+  [transfer](#transfer-stock-between-sites) still in transit was sent from the location
+  or from below it — *A line still in transit was sent from this location; a cancel
+  would return it here. Receive or cancel it first.*
 - **Reactivate** brings back the location alone — not what lies below it — and only
   under an active parent.
 - **Delete** removes the location and everything below it for good. It is refused once
@@ -144,9 +154,13 @@ page — with **Manage locations**:
 The site's own location — the top of the tree — cannot be archived or deleted on its
 own; the site is archived or deleted instead. In the site's **…** menu: **Edit site**
 (changing the site's code changes every full code in it — printed labels still scan),
-**Archive** (refused while the site holds stock; archives every location in it),
-**Reactivate** (the site and its own location; the locations below are reactivated one
-by one) and **Delete** (only for a site no movement was ever posted in). Each asks you
+**Archive** (refused while the site holds stock, and while a transfer to or from it is
+still in transit — *A transfer to or from the site is still in transit. Receive or cancel
+it first.*; archives every location in it), **Reactivate** (the site and its own
+location; the locations below are reactivated one by one) and **Delete** (only for a
+site no movement was ever posted in and no transfer names — *A transfer names the site,
+so it can only be archived.*). A draft does not stop the archive; it can no longer be
+sent. Each asks you
 to confirm first.
 
 In the **Locations** card the tree opens a level at a time. **Show archived** includes
@@ -268,6 +282,223 @@ screen — a quantity of an item with packagings is also shown broken down, the 
 packaging first: 1,830 pcs with a pallet of 600 and a box of 15 reads *3 Euro pallet,
 2 Box*, under the quantity itself.
 
+## Transfer stock between sites
+
+A **transfer** sends stock from one site — the **From site** — to another — the **To
+site**: from the central warehouse to a store, say. It goes through these statuses:
+
+- **Draft** — being prepared. A draft holds nothing: no stock is set aside and nothing
+  moves, so it can be changed and deleted freely.
+- **Sent** — the stock has left its locations at the from site and is **in transit**: it
+  lies on no shelf, at neither site, until it is received.
+- **Partly received** — some of it has arrived and been put away; the rest is still in
+  transit.
+- **Received** — everything has arrived, or what did not arrive has been
+  [closed as a difference](#close-a-difference).
+- **Cancelled** — the transfer was called back and everything went back where it came
+  from.
+
+Transfers need **Transfer stock** (`inventory:transfers-manage`) as well as both views.
+Without it you can still open **Transfers**, a transfer's page and its transfer note, but
+not create, send, receive or cancel one.
+
+### Create a draft
+
+In **Transfers**, press **New transfer** — *Send stock from one site to another. A draft
+holds nothing until it is sent.* Choose the **From site** and the **To site**, which must
+be different (*The from site and the to site must be different.*), and, if you want, the
+**Expected arrival**, a **Reference** and a **Note**. Then add the lines with the
+[line editor](#the-line-editor): scan or search for each item and enter the quantity, in
+its unit or [in packagings](#enter-quantities-in-packagings). An item may be on several
+lines — that is how stock from two locations travels in one transfer.
+
+Beside each line, two columns show the stock at both sites as you type:
+
+- **At OSL: available** — what is available of the item at the from site. A line asking
+  for more is marked **Short**: *The transfer asks for more than is available at the
+  from site. Sending more than a location holds is refused.* The draft can still be
+  saved.
+- **At BGN: available · incoming** — what is available at the to site and, after
+  *+… incoming*, what is already on its way there in other transfers.
+
+If the stock cannot be read, the form says so and the draft can still be saved.
+
+Press **Save draft**: *Draft saved*, and the transfer's page opens with its number —
+*Transfer 1042*. On the page of a draft, **Edit** changes it, and **Delete draft** asks
+*Delete the draft of transfer 1042?* — *The draft and its lines are deleted. Nothing was
+sent, so no stock changes.*
+
+### Send a transfer
+
+On the transfer's page, or straight from the form, press **Send…** (the form saves what
+you changed first). The dialog **Send transfer 1042 to BGN** asks you to *pick each line
+from a location at* the from site: in the column **From a location at OSL**, each line
+offers the locations at the from site where the item lies, with what lies there, and
+starts on the one holding most. An item that lies nowhere at the site says *Nothing of it
+lies at the site*.
+
+The dialog warns you before you send:
+
+- *The location holds only …; the send will be refused.* — choose another location, or
+  split the line on the draft;
+- *Only … of … lie at OSL; the send will be refused.* — the site holds less than the
+  transfer takes;
+- *… of … are reserved for orders at OSL; sending leaves them short.* — the send takes
+  stock that [orders have reserved](#reserved-and-available). This is a warning only: the
+  send goes through, and available at the from site turns negative.
+
+**Print the transfer note** is ticked. Press **Send 3 lines**: *Transfer sent*. The stock
+leaves the chosen locations at once, posted as one **Transfer out** movement at the from
+site, the status becomes **Sent**, and the transfer note downloads. A send that is
+refused sends nothing; the refused lines are marked with the reason. Pressing again
+after a lost connection never sends twice.
+
+An item that has been deleted from the catalog, or whose product has become a service,
+since the draft was written is refused at send.
+
+### Print the transfer note
+
+Once a transfer is sent, **Print transfer note** on its page downloads its transfer note
+as a PDF, `folgeseddel-TRF-1042.pdf`, to travel with the goods: the number, the two sites with their
+addresses, when it was sent and by whom, the expected arrival, the reference, each line
+with its SKU, name, quantity (and the packagings it was entered in) and the location it
+was picked from, a line for the receiver's signature, and a barcode of the transfer's
+token, `TRF-1042`. Scanning that barcode — in **Find location or item** or on the receive
+page — opens the transfer.
+
+### Send and receive at once
+
+When the two sites are next door — a store and its back room in another building, say —
+and the goods arrive as you send them, press **Send and receive…** instead. The dialog
+**Send and receive transfer 1042 at BGN** has, besides the source of each line, a column
+**To a location at BGN** where each line is put away; **Receive every line at a location
+of BGN** sets the same location on every line. Every line needs one (*Choose where every
+line is received.*). Press **Send and receive 3 lines**: *Transfer sent and received*. The
+stock leaves the from site and arrives at the to site in one step — a **Transfer out**
+and a **Transfer in** movement — and the transfer is **Received** at once. **Print the
+transfer note** is not ticked here; tick it if you want the note.
+
+## Receive a transfer
+
+When the goods arrive, open the transfer — from **Transfers**, from the to site's
+**Incoming**, or by scanning the transfer note's barcode in **Find location or item** —
+and press **Receive…**. It is offered while the transfer is **Sent** or **Partly
+received**, to those who hold **Transfer stock**.
+
+The page **Receive transfer 1042 from OSL** says when the transfer was sent and by whom,
+and lists each line still in transit: **Item**, **Sent**, **Received before**, **Now** and
+**To a location at BGN**. Count what has arrived:
+
+- **Scan** in the field **Scan an item or the transfer note**: each scan of a SKU or
+  barcode counts one more on its line, and a box's or pallet's barcode one box or pallet.
+  Scanning the barcode of another transfer's note opens that transfer's receive page. An
+  item not on the transfer says *“…” is not on this transfer, or nothing of it is still
+  in transit.*
+- **Type** the quantity in **Now**, in the item's unit or in its packagings.
+- **Accept all** fills every line with everything still in transit — for a delivery you
+  have checked as complete.
+
+Each line is put away at the to site's own location unless you choose another in **To a
+location at BGN**. A line cannot take more than is still in transit on it (*More than is
+still in transit on the line.*). Under the lines, *2 lines will still be in transit.* tells
+you what you have not counted yet.
+
+Press **Receive**. The goods are posted as one **Transfer in** movement at the to site,
+onto the locations you chose, and the transfer's page opens: *Transfer received* when
+nothing is left in transit, *Transfer partly received* when something is.
+
+### Receive in parts
+
+A transfer can be received in as many parts as the goods arrive in: receive what came
+today, and press **Receive…** again for the next part. Each part counts only against
+what is still in transit.
+
+Two people can receive the same transfer at once — one scanning the pallets, another
+the loose boxes. Both receipts go through, each judged against what the other has
+already received. If the other one got there first and your counts now come to more
+than is still in transit, the lines that went over are marked, nothing of yours is
+posted, and the page shows what is still in transit with your counts kept: correct them
+and press **Receive** again. If the connection broke after a receipt was posted, the
+page says *An earlier receive from this page was already posted; its answer may have
+been lost on the way.* and shows the lines as they are now — check them before
+receiving again. Pressing **Receive** again after a lost connection never receives
+twice.
+
+## Close a difference
+
+When the delivery is short and the rest will not come — lost on the way, broken, never
+packed — receive what arrived and close the rest as a difference. On the receive page,
+press **Receive and close the difference…**; it is offered while something would still
+be in transit after what you have counted.
+
+The dialog **Close the difference** lists what will not be received, line by line —
+*3 not received* — and asks **What happened?**: **Lost in transit**, **Damaged**,
+**Never packed** or **Other**, with a **Note (optional)**. *What is left is recorded as
+not received on transfer 1042 and added to no stock. The transfer is then received.*
+Press **Close transfer 1042**: what you counted is received, the rest is recorded as
+**Not received**, and the transfer is **Received**.
+
+The missing stock already left the from site when the transfer was sent, so closing the
+difference changes no stock anywhere — there is nothing to adjust at either site. It is
+kept on the transfer, under **Not received** and **Difference closed** with the reason
+and the note, and on the item's stock page under
+[Transfer differences](#see-an-items-stock-and-movements). If the goods turn up later
+after all, post them with an [adjustment](#adjust-stock) with the reason **Found**.
+
+## Cancel a transfer
+
+A transfer that was sent by mistake can be called back while **nothing of it has been
+received or closed as not received**: press **Cancel transfer** on its page. *Cancel
+transfer 1042? Everything sent goes back to the locations it left at OSL. This cannot be
+undone.* Press **Cancel transfer** to confirm, or **Keep the transfer**. Every line goes
+back to the location it was sent from, posted as a **Transfer in** movement at the from
+site, and the transfer is **Cancelled**: *Transfer cancelled*.
+
+Once any part has been received, the transfer can no longer be cancelled (*Only a sent
+transfer with nothing received or missing can be cancelled; delete a draft instead.*):
+receive the rest, or close it as a difference, and send back what should not have gone
+with a new transfer. A draft is not cancelled but deleted.
+
+## A transfer's page
+
+A transfer's page shows its number with its status and, while it is on its way, *In
+transit …*; the from site and the to site, each linking to its site; the **Reference**,
+the **Expected arrival**, **Created by** and **Sent by** with when, and, for a transfer
+closed with a difference, **Difference closed** with the reason and the note; and the
+note.
+
+The lines show **SKU**, **Product**, **From** — the location each line was picked from
+—, **Sent** (**Quantity** on a draft), **Received**, **Not received** and **In transit**,
+with **Entered as** for a line entered in packagings. A SKU opens the item's stock page.
+
+**History** lists, oldest first, every send, receipt, closed difference and cancel: when,
+by whom and at which site — *Sent by Kari Nordmann from OSL*, *Received by Ola Hansen at
+BGN*, *Difference closed by Ola Hansen*, *Cancelled by Kari Nordmann, returned to OSL* —,
+each line it touched with the location it went to or came from, and a link to the
+movement it posted. The movement's page links back to the transfer.
+
+The buttons follow the status: **Edit**, **Send…**, **Send and receive…** and **Delete
+draft** on a draft; **Receive…** while it is sent or partly received; **Cancel transfer**
+while nothing of it is received; **Print transfer note** once it is sent.
+
+## The transfers list
+
+**Transfers** in the sidebar — *Stock sent from one site to another, in transit until it
+is received.* — lists the transfers, newest first: **Transfer** (with its reference),
+**From site**, **To site**, **Status**, **Lines** and **Expected arrival**. A transfer
+past its expected arrival, or sent more than 7 days ago without one, and not yet
+received, is marked **Overdue**.
+
+Filter by **Status** — **Open**, the default, is drafts, sent and partly received
+transfers together; or one status; or **All statuses** —, by **From site** and **To
+site**, and with **Search**, a transfer number or a SKU on one of its lines (press
+Enter). **Load more** fetches the next page. **New transfer** opens the form with the
+two sites you filtered by already chosen.
+
+A site's page shows, with **View stock**, **Incoming** and **Outgoing**: the number of
+transfers on their way to and from the site — *2 open transfers* — each opening the list
+filtered to the site.
+
 ## Count stock
 
 A **count** compares what lies on the shelves with what Inventory says, and posts the
@@ -386,22 +617,34 @@ it.
 An item's stock page — from the lookup, the product page's Stock card or a movement —
 shows the SKU and the product, the total on hand, each site with the locations where the
 item lies, what orders have [reserved](#reserved-and-available) there and what is
-available, and the item's movements, newest first. **Receive** and **Adjust** are
-offered as your permissions allow. An item deleted from the catalog still shows its
-history, marked *Deleted from the catalog*.
+available, and the item's movements, newest first. Under a site that a
+[transfer](#transfer-stock-between-sites) is bringing more of, *+… incoming* says how
+much is on its way there; a site with stock on its way and nothing on hand yet has a row
+too. **Receive** and **Adjust** are offered as your permissions allow. An item deleted
+from the catalog still shows its history, marked *Deleted from the catalog*.
+
+**Transfer differences** lists the transfers of the item that were
+[closed with something not received](#close-a-difference) — *Transfers of this item whose
+difference was closed with something not received.* — with how much of the item was not
+received on each; with none it says *No transfer of this item has a difference.*
 
 ## Movements
 
-**Movements** lists every adjustment, move, receipt, count and issue, newest first.
-An **Issue** is stock taken out for an order's delivery; it shows the order's document
-as its source and is posted from Orders, never here. Filter by
-**Site**, **Location** (which includes everything below it), **Item**, **Kind**
-(**Adjustment**, **Move**, **Receipt**, **Count**, **Issue**) and **Posted between**, two days in your
+**Movements** lists every adjustment, move, receipt, count, issue and transfer
+movement, newest first. An **Issue** is stock taken out for an order's delivery; it
+shows the order's document as its source and is posted from Orders, never here. A
+**Transfer out** is a transfer's send, taken off the from site's locations; a **Transfer
+in** is a transfer's receipt at the to site, or its cancel putting the stock back at the
+from site. Both link to their transfer and are posted from the transfer, never here.
+Filter by **Site**, **Location** (which includes everything below it), **Item**, **Kind**
+(**Adjustment**, **Move**, **Receipt**, **Count**, **Issue**, **Transfer out**, **Transfer
+in**) and **Posted between**, two days in your
 organisation's time zone. **Load more** fetches the next page. **Receipts** in the
 sidebar is the same list showing receipts only.
 
 A movement's page shows its kind, its site, when and by whom it was posted, the reason
-or the supplier and the supplier's reference, the note, the count it posted, and its
+or the supplier and the supplier's reference, the note, the count it posted or the
+**Transfer** it belongs to, and its
 lines: **SKU**, **Product**, **From**, **To** and **Quantity**, with **Entered as** for a
 line entered in packagings. A movement is never edited or deleted.
 
@@ -411,13 +654,16 @@ When Inventory is on and you hold both **View locations** and **View stock**, a
 product's page in Products has a **Stock** card: the total on hand per unit, each site
 opening to the locations where the item lies — by full code and name — and, for a
 product with several variants, the same for each SKU, with **Stock and movements of …**
-to its stock page. With nothing in stock it says **No stock** and offers **Receive** or
-**Adjust** as you may. A service has no Stock card. See
+to its stock page. Stock on its way between sites in a transfer shows as *In transit …*
+beside the total, and *+… incoming* under the site it is going to; it is not part of the
+total on hand, which is what lies on shelves. With nothing in stock and nothing on its
+way it says **No stock** and offers **Receive** or **Adjust** as you may. A service has no Stock card. See
 [the product page](/en/user/products/#the-product-page).
 
 A variant that still lies in stock cannot be deleted in Products, and a product with
 stock cannot be made a service: move the stock or adjust it to zero here first. The same
-goes for a variant orders have reserved: deliver or cancel those orders first.
+goes for a variant orders have reserved: deliver or cancel those orders first — and for
+a variant on its way between sites in a transfer: receive or cancel the transfer first.
 
 ## Reserved and available
 
@@ -452,20 +698,30 @@ for a long time** for each count still counting a week after it was opened; pres
 open the count, and post or cancel it. The search in the top bar offers **Start count**
 to the same people.
 
+With **Transfer stock** and both views, **Needs attention** shows **A transfer is past
+its expected arrival** for each transfer not yet received whose expected arrival has
+passed, or that was sent more than 7 days ago without one; press it to open the
+transfer, and [receive it](#receive-a-transfer), [close the
+difference](#close-a-difference) or [cancel it](#cancel-a-transfer).
+
 ## Who sees what
 
-| What | View locations | View stock | Manage locations | Adjust stock | Receive goods | Count stock |
-| --- | --- | --- | --- | --- | --- | --- |
-| The tile and **Overview** with the lookup — either view is enough | ✓ | ✓ | – | – | – | – |
-| The sites, their locations and a location's page; locations in the lookup and **Find location or item**; **Print labels** | ✓ | – | – | – | – | – |
-| Quantities: **Contents**, an item's stock page, **Movements** and **Receipts**, the product page's **Stock** card, the **On hand** column of the product list, the dashboard figures, items in the lookup | ✓ | ✓ | – | – | – | – |
-| **New site**, **New location**, **Bulk add**, **Edit**, **Archive**, **Reactivate**, **Delete** | ✓ | – | ✓ | – | – | – |
-| **New adjustment**, **Adjust**, **New move**, **Move from here** — on Overview, a location, an item, the movements and the product's Stock card; **Import opening balances** | ✓ | ✓ | – | ✓ | – | – |
-| **New receipt**, **Receive here**, **Receive** — wherever they appear | ✓ | ✓ | – | – | ✓ | – |
-| **Counts**, **Open count**, **Count**, **Start count**, counting, posting and cancelling; the dashboard's **A count has been open for a long time** | ✓ | ✓ | – | – | – | ✓ |
+| What | View locations | View stock | Manage locations | Adjust stock | Receive goods | Count stock | Transfer stock |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| The tile and **Overview** with the lookup — either view is enough | ✓ | ✓ | – | – | – | – | – |
+| The sites, their locations and a location's page; locations in the lookup and **Find location or item**; **Print labels** | ✓ | – | – | – | – | – | – |
+| Quantities: **Contents**, an item's stock page, **Movements** and **Receipts**, the product page's **Stock** card, the **On hand** column of the product list, the dashboard figures, items in the lookup | ✓ | ✓ | – | – | – | – | – |
+| **New site**, **New location**, **Bulk add**, **Edit**, **Archive**, **Reactivate**, **Delete** | ✓ | – | ✓ | – | – | – | – |
+| **New adjustment**, **Adjust**, **New move**, **Move from here** — on Overview, a location, an item, the movements and the product's Stock card; **Import opening balances** | ✓ | ✓ | – | ✓ | – | – | – |
+| **New receipt**, **Receive here**, **Receive** — wherever they appear | ✓ | ✓ | – | – | ✓ | – | – |
+| **Counts**, **Open count**, **Count**, **Start count**, counting, posting and cancelling; the dashboard's **A count has been open for a long time** | ✓ | ✓ | – | – | – | ✓ | – |
+| **Transfers**, a transfer's page and its history, **Print transfer note**, transfers in the lookup, **Incoming** and **Outgoing** on a site, **Transfer differences** on an item | ✓ | ✓ | – | – | – | – | – |
+| **New transfer**, **Edit**, **Save draft**, **Send…**, **Send and receive…**, **Delete draft**, **Receive…**, closing a difference, **Cancel transfer**; the dashboard's **A transfer is past its expected arrival** | ✓ | ✓ | – | – | – | – | ✓ |
 
 Every other row needs every permission it ticks: the posting and counting buttons
 appear only to someone who holds both views **and** the write permission. Printing
 labels needs only **View locations**: a label shows nothing a location's page does not.
-None of the six permissions is sensitive. The full table is under
+Receiving a transfer needs **Transfer stock**, not **Receive goods**: it moves your own
+stock between your sites, and is not a receipt from a supplier.
+None of the seven permissions is sensitive. The full table is under
 [Permissions](/en/reference/inventory/#permissions) in the reference.
