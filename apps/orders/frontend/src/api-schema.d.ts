@@ -327,7 +327,7 @@ export interface paths {
         };
         /**
          * List a delivery's shipments
-         * @description A delivery's shipments with their packages, documents and tracking (O50).
+         * @description A delivery's shipments with their packages, documents and tracking (O50). With customerId, a delivery of another customer's order is a 404.
          */
         get: operations["listDeliveryShipments"];
         put?: never;
@@ -723,7 +723,7 @@ export interface paths {
         };
         /**
          * List an order's shipments
-         * @description Every shipment of the order's deliveries, with its tracking link (O52).
+         * @description Every shipment of the order's deliveries, with its tracking link (O52). With customerId, an order of another customer is a 404.
          */
         get: operations["listOrderShipments"];
         put?: never;
@@ -2975,6 +2975,11 @@ export interface components {
             consignmentNumber?: string | null;
             /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: int32
+             * @description The order's customer, so a read of a shipment can be tied to one customer.
+             */
+            customerId: number;
             /** Format: int64 */
             deliveryId: number;
             /** Format: int64 */
@@ -4329,6 +4334,8 @@ export interface operations {
                 /** @description Any of the statuses; none means all. */
                 status?: ("draft" | "posted" | "cancelled")[];
                 orderId?: number;
+                /** @description Only this customer's deliveries. */
+                customerId?: number;
                 siteId?: number;
                 q?: string;
                 page?: number;
@@ -4822,7 +4829,10 @@ export interface operations {
     };
     listDeliveryShipments: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Answer only when the delivery's customer is this one (404 otherwise). */
+                customerId?: number;
+            };
             header?: never;
             path: {
                 id: number;
@@ -6203,7 +6213,10 @@ export interface operations {
     };
     listOrderShipments: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Answer only when the order's customer is this one (404 otherwise). */
+                customerId?: number;
+            };
             header?: never;
             path: {
                 id: number;
