@@ -163,6 +163,9 @@ func (rs *runState) callOperationTool(base agentloop.Tool) agentloop.Tool {
 		if a.ID == opGetConversation {
 			res.Content = sanitizeConversation(res.Content, rs.customerID == nil)
 		}
+		if shipmentReads[a.ID] {
+			res.Content = dropShipmentCosts(res.Content)
+		}
 		return res, err
 	}
 	return def
@@ -618,6 +621,51 @@ func sanitizeConversation(content string, dropHints bool) string {
 						kept = append(kept, e)
 					}
 					t[k] = kept
+				}
+				walk(t[k])
+			}
+		case []any:
+			for _, e := range t {
+				walk(e)
+			}
+		}
+	}
+	walk(v)
+	if m, ok := v.(map[string]any); ok {
+		if data, ok := m["data"]; ok {
+			return agentloop.Wrap(data)
+		}
+	}
+	out, _ := json.Marshal(v)
+	return string(out)
+}
+
+// shipmentReads are the allowlisted operations that answer shipments.
+var shipmentReads = map[string]bool{"getShipment": true, "listOrderShipments": true, "listDeliveryShipments": true}
+
+// shipmentCostKeys are the fields of a shipment that are the business's, not the
+// customer's: what the carrier charged it, the account it ships under, and who
+// booked.
+var shipmentCostKeys = map[string]bool{
+	"bookedCost": true, "bookedCostCurrency": true, "bookedCostEstimate": true, "carrierAccountName": true, "bookedBy": true,
+}
+
+// dropShipmentCosts takes shipmentCostKeys out of a shipment read, wherever they
+// nest, so "where is my parcel?" is answered without the business's freight cost.
+// The Orders API is unchanged; it wraps the rest again as data.
+func dropShipmentCosts(content string) string {
+	var v any
+	if json.Unmarshal([]byte(content), &v) != nil {
+		return content
+	}
+	var walk func(v any)
+	walk = func(v any) {
+		switch t := v.(type) {
+		case map[string]any:
+			for k := range t {
+				if shipmentCostKeys[k] {
+					delete(t, k)
+					continue
 				}
 				walk(t[k])
 			}
