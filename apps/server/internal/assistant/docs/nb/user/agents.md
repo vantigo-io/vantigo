@@ -35,7 +35,7 @@ Messenger, som seg selv.
 - **Hvem sin samtale.** Den svarer på en samtale som er **uten ansvarlig eller tildelt den selv**. En
   samtale tildelt en kollega overlater den til kollegaen. **Tildel en samtale til agenten**, så svarer
   den på den, også etter en overlevering.
-- **Hva den leser.** Samtalen, kundens ordrer, fakturaer og kontakter, produktkatalogen og artiklene i
+- **Hva den leser.** Samtalen, kundens ordrer og forsendelser, fakturaer og kontakter, produktkatalogen og artiklene i
   [Kunnskap](/nb/user/knowledge/) som agenten har lov til å lese. Av en kundes data leser den bare
   kunden samtalen hører til. Er kunden koblet av kundekoblingen og ikke av en person, må avsenderen i
   tillegg være en av kundens kontakter; ellers har agenten **ingen kunde** i den samtalen og svarer fra

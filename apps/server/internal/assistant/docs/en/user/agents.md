@@ -35,7 +35,7 @@ and on Messenger, as itself.
 - **Whose conversation.** It answers a conversation that is **unassigned or assigned to it**. A
   conversation assigned to a colleague is left to them. **Assign a conversation to the agent** and it
   answers it, also when it has been handed off.
-- **What it reads.** The conversation, the customer's orders, invoices and contacts, the product catalog
+- **What it reads.** The conversation, the customer's orders and their shipments, invoices and contacts, the product catalog
   and the articles in [Knowledge](/en/user/knowledge/) that the agent may read. For a customer's data it
   reads only the customer the conversation belongs to. When the customer was linked by the customer
   linker and not by a person, the sender must also be one of the customer's contacts; otherwise the agent
