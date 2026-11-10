@@ -109,22 +109,25 @@ FROM orders.deliveries d
 JOIN orders.orders o ON o.id = d.order_id
 WHERE (cardinality($1::text[]) = 0 OR d.status = ANY($1::text[]))
   AND ($2::bigint IS NULL OR d.order_id = $2)
-  AND ($3::bigint IS NULL OR d.site_id = $3)
-  AND ($4::text = '' OR d.number::text = $4::text OR o.number::text = $4::text
-       OR o.customer_name ILIKE '%' || $4::text || '%')
+  AND ($3::integer IS NULL OR o.customer_id = $3)
+  AND ($4::bigint IS NULL OR d.site_id = $4)
+  AND ($5::text = '' OR d.number::text = $5::text OR o.number::text = $5::text
+       OR o.customer_name ILIKE '%' || $5::text || '%')
 `
 
 type CountDeliveriesParams struct {
-	Statuses []string
-	OrderID  *int64
-	SiteID   *int64
-	Q        string
+	Statuses   []string
+	OrderID    *int64
+	CustomerID *int32
+	SiteID     *int64
+	Q          string
 }
 
 func (q *Queries) CountDeliveries(ctx context.Context, arg CountDeliveriesParams) (int32, error) {
 	row := q.db.QueryRow(ctx, countDeliveries,
 		arg.Statuses,
 		arg.OrderID,
+		arg.CustomerID,
 		arg.SiteID,
 		arg.Q,
 	)
@@ -529,16 +532,18 @@ FROM orders.deliveries d
 JOIN orders.orders o ON o.id = d.order_id
 WHERE (cardinality($1::text[]) = 0 OR d.status = ANY($1::text[]))
   AND ($2::bigint IS NULL OR d.order_id = $2)
-  AND ($3::bigint IS NULL OR d.site_id = $3)
-  AND ($4::text = '' OR d.number::text = $4::text OR o.number::text = $4::text
-       OR o.customer_name ILIKE '%' || $4::text || '%')
+  AND ($3::integer IS NULL OR o.customer_id = $3)
+  AND ($4::bigint IS NULL OR d.site_id = $4)
+  AND ($5::text = '' OR d.number::text = $5::text OR o.number::text = $5::text
+       OR o.customer_name ILIKE '%' || $5::text || '%')
 ORDER BY d.id DESC
-LIMIT $6::integer OFFSET $5::integer
+LIMIT $7::integer OFFSET $6::integer
 `
 
 type ListDeliveriesParams struct {
 	Statuses   []string
 	OrderID    *int64
+	CustomerID *int32
 	SiteID     *int64
 	Q          string
 	PageOffset int32
@@ -559,6 +564,7 @@ func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) 
 	rows, err := q.db.Query(ctx, listDeliveries,
 		arg.Statuses,
 		arg.OrderID,
+		arg.CustomerID,
 		arg.SiteID,
 		arg.Q,
 		arg.PageOffset,

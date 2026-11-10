@@ -267,12 +267,12 @@ func (s *server) ListDeliveries(ctx context.Context, req gen.ListDeliveriesReque
 	out := gen.OrdersDeliveryPage{Items: []gen.OrdersDeliverySummary{}}
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		rows, err := q.ListDeliveries(ctx, store.ListDeliveriesParams{
-			Statuses: statuses, OrderID: p.OrderId, SiteID: p.SiteId, Q: search, PageSize: size, PageOffset: (page - 1) * size,
+			Statuses: statuses, OrderID: p.OrderId, CustomerID: p.CustomerId, SiteID: p.SiteId, Q: search, PageSize: size, PageOffset: (page - 1) * size,
 		})
 		if err != nil {
 			return fmt.Errorf("orders: list deliveries: %w", err)
 		}
-		if out.Total, err = q.CountDeliveries(ctx, store.CountDeliveriesParams{Statuses: statuses, OrderID: p.OrderId, SiteID: p.SiteId, Q: search}); err != nil {
+		if out.Total, err = q.CountDeliveries(ctx, store.CountDeliveriesParams{Statuses: statuses, OrderID: p.OrderId, CustomerID: p.CustomerId, SiteID: p.SiteId, Q: search}); err != nil {
 			return fmt.Errorf("orders: count deliveries: %w", err)
 		}
 		for _, r := range rows {

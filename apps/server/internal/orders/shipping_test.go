@@ -509,6 +509,43 @@ func TestShipments_BookOnceTrackAndNotice(t *testing.T) {
 	}
 }
 
+// The shipment and delivery reads name their order's customer and take it as a
+// filter, so an agent's run for one customer reads that customer's parcels only
+// (virtual employees design V9b).
+func TestShipments_ReadsNameAndFilterByTheOrdersCustomer(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true, bring: true})
+	c := h.SignIn(t, shippingKeys...)
+	o, d := shippedOrder(t, h, c)
+	addAccount(t, c, "Bring")
+	res := c.Do(http.MethodPost, deliveryPath(d.Id, "shipments"), gen.OrdersShipmentInput{})
+	mustStatus(t, res, http.StatusCreated, "create shipment")
+	sh := shipmentOf(t, res)
+	own, other := o.Customer.CustomerId, o.Customer.CustomerId+1
+
+	if got := shipmentOf(t, c.Do(http.MethodGet, shipmentPath(sh.Id), nil)); got.CustomerId != own {
+		t.Errorf("shipment customer %d, want %d", got.CustomerId, own)
+	}
+	for _, path := range []string{orderPath(o.Id, "shipments"), deliveryPath(d.Id, "shipments")} {
+		var list gen.OrdersShipmentList
+		c.Do(http.MethodGet, fmt.Sprintf("%s?customerId=%d", path, own), nil).JSON(&list)
+		if len(list.Items) != 1 || list.Items[0].CustomerId != own {
+			t.Errorf("%s of the order's customer = %+v, want the shipment", path, list.Items)
+		}
+		mustStatus(t, c.Do(http.MethodGet, fmt.Sprintf("%s?customerId=%d", path, other), nil), http.StatusNotFound, path+" of another customer")
+	}
+
+	var page gen.OrdersDeliveryPage
+	c.Do(http.MethodGet, fmt.Sprintf("%s?customerId=%d", deliveriesPath, own), nil).JSON(&page)
+	if len(page.Items) != 1 || page.Total != 1 || page.Items[0].CustomerId != own {
+		t.Errorf("deliveries of the customer = %+v", page)
+	}
+	c.Do(http.MethodGet, fmt.Sprintf("%s?customerId=%d", deliveriesPath, other), nil).JSON(&page)
+	if len(page.Items) != 0 || page.Total != 0 {
+		t.Errorf("deliveries of another customer = %+v, want none", page)
+	}
+}
+
 // The shipping line (O53): the estimate from the carrier with the markup and
 // the freight product's name and VAT; carrier as its price source until a
 // price is typed over it; quantity 1; quotes and orders only.

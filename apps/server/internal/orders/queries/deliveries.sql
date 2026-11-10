@@ -102,6 +102,7 @@ FROM orders.deliveries d
 JOIN orders.orders o ON o.id = d.order_id
 WHERE (cardinality(sqlc.arg(statuses)::text[]) = 0 OR d.status = ANY(sqlc.arg(statuses)::text[]))
   AND (sqlc.narg(order_id)::bigint IS NULL OR d.order_id = sqlc.narg(order_id))
+  AND (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(customer_id))
   AND (sqlc.narg(site_id)::bigint IS NULL OR d.site_id = sqlc.narg(site_id))
   AND (sqlc.arg(q)::text = '' OR d.number::text = sqlc.arg(q)::text OR o.number::text = sqlc.arg(q)::text
        OR o.customer_name ILIKE '%' || sqlc.arg(q)::text || '%')
@@ -114,6 +115,7 @@ FROM orders.deliveries d
 JOIN orders.orders o ON o.id = d.order_id
 WHERE (cardinality(sqlc.arg(statuses)::text[]) = 0 OR d.status = ANY(sqlc.arg(statuses)::text[]))
   AND (sqlc.narg(order_id)::bigint IS NULL OR d.order_id = sqlc.narg(order_id))
+  AND (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(customer_id))
   AND (sqlc.narg(site_id)::bigint IS NULL OR d.site_id = sqlc.narg(site_id))
   AND (sqlc.arg(q)::text = '' OR d.number::text = sqlc.arg(q)::text OR o.number::text = sqlc.arg(q)::text
        OR o.customer_name ILIKE '%' || sqlc.arg(q)::text || '%');

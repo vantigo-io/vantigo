@@ -2857,6 +2857,10 @@ components:
                 createdAt:
                     format: date-time
                     type: string
+                customerId:
+                    description: "The order's customer, so a read of a shipment can be tied to one customer."
+                    format: int32
+                    type: integer
                 deliveryId:
                     format: int64
                     type: integer
@@ -2940,6 +2944,7 @@ components:
                 - deliveryNumber
                 - orderId
                 - orderNumber
+                - customerId
                 - carrierAccountId
                 - carrierAccountName
                 - carrier
@@ -5045,6 +5050,12 @@ paths:
                   schema:
                       format: int64
                       type: integer
+                - description: Only this customer's deliveries.
+                  in: query
+                  name: customerId
+                  schema:
+                      format: int32
+                      type: integer
                 - in: query
                   name: siteId
                   schema:
@@ -5097,6 +5108,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access
+            x-vantigo-customer-scope:
+                param: customerId
         post:
             description: "Creates a draft delivery of a confirmed order from its site, proposing every open goods line at what is available (O47). Refused for an order on hold (order_on_hold), without a site or stock kept (order_has_no_site), or with nothing to deliver (nothing_to_deliver)."
             operationId: createDelivery
@@ -5185,6 +5198,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: permission:orders:access
+            x-vantigo-customer-scope:
+                resource: customerId
         put:
             description: "Saves a draft delivery's lines: quantities and the locations they are picked from (O47). A line names an open goods line of the order, at most what is open (over_delivery), and a location of the site (location_unknown)."
             operationId: updateDelivery
@@ -5434,7 +5449,7 @@ paths:
             x-vantigo-access: permission:orders:access+orders:deliveries-manage
     "/api/v1/orders/deliveries/{id}/shipments":
         get:
-            description: "A delivery's shipments with their packages, documents and tracking (O50)."
+            description: "A delivery's shipments with their packages, documents and tracking (O50). With customerId, a delivery of another customer's order is a 404."
             operationId: listDeliveryShipments
             parameters:
                 - in: path
@@ -5442,6 +5457,12 @@ paths:
                   required: true
                   schema:
                       format: int64
+                      type: integer
+                - description: "Answer only when the delivery's customer is this one (404 otherwise)."
+                  in: query
+                  name: customerId
+                  schema:
+                      format: int32
                       type: integer
             responses:
                 "200":
@@ -5468,6 +5489,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access"
+            x-vantigo-customer-scope:
+                param: customerId
         post:
             description: "Proposes a draft shipment of a posted delivery (O50): one package weighing the sum of the delivered variants' weights, the recipient the order's delivery address and contact, the site's default carrier account and its default service unless named. Refused for a delivery not posted (delivery_not_posted) or with no carrier account to use (no_carrier_account)."
             operationId: createShipment
@@ -6577,7 +6600,7 @@ paths:
             x-vantigo-access: permission:orders:access+orders:sales-manage
     "/api/v1/orders/orders/{id}/shipments":
         get:
-            description: "Every shipment of the order's deliveries, with its tracking link (O52)."
+            description: "Every shipment of the order's deliveries, with its tracking link (O52). With customerId, an order of another customer is a 404."
             operationId: listOrderShipments
             parameters:
                 - in: path
@@ -6585,6 +6608,12 @@ paths:
                   required: true
                   schema:
                       format: int64
+                      type: integer
+                - description: "Answer only when the order's customer is this one (404 otherwise)."
+                  in: query
+                  name: customerId
+                  schema:
+                      format: int32
                       type: integer
             responses:
                 "200":
@@ -6611,6 +6640,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access"
+            x-vantigo-customer-scope:
+                param: customerId
     "/api/v1/orders/orders/{id}/undo-delivered":
         post:
             description: "Takes per-line delivered quantities back, never below 0 (O32)."
@@ -7754,6 +7785,8 @@ paths:
             tags:
                 - Orders
             x-vantigo-access: "permission:orders:access"
+            x-vantigo-customer-scope:
+                resource: customerId
         put:
             description: "Saves a draft shipment: its account, service, value-added services, packages (1 to 20; grams and millimetres), pickup point and the contact the carrier notifies."
             operationId: updateShipment

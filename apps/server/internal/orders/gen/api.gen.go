@@ -2889,23 +2889,26 @@ type OrdersShipment struct {
 	BookedAt      *time.Time `json:"bookedAt,omitempty"`
 
 	// BookedBy A user as snapshotted on the document: the salesperson or an actor (O13, O29).
-	BookedBy           *OrdersPerson         `json:"bookedBy,omitempty"`
-	BookedCost         *float64              `json:"bookedCost,omitempty"`
-	BookedCostCurrency *string               `json:"bookedCostCurrency,omitempty"`
-	BookedCostEstimate bool                  `json:"bookedCostEstimate"`
-	BookedService      *string               `json:"bookedService,omitempty"`
-	CancelledAt        *time.Time            `json:"cancelledAt,omitempty"`
-	Carrier            string                `json:"carrier"`
-	CarrierAccountId   int64                 `json:"carrierAccountId"`
-	CarrierAccountName string                `json:"carrierAccountName"`
-	ConsignmentNumber  *string               `json:"consignmentNumber,omitempty"`
-	CreatedAt          time.Time             `json:"createdAt"`
-	DeliveryId         int64                 `json:"deliveryId"`
-	DeliveryNumber     int64                 `json:"deliveryNumber"`
-	Events             []OrdersShipmentEvent `json:"events"`
-	Exception          bool                  `json:"exception"`
-	Id                 int64                 `json:"id"`
-	Label              bool                  `json:"label"`
+	BookedBy           *OrdersPerson `json:"bookedBy,omitempty"`
+	BookedCost         *float64      `json:"bookedCost,omitempty"`
+	BookedCostCurrency *string       `json:"bookedCostCurrency,omitempty"`
+	BookedCostEstimate bool          `json:"bookedCostEstimate"`
+	BookedService      *string       `json:"bookedService,omitempty"`
+	CancelledAt        *time.Time    `json:"cancelledAt,omitempty"`
+	Carrier            string        `json:"carrier"`
+	CarrierAccountId   int64         `json:"carrierAccountId"`
+	CarrierAccountName string        `json:"carrierAccountName"`
+	ConsignmentNumber  *string       `json:"consignmentNumber,omitempty"`
+	CreatedAt          time.Time     `json:"createdAt"`
+
+	// CustomerId The order's customer, so a read of a shipment can be tied to one customer.
+	CustomerId     int32                 `json:"customerId"`
+	DeliveryId     int64                 `json:"deliveryId"`
+	DeliveryNumber int64                 `json:"deliveryNumber"`
+	Events         []OrdersShipmentEvent `json:"events"`
+	Exception      bool                  `json:"exception"`
+	Id             int64                 `json:"id"`
+	Label          bool                  `json:"label"`
 
 	// LabelInMybringOnly The booking was found by its reference after a lost answer, and the carrier gives no label link for it: print the label in Mybring.
 	LabelInMybringOnly bool                    `json:"labelInMybringOnly"`
@@ -3608,16 +3611,25 @@ type ListPickupPointsParams struct {
 // ListDeliveriesParams defines parameters for ListDeliveries.
 type ListDeliveriesParams struct {
 	// Status Any of the statuses; none means all.
-	Status   *[]ListDeliveriesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
-	OrderId  *int64                        `form:"orderId,omitempty" json:"orderId,omitempty"`
-	SiteId   *int64                        `form:"siteId,omitempty" json:"siteId,omitempty"`
-	Q        *string                       `form:"q,omitempty" json:"q,omitempty"`
-	Page     *int32                        `form:"page,omitempty" json:"page,omitempty"`
-	PageSize *int32                        `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	Status  *[]ListDeliveriesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	OrderId *int64                        `form:"orderId,omitempty" json:"orderId,omitempty"`
+
+	// CustomerId Only this customer's deliveries.
+	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
+	SiteId     *int64  `form:"siteId,omitempty" json:"siteId,omitempty"`
+	Q          *string `form:"q,omitempty" json:"q,omitempty"`
+	Page       *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize   *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // ListDeliveriesParamsStatus defines parameters for ListDeliveries.
 type ListDeliveriesParamsStatus string
+
+// ListDeliveryShipmentsParams defines parameters for ListDeliveryShipments.
+type ListDeliveryShipmentsParams struct {
+	// CustomerId Answer only when the delivery's customer is this one (404 otherwise).
+	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
+}
 
 // ListSalesOrdersParams defines parameters for ListSalesOrders.
 type ListSalesOrdersParams struct {
@@ -3667,6 +3679,12 @@ type DeleteSalesOrderParams struct {
 type GetSalesOrderPdfParams struct {
 	// Version A stored version's PDF; the current one when absent.
 	Version *int32 `form:"version,omitempty" json:"version,omitempty"`
+}
+
+// ListOrderShipmentsParams defines parameters for ListOrderShipments.
+type ListOrderShipmentsParams struct {
+	// CustomerId Answer only when the order's customer is this one (404 otherwise).
+	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
 }
 
 // GetOrdersVariantGridParams defines parameters for GetOrdersVariantGrid.
@@ -3950,7 +3968,7 @@ type ServerInterface interface {
 	PostDelivery(w http.ResponseWriter, r *http.Request, id int64)
 	// ListDeliveryShipments List a delivery's shipments
 	// (GET /api/v1/orders/deliveries/{id}/shipments)
-	ListDeliveryShipments(w http.ResponseWriter, r *http.Request, id int64)
+	ListDeliveryShipments(w http.ResponseWriter, r *http.Request, id int64, params ListDeliveryShipmentsParams)
 	// CreateShipment Create a shipment
 	// (POST /api/v1/orders/deliveries/{id}/shipments)
 	CreateShipment(w http.ResponseWriter, r *http.Request, id int64)
@@ -4019,7 +4037,7 @@ type ServerInterface interface {
 	SendSalesOrder(w http.ResponseWriter, r *http.Request, id int64)
 	// ListOrderShipments List an order's shipments
 	// (GET /api/v1/orders/orders/{id}/shipments)
-	ListOrderShipments(w http.ResponseWriter, r *http.Request, id int64)
+	ListOrderShipments(w http.ResponseWriter, r *http.Request, id int64, params ListOrderShipmentsParams)
 	// UndoSalesOrderDelivered Undo delivered quantities
 	// (POST /api/v1/orders/orders/{id}/undo-delivered)
 	UndoSalesOrderDelivered(w http.ResponseWriter, r *http.Request, id int64)
@@ -4627,6 +4645,19 @@ func (siw *ServerInterfaceWrapper) ListDeliveries(w http.ResponseWriter, r *http
 		return
 	}
 
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "siteId" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -4875,8 +4906,24 @@ func (siw *ServerInterfaceWrapper) ListDeliveryShipments(w http.ResponseWriter, 
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDeliveryShipmentsParams
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListDeliveryShipments(w, r, id)
+		siw.Handler.ListDeliveryShipments(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5618,8 +5665,24 @@ func (siw *ServerInterfaceWrapper) ListOrderShipments(w http.ResponseWriter, r *
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOrderShipmentsParams
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListOrderShipments(w, r, id)
+		siw.Handler.ListOrderShipments(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8947,7 +9010,8 @@ func (response PostDelivery503ApplicationProblemPlusJSONResponse) VisitPostDeliv
 }
 
 type ListDeliveryShipmentsRequestObject struct {
-	Id int64 `json:"id"`
+	Id     int64 `json:"id"`
+	Params ListDeliveryShipmentsParams
 }
 
 type ListDeliveryShipmentsResponseObject interface {
@@ -10668,7 +10732,8 @@ func (response SendSalesOrder503ApplicationProblemPlusJSONResponse) VisitSendSal
 }
 
 type ListOrderShipmentsRequestObject struct {
-	Id int64 `json:"id"`
+	Id     int64 `json:"id"`
+	Params ListOrderShipmentsParams
 }
 
 type ListOrderShipmentsResponseObject interface {
@@ -15838,10 +15903,11 @@ func (sh *strictHandler) PostDelivery(w http.ResponseWriter, r *http.Request, id
 }
 
 // ListDeliveryShipments operation middleware
-func (sh *strictHandler) ListDeliveryShipments(w http.ResponseWriter, r *http.Request, id int64) {
+func (sh *strictHandler) ListDeliveryShipments(w http.ResponseWriter, r *http.Request, id int64, params ListDeliveryShipmentsParams) {
 	var request ListDeliveryShipmentsRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListDeliveryShipments(ctx, request.(ListDeliveryShipmentsRequestObject))
@@ -16525,10 +16591,11 @@ func (sh *strictHandler) SendSalesOrder(w http.ResponseWriter, r *http.Request, 
 }
 
 // ListOrderShipments operation middleware
-func (sh *strictHandler) ListOrderShipments(w http.ResponseWriter, r *http.Request, id int64) {
+func (sh *strictHandler) ListOrderShipments(w http.ResponseWriter, r *http.Request, id int64, params ListOrderShipmentsParams) {
 	var request ListOrderShipmentsRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListOrderShipments(ctx, request.(ListOrderShipmentsRequestObject))
