@@ -1000,7 +1000,9 @@ shipments.
   of its own answers its label for the waybill. 404 when there is none, and for a shipment
   of an anonymised order.
 - `GET /deliveries/{id}/shipments` and `GET /orders/{id}/shipments` list a delivery's and
-  an order's shipments with their packages, documents and tracking events.
+  an order's shipments with their packages, documents and tracking events. Both take an
+  optional `customerId`: when it is not the order's customer the answer is a 404. A shipment
+  carries its order's `customerId`.
 
 ### Tracking
 
@@ -1469,7 +1471,7 @@ empty without Inventory.
 
 An agent (a virtual employee) reads orders through the same API, and the operations dispatcher ties each
 call to the customer of its run ([module boundaries rule 18](/en/contributing/module-boundaries/)).
-Four operations declare `x-vantigo-customer-scope`:
+Nine operations declare `x-vantigo-customer-scope`:
 
 | Operation | Scope |
 | --- | --- |
@@ -1477,11 +1479,16 @@ Four operations declare `x-vantigo-customer-scope`:
 | `GET /orders/{id}` (one order) | `resource: customer.customerId`: the answer is dropped, as a `customer_scope` error, when the order's customer is not the run's |
 | `GET /quotes` (`listQuotes`) | `param: customerId`, as the order list's |
 | `GET /quotes/{id}` (`getQuote`) | `resource: customer.customerId`, as one order's |
+| `GET /shipments/{id}` (`getShipment`) | `resource: customerId`: a shipment names its order's customer (`customerId`), and the answer is dropped when it is not the run's |
+| `GET /deliveries/{id}` (`getDelivery`) | `resource: customerId`, which a delivery already carries |
+| `GET /deliveries` (`listDeliveries`) | `param: customerId`: a query filter on the order's customer, filled in when left out and refused when it names another |
+| `GET /orders/{id}/shipments` (`listOrderShipments`), `GET /deliveries/{id}/shipments` (`listDeliveryShipments`) | `param: customerId`: an optional query filter the handler enforces, so the order or the delivery of another customer is a 404 and never its shipments |
 
 The two quote reads are what the *Sales follow-up* template of the virtual employees allows its role, so that a
-follow-up reads the quote of the customer it writes to and no other. A run with no customer reads none of the four.
-Deliveries and shipments name no customer on their own (an order's shipments carry only the order), so they declare
-no scope and cannot be allowed to an agent's role; the order is how an agent finds a customer's goods.
+follow-up reads the quote of the customer it writes to and no other. A run with no customer reads none of the nine.
+The front desk reads `listOrderShipments`, `getShipment` and `listDeliveries` to answer "where is my parcel?": the
+shipment's status, its consignment number and its tracking link and events. The rest of the shipping reads stay off its
+allowlist, because they carry what the customer has no need of, such as a delivery's pick locations.
 
 ## Assistant tour targets
 
@@ -1606,7 +1613,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /orders/{id}/documents` | access | 200 the stored confirmations; 404 |
 | `GET /orders/{id}/mailings` | access | 200 every send, with the version that went out; 404 |
 | `GET /orders/{id}/changes` | access | 200 the change log; 404 |
-| `GET /deliveries` | access | 200 — newest first, by status, order, site and a search; 400 paging |
+| `GET /deliveries` | access | 200 — newest first, by status, order, customer, site and a search; 400 paging |
 | `POST /deliveries` | deliveries-manage | 201; 400; 404 the order; 409 `order_not_confirmed`, `order_on_hold`, `order_has_no_site`, `nothing_to_deliver`; 503 without stock |
 | `GET /deliveries/{id}` | access | 200 with lines and, on a draft, the locations holding each variant; 404 |
 | `PUT /deliveries/{id}` | deliveries-manage | 200; 400 `line_not_found`, `line_invalid`, `quantity_invalid`, `over_delivery`, `location_unknown`; 404; 409 `version_conflict`, `delivery_not_draft`; 503 |
@@ -1640,9 +1647,9 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /carrier-accounts/{id}/pickup-points` | deliveries-manage | 200 near `postalCode` (`country`, default NO); 400; 404; 422 `carrier_refused`; 503 |
 | `GET /shipping/site-defaults` | access | 200 the default account per site |
 | `PUT /shipping/site-defaults` | carriers-manage | 200 the sites named saved, a null cleared, the others kept; 400 a site twice, `site_not_fulfilling`, an account not active |
-| `GET /deliveries/{id}/shipments` | access | 200; 404 |
+| `GET /deliveries/{id}/shipments` | access | 200; 404, also when `customerId` is not the order's |
 | `POST /deliveries/{id}/shipments` | deliveries-manage | 201; 400 `service_unknown`; 404; 409 `delivery_not_posted`, `no_carrier_account`, `carrier_account_archived`; 503 |
-| `GET /orders/{id}/shipments` | access | 200 the order's shipments; 404 |
+| `GET /orders/{id}/shipments` | access | 200 the order's shipments; 404, also when `customerId` is not the order's |
 | `GET /shipments/{id}` | access | 200; 404 |
 | `PUT /shipments/{id}` | deliveries-manage | 200; 400 `service_unknown`; 404; 409 `version_conflict`, `shipment_not_draft`, `carrier_account_archived`, `booking_unresolved` |
 | `GET /shipments/{id}/rates` | deliveries-manage | 200 cheapest first; 404; 409 `shipment_not_draft`; 422 `carrier_refused`; 503 |
