@@ -278,7 +278,9 @@ tools must pin to its own.
 | `searchKnowledge`, `getKnowledgeArticleText` | | |
 
 The shipment reads answer "where is my parcel?": a shipment names its order's customer, and the lists
-take it as a filter (see [Orders](/en/reference/orders/#agents-and-the-customer-scope)).
+take it as a filter (see [Orders](/en/reference/orders/#agents-and-the-customer-scope)). The tools drop the
+business's own freight figures from a shipment before the agent reads it: `bookedCost`, `bookedCostCurrency`,
+`bookedCostEstimate`, `carrierAccountName` and `bookedBy`. The Orders API still answers them.
 
 ### The needs
 

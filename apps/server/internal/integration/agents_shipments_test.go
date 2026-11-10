@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -61,7 +62,7 @@ func TestAgentScope_ShipmentReadsHoldOnlyTheRunsCustomer(t *testing.T) {
 	// The run's customer's parcel, and its tracking link, are readable; the
 	// customer is filled in on the lists.
 	res, err := ops.Call(agent, operations.CallRequest{OperationID: "listOrderShipments", PathParams: map[string]any{"id": ownOrder.Id}})
-	if err != nil || res.Status != http.StatusOK || !strings.Contains(string(res.Body), fmt.Sprintf(`"id":%d`, ownShipment.Id)) || !strings.Contains(string(res.Body), `"trackingUrl"`) {
+	if err != nil || res.Status != http.StatusOK || !strings.Contains(string(res.Body), fmt.Sprintf(`"id":%d,`, ownShipment.Id)) || !strings.Contains(string(res.Body), `"trackingUrl"`) {
 		t.Errorf("listOrderShipments of the run's customer: %v %d %s", err, res.Status, res.Body)
 	}
 	for _, req := range []operations.CallRequest{
@@ -74,7 +75,14 @@ func TestAgentScope_ShipmentReadsHoldOnlyTheRunsCustomer(t *testing.T) {
 		}
 	}
 	res, err = ops.Call(agent, operations.CallRequest{OperationID: "listDeliveries"})
-	if err != nil || res.Status != http.StatusOK || !strings.Contains(string(res.Body), fmt.Sprintf(`"id":%d`, ownDelivery.Id)) || strings.Contains(string(res.Body), fmt.Sprintf(`"id":%d,`, otherDelivery.Id)) {
+	var deliveries struct {
+		Items []struct {
+			Id         int64 `json:"id"`
+			CustomerId int32 `json:"customerId"`
+		} `json:"items"`
+	}
+	if err != nil || res.Status != http.StatusOK || json.Unmarshal(res.Body, &deliveries) != nil ||
+		len(deliveries.Items) != 1 || deliveries.Items[0].Id != ownDelivery.Id || deliveries.Items[0].CustomerId != own {
 		t.Errorf("listDeliveries holds %s, want only delivery %d", res.Body, ownDelivery.Id)
 	}
 

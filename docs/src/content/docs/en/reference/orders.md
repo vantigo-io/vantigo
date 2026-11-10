@@ -1487,8 +1487,9 @@ Nine operations declare `x-vantigo-customer-scope`:
 The two quote reads are what the *Sales follow-up* template of the virtual employees allows its role, so that a
 follow-up reads the quote of the customer it writes to and no other. A run with no customer reads none of the nine.
 The front desk reads `listOrderShipments`, `getShipment` and `listDeliveries` to answer "where is my parcel?": the
-shipment's status, its consignment number and its tracking link and events. The rest of the shipping reads stay off its
-allowlist, because they carry what the customer has no need of, such as a delivery's pick locations.
+shipment's status, its consignment number and its tracking link and events. `getDelivery` stays off its
+allowlist because it carries a delivery's pick locations, and `listDeliveryShipments` because `listOrderShipments`
+answers the same.
 
 ## Assistant tour targets
 
