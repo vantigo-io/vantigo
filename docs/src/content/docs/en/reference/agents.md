@@ -271,13 +271,14 @@ tools must pin to its own.
 | `getCustomersByIdContacts` | yes | |
 | `listSalesOrders` | yes | |
 | `getSalesOrder` | yes | |
+| `listOrderShipments`, `getShipment`, `listDeliveries` | yes | |
 | `getInvoices` | yes | |
 | `getInvoicesById` | yes | |
 | `getProducts`, `getProduct`, `getProductsByIdVariants`, `getProductsByIdVariantsByVariantIdPrices` | | |
 | `searchKnowledge`, `getKnowledgeArticleText` | | |
 
-Shipments are not on it: Orders' shipments name no customer, so they cannot be tied to
-one.
+The shipment reads answer "where is my parcel?": a shipment names its order's customer, and the lists
+take it as a filter (see [Orders](/en/reference/orders/#agents-and-the-customer-scope)).
 
 ### The needs
 

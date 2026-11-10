@@ -119,8 +119,9 @@ func (t *template) uses(field string) bool { return slices.Contains(t.Fields, fi
 
 // frontDesk answers customers on the channels it is bound to. Its allowlist is
 // short (V9b): the conversation's own reads and writes, the customer's orders,
-// invoices and contacts, Products, and Knowledge. Shipments are not on it:
-// Orders' shipments name no customer, so they cannot be tied to one.
+// invoices, shipments and contacts, Products, and Knowledge. A shipment names
+// its order's customer, and the lists of shipments and deliveries filter by it,
+// so "where is my parcel?" is read for the run's customer only.
 //
 // patchCommunicationsConversationsById carries customerId and assignedUserId
 // besides the status, so a run's tools set only the status (call_operation) and,
@@ -149,6 +150,9 @@ Never promise a date, a discount, a refund or a price you have not read. Answer 
 		{ID: "getCustomersByIdContacts", CustomerData: true},
 		{ID: "listSalesOrders", CustomerData: true},
 		{ID: "getSalesOrder", CustomerData: true},
+		{ID: "listOrderShipments", CustomerData: true},
+		{ID: "getShipment", CustomerData: true},
+		{ID: "listDeliveries", CustomerData: true},
 		{ID: "getInvoices", CustomerData: true},
 		{ID: "getInvoicesById", CustomerData: true},
 		{ID: "getProducts"},
