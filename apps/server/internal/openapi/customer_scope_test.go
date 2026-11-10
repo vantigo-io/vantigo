@@ -14,8 +14,7 @@ import (
 // joins this table in the delivery that adds it, with its scope.
 //
 // Not marked, so not allowlistable: an operation whose answer names no
-// customer and whose request carries none, such as an order's shipments or a
-// delivery (Orders keeps the customer on the order, which is marked).
+// customer and whose request carries none.
 var customerDataOperations = map[string]string{
 	"getCommunicationsConversations": "param:customerId",
 	// getCommunicationsConversationsById is not here: an agent's run with no
@@ -32,6 +31,14 @@ var customerDataOperations = map[string]string{
 	"getQuote":        "resource:customer.customerId",
 	"getInvoices":     "param:customerId",
 	"getInvoicesById": "resource:customerId",
+	// Where is my parcel: a shipment names its order's customer, and the lists
+	// (an order's shipments, a delivery's, the deliveries) take it as a filter that
+	// answers a 404 for another customer's order.
+	"getShipment":           "resource:customerId",
+	"listOrderShipments":    "param:customerId",
+	"listDeliveryShipments": "param:customerId",
+	"getDelivery":           "resource:customerId",
+	"listDeliveries":        "param:customerId",
 }
 
 func TestCustomerDataOperationsDeclareTheirCustomerScope(t *testing.T) {

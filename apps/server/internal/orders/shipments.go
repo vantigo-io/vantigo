@@ -204,7 +204,7 @@ func shipmentViews(ctx context.Context, q *store.Queries, rows []store.OrdersShi
 		o := orderRows[d.OrderID]
 		sv, _ := serviceOf(a.Carrier, r.Service)
 		v := gen.OrdersShipment{
-			Id: r.ID, DeliveryId: d.ID, DeliveryNumber: d.Number, OrderId: o.ID, OrderNumber: o.Number,
+			Id: r.ID, CustomerId: o.CustomerID, DeliveryId: d.ID, DeliveryNumber: d.Number, OrderId: o.ID, OrderNumber: o.Number,
 			CarrierAccountId: a.ID, CarrierAccountName: a.Name, Carrier: a.Carrier, Test: a.Test, Service: r.Service,
 			ServiceName: serviceName(a.Carrier, r.Service, o.Language), Vas: append([]string{}, r.Vas...),
 			Status: gen.OrdersShipmentStatus(r.Status), Exception: r.Exception, Voided: r.Voided,
@@ -287,10 +287,21 @@ func (s *server) GetShipment(ctx context.Context, req gen.GetShipmentRequestObje
 func (s *server) ListDeliveryShipments(ctx context.Context, req gen.ListDeliveryShipmentsRequestObject) (gen.ListDeliveryShipmentsResponseObject, error) {
 	out := gen.OrdersShipmentList{Items: []gen.OrdersShipment{}}
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
-		if _, err := q.GetDelivery(ctx, req.Id); noRows(err) {
+		d, err := q.GetDelivery(ctx, req.Id)
+		if noRows(err) {
 			return notFound()
 		} else if err != nil {
 			return fmt.Errorf("orders: read delivery %d: %w", req.Id, err)
+		}
+		if req.Params.CustomerId != nil {
+			// The order's customer is the delivery's: another's is as good as absent.
+			o, err := q.OrderByID(ctx, d.OrderID)
+			if err != nil {
+				return fmt.Errorf("orders: read order %d: %w", d.OrderID, err)
+			}
+			if o.CustomerID != *req.Params.CustomerId {
+				return notFound()
+			}
 		}
 		rows, err := q.ShipmentsOfDelivery(ctx, req.Id)
 		if err != nil {
@@ -312,10 +323,14 @@ func (s *server) ListDeliveryShipments(ctx context.Context, req gen.ListDelivery
 func (s *server) ListOrderShipments(ctx context.Context, req gen.ListOrderShipmentsRequestObject) (gen.ListOrderShipmentsResponseObject, error) {
 	out := gen.OrdersShipmentList{Items: []gen.OrdersShipment{}}
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
-		if _, err := q.OrderByID(ctx, req.Id); noRows(err) {
+		o, err := q.OrderByID(ctx, req.Id)
+		if noRows(err) {
 			return notFound()
 		} else if err != nil {
 			return fmt.Errorf("orders: read order %d: %w", req.Id, err)
+		}
+		if req.Params.CustomerId != nil && o.CustomerID != *req.Params.CustomerId {
+			return notFound()
 		}
 		rows, err := q.ShipmentsOfOrder(ctx, req.Id)
 		if err != nil {
