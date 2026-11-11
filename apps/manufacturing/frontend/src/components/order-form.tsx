@@ -31,8 +31,6 @@ const formFields = new Set([
   "componentLocationId",
   "outputLocationId",
   "dueDate",
-  "plannedStart",
-  "plannedFinish",
   "requestedStart",
 ]);
 
@@ -60,10 +58,12 @@ export interface OrderFormProps {
  * active BoM — and its BoM, the quantity, the site, the locations, the dates,
  * the priority, the responsible and a note. A draft may change all of them;
  * a confirmed or in-progress order only its dates — the requested start among
- * them (M35a) — priority, responsible, note and locations (M19). A new order opens its page once it is created.
+ * them (M35a) — priority, responsible, note and locations (M19). The planned
+ * window is shown, not edited: only planning sets it (M34). A new order opens
+ * its page once it is created.
  */
 export const OrderForm = ({ order, onSaved, onCancel }: OrderFormProps) => {
-  const { t, day } = useManufacturingFormat();
+  const { t, day, stamp } = useManufacturingFormat();
   const navigate = useNavigate() as (options: unknown) => Promise<void>;
   const invalidate = useInvalidateManufacturing();
   const [values, setValues] = useState<OrderValues>(() => orderValuesOf(order));
@@ -215,20 +215,19 @@ export const OrderForm = ({ order, onSaved, onCancel }: OrderFormProps) => {
           value={values.priority}
           onChange={(next) => next && set("priority", next as OrderValues["priority"])}
         />
-        <TextInput
-          type="datetime-local"
-          label={t("plannedStart")}
-          value={values.plannedStart}
-          onChange={(event) => set("plannedStart", event.currentTarget.value)}
-          error={errors.plannedStart}
-        />
-        <TextInput
-          type="datetime-local"
-          label={t("plannedFinish")}
-          value={values.plannedFinish}
-          onChange={(event) => set("plannedFinish", event.currentTarget.value)}
-          error={errors.plannedFinish}
-        />
+        {order && (
+          <TextInput
+            label={t("plannedDates")}
+            description={t("plannedDatesHint")}
+            readOnly
+            variant="filled"
+            value={
+              order.plannedStart || order.plannedFinish
+                ? `${order.plannedStart ? stamp(order.plannedStart) : "—"} – ${order.plannedFinish ? stamp(order.plannedFinish) : "—"}`
+                : "—"
+            }
+          />
+        )}
         <TextInput
           type="date"
           label={t("requestedStart")}

@@ -3,16 +3,17 @@ import { scheduleBarFixture, scheduleFixture } from "../test/server";
 import {
   addDays,
   barLayout,
+  dateAndTimeIn,
   dayIndexOf,
   dayWindows,
   draggedStart,
   fractionOf,
   instantAt,
-  localDateAndTime,
-  localInstant,
   movedStart,
+  moveToPrefill,
   rescheduleBody,
   snapToGrid,
+  workOrderStart,
 } from "./schedule";
 
 const at = (iso: string) => new Date(iso).getTime();
@@ -29,11 +30,16 @@ describe("the board's day columns", () => {
     });
   });
 
-  it("fall back to 06:00–22:00 in the viewer's time on a day nothing is open", () => {
-    expect(windows[3]).toEqual({
+  it("fall back to 06:00–22:00 in the business time zone on a day nothing is open, whatever the browser's", () => {
+    expect(dayWindows(scheduleFixture(), "America/New_York")[3]).toEqual({
       date: "2026-11-14",
-      start: localInstant("2026-11-14", "06:00"),
-      end: localInstant("2026-11-14", "22:00"),
+      start: at("2026-11-14T11:00:00Z"),
+      end: at("2026-11-15T03:00:00Z"),
+    });
+    expect(dayWindows(scheduleFixture(), "Europe/Oslo")[3]).toEqual({
+      date: "2026-11-14",
+      start: at("2026-11-14T05:00:00Z"),
+      end: at("2026-11-14T21:00:00Z"),
     });
   });
 
@@ -76,10 +82,22 @@ describe("moving a bar", () => {
     });
   });
 
-  it("reads Move to…'s day and time in the viewer's zone, snapped", () => {
-    expect(movedStart("2026-11-12", "07:10")).toBe(localInstant("2026-11-12", "07:15"));
-    const local = localDateAndTime(new Date(localInstant("2026-11-12", "07:30")).toISOString());
-    expect(local).toEqual({ date: "2026-11-12", time: "07:30" });
+  it("reads Move to…'s day and time in the viewer's zone, not the browser's, snapped", () => {
+    expect(movedStart("2026-11-12", "07:10", "Asia/Tokyo")).toBe(at("2026-11-11T22:15:00Z"));
+    expect(movedStart("2026-11-12", "07:10", "Europe/Oslo")).toBe(at("2026-11-12T06:15:00Z"));
+    expect(dateAndTimeIn("2026-11-11T22:30:00Z", "Asia/Tokyo")).toEqual({ date: "2026-11-12", time: "07:30" });
+  });
+
+  it("prefills Move to… with the work order's start, not the piece's (M36)", () => {
+    const later = scheduleBarFixture({ startsAt: "2026-11-12T08:00:00Z", plannedStart: "2026-11-11T13:00:00Z" });
+    expect(moveToPrefill(later, "UTC")).toEqual({ date: "2026-11-11", time: "13:00" });
+  });
+
+  it("moves the whole work order as far as a later piece was dragged (M36)", () => {
+    const later = scheduleBarFixture({ startsAt: "2026-11-12T08:00:00Z", plannedStart: "2026-11-11T13:00:00Z" });
+    expect(workOrderStart(later, at("2026-11-13T08:00:00Z"))).toBe(at("2026-11-12T13:00:00Z"));
+    // The first piece starts where the work order does: the drop is the start.
+    expect(workOrderStart(scheduleBarFixture(), at("2026-11-12T08:00:00Z"))).toBe(at("2026-11-12T08:00:00Z"));
   });
 
   it("counts days on the date alone", () => {

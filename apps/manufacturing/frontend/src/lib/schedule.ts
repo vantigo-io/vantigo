@@ -1,3 +1,4 @@
+import { civilDateIn, getTimeZones, instantFromWallClock, wallClockIn } from "@vantigo/frontend-shell";
 import type { ManufacturingRescheduleInput, ManufacturingSchedule, ManufacturingScheduleBar } from "../api/schedule";
 
 /**
@@ -5,7 +6,9 @@ import type { ManufacturingRescheduleInput, ManufacturingSchedule, Manufacturing
  * each day column is scaled over that day's open span — the earliest interval
  * start to the latest interval end of any work center that day — so a bar
  * sits at its planned time. A day no center is open on falls back to
- * 06:00–22:00 in the viewer's time.
+ * 06:00–22:00 in the business time zone, the zone the board's days are
+ * counted in. A time a person types — Move to… — means a moment in their own
+ * zone (time zones design D6), and is shown back in it.
  */
 
 /** One day column's span, as epoch milliseconds. */
@@ -22,11 +25,15 @@ const SNAP_MS = SNAP_MINUTES * 60_000;
 const FALLBACK_START = "06:00";
 const FALLBACK_END = "22:00";
 
-/** A local date and time (`2026-11-12`, `07:30`) as epoch milliseconds in the viewer's zone. */
-export const localInstant = (date: string, time: string): number => new Date(`${date}T${time}`).getTime();
+/** A date and a wall-clock time (`2026-11-12`, `07:30`) in a zone, as epoch milliseconds. */
+export const wallClockInstant = (date: string, time: string, zone: string): number =>
+  instantFromWallClock(date, time, zone).getTime();
 
-/** The day columns' spans, one per day of the board. */
-export const dayWindows = (schedule: Pick<ManufacturingSchedule, "from" | "days" | "workCenters">): DayWindow[] =>
+/** The day columns' spans, one per day of the board; a day nothing is open on spans the fallback in `zone`. */
+export const dayWindows = (
+  schedule: Pick<ManufacturingSchedule, "from" | "days" | "workCenters">,
+  zone: string = getTimeZones().businessTimeZone,
+): DayWindow[] =>
   Array.from({ length: schedule.days }, (_, index) => {
     const date = addDays(schedule.from, index);
     let start = Number.POSITIVE_INFINITY;
@@ -39,7 +46,11 @@ export const dayWindows = (schedule: Pick<ManufacturingSchedule, "from" | "days"
       }
     }
     if (!Number.isFinite(start) || end <= start)
-      return { date, start: localInstant(date, FALLBACK_START), end: localInstant(date, FALLBACK_END) };
+      return {
+        date,
+        start: wallClockInstant(date, FALLBACK_START, zone),
+        end: wallClockInstant(date, FALLBACK_END, zone),
+      };
     return { date, start, end };
   });
 
@@ -106,21 +117,40 @@ export const draggedStart = (
   windows: readonly DayWindow[],
 ): number => snapToGrid(instantAt(barLayout(bar, windows).left + delta, windows));
 
+/**
+ * Where the work order starts once one of its bars is dropped at `barStart`
+ * (M36): a bar is one piece of the work order, so the whole work order moves
+ * by as far as the piece did — from its planned start, snapped to the grid.
+ */
+export const workOrderStart = (
+  bar: Pick<ManufacturingScheduleBar, "startsAt" | "plannedStart">,
+  barStart: number,
+): number => {
+  const from = new Date(bar.plannedStart ?? bar.startsAt).getTime();
+  return snapToGrid(from + (barStart - new Date(bar.startsAt).getTime()));
+};
+
 /** The reschedule request (M36): the start, and the work order's revision the board read. */
 export const rescheduleBody = (
   bar: Pick<ManufacturingScheduleBar, "workOrderRevision">,
   start: number,
 ): ManufacturingRescheduleInput => ({ start: new Date(start).toISOString(), revision: bar.workOrderRevision });
 
-/** The start a Move to… dialog's date and time name, snapped to the grid. */
-export const movedStart = (date: string, time: string): number => snapToGrid(localInstant(date, time));
+/** The start a Move to… dialog's date and time name in the viewer's zone, snapped to the grid. */
+export const movedStart = (date: string, time: string, zone: string = getTimeZones().timeZone): number =>
+  snapToGrid(wallClockInstant(date, time, zone));
 
-/** A bar's start as the Move to… dialog prefills it: its local date and time. */
-export const localDateAndTime = (instant: string): { date: string; time: string } => {
+/** An instant as the Move to… dialog shows it: its date and time in the viewer's zone. */
+export const dateAndTimeIn = (
+  instant: string,
+  zone: string = getTimeZones().timeZone,
+): { date: string; time: string } => {
   const at = new Date(instant);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return {
-    date: `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`,
-    time: `${pad(at.getHours())}:${pad(at.getMinutes())}`,
-  };
+  return { date: civilDateIn(zone, at), time: wallClockIn(zone, at) };
 };
+
+/** What Move to… prefills for a bar: the start of its work order, not of the piece (M36). */
+export const moveToPrefill = (
+  bar: Pick<ManufacturingScheduleBar, "startsAt" | "plannedStart">,
+  zone: string = getTimeZones().timeZone,
+): { date: string; time: string } => dateAndTimeIn(bar.plannedStart ?? bar.startsAt, zone);

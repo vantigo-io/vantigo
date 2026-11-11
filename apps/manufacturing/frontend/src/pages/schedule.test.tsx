@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { setTimeZones } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { localInstant } from "../lib/schedule";
 import { SCHEDULE_SITE_STORAGE_KEY } from "../lib/schedule-storage";
 import { jsonResponse } from "../test/api";
 import { sent } from "../test/helpers";
@@ -10,6 +10,7 @@ import { manufacturingProblem, stubManufacturingApi } from "../test/server";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  setTimeZones(null);
   try {
     window.localStorage.removeItem(SCHEDULE_SITE_STORAGE_KEY);
   } catch {
@@ -71,7 +72,8 @@ describe("the production schedule", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("moves a bar through Move to… with a day and a time", async () => {
+  it("moves a bar through Move to… with a day and a time in the viewer's own zone", async () => {
+    setTimeZones({ timeZone: "Asia/Tokyo", timeZoneSource: "personal", businessTimeZone: "Europe/Oslo" });
     const fetchMock = stubManufacturingApi({ meta: { canManageOrders: true } });
     renderRoute("/manufacturing/schedule");
     await userEvent.click(await screen.findByRole("button", { name: /^Move MO-12/ }));
@@ -82,7 +84,7 @@ describe("the production schedule", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Move" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/work-orders\/40\/reschedule$/)).toHaveLength(1));
     expect(sent(fetchMock, "POST", /\/work-orders\/40\/reschedule$/)[0].body).toEqual({
-      start: new Date(localInstant("2026-11-13", "07:00")).toISOString(),
+      start: "2026-11-12T22:00:00.000Z",
       revision: 3,
     });
   });

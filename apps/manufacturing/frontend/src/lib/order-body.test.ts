@@ -28,4 +28,14 @@ describe("an order's update body", () => {
       requestedStart: "2026-11-20",
     });
   });
+
+  it("never sends a planned window, which only planning sets (M34)", () => {
+    const order = orderFixture({ plannedStart: "2026-11-12T07:00:00Z", plannedFinish: "2026-11-12T09:00:00Z" });
+    const update = orderUpdateOf(orderValuesOf(order), order, defaults);
+    const input = orderInputOf(orderValuesOf(undefined), defaults);
+    for (const body of [update, input]) {
+      expect(body).not.toHaveProperty("plannedStart");
+      expect(body).not.toHaveProperty("plannedFinish");
+    }
+  });
 });

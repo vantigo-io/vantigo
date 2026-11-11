@@ -40,6 +40,23 @@ describe("the order's plan", () => {
     expect(sent(fetchMock, "POST", /\/orders\/5\/unplan$/)[0].body).toEqual({ revision: 4 });
   });
 
+  it("shows the planned window in the edit form, read-only, and never sends it (M34)", async () => {
+    const planned = orderFixture({ plannedStart: "2026-11-12T07:00:00Z", plannedFinish: "2026-11-12T09:00:00Z" });
+    const fetchMock = stubManufacturingApi({ meta: { canManageOrders: true }, orders: [planned] });
+    renderRoute("/manufacturing/orders/5");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog");
+    const window = within(dialog).getByLabelText("Planned");
+    expect(window).toHaveAttribute("readonly");
+    expect(within(dialog).queryByLabelText("Planned start")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Planned finish")).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(sent(fetchMock, "PUT", /\/orders\/5$/)).toHaveLength(1));
+    const body = sent(fetchMock, "PUT", /\/orders\/5$/)[0].body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("plannedStart");
+    expect(body).not.toHaveProperty("plannedFinish");
+  });
+
   it("offers neither without orders-manage", async () => {
     stubManufacturingApi({ meta: { canManageOrders: false } });
     renderRoute("/manufacturing/orders/5");
