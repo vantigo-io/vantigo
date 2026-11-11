@@ -42,16 +42,25 @@ import (
 // — two orders confirmed for the last unit — serialise there, and the second
 // reads what the first reserved. An issue posts through the engine
 // (posting.go), whose own order ends at the balances, and then locks the
-// document's reservations. A release locks only the reservations: it can
+// document's reservations; a production (manufacturing design M2) the same. A release locks only the reservations: it can
 // only make more available, so it need not wait for anyone's balances.
 
-// The movement kind an issue is posted as (design §12: the kinds are an open
-// set of application constants, not a database enum).
-const movementKindIssue = "issue"
+// The movement kinds the ledger posts (design §12: the kinds are an open set
+// of application constants, not a database enum): an issue for another
+// module's delivery, and a production for its producing document
+// (manufacturing design M1).
+const (
+	movementKindIssue      = "issue"
+	movementKindProduction = "production"
+)
 
 // issueKeySpace is the UUID namespace an issue's client request id is made
 // in from its document, so a second issue of one document is a replay.
 var issueKeySpace = uuid.MustParse("6f1f2f0e-7f5c-4b8e-9a51-3d2b8c1e4a70")
+
+// productionKeySpace is the same for a production: its own space, so a
+// production and an issue never share a key.
+var productionKeySpace = uuid.MustParse("0b6c2d4e-93a1-4f57-8c2e-5d7a1e9f3b46")
 
 // stock is the module's contracts.Stock.
 type stock struct{ s *server }
@@ -90,7 +99,23 @@ func (st stock) Sites(ctx context.Context) ([]contracts.StockSite, error) {
 	}
 	out := make([]contracts.StockSite, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, contracts.StockSite{ID: r.ID, Code: r.Code, Name: r.Name, FulfilsOrders: r.FulfilsOrders, Active: r.Status == "active"})
+		out = append(out, contracts.StockSite{ID: r.ID, Code: r.Code, Name: r.Name, FulfilsOrders: r.FulfilsOrders, Active: r.Status == "active",
+			RootLocationID: r.RootLocationID})
+	}
+	return out, nil
+}
+
+// SiteLocations answers every location of the site, archived ones too, by
+// full code.
+func (st stock) SiteLocations(ctx context.Context, siteID int64) ([]contracts.StockSiteLocation, error) {
+	rows, err := store.New(st.s.deps.Pool).StockSiteLocations(ctx, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the locations of site %d: %w", siteID, err)
+	}
+	out := make([]contracts.StockSiteLocation, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, contracts.StockSiteLocation{ID: r.ID, ParentID: r.ParentID, Kind: r.Kind, FullCode: r.FullCode,
+			Active: r.Status == string(gen.Active), Root: r.ParentID == nil})
 	}
 	return out, nil
 }
@@ -225,9 +250,11 @@ func siteRefusal(code, detail string) error {
 }
 
 // fulfillingSite reads the site plainly and refuses one that is unknown,
-// archived or not fulfilling orders. It locks nothing: a flag turned off
-// under a reserve is the same race as one turned off just after it.
-func fulfillingSite(ctx context.Context, txq *store.Queries, siteID int64) (store.GetSiteRow, error) {
+// archived or — when fulfils, as for an order's reserve and issue — not
+// fulfilling orders. Without fulfils (a production and its reserve), an
+// archived site is site_archived: there is no flag to name. It locks nothing: a flag turned off under a reserve is
+// the same race as one turned off just after it.
+func fulfillingSite(ctx context.Context, txq *store.Queries, siteID int64, fulfils bool) (store.GetSiteRow, error) {
 	site, err := txq.GetSite(ctx, siteID)
 	if noRows(err) {
 		return site, siteRefusal(contracts.StockSiteUnknown, fmt.Sprintf("No site has the id %d.", siteID))
@@ -236,9 +263,11 @@ func fulfillingSite(ctx context.Context, txq *store.Queries, siteID int64) (stor
 		return site, fmt.Errorf("inventory: read site %d: %w", siteID, err)
 	}
 	switch {
+	case site.Status != string(gen.Active) && !fulfils:
+		return site, siteRefusal(contracts.StockSiteArchived, fmt.Sprintf("The site %s is archived.", site.Code))
 	case site.Status != string(gen.Active):
 		return site, siteRefusal(contracts.StockSiteNotFulfilling, fmt.Sprintf("The site %s is archived.", site.Code))
-	case !site.FulfilsOrders:
+	case fulfils && !site.FulfilsOrders:
 		return site, siteRefusal(contracts.StockSiteNotFulfilling, fmt.Sprintf("The site %s does not fulfil orders.", site.Code))
 	}
 	return site, nil
@@ -276,6 +305,18 @@ func (l ledger) stockedVariants(ctx context.Context, tx pgx.Tx, ids []int32, lin
 // Reserve adds each line's quantity to its reservation at the site, when the
 // site's available covers it.
 func (l ledger) Reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, lines []contracts.StockLine) error {
+	return l.reserve(ctx, tx, src, siteID, lines, true)
+}
+
+// ReserveForProduction is Reserve at a site that need not fulfil orders
+// (manufacturing design M3).
+func (l ledger) ReserveForProduction(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, lines []contracts.StockLine) error {
+	return l.reserve(ctx, tx, src, siteID, lines, false)
+}
+
+// reserve is Reserve and ReserveForProduction: fulfils is whether the site
+// must fulfil orders.
+func (l ledger) reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, lines []contracts.StockLine, fulfils bool) error {
 	if err := src.Validate(); err != nil {
 		return err
 	}
@@ -301,7 +342,7 @@ func (l ledger) Reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 		ids = append(ids, line.VariantID)
 	}
 	txq := store.New(tx)
-	site, err := fulfillingSite(ctx, txq, siteID)
+	site, err := fulfillingSite(ctx, txq, siteID, fulfils)
 	if err != nil {
 		return err
 	}
@@ -532,13 +573,8 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 		return 0, errors.New("inventory: an issue has no lines")
 	}
 	lines := make([]engineLine, len(issue.Lines))
-	// What is issued per line and variant: a line's reservation is consumed
-	// only by an issue of the variant it holds.
-	type issuedKey struct {
-		line    int64
-		variant int32
-	}
-	issued := map[issuedKey]*big.Rat{}
+	// What is issued per line and variant.
+	issued := map[takenKey]*big.Rat{}
 	for i, line := range issue.Lines {
 		q, err := ledgerQuantity(line.Quantity)
 		if err != nil {
@@ -549,11 +585,7 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 		}
 		from := line.FromLocationID
 		lines[i] = engineLine{index: i, variantID: line.VariantID, from: &from, quantity: q}
-		k := issuedKey{line.LineID, line.VariantID}
-		if issued[k] == nil {
-			issued[k] = new(big.Rat)
-		}
-		issued[k].Add(issued[k], q)
+		takenOf(issued, line.LineID, line.VariantID, q)
 	}
 	hash, err := requestHash(movementKindIssue, issueBody{Source: doc, SiteID: issue.SiteID, Lines: issue.Lines})
 	if err != nil {
@@ -573,11 +605,11 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 	// A replay first, before the site or the variants are judged again (I14).
 	if res, done, err := replayOf(ctx, txq, header); done || err != nil {
 		if err != nil {
-			return 0, issueError(err, issue.Lines)
+			return 0, issueError(err, issueLineOf(issue.Lines), len(issue.Lines))
 		}
 		return res.movementID, nil
 	}
-	if _, err := fulfillingSite(ctx, txq, issue.SiteID); err != nil {
+	if _, err := fulfillingSite(ctx, txq, issue.SiteID, true); err != nil {
 		return 0, err
 	}
 	ids := make([]int32, 0, len(issue.Lines))
@@ -593,54 +625,218 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 	}
 	res, err := l.s.post(ctx, tx, txq, header, lines, postOptions{})
 	if err != nil {
-		return 0, issueError(err, issue.Lines)
+		return 0, issueError(err, issueLineOf(issue.Lines), len(issue.Lines))
 	}
 	if res.replay {
 		return res.movementID, nil
 	}
-	// The reservations of the lines issued, at the site and of the variant
-	// issued, consumed as far as they go.
-	rows, err := txq.LockSourceReservations(ctx, sourceParams(src))
-	if err != nil {
-		return 0, fmt.Errorf("inventory: lock the reservations of %s/%s/%d: %w", src.Module, src.Kind, src.ID, err)
-	}
-	left := make([]*big.Rat, len(rows))
-	for i, r := range rows {
-		left[i] = ratFromNumeric(r.Quantity)
-		if r.SiteID != issue.SiteID {
-			continue
-		}
-		lineID, err := strconv.ParseInt(r.SourceLineID, 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("inventory: reservation %d has the line id %q: %w", r.ID, r.SourceLineID, err)
-		}
-		if q := issued[issuedKey{lineID, r.VariantID}]; q != nil {
-			take := minRat(left[i], q)
-			left[i].Sub(left[i], take)
-			q.Sub(q, take)
-		}
-	}
-	if err := l.writeReservations(ctx, txq, rows, left); err != nil {
+	if err := l.consumeReservations(ctx, txq, src, issue.SiteID, issued); err != nil {
 		return 0, err
 	}
 	return res.movementID, nil
 }
 
-// issueError is the engine's refusal of an issue as the contract's: each
-// failing line's code as a StockRefusal code. A refusal that is no line's — a
-// reused key, an unknown site — or a code the contract has no word for is a
-// failure.
-func issueError(err error, lines []contracts.IssueLine) error {
+// takenKey is a line of the reserving document and the variant taken for
+// it: a line's reservation is consumed only by stock taken of the variant it
+// holds.
+type takenKey struct {
+	line    int64
+	variant int32
+}
+
+// takenOf adds q to what is taken for the line and variant.
+func takenOf(taken map[takenKey]*big.Rat, lineID int64, variantID int32, q *big.Rat) {
+	k := takenKey{lineID, variantID}
+	if taken[k] == nil {
+		taken[k] = new(big.Rat)
+	}
+	taken[k].Add(taken[k], q)
+}
+
+// consumeReservations consumes the reservations of src's lines taken, at the
+// site and of the variant taken, as far as they go — never below zero. It
+// locks the document's reservations after the posting's balances.
+func (l ledger) consumeReservations(ctx context.Context, txq *store.Queries, src contracts.StockSource, siteID int64, taken map[takenKey]*big.Rat) error {
+	rows, err := txq.LockSourceReservations(ctx, sourceParams(src))
+	if err != nil {
+		return fmt.Errorf("inventory: lock the reservations of %s/%s/%d: %w", src.Module, src.Kind, src.ID, err)
+	}
+	left := make([]*big.Rat, len(rows))
+	for i, r := range rows {
+		left[i] = ratFromNumeric(r.Quantity)
+		if r.SiteID != siteID {
+			continue
+		}
+		lineID, err := strconv.ParseInt(r.SourceLineID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("inventory: reservation %d has the line id %q: %w", r.ID, r.SourceLineID, err)
+		}
+		if q := taken[takenKey{lineID, r.VariantID}]; q != nil {
+			take := minRat(left[i], q)
+			left[i].Sub(left[i], take)
+			q.Sub(q, take)
+		}
+	}
+	return l.writeReservations(ctx, txq, rows, left)
+}
+
+// productionBody is what a production's request hash is taken over: the
+// document and the reserving source, the site and the lines, as given.
+type productionBody struct {
+	Source    contracts.StockSource
+	Reserving contracts.StockSource
+	SiteID    int64
+	Consume   []contracts.ConsumeLine
+	Produce   []contracts.ProduceLine
+}
+
+// Produce posts the production as one movement through the engine — the
+// consume lines, from-only, then the produce lines, to-only — and consumes
+// the reservations of the lines it consumed (manufacturing design M1–M2).
+func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (int64, error) {
+	if err := src.Validate(); err != nil {
+		return 0, err
+	}
+	doc := p.Document
+	if doc.IsZero() {
+		doc = src
+	}
+	if err := doc.Validate(); err != nil {
+		return 0, err
+	}
+	n := len(p.Consume) + len(p.Produce)
+	if n == 0 {
+		return 0, siteRefusal(contracts.StockNothingToPost, "A production names no line; nothing was posted.")
+	}
+	// The engine's lines are the consume lines, then the produce lines;
+	// lineOf names the contract's line behind the engine's index.
+	lineOf := func(i int) (int32, int64) {
+		if i < len(p.Consume) {
+			return p.Consume[i].VariantID, p.Consume[i].LineID
+		}
+		return p.Produce[i-len(p.Consume)].VariantID, p.Produce[i-len(p.Consume)].LineID
+	}
+	// A bad quantity is the caller's to show, as a refusal naming every
+	// such line.
+	quantities := make([]*big.Rat, n)
+	var bad []contracts.StockLineRefusal
+	for i := range n {
+		var text string
+		if i < len(p.Consume) {
+			text = p.Consume[i].Quantity
+		} else {
+			text = p.Produce[i-len(p.Consume)].Quantity
+		}
+		q, err := ledgerQuantity(text)
+		if err != nil {
+			variantID, lineID := lineOf(i)
+			bad = append(bad, contracts.StockLineRefusal{Code: contracts.StockQuantityInvalid, VariantID: variantID, LineID: lineID,
+				Detail: fmt.Sprintf("The quantity %q is not more than 0 with at most three decimals.", text)})
+			continue
+		}
+		quantities[i] = q
+	}
+	if len(bad) > 0 {
+		return 0, refusalOf(bad)
+	}
+	lines := make([]engineLine, 0, n)
+	consumed := map[takenKey]*big.Rat{}
+	for i, line := range p.Consume {
+		q := quantities[i]
+		if line.LineID <= 0 {
+			return 0, fmt.Errorf("inventory: a production consumes for line id %d", line.LineID)
+		}
+		from := line.FromLocationID
+		lines = append(lines, engineLine{index: i, variantID: line.VariantID, from: &from, quantity: q})
+		takenOf(consumed, line.LineID, line.VariantID, q)
+	}
+	for i, line := range p.Produce {
+		q := quantities[len(p.Consume)+i]
+		if line.LineID <= 0 {
+			return 0, fmt.Errorf("inventory: a production produces for line id %d", line.LineID)
+		}
+		to := line.ToLocationID
+		lines = append(lines, engineLine{index: len(p.Consume) + i, variantID: line.VariantID, to: &to, quantity: q})
+	}
+	hash, err := requestHash(movementKindProduction, productionBody{Source: doc, Reserving: src, SiteID: p.SiteID, Consume: p.Consume, Produce: p.Produce})
+	if err != nil {
+		return 0, err
+	}
+	display := p.PostedByDisplay
+	if utf8.RuneCountInString(display) > 200 {
+		display = string([]rune(display)[:200])
+	}
+	header := movementHeader{
+		clientRequestID: uuid.NewSHA1(productionKeySpace, []byte(fmt.Sprintf("%s\x00%s\x00%d", doc.Module, doc.Kind, doc.ID))),
+		requestHash:     hash, siteID: p.SiteID, kind: movementKindProduction,
+		poster: actor{UserID: p.PostedByUserID, Display: display},
+		// The source line is the reserving document's id — the order the
+		// record produces for — so the movement links to it (M5).
+		source: &movementSource{module: doc.Module, kind: doc.Kind, id: strconv.FormatInt(doc.ID, 10), lineID: ptr(strconv.FormatInt(src.ID, 10))},
+	}
+	txq := store.New(tx)
+	// A replay first, before the site or the variants are judged again (I14).
+	if res, done, err := replayOf(ctx, txq, header); done || err != nil {
+		if err != nil {
+			return 0, issueError(err, lineOf, n)
+		}
+		return res.movementID, nil
+	}
+	// A plant need not fulfil orders; it need only be active (M3).
+	if _, err := fulfillingSite(ctx, txq, p.SiteID, false); err != nil {
+		return 0, err
+	}
+	ids := make([]int32, 0, n)
+	for i := range n {
+		id, _ := lineOf(i)
+		ids = append(ids, id)
+	}
+	// Unknown variants and services are refused on both sides; a
+	// Discontinued variant is still produced and consumed (M1).
+	_, failures, err := l.stockedVariants(ctx, tx, ids, lineOf, n)
+	if err != nil {
+		return 0, err
+	}
+	if len(failures) > 0 {
+		return 0, refusalOf(failures)
+	}
+	res, err := l.s.post(ctx, tx, txq, header, lines, postOptions{})
+	if err != nil {
+		return 0, issueError(err, lineOf, n)
+	}
+	if res.replay {
+		return res.movementID, nil
+	}
+	if len(consumed) > 0 {
+		if err := l.consumeReservations(ctx, txq, src, p.SiteID, consumed); err != nil {
+			return 0, err
+		}
+	}
+	return res.movementID, nil
+}
+
+// issueLineOf is an issue's lineOf for issueError: line i's variant and line
+// id.
+func issueLineOf(lines []contracts.IssueLine) func(i int) (int32, int64) {
+	return func(i int) (int32, int64) { return lines[i].VariantID, lines[i].LineID }
+}
+
+// issueError is the engine's refusal of an issue or a production as the
+// contract's: each failing line's code as a StockRefusal code, the line
+// named by lineOf from the engine's index among n. A refusal that is no
+// line's — a reused key, an unknown site — or a code the contract has no
+// word for is a failure.
+func issueError(err error, lineOf func(i int) (int32, int64), n int) error {
 	var r *refusal
 	if !errors.As(err, &r) || r.problem.Lines == nil || len(*r.problem.Lines) == 0 {
 		return err
 	}
 	var out []contracts.StockLineRefusal
 	for _, f := range *r.problem.Lines {
-		if int(f.Index) < 0 || int(f.Index) >= len(lines) {
+		if int(f.Index) < 0 || int(f.Index) >= n {
 			return err
 		}
-		line := lines[f.Index]
+		variantID, lineID := lineOf(int(f.Index))
 		var code string
 		switch f.Code {
 		case codeInsufficientStock:
@@ -649,10 +845,12 @@ func issueError(err error, lines []contracts.IssueLine) error {
 			code = contracts.StockLocationUnknown
 		case codeVariantNotFound, codeVariantNotStockable:
 			code = contracts.StockVariantNotStocked
+		case codeQuantityInvalid:
+			code = contracts.StockQuantityInvalid
 		default:
 			return err
 		}
-		out = append(out, contracts.StockLineRefusal{Code: code, VariantID: line.VariantID, LineID: line.LineID, Detail: f.Detail})
+		out = append(out, contracts.StockLineRefusal{Code: code, VariantID: variantID, LineID: lineID, Detail: f.Detail})
 	}
 	return refusalOf(out)
 }

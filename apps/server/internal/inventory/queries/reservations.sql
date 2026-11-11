@@ -69,11 +69,20 @@ WHERE r.id = u.id;
 DELETE FROM inventory.reservations WHERE id = ANY(@ids::bigint[]);
 
 -- name: StockSites :many
--- StockSites is every site that is not archived, by code (contracts.Stock's
--- Sites).
-SELECT id, code, name, fulfils_orders, status FROM inventory.sites
-WHERE status <> 'archived'
-ORDER BY code;
+-- StockSites is every site that is not archived, by code, with its root
+-- location (contracts.Stock's Sites).
+SELECT s.id, s.code, s.name, s.fulfils_orders, s.status, r.id AS root_location_id
+FROM inventory.sites s
+JOIN inventory.locations r ON r.site_id = s.id AND r.parent_id IS NULL
+WHERE s.status <> 'archived'
+ORDER BY s.code;
+
+-- name: StockSiteLocations :many
+-- StockSiteLocations is every location of the site, archived ones too, by
+-- full code (contracts.Stock's SiteLocations).
+SELECT id, parent_id, kind, full_code, status FROM inventory.locations
+WHERE site_id = @site_id
+ORDER BY full_code;
 
 -- name: StockLocationsAt :many
 -- StockLocationsAt is, per variant, every active location of the site holding

@@ -315,22 +315,67 @@ func (q *Queries) StockLocationsAt(ctx context.Context, arg StockLocationsAtPara
 	return items, nil
 }
 
+const stockSiteLocations = `-- name: StockSiteLocations :many
+SELECT id, parent_id, kind, full_code, status FROM inventory.locations
+WHERE site_id = $1
+ORDER BY full_code
+`
+
+type StockSiteLocationsRow struct {
+	ID       int64
+	ParentID *int64
+	Kind     string
+	FullCode string
+	Status   string
+}
+
+// StockSiteLocations is every location of the site, archived ones too, by
+// full code (contracts.Stock's SiteLocations).
+func (q *Queries) StockSiteLocations(ctx context.Context, siteID int64) ([]StockSiteLocationsRow, error) {
+	rows, err := q.db.Query(ctx, stockSiteLocations, siteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StockSiteLocationsRow
+	for rows.Next() {
+		var i StockSiteLocationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentID,
+			&i.Kind,
+			&i.FullCode,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const stockSites = `-- name: StockSites :many
-SELECT id, code, name, fulfils_orders, status FROM inventory.sites
-WHERE status <> 'archived'
-ORDER BY code
+SELECT s.id, s.code, s.name, s.fulfils_orders, s.status, r.id AS root_location_id
+FROM inventory.sites s
+JOIN inventory.locations r ON r.site_id = s.id AND r.parent_id IS NULL
+WHERE s.status <> 'archived'
+ORDER BY s.code
 `
 
 type StockSitesRow struct {
-	ID            int64
-	Code          string
-	Name          string
-	FulfilsOrders bool
-	Status        string
+	ID             int64
+	Code           string
+	Name           string
+	FulfilsOrders  bool
+	Status         string
+	RootLocationID int64
 }
 
-// StockSites is every site that is not archived, by code (contracts.Stock's
-// Sites).
+// StockSites is every site that is not archived, by code, with its root
+// location (contracts.Stock's Sites).
 func (q *Queries) StockSites(ctx context.Context) ([]StockSitesRow, error) {
 	rows, err := q.db.Query(ctx, stockSites)
 	if err != nil {
@@ -346,6 +391,7 @@ func (q *Queries) StockSites(ctx context.Context) ([]StockSitesRow, error) {
 			&i.Name,
 			&i.FulfilsOrders,
 			&i.Status,
+			&i.RootLocationID,
 		); err != nil {
 			return nil, err
 		}
