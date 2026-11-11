@@ -1120,11 +1120,15 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     variant (rule 21) and so has committed, or waits, before the answer is read. It is
     collected from every module Compose is given, enabled or not, as rule 8's holders
     are: every schema is migrated whatever `MODULES` says, and stock in a disabled
-    module's schema is still stock. Only products calls the slot. Today's one holder is
-    inventory, which sums its balances and answers the same for either purpose, stock
-    stopping both
+    module's schema is still stock. Only products calls the slot. Inventory holds a
+    variant by its balances and answers the same for either purpose, stock stopping
+    both. Manufacturing holds one by its active bills of materials, which name it as
+    their product or on a line, and answers `open_documents` with their count for the
+    type change as well as the delete: a service is neither consumed nor produced
+    (manufacturing design M16a), which departs from Orders' O30 on purpose
     ([Products](/en/reference/products/#contracts-for-other-modules),
-    [Inventory](/en/reference/inventory/)). A second question a variant's write must
+    [Inventory](/en/reference/inventory/),
+    [Manufacturing](/en/reference/manufacturing/#the-variant-holder)). A second question a variant's write must
     ask is a method on this holder, not a second slot — the roadmap already plans one,
     the lot tracking mode that may change only at zero stock.
 21. **One locking read, on the caller's transaction.** Every other contract call is
@@ -1154,7 +1158,13 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       Inventory routes it through its own accessor, `lockVariants`, apart from every
       other call, which still goes before the transaction; its test harness, which
       fails a test on any call out of the module made inside one of its transactions,
-      exempts exactly `Products.LockVariants`. A second locking read needs a design of its
+      exempts exactly `Products.LockVariants`. Manufacturing is the second caller inside
+      its own transaction: every structural bill-of-materials write — create, update,
+      archive, reactivate, make default — calls its `lockVariants` first, with the
+      product and every component, judges goods from that answer, and only then takes
+      the BoM graph's advisory lock and its own rows (manufacturing design M10a); its
+      harness exempts the same one call
+      ([Manufacturing](/en/reference/manufacturing/#locks)). A second locking read needs a design of its
       own and a rule here.
 
 22. **Identity searches a provider's directory.** The eleventh sanctioned cross-module
