@@ -306,6 +306,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/orders/{id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan a manufacturing order
+         * @description Places the order's work orders that are not done forward on their work centers' calendars (M35, M35a): from the later of now and the requested start, each in the first free time long enough to hold it, cut into pieces around breaks, closed days and other bookings, after its predecessor; an in-progress work order plans only its remaining minutes, from now. Replaces the order's earlier plan. An order with no work orders gets its window from the due date and the BoM's lead time (M34). Holds the schedule lock of every work center it touches, in id order, first.
+         */
+        post: operations["planManufacturingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/orders/{id}/production-draft": {
         parameters: {
             query?: never;
@@ -386,6 +406,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/orders/{id}/unplan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unplan a manufacturing order
+         * @description Clears the planned dates of the order and of its work orders that are not done, and frees their time on the calendars (M35).
+         */
+        post: operations["unplanManufacturingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/orders/{id}/work-orders": {
         parameters: {
             query?: never;
@@ -437,6 +477,106 @@ export interface paths {
         get: operations["getManufacturingProduction"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/reports/production-cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the production cost report
+         * @description The done orders closed in the period, with their estimate, actual, deviation and cost per unit as fixed at close, grouped by product (M42). Needs manufacturing:costs-view, every figure being a cost.
+         */
+        get: operations["getManufacturingProductionCostReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/reports/time-deviation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the time deviation report
+         * @description Per BoM operation (its BoM and sequence), the average actual minutes — the union of each work order's productive logs — against the expected over the last 10 done work orders finished in the period (M42).
+         */
+        get: operations["getManufacturingTimeDeviationReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/reports/utilisation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the work-center utilisation report
+         * @description Per work center and ISO week, the capacity of its calendar, the planned time, the productive time and the downtime by reason, counting only the period's days (M42).
+         */
+        get: operations["getManufacturingUtilisationReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the production schedule
+         * @description The board (M36): per active work center at the site, each day's open intervals, closed state, capacity and planned minutes (the load), its closures and its blocked state, and the bars of its slots; then the open orders with no plan.
+         */
+        get: operations["getManufacturingSchedule"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/schedule/plan-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan all unplanned manufacturing orders at a site
+         * @description Plans every open order at the site with no plan, urgent first, then by due date (M35, M35a): it holds the schedule lock of every work center at the site, then locks the orders in id order, then plans them one after another. An order that does not fit within 365 days is left unplanned and named in noCapacity.
+         */
+        post: operations["planAllManufacturingOrders"];
         delete?: never;
         options?: never;
         head?: never;
@@ -777,6 +917,26 @@ export interface paths {
          * @description Ends the caller's open log on the work order, productive or a block's downtime (M29, M29a); with no productive log left open the work order is paused. With no open log of the caller's there it changes nothing and answers 200. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
          */
         post: operations["pauseManufacturingWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}/reschedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reschedule a work order
+         * @description Moves a work order on the board (M36): it is planned again from start (now when start is past), in the first free time from there; the later work orders of its order move after it when they would otherwise overlap; no other order moves. Under the work order's revision.
+         */
+        post: operations["rescheduleManufacturingWorkOrder"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1124,6 +1284,28 @@ export interface components {
             /** Format: int32 */
             revision: number;
         };
+        /** @description The actual against the estimate, per part (M41): amount = actual − estimate, both as rounded; percent of the estimate, half-up to one decimal, null when the estimate is 0. */
+        ManufacturingCostDeviation: {
+            components: components["schemas"]["ManufacturingCostDeviationPart"];
+            labour: components["schemas"]["ManufacturingCostDeviationPart"];
+            machine: components["schemas"]["ManufacturingCostDeviationPart"];
+            total: components["schemas"]["ManufacturingCostDeviationPart"];
+        };
+        /** @description One part's deviation. */
+        ManufacturingCostDeviationPart: {
+            /** @description Exact decimal text in NOK, two decimals; negative when under the estimate. */
+            amount: string;
+            /** @description Of the estimate, half-up to one decimal; null when the estimate is 0. */
+            percent: string | null;
+        };
+        /** @description A cost in its three parts (M39, M40), each exact decimal text in NOK rounded half-up to two decimals once; total is the exact sum rounded once. incomplete when a component had no standard cost or a work order no rate, counted as 0. */
+        ManufacturingCostParts: {
+            components: string;
+            incomplete: boolean;
+            labour: string;
+            machine: string;
+            total: string;
+        };
         /** @description A consumed quantity more than 10 % off its proportional figure (M22). */
         ManufacturingDeviation: {
             /** Format: int64 */
@@ -1133,6 +1315,12 @@ export interface components {
             /** @description The proportional figure. */
             expected: string;
             sku: string;
+        };
+        /** @description Downtime of one reason, in whole minutes (the union of the logs, rounded down). */
+        ManufacturingDowntimeMinutes: {
+            /** Format: int64 */
+            minutes: number;
+            reason: components["schemas"]["ManufacturingDowntimeReason"];
         };
         /**
          * @description Why a work center stopped (M29, M30).
@@ -1227,6 +1415,7 @@ export interface components {
              * @description When it was confirmed.
              */
             confirmedAt: string | null;
+            cost?: components["schemas"]["ManufacturingOrderCost"];
             /** Format: date-time */
             createdAt: string;
             /**
@@ -1238,6 +1427,11 @@ export interface components {
             id: number;
             /** @description Due before today and not done or cancelled (M24). */
             late: boolean;
+            /**
+             * Format: int32
+             * @description Planned to finish after the due date (M35): the calendar days from the due date to the planned finish's day in the business time zone; null when it is not late or not planned.
+             */
+            lateByDays: number | null;
             note: string;
             /** @description MO-<n>, or MO-<n>-<suffix> for a backorder (M17b). */
             number: string;
@@ -1264,6 +1458,16 @@ export interface components {
             produced: string;
             /** @description Exact decimal, more than 0, at most three decimals. */
             quantity: string;
+            /**
+             * Format: date
+             * @description The day planning may start from, set by hand (M35a); null takes requestedStartDefault.
+             */
+            requestedStart: string | null;
+            /**
+             * Format: date
+             * @description What planning starts from when requestedStart is empty (M35a): the due date less ⌈Σ expected minutes of the work orders not done / 450⌉ business days less 1 business day, clamped to today; today without a due date. Null unless the order is confirmed or in progress.
+             */
+            requestedStartDefault: string | null;
             /** @description From the stored copies (M21a); null unless the order is confirmed or in progress. */
             reservationStatus: components["schemas"]["ManufacturingReservationStatus"] | null;
             responsible: components["schemas"]["ManufacturingPerson"] | null;
@@ -1313,6 +1517,20 @@ export interface components {
             sortOrder: number;
             variant: components["schemas"]["ManufacturingVariantRef"];
         };
+        /** @description An order's cost (M38–M41), answered only to a holder of manufacturing:costs-view and left out of the order otherwise. The estimate is fixed at confirm; the actual runs while the order is open (open logs counted to now) and is fixed at close, with the cost per unit and the deviation. */
+        ManufacturingOrderCost: {
+            /** @description Components: Σ (consumed + scrapped) × the standard cost at confirm; machine: the union of each work order's productive logs × its machine rate; labour: Σ every productive log × the labour rate (M40). Null on a draft. */
+            actual: components["schemas"]["ManufacturingCostParts"] | null;
+            /** @description The actual was fixed at close (M41). */
+            actualFixed: boolean;
+            /** @description At close: the actual total ÷ the good output (output scrap excluded), half-up to two decimals; null before close or when nothing good was produced. */
+            costPerUnit: string | null;
+            deviation: components["schemas"]["ManufacturingCostDeviation"] | null;
+            /** @description The downtime on the order's work orders by reason (M40), listed and never charged. */
+            downtime: components["schemas"]["ManufacturingDowntimeMinutes"][];
+            /** @description Fixed at confirm (M39): Σ required × standard cost, Σ expected hours × the machine rate, Σ expected hours × the labour rate for one operator. Null on a draft. */
+            estimate: components["schemas"]["ManufacturingCostParts"] | null;
+        };
         /** @description One event of an order's timeline (M26). */
         ManufacturingOrderEvent: {
             actorDisplay: string;
@@ -1329,10 +1547,10 @@ export interface components {
             };
         };
         /**
-         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor's corrections (M29).
+         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36).
          * @enum {string}
          */
-        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added";
+        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added" | "planned" | "unplanned" | "rescheduled";
         /** @description An order's timeline, oldest first. */
         ManufacturingOrderEventList: {
             items: components["schemas"]["ManufacturingOrderEvent"][];
@@ -1373,6 +1591,11 @@ export interface components {
             priority?: components["schemas"]["ManufacturingPriority"];
             /** @description Exact decimal, more than 0, at most three decimals. */
             quantity: string;
+            /**
+             * Format: date
+             * @description The day planning may start from (M35a); null or left out takes the default.
+             */
+            requestedStart?: string | null;
             /** Format: uuid */
             responsibleUserId?: string | null;
             /**
@@ -1516,6 +1739,11 @@ export interface components {
             priority: components["schemas"]["ManufacturingPriority"];
             /** @description Exact decimal, more than 0. Changed only on a draft (order_not_draft). */
             quantity: string;
+            /**
+             * Format: date
+             * @description The day planning may start from (M35a); null or left out takes the default.
+             */
+            requestedStart?: string | null;
             /** Format: uuid */
             responsibleUserId?: string | null;
             /**
@@ -1596,12 +1824,22 @@ export interface components {
         ManufacturingPersonList: {
             items: components["schemas"]["ManufacturingPerson"][];
         };
+        /** @description Plan all at one site (M35). */
+        ManufacturingPlanAllInput: {
+            /** Format: int64 */
+            siteId: number;
+        };
+        /** @description What plan all planned, in the order it planned them (urgent first, then by due date), and what found no capacity within 365 days and was left unplanned. */
+        ManufacturingPlanAllResult: {
+            noCapacity: components["schemas"]["ManufacturingOrderLink"][];
+            planned: components["schemas"]["ManufacturingOrderLink"][];
+        };
         /**
          * @description An order's priority (M17).
          * @enum {string}
          */
         ManufacturingPriority: "normal" | "urgent";
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
         ManufacturingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1668,6 +1906,51 @@ export interface components {
             quantity: string;
             /** Format: int64 */
             toLocationId: number;
+        };
+        /** @description One product's done orders and their totals. */
+        ManufacturingProductionCostGroup: {
+            orders: components["schemas"]["ManufacturingProductionCostRow"][];
+            totals: components["schemas"]["ManufacturingProductionCostTotals"];
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description The production cost report (M42): the done orders closed in the period, grouped by product. */
+        ManufacturingProductionCostReport: {
+            /** Format: date */
+            from: string;
+            groups: components["schemas"]["ManufacturingProductionCostGroup"][];
+            /** Format: int64 */
+            siteId: number | null;
+            /** Format: date */
+            to: string;
+        };
+        /** @description One done order's cost, as fixed at close (M41). */
+        ManufacturingProductionCostRow: {
+            /** @description The actual total fixed at close. */
+            actual: string | null;
+            /** Format: date-time */
+            closedAt: string;
+            costPerUnit: string | null;
+            /** @description actual − estimate; null without an estimate. */
+            deviation: string | null;
+            deviationPercent: string | null;
+            /** @description The estimate's total; null for an order confirmed without one. */
+            estimate: string | null;
+            number: string;
+            /** Format: int64 */
+            orderId: number;
+            produced: string;
+            quantity: string;
+        };
+        /** @description A product's totals over its done orders; the cost per unit is the actual total ÷ the good output. */
+        ManufacturingProductionCostTotals: {
+            actual: string;
+            costPerUnit: string | null;
+            deviation: string;
+            deviationPercent: string | null;
+            estimate: string;
+            /** Format: int32 */
+            orders: number;
+            produced: string;
         };
         /** @description The production dialog's prefill (M22a). */
         ManufacturingProductionDraft: {
@@ -1740,6 +2023,16 @@ export interface components {
             /** @description Exact decimal, 0 or more: lost, consumed with no output. */
             scrap?: string | null;
         };
+        /** @description A drag on the board (M36): the work order is planned to start at start (now when start is past), in the first free time from there. */
+        ManufacturingRescheduleInput: {
+            /**
+             * Format: int32
+             * @description The work order's revision the client read (revision_conflict).
+             */
+            revision: number;
+            /** Format: date-time */
+            start: string;
+        };
         /**
          * @description What the list shows of an open order's components (M21a), from the stored reserved copies: every line's remaining requirement reserved, some reserved, or none.
          * @enum {string}
@@ -1758,6 +2051,118 @@ export interface components {
             operations: string;
             /** @description components + operations. */
             total: string;
+        };
+        /** @description The production schedule (M36): every active work center at the site with its calendar, load and bars for the days asked, and the open orders with no plan. */
+        ManufacturingSchedule: {
+            /** Format: int32 */
+            days: number;
+            /** Format: date */
+            from: string;
+            /** Format: int64 */
+            siteId: number;
+            /**
+             * Format: date
+             * @description The business calendar's today.
+             */
+            today: string;
+            unscheduled: components["schemas"]["ManufacturingScheduleOrder"][];
+            workCenters: components["schemas"]["ManufacturingScheduleRow"][];
+        };
+        /** @description One slot of a planned work order, drawn as a bar. */
+        ManufacturingScheduleBar: {
+            /** Format: date-time */
+            endsAt: string;
+            /** @description The work order's planned finish falls after its order's due date. */
+            late: boolean;
+            name: string;
+            /** Format: int64 */
+            orderId: number;
+            orderNumber: string;
+            /**
+             * Format: date-time
+             * @description The work order's planned finish.
+             */
+            plannedFinish: string | null;
+            /**
+             * Format: date-time
+             * @description The work order's planned start.
+             */
+            plannedStart: string | null;
+            /** Format: int32 */
+            sequence: number;
+            /** Format: date-time */
+            startsAt: string;
+            status: components["schemas"]["ManufacturingWorkOrderStatus"];
+            urgent: boolean;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+            /** Format: int64 */
+            workOrderId: number;
+            /**
+             * Format: int32
+             * @description The work order's revision, for a reschedule.
+             */
+            workOrderRevision: number;
+        };
+        /** @description One day of a work center (M9, M36): its open intervals as instants, why it is closed, its capacity and its load. */
+        ManufacturingScheduleDay: {
+            /**
+             * Format: int64
+             * @description The length of the open intervals, in minutes.
+             */
+            capacityMinutes: number;
+            /**
+             * @description holiday: a Norwegian public holiday; closure: one of the work center's closures; null otherwise (a day the pattern leaves empty has no intervals and is not closed).
+             * @enum {string|null}
+             */
+            closed: "holiday" | "closure" | null;
+            /** Format: date */
+            date: string;
+            intervals: components["schemas"]["ManufacturingScheduleInterval"][];
+            /** @description planned ÷ capacity × 100, half-up to one decimal; null when the day has no capacity. */
+            loadPercent: string | null;
+            /** @description More planned than the day's capacity. */
+            overloaded: boolean;
+            /**
+             * Format: int64
+             * @description The slots' time that day, in whole minutes.
+             */
+            plannedMinutes: number;
+        };
+        /** @description An open interval, as instants. */
+        ManufacturingScheduleInterval: {
+            /** Format: date-time */
+            end: string;
+            /** Format: date-time */
+            start: string;
+        };
+        /** @description An open order with no plan, on the board's Unscheduled list. */
+        ManufacturingScheduleOrder: {
+            /** Format: date */
+            dueDate: string | null;
+            /**
+             * Format: int64
+             * @description The expected minutes of its work orders not done or cancelled.
+             */
+            expectedMinutes: number;
+            /** Format: int64 */
+            id: number;
+            number: string;
+            priority: components["schemas"]["ManufacturingPriority"];
+            quantity: string;
+            /** Format: date */
+            requestedStart: string | null;
+            /** Format: int32 */
+            revision: number;
+            status: components["schemas"]["ManufacturingOrderStatus"];
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description One work center's row on the board. */
+        ManufacturingScheduleRow: {
+            bars: components["schemas"]["ManufacturingScheduleBar"][];
+            blocked: boolean;
+            closures: components["schemas"]["ManufacturingClosure"][];
+            days: components["schemas"]["ManufacturingScheduleDay"][];
+            workCenter: components["schemas"]["ManufacturingWorkCenterRef"];
         };
         /** @description Scrap reported at a work order (M31): a production with no good output (M22). */
         ManufacturingScrapInput: {
@@ -1859,6 +2264,39 @@ export interface components {
          * @enum {string}
          */
         ManufacturingStatusFilter: "active" | "archived" | "all";
+        /** @description The time deviation report (M42): per BoM operation, the last 10 done work orders finished in the period. */
+        ManufacturingTimeDeviationReport: {
+            /** Format: date */
+            from: string;
+            rows: components["schemas"]["ManufacturingTimeDeviationRow"][];
+            /** Format: int64 */
+            siteId: number | null;
+            /** Format: date */
+            to: string;
+        };
+        /** @description One BoM operation (its BoM and sequence) over its last done work orders. */
+        ManufacturingTimeDeviationRow: {
+            /** @description The average of the union of each work order's productive logs, half-up to one decimal. */
+            averageActualMinutes: string;
+            /** @description Half-up to one decimal. */
+            averageExpectedMinutes: string;
+            bomCode: string | null;
+            /** Format: int64 */
+            bomId: number;
+            /** @description (actual − expected) ÷ expected × 100 of the averages, half-up to one decimal; null when expected is 0. */
+            deviationPercent: string | null;
+            /** @description The operation's name on the latest work order. */
+            name: string;
+            /** Format: int32 */
+            sequence: number;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+            workCenter: components["schemas"]["ManufacturingWorkCenterRef"];
+            /**
+             * Format: int32
+             * @description How many work orders were averaged, at most 10.
+             */
+            workOrders: number;
+        };
         /** @description A time log (M29, M30). A log with neither a user nor a work order is the work center's own downtime while it is blocked. */
         ManufacturingTimeLog: {
             /** Format: date-time */
@@ -1923,6 +2361,47 @@ export interface components {
         /** @description Time logs, by start. */
         ManufacturingTimeLogList: {
             items: components["schemas"]["ManufacturingTimeLog"][];
+        };
+        /** @description The work-center utilisation report (M42): per work center and ISO week, the days of the week inside the period. */
+        ManufacturingUtilisationReport: {
+            /** Format: date */
+            from: string;
+            rows: components["schemas"]["ManufacturingUtilisationRow"][];
+            /** Format: int64 */
+            siteId: number | null;
+            /** Format: date */
+            to: string;
+        };
+        /** @description One work center in one ISO week, in whole minutes. */
+        ManufacturingUtilisationRow: {
+            /** Format: int64 */
+            capacityMinutes: number;
+            downtime: components["schemas"]["ManufacturingDowntimeMinutes"][];
+            /**
+             * Format: int64
+             * @description The union of every downtime log at the center.
+             */
+            downtimeMinutes: number;
+            /**
+             * Format: int64
+             * @description The slots' time.
+             */
+            plannedMinutes: number;
+            /**
+             * Format: int64
+             * @description The union of the productive logs at the center.
+             */
+            productiveMinutes: number;
+            /** @description productive ÷ capacity × 100, half-up to one decimal; null without capacity. */
+            utilisationPercent: string | null;
+            /** @description The ISO week, as 2026-W46. */
+            week: string;
+            /**
+             * Format: date
+             * @description The week's Monday.
+             */
+            weekStart: string;
+            workCenter: components["schemas"]["ManufacturingWorkCenterRef"];
         };
         /** @description A catalog variant as Manufacturing names it. */
         ManufacturingVariantRef: {
@@ -2113,12 +2592,24 @@ export interface components {
         /** @description A work order (M27, M27a): an operation of the order's BoM as it was at confirm, at one work center. */
         ManufacturingWorkOrder: {
             /**
+             * Format: int64
+             * @description The work center's time on it: the union of its productive logs, open logs counted to now, in whole minutes rounded down (M41).
+             */
+            actualMinutes: number;
+            /**
              * Format: int32
              * @description The work center's capacity at confirm (M27a).
              */
             capacity: number;
             /** @description Exact decimal, as at confirm. */
             cleanupMinutes: string;
+            /**
+             * Format: int64
+             * @description actualMinutes − expectedMinutes, the duration deviation (M41).
+             */
+            deviationMinutes: number;
+            /** @description deviationMinutes ÷ expectedMinutes × 100, half-up to one decimal; null when nothing is expected. */
+            deviationPercent: string | null;
             /**
              * Format: int64
              * @description setup + cleanup + cycles × minutesPerCycle × 100 / timeEfficiency, cycles = ⌈(order quantity / output quantity) / capacity⌉, half-up to the minute; computed at confirm and never recomputed (M28a).
@@ -3519,6 +4010,75 @@ export interface operations {
             };
         };
     };
+    planManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrder"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open, no_capacity: a work order does not fit within 365 days of the start. Nothing was changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
     getManufacturingProductionDraft: {
         parameters: {
             query?: {
@@ -3802,6 +4362,75 @@ export interface operations {
             };
         };
     };
+    unplanManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrder"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
     listManufacturingOrderWorkOrders: {
         parameters: {
             query?: never;
@@ -3945,6 +4574,317 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getManufacturingProductionCostReport: {
+        parameters: {
+            query?: {
+                /** @description The period's first day, in the business time zone; default 29 days before to. */
+                from?: string;
+                /** @description The period's last day, included; default today. At most 366 days after from. */
+                to?: string;
+                /** @description Only this site. */
+                siteId?: number;
+                /** @description json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas. */
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — with format=csv, one row per order, served as an attachment, manufacturing-production-cost-<from>-<to>.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingProductionCostReport"];
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — from is after to, or to is more than 366 days after from (period_too_long). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    getManufacturingTimeDeviationReport: {
+        parameters: {
+            query?: {
+                /** @description The period's first day, in the business time zone; default 29 days before to. */
+                from?: string;
+                /** @description The period's last day, included; default today. At most 366 days after from. */
+                to?: string;
+                /** @description Only this site. */
+                siteId?: number;
+                /** @description json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas. */
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — with format=csv, served as an attachment, manufacturing-time-deviation-<from>-<to>.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingTimeDeviationReport"];
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — from is after to, or to is more than 366 days after from (period_too_long). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    getManufacturingUtilisationReport: {
+        parameters: {
+            query?: {
+                /** @description The period's first day, in the business time zone; default 29 days before to. */
+                from?: string;
+                /** @description The period's last day, included; default today. At most 366 days after from. */
+                to?: string;
+                /** @description Only this site. */
+                siteId?: number;
+                /** @description json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas. */
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — with format=csv, one row per work center and week, served as an attachment, manufacturing-utilisation-<from>-<to>.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingUtilisationReport"];
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — from is after to, or to is more than 366 days after from (period_too_long). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getManufacturingSchedule: {
+        parameters: {
+            query: {
+                siteId: number;
+                /** @description The first day; default today in the business time zone. */
+                from?: string;
+                /** @description 7 (the default) or 14. */
+                days?: 7 | 14;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingSchedule"];
+                };
+            };
+            /** @description Bad Request — days is not 7 or 14. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    planAllManufacturingOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingPlanAllInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingPlanAllResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — revision_conflict, when the orders kept changing while they were being planned. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
             };
         };
     };
@@ -5248,6 +6188,75 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — order_not_open, revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    rescheduleManufacturingWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRescheduleInput"];
+            };
+        };
+        responses: {
+            /** @description OK — the order's work orders, by sequence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkOrderList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open, work_order_closed (it is done or cancelled), no_capacity: it does not fit within 365 days. Nothing was changed. */
             409: {
                 headers: {
                     [name: string]: unknown;

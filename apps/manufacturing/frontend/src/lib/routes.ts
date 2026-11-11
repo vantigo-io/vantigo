@@ -14,6 +14,10 @@ export const SHOP_FLOOR_ROUTE_PATH = "/manufacturing/shop-floor";
 export const MY_WORK_ROUTE_PATH = "/manufacturing/shop-floor/mine";
 export const SHOP_FLOOR_WORK_CENTER_ROUTE_PATH = "/manufacturing/shop-floor/work-centers/$workCenterId";
 export const WORK_ORDER_ROUTE_PATH = "/manufacturing/shop-floor/work-orders/$workOrderId";
+/** The production schedule board (M36). */
+export const SCHEDULE_ROUTE_PATH = "/manufacturing/schedule";
+/** The reports, under the overview (M42). */
+export const REPORTS_ROUTE_PATH = "/manufacturing/reports";
 
 export const orderLinkOptions = (orderId: number) => ({ to: ORDER_ROUTE_PATH, params: { orderId: String(orderId) } });
 export const bomLinkOptions = (bomId: number) => ({ to: BOM_ROUTE_PATH, params: { bomId: String(bomId) } });
@@ -36,5 +40,3 @@ export const workOrderLinkOptions = (workOrderId: number) => ({
   to: WORK_ORDER_ROUTE_PATH,
   params: { workOrderId: String(workOrderId) },
 });
-
-// Delivery D adds /manufacturing/schedule.

@@ -22,6 +22,8 @@ import {
   NEW_WORK_CENTER_ROUTE_PATH,
   ORDER_ROUTE_PATH,
   ORDERS_ROUTE_PATH,
+  REPORTS_ROUTE_PATH,
+  SCHEDULE_ROUTE_PATH,
   SHOP_FLOOR_ROUTE_PATH,
   SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
   WORK_CENTER_ROUTE_PATH,
@@ -41,6 +43,8 @@ import { MyWorkPage } from "../pages/my-work";
 import { NewOrderPage, OrderPage } from "../pages/order";
 import { OrdersPage } from "../pages/orders";
 import { ManufacturingOverviewPage } from "../pages/overview";
+import { ReportsPage } from "../pages/reports";
+import { SchedulePage } from "../pages/schedule";
 import { ShopFloorPage, ShopFloorWorkCenterPage } from "../pages/shop-floor";
 import { NewWorkCenterPage, WorkCenterPage } from "../pages/work-center";
 import { WorkCentersPage } from "../pages/work-centers";
@@ -76,6 +80,8 @@ export const makeRouteTree = () => {
     route(MY_WORK_ROUTE_PATH, MyWorkPage),
     route(SHOP_FLOOR_WORK_CENTER_ROUTE_PATH, ShopFloorWorkCenterPage),
     route(WORK_ORDER_ROUTE_PATH, WorkOrderPage),
+    route(SCHEDULE_ROUTE_PATH, SchedulePage),
+    route(REPORTS_ROUTE_PATH, ReportsPage),
   ]);
 };
 

@@ -26,6 +26,8 @@ export interface OrderValues {
   /** `YYYY-MM-DDTHH:mm` in the viewer's time, as a datetime-local input holds it. */
   plannedStart: string;
   plannedFinish: string;
+  /** `YYYY-MM-DD`, the day planning may start from (M35a); empty takes the server's default. */
+  requestedStart: string;
   priority: ManufacturingPriority;
   responsible: ManufacturingPerson | undefined;
   note: string;
@@ -46,6 +48,7 @@ export const orderValuesOf = (order?: ManufacturingOrder): OrderValues =>
         dueDate: order.dueDate ?? "",
         plannedStart: localTime(order.plannedStart),
         plannedFinish: localTime(order.plannedFinish),
+        requestedStart: order.requestedStart ?? "",
         priority: order.priority,
         responsible: order.responsible ?? undefined,
         note: order.note,
@@ -60,6 +63,7 @@ export const orderValuesOf = (order?: ManufacturingOrder): OrderValues =>
         dueDate: "",
         plannedStart: "",
         plannedFinish: "",
+        requestedStart: "",
         priority: "normal",
         responsible: undefined,
         note: "",
@@ -104,6 +108,7 @@ export const orderInputOf = (values: OrderValues, defaults: OrderDefaults): Manu
     ...(bomId !== null ? { bomId } : {}),
     ...(siteId !== null ? { siteId } : {}),
     ...(outputLocationId !== null ? { outputLocationId } : {}),
+    ...(values.requestedStart ? { requestedStart: values.requestedStart } : {}),
     ...common(values),
   };
 };
@@ -125,6 +130,8 @@ export const orderUpdateOf = (
     quantity: draft ? normalizeDecimal(values.quantity) : order.quantity,
     siteId: draft ? (values.siteId ?? defaults.siteId ?? order.siteId) : order.siteId,
     outputLocationId: values.outputLocationId ?? defaults.outputLocationId,
+    // Always sent: a nullable field left out is cleared, and empty takes the default (M35a).
+    requestedStart: values.requestedStart || null,
     ...common(values),
   };
 };

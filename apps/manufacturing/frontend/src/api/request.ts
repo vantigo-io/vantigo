@@ -112,6 +112,8 @@ export const refusalCodes = [
   "log_locked",
   "order_closed",
   "log_overlaps",
+  "no_capacity",
+  "period_too_long",
   "insufficient_stock",
   "insufficient_available",
   "variant_not_stocked",
