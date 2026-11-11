@@ -80,10 +80,13 @@ const (
 	ManufacturingOrderEventKindCreated          ManufacturingOrderEventKind = "created"
 	ManufacturingOrderEventKindLineAdded        ManufacturingOrderEventKind = "line_added"
 	ManufacturingOrderEventKindLineChanged      ManufacturingOrderEventKind = "line_changed"
+	ManufacturingOrderEventKindPlanned          ManufacturingOrderEventKind = "planned"
 	ManufacturingOrderEventKindProductionPosted ManufacturingOrderEventKind = "production_posted"
+	ManufacturingOrderEventKindRescheduled      ManufacturingOrderEventKind = "rescheduled"
 	ManufacturingOrderEventKindReserved         ManufacturingOrderEventKind = "reserved"
 	ManufacturingOrderEventKindTimeLogAdded     ManufacturingOrderEventKind = "time_log_added"
 	ManufacturingOrderEventKindTimeLogCorrected ManufacturingOrderEventKind = "time_log_corrected"
+	ManufacturingOrderEventKindUnplanned        ManufacturingOrderEventKind = "unplanned"
 	ManufacturingOrderEventKindUpdated          ManufacturingOrderEventKind = "updated"
 )
 
@@ -104,13 +107,19 @@ func (e ManufacturingOrderEventKind) Valid() bool {
 		return true
 	case ManufacturingOrderEventKindLineChanged:
 		return true
+	case ManufacturingOrderEventKindPlanned:
+		return true
 	case ManufacturingOrderEventKindProductionPosted:
+		return true
+	case ManufacturingOrderEventKindRescheduled:
 		return true
 	case ManufacturingOrderEventKindReserved:
 		return true
 	case ManufacturingOrderEventKindTimeLogAdded:
 		return true
 	case ManufacturingOrderEventKindTimeLogCorrected:
+		return true
+	case ManufacturingOrderEventKindUnplanned:
 		return true
 	case ManufacturingOrderEventKindUpdated:
 		return true
@@ -242,6 +251,24 @@ func (e ManufacturingReservationStatus) Valid() bool {
 	}
 }
 
+// Defines values for ManufacturingScheduleDayClosed.
+const (
+	Closure ManufacturingScheduleDayClosed = "closure"
+	Holiday ManufacturingScheduleDayClosed = "holiday"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingScheduleDayClosed enum.
+func (e ManufacturingScheduleDayClosed) Valid() bool {
+	switch e {
+	case Closure:
+		return true
+	case Holiday:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ManufacturingStatus.
 const (
 	ManufacturingStatusActive   ManufacturingStatus = "active"
@@ -341,6 +368,78 @@ func (e ManufacturingWorkingState) Valid() bool {
 	case ManufacturingWorkingStateBlocked:
 		return true
 	case ManufacturingWorkingStateNormal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetManufacturingProductionCostReportParamsFormat.
+const (
+	GetManufacturingProductionCostReportParamsFormatCsv  GetManufacturingProductionCostReportParamsFormat = "csv"
+	GetManufacturingProductionCostReportParamsFormatJson GetManufacturingProductionCostReportParamsFormat = "json"
+)
+
+// Valid indicates whether the value is a known member of the GetManufacturingProductionCostReportParamsFormat enum.
+func (e GetManufacturingProductionCostReportParamsFormat) Valid() bool {
+	switch e {
+	case GetManufacturingProductionCostReportParamsFormatCsv:
+		return true
+	case GetManufacturingProductionCostReportParamsFormatJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetManufacturingTimeDeviationReportParamsFormat.
+const (
+	GetManufacturingTimeDeviationReportParamsFormatCsv  GetManufacturingTimeDeviationReportParamsFormat = "csv"
+	GetManufacturingTimeDeviationReportParamsFormatJson GetManufacturingTimeDeviationReportParamsFormat = "json"
+)
+
+// Valid indicates whether the value is a known member of the GetManufacturingTimeDeviationReportParamsFormat enum.
+func (e GetManufacturingTimeDeviationReportParamsFormat) Valid() bool {
+	switch e {
+	case GetManufacturingTimeDeviationReportParamsFormatCsv:
+		return true
+	case GetManufacturingTimeDeviationReportParamsFormatJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetManufacturingUtilisationReportParamsFormat.
+const (
+	GetManufacturingUtilisationReportParamsFormatCsv  GetManufacturingUtilisationReportParamsFormat = "csv"
+	GetManufacturingUtilisationReportParamsFormatJson GetManufacturingUtilisationReportParamsFormat = "json"
+)
+
+// Valid indicates whether the value is a known member of the GetManufacturingUtilisationReportParamsFormat enum.
+func (e GetManufacturingUtilisationReportParamsFormat) Valid() bool {
+	switch e {
+	case GetManufacturingUtilisationReportParamsFormatCsv:
+		return true
+	case GetManufacturingUtilisationReportParamsFormatJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetManufacturingScheduleParamsDays.
+const (
+	N14 GetManufacturingScheduleParamsDays = 14
+	N7  GetManufacturingScheduleParamsDays = 7
+)
+
+// Valid indicates whether the value is a known member of the GetManufacturingScheduleParamsDays enum.
+func (e GetManufacturingScheduleParamsDays) Valid() bool {
+	switch e {
+	case N14:
+		return true
+	case N7:
 		return true
 	default:
 		return false
@@ -626,6 +725,39 @@ type ManufacturingComponentUpdate struct {
 	Revision int32  `json:"revision"`
 }
 
+// ManufacturingCostDeviation The actual against the estimate, per part (M41): amount = actual − estimate, both as rounded; percent of the estimate, half-up to one decimal, null when the estimate is 0.
+type ManufacturingCostDeviation struct {
+	// Components One part's deviation.
+	Components ManufacturingCostDeviationPart `json:"components"`
+
+	// Labour One part's deviation.
+	Labour ManufacturingCostDeviationPart `json:"labour"`
+
+	// Machine One part's deviation.
+	Machine ManufacturingCostDeviationPart `json:"machine"`
+
+	// Total One part's deviation.
+	Total ManufacturingCostDeviationPart `json:"total"`
+}
+
+// ManufacturingCostDeviationPart One part's deviation.
+type ManufacturingCostDeviationPart struct {
+	// Amount Exact decimal text in NOK, two decimals; negative when under the estimate.
+	Amount string `json:"amount"`
+
+	// Percent Of the estimate, half-up to one decimal; null when the estimate is 0.
+	Percent *string `json:"percent"`
+}
+
+// ManufacturingCostParts A cost in its three parts (M39, M40), each exact decimal text in NOK rounded half-up to two decimals once; total is the exact sum rounded once. incomplete when a component had no standard cost or a work order no rate, counted as 0.
+type ManufacturingCostParts struct {
+	Components string `json:"components"`
+	Incomplete bool   `json:"incomplete"`
+	Labour     string `json:"labour"`
+	Machine    string `json:"machine"`
+	Total      string `json:"total"`
+}
+
 // ManufacturingDeviation A consumed quantity more than 10 % off its proportional figure (M22).
 type ManufacturingDeviation struct {
 	ComponentId int64 `json:"componentId"`
@@ -636,6 +768,14 @@ type ManufacturingDeviation struct {
 	// Expected The proportional figure.
 	Expected string `json:"expected"`
 	Sku      string `json:"sku"`
+}
+
+// ManufacturingDowntimeMinutes Downtime of one reason, in whole minutes (the union of the logs, rounded down).
+type ManufacturingDowntimeMinutes struct {
+	Minutes int64 `json:"minutes"`
+
+	// Reason Why a work center stopped (M29, M30).
+	Reason ManufacturingDowntimeReason `json:"reason"`
 }
 
 // ManufacturingDowntimeReason Why a work center stopped (M29, M30).
@@ -735,15 +875,21 @@ type ManufacturingOrder struct {
 
 	// ConfirmedAt When it was confirmed.
 	ConfirmedAt *time.Time `json:"confirmedAt"`
-	CreatedAt   time.Time  `json:"createdAt"`
+
+	// Cost An order's cost (M38–M41), answered only to a holder of manufacturing:costs-view and left out of the order otherwise. The estimate is fixed at confirm; the actual runs while the order is open (open logs counted to now) and is fixed at close, with the cost per unit and the deviation.
+	Cost      *ManufacturingOrderCost `json:"cost,omitempty"`
+	CreatedAt time.Time               `json:"createdAt"`
 
 	// DueDate The day the finished goods must be ready.
 	DueDate *openapi_types.Date `json:"dueDate"`
 	Id      int64               `json:"id"`
 
 	// Late Due before today and not done or cancelled (M24).
-	Late bool   `json:"late"`
-	Note string `json:"note"`
+	Late bool `json:"late"`
+
+	// LateByDays Planned to finish after the due date (M35): the calendar days from the due date to the planned finish's day in the business time zone; null when it is not late or not planned.
+	LateByDays *int32 `json:"lateByDays"`
+	Note       string `json:"note"`
 
 	// Number MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
 	Number string `json:"number"`
@@ -773,6 +919,12 @@ type ManufacturingOrder struct {
 
 	// Quantity Exact decimal, more than 0, at most three decimals.
 	Quantity string `json:"quantity"`
+
+	// RequestedStart The day planning may start from, set by hand (M35a); null takes requestedStartDefault.
+	RequestedStart *openapi_types.Date `json:"requestedStart"`
+
+	// RequestedStartDefault What planning starts from when requestedStart is empty (M35a): the due date less ⌈Σ expected minutes of the work orders not done / 450⌉ business days less 1 business day, clamped to today; today without a due date. Null unless the order is confirmed or in progress.
+	RequestedStartDefault *openapi_types.Date `json:"requestedStartDefault"`
 
 	// ReservationStatus From the stored copies (M21a); null unless the order is confirmed or in progress.
 	ReservationStatus *ManufacturingReservationStatus `json:"reservationStatus"`
@@ -832,6 +984,25 @@ type ManufacturingOrderComponent struct {
 	Variant ManufacturingVariantRef `json:"variant"`
 }
 
+// ManufacturingOrderCost An order's cost (M38–M41), answered only to a holder of manufacturing:costs-view and left out of the order otherwise. The estimate is fixed at confirm; the actual runs while the order is open (open logs counted to now) and is fixed at close, with the cost per unit and the deviation.
+type ManufacturingOrderCost struct {
+	// Actual Components: Σ (consumed + scrapped) × the standard cost at confirm; machine: the union of each work order's productive logs × its machine rate; labour: Σ every productive log × the labour rate (M40). Null on a draft.
+	Actual *ManufacturingCostParts `json:"actual"`
+
+	// ActualFixed The actual was fixed at close (M41).
+	ActualFixed bool `json:"actualFixed"`
+
+	// CostPerUnit At close: the actual total ÷ the good output (output scrap excluded), half-up to two decimals; null before close or when nothing good was produced.
+	CostPerUnit *string                     `json:"costPerUnit"`
+	Deviation   *ManufacturingCostDeviation `json:"deviation"`
+
+	// Downtime The downtime on the order's work orders by reason (M40), listed and never charged.
+	Downtime []ManufacturingDowntimeMinutes `json:"downtime"`
+
+	// Estimate Fixed at confirm (M39): Σ required × standard cost, Σ expected hours × the machine rate, Σ expected hours × the labour rate for one operator. Null on a draft.
+	Estimate *ManufacturingCostParts `json:"estimate"`
+}
+
 // ManufacturingOrderEvent One event of an order's timeline (M26).
 type ManufacturingOrderEvent struct {
 	ActorDisplay string              `json:"actorDisplay"`
@@ -839,14 +1010,14 @@ type ManufacturingOrderEvent struct {
 	At           time.Time           `json:"at"`
 	Id           int64               `json:"id"`
 
-	// Kind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor's corrections (M29).
+	// Kind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36).
 	Kind ManufacturingOrderEventKind `json:"kind"`
 
 	// Payload The event's figures: quantities as exact decimal text, ids, numbers.
 	Payload map[string]interface{} `json:"payload"`
 }
 
-// ManufacturingOrderEventKind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor's corrections (M29).
+// ManufacturingOrderEventKind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor”s corrections (M29); planned, unplanned and rescheduled the schedule”s (M35, M36).
 type ManufacturingOrderEventKind string
 
 // ManufacturingOrderEventList An order's timeline, oldest first.
@@ -879,7 +1050,10 @@ type ManufacturingOrderInput struct {
 	Priority *ManufacturingPriority `json:"priority,omitempty"`
 
 	// Quantity Exact decimal, more than 0, at most three decimals.
-	Quantity          string              `json:"quantity"`
+	Quantity string `json:"quantity"`
+
+	// RequestedStart The day planning may start from (M35a); null or left out takes the default.
+	RequestedStart    *openapi_types.Date `json:"requestedStart,omitempty"`
 	ResponsibleUserId *openapi_types.UUID `json:"responsibleUserId,omitempty"`
 
 	// SiteId An active Inventory site; default the BoM's work centers' site, else the first active site (M17a).
@@ -1007,7 +1181,10 @@ type ManufacturingOrderUpdate struct {
 	Priority ManufacturingPriority `json:"priority"`
 
 	// Quantity Exact decimal, more than 0. Changed only on a draft (order_not_draft).
-	Quantity          string              `json:"quantity"`
+	Quantity string `json:"quantity"`
+
+	// RequestedStart The day planning may start from (M35a); null or left out takes the default.
+	RequestedStart    *openapi_types.Date `json:"requestedStart,omitempty"`
 	ResponsibleUserId *openapi_types.UUID `json:"responsibleUserId,omitempty"`
 
 	// Revision The revision the client read (revision_conflict).
@@ -1083,10 +1260,21 @@ type ManufacturingPersonList struct {
 	Items []ManufacturingPerson `json:"items"`
 }
 
+// ManufacturingPlanAllInput Plan all at one site (M35).
+type ManufacturingPlanAllInput struct {
+	SiteId int64 `json:"siteId"`
+}
+
+// ManufacturingPlanAllResult What plan all planned, in the order it planned them (urgent first, then by due date), and what found no capacity within 365 days and was left unplanned.
+type ManufacturingPlanAllResult struct {
+	NoCapacity []ManufacturingOrderLink `json:"noCapacity"`
+	Planned    []ManufacturingOrderLink `json:"planned"`
+}
+
 // ManufacturingPriority An order's priority (M17).
 type ManufacturingPriority string
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
 type ManufacturingProblem struct {
 	Code   *string `json:"code,omitempty"`
 	Detail *string `json:"detail,omitempty"`
@@ -1147,6 +1335,55 @@ type ManufacturingProduction struct {
 	// Quantity Good output.
 	Quantity     string `json:"quantity"`
 	ToLocationId int64  `json:"toLocationId"`
+}
+
+// ManufacturingProductionCostGroup One product's done orders and their totals.
+type ManufacturingProductionCostGroup struct {
+	Orders []ManufacturingProductionCostRow `json:"orders"`
+
+	// Totals A product's totals over its done orders; the cost per unit is the actual total ÷ the good output.
+	Totals ManufacturingProductionCostTotals `json:"totals"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingProductionCostReport The production cost report (M42): the done orders closed in the period, grouped by product.
+type ManufacturingProductionCostReport struct {
+	From   openapi_types.Date                 `json:"from"`
+	Groups []ManufacturingProductionCostGroup `json:"groups"`
+	SiteId *int64                             `json:"siteId"`
+	To     openapi_types.Date                 `json:"to"`
+}
+
+// ManufacturingProductionCostRow One done order's cost, as fixed at close (M41).
+type ManufacturingProductionCostRow struct {
+	// Actual The actual total fixed at close.
+	Actual      *string   `json:"actual"`
+	ClosedAt    time.Time `json:"closedAt"`
+	CostPerUnit *string   `json:"costPerUnit"`
+
+	// Deviation actual − estimate; null without an estimate.
+	Deviation        *string `json:"deviation"`
+	DeviationPercent *string `json:"deviationPercent"`
+
+	// Estimate The estimate's total; null for an order confirmed without one.
+	Estimate *string `json:"estimate"`
+	Number   string  `json:"number"`
+	OrderId  int64   `json:"orderId"`
+	Produced string  `json:"produced"`
+	Quantity string  `json:"quantity"`
+}
+
+// ManufacturingProductionCostTotals A product's totals over its done orders; the cost per unit is the actual total ÷ the good output.
+type ManufacturingProductionCostTotals struct {
+	Actual           string  `json:"actual"`
+	CostPerUnit      *string `json:"costPerUnit"`
+	Deviation        string  `json:"deviation"`
+	DeviationPercent *string `json:"deviationPercent"`
+	Estimate         string  `json:"estimate"`
+	Orders           int32   `json:"orders"`
+	Produced         string  `json:"produced"`
 }
 
 // ManufacturingProductionDraft The production dialog's prefill (M22a).
@@ -1233,6 +1470,13 @@ type ManufacturingProductionLineInput struct {
 	Scrap *string `json:"scrap,omitempty"`
 }
 
+// ManufacturingRescheduleInput A drag on the board (M36): the work order is planned to start at start (now when start is past), in the first free time from there.
+type ManufacturingRescheduleInput struct {
+	// Revision The work order's revision the client read (revision_conflict).
+	Revision int32     `json:"revision"`
+	Start    time.Time `json:"start"`
+}
+
 // ManufacturingReservationStatus What the list shows of an open order's components (M21a), from the stored reserved copies: every line's remaining requirement reserved, some reserved, or none.
 type ManufacturingReservationStatus string
 
@@ -1251,6 +1495,110 @@ type ManufacturingRolledUpCost struct {
 
 	// Total components + operations.
 	Total string `json:"total"`
+}
+
+// ManufacturingSchedule The production schedule (M36): every active work center at the site with its calendar, load and bars for the days asked, and the open orders with no plan.
+type ManufacturingSchedule struct {
+	Days   int32              `json:"days"`
+	From   openapi_types.Date `json:"from"`
+	SiteId int64              `json:"siteId"`
+
+	// Today The business calendar's today.
+	Today       openapi_types.Date           `json:"today"`
+	Unscheduled []ManufacturingScheduleOrder `json:"unscheduled"`
+	WorkCenters []ManufacturingScheduleRow   `json:"workCenters"`
+}
+
+// ManufacturingScheduleBar One slot of a planned work order, drawn as a bar.
+type ManufacturingScheduleBar struct {
+	EndsAt time.Time `json:"endsAt"`
+
+	// Late The work order's planned finish falls after its order's due date.
+	Late        bool   `json:"late"`
+	Name        string `json:"name"`
+	OrderId     int64  `json:"orderId"`
+	OrderNumber string `json:"orderNumber"`
+
+	// PlannedFinish The work order's planned finish.
+	PlannedFinish *time.Time `json:"plannedFinish"`
+
+	// PlannedStart The work order's planned start.
+	PlannedStart *time.Time `json:"plannedStart"`
+	Sequence     int32      `json:"sequence"`
+	StartsAt     time.Time  `json:"startsAt"`
+
+	// Status A work order's state (M27): pending while an earlier work order is not done, ready, in_progress while a productive log is open, paused when started before with none open (a block's downtime logs leave it paused, M29a), done, cancelled.
+	Status ManufacturingWorkOrderStatus `json:"status"`
+	Urgent bool                         `json:"urgent"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant     ManufacturingVariantRef `json:"variant"`
+	WorkOrderId int64                   `json:"workOrderId"`
+
+	// WorkOrderRevision The work order's revision, for a reschedule.
+	WorkOrderRevision int32 `json:"workOrderRevision"`
+}
+
+// ManufacturingScheduleDay One day of a work center (M9, M36): its open intervals as instants, why it is closed, its capacity and its load.
+type ManufacturingScheduleDay struct {
+	// CapacityMinutes The length of the open intervals, in minutes.
+	CapacityMinutes int64 `json:"capacityMinutes"`
+
+	// Closed holiday: a Norwegian public holiday; closure: one of the work center's closures; null otherwise (a day the pattern leaves empty has no intervals and is not closed).
+	Closed    *ManufacturingScheduleDayClosed `json:"closed"`
+	Date      openapi_types.Date              `json:"date"`
+	Intervals []ManufacturingScheduleInterval `json:"intervals"`
+
+	// LoadPercent planned ÷ capacity × 100, half-up to one decimal; null when the day has no capacity.
+	LoadPercent *string `json:"loadPercent"`
+
+	// Overloaded More planned than the day's capacity.
+	Overloaded bool `json:"overloaded"`
+
+	// PlannedMinutes The slots' time that day, in whole minutes.
+	PlannedMinutes int64 `json:"plannedMinutes"`
+}
+
+// ManufacturingScheduleDayClosed holiday: a Norwegian public holiday; closure: one of the work center's closures; null otherwise (a day the pattern leaves empty has no intervals and is not closed).
+type ManufacturingScheduleDayClosed string
+
+// ManufacturingScheduleInterval An open interval, as instants.
+type ManufacturingScheduleInterval struct {
+	End   time.Time `json:"end"`
+	Start time.Time `json:"start"`
+}
+
+// ManufacturingScheduleOrder An open order with no plan, on the board's Unscheduled list.
+type ManufacturingScheduleOrder struct {
+	DueDate *openapi_types.Date `json:"dueDate"`
+
+	// ExpectedMinutes The expected minutes of its work orders not done or cancelled.
+	ExpectedMinutes int64  `json:"expectedMinutes"`
+	Id              int64  `json:"id"`
+	Number          string `json:"number"`
+
+	// Priority An order's priority (M17).
+	Priority       ManufacturingPriority `json:"priority"`
+	Quantity       string                `json:"quantity"`
+	RequestedStart *openapi_types.Date   `json:"requestedStart"`
+	Revision       int32                 `json:"revision"`
+
+	// Status A manufacturing order's state (M19).
+	Status ManufacturingOrderStatus `json:"status"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingScheduleRow One work center's row on the board.
+type ManufacturingScheduleRow struct {
+	Bars     []ManufacturingScheduleBar `json:"bars"`
+	Blocked  bool                       `json:"blocked"`
+	Closures []ManufacturingClosure     `json:"closures"`
+	Days     []ManufacturingScheduleDay `json:"days"`
+
+	// WorkCenter A work center as a work order names it.
+	WorkCenter ManufacturingWorkCenterRef `json:"workCenter"`
 }
 
 // ManufacturingScrapInput Scrap reported at a work order (M31): a production with no good output (M22).
@@ -1345,6 +1693,41 @@ type ManufacturingStatus string
 // ManufacturingStatusFilter Which statuses a list answers.
 type ManufacturingStatusFilter string
 
+// ManufacturingTimeDeviationReport The time deviation report (M42): per BoM operation, the last 10 done work orders finished in the period.
+type ManufacturingTimeDeviationReport struct {
+	From   openapi_types.Date              `json:"from"`
+	Rows   []ManufacturingTimeDeviationRow `json:"rows"`
+	SiteId *int64                          `json:"siteId"`
+	To     openapi_types.Date              `json:"to"`
+}
+
+// ManufacturingTimeDeviationRow One BoM operation (its BoM and sequence) over its last done work orders.
+type ManufacturingTimeDeviationRow struct {
+	// AverageActualMinutes The average of the union of each work order's productive logs, half-up to one decimal.
+	AverageActualMinutes string `json:"averageActualMinutes"`
+
+	// AverageExpectedMinutes Half-up to one decimal.
+	AverageExpectedMinutes string  `json:"averageExpectedMinutes"`
+	BomCode                *string `json:"bomCode"`
+	BomId                  int64   `json:"bomId"`
+
+	// DeviationPercent (actual − expected) ÷ expected × 100 of the averages, half-up to one decimal; null when expected is 0.
+	DeviationPercent *string `json:"deviationPercent"`
+
+	// Name The operation's name on the latest work order.
+	Name     string `json:"name"`
+	Sequence int32  `json:"sequence"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+
+	// WorkCenter A work center as a work order names it.
+	WorkCenter ManufacturingWorkCenterRef `json:"workCenter"`
+
+	// WorkOrders How many work orders were averaged, at most 10.
+	WorkOrders int32 `json:"workOrders"`
+}
+
 // ManufacturingTimeLog A time log (M29, M30). A log with neither a user nor a work order is the work center's own downtime while it is blocked.
 type ManufacturingTimeLog struct {
 	CorrectedAt *time.Time           `json:"correctedAt"`
@@ -1410,6 +1793,41 @@ type ManufacturingTimeLogKind string
 // ManufacturingTimeLogList Time logs, by start.
 type ManufacturingTimeLogList struct {
 	Items []ManufacturingTimeLog `json:"items"`
+}
+
+// ManufacturingUtilisationReport The work-center utilisation report (M42): per work center and ISO week, the days of the week inside the period.
+type ManufacturingUtilisationReport struct {
+	From   openapi_types.Date            `json:"from"`
+	Rows   []ManufacturingUtilisationRow `json:"rows"`
+	SiteId *int64                        `json:"siteId"`
+	To     openapi_types.Date            `json:"to"`
+}
+
+// ManufacturingUtilisationRow One work center in one ISO week, in whole minutes.
+type ManufacturingUtilisationRow struct {
+	CapacityMinutes int64                          `json:"capacityMinutes"`
+	Downtime        []ManufacturingDowntimeMinutes `json:"downtime"`
+
+	// DowntimeMinutes The union of every downtime log at the center.
+	DowntimeMinutes int64 `json:"downtimeMinutes"`
+
+	// PlannedMinutes The slots' time.
+	PlannedMinutes int64 `json:"plannedMinutes"`
+
+	// ProductiveMinutes The union of the productive logs at the center.
+	ProductiveMinutes int64 `json:"productiveMinutes"`
+
+	// UtilisationPercent productive ÷ capacity × 100, half-up to one decimal; null without capacity.
+	UtilisationPercent *string `json:"utilisationPercent"`
+
+	// Week The ISO week, as 2026-W46.
+	Week string `json:"week"`
+
+	// WeekStart The week's Monday.
+	WeekStart openapi_types.Date `json:"weekStart"`
+
+	// WorkCenter A work center as a work order names it.
+	WorkCenter ManufacturingWorkCenterRef `json:"workCenter"`
 }
 
 // ManufacturingVariantRef A catalog variant as Manufacturing names it.
@@ -1617,11 +2035,20 @@ type ManufacturingWorkCenterUpdate struct {
 
 // ManufacturingWorkOrder A work order (M27, M27a): an operation of the order's BoM as it was at confirm, at one work center.
 type ManufacturingWorkOrder struct {
+	// ActualMinutes The work center's time on it: the union of its productive logs, open logs counted to now, in whole minutes rounded down (M41).
+	ActualMinutes int64 `json:"actualMinutes"`
+
 	// Capacity The work center's capacity at confirm (M27a).
 	Capacity int32 `json:"capacity"`
 
 	// CleanupMinutes Exact decimal, as at confirm.
 	CleanupMinutes string `json:"cleanupMinutes"`
+
+	// DeviationMinutes actualMinutes − expectedMinutes, the duration deviation (M41).
+	DeviationMinutes int64 `json:"deviationMinutes"`
+
+	// DeviationPercent deviationMinutes ÷ expectedMinutes × 100, half-up to one decimal; null when nothing is expected.
+	DeviationPercent *string `json:"deviationPercent"`
 
 	// ExpectedMinutes setup + cleanup + cycles × minutesPerCycle × 100 / timeEfficiency, cycles = ⌈(order quantity / output quantity) / capacity⌉, half-up to the minute; computed at confirm and never recomputed (M28a).
 	ExpectedMinutes int64      `json:"expectedMinutes"`
@@ -1806,6 +2233,74 @@ type SearchManufacturingPeopleParams struct {
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetManufacturingProductionCostReportParams defines parameters for GetManufacturingProductionCostReport.
+type GetManufacturingProductionCostReportParams struct {
+	// From The period's first day, in the business time zone; default 29 days before to.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The period's last day, included; default today. At most 366 days after from.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// SiteId Only this site.
+	SiteId *int64 `form:"siteId,omitempty" json:"siteId,omitempty"`
+
+	// Format json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas.
+	Format *GetManufacturingProductionCostReportParamsFormat `form:"format,omitempty" json:"format,omitempty"`
+}
+
+// GetManufacturingProductionCostReportParamsFormat defines parameters for GetManufacturingProductionCostReport.
+type GetManufacturingProductionCostReportParamsFormat string
+
+// GetManufacturingTimeDeviationReportParams defines parameters for GetManufacturingTimeDeviationReport.
+type GetManufacturingTimeDeviationReportParams struct {
+	// From The period's first day, in the business time zone; default 29 days before to.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The period's last day, included; default today. At most 366 days after from.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// SiteId Only this site.
+	SiteId *int64 `form:"siteId,omitempty" json:"siteId,omitempty"`
+
+	// Format json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas.
+	Format *GetManufacturingTimeDeviationReportParamsFormat `form:"format,omitempty" json:"format,omitempty"`
+}
+
+// GetManufacturingTimeDeviationReportParamsFormat defines parameters for GetManufacturingTimeDeviationReport.
+type GetManufacturingTimeDeviationReportParamsFormat string
+
+// GetManufacturingUtilisationReportParams defines parameters for GetManufacturingUtilisationReport.
+type GetManufacturingUtilisationReportParams struct {
+	// From The period's first day, in the business time zone; default 29 days before to.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The period's last day, included; default today. At most 366 days after from.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// SiteId Only this site.
+	SiteId *int64 `form:"siteId,omitempty" json:"siteId,omitempty"`
+
+	// Format json (the default) or csv: a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas.
+	Format *GetManufacturingUtilisationReportParamsFormat `form:"format,omitempty" json:"format,omitempty"`
+}
+
+// GetManufacturingUtilisationReportParamsFormat defines parameters for GetManufacturingUtilisationReport.
+type GetManufacturingUtilisationReportParamsFormat string
+
+// GetManufacturingScheduleParams defines parameters for GetManufacturingSchedule.
+type GetManufacturingScheduleParams struct {
+	SiteId int64 `form:"siteId" json:"siteId"`
+
+	// From The first day; default today in the business time zone.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// Days 7 (the default) or 14.
+	Days *GetManufacturingScheduleParamsDays `form:"days,omitempty" json:"days,omitempty"`
+}
+
+// GetManufacturingScheduleParamsDays defines parameters for GetManufacturingSchedule.
+type GetManufacturingScheduleParamsDays int32
+
 // SearchManufacturingVariantsParams defines parameters for SearchManufacturingVariants.
 type SearchManufacturingVariantsParams struct {
 	// Q Matched against SKU, product name and barcode.
@@ -1867,11 +2362,20 @@ type UpdateManufacturingOrderComponentJSONRequestBody = ManufacturingComponentUp
 // ConfirmManufacturingOrderJSONRequestBody defines body for ConfirmManufacturingOrder for application/json ContentType.
 type ConfirmManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
 
+// PlanManufacturingOrderJSONRequestBody defines body for PlanManufacturingOrder for application/json ContentType.
+type PlanManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
+
 // PostManufacturingProductionJSONRequestBody defines body for PostManufacturingProduction for application/json ContentType.
 type PostManufacturingProductionJSONRequestBody = ManufacturingProductionInput
 
 // ReserveManufacturingOrderJSONRequestBody defines body for ReserveManufacturingOrder for application/json ContentType.
 type ReserveManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
+
+// UnplanManufacturingOrderJSONRequestBody defines body for UnplanManufacturingOrder for application/json ContentType.
+type UnplanManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
+
+// PlanAllManufacturingOrdersJSONRequestBody defines body for PlanAllManufacturingOrders for application/json ContentType.
+type PlanAllManufacturingOrdersJSONRequestBody = ManufacturingPlanAllInput
 
 // CorrectManufacturingTimeLogJSONRequestBody defines body for CorrectManufacturingTimeLog for application/json ContentType.
 type CorrectManufacturingTimeLogJSONRequestBody = ManufacturingTimeLogCorrection
@@ -1896,6 +2400,9 @@ type ReactivateManufacturingWorkCenterJSONRequestBody = ManufacturingRevisionInp
 
 // FinishManufacturingWorkOrderJSONRequestBody defines body for FinishManufacturingWorkOrder for application/json ContentType.
 type FinishManufacturingWorkOrderJSONRequestBody = ManufacturingFinishInput
+
+// RescheduleManufacturingWorkOrderJSONRequestBody defines body for RescheduleManufacturingWorkOrder for application/json ContentType.
+type RescheduleManufacturingWorkOrderJSONRequestBody = ManufacturingRescheduleInput
 
 // ReportManufacturingWorkOrderScrapJSONRequestBody defines body for ReportManufacturingWorkOrderScrap for application/json ContentType.
 type ReportManufacturingWorkOrderScrapJSONRequestBody = ManufacturingScrapInput
@@ -1965,6 +2472,9 @@ type ServerInterface interface {
 	// ListManufacturingOrderEvents List a manufacturing order's history
 	// (GET /api/v1/manufacturing/orders/{id}/events)
 	ListManufacturingOrderEvents(w http.ResponseWriter, r *http.Request, id int64)
+	// PlanManufacturingOrder Plan a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/plan)
+	PlanManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
 	// GetManufacturingProductionDraft Get a production's proportional prefill
 	// (GET /api/v1/manufacturing/orders/{id}/production-draft)
 	GetManufacturingProductionDraft(w http.ResponseWriter, r *http.Request, id int64, params GetManufacturingProductionDraftParams)
@@ -1977,6 +2487,9 @@ type ServerInterface interface {
 	// ListManufacturingOrderTimeLogs List a manufacturing order's time logs
 	// (GET /api/v1/manufacturing/orders/{id}/time-logs)
 	ListManufacturingOrderTimeLogs(w http.ResponseWriter, r *http.Request, id int64)
+	// UnplanManufacturingOrder Unplan a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/unplan)
+	UnplanManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
 	// ListManufacturingOrderWorkOrders List a manufacturing order's work orders
 	// (GET /api/v1/manufacturing/orders/{id}/work-orders)
 	ListManufacturingOrderWorkOrders(w http.ResponseWriter, r *http.Request, id int64)
@@ -1986,6 +2499,21 @@ type ServerInterface interface {
 	// GetManufacturingProduction Get a production
 	// (GET /api/v1/manufacturing/productions/{id})
 	GetManufacturingProduction(w http.ResponseWriter, r *http.Request, id int64)
+	// GetManufacturingProductionCostReport Get the production cost report
+	// (GET /api/v1/manufacturing/reports/production-cost)
+	GetManufacturingProductionCostReport(w http.ResponseWriter, r *http.Request, params GetManufacturingProductionCostReportParams)
+	// GetManufacturingTimeDeviationReport Get the time deviation report
+	// (GET /api/v1/manufacturing/reports/time-deviation)
+	GetManufacturingTimeDeviationReport(w http.ResponseWriter, r *http.Request, params GetManufacturingTimeDeviationReportParams)
+	// GetManufacturingUtilisationReport Get the work-center utilisation report
+	// (GET /api/v1/manufacturing/reports/utilisation)
+	GetManufacturingUtilisationReport(w http.ResponseWriter, r *http.Request, params GetManufacturingUtilisationReportParams)
+	// GetManufacturingSchedule Get the production schedule
+	// (GET /api/v1/manufacturing/schedule)
+	GetManufacturingSchedule(w http.ResponseWriter, r *http.Request, params GetManufacturingScheduleParams)
+	// PlanAllManufacturingOrders Plan all unplanned manufacturing orders at a site
+	// (POST /api/v1/manufacturing/schedule/plan-all)
+	PlanAllManufacturingOrders(w http.ResponseWriter, r *http.Request)
 	// GetManufacturingMyWork Read my work on the shop floor
 	// (GET /api/v1/manufacturing/shop-floor/mine)
 	GetManufacturingMyWork(w http.ResponseWriter, r *http.Request)
@@ -2052,6 +2580,9 @@ type ServerInterface interface {
 	// PauseManufacturingWorkOrder Pause a work order
 	// (POST /api/v1/manufacturing/work-orders/{id}/pause)
 	PauseManufacturingWorkOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// RescheduleManufacturingWorkOrder Reschedule a work order
+	// (POST /api/v1/manufacturing/work-orders/{id}/reschedule)
+	RescheduleManufacturingWorkOrder(w http.ResponseWriter, r *http.Request, id int64)
 	// ReportManufacturingWorkOrderScrap Report scrap at a work order
 	// (POST /api/v1/manufacturing/work-orders/{id}/scrap)
 	ReportManufacturingWorkOrderScrap(w http.ResponseWriter, r *http.Request, id int64)
@@ -2806,6 +3337,32 @@ func (siw *ServerInterfaceWrapper) ListManufacturingOrderEvents(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// PlanManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) PlanManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PlanManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetManufacturingProductionDraft operation middleware
 func (siw *ServerInterfaceWrapper) GetManufacturingProductionDraft(w http.ResponseWriter, r *http.Request) {
 
@@ -2939,6 +3496,32 @@ func (siw *ServerInterfaceWrapper) ListManufacturingOrderTimeLogs(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// UnplanManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) UnplanManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnplanManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListManufacturingOrderWorkOrders operation middleware
 func (siw *ServerInterfaceWrapper) ListManufacturingOrderWorkOrders(w http.ResponseWriter, r *http.Request) {
 
@@ -3028,6 +3611,295 @@ func (siw *ServerInterfaceWrapper) GetManufacturingProduction(w http.ResponseWri
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetManufacturingProduction(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingProductionCostReport operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingProductionCostReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetManufacturingProductionCostReportParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", r.URL.Query(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "format"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "format", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingProductionCostReport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingTimeDeviationReport operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingTimeDeviationReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetManufacturingTimeDeviationReportParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", r.URL.Query(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "format"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "format", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingTimeDeviationReport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingUtilisationReport operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingUtilisationReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetManufacturingUtilisationReportParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", r.URL.Query(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "format"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "format", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingUtilisationReport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingSchedule operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingSchedule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetManufacturingScheduleParams
+
+	// ------------- Required query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingSchedule(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PlanAllManufacturingOrders operation middleware
+func (siw *ServerInterfaceWrapper) PlanAllManufacturingOrders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PlanAllManufacturingOrders(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3639,6 +4511,32 @@ func (siw *ServerInterfaceWrapper) PauseManufacturingWorkOrder(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// RescheduleManufacturingWorkOrder operation middleware
+func (siw *ServerInterfaceWrapper) RescheduleManufacturingWorkOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RescheduleManufacturingWorkOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReportManufacturingWorkOrderScrap operation middleware
 func (siw *ServerInterfaceWrapper) ReportManufacturingWorkOrderScrap(w http.ResponseWriter, r *http.Request) {
 
@@ -3882,13 +4780,20 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/components/{componentId}", wrapper.UpdateManufacturingOrderComponent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/confirm", wrapper.ConfirmManufacturingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/events", wrapper.ListManufacturingOrderEvents)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/plan", wrapper.PlanManufacturingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/production-draft", wrapper.GetManufacturingProductionDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/productions", wrapper.PostManufacturingProduction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/reserve", wrapper.ReserveManufacturingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/time-logs", wrapper.ListManufacturingOrderTimeLogs)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/unplan", wrapper.UnplanManufacturingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/work-orders", wrapper.ListManufacturingOrderWorkOrders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/people", wrapper.SearchManufacturingPeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/productions/{id}", wrapper.GetManufacturingProduction)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/reports/production-cost", wrapper.GetManufacturingProductionCostReport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/reports/time-deviation", wrapper.GetManufacturingTimeDeviationReport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/reports/utilisation", wrapper.GetManufacturingUtilisationReport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/schedule", wrapper.GetManufacturingSchedule)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/schedule/plan-all", wrapper.PlanAllManufacturingOrders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/shop-floor/mine", wrapper.GetManufacturingMyWork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/sites", wrapper.ListManufacturingSites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/sites/{id}/locations", wrapper.ListManufacturingSiteLocations)
@@ -3911,6 +4816,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}", wrapper.GetManufacturingWorkOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/finish", wrapper.FinishManufacturingWorkOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/pause", wrapper.PauseManufacturingWorkOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/reschedule", wrapper.RescheduleManufacturingWorkOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/scrap", wrapper.ReportManufacturingWorkOrderScrap)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/start", wrapper.StartManufacturingWorkOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/time-logs", wrapper.ListManufacturingWorkOrderTimeLogs)
@@ -5538,6 +6444,93 @@ func (response ListManufacturingOrderEvents404Response) VisitListManufacturingOr
 	return nil
 }
 
+type PlanManufacturingOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PlanManufacturingOrderJSONRequestBody
+}
+
+type PlanManufacturingOrderResponseObject interface {
+	VisitPlanManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type PlanManufacturingOrder200JSONResponse ManufacturingOrder
+
+func (response PlanManufacturingOrder200JSONResponse) VisitPlanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PlanManufacturingOrder401JSONResponse) VisitPlanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PlanManufacturingOrder403JSONResponse) VisitPlanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanManufacturingOrder404Response struct {
+}
+
+func (response PlanManufacturingOrder404Response) VisitPlanManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PlanManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PlanManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitPlanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PlanManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitPlanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetManufacturingProductionDraftRequestObject struct {
 	Id     int64 `json:"id"`
 	Params GetManufacturingProductionDraftParams
@@ -5913,6 +6906,93 @@ func (response ListManufacturingOrderTimeLogs404Response) VisitListManufacturing
 	return nil
 }
 
+type UnplanManufacturingOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UnplanManufacturingOrderJSONRequestBody
+}
+
+type UnplanManufacturingOrderResponseObject interface {
+	VisitUnplanManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type UnplanManufacturingOrder200JSONResponse ManufacturingOrder
+
+func (response UnplanManufacturingOrder200JSONResponse) VisitUnplanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnplanManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UnplanManufacturingOrder401JSONResponse) VisitUnplanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnplanManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UnplanManufacturingOrder403JSONResponse) VisitUnplanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnplanManufacturingOrder404Response struct {
+}
+
+func (response UnplanManufacturingOrder404Response) VisitUnplanManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UnplanManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UnplanManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitUnplanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnplanManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UnplanManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitUnplanManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListManufacturingOrderWorkOrdersRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -6091,6 +7171,442 @@ type GetManufacturingProduction404Response struct {
 func (response GetManufacturingProduction404Response) VisitGetManufacturingProductionResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetManufacturingProductionCostReportRequestObject struct {
+	Params GetManufacturingProductionCostReportParams
+}
+
+type GetManufacturingProductionCostReportResponseObject interface {
+	VisitGetManufacturingProductionCostReportResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingProductionCostReport200JSONResponse ManufacturingProductionCostReport
+
+func (response GetManufacturingProductionCostReport200JSONResponse) VisitGetManufacturingProductionCostReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionCostReport200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetManufacturingProductionCostReport200TextcsvResponse) VisitGetManufacturingProductionCostReportResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetManufacturingProductionCostReport400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingProductionCostReport400ApplicationProblemPlusJSONResponse) VisitGetManufacturingProductionCostReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionCostReport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingProductionCostReport401JSONResponse) VisitGetManufacturingProductionCostReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionCostReport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingProductionCostReport403JSONResponse) VisitGetManufacturingProductionCostReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionCostReport503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingProductionCostReport503ApplicationProblemPlusJSONResponse) VisitGetManufacturingProductionCostReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingTimeDeviationReportRequestObject struct {
+	Params GetManufacturingTimeDeviationReportParams
+}
+
+type GetManufacturingTimeDeviationReportResponseObject interface {
+	VisitGetManufacturingTimeDeviationReportResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingTimeDeviationReport200JSONResponse ManufacturingTimeDeviationReport
+
+func (response GetManufacturingTimeDeviationReport200JSONResponse) VisitGetManufacturingTimeDeviationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingTimeDeviationReport200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetManufacturingTimeDeviationReport200TextcsvResponse) VisitGetManufacturingTimeDeviationReportResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetManufacturingTimeDeviationReport400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingTimeDeviationReport400ApplicationProblemPlusJSONResponse) VisitGetManufacturingTimeDeviationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingTimeDeviationReport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingTimeDeviationReport401JSONResponse) VisitGetManufacturingTimeDeviationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingTimeDeviationReport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingTimeDeviationReport403JSONResponse) VisitGetManufacturingTimeDeviationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingTimeDeviationReport503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingTimeDeviationReport503ApplicationProblemPlusJSONResponse) VisitGetManufacturingTimeDeviationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingUtilisationReportRequestObject struct {
+	Params GetManufacturingUtilisationReportParams
+}
+
+type GetManufacturingUtilisationReportResponseObject interface {
+	VisitGetManufacturingUtilisationReportResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingUtilisationReport200JSONResponse ManufacturingUtilisationReport
+
+func (response GetManufacturingUtilisationReport200JSONResponse) VisitGetManufacturingUtilisationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingUtilisationReport200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetManufacturingUtilisationReport200TextcsvResponse) VisitGetManufacturingUtilisationReportResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetManufacturingUtilisationReport400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingUtilisationReport400ApplicationProblemPlusJSONResponse) VisitGetManufacturingUtilisationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingUtilisationReport401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingUtilisationReport401JSONResponse) VisitGetManufacturingUtilisationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingUtilisationReport403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingUtilisationReport403JSONResponse) VisitGetManufacturingUtilisationReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingScheduleRequestObject struct {
+	Params GetManufacturingScheduleParams
+}
+
+type GetManufacturingScheduleResponseObject interface {
+	VisitGetManufacturingScheduleResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingSchedule200JSONResponse ManufacturingSchedule
+
+func (response GetManufacturingSchedule200JSONResponse) VisitGetManufacturingScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingSchedule400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingSchedule400ApplicationProblemPlusJSONResponse) VisitGetManufacturingScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingSchedule401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingSchedule401JSONResponse) VisitGetManufacturingScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingSchedule403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingSchedule403JSONResponse) VisitGetManufacturingScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingSchedule503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingSchedule503ApplicationProblemPlusJSONResponse) VisitGetManufacturingScheduleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanAllManufacturingOrdersRequestObject struct {
+	Body *PlanAllManufacturingOrdersJSONRequestBody
+}
+
+type PlanAllManufacturingOrdersResponseObject interface {
+	VisitPlanAllManufacturingOrdersResponse(w http.ResponseWriter) error
+}
+
+type PlanAllManufacturingOrders200JSONResponse ManufacturingPlanAllResult
+
+func (response PlanAllManufacturingOrders200JSONResponse) VisitPlanAllManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanAllManufacturingOrders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PlanAllManufacturingOrders401JSONResponse) VisitPlanAllManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanAllManufacturingOrders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PlanAllManufacturingOrders403JSONResponse) VisitPlanAllManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanAllManufacturingOrders409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PlanAllManufacturingOrders409ApplicationProblemPlusJSONResponse) VisitPlanAllManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PlanAllManufacturingOrders503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PlanAllManufacturingOrders503ApplicationProblemPlusJSONResponse) VisitPlanAllManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetManufacturingMyWorkRequestObject struct {
@@ -7853,6 +9369,93 @@ func (response PauseManufacturingWorkOrder503ApplicationProblemPlusJSONResponse)
 	return err
 }
 
+type RescheduleManufacturingWorkOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *RescheduleManufacturingWorkOrderJSONRequestBody
+}
+
+type RescheduleManufacturingWorkOrderResponseObject interface {
+	VisitRescheduleManufacturingWorkOrderResponse(w http.ResponseWriter) error
+}
+
+type RescheduleManufacturingWorkOrder200JSONResponse ManufacturingWorkOrderList
+
+func (response RescheduleManufacturingWorkOrder200JSONResponse) VisitRescheduleManufacturingWorkOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleManufacturingWorkOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response RescheduleManufacturingWorkOrder401JSONResponse) VisitRescheduleManufacturingWorkOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleManufacturingWorkOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response RescheduleManufacturingWorkOrder403JSONResponse) VisitRescheduleManufacturingWorkOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleManufacturingWorkOrder404Response struct {
+}
+
+func (response RescheduleManufacturingWorkOrder404Response) VisitRescheduleManufacturingWorkOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type RescheduleManufacturingWorkOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response RescheduleManufacturingWorkOrder409ApplicationProblemPlusJSONResponse) VisitRescheduleManufacturingWorkOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleManufacturingWorkOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response RescheduleManufacturingWorkOrder503ApplicationProblemPlusJSONResponse) VisitRescheduleManufacturingWorkOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReportManufacturingWorkOrderScrapRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *ReportManufacturingWorkOrderScrapJSONRequestBody
@@ -8315,6 +9918,9 @@ type StrictServerInterface interface {
 	// ListManufacturingOrderEvents List a manufacturing order's history
 	// (GET /api/v1/manufacturing/orders/{id}/events)
 	ListManufacturingOrderEvents(ctx context.Context, request ListManufacturingOrderEventsRequestObject) (ListManufacturingOrderEventsResponseObject, error)
+	// PlanManufacturingOrder Plan a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/plan)
+	PlanManufacturingOrder(ctx context.Context, request PlanManufacturingOrderRequestObject) (PlanManufacturingOrderResponseObject, error)
 	// GetManufacturingProductionDraft Get a production's proportional prefill
 	// (GET /api/v1/manufacturing/orders/{id}/production-draft)
 	GetManufacturingProductionDraft(ctx context.Context, request GetManufacturingProductionDraftRequestObject) (GetManufacturingProductionDraftResponseObject, error)
@@ -8327,6 +9933,9 @@ type StrictServerInterface interface {
 	// ListManufacturingOrderTimeLogs List a manufacturing order's time logs
 	// (GET /api/v1/manufacturing/orders/{id}/time-logs)
 	ListManufacturingOrderTimeLogs(ctx context.Context, request ListManufacturingOrderTimeLogsRequestObject) (ListManufacturingOrderTimeLogsResponseObject, error)
+	// UnplanManufacturingOrder Unplan a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/unplan)
+	UnplanManufacturingOrder(ctx context.Context, request UnplanManufacturingOrderRequestObject) (UnplanManufacturingOrderResponseObject, error)
 	// ListManufacturingOrderWorkOrders List a manufacturing order's work orders
 	// (GET /api/v1/manufacturing/orders/{id}/work-orders)
 	ListManufacturingOrderWorkOrders(ctx context.Context, request ListManufacturingOrderWorkOrdersRequestObject) (ListManufacturingOrderWorkOrdersResponseObject, error)
@@ -8336,6 +9945,21 @@ type StrictServerInterface interface {
 	// GetManufacturingProduction Get a production
 	// (GET /api/v1/manufacturing/productions/{id})
 	GetManufacturingProduction(ctx context.Context, request GetManufacturingProductionRequestObject) (GetManufacturingProductionResponseObject, error)
+	// GetManufacturingProductionCostReport Get the production cost report
+	// (GET /api/v1/manufacturing/reports/production-cost)
+	GetManufacturingProductionCostReport(ctx context.Context, request GetManufacturingProductionCostReportRequestObject) (GetManufacturingProductionCostReportResponseObject, error)
+	// GetManufacturingTimeDeviationReport Get the time deviation report
+	// (GET /api/v1/manufacturing/reports/time-deviation)
+	GetManufacturingTimeDeviationReport(ctx context.Context, request GetManufacturingTimeDeviationReportRequestObject) (GetManufacturingTimeDeviationReportResponseObject, error)
+	// GetManufacturingUtilisationReport Get the work-center utilisation report
+	// (GET /api/v1/manufacturing/reports/utilisation)
+	GetManufacturingUtilisationReport(ctx context.Context, request GetManufacturingUtilisationReportRequestObject) (GetManufacturingUtilisationReportResponseObject, error)
+	// GetManufacturingSchedule Get the production schedule
+	// (GET /api/v1/manufacturing/schedule)
+	GetManufacturingSchedule(ctx context.Context, request GetManufacturingScheduleRequestObject) (GetManufacturingScheduleResponseObject, error)
+	// PlanAllManufacturingOrders Plan all unplanned manufacturing orders at a site
+	// (POST /api/v1/manufacturing/schedule/plan-all)
+	PlanAllManufacturingOrders(ctx context.Context, request PlanAllManufacturingOrdersRequestObject) (PlanAllManufacturingOrdersResponseObject, error)
 	// GetManufacturingMyWork Read my work on the shop floor
 	// (GET /api/v1/manufacturing/shop-floor/mine)
 	GetManufacturingMyWork(ctx context.Context, request GetManufacturingMyWorkRequestObject) (GetManufacturingMyWorkResponseObject, error)
@@ -8402,6 +10026,9 @@ type StrictServerInterface interface {
 	// PauseManufacturingWorkOrder Pause a work order
 	// (POST /api/v1/manufacturing/work-orders/{id}/pause)
 	PauseManufacturingWorkOrder(ctx context.Context, request PauseManufacturingWorkOrderRequestObject) (PauseManufacturingWorkOrderResponseObject, error)
+	// RescheduleManufacturingWorkOrder Reschedule a work order
+	// (POST /api/v1/manufacturing/work-orders/{id}/reschedule)
+	RescheduleManufacturingWorkOrder(ctx context.Context, request RescheduleManufacturingWorkOrderRequestObject) (RescheduleManufacturingWorkOrderResponseObject, error)
 	// ReportManufacturingWorkOrderScrap Report scrap at a work order
 	// (POST /api/v1/manufacturing/work-orders/{id}/scrap)
 	ReportManufacturingWorkOrderScrap(ctx context.Context, request ReportManufacturingWorkOrderScrapRequestObject) (ReportManufacturingWorkOrderScrapResponseObject, error)
@@ -9029,6 +10656,39 @@ func (sh *strictHandler) ListManufacturingOrderEvents(w http.ResponseWriter, r *
 	}
 }
 
+// PlanManufacturingOrder operation middleware
+func (sh *strictHandler) PlanManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PlanManufacturingOrderRequestObject
+
+	request.Id = id
+
+	var body PlanManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PlanManufacturingOrder(ctx, request.(PlanManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PlanManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PlanManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitPlanManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetManufacturingProductionDraft operation middleware
 func (sh *strictHandler) GetManufacturingProductionDraft(w http.ResponseWriter, r *http.Request, id int64, params GetManufacturingProductionDraftParams) {
 	var request GetManufacturingProductionDraftRequestObject
@@ -9148,6 +10808,39 @@ func (sh *strictHandler) ListManufacturingOrderTimeLogs(w http.ResponseWriter, r
 	}
 }
 
+// UnplanManufacturingOrder operation middleware
+func (sh *strictHandler) UnplanManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UnplanManufacturingOrderRequestObject
+
+	request.Id = id
+
+	var body UnplanManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnplanManufacturingOrder(ctx, request.(UnplanManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnplanManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnplanManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitUnplanManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListManufacturingOrderWorkOrders operation middleware
 func (sh *strictHandler) ListManufacturingOrderWorkOrders(w http.ResponseWriter, r *http.Request, id int64) {
 	var request ListManufacturingOrderWorkOrdersRequestObject
@@ -9219,6 +10912,141 @@ func (sh *strictHandler) GetManufacturingProduction(w http.ResponseWriter, r *ht
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetManufacturingProductionResponseObject); ok {
 		if err := validResponse.VisitGetManufacturingProductionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingProductionCostReport operation middleware
+func (sh *strictHandler) GetManufacturingProductionCostReport(w http.ResponseWriter, r *http.Request, params GetManufacturingProductionCostReportParams) {
+	var request GetManufacturingProductionCostReportRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingProductionCostReport(ctx, request.(GetManufacturingProductionCostReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingProductionCostReport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingProductionCostReportResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingProductionCostReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingTimeDeviationReport operation middleware
+func (sh *strictHandler) GetManufacturingTimeDeviationReport(w http.ResponseWriter, r *http.Request, params GetManufacturingTimeDeviationReportParams) {
+	var request GetManufacturingTimeDeviationReportRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingTimeDeviationReport(ctx, request.(GetManufacturingTimeDeviationReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingTimeDeviationReport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingTimeDeviationReportResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingTimeDeviationReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingUtilisationReport operation middleware
+func (sh *strictHandler) GetManufacturingUtilisationReport(w http.ResponseWriter, r *http.Request, params GetManufacturingUtilisationReportParams) {
+	var request GetManufacturingUtilisationReportRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingUtilisationReport(ctx, request.(GetManufacturingUtilisationReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingUtilisationReport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingUtilisationReportResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingUtilisationReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingSchedule operation middleware
+func (sh *strictHandler) GetManufacturingSchedule(w http.ResponseWriter, r *http.Request, params GetManufacturingScheduleParams) {
+	var request GetManufacturingScheduleRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingSchedule(ctx, request.(GetManufacturingScheduleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingSchedule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingScheduleResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingScheduleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PlanAllManufacturingOrders operation middleware
+func (sh *strictHandler) PlanAllManufacturingOrders(w http.ResponseWriter, r *http.Request) {
+	var request PlanAllManufacturingOrdersRequestObject
+
+	var body PlanAllManufacturingOrdersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PlanAllManufacturingOrders(ctx, request.(PlanAllManufacturingOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PlanAllManufacturingOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PlanAllManufacturingOrdersResponseObject); ok {
+		if err := validResponse.VisitPlanAllManufacturingOrdersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -9844,6 +11672,39 @@ func (sh *strictHandler) PauseManufacturingWorkOrder(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PauseManufacturingWorkOrderResponseObject); ok {
 		if err := validResponse.VisitPauseManufacturingWorkOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RescheduleManufacturingWorkOrder operation middleware
+func (sh *strictHandler) RescheduleManufacturingWorkOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request RescheduleManufacturingWorkOrderRequestObject
+
+	request.Id = id
+
+	var body RescheduleManufacturingWorkOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RescheduleManufacturingWorkOrder(ctx, request.(RescheduleManufacturingWorkOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RescheduleManufacturingWorkOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RescheduleManufacturingWorkOrderResponseObject); ok {
+		if err := validResponse.VisitRescheduleManufacturingWorkOrderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

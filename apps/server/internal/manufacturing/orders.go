@@ -196,6 +196,21 @@ func (s *server) withOrder(ctx context.Context, id int64, extra func(context.Con
 func (s *server) withOrders(ctx context.Context, idsOf func(context.Context, *store.Queries) ([]int64, error),
 	extra func(context.Context, *store.Queries, store.ManufacturingOrder) ([]int32, error),
 	fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error) error {
+	return s.withScheduledOrders(ctx, nil, idsOf, extra, fn)
+}
+
+// withScheduledOrders is withOrders for a write of the schedule (M35a):
+// centersOf names, from the orders idsOf named on that attempt, every work
+// center whose slots the write touches, and the transaction takes the
+// schedule's advisory lock of each, in id order, before any row lock —
+// before LockVariants — and only then follows the canonical order. fn
+// returns errRelock when a work order names a center not locked, so the
+// write starts again with it. A nil centersOf takes no advisory lock.
+func (s *server) withScheduledOrders(ctx context.Context,
+	centersOf func(context.Context, *store.Queries, []int64) ([]int64, error),
+	idsOf func(context.Context, *store.Queries) ([]int64, error),
+	extra func(context.Context, *store.Queries, store.ManufacturingOrder) ([]int32, error),
+	fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error) error {
 	pool := store.New(s.deps.Pool)
 	variantsOf := func(ctx context.Context, q *store.Queries, o store.ManufacturingOrder) ([]int32, error) {
 		ids, err := orderVariants(ctx, q, o)
@@ -227,7 +242,19 @@ func (s *server) withOrders(ctx context.Context, idsOf func(context.Context, *st
 			ids = append(ids, more...)
 		}
 		ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+		var centers []int64
+		if centersOf != nil {
+			if centers, err = centersOf(ctx, pool, orderIDs); err != nil {
+				return err
+			}
+			centers = slices.Compact(slices.Sorted(slices.Values(centers)))
+		}
 		err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+			for _, c := range centers {
+				if err := txq.LockScheduleCenter(ctx, int32(c)); err != nil {
+					return err
+				}
+			}
 			locked, err := s.lockVariants(ctx, tx, ids)
 			if err != nil {
 				return err
@@ -259,7 +286,7 @@ func (s *server) withOrders(ctx context.Context, idsOf func(context.Context, *st
 					}
 				}
 			}
-			return fn(ctx, tx, txq, orders)
+			return fn(context.WithValue(ctx, scheduleCentersKey{}, centers), tx, txq, orders)
 		})
 		if errors.Is(err, errRelock) {
 			if attempt < maxLockAttempts {
@@ -515,7 +542,7 @@ func createOrderAnswers() answers[gen.CreateManufacturingOrderResponseObject] {
 }
 
 // CreateManufacturingOrder creates a draft numbered MO-<n> (M17, M17a,
-// M17b). LockVariants on the product and the BoM's components comes first
+// M17b), with the requested start it is given (M35a). LockVariants on the product and the BoM's components comes first
 // (M10a), then the counter.
 func (s *server) CreateManufacturingOrder(ctx context.Context, req gen.CreateManufacturingOrderRequestObject) (gen.CreateManufacturingOrderResponseObject, error) {
 	in := req.Body
@@ -582,8 +609,8 @@ func (s *server) CreateManufacturingOrder(ctx context.Context, req gen.CreateMan
 			o, err := txq.InsertOrder(ctx, store.InsertOrderParams{
 				Number: number, VariantID: in.VariantId, BomID: b.ID, Quantity: numeric(v.quantity, quantityPlaces),
 				SiteID: *v.siteID, ComponentLocationID: v.componentLocationID, OutputLocationID: *v.outputLocationID,
-				DueDate: v.dueDate, PlannedStart: v.plannedStart, PlannedFinish: v.plannedFinish, Priority: v.priority,
-				ResponsibleUserID: v.responsible, Note: v.note, OriginKind: originManual, Now: at,
+				DueDate: v.dueDate, PlannedStart: v.plannedStart, PlannedFinish: v.plannedFinish, RequestedStart: requestedStartValue(in.RequestedStart),
+				Priority: v.priority, ResponsibleUserID: v.responsible, Note: v.note, OriginKind: originManual, Now: at,
 			})
 			if err != nil {
 				return err
@@ -715,7 +742,7 @@ func (s *server) UpdateManufacturingOrder(ctx context.Context, req gen.UpdateMan
 			ID: o.ID, BomID: bomID, Quantity: numeric(v.quantity, quantityPlaces), SiteID: in.SiteId,
 			ComponentLocationID: v.componentLocationID, OutputLocationID: *v.outputLocationID, DueDate: v.dueDate,
 			PlannedStart: v.plannedStart, PlannedFinish: v.plannedFinish, Priority: v.priority, ResponsibleUserID: v.responsible,
-			Note: v.note, Now: at,
+			Note: v.note, RequestedStart: requestedStartValue(in.RequestedStart), Now: at,
 		}); err != nil {
 			return err
 		}
@@ -732,6 +759,15 @@ func (s *server) UpdateManufacturingOrder(ctx context.Context, req gen.UpdateMan
 		return answer(err, updateOrderAnswers())
 	}
 	return gen.UpdateManufacturingOrder200JSONResponse(out), nil
+}
+
+// requestedStartValue is a create's or an update's requested start (M35a) as the
+// column's value: none clears it, so planning takes the default.
+func requestedStartValue(d *openapi_types.Date) pgtype.Date {
+	if d == nil {
+		return pgtype.Date{}
+	}
+	return dateValue(d.Time)
 }
 
 // GetManufacturingOrder is one order with its lines and their live
@@ -757,6 +793,8 @@ type orderRows struct {
 	bomLines   []store.ManufacturingBomLine
 	links      []store.ManufacturingOrder
 	related    map[int64]store.ManufacturingOrder
+	workOrders []store.ManufacturingWorkOrder // once confirmed, for the cost and the plan
+	logs       []store.ManufacturingTimeLog
 }
 
 func (s *server) readOrder(ctx context.Context, id int64) (orderRows, error) {
@@ -783,6 +821,14 @@ func (s *server) readOrder(ctx context.Context, id int64) (orderRows, error) {
 		}
 		if r.links, err = q.OrderLinks(ctx, &o.ID); err != nil {
 			return err
+		}
+		if o.Status != orderDraft {
+			if r.workOrders, err = q.WorkOrdersOfOrder(ctx, o.ID); err != nil {
+				return err
+			}
+			if r.logs, err = q.LogsOfWorkOrders(ctx, workOrderIDs(r.workOrders)); err != nil {
+				return err
+			}
 		}
 		var ids []int64
 		for _, p := range []*int64{o.BackorderOfID, o.ParentOrderID} {
@@ -943,6 +989,10 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 	if err != nil {
 		return gen.ManufacturingOrder{}, err
 	}
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return gen.ManufacturingOrder{}, err
+	}
 	people, err := s.people(ctx, o.ResponsibleUserID)
 	if err != nil {
 		return gen.ManufacturingOrder{}, err
@@ -961,7 +1011,18 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		Components: make([]gen.ManufacturingOrderComponent, 0, len(components)), Availability: cov.status,
 		Overrun:     text(positive(new(big.Rat).Sub(ratOrZero(o.Produced), ratOrZero(o.Quantity))), quantityPlaces),
 		ConfirmedAt: o.ConfirmedAt, ClosedAt: o.ClosedAt, Revision: o.Revision, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
-		Warnings: warningsOf(o, entries, components),
+		Warnings:   warningsOf(o, entries, components),
+		LateByDays: lateByDays(o.PlannedFinish, dateOf(o.DueDate), zone),
+	}
+	if d := dateOf(o.RequestedStart); d != nil {
+		out.RequestedStart = &openapi_types.Date{Time: *d}
+	}
+	if isOpen(o.Status) {
+		d := defaultRequestedStart(dateOf(o.DueDate), expectedOf(openWork(r.workOrders)), today)
+		out.RequestedStartDefault = &openapi_types.Date{Time: d}
+	}
+	if costs {
+		out.Cost = orderCostOf(o, r.components, r.workOrders, r.logs, s.deps.Clock())
 	}
 	if o.BackorderOfID != nil {
 		if x, ok := r.related[*o.BackorderOfID]; ok {

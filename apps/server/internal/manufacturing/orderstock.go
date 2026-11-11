@@ -278,6 +278,15 @@ func (s *server) confirmOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries
 	for _, w := range workOrders {
 		notes.workOrder(w.ID, w.OrderID, w.WorkCenterID)
 	}
+	components, err := txq.ListOrderComponents(ctx, o.ID)
+	if err != nil {
+		return nil, err
+	}
+	// The estimate is fixed now, from the snapshots just made (M39): the
+	// standard costs on the lines and the rates on the work orders.
+	if err := txq.SetOrderEstimate(ctx, store.SetOrderEstimateParams{ID: o.ID, Estimate: marshalCost(storedOf(estimateOf(components, workOrders)))}); err != nil {
+		return nil, err
+	}
 	at := s.deps.Clock()
 	o, err = txq.SetOrderStatus(ctx, store.SetOrderStatusParams{ID: o.ID, Status: orderConfirmed, ConfirmedAt: &at, Now: at})
 	if err != nil {
@@ -694,6 +703,9 @@ func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManuf
 		if err := endOrderWork(ctx, txq, o.ID, at, notes); err != nil {
 			return err
 		}
+		if err := s.fixActual(ctx, txq, o, at); err != nil {
+			return err
+		}
 		if err := s.releaseAll(ctx, tx, txq, o.ID); err != nil {
 			return err
 		}
@@ -737,9 +749,32 @@ func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManuf
 	return out, nil
 }
 
+// fixActual fixes the order's actual cost at close (M41), after its open
+// logs were ended at at: the parts, rounded once, and the cost per unit of
+// the good output.
+func (s *server) fixActual(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, at time.Time) error {
+	components, err := txq.ListOrderComponents(ctx, o.ID)
+	if err != nil {
+		return err
+	}
+	wos, err := txq.WorkOrdersOfOrder(ctx, o.ID)
+	if err != nil {
+		return err
+	}
+	logs, err := txq.LogsOfWorkOrders(ctx, workOrderIDs(wos))
+	if err != nil {
+		return err
+	}
+	actual, _ := actualOf(components, wos, logs, at)
+	stored := storedOf(actual)
+	stored.CostPerUnit = costPerUnitOf(actual.total(), ratOrZero(o.Produced))
+	return txq.SetOrderActual(ctx, store.SetOrderActualParams{ID: o.ID, Actual: marshalCost(stored)})
+}
+
 // createBackorder inserts the backorder of o for rest (M23, M17b): the next
-// suffix of the root's number, o's BoM, place, dates, priority, responsible,
-// note and origin, linked as its backorder.
+// suffix of the root's number, o's BoM, place, due date, priority,
+// responsible, note and origin, linked as its backorder. Its plan is not
+// carried: its work orders are new, and wait to be planned (M35).
 func (s *server) createBackorder(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, rest *big.Rat, at time.Time, who actor) (store.ManufacturingOrder, error) {
 	suffix, err := txq.NextBackorderSuffix(ctx, o.Number)
 	if err != nil {
@@ -748,7 +783,7 @@ func (s *server) createBackorder(ctx context.Context, txq *store.Queries, o stor
 	b, err := txq.InsertOrder(ctx, store.InsertOrderParams{
 		Number: o.Number, Suffix: suffix, VariantID: o.VariantID, BomID: o.BomID, Quantity: numeric(rest, quantityPlaces),
 		SiteID: o.SiteID, ComponentLocationID: o.ComponentLocationID, OutputLocationID: o.OutputLocationID, DueDate: o.DueDate,
-		PlannedStart: o.PlannedStart, PlannedFinish: o.PlannedFinish, Priority: o.Priority, ResponsibleUserID: o.ResponsibleUserID,
+		Priority: o.Priority, ResponsibleUserID: o.ResponsibleUserID,
 		Note: o.Note, OriginKind: o.OriginKind, OriginOrderID: o.OriginOrderID, OriginLineID: o.OriginLineID,
 		OriginReference: o.OriginReference, ParentOrderID: o.ParentOrderID, BackorderOfID: &o.ID, Now: at,
 	})

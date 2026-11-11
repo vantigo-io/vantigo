@@ -266,3 +266,19 @@ func (s *server) today(ctx context.Context) (time.Time, time.Time, error) {
 	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
 	return day, time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, zone), nil
 }
+
+// businessZone is the business time zone, before any transaction: UTC when
+// no calendar is composed. The schedule's days are worked out in it (§11).
+func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
+	if s.deps.Calendar == nil {
+		return time.UTC, nil
+	}
+	if err := noteContractCall(ctx, "Calendar.Zone"); err != nil {
+		return nil, err
+	}
+	zone, err := s.deps.Calendar.Zone(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("manufacturing: read the business zone: %w", err)
+	}
+	return zone, nil
+}
