@@ -63,6 +63,12 @@ const (
 	// The reports' code (delivery D, §6, M42).
 	codePeriodTooLong = "period_too_long" // 400
 
+	// Make-to-order's and the sub-assemblies' codes (delivery E, §7).
+	codeSalesOrderLineUnknown  = "sales_order_line_unknown"   // 400
+	codeSalesOrderLineHasOrder = "sales_order_line_has_order" // 409
+	codeComponentUnknown       = "component_unknown"          // 400
+	codeNothingMissing         = "nothing_missing"            // 400
+
 	// A line's codes (ManufacturingProblemLine.code), each also a problem's
 	// own code when it is the first failing line's or a field's.
 	codeVariantNotGoods     = "variant_not_goods"
@@ -83,6 +89,7 @@ var refusalCodes = []string{
 	codeOrderHasProduction, codeConsumptionDiffers, codeQuantityShort, codeClientRequestReused, codeShopFloorRequired,
 	codeWorkCenterBlocked, codeWorkOrderPending, codeWorkOrderClosed, codeLogConflict, codeLogLocked, codeOrderClosed, codeLogOverlaps,
 	codeNoCapacity, codePeriodTooLong,
+	codeSalesOrderLineUnknown, codeSalesOrderLineHasOrder, codeComponentUnknown, codeNothingMissing,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

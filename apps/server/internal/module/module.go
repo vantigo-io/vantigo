@@ -211,6 +211,18 @@ type Deps struct {
 	// must still be released after it is switched off — so it is nil only
 	// when no module given provides one.
 	StockLedger contracts.StockLedger
+	// SalesOrderLines is Orders' read of its sales orders' goods lines for
+	// Manufacturing (contracts.SalesOrderLines, manufacturing design M43a),
+	// consumer-gated. Compose and Workers set it, on every module's Deps copy,
+	// from whichever enabled module declares Module.SalesOrderLines, after the
+	// stock slots; it is nil when Orders is off.
+	SalesOrderLines contracts.SalesOrderLines
+	// Production is Manufacturing's read of what is being made for sales
+	// order lines (contracts.Production, manufacturing design M46a),
+	// provider-gated on manufacturing:access. Compose and Workers set it the
+	// same way, from Module.Production, beside SalesOrderLines; it is nil
+	// when Manufacturing is off.
+	Production contracts.Production
 	// Workforce is Staff's register of competences, the one sanctioned way a
 	// module reads who holds what (see contracts.Workforce, staff competence
 	// design S15). Compose sets it, on every module's Deps copy, from
@@ -643,6 +655,16 @@ type Module struct {
 	// worker mode, which then fails a Reserve or an Issue but never a
 	// Release).
 	StockLedger func(Deps) contracts.StockLedger
+	// SalesOrderLines builds this module's contracts.SalesOrderLines, if it
+	// provides one (orders). At most one enabled module may set it; Compose
+	// and Workers call it after the stock slots and put the result on every
+	// module's Deps. The provider is built from Deps.Pool and reads nothing
+	// while it is built.
+	SalesOrderLines func(Deps) contracts.SalesOrderLines
+	// Production builds this module's contracts.Production, if it provides
+	// one (manufacturing). At most one enabled module may set it; Compose and
+	// Workers call it beside SalesOrderLines, from Deps.Pool and Deps.Access.
+	Production func(Deps) contracts.Production
 	// Workforce builds this module's contracts.Workforce implementation, if
 	// it provides one (staff). At most one enabled module may set it; Compose
 	// and Workers call it before anything they build runs — after they have

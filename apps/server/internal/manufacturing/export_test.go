@@ -24,3 +24,9 @@ func SetContractCallHook(hook func(ctx context.Context, method string)) {
 func ErasureCycle(ctx context.Context, d module.Deps) (int64, error) {
 	return (&erasureWorker{deps: d}).RunCycle(ctx)
 }
+
+// MtoCycle runs one cycle of the make-to-order worker: the requests it
+// finished.
+func MtoCycle(ctx context.Context, d module.Deps) (int, error) {
+	return (&mtoWorker{s: newServer(d)}).RunCycle(ctx)
+}

@@ -10,6 +10,7 @@ sql:
       - ../db/migrations/00157_manufacturing_orders.sql
       - ../db/migrations/00158_manufacturing_work_orders.sql
       - ../db/migrations/00159_manufacturing_schedule.sql
+      - ../db/migrations/00160_manufacturing_mto.sql
     queries: queries
     gen:
       go:

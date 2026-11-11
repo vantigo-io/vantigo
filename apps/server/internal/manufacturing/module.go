@@ -79,8 +79,16 @@ func Module() module.Module {
 		VariantReferences: newVariantHolder,
 		LiveTopics:        liveTopics,
 		// The erasure sweep needs the pool and the user directory, which a
-		// worker-mode Deps has (erasure.go).
+		// worker-mode Deps has (erasure.go); the make-to-order worker the
+		// sales order lines (mto.go).
 		Workers: workers,
+		// The handlers of Orders' confirmed and cancelled sales orders
+		// (M44a), composed whatever MODULES says; the first does nothing
+		// while the module is off.
+		EventHandlers: eventHandlers,
+		// What is being made for sales order lines (M46a), resolved from the
+		// enabled modules only.
+		Production: newProduction,
 	}
 }
 

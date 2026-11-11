@@ -75,11 +75,13 @@ func (e ManufacturingDowntimeReason) Valid() bool {
 const (
 	ManufacturingOrderEventKindBackorderCreated ManufacturingOrderEventKind = "backorder_created"
 	ManufacturingOrderEventKindCancelled        ManufacturingOrderEventKind = "cancelled"
+	ManufacturingOrderEventKindChildrenCreated  ManufacturingOrderEventKind = "children_created"
 	ManufacturingOrderEventKindClosed           ManufacturingOrderEventKind = "closed"
 	ManufacturingOrderEventKindConfirmed        ManufacturingOrderEventKind = "confirmed"
 	ManufacturingOrderEventKindCreated          ManufacturingOrderEventKind = "created"
 	ManufacturingOrderEventKindLineAdded        ManufacturingOrderEventKind = "line_added"
 	ManufacturingOrderEventKindLineChanged      ManufacturingOrderEventKind = "line_changed"
+	ManufacturingOrderEventKindOriginCancelled  ManufacturingOrderEventKind = "origin_cancelled"
 	ManufacturingOrderEventKindPlanned          ManufacturingOrderEventKind = "planned"
 	ManufacturingOrderEventKindProductionPosted ManufacturingOrderEventKind = "production_posted"
 	ManufacturingOrderEventKindRescheduled      ManufacturingOrderEventKind = "rescheduled"
@@ -97,6 +99,8 @@ func (e ManufacturingOrderEventKind) Valid() bool {
 		return true
 	case ManufacturingOrderEventKindCancelled:
 		return true
+	case ManufacturingOrderEventKindChildrenCreated:
+		return true
 	case ManufacturingOrderEventKindClosed:
 		return true
 	case ManufacturingOrderEventKindConfirmed:
@@ -106,6 +110,8 @@ func (e ManufacturingOrderEventKind) Valid() bool {
 	case ManufacturingOrderEventKindLineAdded:
 		return true
 	case ManufacturingOrderEventKindLineChanged:
+		return true
+	case ManufacturingOrderEventKindOriginCancelled:
 		return true
 	case ManufacturingOrderEventKindPlanned:
 		return true
@@ -659,6 +665,20 @@ type ManufacturingBomUpdate struct {
 	Revision int32 `json:"revision"`
 }
 
+// ManufacturingChildrenCreated The parent order after the sub-assembly orders were made, and the orders made, each confirmed.
+type ManufacturingChildrenCreated struct {
+	Children []ManufacturingOrderLink `json:"children"`
+
+	// Order A manufacturing order (M17) with its component lines and their availability.
+	Order ManufacturingOrder `json:"order"`
+}
+
+// ManufacturingChildrenInput The component lines to make sub-assembly orders for (M47), under the order's revision.
+type ManufacturingChildrenInput struct {
+	ComponentIds []int64 `json:"componentIds"`
+	Revision     int32   `json:"revision"`
+}
+
 // ManufacturingCloseInput Closing an order (M23).
 type ManufacturingCloseInput struct {
 	// Backorder When less than the quantity was produced: true creates a backorder for the rest, false closes short; absent is quantity_short (409).
@@ -957,6 +977,9 @@ type ManufacturingOrderComponent struct {
 	// Covered reserved + available ≥ remaining (M21a).
 	Covered bool `json:"covered"`
 
+	// DefaultBomId The component variant's default active BoM, when it is made; a sub-assembly order is made by it (M47).
+	DefaultBomId *int64 `json:"defaultBomId,omitempty"`
+
 	// Id Null on a draft, whose lines follow its BoM until it is confirmed.
 	Id *int64 `json:"id"`
 
@@ -1010,14 +1033,14 @@ type ManufacturingOrderEvent struct {
 	At           time.Time           `json:"at"`
 	Id           int64               `json:"id"`
 
-	// Kind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36).
+	// Kind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44).
 	Kind ManufacturingOrderEventKind `json:"kind"`
 
 	// Payload The event's figures: quantities as exact decimal text, ids, numbers.
 	Payload map[string]interface{} `json:"payload"`
 }
 
-// ManufacturingOrderEventKind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor”s corrections (M29); planned, unplanned and rescheduled the schedule”s (M35, M36).
+// ManufacturingOrderEventKind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor”s corrections (M29); planned, unplanned and rescheduled the schedule”s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44).
 type ManufacturingOrderEventKind string
 
 // ManufacturingOrderEventList An order's timeline, oldest first.
@@ -1050,6 +1073,9 @@ type ManufacturingOrderInput struct {
 	RequestedStart    *openapi_types.Date `json:"requestedStart,omitempty"`
 	ResponsibleUserId *openapi_types.UUID `json:"responsibleUserId,omitempty"`
 
+	// SalesOrderLineId Made for this sales order line (M45): the origin is sales_order, the line must be a goods line of a sales order that is not cancelled, of the same variant (sales_order_line_unknown), with no live order made for it already (sales_order_line_has_order).
+	SalesOrderLineId *int64 `json:"salesOrderLineId,omitempty"`
+
 	// SiteId An active Inventory site; default the BoM's work centers' site, else the first active site (M17a).
 	SiteId *int64 `json:"siteId,omitempty"`
 
@@ -1076,6 +1102,12 @@ type ManufacturingOrderLink struct {
 
 // ManufacturingOrderOriginInfo Where the order came from (M17).
 type ManufacturingOrderOriginInfo struct {
+	// Cancelled The sales order it was made for was cancelled (M44); the order is left as it is for a person to decide.
+	Cancelled bool `json:"cancelled"`
+
+	// CustomerName The sales order's customer, on one order's answer only, and only to a caller who also holds orders:access (M43a). Left out otherwise.
+	CustomerName *string `json:"customerName,omitempty"`
+
 	// Kind Where an order came from (M17): by hand, a sales order (delivery E) or a parent order (E).
 	Kind ManufacturingOrigin `json:"kind"`
 
@@ -1262,7 +1294,7 @@ type ManufacturingPlanAllResult struct {
 // ManufacturingPriority An order's priority (M17).
 type ManufacturingPriority string
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
 type ManufacturingProblem struct {
 	Code   *string `json:"code,omitempty"`
 	Detail *string `json:"detail,omitempty"`
@@ -1485,6 +1517,32 @@ type ManufacturingRolledUpCost struct {
 
 	// Total components + operations.
 	Total string `json:"total"`
+}
+
+// ManufacturingSalesOrderLine A sales order line to make an order for (M45): what the new-order form is prefilled from.
+type ManufacturingSalesOrderLine struct {
+	// BomId The variant's default active BoM; null when it has none (bom_required on create).
+	BomId *int64 `json:"bomId"`
+
+	// DueDate The sales order's delivery date.
+	DueDate *openapi_types.Date `json:"dueDate"`
+	LineId  int64               `json:"lineId"`
+
+	// Orders The orders already made for the line, backorders included, cancelled ones left out.
+	Orders []ManufacturingOrderLink `json:"orders"`
+
+	// Quantity The line's open quantity: ordered less cancelled less delivered, exact decimal.
+	Quantity string `json:"quantity"`
+
+	// Reference The sales order's reference, SO-<number>.
+	Reference    string `json:"reference"`
+	SalesOrderId int64  `json:"salesOrderId"`
+
+	// SiteId The site the sales order is fulfilled from; null when it names none.
+	SiteId *int64 `json:"siteId"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
 }
 
 // ManufacturingSchedule The production schedule (M36): every active work center at the site with its calendar, load and bars for the days asked, and the open orders with no plan.
@@ -2340,6 +2398,9 @@ type UpdateManufacturingOrderJSONRequestBody = ManufacturingOrderUpdate
 // CancelManufacturingOrderJSONRequestBody defines body for CancelManufacturingOrder for application/json ContentType.
 type CancelManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
 
+// CreateManufacturingChildOrdersJSONRequestBody defines body for CreateManufacturingChildOrders for application/json ContentType.
+type CreateManufacturingChildOrdersJSONRequestBody = ManufacturingChildrenInput
+
 // CloseManufacturingOrderJSONRequestBody defines body for CloseManufacturingOrder for application/json ContentType.
 type CloseManufacturingOrderJSONRequestBody = ManufacturingCloseInput
 
@@ -2447,6 +2508,9 @@ type ServerInterface interface {
 	// CancelManufacturingOrder Cancel a manufacturing order
 	// (POST /api/v1/manufacturing/orders/{id}/cancel)
 	CancelManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// CreateManufacturingChildOrders Create sub-assembly orders
+	// (POST /api/v1/manufacturing/orders/{id}/children)
+	CreateManufacturingChildOrders(w http.ResponseWriter, r *http.Request, id int64)
 	// CloseManufacturingOrder Close a manufacturing order
 	// (POST /api/v1/manufacturing/orders/{id}/close)
 	CloseManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
@@ -2498,6 +2562,9 @@ type ServerInterface interface {
 	// GetManufacturingUtilisationReport Get the work-center utilisation report
 	// (GET /api/v1/manufacturing/reports/utilisation)
 	GetManufacturingUtilisationReport(w http.ResponseWriter, r *http.Request, params GetManufacturingUtilisationReportParams)
+	// GetManufacturingSalesOrderLine Get a sales order line to make
+	// (GET /api/v1/manufacturing/sales-order-lines/{id})
+	GetManufacturingSalesOrderLine(w http.ResponseWriter, r *http.Request, id int64)
 	// GetManufacturingSchedule Get the production schedule
 	// (GET /api/v1/manufacturing/schedule)
 	GetManufacturingSchedule(w http.ResponseWriter, r *http.Request, params GetManufacturingScheduleParams)
@@ -3188,6 +3255,32 @@ func (siw *ServerInterfaceWrapper) CancelManufacturingOrder(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// CreateManufacturingChildOrders operation middleware
+func (siw *ServerInterfaceWrapper) CreateManufacturingChildOrders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateManufacturingChildOrders(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CloseManufacturingOrder operation middleware
 func (siw *ServerInterfaceWrapper) CloseManufacturingOrder(w http.ResponseWriter, r *http.Request) {
 
@@ -3817,6 +3910,32 @@ func (siw *ServerInterfaceWrapper) GetManufacturingUtilisationReport(w http.Resp
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetManufacturingUtilisationReport(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingSalesOrderLine operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingSalesOrderLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingSalesOrderLine(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4766,6 +4885,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}", wrapper.UpdateManufacturingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/cancel", wrapper.CancelManufacturingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/close", wrapper.CloseManufacturingOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/children", wrapper.CreateManufacturingChildOrders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/components", wrapper.AddManufacturingOrderComponent)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/components/{componentId}", wrapper.UpdateManufacturingOrderComponent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/confirm", wrapper.ConfirmManufacturingOrder)
@@ -4782,6 +4902,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/reports/production-cost", wrapper.GetManufacturingProductionCostReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/reports/time-deviation", wrapper.GetManufacturingTimeDeviationReport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/reports/utilisation", wrapper.GetManufacturingUtilisationReport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/sales-order-lines/{id}", wrapper.GetManufacturingSalesOrderLine)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/schedule", wrapper.GetManufacturingSchedule)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/schedule/plan-all", wrapper.PlanAllManufacturingOrders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/shop-floor/mine", wrapper.GetManufacturingMyWork)
@@ -5988,6 +6109,107 @@ func (response CancelManufacturingOrder409ApplicationProblemPlusJSONResponse) Vi
 type CancelManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
 
 func (response CancelManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitCancelManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingChildOrdersRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *CreateManufacturingChildOrdersJSONRequestBody
+}
+
+type CreateManufacturingChildOrdersResponseObject interface {
+	VisitCreateManufacturingChildOrdersResponse(w http.ResponseWriter) error
+}
+
+type CreateManufacturingChildOrders200JSONResponse ManufacturingChildrenCreated
+
+func (response CreateManufacturingChildOrders200JSONResponse) VisitCreateManufacturingChildOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingChildOrders400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingChildOrders400ApplicationProblemPlusJSONResponse) VisitCreateManufacturingChildOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingChildOrders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateManufacturingChildOrders401JSONResponse) VisitCreateManufacturingChildOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingChildOrders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateManufacturingChildOrders403JSONResponse) VisitCreateManufacturingChildOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingChildOrders404Response struct {
+}
+
+func (response CreateManufacturingChildOrders404Response) VisitCreateManufacturingChildOrdersResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CreateManufacturingChildOrders409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingChildOrders409ApplicationProblemPlusJSONResponse) VisitCreateManufacturingChildOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingChildOrders503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingChildOrders503ApplicationProblemPlusJSONResponse) VisitCreateManufacturingChildOrdersResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7439,6 +7661,78 @@ func (response GetManufacturingUtilisationReport403JSONResponse) VisitGetManufac
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingSalesOrderLineRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetManufacturingSalesOrderLineResponseObject interface {
+	VisitGetManufacturingSalesOrderLineResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingSalesOrderLine200JSONResponse ManufacturingSalesOrderLine
+
+func (response GetManufacturingSalesOrderLine200JSONResponse) VisitGetManufacturingSalesOrderLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingSalesOrderLine401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingSalesOrderLine401JSONResponse) VisitGetManufacturingSalesOrderLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingSalesOrderLine403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingSalesOrderLine403JSONResponse) VisitGetManufacturingSalesOrderLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingSalesOrderLine404Response struct {
+}
+
+func (response GetManufacturingSalesOrderLine404Response) VisitGetManufacturingSalesOrderLineResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetManufacturingSalesOrderLine503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingSalesOrderLine503ApplicationProblemPlusJSONResponse) VisitGetManufacturingSalesOrderLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -9893,6 +10187,9 @@ type StrictServerInterface interface {
 	// CancelManufacturingOrder Cancel a manufacturing order
 	// (POST /api/v1/manufacturing/orders/{id}/cancel)
 	CancelManufacturingOrder(ctx context.Context, request CancelManufacturingOrderRequestObject) (CancelManufacturingOrderResponseObject, error)
+	// CreateManufacturingChildOrders Create sub-assembly orders
+	// (POST /api/v1/manufacturing/orders/{id}/children)
+	CreateManufacturingChildOrders(ctx context.Context, request CreateManufacturingChildOrdersRequestObject) (CreateManufacturingChildOrdersResponseObject, error)
 	// CloseManufacturingOrder Close a manufacturing order
 	// (POST /api/v1/manufacturing/orders/{id}/close)
 	CloseManufacturingOrder(ctx context.Context, request CloseManufacturingOrderRequestObject) (CloseManufacturingOrderResponseObject, error)
@@ -9944,6 +10241,9 @@ type StrictServerInterface interface {
 	// GetManufacturingUtilisationReport Get the work-center utilisation report
 	// (GET /api/v1/manufacturing/reports/utilisation)
 	GetManufacturingUtilisationReport(ctx context.Context, request GetManufacturingUtilisationReportRequestObject) (GetManufacturingUtilisationReportResponseObject, error)
+	// GetManufacturingSalesOrderLine Get a sales order line to make
+	// (GET /api/v1/manufacturing/sales-order-lines/{id})
+	GetManufacturingSalesOrderLine(ctx context.Context, request GetManufacturingSalesOrderLineRequestObject) (GetManufacturingSalesOrderLineResponseObject, error)
 	// GetManufacturingSchedule Get the production schedule
 	// (GET /api/v1/manufacturing/schedule)
 	GetManufacturingSchedule(ctx context.Context, request GetManufacturingScheduleRequestObject) (GetManufacturingScheduleResponseObject, error)
@@ -10487,6 +10787,39 @@ func (sh *strictHandler) CancelManufacturingOrder(w http.ResponseWriter, r *http
 	}
 }
 
+// CreateManufacturingChildOrders operation middleware
+func (sh *strictHandler) CreateManufacturingChildOrders(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CreateManufacturingChildOrdersRequestObject
+
+	request.Id = id
+
+	var body CreateManufacturingChildOrdersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateManufacturingChildOrders(ctx, request.(CreateManufacturingChildOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateManufacturingChildOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateManufacturingChildOrdersResponseObject); ok {
+		if err := validResponse.VisitCreateManufacturingChildOrdersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CloseManufacturingOrder operation middleware
 func (sh *strictHandler) CloseManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
 	var request CloseManufacturingOrderRequestObject
@@ -10980,6 +11313,32 @@ func (sh *strictHandler) GetManufacturingUtilisationReport(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetManufacturingUtilisationReportResponseObject); ok {
 		if err := validResponse.VisitGetManufacturingUtilisationReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingSalesOrderLine operation middleware
+func (sh *strictHandler) GetManufacturingSalesOrderLine(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetManufacturingSalesOrderLineRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingSalesOrderLine(ctx, request.(GetManufacturingSalesOrderLineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingSalesOrderLine")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingSalesOrderLineResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingSalesOrderLineResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
