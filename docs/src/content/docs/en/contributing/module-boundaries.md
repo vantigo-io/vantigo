@@ -1231,9 +1231,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     - **It refuses only through a typed `*contracts.StockRefusal`**, naming every
       failing line — `insufficient_available`, `insufficient_stock`,
       `site_not_fulfilling`, `variant_not_stocked`, `site_unknown`, `location_unknown`,
-      and a production's `site_archived`, `quantity_invalid` and `nothing_to_post` —
-      and writes nothing when it refuses; the caller rolls back or goes on without the
-      write. Anything else is a failure.
+      `document_reused`, and a production's `site_archived`, `quantity_invalid` and
+      `nothing_to_post`. `Reserve`, `ReserveForProduction` and `Release` write nothing
+      when they refuse; after a refusal from `Issue` or `Produce` the caller must roll
+      back its transaction, or a savepoint it took before the call, because the posting
+      may already have claimed its movement and created balances. Anything else is a
+      failure.
     - **It is composed whatever `MODULES` says**, as rule 8's holders are: a
       reservation made while Inventory was on is still released by a cancel, an edit or
       a manual marking after it is turned off. Whether to reserve and issue at all the

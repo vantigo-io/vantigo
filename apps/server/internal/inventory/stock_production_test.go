@@ -293,3 +293,108 @@ func TestStockLedger_ReserveForProductionAtAPlant(t *testing.T) {
 	}
 	assertLedgerConsistent(t, h)
 }
+
+// TestStockLedger_ProduceBodyAndBounds: a replay with another body is
+// document_reused, a produce line beyond the largest balance is
+// quantity_invalid, and a Discontinued variant may be consumed.
+func TestStockLedger_ProduceBodyAndBounds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := newLedgerSite(t, h, c)
+	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 10))
+	site := s.site.Id
+	record := contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 30}
+	p := contracts.StockProduction{Document: record, SiteID: site,
+		Consume: []contracts.ConsumeLine{{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "2"}},
+		Produce: []contracts.ProduceLine{{VariantID: varOld, LineID: 1, ToLocationID: s.shelf2.Id, Quantity: "3"}},
+	}
+	first, err := produce(t, h, mo, p)
+	if err != nil {
+		t.Fatalf("Produce: %v", err)
+	}
+
+	// The same lines with another quantity, and the same with another order:
+	// the first posting stands and the answer is the contract's refusal.
+	other := p
+	other.Consume = []contracts.ConsumeLine{{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "3"}}
+	if _, err := produce(t, h, mo, other); refusalCode(err) != contracts.StockDocumentReused {
+		t.Errorf("Produce with another quantity = %v, want document_reused", err)
+	}
+	if again, err := produce(t, h, mo, p); err != nil || again != first {
+		t.Errorf("the same body again = %d, %v; want %d", again, err, first)
+	}
+	issueDoc := contracts.StockSource{Module: "orders", Kind: "delivery", ID: 31}
+	issue := contracts.StockIssue{Document: issueDoc, SiteID: site, Lines: []contracts.IssueLine{{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "1"}}}
+	if err := inTx(t, h, func(tx pgx.Tx) error { _, err := ledgerOf(h).Issue(t.Context(), tx, order, issue); return err }); err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	issue.Lines[0].Quantity = "2"
+	err = inTx(t, h, func(tx pgx.Tx) error { _, err := ledgerOf(h).Issue(t.Context(), tx, order, issue); return err })
+	if refusalCode(err) != contracts.StockDocumentReused {
+		t.Errorf("Issue with another quantity = %v, want document_reused", err)
+	}
+
+	// The Discontinued output is now on hand, and consumed in a later
+	// production.
+	if _, err := produce(t, h, mo, contracts.StockProduction{Document: contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 32}, SiteID: site,
+		Consume: []contracts.ConsumeLine{{VariantID: varOld, LineID: 2, FromLocationID: s.shelf2.Id, Quantity: "1"}},
+	}); err != nil {
+		t.Fatalf("Produce consuming a Discontinued variant: %v", err)
+	}
+	if got := onHand(t, h, varOld, s.shelf2.Id); got != "2.000" {
+		t.Errorf("Discontinued on hand = %q, want 2", got)
+	}
+
+	// A produce line beyond the largest balance is a bad quantity, and
+	// the caller rolls back.
+	_, err = produce(t, h, mo, contracts.StockProduction{Document: contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 33}, SiteID: site,
+		Produce: []contracts.ProduceLine{{VariantID: varOld, LineID: 3, ToLocationID: s.shelf2.Id, Quantity: "99999999999.999"}},
+	})
+	if refusalCode(err) != contracts.StockQuantityInvalid {
+		t.Errorf("Produce beyond the largest balance = %v, want quantity_invalid", err)
+	}
+	if got := onHand(t, h, varOld, s.shelf2.Id); got != "2.000" {
+		t.Errorf("Discontinued on hand after the refusal = %q, want 2", got)
+	}
+	assertLedgerConsistent(t, h)
+}
+
+// TestStockLedger_RefusedReservesWriteNothing: Reserve and ReserveForProduction
+// write nothing when they refuse, so the caller may commit the transaction
+// anyway (the contract's rule; Issue and Produce are rolled back instead).
+func TestStockLedger_RefusedReservesWriteNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := newLedgerSite(t, h, c)
+	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 2))
+	l := ledgerOf(h)
+	site := s.site.Id
+	for name, reserve := range map[string]func(tx pgx.Tx) error{
+		"Reserve": func(tx pgx.Tx) error {
+			return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}, {VariantID: varBolt, LineID: 2, Quantity: "5"}})
+		},
+		"ReserveForProduction": func(tx pgx.Tx) error {
+			return l.ReserveForProduction(t.Context(), tx, mo, site, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}, {VariantID: varBolt, LineID: 2, Quantity: "5"}})
+		},
+	} {
+		// The refusal is swallowed and the transaction committed.
+		err := inTx(t, h, func(tx pgx.Tx) error {
+			if err := reserve(tx); refusalCode(err) != contracts.StockInsufficientAvailable {
+				t.Errorf("%s = %v, want insufficient_available", name, err)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if got := reserved(t, h, order); got != nil {
+		t.Errorf("a refused Reserve left %v after a commit", got)
+	}
+	if got := reserved(t, h, mo); got != nil {
+		t.Errorf("a refused ReserveForProduction left %v after a commit", got)
+	}
+	assertLedgerConsistent(t, h)
+}

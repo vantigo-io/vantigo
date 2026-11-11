@@ -12,6 +12,7 @@ describe("sourceHref", () => {
   it("links nothing when Manufacturing is not mounted, or for another source", () => {
     expect(sourceHref(production, ["inventory"])).toBeUndefined();
     expect(sourceHref({ ...production, lineId: undefined }, undefined)).toBeUndefined();
+    expect(sourceHref({ ...production, kind: "order" }, undefined)).toBeUndefined();
     expect(sourceHref({ module: "orders", kind: "delivery", id: "3" }, undefined)).toBeUndefined();
     expect(sourceHref(undefined, undefined)).toBeUndefined();
   });

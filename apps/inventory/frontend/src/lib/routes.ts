@@ -101,7 +101,13 @@ export const sourceHref = (
   source: InventoryMovement["source"],
   enabled: readonly string[] | undefined = appConfig().modules,
 ): string | undefined => {
-  if (source?.module !== "manufacturing" || !source.lineId || !/^\d+$/.test(source.lineId)) return undefined;
+  if (
+    source?.module !== "manufacturing" ||
+    source.kind !== "production" ||
+    !source.lineId ||
+    !/^\d+$/.test(source.lineId)
+  )
+    return undefined;
   if (enabled && !enabled.includes("manufacturing")) return undefined;
   return `/manufacturing/orders/${source.lineId}`;
 };

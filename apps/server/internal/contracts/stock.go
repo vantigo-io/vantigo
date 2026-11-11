@@ -139,9 +139,12 @@ func ValidateStockVariants(ids []int32) error {
 //     balances, in (variant, location) order, and its reservations. A caller
 //     never locks Inventory's rows another way and never calls the ledger
 //     before it has locked the variants.
-//   - It refuses only through *StockRefusal, naming every failing line, and
-//     writes nothing when it refuses; the caller rolls back or carries on
-//     without the write. Anything else is a failure.
+//   - It refuses only through *StockRefusal, naming every failing line.
+//     Reserve, ReserveForProduction and Release write nothing when they
+//     refuse. After a refusal from Issue or Produce the caller must roll back
+//     its transaction (or a savepoint it took before the call): the posting
+//     may already have claimed its movement and created balances. Anything
+//     else is a failure.
 //   - Every call names its document by a StockSource, the reference
 //     Inventory's movements and reservations keep.
 type StockLedger interface {
@@ -160,8 +163,10 @@ type StockLedger interface {
 	// off its from-location at the site, and consumes as much of each line's
 	// reservation at the site as it issued (never below zero). The movement's
 	// source is issue.Document (src when zero), and posting it is idempotent
-	// by that source: a second Issue for one document answers the first
-	// movement and consumes nothing again. Stock the location does not hold
+	// by that source: a second Issue for one document with the same body —
+	// the same lines in the same order, the same quantities as text — answers
+	// the first movement and consumes nothing again; one with another body is
+	// refused (StockDocumentReused). Stock the location does not hold
 	// is refused (StockInsufficientStock); reservations of other documents
 	// never stop an issue.
 	Issue(ctx context.Context, tx pgx.Tx, src StockSource, issue StockIssue) (movementID int64, err error)
@@ -181,8 +186,11 @@ type StockLedger interface {
 	// consume lines first. Consuming a line uses up as much of the line's
 	// reservation at the site as it consumed (never below zero), as Issue
 	// does. The movement's source is p.Document (src when zero), and posting
-	// is idempotent by that source: a second Produce for one document answers
-	// the first movement and consumes nothing again. At least one line is
+	// is idempotent by that source: a second Produce for one document with the
+	// same body — the same lines in the same order, the same quantities as
+	// text — answers the first movement and consumes nothing again; one with
+	// another body is refused (StockDocumentReused). A production posted in
+	// parts gives each posting its own Document. At least one line is
 	// given; a production of consume lines only is a scrap of components.
 	// The movement keeps src's id as its source line id, so the movement
 	// names the producing order beside the production record (M5).
@@ -313,7 +321,7 @@ const (
 	StockSiteArchived = "site_archived"
 	// StockQuantityInvalid: a line's quantity is not more than 0, has more
 	// than three decimals, or would take a balance beyond
-	// 99,999,999,999.999 (a production; an issue's last case only).
+	// 99,999,999,999.999 (a production's produce line).
 	StockQuantityInvalid = "quantity_invalid"
 	// StockNothingToPost: a production names no line.
 	StockNothingToPost = "nothing_to_post"
@@ -324,6 +332,10 @@ const (
 	// StockLocationUnknown: an issue's or a production's location is
 	// unknown, archived or in another site.
 	StockLocationUnknown = "location_unknown"
+	// StockDocumentReused: an issue or a production names a document already
+	// posted with another body (other lines, order or quantities); the first
+	// posting stands.
+	StockDocumentReused = "document_reused"
 )
 
 // StockRefusal is the one error a StockLedger write answers for what it will
