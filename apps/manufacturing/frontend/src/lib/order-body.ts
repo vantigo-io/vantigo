@@ -1,4 +1,3 @@
-import dayjs from "dayjs";
 import type {
   ManufacturingOrder,
   ManufacturingOrderInput,
@@ -13,7 +12,8 @@ import { isDecimal, isPositiveDecimal, normalizeDecimal } from "./decimal";
  * What the order form holds (M17): text as typed, ids as chosen. A null
  * BoM, site or output location is the default the form shows — the variant's
  * default BoM, the BoM's site (else the first), the site's root — and is
- * resolved before anything is sent.
+ * resolved before anything is sent. The planned window is no field: only
+ * planning sets it (M34).
  */
 export interface OrderValues {
   variant: ManufacturingVariantRef | undefined;
@@ -23,18 +23,12 @@ export interface OrderValues {
   componentLocationId: number | null;
   outputLocationId: number | null;
   dueDate: string;
-  /** `YYYY-MM-DDTHH:mm` in the viewer's time, as a datetime-local input holds it. */
-  plannedStart: string;
-  plannedFinish: string;
   /** `YYYY-MM-DD`, the day planning may start from (M35a); empty takes the server's default. */
   requestedStart: string;
   priority: ManufacturingPriority;
   responsible: ManufacturingPerson | undefined;
   note: string;
 }
-
-const localTime = (instant: string | null) => (instant ? dayjs(instant).format("YYYY-MM-DDTHH:mm") : "");
-const instant = (local: string) => (local ? new Date(local).toISOString() : null);
 
 export const orderValuesOf = (order?: ManufacturingOrder): OrderValues =>
   order
@@ -46,8 +40,6 @@ export const orderValuesOf = (order?: ManufacturingOrder): OrderValues =>
         componentLocationId: order.componentLocationId,
         outputLocationId: order.outputLocationId,
         dueDate: order.dueDate ?? "",
-        plannedStart: localTime(order.plannedStart),
-        plannedFinish: localTime(order.plannedFinish),
         requestedStart: order.requestedStart ?? "",
         priority: order.priority,
         responsible: order.responsible ?? undefined,
@@ -61,8 +53,6 @@ export const orderValuesOf = (order?: ManufacturingOrder): OrderValues =>
         componentLocationId: null,
         outputLocationId: null,
         dueDate: "",
-        plannedStart: "",
-        plannedFinish: "",
         requestedStart: "",
         priority: "normal",
         responsible: undefined,
@@ -75,8 +65,6 @@ export const orderProblems = (values: OrderValues): Record<string, string> => {
   if (!values.variant) problems.variant = "required";
   if (!values.quantity.trim()) problems.quantity = "required";
   else if (!isDecimal(values.quantity) || !isPositiveDecimal(values.quantity)) problems.quantity = "quantity";
-  if (values.plannedStart && values.plannedFinish && values.plannedFinish < values.plannedStart)
-    problems.plannedFinish = "plannedOrder";
   return problems;
 };
 
@@ -90,8 +78,6 @@ export interface OrderDefaults {
 const common = (values: OrderValues) => ({
   componentLocationId: values.componentLocationId,
   dueDate: values.dueDate || null,
-  plannedStart: instant(values.plannedStart),
-  plannedFinish: instant(values.plannedFinish),
   priority: values.priority,
   responsibleUserId: values.responsible?.id ?? null,
   note: values.note.trim(),

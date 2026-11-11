@@ -19,7 +19,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCalendarEvent, IconChevronLeft, IconChevronRight, IconFlame } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, PageSection, useTimeZones } from "@vantigo/frontend-shell";
 import { type PointerEvent as ReactPointerEvent, useRef, useState } from "react";
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import { isRevisionConflict } from "../api/request";
@@ -47,9 +47,10 @@ import {
   type DayWindow,
   dayWindows,
   draggedStart,
-  localDateAndTime,
   movedStart,
+  moveToPrefill,
   rescheduleBody,
+  workOrderStart,
 } from "../lib/schedule";
 import { readRememberedScheduleSite, rememberScheduleSite } from "../lib/schedule-storage";
 
@@ -166,7 +167,7 @@ const Bar = ({ bar, windows, canMove, onOpen, onDrop }: BarProps) => {
     if (!current?.moved || current.width <= 0) return;
     dragged.current = true;
     setDelta(null);
-    onDrop(bar, draggedStart(bar, (event.clientX - current.x) / current.width, windows));
+    onDrop(bar, workOrderStart(bar, draggedStart(bar, (event.clientX - current.x) / current.width, windows)));
   };
   const click = () => {
     // A drag ends in a click as well; only a press that did not move opens the dialog.
@@ -317,7 +318,8 @@ const Board = ({
 }) => {
   const { t, formatters } = useManufacturingFormat();
   const reschedule = useReschedule();
-  const windows = dayWindows(schedule);
+  const { businessTimeZone } = useTimeZones();
+  const windows = dayWindows(schedule, businessTimeZone);
   if (schedule.workCenters.length === 0)
     return <EmptyState title={t("scheduleNoWorkCenters")} description={t("scheduleNoWorkCentersHint")} />;
   return (
@@ -361,14 +363,15 @@ const Board = ({
 const MoveDialog = ({ bar, onClose }: { bar: ManufacturingScheduleBar | undefined; onClose: () => void }) => {
   const { t, stamp } = useManufacturingFormat();
   const reschedule = useReschedule();
-  const [values, setValues] = useState(() => (bar ? localDateAndTime(bar.startsAt) : { date: "", time: "" }));
+  const { timeZone } = useTimeZones();
+  const [values, setValues] = useState(() => (bar ? moveToPrefill(bar, timeZone) : { date: "", time: "" }));
   const [busy, setBusy] = useState(false);
   if (!bar) return null;
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(values.date) && /^\d{2}:\d{2}$/.test(values.time);
   const submit = async () => {
     if (!valid) return;
     setBusy(true);
-    const moved = await reschedule(bar, movedStart(values.date, values.time));
+    const moved = await reschedule(bar, movedStart(values.date, values.time, timeZone));
     setBusy(false);
     if (moved) onClose();
   };
