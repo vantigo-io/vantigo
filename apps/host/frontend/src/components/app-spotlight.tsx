@@ -11,6 +11,7 @@ import {
   IconCalendarEvent,
   IconCalendarPlus,
   IconCalendarStats,
+  IconCalendarTime,
   IconCertificate,
   IconClipboardCheck,
   IconClock,
@@ -23,6 +24,7 @@ import {
   IconPackage,
   IconPlus,
   IconReceipt2,
+  IconReportAnalytics,
   IconRoute,
   IconSearch,
   IconUser,
@@ -39,7 +41,13 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
 import { searchQueryOptions as knowledgeSearchQueryOptions } from "@vantigo/knowledge-ui/api/articles";
 import { ARTICLE_ROUTE_PATH, KNOWLEDGE_HOME_ROUTE_PATH } from "@vantigo/knowledge-ui/lib/routes";
-import { NEW_BOM_ROUTE_PATH, NEW_ORDER_ROUTE_PATH, SHOP_FLOOR_ROUTE_PATH } from "@vantigo/manufacturing-ui/lib/routes";
+import {
+  NEW_BOM_ROUTE_PATH,
+  NEW_ORDER_ROUTE_PATH,
+  REPORTS_ROUTE_PATH,
+  SCHEDULE_ROUTE_PATH,
+  SHOP_FLOOR_ROUTE_PATH,
+} from "@vantigo/manufacturing-ui/lib/routes";
 import { NEW_QUOTE_ROUTE_PATH } from "@vantigo/orders-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
@@ -276,6 +284,25 @@ export const AppSpotlight = ({
     hasPermissions(permissions, ["manufacturing:access"]) &&
     hasPermissions(permissions, ["manufacturing:shop-floor", "manufacturing:orders-manage"])
       ? [{ label: t("dashboard.openShopFloor"), icon: IconHammer, path: SHOP_FLOOR_ROUTE_PATH, search: undefined }]
+      : []),
+    // Open the production schedule (manufacturing design M36) and the
+    // reports (M42) are read with the app's key alone; what may be planned
+    // there, and whether the cost report shows, is the meta's (M38).
+    ...(enabledModules?.includes("manufacturing") && hasPermissions(permissions, ["manufacturing:access"])
+      ? [
+          {
+            label: t("dashboard.openProductionSchedule"),
+            icon: IconCalendarTime,
+            path: SCHEDULE_ROUTE_PATH,
+            search: undefined,
+          },
+          {
+            label: t("dashboard.manufacturingReports"),
+            icon: IconReportAnalytics,
+            path: REPORTS_ROUTE_PATH,
+            search: undefined,
+          },
+        ]
       : []),
     // New article opens Knowledge with the new-article form (the package's
     // `new` seam, knowledge design K4): anyone with knowledge:articles may

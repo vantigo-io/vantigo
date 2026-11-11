@@ -12,6 +12,8 @@ import {
   NEW_WORK_CENTER_ROUTE_PATH,
   ORDER_ROUTE_PATH,
   ORDERS_ROUTE_PATH,
+  REPORTS_ROUTE_PATH,
+  SCHEDULE_ROUTE_PATH,
   SHOP_FLOOR_ROUTE_PATH,
   SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
   WORK_CENTER_ROUTE_PATH,
@@ -70,6 +72,8 @@ describe("the Manufacturing routes", () => {
       MY_WORK_ROUTE_PATH,
       SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
       WORK_ORDER_ROUTE_PATH,
+      SCHEDULE_ROUTE_PATH,
+      REPORTS_ROUTE_PATH,
     ]) {
       const concrete = path
         .replace("$bomId", "7")
