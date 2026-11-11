@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the seven permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the seven permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -155,6 +155,11 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     **`Primary`** — whether it is the variant's [primary location](#placement) at the
     site (phase 2 I55): where Orders' pick list and delivery editor take a line from,
     the primary first.
+  - `SiteLocations(ctx, siteID)` — every location of the site, archived ones too, by
+    full code: a `StockSiteLocation` with its id, parent id (nil for the root), kind, full
+    code, whether it is active and whether it is the root (manufacturing design M2) —
+    what Manufacturing offers as a production's from- and to-locations. An unknown site
+    has none. `Sites` answers each site's root as `RootLocationID`.
 
   `OnHand` and `Available` read on the pool in one snapshot, answer every variant asked
   in the order asked (one with nothing at `"0"` and no sites), as exact decimal text,
@@ -164,8 +169,9 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
 - **`Module.StockLedger`** — **`contracts.StockLedger`**, resolved from **every module
   given, enabled or not**, as the holders are, so `Deps.StockLedger` is there even when
   `inventory` is off and a reservation made while it was on is still released. Its
-  four calls run on the caller's transaction and are described under
-  [reservations and issues](#reservations-and-issues):
+  six calls run on the caller's transaction and are described under
+  [reservations and issues](#reservations-and-issues) and
+  [production](#production):
   - `Reserve(ctx, tx, src, siteID, lines []StockLine{VariantID, LineID, Quantity})`;
   - `Release(ctx, tx, src, releases []StockRelease{LineID, Quantity})` — none releases
     everything `src` holds, a `Quantity` of `""` a line's whole reservation;
@@ -173,15 +179,23 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     LineID, FromLocationID, Quantity}, PostedByUserID, PostedByDisplay}) (movementID,
     error)`;
   - `ReservationsFor(ctx, tx, src) ([]Reservation{VariantID, LineID, SiteID, Quantity},
-    error)`.
+    error)`;
+  - `ReserveForProduction(ctx, tx, src, siteID, lines []StockLine)` — `Reserve` without
+    the *fulfils orders* check;
+  - `Produce(ctx, tx, src, StockProduction{Document, SiteID, Consume []ConsumeLine{VariantID,
+    LineID, FromLocationID, Quantity}, Produce []ProduceLine{VariantID, LineID,
+    ToLocationID, Quantity}, PostedByUserID, PostedByDisplay}) (movementID, error)`.
 
   A document is a `StockSource{Module, Kind, ID}` — `{"orders", "order", 42}`. A
   quantity is decimal text with at most three decimals, more than 0; a bad one is the
-  caller's bug, answered as a failure. Every refusal is a **`*contracts.StockRefusal`**
+  caller's bug, answered as a failure — but by `Produce`, which refuses it
+  (`quantity_invalid`). Every refusal is a **`*contracts.StockRefusal`**
   — `Code`, `VariantID`, `LineID` and `Detail` of the first failing line, and `Lines`,
   every one — and nothing is written when one is answered. Its codes:
   `insufficient_available`, `insufficient_stock`, `site_not_fulfilling`,
-  `variant_not_stocked`, `site_unknown` and `location_unknown`.
+  `variant_not_stocked`, `site_unknown`, `location_unknown`, and for a production
+  `site_archived`, `quantity_invalid` and `nothing_to_post`. An issue whose line would
+  take a balance beyond 99,999,999,999.999 is `quantity_invalid` too.
 
 ## The schema
 
@@ -203,12 +217,14 @@ is an identity from 1001.
   (`ux_locations_full_code`). A GIN index on `ancestors` finds a subtree:
   `id = X OR ancestors @> {X}`.
 - **`movements`** — `client_request_id` (unique) and `request_hash`, `site_id`, `kind`
-  (`adjustment`, `move`, `receipt`, `count`, `issue`, and since phase 2 `transfer_out` and
-  `transfer_in`; an open set kept as text), `reason` (an
+  (`adjustment`, `move`, `receipt`, `count`, `issue`, since phase 2 `transfer_out` and
+  `transfer_in`, and `production`; an open set kept as text), `reason` (an
   adjustment's), `note` (1000), `supplier_name` (200) and `supplier_reference` (100) (a
   receipt's), the **source reference** `source_module`, `source_kind`, `source_id`,
   `source_line_id` — set by an [issue](#reservations-and-issues) to the document it was
-  posted for, and by a [transfer's movement](#transfers) to the transfer and its action;
+  posted for, by a [production](#production) to the production record with the
+  reserving order's id as the line, and by a [transfer's movement](#transfers) to the
+  transfer and its action;
   null on the module's other movements, and indexed —
   `posted_by_user_id`, `posted_by_display` and `posted_at`.
 - **`movement_lines`** — `movement_id`, `line_no`, `variant_id`, the **snapshots**
@@ -502,9 +518,9 @@ transfer's number; a send, receive or cancel names its movement.
 
 Every change of stock is a **movement** (I8): a kind — `adjustment`, `move`,
 `receipt`, `count`, `issue`, posted only through
-[`StockLedger.Issue`](#reservations-and-issues), or `transfer_out` and `transfer_in`,
-posted only by a [transfer](#transfers); the set is open, and `production` comes with
-Manufacturing — a site, an adjustment's reason, an
+[`StockLedger.Issue`](#reservations-and-issues), `transfer_out` and `transfer_in`,
+posted only by a [transfer](#transfers), or `production`, posted only through
+[`StockLedger.Produce`](#production); the set is open — a site, an adjustment's reason, an
 optional note, a receipt's optional supplier and supplier's reference, a count
 movement's `countId`, the poster and the time. **A movement is never edited or deleted**; a mistake is corrected
 by a new adjustment.
@@ -533,6 +549,10 @@ snapshotted, so history reads after the variant is gone. A line may be given in
 - **Issue** — posted only by another module through
   [`StockLedger.Issue`](#reservations-and-issues), never through `/movements`: lines
   with only *from*, and the source reference of the document it was posted for.
+- **Production** (`production`) — posted only by another module through
+  [`StockLedger.Produce`](#production), never through `/movements`: consume lines with
+  only *from*, then produce lines with only *to*, and the source reference of the
+  production record, with the manufacturing order's id as the line.
 - **Transfer out** (`transfer_out`) — posted only by a transfer's
   [send](#send), at the from site: lines with only *from*, each a line's source location.
 - **Transfer in** (`transfer_in`) — posted only by a transfer's [receive](#receive), at
@@ -868,6 +888,42 @@ it.
 corrections of fact: they may take on hand below what is reserved, and available then
 shows negative — on the reads, and in red with a warning on the product page's Stock
 card and the variant page.
+
+## Production
+
+Manufacturing reserves a manufacturing order's components and posts what a production
+consumed and produced (manufacturing design M1–M3) through the same ledger, on its own
+transaction. The reserving document is the order — `manufacturing/order/12` — and the
+production is its own document, `manufacturing/production/30`.
+
+- **`ReserveForProduction`** is `Reserve` without the *fulfils orders* check: a plant
+  that sells nothing still reserves its components. Every other check stays — the
+  variant is goods and the site's available covers the line — and the site need only
+  exist (`site_unknown`) and be active: an archived one is **`site_archived`**.
+  `Release`, `ReservationsFor` and the product page's *Reserved* figure treat these
+  reservations as any other.
+- **`Produce`** posts one movement of kind `production` at the site through the
+  [posting engine](#locks): each consume line taken off its from-location, then each
+  produce line put on its to-location, every location in the movement's one site
+  (`location_unknown` for one unknown, archived or elsewhere). Its source reference is
+  the production record (`StockProduction.Document`, the reserving document when it is
+  zero), with **the reserving document's id as its source line id** — the order the
+  record produces for, which the movement page links to (M5). The site is judged as
+  `ReserveForProduction` judges it. It refuses a production of no lines
+  (`nothing_to_post`), a line whose quantity is not more than 0 with at most three
+  decimals (`quantity_invalid`, every such line named), a variant unknown or not goods
+  on either side (`variant_not_stocked`) — a **Discontinued** variant is still consumed
+  and produced — and stock a location does not hold (`insufficient_stock`). A
+  production of consume lines only is allowed: a scrap of components. Reservations of
+  other documents never stop it. Then it consumes, of each consume line's reservation
+  at the site of the variant consumed, as much as the line consumed, never below zero,
+  as `Issue` does. **A production is idempotent by its record**: its key is a UUID
+  derived from the record in a space of its own, so a second `Produce` for the same
+  record answers the first movement and consumes nothing again; one with other lines or
+  another reserving document is a failure.
+
+The lock order is the issue's: `LockVariants`, the caller's rows, then the engine's
+balances in (variant, location) order, and last the reserving document's reservations.
 
 ## Transfers
 
