@@ -114,7 +114,8 @@ days again.
   A work center at such a site can still be edited and keeps its site; moving it is to an
   active site only.
   Archiving is refused while a work order that is neither done nor cancelled is at the
-  work center: finish the work, or close or cancel its orders, first.
+  work center, or while it is blocked: finish the work, or close or cancel its orders, and
+  unblock it, first.
 - **Delete** removes it for good, and is allowed only while no operation of any bill of
   materials, no work order and no time log names it. Otherwise you are told it is in use;
   archive it instead.
@@ -465,7 +466,8 @@ it right. It needs **Manage manufacturing orders**; without it the tab is read-o
 
 1. On the order's **Work orders** tab, under **Time logs**, choose **Correct** on the log.
 2. In **Correct time log**, change **Started**, **Ended** or **Quantity made**, and say
-   **Why** — it is required, and kept in the order's history.
+   **Why** — it is required, and kept on the log as your words; the order's history
+   records the correction, who made it and when.
 3. Choose **Correct**. A log still running is ended at the end you give.
 
 To record time nobody logged, choose **Add missing log**: pick the **Work order** (when the
@@ -567,9 +569,13 @@ On the order's last operation, **Register production** stands beside **Finish**.
 the form of the order page — the **Quantity** made, any **Output scrap**, and each
 component's prefilled **Consumed** and **Scrap** (see
 [Register a production](#register-a-production)), with the same warning when a figure is
-more than 10 % off. Saving registers the production **and** finishes the work order,
-together: when the production is refused, for instance because the site does not hold
-enough of a component, nothing is registered, the work order is not finished, and your
+more than 10 % off. Choosing **Post** registers the production and leaves the work order
+running, so you can register more as you go.
+
+When this is the last of it, also tick **Also finish this operation**: the production is
+registered **and** the work order finished, together — which stops the time of everyone
+working on it. When the production is refused, for instance because the site does not
+hold enough of a component, nothing is registered, the work order is not finished, and the
 time keeps running. Sending it twice posts it only once.
 
 Closing the order is still done on the order page, by someone with Manage manufacturing
@@ -589,13 +595,14 @@ When the machine breaks down, or work stops for another reason:
 
 1. On the work center page, choose **Block**.
 2. Choose the **Reason** — **Breakdown**, **Material missing**, **Setup**, **Waiting for
-   operator**, **Quality** or **Other** — and, if you like, write a note.
+   operator**, **Quality** or **Other** — and, if you like, write a note. The note is
+   yours: it is kept with your name, and goes when your user is erased.
 3. Choose **Block**.
 
 From that moment the time of everyone working at the work center is recorded as
 downtime with that reason, the work center's own stopped time is counted, and nobody can
 start a work order there: the work center and its work orders show **Blocked** with the
-reason and since when, and Start is not offered. **Overview** counts it under **Blocked
+reason, since when and who blocked it, and Start is not offered. **Overview** counts it under **Blocked
 work centers**. Blocking a work center that is already blocked changes nothing.
 
 While it is blocked, **Pause** or **Finish** ends your downtime. When it runs again,

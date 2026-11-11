@@ -54,8 +54,9 @@ people use it is in [Manufacturing](/en/user/manufacturing/), and every rule in 
 3. The **Manufacturing** tile appears for everyone with `manufacturing:access`.
 
 The module has no settings of its own. It starts one background worker,
-`manufacturing-erasure`, which once a day blanks the free-text note of the time logs of
-people identity has erased ([personal data](/en/reference/manufacturing/#personal-data));
+`manufacturing-erasure`, which once a day blanks the free-text notes on time logs written
+by people identity has erased — a supervisor's correction or addition, or a block's
+note ([personal data](/en/reference/manufacturing/#personal-data));
 it needs nothing configured.
 
 ## Give people access
