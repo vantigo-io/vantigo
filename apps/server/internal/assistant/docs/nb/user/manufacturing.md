@@ -144,7 +144,8 @@ den.
    - **Gjør til standard** — bare på en ny stykkliste: gjør den til produktets standard med
      en gang (se
      [Standardstykklisten og de alternative stykklistene](#standardstykklisten-og-de-alternative-stykklistene)).
-   - **Produser mot ordre** — produktet lages for hver salgsordre i stedet for til lager.
+   - **Produser mot ordre** — produktet lages for hver salgsordre i stedet for til lager
+     ([Produser mot ordre](#produser-mot-ordre)).
    - **Merknad** — opptil 2 000 tegn.
 4. Under **Operasjoner** velger du **Legg til operasjon** for hvert steg i arbeidet, i
    rekkefølgen de gjøres. Hver har:
@@ -763,6 +764,74 @@ rapport har **Last ned CSV**, en fil som åpnes i et regneark med norsk tallform
   perioden, og avviket i prosent. Bruk den til å se hvilke standardtider som bør
   justeres.
 
+## Produser mot ordre
+
+Et produkt som produseres mot ordre, lages for hver salgsordre i stedet for til lager.
+Salg og produksjon følger da hverandre: når en salgsordre i [Ordre](/nb/user/orders/)
+bekreftes, lager Produksjon produksjonsordren for den.
+
+### Produser et produkt mot ordre
+
+Åpne produktets **standard** stykkliste, slå på **Produser mot ordre** og velg **Lagre**.
+Bare standardstykklisten teller: en alternativ stykkliste merket Produser mot ordre brukes
+ikke for salgsordrer.
+
+### Ordrer laget for en salgsordre
+
+Når en salgsordre bekreftes, lager Produksjon innen et minutt én **bekreftet**
+produksjonsordre for hver av varelinjene der produktet produseres mot ordre:
+
+- for linjens åpne antall, med forfall på salgsordrens leveringsdato;
+- på lagerstedet til stykklistens arbeidsstasjoner. En stykkliste uten operasjoner lages
+  på salgsordrens lagersted; navngir ikke salgsordren noe heller, lages ingen ordre for
+  den linjen;
+- med opphav **Salgsordre** og salgsordrens nummer, for eksempel *SO-1042*.
+
+Komponentene reserveres som når du bekrefter en ordre selv; en komponent som mangler,
+stopper den aldri, og ordresiden navngir det som mangler. En linje som allerede har en
+produksjonsordre, får ingen til. Et antall som økes på salgsordren senere, følges ikke:
+salgsordrens linje viser hva som lages for den, og du lager resten selv.
+
+### Lag en ordre for en salgsordrelinje selv
+
+På salgsordrens side i Ordre tilbyr en varelinje der produktet har en stykkliste
+**Opprett produksjonsordre**. Den åpner **Ny produksjonsordre** her, fylt ut fra linjen —
+produktet, det åpne antallet og leveringsdatoen som forfallsdato — og sier *Lages for
+SO-1042*. Endre det du trenger, og velg **Opprett produksjonsordre**; bekreft den deretter
+som enhver annen. En linje har høyst én produksjonsordre om gangen, restordrene unntatt:
+når én er laget, viser linjen den i stedet. Å kansellere ordren frigjør linjen.
+
+### Når salgsordren kanselleres
+
+En kansellert salgsordre kansellerer **ikke** produksjonsordrene som ble laget for den:
+varene kan allerede være halvferdige. Hver merkes **Salgsordre kansellert**, i listen og
+på siden sin, og historikken sier det. Avgjør om den skal fullføres, lukkes eller
+kanselleres.
+
+### Når ordren er ferdig
+
+Når du lukker en ordre laget for en salgsordrelinje, sier salgsordrens linje at varene er
+produsert og klare til reservering, og **Reserver nå** der reserverer dem — når de ble
+laget på salgsordrens lagersted. Laget på et annet lagersted må varene flyttes dit først;
+linjen sier det.
+
+### Opprett underordrer
+
+En komponent som selv produseres — den har en standard stykkliste — kan lages for en
+ordre. På en bekreftet eller pågående ordre der produserte komponenter mangler noe, velger
+du **Opprett underordrer**. Hver slik komponent listes med det den mangler, hver avkrysset;
+fjern krysset for dem du ikke skal lage nå, og velg **Opprett underordrer**. Hver blir en
+bekreftet ordre:
+
+- for det komponenten mangler, etter sin standard stykkliste;
+- med opphav **Overordnet ordre**, lenket til denne ordren;
+- med forfall når denne ordren er planlagt å starte, eller på den ønskede starten når den
+  ikke er planlagt.
+
+Ordresiden lister **Underordrer**, og hver av dem lenker til sin **Overordnet ordre**.
+Ingenting lages automatisk. Det en underordre lager, reserveres ikke for den overordnede
+av seg selv: velg **Reserver nå** på den overordnede når det er på lager.
+
 ## Å slette et produkt en stykkliste bruker
 
 Produkter nekter å slette en variant, eller å gjøre produktet til en tjeneste, så lenge en
@@ -799,10 +868,11 @@ delegeres.
 | **Korriger**, **Legg til manglende registrering** | ✓ | ✓ | – |
 | **Produksjonsplan**, **Rapporter** (uten produksjonskostnad) | ✓ | – | – |
 | **Planlegg**, **Planlegg på nytt**, **Fjern plan**, **Planlegg alle**, å flytte en arbeidsordre, **Ønsket start** | ✓ | ✓ | – |
+| **Opprett underordrer**, og **Opprett produksjonsordre** på en salgsordres linje | ✓ | ✓ | – |
 
 Å registrere en produksjon, og hver handling i verkstedet, krever Bruke Produksjon og en
 av de to andre. Assistenten utfører ingen handlinger i verkstedet: en operatør stempler
 inn selv.
 Beholdningstallene i oversikten og på en ordre er Produksjons egne og krever ingen
-rettighet i Lager. Hele tabellen står under [Permissions](/en/reference/manufacturing/#permissions) i
+rettighet i Lager. En ordre laget for en salgsordre navngir salgsordrens kunde bare for dem som også har Bruke Ordre. Hele tabellen står under [Permissions](/en/reference/manufacturing/#permissions) i
 referansen.
