@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -167,4 +170,99 @@ func (s *server) siteLocations(ctx context.Context, siteID int64) ([]contracts.S
 		return nil, fmt.Errorf("manufacturing: read site %d's locations: %w", siteID, err)
 	}
 	return locations, nil
+}
+
+// stockLocations is, per variant, the active locations of the site holding
+// it, the primary first then by full code, before any transaction: how a
+// production splits a line's consumption (M22a).
+func (s *server) stockLocations(ctx context.Context, variantIDs []int32, siteID int64) (map[int32][]contracts.StockLocation, error) {
+	out := map[int32][]contracts.StockLocation{}
+	ids := slices.Clone(variantIDs)
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	if err := noteContractCall(ctx, "Stock.Locations"); err != nil {
+		return nil, err
+	}
+	if s.deps.Stock == nil {
+		return nil, errDependencyUnavailable
+	}
+	for batch := range slices.Chunk(ids, contracts.MaxStockVariants) {
+		locations, err := s.deps.Stock.Locations(ctx, batch, siteID)
+		if err != nil {
+			return nil, fmt.Errorf("manufacturing: read where the components lie: %w", err)
+		}
+		for _, l := range locations {
+			out[l.VariantID] = append(out[l.VariantID], l)
+		}
+	}
+	for id := range out {
+		slices.SortStableFunc(out[id], func(a, b contracts.StockLocation) int {
+			if a.Primary != b.Primary {
+				if a.Primary {
+					return -1
+				}
+				return 1
+			}
+			return strings.Compare(a.FullCode, b.FullCode)
+		})
+	}
+	return out, nil
+}
+
+// users is the users named by ids, before any transaction, by id.
+func (s *server) users(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]contracts.UserEntry, error) {
+	out := map[uuid.UUID]contracts.UserEntry{}
+	ids = slices.Compact(slices.SortedFunc(slices.Values(ids), func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) }))
+	if len(ids) == 0 || s.deps.Users == nil {
+		return out, nil
+	}
+	if err := noteContractCall(ctx, "Users.Users"); err != nil {
+		return nil, err
+	}
+	entries, err := s.deps.Users.Users(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("manufacturing: read the users: %w", err)
+	}
+	for _, e := range entries {
+		out[e.ID] = e
+	}
+	return out, nil
+}
+
+// searchUsers is the user directory's search, before any transaction.
+func (s *server) searchUsers(ctx context.Context, q string, limit int) ([]contracts.UserEntry, error) {
+	if s.deps.Users == nil {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "Users.SearchUsers"); err != nil {
+		return nil, err
+	}
+	found, err := s.deps.Users.SearchUsers(ctx, q, limit)
+	if err != nil {
+		return nil, fmt.Errorf("manufacturing: search the users: %w", err)
+	}
+	return found, nil
+}
+
+// today is the business calendar's day of now, at midnight UTC, and the
+// instant the next business day starts, before any transaction.
+func (s *server) today(ctx context.Context) (time.Time, time.Time, error) {
+	now := s.deps.Clock()
+	if s.deps.Calendar == nil {
+		day := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+		return day, day.AddDate(0, 0, 1), nil
+	}
+	if err := noteContractCall(ctx, "Calendar.Today"); err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	zone, err := s.deps.Calendar.Zone(ctx)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("manufacturing: read the business zone: %w", err)
+	}
+	local := now.In(zone)
+	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+	return day, time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, zone), nil
 }

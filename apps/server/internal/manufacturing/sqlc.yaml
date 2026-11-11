@@ -7,6 +7,7 @@ sql:
   - engine: postgresql
     schema:
       - ../db/migrations/00156_manufacturing_baseline.sql
+      - ../db/migrations/00157_manufacturing_orders.sql
     queries: queries
     gen:
       go:

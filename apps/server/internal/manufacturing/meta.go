@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/store"
@@ -37,14 +39,25 @@ func (s *server) GetManufacturingMeta(ctx context.Context, _ gen.GetManufacturin
 	}, nil
 }
 
-// GetManufacturingStats is the overview's counts.
+// GetManufacturingStats is the overview's counts: work centers, BoMs and
+// the order cards (M7), today being the business calendar's.
 func (s *server) GetManufacturingStats(ctx context.Context, _ gen.GetManufacturingStatsRequestObject) (gen.GetManufacturingStatsResponseObject, error) {
-	stats, err := store.New(s.deps.Pool).Stats(ctx)
+	today, tomorrow, err := s.today(ctx)
+	if err != nil {
+		return nil, err
+	}
+	q := store.New(s.deps.Pool)
+	stats, err := q.Stats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	orders, err := q.OrderStats(ctx, store.OrderStatsParams{Tomorrow: tomorrow, Today: pgtype.Date{Time: today, Valid: true}})
 	if err != nil {
 		return nil, err
 	}
 	return gen.GetManufacturingStats200JSONResponse{
 		ActiveWorkCenters: stats.ActiveWorkCenters, BlockedWorkCenters: stats.BlockedWorkCenters, ActiveBoms: stats.ActiveBoms,
+		OrdersToStartToday: orders.ToStartToday, OrdersInProgress: orders.InProgress, OrdersLate: orders.Late,
 	}, nil
 }
 

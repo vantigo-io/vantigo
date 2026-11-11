@@ -27,13 +27,13 @@ const moduleName = "manufacturing"
 // The five permission keys (§8). Every key is delegable but costs-view, the
 // one sensitive key: its holder sees the cost rates and the standard costs
 // (M38). Delivery A's operations ask for access, boms-manage and costs-view;
-// orders-manage and shop-floor are declared now so a role can be built once,
-// and are first asked for by the delivery named beside each.
+// delivery B's for orders-manage, and registering a production for
+// shop-floor or orders-manage (M33); work orders ask for shop-floor from C.
 const (
 	permAccess       = "manufacturing:access"
 	permBomsManage   = "manufacturing:boms-manage"
-	permOrdersManage = "manufacturing:orders-manage" // delivery B
-	permShopFloor    = "manufacturing:shop-floor"    // delivery C
+	permOrdersManage = "manufacturing:orders-manage"
+	permShopFloor    = "manufacturing:shop-floor"
 	permCostsView    = "manufacturing:costs-view"
 )
 
@@ -55,7 +55,7 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: permShopFloor, Display: "Work on the shop floor",
-		Description: "Start, pause and finish work orders and log time at a work center.",
+		Description: "Register production, and start, pause and finish work orders and log time at a work center.",
 		Category:    "Manufacturing", Sensitive: false, Delegable: true,
 	},
 	{
@@ -77,6 +77,7 @@ func Module() module.Module {
 		// Composed whatever MODULES says, from what a disabled module's Deps
 		// has too (M16).
 		VariantReferences: newVariantHolder,
+		LiveTopics:        liveTopics,
 	}
 }
 

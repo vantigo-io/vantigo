@@ -19,6 +19,177 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// Defines values for ManufacturingAvailability.
+const (
+	PartlyAvailable ManufacturingAvailability = "partly_available"
+	Ready           ManufacturingAvailability = "ready"
+	Waiting         ManufacturingAvailability = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingAvailability enum.
+func (e ManufacturingAvailability) Valid() bool {
+	switch e {
+	case PartlyAvailable:
+		return true
+	case Ready:
+		return true
+	case Waiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManufacturingOrderEventKind.
+const (
+	ManufacturingOrderEventKindBackorderCreated ManufacturingOrderEventKind = "backorder_created"
+	ManufacturingOrderEventKindCancelled        ManufacturingOrderEventKind = "cancelled"
+	ManufacturingOrderEventKindClosed           ManufacturingOrderEventKind = "closed"
+	ManufacturingOrderEventKindConfirmed        ManufacturingOrderEventKind = "confirmed"
+	ManufacturingOrderEventKindCreated          ManufacturingOrderEventKind = "created"
+	ManufacturingOrderEventKindLineAdded        ManufacturingOrderEventKind = "line_added"
+	ManufacturingOrderEventKindLineChanged      ManufacturingOrderEventKind = "line_changed"
+	ManufacturingOrderEventKindProductionPosted ManufacturingOrderEventKind = "production_posted"
+	ManufacturingOrderEventKindReserved         ManufacturingOrderEventKind = "reserved"
+	ManufacturingOrderEventKindUpdated          ManufacturingOrderEventKind = "updated"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingOrderEventKind enum.
+func (e ManufacturingOrderEventKind) Valid() bool {
+	switch e {
+	case ManufacturingOrderEventKindBackorderCreated:
+		return true
+	case ManufacturingOrderEventKindCancelled:
+		return true
+	case ManufacturingOrderEventKindClosed:
+		return true
+	case ManufacturingOrderEventKindConfirmed:
+		return true
+	case ManufacturingOrderEventKindCreated:
+		return true
+	case ManufacturingOrderEventKindLineAdded:
+		return true
+	case ManufacturingOrderEventKindLineChanged:
+		return true
+	case ManufacturingOrderEventKindProductionPosted:
+		return true
+	case ManufacturingOrderEventKindReserved:
+		return true
+	case ManufacturingOrderEventKindUpdated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManufacturingOrderSort.
+const (
+	DueDate  ManufacturingOrderSort = "dueDate"
+	Number   ManufacturingOrderSort = "number"
+	Priority ManufacturingOrderSort = "priority"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingOrderSort enum.
+func (e ManufacturingOrderSort) Valid() bool {
+	switch e {
+	case DueDate:
+		return true
+	case Number:
+		return true
+	case Priority:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManufacturingOrderStatus.
+const (
+	ManufacturingOrderStatusCancelled  ManufacturingOrderStatus = "cancelled"
+	ManufacturingOrderStatusConfirmed  ManufacturingOrderStatus = "confirmed"
+	ManufacturingOrderStatusDone       ManufacturingOrderStatus = "done"
+	ManufacturingOrderStatusDraft      ManufacturingOrderStatus = "draft"
+	ManufacturingOrderStatusInProgress ManufacturingOrderStatus = "in_progress"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingOrderStatus enum.
+func (e ManufacturingOrderStatus) Valid() bool {
+	switch e {
+	case ManufacturingOrderStatusCancelled:
+		return true
+	case ManufacturingOrderStatusConfirmed:
+		return true
+	case ManufacturingOrderStatusDone:
+		return true
+	case ManufacturingOrderStatusDraft:
+		return true
+	case ManufacturingOrderStatusInProgress:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManufacturingOrigin.
+const (
+	Manual     ManufacturingOrigin = "manual"
+	Parent     ManufacturingOrigin = "parent"
+	SalesOrder ManufacturingOrigin = "sales_order"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingOrigin enum.
+func (e ManufacturingOrigin) Valid() bool {
+	switch e {
+	case Manual:
+		return true
+	case Parent:
+		return true
+	case SalesOrder:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManufacturingPriority.
+const (
+	ManufacturingPriorityNormal ManufacturingPriority = "normal"
+	ManufacturingPriorityUrgent ManufacturingPriority = "urgent"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingPriority enum.
+func (e ManufacturingPriority) Valid() bool {
+	switch e {
+	case ManufacturingPriorityNormal:
+		return true
+	case ManufacturingPriorityUrgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManufacturingReservationStatus.
+const (
+	ManufacturingReservationStatusNotReserved    ManufacturingReservationStatus = "not_reserved"
+	ManufacturingReservationStatusPartlyReserved ManufacturingReservationStatus = "partly_reserved"
+	ManufacturingReservationStatusReserved       ManufacturingReservationStatus = "reserved"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingReservationStatus enum.
+func (e ManufacturingReservationStatus) Valid() bool {
+	switch e {
+	case ManufacturingReservationStatusNotReserved:
+		return true
+	case ManufacturingReservationStatusPartlyReserved:
+		return true
+	case ManufacturingReservationStatusReserved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ManufacturingStatus.
 const (
 	ManufacturingStatusActive   ManufacturingStatus = "active"
@@ -60,21 +231,24 @@ func (e ManufacturingStatusFilter) Valid() bool {
 
 // Defines values for ManufacturingWorkingState.
 const (
-	Blocked ManufacturingWorkingState = "blocked"
-	Normal  ManufacturingWorkingState = "normal"
+	ManufacturingWorkingStateBlocked ManufacturingWorkingState = "blocked"
+	ManufacturingWorkingStateNormal  ManufacturingWorkingState = "normal"
 )
 
 // Valid indicates whether the value is a known member of the ManufacturingWorkingState enum.
 func (e ManufacturingWorkingState) Valid() bool {
 	switch e {
-	case Blocked:
+	case ManufacturingWorkingStateBlocked:
 		return true
-	case Normal:
+	case ManufacturingWorkingStateNormal:
 		return true
 	default:
 		return false
 	}
 }
+
+// ManufacturingAvailability An order's component status (M21, M21a), computed live: every line covered by its reservation and the site's available, some, or none.
+type ManufacturingAvailability string
 
 // ManufacturingBom A bill of materials (M10) with its operations and lines.
 type ManufacturingBom struct {
@@ -277,6 +451,24 @@ type ManufacturingBomUpdate struct {
 	Revision int32 `json:"revision"`
 }
 
+// ManufacturingCloseInput Closing an order (M23).
+type ManufacturingCloseInput struct {
+	// Backorder When less than the quantity was produced: true creates a backorder for the rest, false closes short; absent is quantity_short (409).
+	Backorder *bool `json:"backorder,omitempty"`
+	Revision  int32 `json:"revision"`
+}
+
+// ManufacturingCloseResult A closed order and the backorder made for its rest.
+type ManufacturingCloseResult struct {
+	Backorder *ManufacturingOrder `json:"backorder"`
+
+	// Order A manufacturing order (M17) with its component lines and their availability.
+	Order ManufacturingOrder `json:"order"`
+
+	// ShortLines The backorder's lines left unreserved when it was confirmed.
+	ShortLines []ManufacturingShortLine `json:"shortLines"`
+}
+
 // ManufacturingClosure A range of days a work center is closed, both included (M9).
 type ManufacturingClosure struct {
 	FromDate     openapi_types.Date `json:"fromDate"`
@@ -300,6 +492,43 @@ type ManufacturingClosureList struct {
 	Items []ManufacturingClosure `json:"items"`
 }
 
+// ManufacturingComponentInput A component added to a confirmed or in-progress order (M18).
+type ManufacturingComponentInput struct {
+	Note *string `json:"note,omitempty"`
+
+	// OperationId The BoM operation that consumes it.
+	OperationId *int64 `json:"operationId,omitempty"`
+
+	// Required Exact decimal, more than 0, at most three decimals.
+	Required string `json:"required"`
+	Revision int32  `json:"revision"`
+
+	// VariantId A goods variant.
+	VariantId int32 `json:"variantId"`
+}
+
+// ManufacturingComponentUpdate A component line's new requirement (M18, M18a).
+type ManufacturingComponentUpdate struct {
+	// Note Absent keeps the note.
+	Note *string `json:"note,omitempty"`
+
+	// Required Exact decimal, 0 or more, never below consumed + scrapped (required_below_used).
+	Required string `json:"required"`
+	Revision int32  `json:"revision"`
+}
+
+// ManufacturingDeviation A consumed quantity more than 10 % off its proportional figure (M22).
+type ManufacturingDeviation struct {
+	ComponentId int64 `json:"componentId"`
+
+	// Consumed What the request sent.
+	Consumed string `json:"consumed"`
+
+	// Expected The proportional figure.
+	Expected string `json:"expected"`
+	Sku      string `json:"sku"`
+}
+
 // ManufacturingInterval One open interval of a day, local times in the workspace zone on a 15-minute grid: start before end; 24:00 is allowed as an end.
 type ManufacturingInterval struct {
 	// End HH:MM.
@@ -307,6 +536,26 @@ type ManufacturingInterval struct {
 
 	// Start HH:MM.
 	Start string `json:"start"`
+}
+
+// ManufacturingLocation One location of an Inventory site (M4a).
+type ManufacturingLocation struct {
+	// Active An archived location takes no stock.
+	Active   bool   `json:"active"`
+	FullCode string `json:"fullCode"`
+	Id       int64  `json:"id"`
+	Kind     string `json:"kind"`
+
+	// ParentId Null for the site's root.
+	ParentId *int64 `json:"parentId"`
+
+	// Root The site's root location, where stock lies when it has no place.
+	Root bool `json:"root"`
+}
+
+// ManufacturingLocationList Every location of a site, archived ones too, by full code.
+type ManufacturingLocationList struct {
+	Items []ManufacturingLocation `json:"items"`
 }
 
 // ManufacturingMeta What the caller may do in Manufacturing, for the screens to offer.
@@ -326,6 +575,324 @@ type ManufacturingMeta struct {
 	// Currency The workspace currency every amount is in: NOK.
 	Currency string `json:"currency"`
 }
+
+// ManufacturingOrder A manufacturing order (M17) with its component lines and their availability.
+type ManufacturingOrder struct {
+	// Availability An order's component status (M21, M21a), computed live: every line covered by its reservation and the site's available, some, or none.
+	Availability ManufacturingAvailability `json:"availability"`
+	BackorderOf  *ManufacturingOrderLink   `json:"backorderOf"`
+
+	// BackorderOfId The order this one is the backorder of (M23).
+	BackorderOfId *int64 `json:"backorderOfId"`
+
+	// Backorders The backorders of this order's chain made from it.
+	Backorders []ManufacturingOrderLink `json:"backorders"`
+	BomCode    *string                  `json:"bomCode"`
+	BomId      int64                    `json:"bomId"`
+
+	// BomOutputQuantity The BoM's output quantity.
+	BomOutputQuantity string `json:"bomOutputQuantity"`
+
+	// Children Sub-assembly orders (delivery E).
+	Children []ManufacturingOrderLink `json:"children"`
+
+	// ClosedAt When it was closed.
+	ClosedAt *time.Time `json:"closedAt"`
+
+	// ComponentLocationId Where components are taken from; null takes each from its primary location, then where it lies (M22a).
+	ComponentLocationId *int64                        `json:"componentLocationId"`
+	Components          []ManufacturingOrderComponent `json:"components"`
+
+	// ConfirmedAt When it was confirmed.
+	ConfirmedAt *time.Time `json:"confirmedAt"`
+	CreatedAt   time.Time  `json:"createdAt"`
+
+	// DueDate The day the finished goods must be ready.
+	DueDate *openapi_types.Date `json:"dueDate"`
+	Id      int64               `json:"id"`
+
+	// Late Due before today and not done or cancelled (M24).
+	Late bool   `json:"late"`
+	Note string `json:"note"`
+
+	// Number MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
+	Number string `json:"number"`
+
+	// Origin Where the order came from (M17).
+	Origin           ManufacturingOrderOriginInfo `json:"origin"`
+	OutputLocationId int64                        `json:"outputLocationId"`
+
+	// OutputScrap Finished units produced and discarded (M22a).
+	OutputScrap string `json:"outputScrap"`
+
+	// Overrun produced − quantity when more was produced, else 0 (M23).
+	Overrun string                  `json:"overrun"`
+	Parent  *ManufacturingOrderLink `json:"parent"`
+
+	// PlannedFinish Set by hand or by planning (delivery D).
+	PlannedFinish *time.Time `json:"plannedFinish"`
+
+	// PlannedStart Set by hand or by planning (delivery D).
+	PlannedStart *time.Time `json:"plannedStart"`
+
+	// Priority An order's priority (M17).
+	Priority ManufacturingPriority `json:"priority"`
+
+	// Produced Good output posted so far, exact decimal (M22a); more than quantity is an overrun.
+	Produced string `json:"produced"`
+
+	// Quantity Exact decimal, more than 0, at most three decimals.
+	Quantity string `json:"quantity"`
+
+	// ReservationStatus From the stored copies (M21a); null unless the order is confirmed or in progress.
+	ReservationStatus *ManufacturingReservationStatus `json:"reservationStatus"`
+	Responsible       *ManufacturingPerson            `json:"responsible"`
+	Revision          int32                           `json:"revision"`
+	SiteId            int64                           `json:"siteId"`
+
+	// Status A manufacturing order's state (M19).
+	Status    ManufacturingOrderStatus `json:"status"`
+	UpdatedAt time.Time                `json:"updatedAt"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingOrderComponent A component line of an order (M18) with its live availability (M21, M21a). On a draft the lines follow the BoM and have no id.
+type ManufacturingOrderComponent struct {
+	// Added Added to the order after confirm (M18).
+	Added bool `json:"added"`
+
+	// Available The variant's available quantity at the order's site, read live (M21a).
+	Available string `json:"available"`
+
+	// Consumed Consumed by productions so far.
+	Consumed string `json:"consumed"`
+
+	// Covered reserved + available ≥ remaining (M21a).
+	Covered bool `json:"covered"`
+
+	// Id Null on a draft, whose lines follow its BoM until it is confirmed.
+	Id *int64 `json:"id"`
+
+	// Missing What neither the reservation nor the site's available covers, the site's available shared across the lines of one variant (M21a).
+	Missing string `json:"missing"`
+	Note    string `json:"note"`
+
+	// OperationId The BoM operation that consumes it.
+	OperationId *int64 `json:"operationId"`
+
+	// Remaining required − consumed − scrapped, at least 0.
+	Remaining string `json:"remaining"`
+
+	// Required line quantity × order quantity / output quantity × (1 + scrap/100), rounded up to three decimals (M18), or as edited.
+	Required string `json:"required"`
+
+	// Reserved What the line holds reserved at the order's site (Manufacturing's copy, M20a).
+	Reserved string `json:"reserved"`
+
+	// Scrapped Scrapped by productions so far.
+	Scrapped  string `json:"scrapped"`
+	SortOrder int32  `json:"sortOrder"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingOrderEvent One event of an order's timeline (M26).
+type ManufacturingOrderEvent struct {
+	ActorDisplay string              `json:"actorDisplay"`
+	ActorUserId  *openapi_types.UUID `json:"actorUserId"`
+	At           time.Time           `json:"at"`
+	Id           int64               `json:"id"`
+
+	// Kind What an event of the timeline records (M26).
+	Kind ManufacturingOrderEventKind `json:"kind"`
+
+	// Payload The event's figures: quantities as exact decimal text, ids, numbers.
+	Payload map[string]interface{} `json:"payload"`
+}
+
+// ManufacturingOrderEventKind What an event of the timeline records (M26).
+type ManufacturingOrderEventKind string
+
+// ManufacturingOrderEventList An order's timeline, oldest first.
+type ManufacturingOrderEventList struct {
+	Items []ManufacturingOrderEvent `json:"items"`
+}
+
+// ManufacturingOrderInput A new manufacturing order (M17), created as a draft.
+type ManufacturingOrderInput struct {
+	// BomId An active BoM of the variant; default its default BoM.
+	BomId *int64 `json:"bomId,omitempty"`
+
+	// ComponentLocationId An active location of the site (location_unknown); null takes each component from its primary location, then where it lies.
+	ComponentLocationId *int64 `json:"componentLocationId,omitempty"`
+
+	// DueDate The day the goods must be ready.
+	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
+	Note    *string             `json:"note,omitempty"`
+
+	// OutputLocationId An active location of the site; default the site's root location (M17a).
+	OutputLocationId *int64 `json:"outputLocationId,omitempty"`
+
+	// PlannedFinish Planned finish, not before the start.
+	PlannedFinish *time.Time `json:"plannedFinish,omitempty"`
+
+	// PlannedStart Planned start.
+	PlannedStart *time.Time `json:"plannedStart,omitempty"`
+
+	// Priority An order's priority (M17).
+	Priority *ManufacturingPriority `json:"priority,omitempty"`
+
+	// Quantity Exact decimal, more than 0, at most three decimals.
+	Quantity          string              `json:"quantity"`
+	ResponsibleUserId *openapi_types.UUID `json:"responsibleUserId,omitempty"`
+
+	// SiteId An active Inventory site; default the BoM's work centers' site, else the first active site (M17a).
+	SiteId *int64 `json:"siteId,omitempty"`
+
+	// VariantId A goods variant with an active BoM (bom_required).
+	VariantId int32 `json:"variantId"`
+}
+
+// ManufacturingOrderLink Another order an order names: its backorder, its parent or a child.
+type ManufacturingOrderLink struct {
+	Id int64 `json:"id"`
+
+	// Number MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
+	Number string `json:"number"`
+
+	// Produced Exact decimal: good output only.
+	Produced string `json:"produced"`
+
+	// Quantity Exact decimal.
+	Quantity string `json:"quantity"`
+
+	// Status A manufacturing order's state (M19).
+	Status ManufacturingOrderStatus `json:"status"`
+}
+
+// ManufacturingOrderOriginInfo Where the order came from (M17).
+type ManufacturingOrderOriginInfo struct {
+	// Kind Where an order came from (M17): by hand, a sales order (delivery E) or a parent order (E).
+	Kind ManufacturingOrigin `json:"kind"`
+
+	// LineId The sales order line (E).
+	LineId *int64 `json:"lineId"`
+
+	// OrderId The origin's order: a sales order (E) or the parent order.
+	OrderId *int64 `json:"orderId"`
+
+	// Reference The origin's display reference, such as SO-12.
+	Reference *string `json:"reference"`
+}
+
+// ManufacturingOrderPage One page of the list.
+type ManufacturingOrderPage struct {
+	Items    []ManufacturingOrderSummary `json:"items"`
+	Page     int32                       `json:"page"`
+	PageSize int32                       `json:"pageSize"`
+	Total    int32                       `json:"total"`
+}
+
+// ManufacturingOrderSort The list's order (M24).
+type ManufacturingOrderSort string
+
+// ManufacturingOrderStatus A manufacturing order's state (M19).
+type ManufacturingOrderStatus string
+
+// ManufacturingOrderSummary A manufacturing order as the list shows it (M24).
+type ManufacturingOrderSummary struct {
+	// BackorderOfId The order this one is the backorder of (M23).
+	BackorderOfId *int64    `json:"backorderOfId"`
+	BomId         int64     `json:"bomId"`
+	CreatedAt     time.Time `json:"createdAt"`
+
+	// DueDate The day the finished goods must be ready.
+	DueDate *openapi_types.Date `json:"dueDate"`
+	Id      int64               `json:"id"`
+
+	// Late Due before today and not done or cancelled (M24).
+	Late bool `json:"late"`
+
+	// Number MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
+	Number string `json:"number"`
+
+	// Origin Where the order came from (M17).
+	Origin ManufacturingOrderOriginInfo `json:"origin"`
+
+	// PlannedFinish Set by hand or by planning (delivery D).
+	PlannedFinish *time.Time `json:"plannedFinish"`
+
+	// PlannedStart Set by hand or by planning (delivery D).
+	PlannedStart *time.Time `json:"plannedStart"`
+
+	// Priority An order's priority (M17).
+	Priority ManufacturingPriority `json:"priority"`
+
+	// Produced Good output posted so far, exact decimal (M22a); more than quantity is an overrun.
+	Produced string `json:"produced"`
+
+	// Quantity Exact decimal, more than 0, at most three decimals.
+	Quantity string `json:"quantity"`
+
+	// ReservationStatus From the stored copies (M21a); null unless the order is confirmed or in progress.
+	ReservationStatus *ManufacturingReservationStatus `json:"reservationStatus"`
+	Responsible       *ManufacturingPerson            `json:"responsible"`
+	SiteId            int64                           `json:"siteId"`
+
+	// Status A manufacturing order's state (M19).
+	Status ManufacturingOrderStatus `json:"status"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingOrderUpdate An order's fields, replaced as a whole (M19): a draft changes everything; a confirmed or in-progress order only its dates, priority, responsible, note and locations. A nullable field left out is cleared.
+type ManufacturingOrderUpdate struct {
+	// BomId Changed only on a draft (order_not_draft).
+	BomId int64 `json:"bomId"`
+
+	// ComponentLocationId An active location of the site (location_unknown); null takes each component from its primary location, then where it lies.
+	ComponentLocationId *int64 `json:"componentLocationId,omitempty"`
+
+	// DueDate The day the goods must be ready.
+	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
+	Note    *string             `json:"note,omitempty"`
+
+	// OutputLocationId An active location of the site; default the site's root location (M17a).
+	OutputLocationId *int64 `json:"outputLocationId,omitempty"`
+
+	// PlannedFinish Planned finish, not before the start.
+	PlannedFinish *time.Time `json:"plannedFinish,omitempty"`
+
+	// PlannedStart Planned start.
+	PlannedStart *time.Time `json:"plannedStart,omitempty"`
+
+	// Priority An order's priority (M17).
+	Priority ManufacturingPriority `json:"priority"`
+
+	// Quantity Exact decimal, more than 0. Changed only on a draft (order_not_draft).
+	Quantity          string              `json:"quantity"`
+	ResponsibleUserId *openapi_types.UUID `json:"responsibleUserId,omitempty"`
+
+	// Revision The revision the client read (revision_conflict).
+	Revision int32 `json:"revision"`
+
+	// SiteId Changed only on a draft (order_not_draft).
+	SiteId int64 `json:"siteId"`
+}
+
+// ManufacturingOrderWithShortLines An order after a write that reserves (confirm, reserve now, a line's add or edit), naming each line left short.
+type ManufacturingOrderWithShortLines struct {
+	// Order A manufacturing order (M17) with its component lines and their availability.
+	Order      ManufacturingOrder       `json:"order"`
+	ShortLines []ManufacturingShortLine `json:"shortLines"`
+}
+
+// ManufacturingOrigin Where an order came from (M17): by hand, a sales order (delivery E) or a parent order (E).
+type ManufacturingOrigin string
 
 // ManufacturingOverviewNode One node of the exploded BoM (M15): the root is the BoM's variant; a made node recurses through its default active BoM.
 type ManufacturingOverviewNode struct {
@@ -369,12 +936,29 @@ type ManufacturingOverviewOperation struct {
 	WorkCenterId    int64  `json:"workCenterId"`
 }
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM), quantity_invalid (400: not more than 0, or more than three decimals) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
+// ManufacturingPerson A user as Manufacturing names one.
+type ManufacturingPerson struct {
+	DisplayName string             `json:"displayName"`
+	Id          openapi_types.UUID `json:"id"`
+}
+
+// ManufacturingPersonList Users matching a search, by display name.
+type ManufacturingPersonList struct {
+	Items []ManufacturingPerson `json:"items"`
+}
+
+// ManufacturingPriority An order's priority (M17).
+type ManufacturingPriority string
+
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production needs manufacturing:shop-floor or manufacturing:orders-manage), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
 type ManufacturingProblem struct {
-	Code     *string              `json:"code,omitempty"`
-	Detail   *string              `json:"detail,omitempty"`
-	Errors   *map[string][]string `json:"errors,omitempty"`
-	Instance *string              `json:"instance,omitempty"`
+	Code   *string `json:"code,omitempty"`
+	Detail *string `json:"detail,omitempty"`
+
+	// Deviations consumption_differs only: every deviating line.
+	Deviations *[]ManufacturingDeviation `json:"deviations,omitempty"`
+	Errors     *map[string][]string      `json:"errors,omitempty"`
+	Instance   *string                   `json:"instance,omitempty"`
 
 	// Lines Every failing line, in the request's order.
 	Lines *[]ManufacturingProblemLine `json:"lines,omitempty"`
@@ -386,10 +970,13 @@ type ManufacturingProblem struct {
 	Type   *string                         `json:"type,omitempty"`
 }
 
-// ManufacturingProblemLine One failing line of a BoM.
+// ManufacturingProblemLine One failing line of a BoM, or of an order's production.
 type ManufacturingProblemLine struct {
 	// Code The line's refusal code.
 	Code string `json:"code"`
+
+	// ComponentId An order's component line, for a refusal of a production or a reserve.
+	ComponentId *int64 `json:"componentId,omitempty"`
 
 	// Detail What a person reads.
 	Detail string `json:"detail"`
@@ -403,6 +990,115 @@ type ManufacturingProblemPathStep struct {
 	Sku       string `json:"sku"`
 	VariantId int32  `json:"variantId"`
 }
+
+// ManufacturingProduction A production posted against an order (M22).
+type ManufacturingProduction struct {
+	ClientRequestId string                        `json:"clientRequestId"`
+	Id              int64                         `json:"id"`
+	Lines           []ManufacturingProductionLine `json:"lines"`
+
+	// MovementId Inventory's production movement; null when nothing went into or out of stock.
+	MovementId  *int64 `json:"movementId"`
+	OrderId     int64  `json:"orderId"`
+	OrderNumber string `json:"orderNumber"`
+
+	// OutputScrap Finished units discarded.
+	OutputScrap     string              `json:"outputScrap"`
+	PostedAt        time.Time           `json:"postedAt"`
+	PostedByDisplay string              `json:"postedByDisplay"`
+	PostedByUserId  *openapi_types.UUID `json:"postedByUserId"`
+
+	// Quantity Good output.
+	Quantity     string `json:"quantity"`
+	ToLocationId int64  `json:"toLocationId"`
+}
+
+// ManufacturingProductionDraft The production dialog's prefill (M22a).
+type ManufacturingProductionDraft struct {
+	Lines []ManufacturingProductionDraftLine `json:"lines"`
+
+	// OutputScrap The output scrap asked for.
+	OutputScrap string `json:"outputScrap"`
+
+	// Quantity The quantity asked for; default what remains to produce.
+	Quantity     string `json:"quantity"`
+	ToLocationId int64  `json:"toLocationId"`
+}
+
+// ManufacturingProductionDraftLine A component line's prefill (M22a).
+type ManufacturingProductionDraftLine struct {
+	ComponentId int64 `json:"componentId"`
+
+	// Proposed required × (quantity + outputScrap) / order quantity, rounded half-up to three decimals.
+	Proposed string `json:"proposed"`
+
+	// Remaining required − consumed − scrapped.
+	Remaining string `json:"remaining"`
+
+	// Required The line's requirement.
+	Required string `json:"required"`
+
+	// Reserved Reserved for the line.
+	Reserved string `json:"reserved"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingProductionInput A production registered against an order (M22, M22a).
+type ManufacturingProductionInput struct {
+	// AcceptDeviation Post although a consumed quantity differs from the proportional figure by more than 10 % (consumption_differs).
+	AcceptDeviation *bool `json:"acceptDeviation,omitempty"`
+
+	// ClientRequestId Makes the post idempotent: a replay answers 200 with the first production; another body is client_request_reused.
+	ClientRequestId string `json:"clientRequestId"`
+
+	// Lines Omitted lines are not judged and consume nothing.
+	Lines []ManufacturingProductionLineInput `json:"lines"`
+
+	// OutputScrap Finished units produced and discarded, exact decimal, 0 or more; default 0.
+	OutputScrap *string `json:"outputScrap,omitempty"`
+
+	// Quantity Good output, exact decimal, 0 or more; 0 only with consumption, scrap or output scrap.
+	Quantity string `json:"quantity"`
+
+	// ToLocationId Where the output is put; default the order's output location.
+	ToLocationId *int64 `json:"toLocationId,omitempty"`
+}
+
+// ManufacturingProductionLine One component line of a production.
+type ManufacturingProductionLine struct {
+	ComponentId int64 `json:"componentId"`
+
+	// Consumed Exact decimal.
+	Consumed string `json:"consumed"`
+
+	// FromLocationId The location the request named, if any.
+	FromLocationId *int64 `json:"fromLocationId"`
+
+	// Scrapped Exact decimal.
+	Scrapped string `json:"scrapped"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingProductionLineInput What a production consumed and scrapped of one component line (M22).
+type ManufacturingProductionLineInput struct {
+	ComponentId int64 `json:"componentId"`
+
+	// Consumed Exact decimal, 0 or more, at most three decimals; judged against the proportional figure when sent (M22a).
+	Consumed *string `json:"consumed,omitempty"`
+
+	// FromLocationId Where it is taken from; default the order's component location, else split over the locations holding it (M22a).
+	FromLocationId *int64 `json:"fromLocationId,omitempty"`
+
+	// Scrap Exact decimal, 0 or more: lost, consumed with no output.
+	Scrap *string `json:"scrap,omitempty"`
+}
+
+// ManufacturingReservationStatus What the list shows of an open order's components (M21a), from the stored reserved copies: every line's remaining requirement reserved, some reserved, or none.
+type ManufacturingReservationStatus string
 
 // ManufacturingRevisionInput The revision the client read.
 type ManufacturingRevisionInput struct {
@@ -419,6 +1115,17 @@ type ManufacturingRolledUpCost struct {
 
 	// Total components + operations.
 	Total string `json:"total"`
+}
+
+// ManufacturingShortLine A component line left unreserved (M20, M20a).
+type ManufacturingShortLine struct {
+	ComponentId int64 `json:"componentId"`
+
+	// Missing What the line still needs reserved.
+	Missing string `json:"missing"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
 }
 
 // ManufacturingSite An active Inventory site, as contracts.Stock answers it.
@@ -446,6 +1153,15 @@ type ManufacturingStats struct {
 
 	// BlockedWorkCenters Active work centers whose working state is blocked.
 	BlockedWorkCenters int32 `json:"blockedWorkCenters"`
+
+	// OrdersInProgress Orders in progress.
+	OrdersInProgress int32 `json:"ordersInProgress"`
+
+	// OrdersLate Open orders due before today (M24).
+	OrdersLate int32 `json:"ordersLate"`
+
+	// OrdersToStartToday Confirmed orders not started whose planned start is today or earlier.
+	OrdersToStartToday int32 `json:"ordersToStartToday"`
 }
 
 // ManufacturingStatus A work center's or a BoM's status.
@@ -651,6 +1367,55 @@ type GetManufacturingBomOverviewParams struct {
 	SiteId *int64 `form:"siteId,omitempty" json:"siteId,omitempty"`
 }
 
+// ListManufacturingOrdersParams defines parameters for ListManufacturingOrders.
+type ListManufacturingOrdersParams struct {
+	// Status Any of the statuses; default draft, confirmed and in_progress.
+	Status *[]ManufacturingOrderStatus `form:"status,omitempty" json:"status,omitempty"`
+	SiteId *int64                      `form:"siteId,omitempty" json:"siteId,omitempty"`
+
+	// WorkCenterId Orders whose BoM has an operation at the work center (work orders from delivery C).
+	WorkCenterId *int64              `form:"workCenterId,omitempty" json:"workCenterId,omitempty"`
+	VariantId    *int32              `form:"variantId,omitempty" json:"variantId,omitempty"`
+	DueFrom      *openapi_types.Date `form:"dueFrom,omitempty" json:"dueFrom,omitempty"`
+	DueTo        *openapi_types.Date `form:"dueTo,omitempty" json:"dueTo,omitempty"`
+
+	// Late Only orders due before today and not done or cancelled.
+	Late              *bool                `form:"late,omitempty" json:"late,omitempty"`
+	Origin            *ManufacturingOrigin `form:"origin,omitempty" json:"origin,omitempty"`
+	ResponsibleUserId *openapi_types.UUID  `form:"responsibleUserId,omitempty" json:"responsibleUserId,omitempty"`
+
+	// Reservation Only confirmed and in-progress orders with this reservation status.
+	Reservation *ManufacturingReservationStatus `form:"reservation,omitempty" json:"reservation,omitempty"`
+
+	// Q Matches the number (MO-12) and the product's SKU and name.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort Default dueDate.
+	Sort *ManufacturingOrderSort `form:"sort,omitempty" json:"sort,omitempty"`
+	Page *int32                  `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize Default 50.
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// GetManufacturingProductionDraftParams defines parameters for GetManufacturingProductionDraft.
+type GetManufacturingProductionDraftParams struct {
+	// Quantity Good output; default what remains to produce.
+	Quantity *string `form:"quantity,omitempty" json:"quantity,omitempty"`
+
+	// OutputScrap Default 0.
+	OutputScrap *string `form:"outputScrap,omitempty" json:"outputScrap,omitempty"`
+}
+
+// SearchManufacturingPeopleParams defines parameters for SearchManufacturingPeople.
+type SearchManufacturingPeopleParams struct {
+	// Q Part of the display name.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Default 20.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // SearchManufacturingVariantsParams defines parameters for SearchManufacturingVariants.
 type SearchManufacturingVariantsParams struct {
 	// Q Matched against SKU, product name and barcode.
@@ -690,6 +1455,33 @@ type MakeDefaultManufacturingBomJSONRequestBody = ManufacturingRevisionInput
 
 // ReactivateManufacturingBomJSONRequestBody defines body for ReactivateManufacturingBom for application/json ContentType.
 type ReactivateManufacturingBomJSONRequestBody = ManufacturingRevisionInput
+
+// CreateManufacturingOrderJSONRequestBody defines body for CreateManufacturingOrder for application/json ContentType.
+type CreateManufacturingOrderJSONRequestBody = ManufacturingOrderInput
+
+// UpdateManufacturingOrderJSONRequestBody defines body for UpdateManufacturingOrder for application/json ContentType.
+type UpdateManufacturingOrderJSONRequestBody = ManufacturingOrderUpdate
+
+// CancelManufacturingOrderJSONRequestBody defines body for CancelManufacturingOrder for application/json ContentType.
+type CancelManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
+
+// CloseManufacturingOrderJSONRequestBody defines body for CloseManufacturingOrder for application/json ContentType.
+type CloseManufacturingOrderJSONRequestBody = ManufacturingCloseInput
+
+// AddManufacturingOrderComponentJSONRequestBody defines body for AddManufacturingOrderComponent for application/json ContentType.
+type AddManufacturingOrderComponentJSONRequestBody = ManufacturingComponentInput
+
+// UpdateManufacturingOrderComponentJSONRequestBody defines body for UpdateManufacturingOrderComponent for application/json ContentType.
+type UpdateManufacturingOrderComponentJSONRequestBody = ManufacturingComponentUpdate
+
+// ConfirmManufacturingOrderJSONRequestBody defines body for ConfirmManufacturingOrder for application/json ContentType.
+type ConfirmManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
+
+// PostManufacturingProductionJSONRequestBody defines body for PostManufacturingProduction for application/json ContentType.
+type PostManufacturingProductionJSONRequestBody = ManufacturingProductionInput
+
+// ReserveManufacturingOrderJSONRequestBody defines body for ReserveManufacturingOrder for application/json ContentType.
+type ReserveManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
 
 // CreateManufacturingWorkCenterJSONRequestBody defines body for CreateManufacturingWorkCenter for application/json ContentType.
 type CreateManufacturingWorkCenterJSONRequestBody = ManufacturingWorkCenterInput
@@ -735,9 +1527,57 @@ type ServerInterface interface {
 	// GetManufacturingMeta Get what the caller may do in Manufacturing
 	// (GET /api/v1/manufacturing/meta)
 	GetManufacturingMeta(w http.ResponseWriter, r *http.Request)
+	// ListManufacturingOrders List manufacturing orders
+	// (GET /api/v1/manufacturing/orders)
+	ListManufacturingOrders(w http.ResponseWriter, r *http.Request, params ListManufacturingOrdersParams)
+	// CreateManufacturingOrder Create a manufacturing order
+	// (POST /api/v1/manufacturing/orders)
+	CreateManufacturingOrder(w http.ResponseWriter, r *http.Request)
+	// GetManufacturingOrder Get a manufacturing order
+	// (GET /api/v1/manufacturing/orders/{id})
+	GetManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateManufacturingOrder Update a manufacturing order
+	// (PUT /api/v1/manufacturing/orders/{id})
+	UpdateManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// CancelManufacturingOrder Cancel a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/cancel)
+	CancelManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// CloseManufacturingOrder Close a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/close)
+	CloseManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// AddManufacturingOrderComponent Add a component line to a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/components)
+	AddManufacturingOrderComponent(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateManufacturingOrderComponent Change a component line's requirement
+	// (PUT /api/v1/manufacturing/orders/{id}/components/{componentId})
+	UpdateManufacturingOrderComponent(w http.ResponseWriter, r *http.Request, id int64, componentId int64)
+	// ConfirmManufacturingOrder Confirm a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/confirm)
+	ConfirmManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// ListManufacturingOrderEvents List a manufacturing order's history
+	// (GET /api/v1/manufacturing/orders/{id}/events)
+	ListManufacturingOrderEvents(w http.ResponseWriter, r *http.Request, id int64)
+	// GetManufacturingProductionDraft Get a production's proportional prefill
+	// (GET /api/v1/manufacturing/orders/{id}/production-draft)
+	GetManufacturingProductionDraft(w http.ResponseWriter, r *http.Request, id int64, params GetManufacturingProductionDraftParams)
+	// PostManufacturingProduction Register a production
+	// (POST /api/v1/manufacturing/orders/{id}/productions)
+	PostManufacturingProduction(w http.ResponseWriter, r *http.Request, id int64)
+	// ReserveManufacturingOrder Reserve a manufacturing order's short lines
+	// (POST /api/v1/manufacturing/orders/{id}/reserve)
+	ReserveManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// SearchManufacturingPeople Search people for an order's responsible
+	// (GET /api/v1/manufacturing/people)
+	SearchManufacturingPeople(w http.ResponseWriter, r *http.Request, params SearchManufacturingPeopleParams)
+	// GetManufacturingProduction Get a production
+	// (GET /api/v1/manufacturing/productions/{id})
+	GetManufacturingProduction(w http.ResponseWriter, r *http.Request, id int64)
 	// ListManufacturingSites List the active Inventory sites
 	// (GET /api/v1/manufacturing/sites)
 	ListManufacturingSites(w http.ResponseWriter, r *http.Request)
+	// ListManufacturingSiteLocations List a site's locations
+	// (GET /api/v1/manufacturing/sites/{id}/locations)
+	ListManufacturingSiteLocations(w http.ResponseWriter, r *http.Request, id int64)
 	// GetManufacturingStats Get the overview's counts
 	// (GET /api/v1/manufacturing/stats)
 	GetManufacturingStats(w http.ResponseWriter, r *http.Request)
@@ -1083,11 +1923,649 @@ func (siw *ServerInterfaceWrapper) GetManufacturingMeta(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// ListManufacturingOrders operation middleware
+func (siw *ServerInterfaceWrapper) ListManufacturingOrders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListManufacturingOrdersParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "workCenterId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "workCenterId", r.URL.Query(), &params.WorkCenterId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "workCenterId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workCenterId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "variantId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "variantId", r.URL.Query(), &params.VariantId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "variantId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dueFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dueFrom", r.URL.Query(), &params.DueFrom, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dueFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dueFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dueTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dueTo", r.URL.Query(), &params.DueTo, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dueTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dueTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "late" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "late", r.URL.Query(), &params.Late, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "late"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "late", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "origin" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "origin", r.URL.Query(), &params.Origin, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "origin"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "origin", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "responsibleUserId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "responsibleUserId", r.URL.Query(), &params.ResponsibleUserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "responsibleUserId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "responsibleUserId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "reservation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "reservation", r.URL.Query(), &params.Reservation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "reservation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reservation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListManufacturingOrders(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) CreateManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateManufacturingOrder(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) UpdateManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) CancelManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) CloseManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddManufacturingOrderComponent operation middleware
+func (siw *ServerInterfaceWrapper) AddManufacturingOrderComponent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddManufacturingOrderComponent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateManufacturingOrderComponent operation middleware
+func (siw *ServerInterfaceWrapper) UpdateManufacturingOrderComponent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "componentId" -------------
+	var componentId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "componentId", r.PathValue("componentId"), &componentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "componentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateManufacturingOrderComponent(w, r, id, componentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListManufacturingOrderEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListManufacturingOrderEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListManufacturingOrderEvents(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingProductionDraft operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingProductionDraft(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetManufacturingProductionDraftParams
+
+	// ------------- Optional query parameter "quantity" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "quantity", r.URL.Query(), &params.Quantity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "quantity"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quantity", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outputScrap" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outputScrap", r.URL.Query(), &params.OutputScrap, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outputScrap"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outputScrap", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingProductionDraft(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostManufacturingProduction operation middleware
+func (siw *ServerInterfaceWrapper) PostManufacturingProduction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostManufacturingProduction(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReserveManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) ReserveManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReserveManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchManufacturingPeople operation middleware
+func (siw *ServerInterfaceWrapper) SearchManufacturingPeople(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchManufacturingPeopleParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchManufacturingPeople(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingProduction operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingProduction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingProduction(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListManufacturingSites operation middleware
 func (siw *ServerInterfaceWrapper) ListManufacturingSites(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListManufacturingSites(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListManufacturingSiteLocations operation middleware
+func (siw *ServerInterfaceWrapper) ListManufacturingSiteLocations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListManufacturingSiteLocations(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1592,7 +3070,23 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/boms/{id}/overview", wrapper.GetManufacturingBomOverview)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/boms/{id}/reactivate", wrapper.ReactivateManufacturingBom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/meta", wrapper.GetManufacturingMeta)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders", wrapper.ListManufacturingOrders)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders", wrapper.CreateManufacturingOrder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}", wrapper.GetManufacturingOrder)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}", wrapper.UpdateManufacturingOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/cancel", wrapper.CancelManufacturingOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/close", wrapper.CloseManufacturingOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/components", wrapper.AddManufacturingOrderComponent)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/components/{componentId}", wrapper.UpdateManufacturingOrderComponent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/confirm", wrapper.ConfirmManufacturingOrder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/events", wrapper.ListManufacturingOrderEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/production-draft", wrapper.GetManufacturingProductionDraft)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/productions", wrapper.PostManufacturingProduction)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/reserve", wrapper.ReserveManufacturingOrder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/people", wrapper.SearchManufacturingPeople)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/productions/{id}", wrapper.GetManufacturingProduction)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/sites", wrapper.ListManufacturingSites)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/sites/{id}/locations", wrapper.ListManufacturingSiteLocations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/stats", wrapper.GetManufacturingStats)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/variants", wrapper.SearchManufacturingVariants)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-centers", wrapper.ListManufacturingWorkCenters)
@@ -2363,6 +3857,1296 @@ func (response GetManufacturingMeta403JSONResponse) VisitGetManufacturingMetaRes
 	return err
 }
 
+type ListManufacturingOrdersRequestObject struct {
+	Params ListManufacturingOrdersParams
+}
+
+type ListManufacturingOrdersResponseObject interface {
+	VisitListManufacturingOrdersResponse(w http.ResponseWriter) error
+}
+
+type ListManufacturingOrders200JSONResponse ManufacturingOrderPage
+
+func (response ListManufacturingOrders200JSONResponse) VisitListManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingOrders400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ListManufacturingOrders400ApplicationProblemPlusJSONResponse) VisitListManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingOrders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingOrders401JSONResponse) VisitListManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingOrders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingOrders403JSONResponse) VisitListManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingOrders503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ListManufacturingOrders503ApplicationProblemPlusJSONResponse) VisitListManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingOrderRequestObject struct {
+	Body *CreateManufacturingOrderJSONRequestBody
+}
+
+type CreateManufacturingOrderResponseObject interface {
+	VisitCreateManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type CreateManufacturingOrder201JSONResponse ManufacturingOrder
+
+func (response CreateManufacturingOrder201JSONResponse) VisitCreateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingOrder400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingOrder400ApplicationProblemPlusJSONResponse) VisitCreateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateManufacturingOrder401JSONResponse) VisitCreateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateManufacturingOrder403JSONResponse) VisitCreateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitCreateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitCreateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingOrderRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetManufacturingOrderResponseObject interface {
+	VisitGetManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingOrder200JSONResponse ManufacturingOrder
+
+func (response GetManufacturingOrder200JSONResponse) VisitGetManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingOrder401JSONResponse) VisitGetManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingOrder403JSONResponse) VisitGetManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingOrder404Response struct {
+}
+
+func (response GetManufacturingOrder404Response) VisitGetManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitGetManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateManufacturingOrderJSONRequestBody
+}
+
+type UpdateManufacturingOrderResponseObject interface {
+	VisitUpdateManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type UpdateManufacturingOrder200JSONResponse ManufacturingOrder
+
+func (response UpdateManufacturingOrder200JSONResponse) VisitUpdateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrder400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingOrder400ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateManufacturingOrder401JSONResponse) VisitUpdateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateManufacturingOrder403JSONResponse) VisitUpdateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrder404Response struct {
+}
+
+func (response UpdateManufacturingOrder404Response) VisitUpdateManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelManufacturingOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *CancelManufacturingOrderJSONRequestBody
+}
+
+type CancelManufacturingOrderResponseObject interface {
+	VisitCancelManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type CancelManufacturingOrder200JSONResponse ManufacturingOrder
+
+func (response CancelManufacturingOrder200JSONResponse) VisitCancelManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelManufacturingOrder401JSONResponse) VisitCancelManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CancelManufacturingOrder403JSONResponse) VisitCancelManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelManufacturingOrder404Response struct {
+}
+
+func (response CancelManufacturingOrder404Response) VisitCancelManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CancelManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CancelManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitCancelManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CancelManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitCancelManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseManufacturingOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *CloseManufacturingOrderJSONRequestBody
+}
+
+type CloseManufacturingOrderResponseObject interface {
+	VisitCloseManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type CloseManufacturingOrder200JSONResponse ManufacturingCloseResult
+
+func (response CloseManufacturingOrder200JSONResponse) VisitCloseManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CloseManufacturingOrder401JSONResponse) VisitCloseManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CloseManufacturingOrder403JSONResponse) VisitCloseManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseManufacturingOrder404Response struct {
+}
+
+func (response CloseManufacturingOrder404Response) VisitCloseManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CloseManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CloseManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitCloseManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CloseManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitCloseManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddManufacturingOrderComponentRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *AddManufacturingOrderComponentJSONRequestBody
+}
+
+type AddManufacturingOrderComponentResponseObject interface {
+	VisitAddManufacturingOrderComponentResponse(w http.ResponseWriter) error
+}
+
+type AddManufacturingOrderComponent200JSONResponse ManufacturingOrderWithShortLines
+
+func (response AddManufacturingOrderComponent200JSONResponse) VisitAddManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddManufacturingOrderComponent400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response AddManufacturingOrderComponent400ApplicationProblemPlusJSONResponse) VisitAddManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddManufacturingOrderComponent401JSONResponse externalRef0.AuthErrorResponse
+
+func (response AddManufacturingOrderComponent401JSONResponse) VisitAddManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddManufacturingOrderComponent403JSONResponse externalRef0.AuthErrorResponse
+
+func (response AddManufacturingOrderComponent403JSONResponse) VisitAddManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddManufacturingOrderComponent404Response struct {
+}
+
+func (response AddManufacturingOrderComponent404Response) VisitAddManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type AddManufacturingOrderComponent409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response AddManufacturingOrderComponent409ApplicationProblemPlusJSONResponse) VisitAddManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddManufacturingOrderComponent503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response AddManufacturingOrderComponent503ApplicationProblemPlusJSONResponse) VisitAddManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrderComponentRequestObject struct {
+	Id          int64 `json:"id"`
+	ComponentId int64 `json:"componentId"`
+	Body        *UpdateManufacturingOrderComponentJSONRequestBody
+}
+
+type UpdateManufacturingOrderComponentResponseObject interface {
+	VisitUpdateManufacturingOrderComponentResponse(w http.ResponseWriter) error
+}
+
+type UpdateManufacturingOrderComponent200JSONResponse ManufacturingOrderWithShortLines
+
+func (response UpdateManufacturingOrderComponent200JSONResponse) VisitUpdateManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrderComponent400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingOrderComponent400ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrderComponent401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateManufacturingOrderComponent401JSONResponse) VisitUpdateManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrderComponent403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateManufacturingOrderComponent403JSONResponse) VisitUpdateManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrderComponent404Response struct {
+}
+
+func (response UpdateManufacturingOrderComponent404Response) VisitUpdateManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateManufacturingOrderComponent409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingOrderComponent409ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingOrderComponent503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingOrderComponent503ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingOrderComponentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmManufacturingOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ConfirmManufacturingOrderJSONRequestBody
+}
+
+type ConfirmManufacturingOrderResponseObject interface {
+	VisitConfirmManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type ConfirmManufacturingOrder200JSONResponse ManufacturingOrderWithShortLines
+
+func (response ConfirmManufacturingOrder200JSONResponse) VisitConfirmManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ConfirmManufacturingOrder401JSONResponse) VisitConfirmManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ConfirmManufacturingOrder403JSONResponse) VisitConfirmManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmManufacturingOrder404Response struct {
+}
+
+func (response ConfirmManufacturingOrder404Response) VisitConfirmManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ConfirmManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ConfirmManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitConfirmManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ConfirmManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitConfirmManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingOrderEventsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ListManufacturingOrderEventsResponseObject interface {
+	VisitListManufacturingOrderEventsResponse(w http.ResponseWriter) error
+}
+
+type ListManufacturingOrderEvents200JSONResponse ManufacturingOrderEventList
+
+func (response ListManufacturingOrderEvents200JSONResponse) VisitListManufacturingOrderEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingOrderEvents401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingOrderEvents401JSONResponse) VisitListManufacturingOrderEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingOrderEvents403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingOrderEvents403JSONResponse) VisitListManufacturingOrderEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingOrderEvents404Response struct {
+}
+
+func (response ListManufacturingOrderEvents404Response) VisitListManufacturingOrderEventsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetManufacturingProductionDraftRequestObject struct {
+	Id     int64 `json:"id"`
+	Params GetManufacturingProductionDraftParams
+}
+
+type GetManufacturingProductionDraftResponseObject interface {
+	VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingProductionDraft200JSONResponse ManufacturingProductionDraft
+
+func (response GetManufacturingProductionDraft200JSONResponse) VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionDraft400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingProductionDraft400ApplicationProblemPlusJSONResponse) VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionDraft401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingProductionDraft401JSONResponse) VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionDraft403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingProductionDraft403JSONResponse) VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionDraft404Response struct {
+}
+
+func (response GetManufacturingProductionDraft404Response) VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetManufacturingProductionDraft409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingProductionDraft409ApplicationProblemPlusJSONResponse) VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionDraft503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingProductionDraft503ApplicationProblemPlusJSONResponse) VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostManufacturingProductionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostManufacturingProductionJSONRequestBody
+}
+
+type PostManufacturingProductionResponseObject interface {
+	VisitPostManufacturingProductionResponse(w http.ResponseWriter) error
+}
+
+type PostManufacturingProduction200JSONResponse ManufacturingProduction
+
+func (response PostManufacturingProduction200JSONResponse) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostManufacturingProduction201JSONResponse ManufacturingProduction
+
+func (response PostManufacturingProduction201JSONResponse) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostManufacturingProduction400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PostManufacturingProduction400ApplicationProblemPlusJSONResponse) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostManufacturingProduction401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostManufacturingProduction401JSONResponse) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostManufacturingProduction403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostManufacturingProduction403JSONResponse) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostManufacturingProduction403ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PostManufacturingProduction403ApplicationProblemPlusJSONResponse) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostManufacturingProduction404Response struct {
+}
+
+func (response PostManufacturingProduction404Response) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostManufacturingProduction409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PostManufacturingProduction409ApplicationProblemPlusJSONResponse) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostManufacturingProduction503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PostManufacturingProduction503ApplicationProblemPlusJSONResponse) VisitPostManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveManufacturingOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ReserveManufacturingOrderJSONRequestBody
+}
+
+type ReserveManufacturingOrderResponseObject interface {
+	VisitReserveManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type ReserveManufacturingOrder200JSONResponse ManufacturingOrderWithShortLines
+
+func (response ReserveManufacturingOrder200JSONResponse) VisitReserveManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReserveManufacturingOrder401JSONResponse) VisitReserveManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReserveManufacturingOrder403JSONResponse) VisitReserveManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveManufacturingOrder404Response struct {
+}
+
+func (response ReserveManufacturingOrder404Response) VisitReserveManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReserveManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ReserveManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitReserveManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReserveManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ReserveManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitReserveManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchManufacturingPeopleRequestObject struct {
+	Params SearchManufacturingPeopleParams
+}
+
+type SearchManufacturingPeopleResponseObject interface {
+	VisitSearchManufacturingPeopleResponse(w http.ResponseWriter) error
+}
+
+type SearchManufacturingPeople200JSONResponse ManufacturingPersonList
+
+func (response SearchManufacturingPeople200JSONResponse) VisitSearchManufacturingPeopleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchManufacturingPeople401JSONResponse externalRef0.AuthErrorResponse
+
+func (response SearchManufacturingPeople401JSONResponse) VisitSearchManufacturingPeopleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchManufacturingPeople403JSONResponse externalRef0.AuthErrorResponse
+
+func (response SearchManufacturingPeople403JSONResponse) VisitSearchManufacturingPeopleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProductionRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetManufacturingProductionResponseObject interface {
+	VisitGetManufacturingProductionResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingProduction200JSONResponse ManufacturingProduction
+
+func (response GetManufacturingProduction200JSONResponse) VisitGetManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProduction401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingProduction401JSONResponse) VisitGetManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProduction403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingProduction403JSONResponse) VisitGetManufacturingProductionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingProduction404Response struct {
+}
+
+func (response GetManufacturingProduction404Response) VisitGetManufacturingProductionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type ListManufacturingSitesRequestObject struct {
 }
 
@@ -2415,6 +5199,70 @@ func (response ListManufacturingSites403JSONResponse) VisitListManufacturingSite
 type ListManufacturingSites503ApplicationProblemPlusJSONResponse ManufacturingProblem
 
 func (response ListManufacturingSites503ApplicationProblemPlusJSONResponse) VisitListManufacturingSitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingSiteLocationsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ListManufacturingSiteLocationsResponseObject interface {
+	VisitListManufacturingSiteLocationsResponse(w http.ResponseWriter) error
+}
+
+type ListManufacturingSiteLocations200JSONResponse ManufacturingLocationList
+
+func (response ListManufacturingSiteLocations200JSONResponse) VisitListManufacturingSiteLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingSiteLocations401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingSiteLocations401JSONResponse) VisitListManufacturingSiteLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingSiteLocations403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingSiteLocations403JSONResponse) VisitListManufacturingSiteLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingSiteLocations503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ListManufacturingSiteLocations503ApplicationProblemPlusJSONResponse) VisitListManufacturingSiteLocationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3350,9 +6198,57 @@ type StrictServerInterface interface {
 	// GetManufacturingMeta Get what the caller may do in Manufacturing
 	// (GET /api/v1/manufacturing/meta)
 	GetManufacturingMeta(ctx context.Context, request GetManufacturingMetaRequestObject) (GetManufacturingMetaResponseObject, error)
+	// ListManufacturingOrders List manufacturing orders
+	// (GET /api/v1/manufacturing/orders)
+	ListManufacturingOrders(ctx context.Context, request ListManufacturingOrdersRequestObject) (ListManufacturingOrdersResponseObject, error)
+	// CreateManufacturingOrder Create a manufacturing order
+	// (POST /api/v1/manufacturing/orders)
+	CreateManufacturingOrder(ctx context.Context, request CreateManufacturingOrderRequestObject) (CreateManufacturingOrderResponseObject, error)
+	// GetManufacturingOrder Get a manufacturing order
+	// (GET /api/v1/manufacturing/orders/{id})
+	GetManufacturingOrder(ctx context.Context, request GetManufacturingOrderRequestObject) (GetManufacturingOrderResponseObject, error)
+	// UpdateManufacturingOrder Update a manufacturing order
+	// (PUT /api/v1/manufacturing/orders/{id})
+	UpdateManufacturingOrder(ctx context.Context, request UpdateManufacturingOrderRequestObject) (UpdateManufacturingOrderResponseObject, error)
+	// CancelManufacturingOrder Cancel a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/cancel)
+	CancelManufacturingOrder(ctx context.Context, request CancelManufacturingOrderRequestObject) (CancelManufacturingOrderResponseObject, error)
+	// CloseManufacturingOrder Close a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/close)
+	CloseManufacturingOrder(ctx context.Context, request CloseManufacturingOrderRequestObject) (CloseManufacturingOrderResponseObject, error)
+	// AddManufacturingOrderComponent Add a component line to a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/components)
+	AddManufacturingOrderComponent(ctx context.Context, request AddManufacturingOrderComponentRequestObject) (AddManufacturingOrderComponentResponseObject, error)
+	// UpdateManufacturingOrderComponent Change a component line's requirement
+	// (PUT /api/v1/manufacturing/orders/{id}/components/{componentId})
+	UpdateManufacturingOrderComponent(ctx context.Context, request UpdateManufacturingOrderComponentRequestObject) (UpdateManufacturingOrderComponentResponseObject, error)
+	// ConfirmManufacturingOrder Confirm a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/confirm)
+	ConfirmManufacturingOrder(ctx context.Context, request ConfirmManufacturingOrderRequestObject) (ConfirmManufacturingOrderResponseObject, error)
+	// ListManufacturingOrderEvents List a manufacturing order's history
+	// (GET /api/v1/manufacturing/orders/{id}/events)
+	ListManufacturingOrderEvents(ctx context.Context, request ListManufacturingOrderEventsRequestObject) (ListManufacturingOrderEventsResponseObject, error)
+	// GetManufacturingProductionDraft Get a production's proportional prefill
+	// (GET /api/v1/manufacturing/orders/{id}/production-draft)
+	GetManufacturingProductionDraft(ctx context.Context, request GetManufacturingProductionDraftRequestObject) (GetManufacturingProductionDraftResponseObject, error)
+	// PostManufacturingProduction Register a production
+	// (POST /api/v1/manufacturing/orders/{id}/productions)
+	PostManufacturingProduction(ctx context.Context, request PostManufacturingProductionRequestObject) (PostManufacturingProductionResponseObject, error)
+	// ReserveManufacturingOrder Reserve a manufacturing order's short lines
+	// (POST /api/v1/manufacturing/orders/{id}/reserve)
+	ReserveManufacturingOrder(ctx context.Context, request ReserveManufacturingOrderRequestObject) (ReserveManufacturingOrderResponseObject, error)
+	// SearchManufacturingPeople Search people for an order's responsible
+	// (GET /api/v1/manufacturing/people)
+	SearchManufacturingPeople(ctx context.Context, request SearchManufacturingPeopleRequestObject) (SearchManufacturingPeopleResponseObject, error)
+	// GetManufacturingProduction Get a production
+	// (GET /api/v1/manufacturing/productions/{id})
+	GetManufacturingProduction(ctx context.Context, request GetManufacturingProductionRequestObject) (GetManufacturingProductionResponseObject, error)
 	// ListManufacturingSites List the active Inventory sites
 	// (GET /api/v1/manufacturing/sites)
 	ListManufacturingSites(ctx context.Context, request ListManufacturingSitesRequestObject) (ListManufacturingSitesResponseObject, error)
+	// ListManufacturingSiteLocations List a site's locations
+	// (GET /api/v1/manufacturing/sites/{id}/locations)
+	ListManufacturingSiteLocations(ctx context.Context, request ListManufacturingSiteLocationsRequestObject) (ListManufacturingSiteLocationsResponseObject, error)
 	// GetManufacturingStats Get the overview's counts
 	// (GET /api/v1/manufacturing/stats)
 	GetManufacturingStats(ctx context.Context, request GetManufacturingStatsRequestObject) (GetManufacturingStatsResponseObject, error)
@@ -3696,6 +6592,459 @@ func (sh *strictHandler) GetManufacturingMeta(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// ListManufacturingOrders operation middleware
+func (sh *strictHandler) ListManufacturingOrders(w http.ResponseWriter, r *http.Request, params ListManufacturingOrdersParams) {
+	var request ListManufacturingOrdersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListManufacturingOrders(ctx, request.(ListManufacturingOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListManufacturingOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListManufacturingOrdersResponseObject); ok {
+		if err := validResponse.VisitListManufacturingOrdersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateManufacturingOrder operation middleware
+func (sh *strictHandler) CreateManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+	var request CreateManufacturingOrderRequestObject
+
+	var body CreateManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateManufacturingOrder(ctx, request.(CreateManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitCreateManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingOrder operation middleware
+func (sh *strictHandler) GetManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetManufacturingOrderRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingOrder(ctx, request.(GetManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateManufacturingOrder operation middleware
+func (sh *strictHandler) UpdateManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateManufacturingOrderRequestObject
+
+	request.Id = id
+
+	var body UpdateManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateManufacturingOrder(ctx, request.(UpdateManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitUpdateManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelManufacturingOrder operation middleware
+func (sh *strictHandler) CancelManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CancelManufacturingOrderRequestObject
+
+	request.Id = id
+
+	var body CancelManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelManufacturingOrder(ctx, request.(CancelManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitCancelManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CloseManufacturingOrder operation middleware
+func (sh *strictHandler) CloseManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CloseManufacturingOrderRequestObject
+
+	request.Id = id
+
+	var body CloseManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CloseManufacturingOrder(ctx, request.(CloseManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CloseManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CloseManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitCloseManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddManufacturingOrderComponent operation middleware
+func (sh *strictHandler) AddManufacturingOrderComponent(w http.ResponseWriter, r *http.Request, id int64) {
+	var request AddManufacturingOrderComponentRequestObject
+
+	request.Id = id
+
+	var body AddManufacturingOrderComponentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddManufacturingOrderComponent(ctx, request.(AddManufacturingOrderComponentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddManufacturingOrderComponent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddManufacturingOrderComponentResponseObject); ok {
+		if err := validResponse.VisitAddManufacturingOrderComponentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateManufacturingOrderComponent operation middleware
+func (sh *strictHandler) UpdateManufacturingOrderComponent(w http.ResponseWriter, r *http.Request, id int64, componentId int64) {
+	var request UpdateManufacturingOrderComponentRequestObject
+
+	request.Id = id
+	request.ComponentId = componentId
+
+	var body UpdateManufacturingOrderComponentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateManufacturingOrderComponent(ctx, request.(UpdateManufacturingOrderComponentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateManufacturingOrderComponent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateManufacturingOrderComponentResponseObject); ok {
+		if err := validResponse.VisitUpdateManufacturingOrderComponentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmManufacturingOrder operation middleware
+func (sh *strictHandler) ConfirmManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ConfirmManufacturingOrderRequestObject
+
+	request.Id = id
+
+	var body ConfirmManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmManufacturingOrder(ctx, request.(ConfirmManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitConfirmManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListManufacturingOrderEvents operation middleware
+func (sh *strictHandler) ListManufacturingOrderEvents(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ListManufacturingOrderEventsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListManufacturingOrderEvents(ctx, request.(ListManufacturingOrderEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListManufacturingOrderEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListManufacturingOrderEventsResponseObject); ok {
+		if err := validResponse.VisitListManufacturingOrderEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingProductionDraft operation middleware
+func (sh *strictHandler) GetManufacturingProductionDraft(w http.ResponseWriter, r *http.Request, id int64, params GetManufacturingProductionDraftParams) {
+	var request GetManufacturingProductionDraftRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingProductionDraft(ctx, request.(GetManufacturingProductionDraftRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingProductionDraft")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingProductionDraftResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingProductionDraftResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostManufacturingProduction operation middleware
+func (sh *strictHandler) PostManufacturingProduction(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostManufacturingProductionRequestObject
+
+	request.Id = id
+
+	var body PostManufacturingProductionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostManufacturingProduction(ctx, request.(PostManufacturingProductionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostManufacturingProduction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostManufacturingProductionResponseObject); ok {
+		if err := validResponse.VisitPostManufacturingProductionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReserveManufacturingOrder operation middleware
+func (sh *strictHandler) ReserveManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ReserveManufacturingOrderRequestObject
+
+	request.Id = id
+
+	var body ReserveManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReserveManufacturingOrder(ctx, request.(ReserveManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReserveManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReserveManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitReserveManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchManufacturingPeople operation middleware
+func (sh *strictHandler) SearchManufacturingPeople(w http.ResponseWriter, r *http.Request, params SearchManufacturingPeopleParams) {
+	var request SearchManufacturingPeopleRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchManufacturingPeople(ctx, request.(SearchManufacturingPeopleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchManufacturingPeople")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchManufacturingPeopleResponseObject); ok {
+		if err := validResponse.VisitSearchManufacturingPeopleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingProduction operation middleware
+func (sh *strictHandler) GetManufacturingProduction(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetManufacturingProductionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingProduction(ctx, request.(GetManufacturingProductionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingProduction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingProductionResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingProductionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListManufacturingSites operation middleware
 func (sh *strictHandler) ListManufacturingSites(w http.ResponseWriter, r *http.Request) {
 	var request ListManufacturingSitesRequestObject
@@ -3713,6 +7062,32 @@ func (sh *strictHandler) ListManufacturingSites(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListManufacturingSitesResponseObject); ok {
 		if err := validResponse.VisitListManufacturingSitesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListManufacturingSiteLocations operation middleware
+func (sh *strictHandler) ListManufacturingSiteLocations(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ListManufacturingSiteLocationsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListManufacturingSiteLocations(ctx, request.(ListManufacturingSiteLocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListManufacturingSiteLocations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListManufacturingSiteLocationsResponseObject); ok {
+		if err := validResponse.VisitListManufacturingSiteLocationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

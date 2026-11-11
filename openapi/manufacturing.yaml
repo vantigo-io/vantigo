@@ -1,5 +1,12 @@
 components:
     schemas:
+        ManufacturingAvailability:
+            description: 'An order''s component status (M21, M21a), computed live: every line covered by its reservation and the site''s available, some, or none.'
+            enum:
+                - ready
+                - partly_available
+                - waiting
+            type: string
         ManufacturingBom:
             additionalProperties: false
             description: A bill of materials (M10) with its operations and lines.
@@ -402,6 +409,40 @@ components:
                 - lines
                 - revision
             type: object
+        ManufacturingCloseInput:
+            additionalProperties: false
+            description: Closing an order (M23).
+            properties:
+                backorder:
+                    description: 'When less than the quantity was produced: true creates a backorder for the rest, false closes short; absent is quantity_short (409).'
+                    nullable: true
+                    type: boolean
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - revision
+            type: object
+        ManufacturingCloseResult:
+            additionalProperties: false
+            description: A closed order and the backorder made for its rest.
+            properties:
+                backorder:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingOrder'
+                    nullable: true
+                order:
+                    $ref: '#/components/schemas/ManufacturingOrder'
+                shortLines:
+                    description: The backorder's lines left unreserved when it was confirmed.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingShortLine'
+                    type: array
+            required:
+                - order
+                - backorder
+                - shortLines
+            type: object
         ManufacturingClosure:
             additionalProperties: false
             description: A range of days a work center is closed, both included (M9).
@@ -456,6 +497,72 @@ components:
             required:
                 - items
             type: object
+        ManufacturingComponentInput:
+            additionalProperties: false
+            description: A component added to a confirmed or in-progress order (M18).
+            properties:
+                note:
+                    maxLength: 2000
+                    type: string
+                operationId:
+                    description: The BoM operation that consumes it.
+                    format: int64
+                    nullable: true
+                    type: integer
+                required:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                variantId:
+                    description: A goods variant.
+                    format: int32
+                    type: integer
+            required:
+                - revision
+                - variantId
+                - required
+            type: object
+        ManufacturingComponentUpdate:
+            additionalProperties: false
+            description: A component line's new requirement (M18, M18a).
+            properties:
+                note:
+                    description: Absent keeps the note.
+                    maxLength: 2000
+                    type: string
+                required:
+                    description: Exact decimal, 0 or more, never below consumed + scrapped (required_below_used).
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - revision
+                - required
+            type: object
+        ManufacturingDeviation:
+            additionalProperties: false
+            description: A consumed quantity more than 10 % off its proportional figure (M22).
+            properties:
+                componentId:
+                    format: int64
+                    type: integer
+                consumed:
+                    description: What the request sent.
+                    type: string
+                expected:
+                    description: The proportional figure.
+                    type: string
+                sku:
+                    type: string
+            required:
+                - componentId
+                - sku
+                - expected
+                - consumed
+            type: object
         ManufacturingInterval:
             additionalProperties: false
             description: 'One open interval of a day, local times in the workspace zone on a 15-minute grid: start before end; 24:00 is allowed as an end.'
@@ -471,6 +578,47 @@ components:
             required:
                 - start
                 - end
+            type: object
+        ManufacturingLocation:
+            additionalProperties: false
+            description: One location of an Inventory site (M4a).
+            properties:
+                active:
+                    description: An archived location takes no stock.
+                    type: boolean
+                fullCode:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    type: string
+                parentId:
+                    description: Null for the site's root.
+                    format: int64
+                    nullable: true
+                    type: integer
+                root:
+                    description: The site's root location, where stock lies when it has no place.
+                    type: boolean
+            required:
+                - id
+                - parentId
+                - kind
+                - fullCode
+                - active
+                - root
+            type: object
+        ManufacturingLocationList:
+            additionalProperties: false
+            description: Every location of a site, archived ones too, by full code.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingLocation'
+                    type: array
+            required:
+                - items
             type: object
         ManufacturingMeta:
             additionalProperties: false
@@ -498,6 +646,603 @@ components:
                 - canWorkShopFloor
                 - currency
             type: object
+        ManufacturingOrder:
+            additionalProperties: false
+            description: A manufacturing order (M17) with its component lines and their availability.
+            properties:
+                availability:
+                    $ref: '#/components/schemas/ManufacturingAvailability'
+                backorderOf:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingOrderLink'
+                    nullable: true
+                backorderOfId:
+                    description: The order this one is the backorder of (M23).
+                    format: int64
+                    nullable: true
+                    type: integer
+                backorders:
+                    description: The backorders of this order's chain made from it.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderLink'
+                    type: array
+                bomCode:
+                    nullable: true
+                    type: string
+                bomId:
+                    format: int64
+                    type: integer
+                bomOutputQuantity:
+                    description: The BoM's output quantity.
+                    type: string
+                children:
+                    description: Sub-assembly orders (delivery E).
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderLink'
+                    type: array
+                closedAt:
+                    description: When it was closed.
+                    format: date-time
+                    nullable: true
+                    type: string
+                componentLocationId:
+                    description: Where components are taken from; null takes each from its primary location, then where it lies (M22a).
+                    format: int64
+                    nullable: true
+                    type: integer
+                components:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderComponent'
+                    type: array
+                confirmedAt:
+                    description: When it was confirmed.
+                    format: date-time
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                dueDate:
+                    description: The day the finished goods must be ready.
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                late:
+                    description: Due before today and not done or cancelled (M24).
+                    type: boolean
+                note:
+                    type: string
+                number:
+                    description: MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
+                    type: string
+                origin:
+                    $ref: '#/components/schemas/ManufacturingOrderOriginInfo'
+                outputLocationId:
+                    format: int64
+                    type: integer
+                outputScrap:
+                    description: Finished units produced and discarded (M22a).
+                    type: string
+                overrun:
+                    description: produced − quantity when more was produced, else 0 (M23).
+                    type: string
+                parent:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingOrderLink'
+                    nullable: true
+                plannedFinish:
+                    description: Set by hand or by planning (delivery D).
+                    format: date-time
+                    nullable: true
+                    type: string
+                plannedStart:
+                    description: Set by hand or by planning (delivery D).
+                    format: date-time
+                    nullable: true
+                    type: string
+                priority:
+                    $ref: '#/components/schemas/ManufacturingPriority'
+                produced:
+                    description: Good output posted so far, exact decimal (M22a); more than quantity is an overrun.
+                    type: string
+                quantity:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                reservationStatus:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingReservationStatus'
+                    description: From the stored copies (M21a); null unless the order is confirmed or in progress.
+                    nullable: true
+                responsible:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingPerson'
+                    nullable: true
+                revision:
+                    format: int32
+                    type: integer
+                siteId:
+                    format: int64
+                    type: integer
+                status:
+                    $ref: '#/components/schemas/ManufacturingOrderStatus'
+                updatedAt:
+                    format: date-time
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - id
+                - number
+                - variant
+                - bomId
+                - quantity
+                - produced
+                - status
+                - siteId
+                - dueDate
+                - plannedStart
+                - plannedFinish
+                - priority
+                - responsible
+                - origin
+                - reservationStatus
+                - late
+                - backorderOfId
+                - createdAt
+                - bomCode
+                - bomOutputQuantity
+                - outputScrap
+                - componentLocationId
+                - outputLocationId
+                - note
+                - parent
+                - backorderOf
+                - backorders
+                - children
+                - components
+                - availability
+                - overrun
+                - confirmedAt
+                - closedAt
+                - revision
+                - updatedAt
+            type: object
+        ManufacturingOrderComponent:
+            additionalProperties: false
+            description: A component line of an order (M18) with its live availability (M21, M21a). On a draft the lines follow the BoM and have no id.
+            properties:
+                added:
+                    description: Added to the order after confirm (M18).
+                    type: boolean
+                available:
+                    description: The variant's available quantity at the order's site, read live (M21a).
+                    type: string
+                consumed:
+                    description: Consumed by productions so far.
+                    type: string
+                covered:
+                    description: reserved + available ≥ remaining (M21a).
+                    type: boolean
+                id:
+                    description: Null on a draft, whose lines follow its BoM until it is confirmed.
+                    format: int64
+                    nullable: true
+                    type: integer
+                missing:
+                    description: What neither the reservation nor the site's available covers, the site's available shared across the lines of one variant (M21a).
+                    type: string
+                note:
+                    type: string
+                operationId:
+                    description: The BoM operation that consumes it.
+                    format: int64
+                    nullable: true
+                    type: integer
+                remaining:
+                    description: required − consumed − scrapped, at least 0.
+                    type: string
+                required:
+                    description: line quantity × order quantity / output quantity × (1 + scrap/100), rounded up to three decimals (M18), or as edited.
+                    type: string
+                reserved:
+                    description: What the line holds reserved at the order's site (Manufacturing's copy, M20a).
+                    type: string
+                scrapped:
+                    description: Scrapped by productions so far.
+                    type: string
+                sortOrder:
+                    format: int32
+                    type: integer
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - id
+                - variant
+                - required
+                - reserved
+                - available
+                - consumed
+                - scrapped
+                - remaining
+                - missing
+                - covered
+                - operationId
+                - added
+                - note
+                - sortOrder
+            type: object
+        ManufacturingOrderEvent:
+            additionalProperties: false
+            description: One event of an order's timeline (M26).
+            properties:
+                actorDisplay:
+                    type: string
+                actorUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                at:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/ManufacturingOrderEventKind'
+                payload:
+                    additionalProperties: true
+                    description: 'The event''s figures: quantities as exact decimal text, ids, numbers.'
+                    type: object
+            required:
+                - id
+                - kind
+                - payload
+                - actorUserId
+                - actorDisplay
+                - at
+            type: object
+        ManufacturingOrderEventKind:
+            description: What an event of the timeline records (M26).
+            enum:
+                - created
+                - updated
+                - confirmed
+                - reserved
+                - production_posted
+                - line_added
+                - line_changed
+                - closed
+                - cancelled
+                - backorder_created
+            type: string
+        ManufacturingOrderEventList:
+            additionalProperties: false
+            description: An order's timeline, oldest first.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderEvent'
+                    type: array
+            required:
+                - items
+            type: object
+        ManufacturingOrderInput:
+            additionalProperties: false
+            description: A new manufacturing order (M17), created as a draft.
+            properties:
+                bomId:
+                    description: An active BoM of the variant; default its default BoM.
+                    format: int64
+                    nullable: true
+                    type: integer
+                componentLocationId:
+                    description: An active location of the site (location_unknown); null takes each component from its primary location, then where it lies.
+                    format: int64
+                    nullable: true
+                    type: integer
+                dueDate:
+                    description: The day the goods must be ready.
+                    format: date
+                    nullable: true
+                    type: string
+                note:
+                    maxLength: 2000
+                    type: string
+                outputLocationId:
+                    description: An active location of the site; default the site's root location (M17a).
+                    format: int64
+                    nullable: true
+                    type: integer
+                plannedFinish:
+                    description: Planned finish, not before the start.
+                    format: date-time
+                    nullable: true
+                    type: string
+                plannedStart:
+                    description: Planned start.
+                    format: date-time
+                    nullable: true
+                    type: string
+                priority:
+                    $ref: '#/components/schemas/ManufacturingPriority'
+                quantity:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                responsibleUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                siteId:
+                    description: An active Inventory site; default the BoM's work centers' site, else the first active site (M17a).
+                    format: int64
+                    type: integer
+                variantId:
+                    description: A goods variant with an active BoM (bom_required).
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - quantity
+            type: object
+        ManufacturingOrderLink:
+            additionalProperties: false
+            description: 'Another order an order names: its backorder, its parent or a child.'
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                number:
+                    description: MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
+                    type: string
+                produced:
+                    description: 'Exact decimal: good output only.'
+                    type: string
+                quantity:
+                    description: Exact decimal.
+                    type: string
+                status:
+                    $ref: '#/components/schemas/ManufacturingOrderStatus'
+            required:
+                - id
+                - number
+                - status
+                - quantity
+                - produced
+            type: object
+        ManufacturingOrderOriginInfo:
+            additionalProperties: false
+            description: Where the order came from (M17).
+            properties:
+                kind:
+                    $ref: '#/components/schemas/ManufacturingOrigin'
+                lineId:
+                    description: The sales order line (E).
+                    format: int64
+                    nullable: true
+                    type: integer
+                orderId:
+                    description: 'The origin''s order: a sales order (E) or the parent order.'
+                    format: int64
+                    nullable: true
+                    type: integer
+                reference:
+                    description: The origin's display reference, such as SO-12.
+                    nullable: true
+                    type: string
+            required:
+                - kind
+                - orderId
+                - lineId
+                - reference
+            type: object
+        ManufacturingOrderPage:
+            additionalProperties: false
+            description: One page of the list.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderSummary'
+                    type: array
+                page:
+                    format: int32
+                    type: integer
+                pageSize:
+                    format: int32
+                    type: integer
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+                - page
+                - pageSize
+            type: object
+        ManufacturingOrderSort:
+            description: The list's order (M24).
+            enum:
+                - dueDate
+                - number
+                - priority
+            type: string
+        ManufacturingOrderStatus:
+            description: A manufacturing order's state (M19).
+            enum:
+                - draft
+                - confirmed
+                - in_progress
+                - done
+                - cancelled
+            type: string
+        ManufacturingOrderSummary:
+            additionalProperties: false
+            description: A manufacturing order as the list shows it (M24).
+            properties:
+                backorderOfId:
+                    description: The order this one is the backorder of (M23).
+                    format: int64
+                    nullable: true
+                    type: integer
+                bomId:
+                    format: int64
+                    type: integer
+                createdAt:
+                    format: date-time
+                    type: string
+                dueDate:
+                    description: The day the finished goods must be ready.
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                late:
+                    description: Due before today and not done or cancelled (M24).
+                    type: boolean
+                number:
+                    description: MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
+                    type: string
+                origin:
+                    $ref: '#/components/schemas/ManufacturingOrderOriginInfo'
+                plannedFinish:
+                    description: Set by hand or by planning (delivery D).
+                    format: date-time
+                    nullable: true
+                    type: string
+                plannedStart:
+                    description: Set by hand or by planning (delivery D).
+                    format: date-time
+                    nullable: true
+                    type: string
+                priority:
+                    $ref: '#/components/schemas/ManufacturingPriority'
+                produced:
+                    description: Good output posted so far, exact decimal (M22a); more than quantity is an overrun.
+                    type: string
+                quantity:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                reservationStatus:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingReservationStatus'
+                    description: From the stored copies (M21a); null unless the order is confirmed or in progress.
+                    nullable: true
+                responsible:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingPerson'
+                    nullable: true
+                siteId:
+                    format: int64
+                    type: integer
+                status:
+                    $ref: '#/components/schemas/ManufacturingOrderStatus'
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - id
+                - number
+                - variant
+                - bomId
+                - quantity
+                - produced
+                - status
+                - siteId
+                - dueDate
+                - plannedStart
+                - plannedFinish
+                - priority
+                - responsible
+                - origin
+                - reservationStatus
+                - late
+                - backorderOfId
+                - createdAt
+            type: object
+        ManufacturingOrderUpdate:
+            additionalProperties: false
+            description: 'An order''s fields, replaced as a whole (M19): a draft changes everything; a confirmed or in-progress order only its dates, priority, responsible, note and locations. A nullable field left out is cleared.'
+            properties:
+                bomId:
+                    description: Changed only on a draft (order_not_draft).
+                    format: int64
+                    type: integer
+                componentLocationId:
+                    description: An active location of the site (location_unknown); null takes each component from its primary location, then where it lies.
+                    format: int64
+                    nullable: true
+                    type: integer
+                dueDate:
+                    description: The day the goods must be ready.
+                    format: date
+                    nullable: true
+                    type: string
+                note:
+                    maxLength: 2000
+                    type: string
+                outputLocationId:
+                    description: An active location of the site; default the site's root location (M17a).
+                    format: int64
+                    nullable: true
+                    type: integer
+                plannedFinish:
+                    description: Planned finish, not before the start.
+                    format: date-time
+                    nullable: true
+                    type: string
+                plannedStart:
+                    description: Planned start.
+                    format: date-time
+                    nullable: true
+                    type: string
+                priority:
+                    $ref: '#/components/schemas/ManufacturingPriority'
+                quantity:
+                    description: Exact decimal, more than 0. Changed only on a draft (order_not_draft).
+                    type: string
+                responsibleUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                revision:
+                    description: The revision the client read (revision_conflict).
+                    format: int32
+                    type: integer
+                siteId:
+                    description: Changed only on a draft (order_not_draft).
+                    format: int64
+                    type: integer
+            required:
+                - revision
+                - bomId
+                - quantity
+                - siteId
+                - priority
+            type: object
+        ManufacturingOrderWithShortLines:
+            additionalProperties: false
+            description: An order after a write that reserves (confirm, reserve now, a line's add or edit), naming each line left short.
+            properties:
+                order:
+                    $ref: '#/components/schemas/ManufacturingOrder'
+                shortLines:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingShortLine'
+                    type: array
+            required:
+                - order
+                - shortLines
+            type: object
+        ManufacturingOrigin:
+            description: 'Where an order came from (M17): by hand, a sales order (delivery E) or a parent order (E).'
+            enum:
+                - manual
+                - sales_order
+                - parent
+            type: string
         ManufacturingOverviewNode:
             additionalProperties: false
             description: 'One node of the exploded BoM (M15): the root is the BoM''s variant; a made node recurses through its default active BoM.'
@@ -590,8 +1335,38 @@ components:
                 - workCenterCode
                 - expectedMinutes
             type: object
+        ManufacturingPerson:
+            additionalProperties: false
+            description: A user as Manufacturing names one.
+            properties:
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+            required:
+                - id
+                - displayName
+            type: object
+        ManufacturingPersonList:
+            additionalProperties: false
+            description: Users matching a search, by display name.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingPerson'
+                    type: array
+            required:
+                - items
+            type: object
+        ManufacturingPriority:
+            description: An order's priority (M17).
+            enum:
+                - normal
+                - urgent
+            type: string
         ManufacturingProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code (manufacturing design §3, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant''s default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation''s work center is missing or archived), work_center_other_site (400: operations at more than one site), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM''s variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM), quantity_invalid (400: not more than 0, or more than three decimals) and dependency_unavailable (503). A line''s codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant''s default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation''s work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM''s variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order''s site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft''s change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production needs manufacturing:shop-floor or manufacturing:orders-manage), quantity_invalid (400: not more than 0, or more than three decimals), Inventory''s refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line''s codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -599,6 +1374,11 @@ components:
                 detail:
                     nullable: true
                     type: string
+                deviations:
+                    description: 'consumption_differs only: every deviating line.'
+                    items:
+                        $ref: '#/components/schemas/ManufacturingDeviation'
+                    type: array
                 errors:
                     additionalProperties:
                         items:
@@ -631,11 +1411,15 @@ components:
             type: object
         ManufacturingProblemLine:
             additionalProperties: false
-            description: One failing line of a BoM.
+            description: One failing line of a BoM, or of an order's production.
             properties:
                 code:
                     description: The line's refusal code.
                     type: string
+                componentId:
+                    description: An order's component line, for a refusal of a production or a reserve.
+                    format: int64
+                    type: integer
                 detail:
                     description: What a person reads.
                     type: string
@@ -661,6 +1445,204 @@ components:
                 - variantId
                 - sku
             type: object
+        ManufacturingProduction:
+            additionalProperties: false
+            description: A production posted against an order (M22).
+            properties:
+                clientRequestId:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                lines:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingProductionLine'
+                    type: array
+                movementId:
+                    description: Inventory's production movement; null when nothing went into or out of stock.
+                    format: int64
+                    nullable: true
+                    type: integer
+                orderId:
+                    format: int64
+                    type: integer
+                orderNumber:
+                    type: string
+                outputScrap:
+                    description: Finished units discarded.
+                    type: string
+                postedAt:
+                    format: date-time
+                    type: string
+                postedByDisplay:
+                    type: string
+                postedByUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                quantity:
+                    description: Good output.
+                    type: string
+                toLocationId:
+                    format: int64
+                    type: integer
+            required:
+                - id
+                - orderId
+                - orderNumber
+                - clientRequestId
+                - quantity
+                - outputScrap
+                - toLocationId
+                - movementId
+                - postedByUserId
+                - postedByDisplay
+                - postedAt
+                - lines
+            type: object
+        ManufacturingProductionDraft:
+            additionalProperties: false
+            description: The production dialog's prefill (M22a).
+            properties:
+                lines:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingProductionDraftLine'
+                    type: array
+                outputScrap:
+                    description: The output scrap asked for.
+                    type: string
+                quantity:
+                    description: The quantity asked for; default what remains to produce.
+                    type: string
+                toLocationId:
+                    format: int64
+                    type: integer
+            required:
+                - quantity
+                - outputScrap
+                - toLocationId
+                - lines
+            type: object
+        ManufacturingProductionDraftLine:
+            additionalProperties: false
+            description: A component line's prefill (M22a).
+            properties:
+                componentId:
+                    format: int64
+                    type: integer
+                proposed:
+                    description: required × (quantity + outputScrap) / order quantity, rounded half-up to three decimals.
+                    type: string
+                remaining:
+                    description: required − consumed − scrapped.
+                    type: string
+                required:
+                    description: The line's requirement.
+                    type: string
+                reserved:
+                    description: Reserved for the line.
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - componentId
+                - variant
+                - required
+                - remaining
+                - reserved
+                - proposed
+            type: object
+        ManufacturingProductionInput:
+            additionalProperties: false
+            description: A production registered against an order (M22, M22a).
+            properties:
+                acceptDeviation:
+                    description: Post although a consumed quantity differs from the proportional figure by more than 10 % (consumption_differs).
+                    type: boolean
+                clientRequestId:
+                    description: 'Makes the post idempotent: a replay answers 200 with the first production; another body is client_request_reused.'
+                    maxLength: 100
+                    minLength: 1
+                    type: string
+                lines:
+                    description: Omitted lines are not judged and consume nothing.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingProductionLineInput'
+                    maxItems: 400
+                    type: array
+                outputScrap:
+                    description: Finished units produced and discarded, exact decimal, 0 or more; default 0.
+                    type: string
+                quantity:
+                    description: Good output, exact decimal, 0 or more; 0 only with consumption, scrap or output scrap.
+                    type: string
+                toLocationId:
+                    description: Where the output is put; default the order's output location.
+                    format: int64
+                    nullable: true
+                    type: integer
+            required:
+                - clientRequestId
+                - quantity
+                - lines
+            type: object
+        ManufacturingProductionLine:
+            additionalProperties: false
+            description: One component line of a production.
+            properties:
+                componentId:
+                    format: int64
+                    type: integer
+                consumed:
+                    description: Exact decimal.
+                    type: string
+                fromLocationId:
+                    description: The location the request named, if any.
+                    format: int64
+                    nullable: true
+                    type: integer
+                scrapped:
+                    description: Exact decimal.
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - componentId
+                - variant
+                - consumed
+                - scrapped
+                - fromLocationId
+            type: object
+        ManufacturingProductionLineInput:
+            additionalProperties: false
+            description: What a production consumed and scrapped of one component line (M22).
+            properties:
+                componentId:
+                    format: int64
+                    type: integer
+                consumed:
+                    description: Exact decimal, 0 or more, at most three decimals; judged against the proportional figure when sent (M22a).
+                    nullable: true
+                    type: string
+                fromLocationId:
+                    description: Where it is taken from; default the order's component location, else split over the locations holding it (M22a).
+                    format: int64
+                    nullable: true
+                    type: integer
+                scrap:
+                    description: 'Exact decimal, 0 or more: lost, consumed with no output.'
+                    nullable: true
+                    type: string
+            required:
+                - componentId
+            type: object
+        ManufacturingReservationStatus:
+            description: 'What the list shows of an open order''s components (M21a), from the stored reserved copies: every line''s remaining requirement reserved, some reserved, or none.'
+            enum:
+                - reserved
+                - partly_reserved
+                - not_reserved
+            type: string
         ManufacturingRevisionInput:
             additionalProperties: false
             description: The revision the client read.
@@ -688,6 +1670,23 @@ components:
                 - components
                 - operations
                 - total
+            type: object
+        ManufacturingShortLine:
+            additionalProperties: false
+            description: A component line left unreserved (M20, M20a).
+            properties:
+                componentId:
+                    format: int64
+                    type: integer
+                missing:
+                    description: What the line still needs reserved.
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - componentId
+                - variant
+                - missing
             type: object
         ManufacturingSite:
             additionalProperties: false
@@ -737,10 +1736,25 @@ components:
                     description: Active work centers whose working state is blocked.
                     format: int32
                     type: integer
+                ordersInProgress:
+                    description: Orders in progress.
+                    format: int32
+                    type: integer
+                ordersLate:
+                    description: Open orders due before today (M24).
+                    format: int32
+                    type: integer
+                ordersToStartToday:
+                    description: Confirmed orders not started whose planned start is today or earlier.
+                    format: int32
+                    type: integer
             required:
                 - activeWorkCenters
                 - blockedWorkCenters
                 - activeBoms
+                - ordersToStartToday
+                - ordersInProgress
+                - ordersLate
             type: object
         ManufacturingStatus:
             description: A work center's or a BoM's status.
@@ -1576,6 +2590,882 @@ paths:
             tags:
                 - Manufacturing
             x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/orders:
+        get:
+            description: Filtered by status (default the open ones), site, work center, variant, due date range, late, origin, responsible and reservation status, sorted by due date, number or priority, a page at a time (M24, M21a).
+            operationId: listManufacturingOrders
+            parameters:
+                - description: Any of the statuses; default draft, confirmed and in_progress.
+                  explode: true
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderStatus'
+                    type: array
+                  style: form
+                - in: query
+                  name: siteId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Orders whose BoM has an operation at the work center (work orders from delivery C).
+                  in: query
+                  name: workCenterId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: variantId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: dueFrom
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: dueTo
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - description: Only orders due before today and not done or cancelled.
+                  in: query
+                  name: late
+                  required: false
+                  schema:
+                    type: boolean
+                - in: query
+                  name: origin
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/ManufacturingOrigin'
+                - in: query
+                  name: responsibleUserId
+                  required: false
+                  schema:
+                    format: uuid
+                    type: string
+                - description: Only confirmed and in-progress orders with this reservation status.
+                  in: query
+                  name: reservation
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/ManufacturingReservationStatus'
+                - description: Matches the number (MO-12) and the product's SKU and name.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    maxLength: 100
+                    type: string
+                - description: Default dueDate.
+                  in: query
+                  name: sort
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/ManufacturingOrderSort'
+                - in: query
+                  name: page
+                  required: false
+                  schema:
+                    format: int32
+                    minimum: 1
+                    type: integer
+                - description: Default 50.
+                  in: query
+                  name: pageSize
+                  required: false
+                  schema:
+                    format: int32
+                    maximum: 200
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrderPage'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — a filter or the paging is out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: List manufacturing orders
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+        post:
+            description: Creates a draft numbered MO-<n> (M17, M17a, M17b). A draft follows its BoM until it is confirmed.
+            operationId: createManufacturingOrder
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingOrderInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrder'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; bom_required, variant_not_found, variant_not_goods, site_unknown, location_unknown, work_center_other_site, quantity_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — bom_not_active.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Create a manufacturing order
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
+    /api/v1/manufacturing/orders/{id}:
+        get:
+            description: With its component lines and their live availability at the site (M21a), and the orders it links to.
+            operationId: getManufacturingOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrder'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Get a manufacturing order
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+        put:
+            description: A draft changes everything; a confirmed or in-progress order its dates, priority, responsible, note and locations (M19).
+            operationId: updateManufacturingOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingOrderUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrder'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; site_unknown, location_unknown, work_center_other_site, quantity_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, order_not_draft (a draft's field on a confirmed order), order_not_open (done or cancelled), bom_not_active.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Update a manufacturing order
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
+    /api/v1/manufacturing/orders/{id}/cancel:
+        post:
+            description: Allowed while nothing has been produced or consumed; releases every reservation (M19).
+            operationId: cancelManufacturingOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrder'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, order_not_open (done or cancelled), order_has_production.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Cancel a manufacturing order
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
+    /api/v1/manufacturing/orders/{id}/close:
+        post:
+            description: Releases what remains reserved and marks the order done; with backorder true a new order for the rest, numbered from the root and confirmed at once when this one was (M23).
+            operationId: closeManufacturingOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingCloseInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingCloseResult'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, order_not_open, quantity_short (less than the quantity produced and backorder not given).
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Close a manufacturing order
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
+    /api/v1/manufacturing/orders/{id}/components:
+        post:
+            description: Adds an extra component to a confirmed or in-progress order and reserves it (M18).
+            operationId: addManufacturingOrderComponent
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingComponentInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrderWithShortLines'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; variant_not_found, variant_not_goods, quantity_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, order_not_open; Inventory's site_archived.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Add a component line to a manufacturing order
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
+    /api/v1/manufacturing/orders/{id}/components/{componentId}:
+        put:
+            description: Changes the requirement and adjusts the line's reservation (M18, M18a, M20).
+            operationId: updateManufacturingOrderComponent
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: componentId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingComponentUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrderWithShortLines'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; required_below_used, quantity_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such order or component line. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, order_not_open; Inventory's site_archived.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Change a component line's requirement
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
+    /api/v1/manufacturing/orders/{id}/confirm:
+        post:
+            description: Snapshots the BoM's lines as component lines and reserves each line's requirement at the site; a short line is left unreserved and named in shortLines, never refused (M17, M20, M20a).
+            operationId: confirmManufacturingOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrderWithShortLines'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, order_not_draft, bom_not_active; Inventory's site_archived and variant_not_stocked.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Confirm a manufacturing order
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
+    /api/v1/manufacturing/orders/{id}/events:
+        get:
+            description: The append-only timeline, oldest first (M26).
+            operationId: listManufacturingOrderEvents
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrderEventList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+            summary: List a manufacturing order's history
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/orders/{id}/production-draft:
+        get:
+            description: Each line's consumption proportional to quantity + outputScrap (M22a).
+            operationId: getManufacturingProductionDraft
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Good output; default what remains to produce.
+                  in: query
+                  name: quantity
+                  required: false
+                  schema:
+                    type: string
+                - description: Default 0.
+                  in: query
+                  name: outputScrap
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProductionDraft'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — quantity_invalid.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — order_not_open.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Get a production's proportional prefill
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/orders/{id}/productions:
+        post:
+            description: Posts one production movement through Inventory consuming the components and producing the item, updates the line totals and moves the order to in progress (M22, M22a). Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler. A first post answers 201; a replay of its clientRequestId 200 with the first production.
+            operationId: postManufacturingProduction
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingProductionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProduction'
+                    description: 'OK — a replay: the production first posted with this clientRequestId.'
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProduction'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; quantity_invalid, location_unknown.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage.
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — order_not_open, consumption_differs (deviations), client_request_reused; Inventory's insufficient_stock, site_archived, variant_not_stocked, document_reused (lines name the component lines). Nothing was posted.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Register a production
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/orders/{id}/reserve:
+        post:
+            description: 'Reserve now: tries every line''s unreserved requirement again, in two passes (M20a).'
+            operationId: reserveManufacturingOrder
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrderWithShortLines'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, order_not_open; Inventory's site_archived and variant_not_stocked.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Reserve a manufacturing order's short lines
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
+    /api/v1/manufacturing/people:
+        get:
+            operationId: searchManufacturingPeople
+            parameters:
+                - description: Part of the display name.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    maxLength: 100
+                    type: string
+                - description: Default 20.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    format: int32
+                    maximum: 50
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingPersonList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Search people for an order's responsible
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/productions/{id}:
+        get:
+            description: A production record with its order's id, for the movement page's source.
+            operationId: getManufacturingProduction
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProduction'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such production. The body is empty.
+            summary: Get a production
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
     /api/v1/manufacturing/sites:
         get:
             operationId: listManufacturingSites
@@ -1605,6 +3495,46 @@ paths:
                                 $ref: '#/components/schemas/ManufacturingProblem'
                     description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
             summary: List the active Inventory sites
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/sites/{id}/locations:
+        get:
+            description: 'Every location of the site, archived ones too, by full code (M4a): what an order takes components from and puts its output on. An unknown site has none.'
+            operationId: listManufacturingSiteLocations
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingLocationList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: List a site's locations
             tags:
                 - Manufacturing
             x-vantigo-access: permission:manufacturing:access
