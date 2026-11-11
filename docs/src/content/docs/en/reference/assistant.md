@@ -349,7 +349,7 @@ The route list the prompt carries is the host's route shapes (`appRoutes` in `pr
 list `navigate` validates against. It names one prefix per app with the record screens under it — for
 Inventory, `/inventory` with a site, a location, a variant's stock, the movements, a transfer and, since phase 2's delivery B, the low-stock list `/inventory/low-stock`, and for Orders,
 `/orders` with a quote, an order, a delivery, a subscription, the templates, the settings and the sales analysis, beside the customer's `/orders` tab, and for
-Manufacturing, `/manufacturing` with the manufacturing orders and an order, a bill of materials, its overview and a work center — so an app the
+Manufacturing, `/manufacturing` with the manufacturing orders and an order, a bill of materials, its overview, a work center and, since delivery C, the shop floor `/manufacturing/shop-floor` with a work center's queue, a work order and My work `/manufacturing/shop-floor/mine` — so an app the
 list does not name cannot be linked to. Its targets join [the registry](#guided-tours) the same way:
 `@vantigo/inventory-ui` exports its own — the lookup, a new site, location, receipt,
 adjustment and move, bulk adding locations, printing labels, opening a count, the import's file, and since
@@ -364,11 +364,14 @@ final period, since C an order's site, a delivery's creation, pick list and post
 default site, and since D adding and estimating a shipping line, shipping a delivery, a shipment's service and
 booking, the freight markup, and Integrations › Shipping's Add carrier account and Verify
 ([Orders](/en/reference/orders/#assistant-tour-targets)) — as `@vantigo/manufacturing-ui` exports its
-thirty-one — the overview's cards, New bill of materials, New manufacturing order and the orders due,
+forty-three — the overview's cards, New bill of materials, New manufacturing order and the orders due,
 the orders' list, filters and New manufacturing order, an order's form, facts, actions, short lines,
 components, Add component and history, the work centers' list and New work center, a
 work center's form, weekly pattern, save, closures and actions, the bills of materials' list and New bill of
-materials, a BoM's header, operations, lines, save and actions, and the BoM overview's inputs, cost and tree
+materials, a BoM's header, operations, lines, save and actions, the BoM overview's inputs, cost and tree, and
+since delivery C an order's Work orders tab, its work orders, its time logs and Add missing log, the shop
+floor's work center picker, a work center's queue and Block and Unblock, a work order's Start, Pause and
+Finish, its timer, who is here and its instructions, and My work's running log
 ([Manufacturing](/en/reference/manufacturing/)) — and the host's `assist-targets.ts` collects them.
 
 ## Claude and preserved thinking

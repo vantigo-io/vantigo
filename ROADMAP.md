@@ -979,8 +979,15 @@ The rules Inventory's phase 1 kept for it still hold:
   backorder (`MO-<n>-2`), cancel, the history and live updates; and open orders holding
   their variants in Products ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md#manufacturing-orders),
   the [reference](docs/src/content/docs/en/reference/manufacturing.md#manufacturing-orders)).
-- **C — Work orders and the shop floor (planned).** Work orders per operation, time logs,
-  the live shop floor operators work from, and downtime.
+- **C — Work orders and the shop floor (built).** A work order per operation, snapshotted
+  at confirm with its expected minutes; time logs with one open log per operator, start,
+  start out of sequence, pause and finish — the last with the production in the same
+  transaction — and scrap; blocking a work center, turning its operators' time into
+  downtime with a reason; a supervisor's corrections and missing logs under a 60-day lock;
+  the tablet shop floor with the work center's queue, the work order view, presence and
+  My work, live; and the lock order extended to work orders, work centers and time logs
+  ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md#the-shop-floor),
+  the [reference](docs/src/content/docs/en/reference/manufacturing.md#work-orders-and-the-shop-floor)).
 - **D — The schedule and cost (planned).** Planning work orders on the work centers'
   calendars, the board and its load; the estimate, the actual and the deviation.
 - **E — Make-to-order and sub-assemblies (planned).** A manufacturing order from a sales

@@ -1089,9 +1089,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     Not every row naming a user is swept: Inventory's movements are immutable records of the
     stock ledger and keep the poster's user id and display name after the person is erased,
     which its reference states ([Inventory](/en/reference/inventory/)). Manufacturing's
-    productions and its orders' events are such records beside Inventory's: they keep the
-    poster's and the actor's user id and display name, and so will its time logs from
-    delivery C ([Manufacturing](/en/reference/manufacturing/#personal-data)).
+    productions, its orders' events and its time logs are such records beside Inventory's:
+    they keep the poster's, the actor's and the operator's user id and display name. A time
+    log's free-text note is not a record and is swept: Manufacturing's daily
+    `manufacturing-erasure` worker asks `Users(ids)` about the operators with a noted log
+    and blanks the notes of those that are gone
+    ([Manufacturing](/en/reference/manufacturing/#personal-data)).
 
 20. **Stock a variant holds is asked for inside Products' transaction.** Rule 8's
     holders write under the caller's lock; this one only answers, and is made for
@@ -1911,13 +1914,15 @@ write's own transaction, after `LockVariants` and the order's row: `ReserveForPr
 `Release`, `Produce` and `ReservationsFor`. Identity's `Deps.Users`
 (`contracts.UserDirectory`) gives it an order's responsible and a production's poster,
 and `Deps.Calendar` (`contracts.BusinessCalendar`) the business day "today" and "late"
-are judged in, both before a transaction. It declares two live topics through
-`Module.LiveTopics` — `manufacturing.orders` and `manufacturing.order:<id>` — notified on
-the writing transaction. It fills the many-provider `VariantReferences` slot (rule 20)
+are judged in, both before a transaction. It declares four live topics through
+`Module.LiveTopics` — `manufacturing.orders`, `manufacturing.order:<id>`,
+`manufacturing.work-center:<id>` and `manufacturing.work-order:<id>`, the last with
+presence — notified on the writing transaction. It fills the many-provider `VariantReferences` slot (rule 20)
 with its active bills of materials and its manufacturing orders not done or cancelled,
 so Products refuses to delete a variant, or to turn its product into a service, while
 one names it as its product or a component. It provides no single-provider contract,
-writes nothing outside the `manufacturing` schema and has no background worker.
+writes nothing outside the `manufacturing` schema, and has one background worker,
+`manufacturing-erasure`, the rule-19 sweep that blanks the notes of erased operators' time logs.
 `MODULES` refuses it without `products` or `inventory`. See
 [Manufacturing](/en/reference/manufacturing/).
 
