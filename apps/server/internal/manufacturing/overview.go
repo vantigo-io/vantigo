@@ -20,10 +20,22 @@ import (
 // maxOverviewNodes is how many nodes an overview answers at most (M15a).
 const maxOverviewNodes = 2000
 
+// maxExpectedMinutes is the most expected minutes one operation of an
+// overview answers: 10^12 minutes, about two million years. Past it the
+// overview is refused bom_too_large rather than answer a number that wraps.
+var maxExpectedMinutes = new(big.Int).Exp(big.NewInt(10), big.NewInt(12), nil)
+
 // tooLarge is the 400 bom_too_large.
 func tooLarge() error {
 	return refuse(problem(http.StatusBadRequest, codeBomTooLarge, "The bill of materials is too large to explode",
 		fmt.Sprintf("Exploded through its components' default BoMs it has more than %d nodes.", maxOverviewNodes)))
+}
+
+// tooManyMinutes is the 400 bom_too_large for an operation whose expected
+// time at the quantity passes maxExpectedMinutes.
+func tooManyMinutes() error {
+	return refuse(problem(http.StatusBadRequest, codeBomTooLarge, "The bill of materials is too large to explode",
+		fmt.Sprintf("At this quantity an operation's expected time passes %s minutes. Ask for a smaller quantity.", maxExpectedMinutes)))
 }
 
 // graphBom is one BoM of an overview's graph, with its operations and lines.
@@ -103,7 +115,7 @@ type node struct {
 // nodeOperation is an operation of a made node at the node's quantity.
 type nodeOperation struct {
 	row     store.OperationsOfBomsRow
-	minutes int64
+	minutes *big.Int
 	cost    *big.Rat
 }
 
@@ -132,8 +144,11 @@ func (e *explosion) explode(variant int32, bom *graphBom, quantity, scrap *big.R
 	output := ratOrZero(bom.row.OutputQuantity)
 	for _, o := range bom.ops {
 		minutes := expectedMinutes(o, quantity, output)
+		if minutes.Cmp(maxExpectedMinutes) > 0 {
+			return nil, tooManyMinutes()
+		}
 		rate := new(big.Rat).Add(ratOrZero(o.WorkCenterMachineCostPerHour), ratOrZero(o.WorkCenterLabourCostPerHour))
-		cost := new(big.Rat).Mul(new(big.Rat).Quo(new(big.Rat).SetInt64(minutes), sixty), rate)
+		cost := new(big.Rat).Mul(new(big.Rat).Quo(new(big.Rat).SetInt(minutes), sixty), rate)
 		n.ops = append(n.ops, nodeOperation{row: o, minutes: minutes, cost: cost})
 	}
 	for _, l := range bom.lines {
@@ -158,7 +173,7 @@ func (e *explosion) explode(variant int32, bom *graphBom, quantity, scrap *big.R
 // cycles = ⌈(quantity / outputQuantity) / capacity⌉, and setup (the
 // operation's, else the work center's) + cleanup + cycles × minutesPerCycle ×
 // 100 / timeEfficiency, half-up to the minute.
-func expectedMinutes(o store.OperationsOfBomsRow, quantity, output *big.Rat) int64 {
+func expectedMinutes(o store.OperationsOfBomsRow, quantity, output *big.Rat) *big.Int {
 	capacity := big.NewRat(int64(max(o.WorkCenterCapacity, 1)), 1)
 	cycles := ceilInt(new(big.Rat).Quo(new(big.Rat).Quo(quantity, output), capacity))
 	setup := ratOf(o.SetupMinutes)
@@ -170,7 +185,7 @@ func expectedMinutes(o store.OperationsOfBomsRow, quantity, output *big.Rat) int
 	run.Quo(run, big.NewRat(int64(max(o.WorkCenterTimeEfficiency, 1)), 1))
 	total := new(big.Rat).Add(setup, ratOrZero(o.WorkCenterCleanupMinutes))
 	total.Add(total, run)
-	return roundInt(total).Int64()
+	return roundInt(total)
 }
 
 // variants is every variant of the tree, once.
@@ -266,7 +281,7 @@ func nodeOf(n *node, entries map[int32]contracts.VariantEntry, available map[int
 	for _, o := range n.ops {
 		out.Operations = append(out.Operations, gen.ManufacturingOverviewOperation{
 			OperationId: o.row.ID, Sequence: o.row.Sequence, Name: o.row.Name, WorkCenterId: o.row.WorkCenterID,
-			WorkCenterCode: o.row.WorkCenterCode, ExpectedMinutes: int32(o.minutes), Cost: amountJSON(costs, o.cost),
+			WorkCenterCode: o.row.WorkCenterCode, ExpectedMinutes: o.minutes.Int64(), Cost: amountJSON(costs, o.cost),
 		})
 	}
 	for _, c := range n.children {

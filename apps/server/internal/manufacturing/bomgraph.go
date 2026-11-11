@@ -38,8 +38,11 @@ func tooDeep() error {
 // component's default active BoM, reach product (bom_cycle), or go more than
 // maxLevels BoMs deep (bom_too_deep). The BoM being written is level 1 and
 // is never read: its components are given, and product is where every walk
-// stops.
-func walkBom(ctx context.Context, txq *store.Queries, product int32, components []int32) error {
+// stops. A BoM that is, or becomes, product's default also counts the
+// default BoMs above it — those that consume product, through theirs — since
+// an overview of the topmost one explodes through it: their levels and its
+// own together go no more than maxLevels deep.
+func walkBom(ctx context.Context, txq *store.Queries, product int32, components []int32, asDefault bool) error {
 	components = dedupe(components)
 	if slices.Contains(components, product) {
 		return &cycleError{path: []int32{product, product}}
@@ -89,10 +92,63 @@ func walkBom(ctx context.Context, txq *store.Queries, product int32, components 
 		}
 		deepest = max(deepest, h)
 	}
-	if 1+deepest > maxLevels {
+	above := 0
+	if asDefault {
+		var err error
+		if above, err = heightAbove(ctx, txq, product); err != nil {
+			return err
+		}
+	}
+	if above+1+deepest > maxLevels {
 		return tooDeep()
 	}
 	return nil
+}
+
+// heightAbove is how many default active BoMs stand above product at most:
+// the longest chain of variants whose default BoM consumes the one below,
+// product's consumers first. It is read a level at a time, up to maxLevels,
+// past which the answer is already too deep. The graph above is acyclic, as
+// every write walks it; a loop met anyway ends the chain where it closes.
+func heightAbove(ctx context.Context, txq *store.Queries, product int32) (int, error) {
+	parents := map[int32][]int32{}
+	seen := map[int32]bool{product: true}
+	frontier := []int32{product}
+	for level := 1; len(frontier) > 0 && level <= maxLevels; level++ {
+		rows, err := txq.DefaultBomsNamingVariants(ctx, frontier)
+		if err != nil {
+			return 0, err
+		}
+		var next []int32
+		for _, r := range rows {
+			parents[r.ComponentID] = append(parents[r.ComponentID], r.ParentID)
+			if !seen[r.ParentID] {
+				seen[r.ParentID] = true
+				next = append(next, r.ParentID)
+			}
+		}
+		frontier = next
+	}
+	height := map[int32]int{}
+	onPath := map[int32]bool{}
+	var up func(v int32) int
+	up = func(v int32) int {
+		if h, ok := height[v]; ok {
+			return h
+		}
+		onPath[v] = true
+		highest := 0
+		for _, p := range parents[v] {
+			if onPath[p] {
+				continue
+			}
+			highest = max(highest, 1+up(p))
+		}
+		delete(onPath, v)
+		height[v] = highest
+		return highest
+	}
+	return up(product), nil
 }
 
 // walker is one walk's depth-first search: each variant's height (how many

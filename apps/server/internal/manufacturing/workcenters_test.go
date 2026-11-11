@@ -320,7 +320,9 @@ func TestWorkCenter_RevisionAndWorkingState(t *testing.T) {
 	up.Revision = 2
 	up.SiteId = siteGone
 	expectRefusal(t, c.Do(http.MethodPut, workCenterPath(w.Id), up), http.StatusBadRequest, "site_unknown", "move to an archived site")
-	mustStatus(t, c.Do(http.MethodPut, workCenterPath(999999), up), http.StatusBadRequest, "unknown id with a bad site: the site is judged first")
+	// The site is judged against the stored one, so an unknown id is a 404
+	// whatever site it names.
+	mustStatus(t, c.Do(http.MethodPut, workCenterPath(999999), up), http.StatusNotFound, "unknown id with a bad site")
 	up.SiteId = siteMain
 	mustStatus(t, c.Do(http.MethodPut, workCenterPath(999999), up), http.StatusNotFound, "update unknown")
 }
@@ -361,7 +363,8 @@ func TestWorkCenter_SiteHeldByActiveBoms(t *testing.T) {
 
 // TestWorkCenter_DeleteArchiveReactivate is M8: a work center an operation
 // names is never deleted (work_center_in_use), one no operation names is;
-// reactivating one whose site is archived is site_archived.
+// reactivating one whose site is archived is site_archived (409); an edit
+// keeps an archived site, a move to one is site_unknown.
 func TestWorkCenter_DeleteArchiveReactivate(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -385,7 +388,14 @@ func TestWorkCenter_DeleteArchiveReactivate(t *testing.T) {
 		t.Errorf("archived = %+v", w)
 	}
 	h.stock.archiveSite(siteBranch)
-	expectRefusal(t, c.Do(http.MethodPost, workCenterPath(branch.Id, "reactivate"), revisionInput(w.Revision)), http.StatusBadRequest, "site_archived", "reactivate at an archived site")
+	expectRefusal(t, c.Do(http.MethodPost, workCenterPath(branch.Id, "reactivate"), revisionInput(w.Revision)), http.StatusConflict, "site_archived", "reactivate at an archived site")
+	// An edit keeps the archived site; a move goes to an active one only.
+	up := gen.ManufacturingWorkCenterUpdate{Code: "BR", Name: "Branch saw", SiteId: siteBranch, Revision: w.Revision}
+	res = c.Do(http.MethodPut, workCenterPath(branch.Id), up)
+	mustStatus(t, res, http.StatusOK, "edit at the archived site")
+	res.JSON(&w)
+	up.SiteId, up.Revision = siteGone, w.Revision
+	expectRefusal(t, c.Do(http.MethodPut, workCenterPath(branch.Id), up), http.StatusBadRequest, "site_unknown", "move to an archived site")
 
 	res = c.Do(http.MethodPost, workCenterPath(used.Id, "archive"), revisionInput(used.Revision))
 	mustStatus(t, res, http.StatusOK, "archive the used one")

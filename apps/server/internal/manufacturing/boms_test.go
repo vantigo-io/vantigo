@@ -128,6 +128,21 @@ func TestBom_ShapeRules(t *testing.T) {
 		t.Errorf("fields = %v, want %v", fields, want)
 	}
 
+	// Two operations with one id, or one sequence, are refused on the second.
+	in = bomInput(varFrame, "1", line(varTube, "1"))
+	in.Operations = []gen.ManufacturingBomOperationInput{operation("a", 1, saw.Id, "1"), operation("b", 1, saw.Id, "1")}
+	in.Operations[0].Id, in.Operations[1].Id = new(int64(7)), new(int64(7))
+	p = expectRefusal(t, c.Do(http.MethodPost, bomsPath, in), http.StatusBadRequest, "", "a repeated id and sequence")
+	if want := []string{"Two operations have this id"}; !slices.Equal((*p.Errors)["operations[1].id"], want) {
+		t.Errorf("errors = %v, want operations[1].id %v", p.Errors, want)
+	}
+	if want := []string{"Two operations have this sequence"}; !slices.Equal((*p.Errors)["operations[1].sequence"], want) {
+		t.Errorf("errors = %v, want operations[1].sequence %v", p.Errors, want)
+	}
+	if (*p.Errors)["operations[0].id"] != nil || (*p.Errors)["operations[0].sequence"] != nil {
+		t.Errorf("errors = %v, want none on operations[0]", p.Errors)
+	}
+
 	// An unknown property inside a line is refused on its path.
 	body := map[string]any{"variantId": varFrame, "outputQuantity": "1", "operations": []any{},
 		"lines": []any{map[string]any{"variantId": varTube, "quantity": "1", "scrap": "2"}}}
@@ -315,6 +330,24 @@ func TestBom_TooDeep(t *testing.T) {
 	expectRefusal(t, c.Do(http.MethodPost, bomsPath, bomInput(200, "1", line(201, "1"))), http.StatusBadRequest, "bom_too_deep", "eleven deep")
 }
 
+// TestBom_TooDeepAbove is M14's limit counted from above: a BoM that becomes
+// its variant's default sits under every default BoM that consumes the
+// variant, so under a chain of ten a BoM for the bought bottom variant is
+// eleven deep — refused, though it is one level on its own.
+func TestBom_TooDeepAbove(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, manager...)
+	// A chain of goods 301 ← 302 ← … ← 311 (311 bought), built top down.
+	for i := range int32(11) {
+		h.catalog.seed(goods(301+i, fmt.Sprintf("ABOVE-%d", i), "Chain", ""))
+	}
+	for i := range int32(10) {
+		createBom(t, c, bomInput(301+i, "1", line(302+i, "1")))
+	}
+	expectRefusal(t, c.Do(http.MethodPost, bomsPath, bomInput(311, "1", line(varBolt, "1"))), http.StatusBadRequest, "bom_too_deep", "a BoM under ten levels")
+}
+
 // TestBom_DefaultSwap is M10 and M14a's default rules: the first active BoM
 // is the default; isDefault on create unmarks the old one; make-default
 // unmarks the old one; archiving the default promotes the oldest other active
@@ -416,6 +449,39 @@ func TestBom_ReactivateJudgesGoodsAgain(t *testing.T) {
 	tube.ProductType = "Service"
 	h.catalog.lockAnswer(varTube, &tube)
 	expectRefusal(t, c.Do(http.MethodPost, bomPath(b.Id, "reactivate"), revisionInput(archived.Revision)), http.StatusBadRequest, "variant_not_goods", "reactivate with a service")
+}
+
+// TestBom_ReactivateJudgesWorkCentersAgain is M12 and M12a on reactivate: a
+// work center moved to another site while the BoM was archived is
+// work_center_other_site, one archived meanwhile work_center_unknown.
+func TestBom_ReactivateJudgesWorkCentersAgain(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, manager...)
+	saw := createWorkCenter(t, c, workCenterInput("SAW", siteMain))
+	drill := createWorkCenter(t, c, workCenterInput("DRILL", siteMain))
+	in := bomInput(varFrame, "1", line(varTube, "1"))
+	in.Operations = []gen.ManufacturingBomOperationInput{operation("cut", 10, saw.Id, "5"), operation("drill", 20, drill.Id, "2")}
+	b := createBom(t, c, in)
+	res := c.Do(http.MethodPost, bomPath(b.Id, "archive"), revisionInput(b.Revision))
+	mustStatus(t, res, http.StatusOK, "archive the BoM")
+	archived := bomOf(t, res)
+
+	up := gen.ManufacturingWorkCenterUpdate{Code: "DRILL", Name: "Drill", SiteId: siteBranch, Revision: drill.Revision}
+	var moved gen.ManufacturingWorkCenter
+	res = c.Do(http.MethodPut, workCenterPath(drill.Id), up)
+	mustStatus(t, res, http.StatusOK, "move the drill to the branch")
+	res.JSON(&moved)
+	expectRefusal(t, c.Do(http.MethodPost, bomPath(b.Id, "reactivate"), revisionInput(archived.Revision)), http.StatusBadRequest, "work_center_other_site", "reactivate across two sites")
+
+	up.SiteId, up.Revision = siteMain, moved.Revision
+	res = c.Do(http.MethodPut, workCenterPath(drill.Id), up)
+	mustStatus(t, res, http.StatusOK, "move the drill back")
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(saw.Id, "archive"), revisionInput(saw.Revision)), http.StatusOK, "archive the saw")
+	p := expectRefusal(t, c.Do(http.MethodPost, bomPath(b.Id, "reactivate"), revisionInput(archived.Revision)), http.StatusBadRequest, "work_center_unknown", "reactivate at an archived center")
+	if p.Errors == nil || (*p.Errors)["operations[0].workCenterId"] == nil {
+		t.Errorf("errors = %v, want one on operations[0].workCenterId", p.Errors)
+	}
 }
 
 // TestBom_UpdateReplacesKeepingOperationIDs is M13: an update replaces the

@@ -162,6 +162,8 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 	}
 
 	keys := map[string]bool{}
+	ids := map[int64]bool{}
+	sequences := map[int32]bool{}
 	for i, op := range in.Operations {
 		at := fmt.Sprintf("operations[%d].", i)
 		o := opValues{id: op.Id, sequence: op.Sequence, workCenterID: op.WorkCenterId}
@@ -173,6 +175,16 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 			j.f.add(at+"key", "Two operations have this key")
 		}
 		keys[o.key] = true
+		if o.id != nil {
+			if ids[*o.id] {
+				j.f.add(at+"id", "Two operations have this id")
+			}
+			ids[*o.id] = true
+		}
+		if sequences[o.sequence] {
+			j.f.add(at+"sequence", "Two operations have this sequence")
+		}
+		sequences[o.sequence] = true
 		o.name = strings.TrimSpace(op.Name)
 		if n := utf8.RuneCountInString(o.name); n < 1 || n > maxNameLength {
 			j.f.add(at+"name", "1–200 characters")
@@ -478,14 +490,14 @@ func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManuf
 			if err := judgeCode(ctx, txq, v.code, 0); err != nil {
 				return err
 			}
-			if err := walkBom(ctx, txq, in.VariantId, components); err != nil {
-				return err
-			}
 			hasDefault, err := txq.VariantHasActiveDefault(ctx, store.VariantHasActiveDefaultParams{VariantID: in.VariantId})
 			if err != nil {
 				return err
 			}
 			isDefault := !hasDefault || (in.IsDefault != nil && *in.IsDefault)
+			if err := walkBom(ctx, txq, in.VariantId, components, isDefault); err != nil {
+				return err
+			}
 			now := s.deps.Clock()
 			if isDefault && hasDefault {
 				if _, err := txq.UnsetVariantDefault(ctx, store.UnsetVariantDefaultParams{VariantID: in.VariantId, Now: now}); err != nil {
@@ -584,7 +596,7 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 			if err := judgeCode(ctx, txq, v.code, b.ID); err != nil {
 				return err
 			}
-			if err := walkBom(ctx, txq, b.VariantID, components); err != nil {
+			if err := walkBom(ctx, txq, b.VariantID, components, b.IsDefault); err != nil {
 				return err
 			}
 			if _, err := txq.UpdateBom(ctx, store.UpdateBomParams{
@@ -711,7 +723,7 @@ func promoteOldest(ctx context.Context, txq *store.Queries, archived store.Manuf
 	if err != nil {
 		return err
 	}
-	if err := walkBom(ctx, txq, next.VariantID, storedComponents(lines)); err != nil {
+	if err := walkBom(ctx, txq, next.VariantID, storedComponents(lines), true); err != nil {
 		var cycle *cycleError
 		var refused *refusal
 		if errors.As(err, &cycle) || errors.As(err, &refused) {
@@ -724,7 +736,9 @@ func promoteOldest(ctx context.Context, txq *store.Queries, archived store.Manuf
 }
 
 // ReactivateManufacturingBom reactivates an archived BoM: its product and
-// components judged again, the cycle and depth walk run again, and it becomes
+// components judged again, its operations' work centers judged again
+// (work_center_unknown, work_center_other_site), the cycle and depth walk run
+// again, and it becomes
 // the variant's default when the variant has no active default.
 func (s *server) ReactivateManufacturingBom(ctx context.Context, req gen.ReactivateManufacturingBomRequestObject) (gen.ReactivateManufacturingBomResponseObject, error) {
 	reply := answers[gen.ReactivateManufacturingBomResponseObject]{
@@ -748,11 +762,24 @@ func (s *server) ReactivateManufacturingBom(ctx context.Context, req gen.Reactiv
 		if err := judgeStoredGoods(b, components, locked); err != nil {
 			return err
 		}
-		if err := walkBom(ctx, txq, b.VariantID, components); err != nil {
+		// Its work centers are judged again too: one may have been archived,
+		// or moved to another site, while it was archived.
+		stored, err := txq.OperationsOfBoms(ctx, []int64{b.ID})
+		if err != nil {
+			return err
+		}
+		ops := make([]opValues, 0, len(stored))
+		for _, o := range stored {
+			ops = append(ops, opValues{workCenterID: o.WorkCenterID})
+		}
+		if err := judgeOperations(ctx, txq, ops, nil); err != nil {
 			return err
 		}
 		hasDefault, err := txq.VariantHasActiveDefault(ctx, store.VariantHasActiveDefaultParams{VariantID: b.VariantID, ExceptID: b.ID})
 		if err != nil {
+			return err
+		}
+		if err := walkBom(ctx, txq, b.VariantID, components, !hasDefault); err != nil {
 			return err
 		}
 		_, err = txq.SetBomStatus(ctx, store.SetBomStatusParams{ID: b.ID, Status: statusActive, IsDefault: !hasDefault, Now: s.deps.Clock()})
@@ -796,7 +823,7 @@ func (s *server) MakeDefaultManufacturingBom(ctx context.Context, req gen.MakeDe
 		if err := judgeStoredGoods(b, components, locked); err != nil {
 			return err
 		}
-		if err := walkBom(ctx, txq, b.VariantID, components); err != nil {
+		if err := walkBom(ctx, txq, b.VariantID, components, true); err != nil {
 			return err
 		}
 		now := s.deps.Clock()

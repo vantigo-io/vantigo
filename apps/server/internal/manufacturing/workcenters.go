@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net/http"
 	"regexp"
 	"slices"
 	"strings"
@@ -471,7 +470,7 @@ func (s *server) UpdateManufacturingWorkCenter(ctx context.Context, req gen.Upda
 	if err != nil {
 		return answer(err, updateAnswers())
 	}
-	sites, err := s.siteOrRefuse(ctx, v.siteID)
+	sites, err := s.activeSites(ctx)
 	if err != nil {
 		return answer(err, updateAnswers())
 	}
@@ -488,6 +487,11 @@ func (s *server) UpdateManufacturingWorkCenter(ctx context.Context, req gen.Upda
 			return err
 		}
 		if v.siteID != w.SiteID {
+			// A work center whose site was archived since keeps it through an
+			// edit; a move goes to an active site only.
+			if _, ok := siteOf(sites, v.siteID); !ok {
+				return refuseField(workCenterTitle, "siteId", codeSiteUnknown, "Not an active Inventory site")
+			}
 			used, err := txq.CountActiveBomsAtWorkCenter(ctx, w.ID)
 			if err != nil {
 				return err
@@ -531,6 +535,12 @@ func (s *server) UpdateManufacturingWorkCenter(ctx context.Context, req gen.Upda
 // one that is named is archived instead (work_center_in_use, M8).
 func (s *server) DeleteManufacturingWorkCenter(ctx context.Context, req gen.DeleteManufacturingWorkCenterRequestObject) (gen.DeleteManufacturingWorkCenterResponseObject, error) {
 	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+		// The BoM graph first, as every BoM write takes it before reading the
+		// work centers its operations name: a delete does not pass a BoM write
+		// about to name the work center (M14a).
+		if err := txq.LockBomGraph(ctx); err != nil {
+			return err
+		}
 		w, err := lockWorkCenter(ctx, txq, req.Id, req.Params.Revision)
 		if err != nil {
 			return err
@@ -561,8 +571,25 @@ func (s *server) DeleteManufacturingWorkCenter(ctx context.Context, req gen.Dele
 
 // ArchiveManufacturingWorkCenter archives a work center under its revision.
 func (s *server) ArchiveManufacturingWorkCenter(ctx context.Context, req gen.ArchiveManufacturingWorkCenterRequestObject) (gen.ArchiveManufacturingWorkCenterResponseObject, error) {
+	reply := answers[gen.ArchiveManufacturingWorkCenterResponseObject]{
+		notFound: func() gen.ArchiveManufacturingWorkCenterResponseObject {
+			return gen.ArchiveManufacturingWorkCenter404Response{}
+		},
+		conflict: func(p gen.ManufacturingProblem) gen.ArchiveManufacturingWorkCenterResponseObject {
+			return gen.ArchiveManufacturingWorkCenter409ApplicationProblemPlusJSONResponse(p)
+		},
+		unavailable: func(p gen.ManufacturingProblem) gen.ArchiveManufacturingWorkCenterResponseObject {
+			return gen.ArchiveManufacturingWorkCenter503ApplicationProblemPlusJSONResponse(p)
+		},
+	}
+	// The sites are read before the transaction: an Inventory that is not
+	// composed refuses before anything changes.
+	sites, err := s.activeSites(ctx)
+	if err != nil {
+		return answer(err, reply)
+	}
 	var archived store.ManufacturingWorkCenter
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		w, err := lockWorkCenter(ctx, txq, req.Id, req.Body.Revision)
 		if err != nil {
 			return err
@@ -578,20 +605,9 @@ func (s *server) ArchiveManufacturingWorkCenter(ctx context.Context, req gen.Arc
 		return err
 	})
 	if err != nil {
-		return answer(err, answers[gen.ArchiveManufacturingWorkCenterResponseObject]{
-			notFound: func() gen.ArchiveManufacturingWorkCenterResponseObject {
-				return gen.ArchiveManufacturingWorkCenter404Response{}
-			},
-			conflict: func(p gen.ManufacturingProblem) gen.ArchiveManufacturingWorkCenterResponseObject {
-				return gen.ArchiveManufacturingWorkCenter409ApplicationProblemPlusJSONResponse(p)
-			},
-		})
+		return answer(err, reply)
 	}
-	out, err := s.workCenterAnswer(ctx, archived, nil)
-	if err != nil {
-		return nil, err
-	}
-	return gen.ArchiveManufacturingWorkCenter200JSONResponse(out), nil
+	return gen.ArchiveManufacturingWorkCenter200JSONResponse(workCenterOf(archived, sites, s.has(ctx, permCostsView))), nil
 }
 
 // ReactivateManufacturingWorkCenter reactivates an archived work center,
@@ -599,9 +615,6 @@ func (s *server) ArchiveManufacturingWorkCenter(ctx context.Context, req gen.Arc
 // (site_archived).
 func (s *server) ReactivateManufacturingWorkCenter(ctx context.Context, req gen.ReactivateManufacturingWorkCenterRequestObject) (gen.ReactivateManufacturingWorkCenterResponseObject, error) {
 	reply := answers[gen.ReactivateManufacturingWorkCenterResponseObject]{
-		badRequest: func(p gen.ManufacturingProblem) gen.ReactivateManufacturingWorkCenterResponseObject {
-			return gen.ReactivateManufacturingWorkCenter400ApplicationProblemPlusJSONResponse(p)
-		},
 		notFound: func() gen.ReactivateManufacturingWorkCenterResponseObject {
 			return gen.ReactivateManufacturingWorkCenter404Response{}
 		},
@@ -627,8 +640,8 @@ func (s *server) ReactivateManufacturingWorkCenter(ctx context.Context, req gen.
 			return nil
 		}
 		if _, ok := siteOf(sites, w.SiteID); !ok {
-			return refuse(problem(http.StatusBadRequest, codeSiteArchived, "The work center's site is archived",
-				"Its Inventory site is no longer active. Move the work center to an active site first."))
+			return conflict(codeSiteArchived, "The work center's site is archived",
+				"Its Inventory site is no longer active. Move the work center to an active site first.")
 		}
 		active, err = txq.SetWorkCenterStatus(ctx, store.SetWorkCenterStatusParams{ID: w.ID, Status: statusActive, Now: s.deps.Clock()})
 		return err

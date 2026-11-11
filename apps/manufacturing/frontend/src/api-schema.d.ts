@@ -571,7 +571,10 @@ export interface components {
         ManufacturingOverviewOperation: {
             /** @description expectedMinutes/60 × (machine + labour rate), exact decimal in NOK. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise. */
             cost?: string | null;
-            /** Format: int32 */
+            /**
+             * Format: int64
+             * @description The operation's expected time at the node's quantity, in minutes (M28a). At most 10^12; past it the overview is refused bom_too_large.
+             */
             expectedMinutes: number;
             name: string;
             /** Format: int64 */
@@ -582,7 +585,7 @@ export interface components {
             /** Format: int64 */
             workCenterId: number;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (400: reactivating a work center whose site is archived), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels), bom_too_large (400: an overview past 2000 nodes), bom_not_active (409: an edit or make-default of an archived BoM), quantity_invalid (400: not more than 0, or more than three decimals) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM), quantity_invalid (400: not more than 0, or more than three decimals) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
         ManufacturingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1289,7 +1292,7 @@ export interface operations {
                     "application/json": components["schemas"]["ManufacturingBomOverview"];
                 };
             };
-            /** @description Bad Request — quantity_invalid; site_unknown; bom_too_deep, bom_too_large. */
+            /** @description Bad Request — quantity_invalid; site_unknown; bom_too_deep; bom_too_large (more than 2000 nodes, or an operation's expected time past 10^12 minutes). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1358,7 +1361,7 @@ export interface operations {
                     "application/json": components["schemas"]["ManufacturingBom"];
                 };
             };
-            /** @description Bad Request — bom_cycle, bom_too_deep, variant_not_goods, work_center_unknown. */
+            /** @description Bad Request — bom_cycle, bom_too_deep, variant_not_goods, variant_not_found, work_center_unknown, work_center_other_site. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1960,6 +1963,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ManufacturingProblem"];
                 };
             };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
         };
     };
     listManufacturingClosures: {
@@ -2139,15 +2151,6 @@ export interface operations {
                     "application/json": components["schemas"]["ManufacturingWorkCenter"];
                 };
             };
-            /** @description Bad Request — site_archived: its site is no longer active. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -2173,7 +2176,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict. */
+            /** @description Conflict — revision_conflict; site_archived: its site is no longer an active Inventory site. */
             409: {
                 headers: {
                     [name: string]: unknown;
