@@ -119,9 +119,12 @@ on hand, and the number of sites ([Inventory](/en/reference/inventory/#reservati
 nothing on hand or reserved, and the number of transfers
 ([Inventory](/en/reference/inventory/#in-transit)) —
 or `open_documents`, the number of open quotes, orders and subscriptions that name the
-variant. A holder may stop one write and not the other:
+variant, or of Manufacturing's active bills of materials that name it as their product or
+a component ([Manufacturing](/en/reference/manufacturing/#the-variant-holder)). A holder
+may stop one write and not the other:
 open orders will stop a delete but never a change to Service (orders design O30).
-Inventory's stock, its reservations and its stock in transit stop both.
+Inventory's stock, its reservations and its stock in transit stop both, and so do
+Manufacturing's active bills of materials (manufacturing design M16a).
 
 **Deleting a variant** (`DELETE /api/v1/products/{id}/variants/{variantId}`) is one
 transaction:

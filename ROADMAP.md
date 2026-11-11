@@ -932,9 +932,17 @@ the till* for Point of sale.
 
 ## Manufacturing
 
-A later module, for turning stock into other stock: a production consumes components and
-produces a finished item. Nothing is designed yet, but Inventory's phase 1 keeps the
-rules that let it join without reshaping the ledger:
+A new module for turning stock into other stock — Manufacturing, in Norwegian
+**Produksjon**: bills of materials, work centers, manufacturing orders and the shop floor.
+Researched in
+[`docs/superpowers/research/2026-11-11-manufacturing-module.md`](docs/superpowers/research/2026-11-11-manufacturing-module.md),
+decided in [`docs/superpowers/specs/2026-11-11-manufacturing-design.md`](docs/superpowers/specs/2026-11-11-manufacturing-design.md)
+and planned in [`docs/superpowers/plans/2026-11-11-manufacturing-plan.md`](docs/superpowers/plans/2026-11-11-manufacturing-plan.md),
+landing as one stack of pull requests, one delivery each. Manufacturing requires Products
+and Inventory; Orders stays optional. Stock always moves through Inventory's ledger, and a
+production consumes the components and produces the finished item in one movement.
+
+The rules Inventory's phase 1 kept for it still hold:
 
 - **Lots belong to Inventory.** The tracking mode — none, lot or serial — is a per-variant
   Products field that may change only at zero stock, asked through the same
@@ -945,6 +953,47 @@ rules that let it join without reshaping the ledger:
 - **A production is one movement** with consume and produce lines — a line may have no
   *from* or no *to* — and the source reference every movement already carries names the
   production order.
+
+### Phase 1 — Bills of materials, work centers, manufacturing orders and the shop floor
+
+- **0 — The seams (done).** `StockLedger.Produce`, posting a production as one movement of
+  the new `production` kind; reserving for production at a site that need not fulfil
+  orders; and the standard cost on the catalog contract
+  ([Inventory](docs/src/content/docs/en/reference/inventory.md#production)).
+- **A — The module, work centers and bills of materials (built).** The `manufacturing`
+  module and its five permissions, the sensitive **See manufacturing costs** among them;
+  work centers with their site, capacity, time efficiency, setup, cleanup and rates, a
+  weekly working pattern and closures; bills of materials with lines, scrap and
+  operations at work centers on one site, the default and the alternatives, and no cycles
+  ten levels deep; the BoM overview with the requirements, availability, expected minutes
+  and the rolled-up cost; and the variant holder, so Products refuses to delete a variant
+  an active BoM names ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md),
+  the [reference](docs/src/content/docs/en/reference/manufacturing.md)).
+- **B — Manufacturing orders (planned).** The snapshot of the BoM, reserving the
+  components, availability, productions and scrap, close and backorder, cancel.
+- **C — Work orders and the shop floor (planned).** Work orders per operation, time logs,
+  the live shop floor operators work from, and downtime.
+- **D — The schedule and cost (planned).** Planning work orders on the work centers'
+  calendars, the board and its load; the estimate, the actual and the deviation.
+- **E — Make-to-order and sub-assemblies (planned).** A manufacturing order from a sales
+  order in Orders, and child orders for the components that are made.
+
+### Later
+
+- **Lots and serials, the trace screens** wait for a phase 2 delivery — Products' tracking mode, Inventory's lots and the balance key (the rules above).
+- **Quality checks on operations** wait for phase 2.
+- **Operation dependencies (parallel operations)** wait for phase 2.
+- **Alternative work centers, a drag to another center, overlap** wait for phase 2.
+- **Auto-computed standard times** wait for phase 2, reading the deviation of delivery D.
+- **Reorder rules creating manufacturing orders** wait for phase 2, using Inventory placement's minimum.
+- **By-products, kits, unbuild, split and merge** wait for phase 2.
+- **Subcontracted operations** wait for Purchasing.
+- **A shared tablet with an operator PIN** waits for an identity feature (a second credential).
+- **Rotating shift patterns** wait for demand.
+- **Writing the rolled-up cost to the standard cost** waits for Products (a write contract).
+- **Feeding work-order time into Time** waits for Time without a project, or a project per manufacturing order.
+- **OEE, maintenance, MPS, BoM change control** wait for phase 3.
+- **WIP valuation** waits for a ledger.
 
 ## Projects
 

@@ -205,8 +205,8 @@ as `locked`:
 `agents:activity`, `agents:manage`, `agents:review`, `agents:view`,
 `customers:personal-data`, `entra:manage`, `expenses:approve`, `google:manage`,
 `identity:manage`, `invoices:issue`, `invoices:payments`, `knowledge:manage`,
-`orders:carriers-manage`, `orders:settings`, `staff:approve`, `staff:manage`,
-`staff:personal-data`, `time:approve`.
+`manufacturing:costs-view`, `orders:carriers-manage`, `orders:settings`, `staff:approve`,
+`staff:manage`, `staff:personal-data`, `time:approve`.
 
 A test in `internal/integration` holds the list to the composed catalog by key patterns
 (`identity:*`, `agents:*`, `*:approve`, `*:personal-data`, `invoices:issue` and

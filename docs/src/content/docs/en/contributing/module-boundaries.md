@@ -99,7 +99,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    type, never a store type, and the reason is rules 8, 9 and 10's.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `google`, `meta`, `planning`, `inventory`, `orders`, `knowledge`, `assistant`), and no module's migrations or queries reference
+   `projects`, `time`, `expenses`, `invoices`, `staff`, `calendar`, `entra`, `google`, `meta`, `planning`, `inventory`, `orders`, `manufacturing`, `knowledge`, `assistant`), and no module's migrations or queries reference
    another's. **No cross-schema foreign keys or joins** — reference other modules'
    data by opaque ID only. That is what keeps a future "move this schema to its own
    server" a connection-string change instead of a data migration.
@@ -1882,6 +1882,19 @@ background worker. The host composes its Stock card on Products' product page th
 the `extraPanels` slot `@vantigo/products-ui` opens (rule 7). With `inventory` off
 nothing else changes, but its holder still answers for the stock in its schema. See
 [Inventory](/en/reference/inventory/).
+
+**Manufacturing depends on Products and Inventory.** It consumes `contracts.ProductCatalog`
+(products, **required**) — `SearchVariants` and its variant reads on the pool, before a
+transaction opens, and `LockVariants` first on every bill-of-materials write's own
+transaction, whose answer is where it judges a variant goods (rule 21) — and
+`contracts.Stock` (inventory, **required**): `Sites` and `SiteLocations` for the site a
+work center stands at, and `Available` for the BoM overview, both before a transaction.
+It fills the many-provider `VariantReferences` slot (rule 20) with its active bills of
+materials, so Products refuses to delete a variant, or to turn its product into a
+service, while an active BoM names it as its product or a component. It provides no
+single-provider contract, writes nothing outside the `manufacturing` schema and has no
+background worker. `MODULES` refuses it without `products` or `inventory`. See
+[Manufacturing](/en/reference/manufacturing/).
 
 **The Assistant reads identity and calls the contract.** It is the one module that receives
 `Deps.Operations`, the platform's dispatcher (rule 18): its tools search, describe and call the
