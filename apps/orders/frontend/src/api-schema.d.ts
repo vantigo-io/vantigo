@@ -2227,6 +2227,8 @@ export interface components {
             hasBom?: boolean;
             /** @description The manufacturing orders made for the line, backorders included and cancelled ones left out (manufacturing design M45, M46). Present on an order's goods lines only, and only to a caller holding manufacturing:access. */
             production?: components["schemas"]["OrdersLineProduction"][];
+            /** @description Why make-to-order made no manufacturing order for the line (manufacturing design M44a): the reason its request left the line out, or that the request failed for good. Present on an order's goods lines with no manufacturing order, only to a caller holding manufacturing:access, and only when there is a reason to show; absent otherwise. */
+            notMade?: components["schemas"]["OrdersLineNotMade"];
             /** @description Produced, ready to reserve (manufacturing design M48a): a manufacturing order made for the line was closed. Reserve now picks the goods up when they were made at the order's site; otherSite says when they were not, and a transfer is needed first. Present on an order's lines only; null when none was. */
             readyToReserve?: components["schemas"]["OrdersLineReady"] | null;
             /**
@@ -2288,18 +2290,25 @@ export interface components {
             /** @description draft, confirmed, in_progress or done. */
             status: string;
         };
+        /** @description Why make-to-order made no manufacturing order for a line (manufacturing design M44a). */
+        OrdersLineNotMade: {
+            /** @description The reason: no_site, nothing_open, variant_not_goods, failed (the request failed after its last attempt), or the code of the Manufacturing rule that refused the order. */
+            code: string;
+            /** @description The reason in English, as Manufacturing recorded it. */
+            detail: string;
+        };
         /** @description A line marked produced, ready to reserve (manufacturing design M48a). */
         OrdersLineReady: {
             /**
              * Format: int64
-             * @description The latest manufacturing order closed for the line.
+             * @description The latest manufacturing order closed for the line. Present only to a caller holding manufacturing:access.
              */
-            manufacturingOrderId: number;
+            manufacturingOrderId?: number;
             /** @description The goods were made at another site than the order's: Reserve now cannot pick them up until they are moved. */
             otherSite: boolean;
             /**
              * Format: double
-             * @description What was produced for the line in all.
+             * @description What was produced for the line in all, every manufacturing order closed for it counted once.
              */
             produced: number;
             /**

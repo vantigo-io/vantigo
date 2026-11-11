@@ -15,13 +15,23 @@ const statusColor: Record<string, string> = {
   done: "teal",
 };
 
+/** The reasons make-to-order leaves a line out that the line names in the viewer's language; any other shows Manufacturing's text. */
+const notMadeReasons = new Set([
+  "no_site",
+  "nothing_open",
+  "variant_not_goods",
+  "sales_order_line_has_order",
+  "failed",
+]);
+
 /**
  * What Manufacturing makes for a goods line (manufacturing design M45, M48a):
  * each manufacturing order made for it — its number, linking to it, its
  * status, what is produced of its quantity and its planned finish —, *Create
  * manufacturing order* on a line whose product has a bill of materials and no
- * order yet, and, once one closed, that the goods are ready for *Reserve now*
- * — or that they were made at another site and must be moved first.
+ * order yet, why make-to-order made none (M44a) to a caller who sees
+ * Manufacturing, and, once one closed, that the goods are ready for *Reserve
+ * now* — or that they were made at another site and must be moved first.
  */
 export const LineProduction = ({ line, access }: { line: Line; access: OrdersAccess }) => {
   const { t, quantity, date, dateTime } = useOrdersFormat();
@@ -29,7 +39,8 @@ export const LineProduction = ({ line, access }: { line: Line; access: OrdersAcc
   const ready = line.readyToReserve;
   const unreserved = remainingToDeliver(line) > (line.qtyReserved ?? 0);
   const offerCreate = access.canCreateManufacturingOrders && line.hasBom === true && made.length === 0;
-  if (made.length === 0 && !offerCreate && !(ready && unreserved)) return null;
+  const notMade = access.canViewManufacturing && made.length === 0 ? line.notMade : undefined;
+  if (made.length === 0 && !offerCreate && !notMade && !(ready && unreserved)) return null;
   return (
     <Stack gap={4} data-testid="line-production">
       {made.map((order) => (
@@ -58,6 +69,13 @@ export const LineProduction = ({ line, access }: { line: Line; access: OrdersAcc
           </Text>
         </Group>
       ))}
+      {notMade && (
+        <Text size="xs" c="orange" data-testid="line-not-made">
+          {t("noManufacturingOrderMade", {
+            reason: notMadeReasons.has(notMade.code) ? t(`notMadeReason.${notMade.code}`) : notMade.detail,
+          })}
+        </Text>
+      )}
       {offerCreate && (
         <Button
           size="compact-xs"
