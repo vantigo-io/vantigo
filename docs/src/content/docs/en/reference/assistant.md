@@ -348,7 +348,9 @@ that replays the turn carries the same bytes. The person never sees it, and the 
 The route list the prompt carries is the host's route shapes (`appRoutes` in `prompt.go`): the same
 list `navigate` validates against. It names one prefix per app with the record screens under it — for
 Inventory, `/inventory` with a site, a location, a variant's stock, the movements, a transfer and, since phase 2's delivery B, the low-stock list `/inventory/low-stock`, and for Orders,
-`/orders` with a quote, an order, a delivery, a subscription, the templates, the settings and the sales analysis, beside the customer's `/orders` tab — so an app the
+`/orders` with a quote, an order, a delivery, a subscription, the templates, the settings and the sales analysis, beside the customer's `/orders` tab, and for
+Manufacturing, `/manufacturing` with a bill of materials (`/manufacturing/boms/{bomId}`), its overview
+(`/manufacturing/boms/{bomId}/overview`) and a work center (`/manufacturing/work-centers/{workCenterId}`) — so an app the
 list does not name cannot be linked to. Its targets join [the registry](#guided-tours) the same way:
 `@vantigo/inventory-ui` exports its own — the lookup, a new site, location, receipt,
 adjustment and move, bulk adding locations, printing labels, opening a count, the import's file, and since
@@ -362,7 +364,12 @@ customer picker and create, and a subscription's save, activate, pause, resume, 
 final period, since C an order's site, a delivery's creation, pick list and posting, the deliveries view and the
 default site, and since D adding and estimating a shipping line, shipping a delivery, a shipment's service and
 booking, the freight markup, and Integrations › Shipping's Add carrier account and Verify
-([Orders](/en/reference/orders/#assistant-tour-targets)) — and the host's `assist-targets.ts` collects them.
+([Orders](/en/reference/orders/#assistant-tour-targets)), and `@vantigo/manufacturing-ui` its nineteen — the
+overview's New bill of materials and cards, the work center list and New work center, a work center's details,
+weekly pattern, save, closures and archive, reactivate and delete, the bill of materials list and New bill of
+materials, a bill's details, operations, components, save and its overview, make default and archive buttons,
+and the overview's quantity and site, rolled-up cost and structure (`manufacturing.*`) — and the host's
+`assist-targets.ts` collects them.
 
 ## Claude and preserved thinking
 
