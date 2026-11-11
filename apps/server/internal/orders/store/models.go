@@ -163,6 +163,15 @@ type OrdersLine struct {
 	ChainID           *int64
 }
 
+type OrdersLineProductionReady struct {
+	LineID               int64
+	OrderID              int64
+	ManufacturingOrderID int64
+	SiteID               int64
+	Produced             pgtype.Numeric
+	MarkedAt             time.Time
+}
+
 type OrdersMailing struct {
 	ID                int64
 	OwnerKind         string

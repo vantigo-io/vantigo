@@ -2160,10 +2160,13 @@ type OrdersLine struct {
 	DiscountPercent float64                  `json:"discountPercent"`
 
 	// DisplayUnitPrice The unit price as entered and shown: including VAT when the document's prices include VAT (O19).
-	DisplayUnitPrice *float64                `json:"displayUnitPrice,omitempty"`
-	ExternalLineId   *string                 `json:"externalLineId,omitempty"`
-	Id               int64                   `json:"id"`
-	InvoicePolicy    OrdersLineInvoicePolicy `json:"invoicePolicy"`
+	DisplayUnitPrice *float64 `json:"displayUnitPrice,omitempty"`
+	ExternalLineId   *string  `json:"externalLineId,omitempty"`
+
+	// HasBom Whether the line's variant has a default active bill of materials in Manufacturing (manufacturing design M45). Present on an order's goods lines only, and only to a caller holding manufacturing:access.
+	HasBom        *bool                   `json:"hasBom,omitempty"`
+	Id            int64                   `json:"id"`
+	InvoicePolicy OrdersLineInvoicePolicy `json:"invoicePolicy"`
 
 	// Kind An open set (O15): product, section and note, and shipping (O53) — the freight the customer pays: quantity 1, invoiced on order, counted delivered when the order's first shipment is booked; quotes and orders only.
 	Kind OrdersLineKind `json:"kind"`
@@ -2187,9 +2190,12 @@ type OrdersLine struct {
 	PriceSource       *OrdersLinePriceSource `json:"priceSource,omitempty"`
 
 	// ProductId The product of a catalog line's variant, as it was when the line was written; null on a free-text line.
-	ProductId    *int32  `json:"productId,omitempty"`
-	QtyCancelled float64 `json:"qtyCancelled"`
-	QtyDelivered float64 `json:"qtyDelivered"`
+	ProductId *int32 `json:"productId,omitempty"`
+
+	// Production The manufacturing orders made for the line, backorders included and cancelled ones left out (manufacturing design M45, M46). Present on an order's goods lines only, and only to a caller holding manufacturing:access.
+	Production   *[]OrdersLineProduction `json:"production,omitempty"`
+	QtyCancelled float64                 `json:"qtyCancelled"`
+	QtyDelivered float64                 `json:"qtyDelivered"`
 
 	// QtyDraftAllocated What draft invoices hold of the line (O36): its draft allocations' quantity, not yet invoiced and not offered to invoice again. 0 on a quote.
 	QtyDraftAllocated float64 `json:"qtyDraftAllocated"`
@@ -2200,8 +2206,11 @@ type OrdersLine struct {
 
 	// Quantity At most three decimals.
 	Quantity *float64 `json:"quantity,omitempty"`
-	Sku      *string  `json:"sku,omitempty"`
-	Unit     string   `json:"unit"`
+
+	// ReadyToReserve Produced, ready to reserve (manufacturing design M48a): a manufacturing order made for the line was closed. Reserve now picks the goods up when they were made at the order's site; otherSite says when they were not, and a transfer is needed first. Present on an order's lines only; null when none was.
+	ReadyToReserve *OrdersLineReady `json:"readyToReserve,omitempty"`
+	Sku            *string          `json:"sku,omitempty"`
+	Unit           string           `json:"unit"`
 
 	// UnitPrice Net of VAT (O19); null while a catalog line has no price in the currency.
 	UnitPrice *float64 `json:"unitPrice,omitempty"`
@@ -2280,6 +2289,41 @@ type OrdersLineInputKind string
 
 // OrdersLineInputPriceSource carrier marks a shipping line's unitPrice as the carrier's estimate with the markup (POST /shipping-estimate, O53); absent, a typed price is manual.
 type OrdersLineInputPriceSource string
+
+// OrdersLineProduction A manufacturing order made for an order line, as Manufacturing answers it (manufacturing design M46).
+type OrdersLineProduction struct {
+	DueDate              *openapi_types.Date `json:"dueDate"`
+	ManufacturingOrderId int64               `json:"manufacturingOrderId"`
+
+	// Number MO-<n>, or MO-<n>-<suffix> for a backorder.
+	Number        string     `json:"number"`
+	PlannedFinish *time.Time `json:"plannedFinish"`
+
+	// Produced Good output so far.
+	Produced float64 `json:"produced"`
+	Quantity float64 `json:"quantity"`
+
+	// SiteId The site it is made at.
+	SiteId int64 `json:"siteId"`
+
+	// Status draft, confirmed, in_progress or done.
+	Status string `json:"status"`
+}
+
+// OrdersLineReady A line marked produced, ready to reserve (manufacturing design M48a).
+type OrdersLineReady struct {
+	// ManufacturingOrderId The latest manufacturing order closed for the line.
+	ManufacturingOrderId int64 `json:"manufacturingOrderId"`
+
+	// OtherSite The goods were made at another site than the order's: Reserve now cannot pick them up until they are moved.
+	OtherSite bool `json:"otherSite"`
+
+	// Produced What was produced for the line in all.
+	Produced float64 `json:"produced"`
+
+	// SiteId The site the goods were made at.
+	SiteId int64 `json:"siteId"`
+}
 
 // OrdersMailText An override of a document kind's mail text in one language (O25); empty falls back to the built-in text.
 type OrdersMailText struct {

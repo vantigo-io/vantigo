@@ -71,6 +71,9 @@ type harnessOptions struct {
 	// bring composes an httptest Bring (bringtest) as the carrier the
 	// shipping adapter calls (SHIPPING_BRING_BASE_URL, Deps.HTTPTransport).
 	bring bool
+	// production composes Manufacturing's production read (manufacturing
+	// design M46).
+	production contracts.Production
 }
 
 // newHarness is an orders installation with the seeded catalog, VAT codes
@@ -101,6 +104,9 @@ func newHarness(t *testing.T, o harnessOptions) *harness {
 	case o.stockOff:
 		h.stock = newFakeStock()
 		opts = append(opts, modtest.WithStock(nil, h.stock))
+	}
+	if o.production != nil {
+		opts = append(opts, modtest.WithProduction(o.production))
 	}
 	if o.bring {
 		h.bring = bringtest.New(t)

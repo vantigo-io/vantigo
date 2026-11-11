@@ -104,6 +104,9 @@ func Module() module.Module {
 		InvoicedWork:         newInvoicedWorkHolder,
 		// The invoicing read (O37), resolved from the enabled modules only.
 		BillableOrders: newBillableOrders,
+		// Manufacturing's read of the sales order lines (manufacturing
+		// design M43a), resolved from the enabled modules only.
+		SalesOrderLines: newSalesOrderLines,
 	}
 }
 

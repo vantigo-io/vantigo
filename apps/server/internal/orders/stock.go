@@ -533,7 +533,15 @@ func (s *server) stockLocations(ctx context.Context, variantIDs []int32, siteID 
 // read-only transaction of their own, and the available through
 // contracts.Stock outside any.
 func (s *server) withStockFigures(ctx context.Context, out *gen.OrdersOrder) error {
-	if out == nil || s.deps.StockLedger == nil {
+	if out == nil {
+		return nil
+	}
+	// What Manufacturing makes for the goods lines, and the lines produced,
+	// ready to reserve (production.go).
+	if err := s.withProduction(ctx, out); err != nil {
+		return err
+	}
+	if s.deps.StockLedger == nil {
 		return nil
 	}
 	var reserved map[int64]*big.Rat
