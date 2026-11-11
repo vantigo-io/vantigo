@@ -17,6 +17,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // fakeSalesOrderLines is contracts.SalesOrderLines over the lines a test
@@ -266,6 +267,61 @@ func TestMto_WorkerOnAPoolOfOne(t *testing.T) {
 	}
 	if r := requestOf(t, h, 90); r.status != "done" {
 		t.Errorf("request = %+v", r)
+	}
+}
+
+// TestMto_WorkerBuiltByModuleWorkers is the worker as a deployment builds
+// it: through module.Workers, as cmd/vantigo's worker mode does, on a Deps
+// that carries none of the contracts the harness presets — the catalog, the
+// stock, the stock ledger and the sales order lines come from the enabled
+// modules that provide them — and it makes the order. Built from the base
+// Deps alone, it had no catalog and failed every request.
+func TestMto_WorkerBuiltByModuleWorkers(t *testing.T) {
+	t.Parallel()
+	h, lines := mtoHarness(t)
+	c := h.SignIn(t, planner...)
+	mtoBikeBom(t, c)
+	lines.seed(contracts.SalesOrderLine{LineID: 851, OrderID: 89, OrderNumber: 2, VariantID: varBike, Quantity: "1", OrderStatus: "confirmed"})
+	publish(t, h, "orders", confirmed(89))
+
+	base := h.Deps()
+	base.Products, base.Stock, base.StockLedger, base.SalesOrderLines, base.Production = nil, nil, nil, nil, nil
+	cfg := *base.Config
+	cfg.Modules = slices.Clone(cfg.Modules)
+	for _, name := range []string{"products", "inventory", "orders"} {
+		if !slices.Contains(cfg.Modules, name) {
+			cfg.Modules = append(cfg.Modules, name)
+		}
+	}
+	base.Config = &cfg
+	workers := module.Workers(base,
+		module.Module{Name: "products", Products: func(module.Deps) contracts.ProductCatalog { return h.catalog }},
+		module.Module{Name: "inventory",
+			Stock:       func(module.Deps) contracts.Stock { return h.stock },
+			StockLedger: func(module.Deps) contracts.StockLedger { return h.stock }},
+		module.Module{Name: "orders", SalesOrderLines: func(module.Deps) contracts.SalesOrderLines { return lines }},
+		manufacturing.Module())
+	var cycle interface {
+		RunCycle(context.Context) (int, error)
+	}
+	for _, w := range workers {
+		if w.Name() == "manufacturing.mto-worker" {
+			cycle, _ = w.(interface {
+				RunCycle(context.Context) (int, error)
+			})
+		}
+	}
+	if cycle == nil {
+		t.Fatalf("module.Workers built no make-to-order worker with a cycle: %d workers", len(workers))
+	}
+	if n, err := cycle.RunCycle(context.Background()); err != nil || n != 1 {
+		t.Fatalf("RunCycle = %d, %v", n, err)
+	}
+	if r := requestOf(t, h, 89); r.status != "done" {
+		t.Fatalf("request = %+v", r)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.orders WHERE origin_line_id = 851 AND status = 'confirmed'`); n != 1 {
+		t.Errorf("confirmed orders made for the line = %d, want 1", n)
 	}
 }
 

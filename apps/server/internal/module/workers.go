@@ -51,9 +51,10 @@ func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
-// Deps.Workforce, Deps.Stock, Deps.StockLedger, Deps.CalendarSources, Deps.IdentityProvisioners,
-// Deps.MailboxCalendars, Deps.ChannelMailboxes and Deps.PersonalMailboxes,
-// which it resolves from the enabled modules the way
+// Deps.Products, Deps.SalesTax, Deps.Workforce, Deps.Stock, Deps.StockLedger,
+// Deps.SalesOrderLines, Deps.Production, Deps.CalendarSources,
+// Deps.IdentityProvisioners, Deps.MailboxCalendars, Deps.ChannelMailboxes and
+// Deps.PersonalMailboxes, which it resolves from the enabled modules the way
 // Compose does — the same base Deps Compose resolves Directory from, before
 // any Mount runs, with no per-module Doc or Catalog — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
@@ -96,6 +97,13 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
+	// The product catalog, resolved as Compose resolves it, after the
+	// accounts and before the stock: Manufacturing's make-to-order worker
+	// locks the variants of the orders it makes through it, and Inventory's
+	// stock ledger, built below, reserves through it.
+	if deps, err = withProducts(deps, enabled); err != nil {
+		panic(err.Error())
+	}
 	// The project directory, then the three billable reads and consumption,
 	// resolved as Compose resolves them (energy consumption billing design
 	// D10): the invoices-billing worker drafts and issues through the
@@ -105,6 +113,11 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 		panic(err.Error())
 	}
 	if deps, err = withBillables(deps, enabled); err != nil {
+		panic(err.Error())
+	}
+	// Sales tax, resolved as Compose resolves it: Orders' mail worker prints
+	// the seller block it reads into every confirmation and shipping notice.
+	if deps, err = withSalesTax(deps, enabled); err != nil {
 		panic(err.Error())
 	}
 	// The stock read and the stock ledger, resolved as Compose resolves
@@ -203,6 +216,37 @@ func withUsersAndAccounts(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if accountsProvider != nil {
 		deps.Accounts = accountsProvider.Accounts(deps)
+	}
+	return deps, nil
+}
+
+// withProducts resolves contracts.ProductCatalog from the enabled modules —
+// at most one may declare it — keeping a preset value when none does (the
+// seam modtest.WithProducts fills). Compose and Workers both call it, after
+// account provisioning and before the stock slots, whose ledger reserves
+// through it.
+func withProducts(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "a product catalog", func(m Module) bool { return m.Products != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.Products = provider.Products(deps)
+	}
+	return deps, nil
+}
+
+// withSalesTax resolves contracts.SalesTax from the enabled modules — at
+// most one may declare it — keeping a preset value when none does. Compose
+// calls it right after the receivables, Workers after the billable reads;
+// its provider reads its own tables only.
+func withSalesTax(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "sales tax", func(m Module) bool { return m.SalesTax != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.SalesTax = provider.SalesTax(deps)
 	}
 	return deps, nil
 }
