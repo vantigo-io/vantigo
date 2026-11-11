@@ -711,6 +711,12 @@ func WithEnv(key, value string) Option {
 // orders' own tests stand in fakes of the catalog and the sales tax rather
 // than compose them.
 //
+// "products" and "inventory" are likewise included whenever "manufacturing"
+// is among mods: config.go rejects "manufacturing" without either
+// (manufacturing design M6), and manufacturing's own tests stand in fakes of
+// the catalog and the stock (WithProducts, WithStock) rather than compose
+// them.
+//
 // "staff" is likewise included whenever "entra" or "google" is among mods:
 // config.go rejects either without "staff" (Staff's accounts worker is the
 // provider's only caller), and their own tests drive the provider and its
@@ -747,6 +753,10 @@ func modulesEnv(mods []module.Module, stubbed ...string) string {
 	if moduleSet["orders"] {
 		moduleSet["products"] = true
 		moduleSet["invoices"] = true
+	}
+	if moduleSet["manufacturing"] {
+		moduleSet["products"] = true
+		moduleSet["inventory"] = true
 	}
 	for _, name := range stubbed {
 		moduleSet[name] = true

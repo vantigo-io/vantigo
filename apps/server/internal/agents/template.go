@@ -289,8 +289,9 @@ var templateOrder = []string{templateFrontDesk, templateReminderReplies, templat
 // Owner-tier permission; this module's own; Invoices' issue and payments; and
 // every approval in Time, Expenses and Staff; and every other permission that
 // cannot be delegated (Delegable false), which is Owner-tier: Entra's and
-// Google's administration, Knowledge's, and Orders' carriers and settings. The
-// Assistant's API is not here:
+// Google's administration, Knowledge's, Orders' carriers and settings, and
+// Manufacturing's costs (manufacturing design §8). The Assistant's API is not
+// here:
 // it names no permission, and the dispatcher refuses it by its path. A new
 // permission that matches one of these families must be added (the test in
 // internal/integration fails until it is), and a level for a listed key is
@@ -304,6 +305,7 @@ var agentNever = []string{
 	"identity:manage",
 	"invoices:issue", "invoices:payments",
 	"knowledge:manage",
+	"manufacturing:costs-view",
 	"orders:carriers-manage", "orders:settings",
 	"staff:approve", "staff:manage", "staff:personal-data",
 	"time:approve",

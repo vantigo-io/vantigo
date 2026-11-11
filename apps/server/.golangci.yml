@@ -110,6 +110,10 @@ linters:
               desc: "internal/identity may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/identity may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/identity may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
@@ -189,6 +193,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/customers may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/customers may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/customers may not import another business module"
@@ -270,6 +278,10 @@ linters:
               desc: "internal/products may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/products may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/products may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
@@ -349,6 +361,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/energy may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/energy may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/energy may not import another business module"
@@ -430,6 +446,10 @@ linters:
               desc: "internal/communications may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/communications may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/communications may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
@@ -509,6 +529,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/projects may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/projects may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/projects may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/projects may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/projects may not import another business module"
@@ -590,6 +614,10 @@ linters:
               desc: "internal/time may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/time may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/time may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/time may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/time may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
@@ -669,6 +697,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/expenses may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/expenses may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/expenses may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/expenses may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/expenses may not import another business module"
@@ -750,6 +782,10 @@ linters:
               desc: "internal/invoices may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/invoices may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/invoices may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/invoices may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/invoices may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
@@ -829,6 +865,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/staff may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/staff may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/staff may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/staff may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/staff may not import another business module"
@@ -910,6 +950,10 @@ linters:
               desc: "internal/calendar may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/calendar may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/calendar may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/calendar may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/calendar may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
@@ -981,6 +1025,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/entra may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/entra may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/entra may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/entra may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/entra may not import another business module"
@@ -1061,6 +1109,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/google may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/google may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/google may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/google may not import another business module"
@@ -1146,6 +1198,10 @@ linters:
               desc: "internal/meta may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/meta may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/meta may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/meta may not import another business module"
         planning:
           files:
             - "**/internal/planning/**"
@@ -1213,6 +1269,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/planning may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/planning may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/planning may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/planning may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/planning may not import another business module"
@@ -1298,6 +1358,10 @@ linters:
               desc: "internal/inventory may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/inventory may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/inventory may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/inventory may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/inventory may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
@@ -1382,6 +1446,94 @@ linters:
               desc: "internal/orders may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
               desc: "internal/orders may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/orders may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/orders may not import another business module"
+        manufacturing:
+          files:
+            - "**/internal/manufacturing/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/projects$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/projects/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/time$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/time/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/expenses$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/expenses/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/invoices$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/invoices/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/staff$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/staff/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/calendar$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/calendar/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/entra$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/entra/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/meta$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/google/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/meta/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/planning$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/planning/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/assistant$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/assistant/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/agents$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/agents/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/inventory$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/inventory/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
+              desc: "internal/manufacturing may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge/
+              desc: "internal/manufacturing may not import another business module"
         knowledge:
           files:
             - "**/internal/knowledge/**"
@@ -1462,6 +1614,10 @@ linters:
               desc: "internal/knowledge may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
               desc: "internal/knowledge may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/knowledge may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
+              desc: "internal/knowledge may not import another business module"
         assistant:
           files:
             - "**/internal/assistant/**"
@@ -1533,6 +1689,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/assistant may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/assistant may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/assistant may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/assistant may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/assistant may not import another business module"
@@ -1613,6 +1773,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "internal/agents may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "internal/agents may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "internal/agents may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "internal/agents may not import another business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "internal/agents may not import another business module"
@@ -1786,6 +1950,10 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders$
               desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/orders/
+              desc: "platform packages may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing$
+              desc: "platform packages may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/manufacturing/
               desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/knowledge$
               desc: "platform packages may not import any business module"
