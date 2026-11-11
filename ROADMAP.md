@@ -999,18 +999,42 @@ The rules Inventory's phase 1 kept for it still hold:
   production-cost, utilisation and time-deviation reports with CSV download
   ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md#the-production-schedule),
   the [reference](docs/src/content/docs/en/reference/manufacturing.md#the-production-schedule)).
-- **E — Make-to-order and sub-assemblies (planned).** A manufacturing order from a sales
-  order in Orders, and child orders for the components that are made.
+- **E — Make-to-order and sub-assemblies (built).** A confirmed sales order makes one
+  confirmed manufacturing order per goods line whose default bill of materials is made to
+  order, through a request the `manufacturing.mto` handler queues and the
+  `manufacturing.mto-worker` drains outside the handler — shortage never stops it, a line
+  it leaves out is recorded with its reason, and one live order per line is a database
+  fact; a manufacturing order made by hand for a sales order line, prefilled from it; a
+  cancelled sales order flags its orders rather than cancelling them; the sales order's
+  page shows what is made for each line and, once an order closes, that the goods are ready
+  for Reserve now; and sub-assembly orders for the made components that are missing, due
+  when the parent starts. Two contracts carry it, `contracts.SalesOrderLines`
+  (consumer-gated) and `contracts.Production` (provider-gated), with the event
+  `manufacturing.order.done`
+  ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md#make-to-order),
+  [Orders](docs/src/content/docs/en/user/orders.md#goods-made-to-order), the
+  [reference](docs/src/content/docs/en/reference/manufacturing.md#make-to-order-and-sub-assemblies)).
+
+Phase 1 is complete.
+
+### Phase 2 — candidates
+
+What the design deferred, each waiting for what is named:
+
+- **Lots and serials, the trace screens** — Products' tracking mode, Inventory's lots and
+  the balance key (the rules above).
+- **Quality checks on operations.**
+- **Operation dependencies (parallel operations).**
+- **Alternative work centers, a drag to another center, overlap.**
+- **Auto-computed standard times**, reading delivery D's time deviation.
+- **Reorder rules creating manufacturing orders**, using Inventory placement's minimum.
+- **By-products, kits, unbuild, split and merge.**
+- **Following a sales order's changed quantity** (`orders.sales_order.changed`), which
+  make-to-order does not in phase 1, and **reserving a sub-assembly's output to its
+  parent** automatically.
 
 ### Later
 
-- **Lots and serials, the trace screens** wait for a phase 2 delivery — Products' tracking mode, Inventory's lots and the balance key (the rules above).
-- **Quality checks on operations** wait for phase 2.
-- **Operation dependencies (parallel operations)** wait for phase 2.
-- **Alternative work centers, a drag to another center, overlap** wait for phase 2.
-- **Auto-computed standard times** wait for phase 2, reading the deviation of delivery D.
-- **Reorder rules creating manufacturing orders** wait for phase 2, using Inventory placement's minimum.
-- **By-products, kits, unbuild, split and merge** wait for phase 2.
 - **Subcontracted operations** wait for Purchasing.
 - **A shared tablet with an operator PIN** waits for an identity feature (a second credential).
 - **Rotating shift patterns** wait for demand.

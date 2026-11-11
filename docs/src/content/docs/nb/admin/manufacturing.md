@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00157_manufacturing_orders.sql
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
+  - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
 ---
 
 Produksjon-modulen (**Manufacturing** på engelsk) beskriver hvordan virksomheten lager
@@ -54,18 +55,29 @@ den brukes, står i [Produksjon](/nb/user/manufacturing/), og hver regel i
    Migreringen `00157_manufacturing_orders.sql` legger produksjonsordrenes tabeller til i
    skjemaet, `00158_manufacturing_work_orders.sql` verkstedets arbeidsordrer og
    tidsregistreringer, og `00159_manufacturing_schedule.sql` produksjonsplanens tabell
-   `work_order_slots` og ordrenes ønskede start, estimat og faktiske kostnad. Standardrettighetene under Databaseroller dekker dem; en rolle som
+   `work_order_slots` og ordrenes ønskede start, estimat og faktiske kostnad, og
+   `00160_manufacturing_mto.sql` forespørslene om produksjon mot ordre (`mto_requests`)
+   og ordrenes merke for kansellert opphav. Standardrettighetene under Databaseroller dekker dem; en rolle som
    har fått rettigheter tabell for tabell, trenger at `GRANT`-setningene kjøres på nytt
    etter hver oppgradering.
 
 3. **Produksjon**-flisen vises for alle med `manufacturing:access`.
 
-Modulen har ingen egne innstillinger. Den starter én bakgrunnsjobb,
-`manufacturing-erasure`, som én gang i døgnet tømmer fritekstnotatene på
-tidsregistreringer skrevet av personer identitetsmodulen har slettet — en arbeidsleders
-korrigering eller tillegg, eller notatet til en blokkering
-([personopplysninger](/en/reference/manufacturing/#personal-data)); den trenger ikke noe
-oppsett.
+Modulen har ingen egne innstillinger. Den starter to bakgrunnsjobber, og ingen av dem
+trenger noe oppsett:
+
+- `manufacturing-erasure`, som én gang i døgnet tømmer fritekstnotatene på
+  tidsregistreringer skrevet av personer identitetsmodulen har slettet — en arbeidsleders
+  korrigering eller tillegg, eller notatet til en blokkering
+  ([personopplysninger](/en/reference/manufacturing/#personal-data));
+- `manufacturing.mto-worker`, som hvert 15. sekund lager produksjonsordrene for
+  salgsordrene som bekreftes i Ordre: én bekreftet ordre per varelinje der produktets
+  standard stykkliste er **Produser mot ordre**
+  ([produksjon mot ordre](/en/reference/manufacturing/#make-to-order-and-sub-assemblies)).
+  Den trenger at **Ordre** er slått på, og at utboksens fordeler kjører i en
+  arbeidsprosess for å gi den de bekreftede ordrene; med Ordre av lager den ingen, og alt
+  annet i Produksjon virker som før. Forespørsler som fortsetter å feile, blir stående
+  som `failed` i `manufacturing.mto_requests` med den siste feilen, etter åtte forsøk.
 
 ## Gi folk tilgang
 
@@ -168,6 +180,10 @@ igjen, viser riktig tid uten at serveren sender den.
     lagerstedet: ordrens arbeidsordrer er stolper på arbeidsstasjonens rad. Med Se
     produksjonskostnader viser ordren **Kostnad**-panelet, og **Oversikt** →
     **Rapporter** tilbyr **Produksjonskostnad**.
+11. Med Ordre slått på merker du produktets standard stykkliste **Produser mot ordre**, og
+    bekrefter en salgsordre med det i Ordre. Innen et minutt lister
+    **Produksjonsordrer** en bekreftet ordre med opphav **Salgsordre** og salgsordrens
+    nummer, og salgsordrens linje viser den.
 
 ## Hva som kan gå galt
 
@@ -199,3 +215,5 @@ igjen, viser riktig tid uten at serveren sender den.
 | Produksjonsplanen planlegger på feil klokkeslett | Virksomhetens tidssone er ikke fabrikkens | Sett den under **Innstillinger for arbeidsområdet** |
 | Ingen **Kostnad**-panel på en ordre, ingen rapport **Produksjonskostnad** | Personen mangler Se produksjonskostnader | Gi den til dem som skal se kostnader |
 | En produksjon nektes for beholdning | Lagerstedet har ikke nok av en komponent, eller lagerstedet er arkivert i Lager | Ta imot eller flytt varene, gjenåpne lagerstedet, eller rett med en justering i Lager |
+| En bekreftet salgsordre får ingen produksjonsordre | Produktets standard stykkliste er ikke **Produser mot ordre**, Ordre eller arbeidsprosessen kjører ikke, linjen har allerede en ordre, eller stykklisten har ingen operasjoner og salgsordren navngir ikke noe lagersted | Merk stykklisten, start arbeidsprosessene, gi salgsordren et lagersted; grunnen for hver linje som ble utelatt, står i `manufacturing.mto_requests.reasons` |
+| `permission denied for table mto_requests` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00160` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |

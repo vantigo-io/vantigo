@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes."
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; make-to-order — contracts.SalesOrderLines for Manufacturing, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve"
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -12,6 +12,8 @@ sources:
   - apps/server/internal/db/migrations/00124_orders_subscriptions.sql
   - apps/server/internal/db/migrations/00126_orders_deliveries.sql
   - apps/server/internal/db/migrations/00127_orders_shipping.sql
+  - apps/server/internal/db/migrations/00161_orders_mto_ready.sql
+  - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/billable_orders.go
   - apps/server/internal/contracts/events_orders.go
   - apps/host/frontend/src/routes/orders
@@ -718,6 +720,60 @@ they become a draft subscription's lines with their frozen prices, its origin `q
 `quoteId@revision`. The quote records `accepted_into_kind` `subscription`, and
 `orders.quote.accepted` names it. The answer carries `subscription` instead of `order`.
 
+## Make-to-order
+
+Manufacturing makes goods for sales orders (manufacturing design M43–M48;
+[Manufacturing](/en/reference/manufacturing/#make-to-order-and-sub-assemblies)). Orders
+gives it the lines and shows on the order what is made for them.
+
+### The sales order lines
+
+Orders provides **`contracts.SalesOrderLines`** (`contracts/production.go`), resolved
+from the enabled modules only. It is **consumer-gated** (module-boundaries rule 12, M43a):
+Orders authorises nothing, because Manufacturing's worker calls it with no principal and
+Manufacturing decides who may see what. `Lines(ids)` and `OrderLines(orderID)` answer the
+product lines naming a variant of sales orders — never a quote's, a template's or a
+subscription's — in line order: the line and order ids, the order's number, the
+customer's **id** (never the name), the variant, the **open quantity** (ordered less
+cancelled less delivered, at least 0, exact decimal text), the order's delivery date,
+site and status. An id that is not such a line is absent. It reads on the pool and refuses
+more than 500 ids.
+
+### Production on the order
+
+Every answer of one order (`GET /orders/{id}` and every write's) adds, after the order's
+transaction and on the pool, for each product line naming a variant:
+
+- **`hasBom`** — whether the variant has a default active bill of materials in
+  Manufacturing — and **`production`** — the manufacturing orders made for the line,
+  backorders included, each with its `number`, `status`, `quantity`, `produced`, `siteId`,
+  `plannedFinish` and `dueDate` — both read through **`contracts.Production`**. It is
+  **provider-gated** (M46a): Manufacturing checks `manufacturing:access` on the request
+  and answers nothing to a caller without it, and Orders checks nothing itself. With
+  Manufacturing off, or nothing answered, the two fields are left out. A failure fails
+  the answer;
+- **`readyToReserve`** — `{manufacturingOrderId, produced, siteId, otherSite}` — once a
+  manufacturing order made for the line closed: the latest one, what was produced for the
+  line in all, the site it was made at, and `otherSite` when that is not the order's site.
+
+The order page shows each manufacturing order, linking to it for a holder of
+`manufacturing:access`, and offers **Create manufacturing order** — Manufacturing's
+new-order form prefilled from the line — on a line with a bill of materials and no order
+yet, to a holder of `manufacturing:access` and `manufacturing:orders-manage`.
+
+### Produced, ready to reserve
+
+The handler **`orders.mto-reserve`** takes `manufacturing.order.done` v1 and only marks
+the line in Orders' own schema (rule 23, M48a): a row of `line_production_ready`, keyed by
+the line — a table rather than a column of `lines`, because a save replaces a
+document's lines whole — with the manufacturing order, its site and the produced quantity
+added to what was produced for the line before. A line that is no longer an order's, and a
+close that produced nothing, mark nothing. The handler reserves nothing: the order page
+then says the goods are ready and offers its existing **Reserve now**
+([Reservations](#reservations)), which reserves at the order's site. When the goods were
+made at another site, Reserve now cannot pick them up, and the page says a transfer is
+needed first. Migration `00161_orders_mto_ready.sql` adds the table.
+
 ## Deliveries and stock
 
 Delivery C (O45–O48) brings stock into an order: the site it is fulfilled from, the
@@ -1160,6 +1216,9 @@ writes only `orders.mailings`, and the mailing is unique per order, version and 
 event, so a retried delivery queues nothing twice. The mail itself is sent by
 `orders.mail`.
 
+`orders.mto-reserve` takes Manufacturing's `manufacturing.order.done` v1 and marks the
+sales order line **produced, ready to reserve** ([Make-to-order](#make-to-order)).
+
 ## Workers
 
 | Worker | Runs | Does |
@@ -1527,6 +1586,7 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `orders.settings.default-site` | `/orders/settings` | Default site |
 | `orders.lines.add-shipping` | `/orders/quotes/{quoteId}` | Add shipping, under a quote's or an order's lines |
 | `orders.lines.estimate-shipping` | `/orders/quotes/{quoteId}` | Estimate, on a shipping line |
+| `orders.lines.create-manufacturing-order` | `/orders/orders/{orderId}` | Create manufacturing order, on a goods line with a bill of materials |
 | `orders.delivery.ship` | `/orders/deliveries/{deliveryId}` | Ship, on a posted delivery's Shipments card |
 | `orders.shipment.service` | `/orders/deliveries/{deliveryId}` | A draft shipment's service |
 | `orders.shipment.book` | `/orders/deliveries/{deliveryId}` | Book shipment |
@@ -1594,7 +1654,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /quotes/{id}/mailings` | access | 200 every send; 404 |
 | `GET /orders` | access | 200 — newest first, by customer, status, delivery and invoice status, open or done, to deliver, salesperson and a search; 400 paging |
 | `POST /orders` | sales-manage | 201; 200 a repeat; 400; 409 `client_request_reused`; 503 |
-| `GET /orders/{id}` | access | 200 with lines, buckets and totals; 404 |
+| `GET /orders/{id}` | access | 200 with lines, buckets and totals, and each goods line's [production](#production-on-the-order); 404 |
 | `PUT /orders/{id}` | sales-manage | 200; 400 incl. `quantity_below_progress`, `line_invalid`, `site_not_fulfilling`; 404; 409 `version_conflict`, `order_locked`, `line_invoiced`, `line_in_draft_invoice`, `line_has_progress`, `line_kind_changed`, `order_has_deliveries`, `insufficient_available`; 503 |
 | `DELETE /orders/{id}` | sales-manage | 204 — a draft accepted from a quote puts the quote back to `sent`; 404; 409 `order_not_draft`, `version_conflict` (`expectedUpdatedAt` in the query) |
 | `POST /orders/{id}/confirm` | sales-confirm (+ settings to override) | 200; 400 `customer_disabled`, `order_empty`, `line_unpriced`, `vat_code_unmapped`, `overrideReason`; 404; 409 `order_not_draft`, `blocked_by_warning`, `insufficient_available`, `site_not_fulfilling`, `variant_not_stocked` |

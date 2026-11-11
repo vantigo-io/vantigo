@@ -142,7 +142,8 @@ are asked to reload, so that nobody overwrites another's change unseen.
    - **Lead time (days)** — 0 or more, 0 unless changed.
    - **Make default** — on a new BoM only: make it the product's default at once (see
      [The default and the alternative bills of materials](#the-default-and-the-alternative-bills-of-materials)).
-   - **Make to order** — the product is made for each sales order rather than to stock.
+   - **Make to order** — the product is made for each sales order rather than to stock
+     ([Make to order](#make-to-order)).
    - **Note** — up to 2,000 characters.
 4. Under **Operations**, choose **Add operation** for each step of the work, in the order
    they are done. Each has:
@@ -753,6 +754,74 @@ formatting.
   the **Average actual** minutes over the last 10 work orders finished in the period, and
   the deviation in per cent. Use it to see which standard times need adjusting.
 
+## Make to order
+
+A product made to order is made for each sales order rather than to stock. Selling and
+making then follow one another: when a sales order in [Orders](/en/user/orders/) is
+confirmed, Manufacturing makes the manufacturing order for it.
+
+### Make a product to order
+
+Open the product's **default** bill of materials, turn on **Make to order** and choose
+**Save**. Only the default bill of materials counts: an alternative one marked Make to
+order is not used for sales orders.
+
+### Orders made for a sales order
+
+When a sales order is confirmed, within a minute Manufacturing makes one **confirmed**
+manufacturing order for each of its goods lines whose product is made to order:
+
+- for the line's open quantity, due on the sales order's delivery date;
+- at the site of the bill of materials' work centers. A bill of materials with no
+  operations is made at the sales order's site; when the sales order names none either,
+  no order is made for that line;
+- with origin **Sales order** and the sales order's number, such as *SO-1042*.
+
+Its components are reserved as when you confirm an order yourself; a short component
+never stops it, and the order page names what is missing. A line that already has a
+manufacturing order gets no second one. A quantity raised on the sales order later is not
+followed: the sales order's line shows what is made for it, and you make the rest by hand.
+
+### Make an order for a sales order line yourself
+
+On the sales order's page in Orders, a goods line whose product has a bill of materials
+offers **Create manufacturing order**. It opens **New manufacturing order** here, filled
+in from the line — the product, the open quantity and the delivery date as the due date —
+and says *Made for SO-1042*. Change what you need and choose **Create manufacturing
+order**; then confirm it as any other. A line has at most one manufacturing order at a
+time, its backorders aside: once one is made, the line shows it instead. Cancelling the
+order frees the line.
+
+### When the sales order is cancelled
+
+A cancelled sales order does **not** cancel the manufacturing orders made for it: the
+goods may already be half made. Each is marked **Sales order cancelled**, on the list and
+on its page, and its history says so. Decide whether to finish it, close it or cancel it.
+
+### When the order is done
+
+When you close an order made for a sales order line, the sales order's line says the goods
+are produced and ready to reserve, and its **Reserve now** reserves them — when they were
+made at the sales order's site. Made at another site, the goods must be moved there first;
+the line says so.
+
+### Create sub-assembly orders
+
+A component that is itself made — it has a default bill of materials — can be made for an
+order. On a confirmed or in-progress order whose made components miss something, choose
+**Create sub-assembly orders**. Every such component is listed with what it misses, each
+checked; uncheck those you will not make now and choose **Create sub-assembly orders**.
+Each becomes a confirmed order:
+
+- for what the component misses, by its default bill of materials;
+- with origin **Parent order**, linked to this order;
+- due when this order is planned to start, or on its requested start when it is not
+  planned.
+
+The order page lists its **Sub-assembly orders**, and each of them links to its **Parent
+order**. Nothing is made automatically. What a sub-assembly order makes is not reserved for
+the parent by itself: choose **Reserve now** on the parent once it is in stock.
+
 ## Deleting a product a bill of materials uses
 
 Products refuses to delete a variant, or to turn its product into a service, while an
@@ -789,10 +858,12 @@ cannot be delegated.
 | **Correct**, **Add missing log** | ✓ | ✓ | – |
 | **Production schedule**, **Reports** (without production cost) | ✓ | – | – |
 | **Plan**, **Plan again**, **Unplan**, **Plan all**, moving a work order, **Requested start** | ✓ | ✓ | – |
+| **Create sub-assembly orders**, and **Create manufacturing order** on a sales order's line | ✓ | ✓ | – |
 
 Registering a production, and every action on the shop floor, needs Use Manufacturing and
 either of the other two. The Assistant does not take shop-floor actions: an operator
 clocks in themselves. The stock
 figures in the overview and on an order are Manufacturing's own and need
-no Inventory permission. The full table is under
+no Inventory permission. An order made for a sales order names the sales order's
+customer only to those who also hold Use Orders. The full table is under
 [Permissions](/en/reference/manufacturing/#permissions) in the reference.

@@ -318,6 +318,23 @@ reservert for noen ordre. Disponibelt kan bli negativt etter en lagerkorreksjon 
 linje holder mindre enn det som gjenstår å levere, reserverer **Reserver nå** resten; det
 avvises når lagerstedet ikke har det disponibelt.
 
+### Varer som produseres mot ordre
+
+Når [Produksjon](/nb/user/manufacturing/#produser-mot-ordre) er på og du har Bruke
+Produksjon, viser en varelinje der produktet har en stykkliste hva som lages for den: hver
+**produksjonsordre** — nummeret, som åpner den, statusen, hvor mye av antallet som er
+produsert, og når den er planlagt ferdig. Et produkt som produseres mot ordre, får
+produksjonsordren sin av seg selv når du bekrefter ordren; for et annet produkt som lages
+etter en stykkliste, åpner **Opprett produksjonsordre** på linjen en ny ordre i
+Produksjon, fylt ut fra linjen. Den krever rettigheten til å administrere
+produksjonsordrer, og tilbys mens linjen ikke har noen.
+
+Når en produksjonsordre laget for linjen lukkes, sier linjen hvor mye som er **produsert,
+klar til reservering**: velg **Reserver nå** for å reservere det. Når varene ble laget på
+et annet lagersted enn ordrens, sier linjen det: flytt dem til ordrens lagersted i Lager
+først. Å kansellere ordren kansellerer ikke produksjonsordrene: de merkes i Produksjon for
+at noen skal avgjøre.
+
 ### Lag en leveranse
 
 1. På den bekreftede ordren viser kortet **Leveranser** ordrens leveranser. Velg **Lag

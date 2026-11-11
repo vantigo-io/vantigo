@@ -320,6 +320,23 @@ any order. Available can be negative after a stock correction in Inventory. When
 holds less than is left to deliver, **Reserve now** reserves the rest; it is refused when the
 site does not have it available.
 
+### Goods made to order
+
+When [Manufacturing](/en/user/manufacturing/#make-to-order) is on and you hold Use
+Manufacturing, a goods line whose product has a bill of materials shows what is being
+made for it: each **manufacturing order** — its number, which opens it, its status, what is
+produced of its quantity, and when it is planned to finish. A product made to order gets
+its manufacturing order by itself when you confirm the order; for any other product made
+by a bill of materials, **Create manufacturing order** on the line opens Manufacturing's
+new order filled in from the line. It needs the permission to manage manufacturing
+orders, and is offered while the line has none.
+
+When a manufacturing order made for the line is closed, the line says how much was
+**produced, ready to reserve**: choose **Reserve now** to reserve it. When the goods were
+made at another site than the order's, the line says so: move them to the order's site in
+Inventory first. Cancelling the order does not cancel its manufacturing orders: they are
+marked in Manufacturing for someone to decide.
+
 ### Make a delivery
 
 1. On the confirmed order, the **Deliveries** card lists its deliveries. Choose **Create
