@@ -237,7 +237,7 @@ export interface paths {
         put?: never;
         /**
          * Create sub-assembly orders
-         * @description Create sub-assembly orders (M47): one confirmed child order per chosen component line whose variant has a default active BoM and whose missing quantity (M21a) is more than 0, for that quantity, with origin parent and due the parent's planned start, else its requested start (M37). Each child reserves as a confirm does; a short line never refuses it.
+         * @description Create sub-assembly orders (M47): one confirmed child order per chosen component line whose variant has a default active BoM and whose missing quantity (M21a), less what the order's open sub-assembly orders of the variant still make, is more than 0, for that quantity, with origin parent and due the parent's planned start, else its requested start (M37). Each child reserves as a confirm does; a short line never refuses it.
          */
         post: operations["createManufacturingChildOrders"];
         delete?: never;
@@ -1660,6 +1660,11 @@ export interface components {
             /** @description Exact decimal. */
             quantity: string;
             status: components["schemas"]["ManufacturingOrderStatus"];
+            /**
+             * Format: int32
+             * @description The variant it makes: a sub-assembly order's component (M47).
+             */
+            variantId: number;
         };
         /** @description Where the order came from (M17). */
         ManufacturingOrderOriginInfo: {
@@ -3836,7 +3841,7 @@ export interface operations {
                     "application/json": components["schemas"]["ManufacturingChildrenCreated"];
                 };
             };
-            /** @description Bad Request — component_unknown (not a line of the order), bom_required (its variant has no default active BoM), nothing_missing (its missing quantity is 0); work_center_other_site, site_unknown. */
+            /** @description Bad Request — component_unknown (not a line of the order), bom_required (its variant has no default active BoM), nothing_missing (its missing quantity, less what the open sub-assembly orders still make, is 0); work_center_other_site, site_unknown. */
             400: {
                 headers: {
                     [name: string]: unknown;

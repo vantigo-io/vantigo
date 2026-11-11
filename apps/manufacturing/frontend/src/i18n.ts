@@ -596,8 +596,10 @@ export const manufacturingCatalog = {
     childrenTitle: "Sub-assembly orders for {{number}}",
     childrenHint:
       "Each chosen component is made by its default bill of materials, for what is missing, as a confirmed order due when this order starts.",
-    childrenNone: "No component with a bill of materials is missing anything.",
+    childrenNone: "No component with a bill of materials is missing more than its open sub-assembly orders make.",
     childLine: "{{sku}} · {{name}}: {{missing}} missing",
+    childrenOpen: "Already being made",
+    childOpenLine: "{{number}} · {{sku}}: {{remaining}} still to make",
     childrenCreated_one: "{{count}} sub-assembly order created",
     childrenCreated_other: "{{count}} sub-assembly orders created",
     couldNotCreateChildren: "The sub-assembly orders were not created",
@@ -1282,8 +1284,10 @@ export const manufacturingCatalog = {
     childrenTitle: "Underordrer for {{number}}",
     childrenHint:
       "Hver valgte komponent lages etter sin standard stykkliste, for det som mangler, som en bekreftet ordre med forfall når denne ordren starter.",
-    childrenNone: "Ingen komponent med stykkliste mangler noe.",
+    childrenNone: "Ingen komponent med stykkliste mangler mer enn de åpne underordrene lager.",
     childLine: "{{sku}} · {{name}}: {{missing}} mangler",
+    childrenOpen: "Lages allerede",
+    childOpenLine: "{{number}} · {{sku}}: {{remaining}} igjen å lage",
     childrenCreated_one: "{{count}} underordre opprettet",
     childrenCreated_other: "{{count}} underordrer opprettet",
     couldNotCreateChildren: "Underordrene ble ikke opprettet",
