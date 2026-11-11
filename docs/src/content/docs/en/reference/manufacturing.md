@@ -1274,7 +1274,7 @@ orders for sales orders, and orders for the made components of an order.
 | Contract | Provider → consumer | Class (rule 12) | Calls |
 | --- | --- | --- | --- |
 | `contracts.SalesOrderLines` (`contracts/production.go`) | Orders → Manufacturing | **Consumer-gated**: Orders authorises nothing; Manufacturing decides before it calls | `Lines(ids)`, `OrderLines(orderID)` |
-| `contracts.Production` (`contracts/production.go`) | Manufacturing → Orders | **Provider-gated** on `manufacturing:access` from `ctx`; nothing, not an error, without it or with no request | `ForOrderLines(lineIDs)`, `HasBOM(variantIDs)` |
+| `contracts.Production` (`contracts/production.go`) | Manufacturing → Orders | **Provider-gated** on `manufacturing:access` from `ctx`; nothing, not an error, without it or with no request | `ForOrderLines(lineIDs)`, `HasBOM(variantIDs)`, `NotMade(salesOrderID)` |
 
 Both are single-provider slots on `module.Deps`, resolved from the enabled modules only
 (nil when the provider is off), and both are read on the pool and never inside a
@@ -1284,8 +1284,13 @@ the line, its order's id and number, the customer's id, the variant, the **open 
 its site and its status; never the customer's name (M43a). `Production.ForOrderLines`
 answers every order whose origin is one of the lines, **backorders included** and
 cancelled ones left out (M44b), with its number, status, quantity, produced, site,
-planned finish and due date. Each read names at most `contracts.MaxProductionLines`
-(500) ids.
+planned finish and due date. `Production.NotMade` answers why make-to-order made no
+order for lines of one sales order: each line its request left out, with the reason's
+code and detail — but `no_bom`, `not_make_to_order` and `has_order`, lines that were
+never this module's to make or already have an order — and, when the request ended
+`failed`, one entry for the whole sales order (line 0, code `failed`). A request still
+pending, or cancelled, answers none. Each read names at most
+`contracts.MaxProductionLines` (500) ids.
 
 ### Automatic make-to-order
 
@@ -1318,7 +1323,10 @@ due, oldest first, at most 20 a cycle, and for each:
    snapshot, the work orders, the estimate, and the two-pass reserve through
    `ReserveForProduction`. **Shortage never stops it** (M20a): a short line is left
    unreserved. A line Inventory refuses for another reason is rolled back to its savepoint
-   and recorded under the refusal's code;
+   and recorded under the refusal's code, and so is a line a person made an order for by
+   hand meanwhile — the new-order form takes no lease, and the
+   [one-live-order index](#one-live-order-per-line) refuses the worker's insert
+   (`sales_order_line_has_order`);
 4. finishes the request **done** — some order made — or **skipped** — none — with every
    line it left out in `reasons` (`[{lineId, code, detail}]`).
 
@@ -1328,6 +1336,13 @@ backs off a minute doubled per attempt, at most an hour; the eighth leaves the r
 transaction on one pooled connection, so it runs on a pool of one. A quantity raised on
 the sales order after confirm (`orders.sales_order.changed`) is **not** followed in phase
 1: the order page's production status shows the gap.
+
+The worker of each replica takes the same lease, so two never make one request's orders:
+the second finds the request finished when it reads it again under the lease, and ends
+without making or failing anything. With the module disabled its workers do not run, and
+in worker mode they are built by `module.Workers`, which resolves the product catalog,
+the stock, the stock ledger and the sales order lines from the enabled modules as
+`Compose` does.
 
 ### One live order per line
 
@@ -1352,11 +1367,23 @@ order that is not cancelled, of the order's variant, or **400**
 ### A cancelled sales order
 
 The handler **`manufacturing.mto-cancelled`** receives `orders.sales_order.cancelled` v1
-and sets **`origin_cancelled`** on every order made for the sales order that is not yet
-flagged, adding an `origin_cancelled` event to each one's timeline and telling its live
-topics — on the delivery's transaction, writing only this schema (M44). It never cancels
-them: the goods may be half made, and a person decides. The flag is
-`origin.cancelled` on the list and the order.
+and, on the delivery's transaction, writing only this schema (M44):
+
+1. takes the make-to-order lease, as the worker's transaction does;
+2. with the module on, marks the sales order's request **`cancelled`** while it is still
+   pending — or inserts it cancelled when the cancel is handled before the confirm, so the
+   later `manufacturing.mto` finds it and adds nothing. The worker reads the request again
+   under the same lease and makes nothing for a cancelled one, so a sales order cancelled
+   while the worker judges it gets no order; a request already finished is left as it is;
+3. sets **`origin_cancelled`** on every order made for the sales order that is not yet
+   flagged — locking them in id order first, as every write of several orders does —,
+   adding an `origin_cancelled` event to each one's timeline and telling its live topics.
+
+It never cancels the orders: the goods may be half made, and a person decides. The flag
+is `origin.cancelled` on the list and the order. A **backorder** carries its original's
+flag, made before or after the cancel. **Sub-assembly orders** of a flagged order are
+not flagged: their origin is the parent, not the sales order, and the parent's flag is
+the place a person sees it.
 
 ### What the order shows of its origin
 
@@ -1364,7 +1391,8 @@ them: the goods may be half made, and a person decides. The flag is
 order's answer, and only to a caller who also holds **`orders:access`**, it carries the
 sales order's `customerName`, read after the order's snapshot: the line through
 `SalesOrderLines.Lines` for its customer's id, then `CustomerDirectory.Customer` (M43a).
-It is left out otherwise, and never on the list.
+It is left out otherwise, and never on the list. A read that fails leaves it out too,
+logged; the order's answer never fails over it.
 
 ### Done goods and the sales order
 
@@ -1384,8 +1412,11 @@ component line, each:
 
 - by the component variant's **default active BoM**, which each component line answers
   as `defaultBomId` (`bom_required` without one);
-- for the line's **missing** quantity (M21a), which must be more than 0
-  (`nothing_missing`);
+- for the line's **missing** quantity (M21a) less what the parent's **open sub-assembly
+  orders** of the variant — draft, confirmed or in progress — still make (their quantity
+  less their produced), which must be more than 0 (`nothing_missing`). It is judged
+  before the transaction and again under the parent's lock, which every sub-assembly
+  create takes, so two creates at once never make one shortage twice;
 - with origin `parent`, `parentOrderId` the parent, the parent's priority, and the site of
   its BoM's work centers, else the parent's site;
 - **due** on the parent's planned start, as a day of the business time zone; when the
@@ -1397,7 +1428,8 @@ Every child is created and confirmed in one transaction under the parent's
 parent's; each reserves as a confirm does. The parent's timeline gets
 `children_created`. The answer is `{order, children}`. It is never automatic. A child's
 output is not reserved to the parent: the parent's **Reserve now** picks it up once it
-lands. The parent answers its `children`, each child its `parent`.
+lands. The parent answers its `children`, each child its `parent`; an order link names
+its `variantId`, so a screen can match a child to its component line.
 
 ### The data model of make-to-order
 
@@ -1405,7 +1437,7 @@ Migration `00160_manufacturing_mto.sql` adds:
 
 | Table or column | Holds |
 | --- | --- |
-| `mto_requests` | One per sales order (`sales_order_id` unique): the `event_id` that queued it, `status` (`pending`, `done`, `skipped`, `failed`), `reasons`, `attempts`, `last_error`, `next_attempt_at`, `created_at`, `done_at` |
+| `mto_requests` | One per sales order (`sales_order_id` unique): the `event_id` that queued it, `status` (`pending`, `done`, `skipped`, `failed`, `cancelled`), `reasons`, `attempts`, `last_error`, `next_attempt_at`, `created_at`, `done_at` |
 | `orders.origin_cancelled` | The sales order it was made for was cancelled |
 | `ux_orders_origin_line` | [One live order per line](#one-live-order-per-line) |
 
@@ -1510,7 +1542,7 @@ bodies are strict: an unknown property is a 400.
 | `sales_order_line_unknown` | 400 | A new order's `salesOrderLineId` is not a goods line of a sales order that is not cancelled, or names another variant (M45) |
 | `sales_order_line_has_order` | 409 | The sales order line already has its one live order (M44b) |
 | `component_unknown` | 400 | A sub-assembly order for an id that is not a component line of the order (M47) |
-| `nothing_missing` | 400 | A sub-assembly order for a component line whose missing quantity is 0 (M47) |
+| `nothing_missing` | 400 | A sub-assembly order for a component line whose missing quantity, less what the open sub-assembly orders of its variant still make, is 0 (M47) |
 | `insufficient_stock`, `insufficient_available`, `site_archived`, `variant_not_stocked`, `document_reused` | 409 | Inventory's refusal of a production or a reserve, passed through under its own code, `lines` naming the component lines; nothing is posted. A reserve's `insufficient_available` is not answered: it starts the second pass |
 | `dependency_unavailable` | 503 | The catalog or the stock contract is missing at run time; nothing is changed |
 

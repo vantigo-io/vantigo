@@ -145,8 +145,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    its sales orders' goods lines with their open quantity, which Manufacturing makes
    orders from; consumer-gated, rule 12; optional, nil when Orders is off) and
    `Production` (`contracts.Production`, manufacturing — the manufacturing orders made
-   for sales order lines and which variants have a bill of materials, which Orders' order
-   page shows; provider-gated, rule 12; optional, nil when Manufacturing is off) — both
+   for sales order lines, which variants have a bill of materials, and why make-to-order
+   made no order for a sales order's lines, which Orders' order page shows;
+   provider-gated, rule 12; optional, nil when Manufacturing is off) — both
    resolved from the enabled modules by `withProduction`, after the stock slots, by
    Compose and `module.Workers` alike, neither provider reading the other while it is
    built; `modtest.WithSalesOrderLines` and `modtest.WithProduction` preset them —, and `Workforce`

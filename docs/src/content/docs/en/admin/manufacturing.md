@@ -183,6 +183,27 @@ shows the right time without the server sending it.
     lists a confirmed order with origin **Sales order** and the sales order's number, and
     the sales order's line shows it.
 
+### Look into make-to-order
+
+Each confirmed sales order leaves one row in `manufacturing.mto_requests`. When a sales
+order's line says **No manufacturing order made**, or shows nothing at all, read its row
+as the database owner:
+
+```sql
+SELECT status, reasons, attempts, last_error, next_attempt_at, done_at
+FROM manufacturing.mto_requests
+WHERE sales_order_id = <the sales order's id>;
+```
+
+- `pending` — not handled yet; `attempts` and `last_error` say whether it has failed and
+  is waiting for `next_attempt_at`. A row that stays pending means no worker process runs.
+- `done` or `skipped` — handled; `reasons` lists each line left out with its code and why.
+- `failed` — eight attempts failed; `last_error` says why. Fix the cause and create the
+  manufacturing orders by hand from the sales order's lines.
+- `cancelled` — the sales order was cancelled before its orders were made.
+- No row — the confirm was not handled: Manufacturing was off when the sales order was
+  confirmed, or the outbox's dispatcher is not running.
+
 ## What can go wrong
 
 | Symptom | Cause | Fix |
