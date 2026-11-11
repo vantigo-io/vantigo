@@ -105,14 +105,14 @@ describe("the work order view", () => {
   it("cannot start at a blocked work center", async () => {
     stubManufacturingApi({
       meta: { canWorkShopFloor: true },
-      blocks: { 1: { reason: "quality", note: "", since: "2026-11-11T08:00:00Z" } },
+      blocks: { 1: { reason: "quality", note: "", by: null, since: "2026-11-11T08:00:00Z" } },
     });
     renderRoute(URL);
     expect(await screen.findByText("Blocked: Quality")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   });
 
-  it("finishes the last operation with the production in one request", async () => {
+  it("registers a production on the last operation without finishing it by default", async () => {
     const fetchMock = stubManufacturingApi({
       meta: { canWorkShopFloor: true },
       orders: [orderFixture()],
@@ -123,6 +123,25 @@ describe("the work order view", () => {
     const dialog = await screen.findByRole("dialog");
     const consumed = await within(dialog).findByLabelText("Consumed of BOARD");
     await waitFor(() => expect(consumed).toHaveValue("40.000"));
+    expect(within(dialog).getByRole("checkbox", { name: "Also finish this operation" })).not.toBeChecked();
+    expect(within(dialog).getByText(/Finishing stops the time of everyone working on it/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Post" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/orders\/5\/productions$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/work-orders\/40\/finish$/)).toHaveLength(0);
+  });
+
+  it("finishes the last operation with the production in one request when asked", async () => {
+    const fetchMock = stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      orders: [orderFixture()],
+      workOrders: [workOrderFixture({ last: true })],
+    });
+    renderRoute(URL);
+    await userEvent.click(await screen.findByRole("button", { name: "Register production" }));
+    const dialog = await screen.findByRole("dialog");
+    const consumed = await within(dialog).findByLabelText("Consumed of BOARD");
+    await waitFor(() => expect(consumed).toHaveValue("40.000"));
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Also finish this operation" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Post" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/work-orders\/40\/finish$/)).toHaveLength(1));
     expect(sent(fetchMock, "POST", /\/orders\/5\/productions$/)).toHaveLength(0);

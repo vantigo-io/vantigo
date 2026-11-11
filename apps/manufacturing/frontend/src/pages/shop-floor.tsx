@@ -7,7 +7,12 @@ import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/f
 import { useEffect, useState } from "react";
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import { NotFoundError } from "../api/request";
-import { unblockWorkCenter, useWorkCenterLive, workCenterQueueQueryOptions } from "../api/shop-floor";
+import {
+  unblockWorkCenter,
+  useWorkCenterLive,
+  useWorkCenterOrdersLive,
+  workCenterQueueQueryOptions,
+} from "../api/shop-floor";
 import { manufacturingSitesQueryOptions } from "../api/sites";
 import { workCentersQueryOptions } from "../api/work-centers";
 import { BlockDialog } from "../components/block-dialog";
@@ -117,8 +122,9 @@ export const ShopFloorPage = () => {
  * paused work orders, by planned start, priority and due date, each with
  * what remains, when it is due, its components' reservation and who runs it;
  * and Block / Unblock for whoever may work on the floor (M30, M33). It
- * follows `manufacturing.work-center:<id>`, polling only while live is down,
- * and is remembered on the device as the picker's first choice.
+ * follows `manufacturing.work-center:<id>` and the topics of the orders in
+ * the queue, polling only while live is down, and once found is remembered
+ * on the device as the picker's first choice.
  */
 export const ShopFloorWorkCenterPage = () => {
   const { t, stamp } = useManufacturingFormat();
@@ -132,8 +138,13 @@ export const ShopFloorWorkCenterPage = () => {
   const [unblocking, setUnblocking] = useState(false);
   const work = canWorkOnShopFloor(meta.data);
   const data = queue.data;
+  useWorkCenterOrdersLive(id, data?.items.map((workOrder) => workOrder.orderId) ?? []);
 
-  useEffect(() => rememberWorkCenter(id), [id]);
+  // Remembered once it is found: a stale or mistyped address is not offered again.
+  const found = data !== undefined;
+  useEffect(() => {
+    if (found) rememberWorkCenter(id);
+  }, [id, found]);
 
   const unblock = async () => {
     setUnblocking(true);
@@ -208,7 +219,11 @@ export const ShopFloorWorkCenterPage = () => {
               title={t("blockedBecause", { reason: t(`reason_${data.block.reason}`) })}
             >
               <Stack gap={4}>
-                <Text size="md">{t("blockedSince", { when: stamp(data.block.since) })}</Text>
+                <Text size="md">
+                  {data.block.by
+                    ? t("blockedSinceBy", { when: stamp(data.block.since), name: data.block.by.displayName })
+                    : t("blockedSince", { when: stamp(data.block.since) })}
+                </Text>
                 {data.block.note && (
                   <Text size="md" style={{ whiteSpace: "pre-wrap" }}>
                     {data.block.note}

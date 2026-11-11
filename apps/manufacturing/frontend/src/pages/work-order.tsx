@@ -24,6 +24,7 @@ import {
   pauseWorkOrder,
   startWorkOrder,
   useWorkOrderLive,
+  useWorkOrderOrderLive,
   workOrderQueryOptions,
 } from "../api/shop-floor";
 import { Markdown } from "../components/markdown";
@@ -81,8 +82,8 @@ const RunningTimer = ({ log }: { log: ManufacturingTimeLog }) => {
  * One work order on the shop floor (M31): large Start, Pause and Finish
  * buttons by its status and the caller's permission (M33), the caller's
  * running timer, the operation's instructions, its components, Register
- * production on the last operation — finishing it with the production in one
- * transaction (M29) — and Report scrap; who runs it, and who else is looking
+ * production on the last operation — posted alone, or, when asked, finishing
+ * the operation with it in one transaction (M29) — and Report scrap; who runs it, and who else is looking
  * at it, live through presence (M32). Starting a pending one asks again and
  * starts it anyway with `force`; starting here while running elsewhere says
  * that it stops the other.
@@ -95,6 +96,7 @@ export const WorkOrderPage = () => {
   const others = usePresence(`manufacturing.work-order:${id}`, "viewing");
   const meta = useQuery(manufacturingMetaQueryOptions());
   const view = useQuery(workOrderQueryOptions(id, live));
+  useWorkOrderOrderLive(id, view.data?.workOrder.orderId);
   const invalidate = useInvalidateManufacturing();
   const [busy, setBusy] = useState<"start" | "pause" | "finish">();
   const [askForce, setAskForce] = useState(false);
@@ -191,7 +193,14 @@ export const WorkOrderPage = () => {
           icon={<IconAlertTriangle size={20} />}
           title={t("blockedBecause", { reason: t(`reason_${data.block.reason}`) })}
         >
-          <Text size="md">{t("blockedCannotStart")}</Text>
+          <Stack gap={4}>
+            <Text size="md">{t("blockedCannotStart")}</Text>
+            {data.block.by && (
+              <Text size="md">
+                {t("blockedSinceBy", { when: stamp(data.block.since), name: data.block.by.displayName })}
+              </Text>
+            )}
+          </Stack>
         </Alert>
       )}
       {runningElsewhere && !closed && (
@@ -427,7 +436,7 @@ export const WorkOrderPage = () => {
         order={{ id: order.id, number: order.number, siteId: workOrder.workCenter.siteId }}
         opened={producing}
         onClose={() => setProducing(false)}
-        submit={(production) => finishWorkOrder(id, { production }).then((answer) => answer.production)}
+        finish={(production) => finishWorkOrder(id, { production }).then((answer) => answer.production)}
       />
       <ScrapDialog
         workOrderId={id}

@@ -39,6 +39,13 @@ describe("the work center picker", () => {
     expect(await screen.findByText("Queue")).toBeInTheDocument();
     expect(window.localStorage.getItem(SHOP_FLOOR_WORK_CENTER_STORAGE_KEY)).toBe("1");
   });
+
+  it("does not remember a work center that is not found", async () => {
+    stubManufacturingApi();
+    renderRoute("/manufacturing/shop-floor/work-centers/999");
+    expect(await screen.findByText("Could not load")).toBeInTheDocument();
+    expect(window.localStorage.getItem(SHOP_FLOOR_WORK_CENTER_STORAGE_KEY)).toBeNull();
+  });
 });
 
 describe("a work center's queue", () => {
@@ -81,11 +88,19 @@ describe("a work center's queue", () => {
   it("says why it is blocked and offers Unblock", async () => {
     const fetchMock = stubManufacturingApi({
       meta: { canManageOrders: true },
-      blocks: { 1: { reason: "breakdown", note: "Blade broke", since: "2026-11-11T08:00:00Z" } },
+      blocks: {
+        1: {
+          reason: "breakdown",
+          note: "Blade broke",
+          by: { id: "00000000-0000-4000-8000-000000000009", displayName: "Kari Nordmann" },
+          since: "2026-11-11T08:00:00Z",
+        },
+      },
     });
     renderRoute("/manufacturing/shop-floor/work-centers/1");
     expect(await screen.findByText("Blocked: Breakdown")).toBeInTheDocument();
     expect(screen.getByText("Blade broke")).toBeInTheDocument();
+    expect(screen.getByText(/, by Kari Nordmann$/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Unblock" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/work-centers\/1\/unblock$/)).toHaveLength(1));
   });

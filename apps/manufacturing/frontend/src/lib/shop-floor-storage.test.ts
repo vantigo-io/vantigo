@@ -16,6 +16,12 @@ describe("the remembered work center", () => {
     expect(readRememberedWorkCenter()).toBe(3);
   });
 
+  it("does not remember what is not a positive id", () => {
+    rememberWorkCenter(Number.NaN);
+    rememberWorkCenter(0);
+    expect(window.localStorage.getItem(SHOP_FLOOR_WORK_CENTER_STORAGE_KEY)).toBeNull();
+  });
+
   it("ignores what is not a positive id", () => {
     window.localStorage.setItem(SHOP_FLOOR_WORK_CENTER_STORAGE_KEY, "SAW");
     expect(readRememberedWorkCenter()).toBeUndefined();
