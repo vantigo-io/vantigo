@@ -969,8 +969,16 @@ The rules Inventory's phase 1 kept for it still hold:
   and the rolled-up cost; and the variant holder, so Products refuses to delete a variant
   an active BoM names ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md),
   the [reference](docs/src/content/docs/en/reference/manufacturing.md)).
-- **B — Manufacturing orders (planned).** The snapshot of the BoM, reserving the
-  components, availability, productions and scrap, close and backorder, cancel.
+- **B — Manufacturing orders (built).** Manufacturing orders numbered `MO-<n>`, drafts
+  that follow their BoM and a confirm that snapshots it into component lines; reserving
+  the components through Inventory in two passes, a confirm that never fails for stock
+  alone and **Reserve now** for the short lines; adding and changing components;
+  availability computed live and the reservation status on the list; productions with a
+  proportional prefill, the 10 % consumption warning, scrap and output scrap, posted as
+  one Inventory production movement, idempotent by a client key; close with or without a
+  backorder (`MO-<n>-2`), cancel, the history and live updates; and open orders holding
+  their variants in Products ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md#manufacturing-orders),
+  the [reference](docs/src/content/docs/en/reference/manufacturing.md#manufacturing-orders)).
 - **C — Work orders and the shop floor (planned).** Work orders per operation, time logs,
   the live shop floor operators work from, and downtime.
 - **D — The schedule and cost (planned).** Planning work orders on the work centers'
