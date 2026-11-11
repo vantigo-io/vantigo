@@ -1,12 +1,13 @@
 ---
 title: Produksjon
-description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de fem rettighetene og hva hver gir, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, rollene du bygger av dem; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de fem rettighetene og hva hver gir, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, rollene du bygger av dem; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, og nettverket; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 51
 sources:
   - apps/server/internal/manufacturing/module.go
   - apps/server/internal/db/migrations/00156_manufacturing_baseline.sql
   - apps/server/internal/db/migrations/00157_manufacturing_orders.sql
+  - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
 ---
 
 Produksjon-modulen (**Manufacturing** på engelsk) beskriver hvordan virksomheten lager
@@ -45,13 +46,18 @@ den brukes, står i [Produksjon](/nb/user/manufacturing/), og hver regel i
    ```
 
    Migreringen `00157_manufacturing_orders.sql` legger produksjonsordrenes tabeller til i
-   skjemaet. Standardrettighetene under Databaseroller dekker dem; en rolle som har fått
-   rettigheter tabell for tabell, trenger at `GRANT`-setningene kjøres på nytt etter
-   oppgraderingen.
+   skjemaet, og `00158_manufacturing_work_orders.sql` verkstedets arbeidsordrer og
+   tidsregistreringer. Standardrettighetene under Databaseroller dekker dem; en rolle som
+   har fått rettigheter tabell for tabell, trenger at `GRANT`-setningene kjøres på nytt
+   etter hver oppgradering.
 
 3. **Produksjon**-flisen vises for alle med `manufacturing:access`.
 
-Modulen starter ingen bakgrunnsjobb og har ingen egne innstillinger.
+Modulen har ingen egne innstillinger. Den starter én bakgrunnsjobb,
+`manufacturing-erasure`, som én gang i døgnet tømmer fritekstnotatet på
+tidsregistreringene til personer identitetsmodulen har slettet
+([personopplysninger](/en/reference/manufacturing/#personal-data)); den trenger ikke noe
+oppsett.
 
 ## Gi folk tilgang
 
@@ -64,8 +70,8 @@ Ingen andre enn Owner kan bruke appen før en rolle gir rettighetene, under
 | --- | --- | --- |
 | Bruke Produksjon | `manufacturing:access` | Appen, og å lese arbeidsstasjoner, deres stengninger, stykklister og oversikten over dem, og produksjonsordrer med produksjonene og historikken deres |
 | Administrere stykklister og arbeidsstasjoner | `manufacturing:boms-manage` | Å opprette, redigere, arkivere, gjenaktivere og slette arbeidsstasjoner og deres stengninger; å opprette, redigere, arkivere og gjenaktivere stykklister og gjøre en til standard |
-| Administrere produksjonsordrer | `manufacturing:orders-manage` | Å opprette, endre, bekrefte, reservere, lukke og kansellere produksjonsordrer; å legge til og endre komponentene deres; å registrere en produksjon |
-| Arbeide i verkstedet | `manufacturing:shop-floor` | Å registrere en produksjon på en produksjonsordre; arbeidsordrene og timeføringen kommer med verkstedet i en senere leveranse |
+| Administrere produksjonsordrer | `manufacturing:orders-manage` | Å opprette, endre, bekrefte, reservere, lukke og kansellere produksjonsordrer; å legge til og endre komponentene deres; å registrere en produksjon; alt i verkstedet; å korrigere en tidsregistrering og legge til en som mangler |
+| Arbeide i verkstedet | `manufacturing:shop-floor` | I verkstedet: å starte, sette på pause og fullføre arbeidsordrer, å registrere en produksjon, å melde svinn, og å blokkere og oppheve blokkeringen av en arbeidsstasjon; å registrere en produksjon på en produksjonsordre |
 | Se produksjonskostnader | `manufacturing:costs-view` | Alle kostnadstall: en arbeidsstasjons maskin- og arbeidssats, og å sette dem; standardkostene, verdiene, operasjonskostnadene og den samlede kostnaden i oversikten. Sensitiv, og kan ikke delegeres |
 
 **Se produksjonskostnader** er sensitiv: den viser hva hvert produkt koster å lage, og hva
@@ -78,15 +84,51 @@ Beholdningstallene i oversikten er Produksjons egne oppslag i Lager, så de krev
 rettighet i Lager. Å velge et produkt eller en komponent krever heller ingen rettighet i
 Produkter.
 
-Å registrere en produksjon krever enten **Arbeide i verkstedet** eller **Administrere
-produksjonsordrer** ved siden av Bruke Produksjon, så en operatør som melder hva som ble
-laget, ikke trenger å kunne opprette, bekrefte eller kansellere ordrer.
+Å registrere en produksjon, og hver handling i verkstedet, krever enten **Arbeide i
+verkstedet** eller **Administrere produksjonsordrer** ved siden av Bruke Produksjon, så en
+operatør som melder hva som ble laget, ikke trenger å kunne opprette, bekrefte eller
+kansellere ordrer. Å korrigere en tidsregistrering, eller legge til en som mangler, krever
+Administrere produksjonsordrer: en operatør kan ikke endre sin egen registrerte tid.
+Assistenten utfører ingen handlinger i verkstedet, uansett personens rolle: en operatør
+stempler inn selv.
 
 Et vanlig oppsett: alle i produksjonen får Bruke Produksjon; operatørene får i tillegg
 Arbeide i verkstedet; planleggere og arbeidsledere får i tillegg Administrere
 produksjonsordrer; den som holder oppskriftene og maskinene, får i tillegg Administrere
 stykklister og arbeidsstasjoner; produksjonsledelsen får i tillegg Se
 produksjonskostnader.
+
+## Nettbrett i verkstedet
+
+Verkstedet (**Produksjon** → **Verksted**) er laget for et nettbrett ved hver
+arbeidsstasjon. Hver handling registreres på den som er logget inn, så sett opp
+nettbrettene etter det.
+
+1. **Gi hver operatør sin egen konto.** Operatøren er den innloggede brukeren, og å bytte
+   operatør betyr å bytte konto: logge ut og inn igjen. Det finnes ikke noe delt
+   nettbrett med en PIN-kode per operatør i denne versjonen. La ikke et skift dele én
+   konto — tidsregistreringene, produksjonene og ordrens historikk ville alle navngi den
+   kontoen.
+2. **Gi rollene.** Gi hver operatør Bruke Produksjon (`manufacturing:access`) og Arbeide i
+   verkstedet (`manufacturing:shop-floor`), og ikke mer med mindre de også planlegger.
+   Arbeidsledere som korrigerer tid, trenger Administrere produksjonsordrer.
+3. **Bruk en oppdatert nettleser** — en oppdatert Safari, Chrome, Edge eller Firefox.
+   Verkstedet er en side i Vantigo og trenger ingen app eller utvidelse.
+4. **Hold skjermen våken.** Et nettbrett som låser seg, slutter å vise tidtakeren og køen.
+   Sett tidsavbruddet for skjermen i enhetens innstillinger til lengden av et skift, eller
+   kjør nettleseren i enhetens kioskmodus (Veiledet tilgang på en iPad, skjermfesting
+   eller en kioskapp på Android) så den blir stående i verkstedet.
+5. **Velg arbeidsstasjonen på hvert nettbrett.** Åpne **Verksted** og velg
+   arbeidsstasjonen under **Velg arbeidsstasjon**. Nettbrettet husker den i nettleseren
+   og tilbyr den først neste gang, som **Fortsett ved** med koden og navnet; å tømme
+   nettleserens data, eller et privat vindu, glemmer den, og operatøren velger på nytt.
+6. **Kontroller nettverket.** Køen og visningen av arbeidsordren oppdateres direkte over
+   nettbrettets forbindelse til serveren, og en start, en pause eller en fullføring er en
+   forespørsel til den: på et nettbrett uten forbindelse blir den ikke registrert. Dekk
+   verkstedet med Wi-Fi der arbeidsstasjonene står.
+
+Tidtakeren teller på nettbrettet fra arbeidet startet, så et nettbrett som kobler seg til
+igjen, viser riktig tid uten at serveren sender den.
 
 ## Kontroller
 
@@ -108,6 +150,12 @@ produksjonskostnader.
    **Bevegelser** i Lager, lenket til ordren, og ordren **Pågår**.
 7. Prøv å slette komponenten i Produkter: det nektes, og en stykkliste og den åpne ordren
    navngis.
+8. Bekreft en ny ordre for produktet. Logg inn på et nettbrett som en operatør med Bruke
+   Produksjon og Arbeide i verkstedet, åpne **Verksted** og velg arbeidsstasjonen: ordrens
+   første arbeidsordre står i **Kø**. Åpne den og velg **Start**: tidtakeren løper. Velg
+   **Ferdig**: arbeidsordren forsvinner fra køen.
+9. Som arbeidsleder åpner du fanen **Arbeidsordrer** på ordren: operatørens tid står under
+   **Tidsregistreringer**, og **Korriger** tilbys.
 
 ## Hva som kan gå galt
 
@@ -126,4 +174,11 @@ produksjonskostnader.
 | Ingen **Ny produksjonsordre**, **Bekreft** eller **Lukk** | Personen mangler Administrere produksjonsordrer | Gi den ved siden av Bruke Produksjon |
 | Ingen **Registrer produksjon** | Personen har verken Arbeide i verkstedet eller Administrere produksjonsordrer | Gi en av dem |
 | `permission denied for table orders` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00157` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |
+| Ingen **Start**, **Pause** eller **Ferdig** i verkstedet | Operatøren har verken Arbeide i verkstedet eller Administrere produksjonsordrer | Gi Arbeide i verkstedet |
+| Ingen **Start**, og arbeidsordren sier at arbeidsstasjonen er **Blokkert** | Noen har blokkert den | **Opphev blokkering** når den går igjen |
+| Ingen **Korriger** på en tidsregistrering | Personen mangler Administrere produksjonsordrer | Gi den til arbeidslederne |
+| Å korrigere en tidsregistrering nektes | Registreringen er mer enn 60 dager gammel, ordren er ferdig eller kansellert, eller tidene overlapper en annen registrering for personen | Korriger innen 60 dager og før ordren lukkes; rett den andre registreringen først |
+| Nettbrettet tilbyr aldri **Fortsett ved** | Nettleseren glemmer dataene sine: et privat vindu, eller dataene tømmes | Bruk et vanlig nettleservindu og behold nettstedsdataene |
+| Tidtakeren stopper eller skjermen blir mørk | Nettbrettet låser seg | Forleng tidsavbruddet for skjermen, eller bruk kioskmodus |
+| `permission denied for table work_orders` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00158` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |
 | En produksjon nektes for beholdning | Lagerstedet har ikke nok av en komponent, eller lagerstedet er arkivert i Lager | Ta imot eller flytt varene, gjenåpne lagerstedet, eller rett med en justering i Lager |

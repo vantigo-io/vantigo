@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -16,7 +16,9 @@ steps, each at a work center — that turn them into the product. The **overview
 explodes it into everything a given quantity needs, level by level, with what is in stock
 and how long the work is expected to take. A **manufacturing order** makes a quantity of
 a product by one of its bills of materials: it reserves the components, and records each
-**production** — what was made and what it used.
+**production** — what was made and what it used. Each operation of a confirmed order is a
+**work order** at its work center, and the **shop floor** is where operators start, pause
+and finish them, recording the time they work.
 
 The products and components come from [Products](/en/user/products/), and only **goods**
 can be made or used: never services. The sites and the stock come from
@@ -33,6 +35,7 @@ The **Manufacturing** tile is shown to everyone with **Use Manufacturing**
 | --- | --- |
 | **Overview** | **Orders to start today**, **Orders in progress** and **Late orders**, and the orders late or due this week; **Active work centers**, **Blocked work centers** and **Active bills of materials**: how many there are |
 | **Manufacturing orders** | Every open manufacturing order, with its number, product, quantity, site, due date and reservation status |
+| **Shop floor** | The work centers' queues, where operators start, pause and finish work orders, and **My work** |
 | **Bills of materials** | Every bill of materials, with its product, its code, its output quantity, whether it is the default, and its number of lines and operations |
 | **Work centers** | Every work center, by code, with its site |
 
@@ -110,8 +113,11 @@ days again.
   Inventory since: reactivate the site first, or make a new work center at another site.
   A work center at such a site can still be edited and keeps its site; moving it is to an
   active site only.
+  Archiving is refused while a work order that is neither done nor cancelled is at the
+  work center: finish the work, or close or cancel its orders, first.
 - **Delete** removes it for good, and is allowed only while no operation of any bill of
-  materials names it. Otherwise you are told it is in use; archive it instead.
+  materials, no work order and no time log names it. Otherwise you are told it is in use;
+  archive it instead.
 
 When someone else saved the work center after you opened it, your save is refused and you
 are asked to reload, so that nobody overwrites another's change unseen.
@@ -264,14 +270,15 @@ An order goes through these states:
 | --- | --- |
 | **Draft** | Being prepared; everything can change, and it follows its bill of materials as that changes |
 | **Confirmed** | The components are copied from the bill of materials and reserved |
-| **In progress** | At least one production is registered |
+| **In progress** | At least one production is registered, or a work order has been started |
 | **Done** | Closed |
 | **Cancelled** | Cancelled before anything was produced |
 
 ### Find an order
 
 On **Manufacturing orders**, filter by **Status**, **Site**, **Work center** (the orders
-whose bill of materials has an operation there), product, a due-date range, **Late** (due
+with a work order there; for a draft, those whose bill of materials has an operation
+there), product, a due-date range, **Late** (due
 before today and not done or cancelled), origin, **Responsible**, or the reservation
 status, and search on the number, such as `MO-12`, or the product's SKU or name. Sort by
 due date, number or priority. The list updates by itself when someone changes an order.
@@ -323,7 +330,11 @@ On a draft, choose **Confirm**. Confirming:
   changes to the bill of materials no longer reach it. Each component's **Required**
   quantity is the line's quantity scaled to the order's quantity, with the scrap added,
   rounded **up** to three decimals;
-- **reserves** the components at the site, so that nobody else takes them.
+- **reserves** the components at the site, so that nobody else takes them;
+- creates a **work order** for each operation of the bill of materials, at its work
+  center, with its instructions and its expected minutes. The first operation is ready to
+  start on the [shop floor](#the-shop-floor); the others wait their turn. An order whose
+  bill of materials has no operations has no work orders.
 
 When the site does not have enough of a component, the order is confirmed all the same:
 the lines that could not be reserved are left unreserved, and the page names each one with
@@ -398,7 +409,8 @@ adjustment in [Inventory](/en/user/inventory/).
 ### Close an order
 
 Choose **Close** on a confirmed or in-progress order when the work is finished. Whatever is
-still reserved for it is released, and the order is **Done**.
+still reserved for it is released, and the order is **Done**. Any time still running on
+its work orders is ended, and the work orders not done are cancelled.
 
 When less than the quantity was produced, you are asked whether to **create a backorder**:
 
@@ -415,15 +427,194 @@ When less than the quantity was produced, you are asked whether to **create a ba
 
 Choose **Cancel order** on a draft, a confirmed or an in-progress order while nothing has
 been produced, consumed or scrapped on it. Its reservations are released and it keeps its
-number. Once something has been registered it cannot be cancelled; close it instead. A
+number. Any time still running on its work orders is ended, and its work orders are
+cancelled. Once something has been registered it cannot be cancelled; close it instead. A
 done or cancelled order is final.
 
 ### Read an order's history
 
 The order page shows its **History**: every event — created, changed, confirmed,
 reserved, a production registered with its quantities, a component added or changed,
-closed, cancelled, a backorder created — with who did it and when. Nothing in it can be
+closed, cancelled, a backorder created, a time log corrected or added — with who did it
+and when. Nothing in it can be
 changed or removed.
+
+### Work orders and time logs on the order page
+
+The order page's **Work orders** tab lists the order's work orders by sequence — one for
+each operation of its bill of materials — with the work center, the state, **Logged /
+expected** minutes and who is **Running now**. A draft has none yet: they are made when it
+is confirmed.
+
+The **expected minutes** are worked out once, at confirm, from the operation and the work
+center as they were then: the setup, the cleanup, and the cycles the order's quantity
+needs at the work center's capacity and time efficiency, rounded to the minute — the same
+figure as the [overview](#read-a-bill-of-materials-overview) gives. Later changes to the
+bill of materials or the work center do not change them.
+
+**Time logs** lists every log on the order's work orders: the **Person**, the **Work
+order**, the **Kind** — **Productive**, or **Downtime** with its reason — **Started**,
+**Ended** (or **Running**), **Duration**, **Quantity made** and the **Note**. A log is
+marked **Out of order** when its work order was started with Start anyway, **Corrected**
+with who corrected it and when, and **Over 12 h** when it has run that long.
+
+### Correct a time log
+
+When an operator forgot to pause, or started on the wrong work order, a supervisor puts
+it right. It needs **Manage manufacturing orders**; without it the tab is read-only.
+
+1. On the order's **Work orders** tab, under **Time logs**, choose **Correct** on the log.
+2. In **Correct time log**, change **Started**, **Ended** or **Quantity made**, and say
+   **Why** — it is required, and kept in the order's history.
+3. Choose **Correct**. A log still running is ended at the end you give.
+
+To record time nobody logged, choose **Add missing log**: pick the **Work order** (when the
+order has more than one), the **Person**, the kind — **Productive** or **Downtime** with
+its **Reason** — **Started** and **Ended**, optionally **Quantity made**, and **Why**, then
+choose **Add**. An added log changes no work order's state: only Start, Pause and Finish
+on the shop floor do.
+
+A correction or an addition is refused when:
+
+- the log, or the new start, is more than **60 days** old;
+- the order is done or cancelled;
+- the time overlaps another log of the same person;
+- the end is not after the start, or lies in the future.
+
+Every correction and addition is kept in the order's **History**, with who made it and
+when.
+
+## The shop floor
+
+The **Shop floor** (`/manufacturing/shop-floor`) is where operators work. It is laid out
+for a tablet at the work center: large buttons, no hovering, readable at arm's length.
+You work as the person signed in, so each operator signs in with their own account;
+switching operator means switching account.
+
+Working on the shop floor needs **Work on the shop floor** (`manufacturing:shop-floor`),
+or **Manage manufacturing orders**, beside Use Manufacturing. With Use Manufacturing alone
+you can look at the queues and the work orders, and a work order says *You can look, but
+not start or finish work*: there is no Start, Pause, Finish, Register production, Report
+scrap, Block or Unblock.
+
+A work order goes through these states:
+
+| State | What it means |
+| --- | --- |
+| **Pending** | An earlier operation of the order is not finished yet |
+| **Ready** | It can be started |
+| **In progress** | Someone is working on it |
+| **Paused** | It was started, and nobody is working on it now |
+| **Done** | Finished |
+| **Cancelled** | Its order was closed or cancelled before it was done |
+
+### Choose your work center
+
+1. Open **Shop floor**.
+2. Under **Choose a work center**, pick the one you work at. A blocked work center is
+   marked **Blocked**.
+
+The tablet remembers the work center it was last used at, and next time offers it first,
+as **Continue at** with its code and name, above the others. The choice is kept in the
+browser only: on another device, or after the browser's data is cleared, you simply pick
+again.
+
+The work center page shows its **Queue**: the work orders that are ready, in progress or
+paused, of orders still open — first by planned start, then the urgent orders, then by
+due date. Each shows the order's number, the product, the quantity still to make, the due
+date, whether its components are reserved, and who is running it. The queue updates by
+itself as others start and finish work. **My work** is at the top of every shop-floor
+screen.
+
+### Start, pause and finish a work order
+
+1. Choose the work order in the **Queue**. The work order shows the order, the quantity
+   still to make, the due date, **Logged / expected** minutes, the operation's
+   **Instructions** and the **Components at this operation**. Under **People**,
+   **Running now** names who is working on it, and **Others here** who else has it open
+   right now.
+2. Choose **Start**. **Your time** runs from that moment. The first start on an order moves
+   it to **In progress**.
+3. Choose **Pause** for a break, or when you leave the job for now. Your time stops; when
+   nobody else is working on it, the work order is **Paused**. Choose **Start** to go on.
+4. Choose **Finish** when the operation is done for the whole order, and confirm
+   **Finish this work order?**. Finishing ends the time of everyone still working on it,
+   marks it **Done**, and makes the next operation **Ready** at its work center. Finish is
+   not offered on a pending work order. Finishing one that someone else has just finished
+   is not an error.
+
+Several operators can work on one work order at once, each with their own time.
+
+### Start a work order out of sequence
+
+Operations run in order: a work order is **Pending** until the one before it is done.
+When you choose **Start** on it, you are told *An earlier operation is not finished*. When
+the work overlaps in practice, choose **Start anyway**: the work starts as usual, and the
+time log is marked **Out of order**, so the supervisor can see it. **Cancel** leaves it
+pending.
+
+### Switch to another work order
+
+You run one work order at a time, across every work center. When you open another work
+order while your time is running, it warns *You are running another work order*, with
+**Open the other work order**. Choosing **Start** anyway ends your time on the other one —
+you need not pause it first — and you are told *Your other log was stopped*. The work
+order you left keeps the others who work on it; when you were the last, it is **Paused**.
+
+### Register production at the last operation
+
+On the order's last operation, **Register production** stands beside **Finish**. It opens
+the form of the order page — the **Quantity** made, any **Output scrap**, and each
+component's prefilled **Consumed** and **Scrap** (see
+[Register a production](#register-a-production)), with the same warning when a figure is
+more than 10 % off. Saving registers the production **and** finishes the work order,
+together: when the production is refused, for instance because the site does not hold
+enough of a component, nothing is registered, the work order is not finished, and your
+time keeps running. Sending it twice posts it only once.
+
+Closing the order is still done on the order page, by someone with Manage manufacturing
+orders.
+
+### Report scrap
+
+Choose **Report scrap** on the work order when components are lost or finished units are
+thrown away, at any operation. Give the scrap of each component and the **Output scrap**.
+It is registered as a production with no good units: the components are taken out of
+stock in Inventory and the order's figures count them. Sending it twice posts it only
+once.
+
+### Block a stopped work center
+
+When the machine breaks down, or work stops for another reason:
+
+1. On the work center page, choose **Block**.
+2. Choose the **Reason** — **Breakdown**, **Material missing**, **Setup**, **Waiting for
+   operator**, **Quality** or **Other** — and, if you like, write a note.
+3. Choose **Block**.
+
+From that moment the time of everyone working at the work center is recorded as
+downtime with that reason, the work center's own stopped time is counted, and nobody can
+start a work order there: the work center and its work orders show **Blocked** with the
+reason and since when, and Start is not offered. **Overview** counts it under **Blocked
+work centers**. Blocking a work center that is already blocked changes nothing.
+
+While it is blocked, **Pause** or **Finish** ends your downtime. When it runs again,
+choose **Unblock**: the downtime ends, and the work orders stay **Paused** — choose
+**Start** on yours to go on.
+
+### My work
+
+**My work** (`/manufacturing/shop-floor/mine`) shows under **Running now** the work order
+you are running, with your timer and **Open the work order**, and under **Today** the work
+orders you have logged time on today.
+
+### Time left running
+
+Time is not ended by itself at the end of the day. When your time has run for more than
+**12 hours**, your timer shows *Running for more than 12 hours*: pause it if you have
+stopped working, or ask a supervisor to [correct the time](#correct-a-time-log). A work
+order also names the others whose time has run that long, and the order's time logs mark
+such a log **Over 12 h**.
 
 ## Deleting a product a bill of materials uses
 
@@ -455,8 +646,13 @@ cannot be delegated.
 | **Manufacturing orders**, an order, its availability, its productions and its **History** | ✓ | – | – |
 | **New manufacturing order**, **Save**, **Confirm**, **Reserve now**, **Add component**, changing a component, **Close**, **Cancel order** | ✓ | ✓ | – |
 | **Register production** | ✓ | either | either |
+| **Shop floor**, a work center's **Queue**, a work order, **My work**, an order's **Work orders** and **Time logs** | ✓ | – | – |
+| **Start**, **Start anyway**, **Pause**, **Finish**, **Report scrap**, **Block**, **Unblock** | ✓ | either | either |
+| **Correct**, **Add missing log** | ✓ | ✓ | – |
 
-Registering a production needs Use Manufacturing and either of the other two. The stock
+Registering a production, and every action on the shop floor, needs Use Manufacturing and
+either of the other two. The Assistant does not take shop-floor actions: an operator
+clocks in themselves. The stock
 figures in the overview and on an order are Manufacturing's own and need
 no Inventory permission. The full table is under
 [Permissions](/en/reference/manufacturing/#permissions) in the reference.
