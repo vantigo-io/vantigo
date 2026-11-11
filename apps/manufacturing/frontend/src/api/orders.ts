@@ -59,6 +59,11 @@ export const orderEventKinds: readonly ManufacturingOrderEventKind[] = [
   "closed",
   "cancelled",
   "backorder_created",
+  "time_log_corrected",
+  "time_log_added",
+  "planned",
+  "unplanned",
+  "rescheduled",
 ];
 
 /** A page of the order list. */

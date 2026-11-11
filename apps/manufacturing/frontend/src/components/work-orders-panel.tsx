@@ -5,10 +5,32 @@ import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { ManufacturingOrder } from "../api/orders";
-import { type ManufacturingTimeLog, orderTimeLogsQueryOptions, orderWorkOrdersQueryOptions } from "../api/shop-floor";
+import {
+  type ManufacturingTimeLog,
+  type ManufacturingWorkOrder,
+  orderTimeLogsQueryOptions,
+  orderWorkOrdersQueryOptions,
+} from "../api/shop-floor";
 import { useManufacturingFormat, workOrderStatusColor } from "../lib/format";
 import { workOrderLinkOptions } from "../lib/routes";
 import { TimeLogDialog } from "./time-log-dialog";
+
+/**
+ * A work order's duration deviation (M41): actual against expected, signed,
+ * with its per cent. Nothing to say before any time ran on it, unless it is done.
+ */
+const deviationText = (
+  workOrder: ManufacturingWorkOrder,
+  minutes: (value: number) => string,
+  decimal: (text: string) => string,
+): string | null => {
+  if (workOrder.actualMinutes === 0 && workOrder.status !== "done") return null;
+  const sign = workOrder.deviationMinutes > 0 ? "+" : "";
+  const amount = `${sign}${minutes(workOrder.deviationMinutes)}`;
+  if (workOrder.deviationPercent === null) return amount;
+  const percentSign = workOrder.deviationMinutes > 0 ? "+" : "";
+  return `${amount} (${percentSign}${decimal(workOrder.deviationPercent)} %)`;
+};
 
 /** A closed log's whole minutes; null while it runs. */
 const logMinutes = (log: ManufacturingTimeLog) =>
@@ -24,7 +46,7 @@ export interface WorkOrdersPanelProps {
 /**
  * An order's work orders and their time logs (M27, M29), the order page's
  * Work orders tab: each work order with its status and its logged against
- * expected minutes; every log, by start, with who, what kind, when and why
+ * expected minutes, its actual time and its deviation (M41); every log, by start, with who, what kind, when and why
  * it was corrected; and, for a supervisor, Correct on a log and Add missing
  * log. Read again on the order's live event.
  */
@@ -53,7 +75,7 @@ export const WorkOrdersPanel = ({ order, live, canManage }: WorkOrdersPanelProps
               {t("noWorkOrders")}
             </Text>
           ) : (
-            <Table.ScrollContainer minWidth={720}>
+            <Table.ScrollContainer minWidth={900}>
               <Table>
                 <Table.Thead>
                   <Table.Tr>
@@ -62,38 +84,55 @@ export const WorkOrdersPanel = ({ order, live, canManage }: WorkOrdersPanelProps
                     <Table.Th>{t("workCenter")}</Table.Th>
                     <Table.Th>{t("status")}</Table.Th>
                     <Table.Th>{t("loggedOfExpected")}</Table.Th>
+                    <Table.Th>{t("actualTime")}</Table.Th>
+                    <Table.Th>{t("durationDeviation")}</Table.Th>
                     <Table.Th>{t("runningNow")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {workOrders.data.map((workOrder) => (
-                    <Table.Tr key={workOrder.id}>
-                      <Table.Td>{workOrder.sequence}</Table.Td>
-                      <Table.Td>
-                        <Anchor
-                          size="sm"
-                          renderRoot={(props) => <Link {...workOrderLinkOptions(workOrder.id)} {...props} />}
+                  {workOrders.data.map((workOrder) => {
+                    const deviation = deviationText(workOrder, minutes, decimal);
+                    return (
+                      <Table.Tr key={workOrder.id}>
+                        <Table.Td>{workOrder.sequence}</Table.Td>
+                        <Table.Td>
+                          <Anchor
+                            size="sm"
+                            renderRoot={(props) => <Link {...workOrderLinkOptions(workOrder.id)} {...props} />}
+                          >
+                            {workOrder.name}
+                          </Anchor>
+                        </Table.Td>
+                        <Table.Td>{workOrder.workCenter.code}</Table.Td>
+                        <Table.Td>
+                          <Badge variant="light" color={workOrderStatusColor[workOrder.status]}>
+                            {t(`workOrderStatus_${workOrder.status}`)}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          {t("minutesOf", {
+                            logged: minutes(workOrder.loggedMinutes),
+                            expected: minutes(workOrder.expectedMinutes),
+                          })}
+                        </Table.Td>
+                        <Table.Td>{minutes(workOrder.actualMinutes)}</Table.Td>
+                        <Table.Td
+                          c={
+                            deviation === null || workOrder.deviationMinutes === 0
+                              ? undefined
+                              : workOrder.deviationMinutes > 0
+                                ? "red"
+                                : "teal"
+                          }
                         >
-                          {workOrder.name}
-                        </Anchor>
-                      </Table.Td>
-                      <Table.Td>{workOrder.workCenter.code}</Table.Td>
-                      <Table.Td>
-                        <Badge variant="light" color={workOrderStatusColor[workOrder.status]}>
-                          {t(`workOrderStatus_${workOrder.status}`)}
-                        </Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        {t("minutesOf", {
-                          logged: minutes(workOrder.loggedMinutes),
-                          expected: minutes(workOrder.expectedMinutes),
-                        })}
-                      </Table.Td>
-                      <Table.Td>
-                        {workOrder.operators.map((operator) => operator.user.displayName).join(", ") || "—"}
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
+                          {deviation ?? "—"}
+                        </Table.Td>
+                        <Table.Td>
+                          {workOrder.operators.map((operator) => operator.user.displayName).join(", ") || "—"}
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>

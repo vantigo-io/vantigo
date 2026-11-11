@@ -514,5 +514,125 @@
       "en": "What you are running now, with its timer and a link to the work order.",
       "nb": "Det du kjører nå, med tidtaker og lenke til arbeidsordren."
     }
+  },
+  {
+    "key": "manufacturing.schedule.site",
+    "route": "/manufacturing/schedule",
+    "label": {
+      "en": "Site",
+      "nb": "Lagersted"
+    },
+    "description": {
+      "en": "The site whose work centers the production schedule shows; the board remembers the choice in this browser.",
+      "nb": "Lagerstedet som produksjonsplanen viser arbeidsstasjonene til; tavlen husker valget i denne nettleseren."
+    }
+  },
+  {
+    "key": "manufacturing.schedule.board",
+    "route": "/manufacturing/schedule",
+    "label": {
+      "en": "Schedule board",
+      "nb": "Plantavlen"
+    },
+    "description": {
+      "en": "One row per work center and one column per day, with each day's load in per cent; a load above 100 % is marked, and closed days and blocked work centers are greyed.",
+      "nb": "Én rad per arbeidsstasjon og én kolonne per dag, med dagens belastning i prosent; over 100 % er markert, og stengte dager og blokkerte arbeidsstasjoner er grå."
+    }
+  },
+  {
+    "key": "manufacturing.schedule.bar",
+    "route": "/manufacturing/schedule",
+    "label": {
+      "en": "Work order bar",
+      "nb": "Arbeidsordrestolpe"
+    },
+    "description": {
+      "en": "A planned work order, labelled with its manufacturing order and product. Drag it along its row to move it to another day or time, or press it to choose Move to.",
+      "nb": "En planlagt arbeidsordre, merket med produksjonsordren og produktet. Dra den langs raden for å flytte den til en annen dag eller tid, eller trykk på den for å velge Flytt til."
+    }
+  },
+  {
+    "key": "manufacturing.schedule.unscheduled",
+    "route": "/manufacturing/schedule",
+    "label": {
+      "en": "Unscheduled",
+      "nb": "Ikke planlagt"
+    },
+    "description": {
+      "en": "The confirmed manufacturing orders that have no plan yet, each with a Plan button.",
+      "nb": "De bekreftede produksjonsordrene som ennå ikke er planlagt, hver med en Planlegg-knapp."
+    }
+  },
+  {
+    "key": "manufacturing.schedule.plan-all",
+    "route": "/manufacturing/schedule",
+    "label": {
+      "en": "Plan all",
+      "nb": "Planlegg alle"
+    },
+    "description": {
+      "en": "Plans every unscheduled order at the site, urgent ones first and then by due date, and lists those that found no capacity within 365 days.",
+      "nb": "Planlegger alle ordrene som ikke er planlagt på lagerstedet, de hastende først og deretter etter forfallsdato, og lister dem som ikke fant kapasitet innen 365 dager."
+    }
+  },
+  {
+    "key": "manufacturing.order.plan",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Plan",
+      "nb": "Planlegg"
+    },
+    "description": {
+      "en": "Plans the order's unfinished work orders forward on their work centers' calendars, from the requested start or now.",
+      "nb": "Planlegger ordrens uferdige arbeidsordrer fremover i arbeidsstasjonenes kalendere, fra ønsket start eller nå."
+    }
+  },
+  {
+    "key": "manufacturing.order.cost",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Cost",
+      "nb": "Kostnad"
+    },
+    "description": {
+      "en": "The order's estimate, actual cost and deviation per part, the cost per unit once closed and the downtime by reason. Shown only to someone who may see costs.",
+      "nb": "Ordrens estimat, faktiske kostnad og avvik per del, kostnad per enhet når den er avsluttet, og nedetid per årsak. Vises bare for den som kan se kostnader."
+    }
+  },
+  {
+    "key": "manufacturing.overview.reports",
+    "route": "/manufacturing",
+    "label": {
+      "en": "Reports",
+      "nb": "Rapporter"
+    },
+    "description": {
+      "en": "Opens the reports: production cost, work-center utilisation and time deviation.",
+      "nb": "Åpner rapportene: produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik."
+    }
+  },
+  {
+    "key": "manufacturing.reports.filters",
+    "route": "/manufacturing/reports",
+    "label": {
+      "en": "Report filters",
+      "nb": "Rapportfiltre"
+    },
+    "description": {
+      "en": "The period, from and to, and the site the reports cover; empty dates take the last 30 days.",
+      "nb": "Perioden, fra og til, og lagerstedet rapportene gjelder; tomme datoer gir de siste 30 dagene."
+    }
+  },
+  {
+    "key": "manufacturing.reports.download",
+    "route": "/manufacturing/reports",
+    "label": {
+      "en": "Download CSV",
+      "nb": "Last ned CSV"
+    },
+    "description": {
+      "en": "Downloads the report shown, for the same period and site, as a CSV file.",
+      "nb": "Laster ned rapporten som vises, for samme periode og lagersted, som en CSV-fil."
+    }
   }
 ]

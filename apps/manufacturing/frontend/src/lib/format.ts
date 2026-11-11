@@ -23,6 +23,10 @@ export const useManufacturingFormat = () => {
     minutes: (value: number) => t("minutesValue", { value: formatters.formatNumber(value) }),
     /** An instant, day and time. */
     stamp: (instant: string) => formatters.formatDate(instant, { dateStyle: "medium", timeStyle: "short" }),
+    /** An instant's time of day: `07:30`. */
+    time: (instant: string) => formatters.formatDate(instant, { timeStyle: "short" }),
+    /** The shell's formatters, for a date shown another way. */
+    formatters,
     /** A calendar date (`2026-11-12`), as the day it names wherever the viewer is. */
     day: (date: string) => formatters.formatDate(`${date}T00:00:00Z`, { dateStyle: "medium", timeZone: "UTC" }),
   };

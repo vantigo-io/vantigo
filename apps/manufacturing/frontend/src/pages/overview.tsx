@@ -1,5 +1,5 @@
 import { Alert, Anchor, Badge, Button, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
-import { IconAlertCircle, IconListDetails, IconPlus } from "@tabler/icons-react";
+import { IconAlertCircle, IconListDetails, IconPlus, IconReportAnalytics } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, KpiCard, PageHeader, PageSection } from "@vantigo/frontend-shell";
@@ -14,6 +14,7 @@ import {
   NEW_ORDER_ROUTE_PATH,
   ORDERS_ROUTE_PATH,
   orderLinkOptions,
+  REPORTS_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
 } from "../lib/routes";
 
@@ -92,7 +93,8 @@ const DueThisWeek = ({ today }: { today: string }) => {
  * The app's home (M7): the manufacturing orders' cards — to start today, in
  * progress, late — beside the work centers' and the BoMs', all from
  * `GET /stats`, read again on the orders' live event, and below them the
- * orders late or due this week of the business calendar. With no BoM yet the
+ * orders late or due this week of the business calendar. The header leads
+ * to the reports (M42), which live under the overview. With no BoM yet the
  * page points to Bills of materials instead.
  */
 export const ManufacturingOverviewPage = () => {
@@ -106,29 +108,35 @@ export const ManufacturingOverviewPage = () => {
         title={t("overviewTitle")}
         description={t("overviewDescription")}
         actions={
-          (canManageBoms(meta.data) || canManageOrders(meta.data)) && (
-            <Group gap="xs">
-              {canManageOrders(meta.data) && (
-                <Button
-                  data-assist="manufacturing.overview.new-order"
-                  leftSection={<IconPlus size={16} />}
-                  renderRoot={(props) => <Link to={NEW_ORDER_ROUTE_PATH} {...props} />}
-                >
-                  {t("newOrder")}
-                </Button>
-              )}
-              {canManageBoms(meta.data) && (
-                <Button
-                  variant={canManageOrders(meta.data) ? "default" : "filled"}
-                  data-assist="manufacturing.overview.new-bom"
-                  leftSection={<IconPlus size={16} />}
-                  renderRoot={(props) => <Link to={NEW_BOM_ROUTE_PATH} {...props} />}
-                >
-                  {t("newBom")}
-                </Button>
-              )}
-            </Group>
-          )
+          <Group gap="xs">
+            <Button
+              variant="default"
+              data-assist="manufacturing.overview.reports"
+              leftSection={<IconReportAnalytics size={16} />}
+              renderRoot={(props) => <Link to={REPORTS_ROUTE_PATH} {...props} />}
+            >
+              {t("reports")}
+            </Button>
+            {canManageOrders(meta.data) && (
+              <Button
+                data-assist="manufacturing.overview.new-order"
+                leftSection={<IconPlus size={16} />}
+                renderRoot={(props) => <Link to={NEW_ORDER_ROUTE_PATH} {...props} />}
+              >
+                {t("newOrder")}
+              </Button>
+            )}
+            {canManageBoms(meta.data) && (
+              <Button
+                variant={canManageOrders(meta.data) ? "default" : "filled"}
+                data-assist="manufacturing.overview.new-bom"
+                leftSection={<IconPlus size={16} />}
+                renderRoot={(props) => <Link to={NEW_BOM_ROUTE_PATH} {...props} />}
+              >
+                {t("newBom")}
+              </Button>
+            )}
+          </Group>
         }
       />
       {stats.error ? (

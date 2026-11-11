@@ -8,6 +8,7 @@ import type {
   ManufacturingProductionDraft,
 } from "../api/orders";
 import type { ManufacturingPerson } from "../api/people";
+import type { ManufacturingSchedule, ManufacturingScheduleBar, ManufacturingScheduleDay } from "../api/schedule";
 import type {
   ManufacturingMyWork,
   ManufacturingTimeLog,
@@ -181,6 +182,9 @@ export const orderFixture = (patch: Partial<ManufacturingOrder> = {}): Manufactu
     dueDate: "2026-11-20",
     plannedStart: null,
     plannedFinish: null,
+    requestedStart: null,
+    requestedStartDefault: "2026-11-16",
+    lateByDays: null,
     priority: "normal",
     responsible: null,
     note: "",
@@ -295,6 +299,9 @@ export const workOrderFixture = (patch: Partial<ManufacturingWorkOrder> = {}): M
     timeEfficiency: 100,
     expectedMinutes: 40,
     loggedMinutes: 0,
+    actualMinutes: 0,
+    deviationMinutes: -40,
+    deviationPercent: "-100.0",
     plannedStart: null,
     plannedFinish: null,
     status: "ready",
@@ -326,6 +333,84 @@ export const timeLogFixture = (patch: Partial<ManufacturingTimeLog> = {}): Manuf
   ...patch,
 });
 
+/** A day of SAW's row: open 06:00–14:00 UTC, 480 minutes. */
+export const scheduleDay = (date: string, patch: Partial<ManufacturingScheduleDay> = {}): ManufacturingScheduleDay => ({
+  date,
+  intervals: [{ start: `${date}T06:00:00Z`, end: `${date}T14:00:00Z` }],
+  closed: null,
+  capacityMinutes: 480,
+  plannedMinutes: 0,
+  loadPercent: "0.0",
+  overloaded: false,
+  ...patch,
+});
+
+/** MO-12's cutting at SAW on the board's first day, 08:00–09:00 UTC. */
+export const scheduleBarFixture = (patch: Partial<ManufacturingScheduleBar> = {}): ManufacturingScheduleBar => ({
+  workOrderId: 40,
+  workOrderRevision: 3,
+  sequence: 10,
+  name: "Cut",
+  status: "ready",
+  orderId: 5,
+  orderNumber: "MO-12",
+  variant: ref(variants()[0]),
+  urgent: false,
+  late: false,
+  startsAt: "2026-11-11T08:00:00Z",
+  endsAt: "2026-11-11T09:00:00Z",
+  plannedStart: "2026-11-11T08:00:00Z",
+  plannedFinish: "2026-11-11T09:00:00Z",
+  ...patch,
+});
+
+/**
+ * Oslo's board for the week from 2026-11-11: SAW overloaded on the first
+ * day, half loaded on the second, a holiday on the fourth; one bar; MO-13
+ * waiting to be planned.
+ */
+export const scheduleFixture = (patch: Partial<ManufacturingSchedule> = {}): ManufacturingSchedule => {
+  const dates = ["2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17"];
+  return {
+    siteId: 1,
+    from: "2026-11-11",
+    days: 7,
+    today: "2026-11-11",
+    workCenters: [
+      {
+        workCenter: { id: 1, code: "SAW", name: "SAW station", siteId: 1, workingState: "normal" },
+        blocked: false,
+        closures: [],
+        days: dates.map((date, index) =>
+          index === 0
+            ? scheduleDay(date, { plannedMinutes: 540, loadPercent: "112.5", overloaded: true })
+            : index === 1
+              ? scheduleDay(date, { plannedMinutes: 240, loadPercent: "50.0" })
+              : index === 3
+                ? scheduleDay(date, { intervals: [], closed: "holiday", capacityMinutes: 0, loadPercent: null })
+                : scheduleDay(date),
+        ),
+        bars: [scheduleBarFixture()],
+      },
+    ],
+    unscheduled: [
+      {
+        id: 6,
+        number: "MO-13",
+        variant: ref(variants()[0]),
+        quantity: "4",
+        dueDate: "2026-11-30",
+        requestedStart: null,
+        priority: "urgent",
+        status: "confirmed",
+        revision: 2,
+        expectedMinutes: 90,
+      },
+    ],
+    ...patch,
+  };
+};
+
 export interface ManufacturingServer {
   meta?: Partial<ManufacturingMeta>;
   stats?: Partial<ManufacturingStats>;
@@ -341,6 +426,9 @@ export interface ManufacturingServer {
   /** A work center's block, by its id. */
   blocks?: Record<number, ManufacturingWorkCenterBlock>;
   myWork?: ManufacturingMyWork;
+  schedule?: ManufacturingSchedule;
+  /** The reports' JSON answers, by kind; an empty report of the period when absent. */
+  reports?: Record<string, unknown>;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -434,6 +522,9 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
           }),
         );
       }
+      if (path === "/schedule/plan-all") return Promise.resolve(jsonResponse(200, { planned: [], noCapacity: [] }));
+      if (/^\/work-orders\/\d+\/reschedule$/.test(path))
+        return Promise.resolve(jsonResponse(200, { items: workOrders }));
       if (/^\/time-logs\/\d+$/.test(path) || /^\/work-orders\/\d+\/time-logs$/.test(path))
         return Promise.resolve(jsonResponse(200, timeLogFixture()));
       const order = /^\/orders(?:\/(\d+))?/.exec(path);
@@ -448,6 +539,24 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
     }
     if (path === "/meta") return Promise.resolve(jsonResponse(200, meta));
     if (path === "/stats") return Promise.resolve(jsonResponse(200, stats));
+    if (path === "/schedule") return Promise.resolve(jsonResponse(200, server.schedule ?? scheduleFixture()));
+    const report = /^\/reports\/([a-z-]+)$/.exec(path);
+    if (report) {
+      const from = url.searchParams.get("from") ?? "2026-10-13";
+      const to = url.searchParams.get("to") ?? "2026-11-11";
+      if (url.searchParams.get("format") === "csv")
+        return Promise.resolve(
+          new Response("a;b\r\n", {
+            status: 200,
+            headers: {
+              "Content-Type": "text/csv",
+              "Content-Disposition": `attachment; filename="manufacturing-${report[1]}-${from}-${to}.csv"`,
+            },
+          }),
+        );
+      const empty = { from, to, siteId: null, ...(report[1] === "production-cost" ? { groups: [] } : { rows: [] }) };
+      return Promise.resolve(jsonResponse(200, server.reports?.[report[1]] ?? empty));
+    }
     if (path === "/sites") return Promise.resolve(jsonResponse(200, { items: sites() }));
     if (path === "/variants") {
       const q = (url.searchParams.get("q") ?? "").toLowerCase();

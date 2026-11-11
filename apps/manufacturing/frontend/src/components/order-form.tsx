@@ -33,6 +33,7 @@ const formFields = new Set([
   "dueDate",
   "plannedStart",
   "plannedFinish",
+  "requestedStart",
 ]);
 
 /** Which field a refusal code belongs to, when it is one field's. */
@@ -58,11 +59,11 @@ export interface OrderFormProps {
  * A manufacturing order's fields (M17): the variant — only those with an
  * active BoM — and its BoM, the quantity, the site, the locations, the dates,
  * the priority, the responsible and a note. A draft may change all of them;
- * a confirmed or in-progress order only its dates, priority, responsible, note
- * and locations (M19). A new order opens its page once it is created.
+ * a confirmed or in-progress order only its dates — the requested start among
+ * them (M35a) — priority, responsible, note and locations (M19). A new order opens its page once it is created.
  */
 export const OrderForm = ({ order, onSaved, onCancel }: OrderFormProps) => {
-  const { t } = useManufacturingFormat();
+  const { t, day } = useManufacturingFormat();
   const navigate = useNavigate() as (options: unknown) => Promise<void>;
   const invalidate = useInvalidateManufacturing();
   const [values, setValues] = useState<OrderValues>(() => orderValuesOf(order));
@@ -227,6 +228,18 @@ export const OrderForm = ({ order, onSaved, onCancel }: OrderFormProps) => {
           value={values.plannedFinish}
           onChange={(event) => set("plannedFinish", event.currentTarget.value)}
           error={errors.plannedFinish}
+        />
+        <TextInput
+          type="date"
+          label={t("requestedStart")}
+          description={
+            order?.requestedStartDefault
+              ? t("requestedStartHint", { date: day(order.requestedStartDefault) })
+              : t("requestedStartHintNone")
+          }
+          value={values.requestedStart}
+          onChange={(event) => set("requestedStart", event.currentTarget.value)}
+          error={errors.requestedStart}
         />
         <PersonPicker
           label={t("responsible")}

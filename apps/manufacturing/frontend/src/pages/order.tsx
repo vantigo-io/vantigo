@@ -16,6 +16,8 @@ import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
   IconAlertTriangle,
+  IconCalendarEvent,
+  IconCalendarOff,
   IconCheck,
   IconCircleCheck,
   IconClipboardCheck,
@@ -41,9 +43,11 @@ import {
   reserveOrder,
   useOrdersLive,
 } from "../api/orders";
-import { isRevisionConflict, NotFoundError } from "../api/request";
+import { isRevisionConflict, NotFoundError, refusalCode } from "../api/request";
+import { planOrder, unplanOrder } from "../api/schedule";
 import { manufacturingSitesQueryOptions } from "../api/sites";
 import { CloseDialog } from "../components/close-dialog";
+import { CostPanel } from "../components/cost-panel";
 import { OrderComponents } from "../components/order-components";
 import { OrderForm } from "../components/order-form";
 import { ProductionDialog } from "../components/production-dialog";
@@ -175,7 +179,9 @@ const History = ({ orderId, live }: { orderId: number; live: boolean }) => {
 /**
  * One manufacturing order (M17–M26): its facts and status, the actions its
  * status and the caller's capabilities offer — Edit, Confirm, Reserve now,
- * Register production, Close, Cancel — its component lines with what is
+ * Plan / Unplan (M35), Register production, Close, Cancel — its planned
+ * window and how late it is planned to finish, its cost when the caller may
+ * see it (M38–M41) — its component lines with what is
  * missing — beside its work orders and time logs once confirmed (M27, M29)
  * — the short-line notice, and its history. It follows
  * `manufacturing.order:<id>`, polling only while live is down.
@@ -238,6 +244,29 @@ export const OrderPage = () => {
       }
     });
 
+  /** Plan or Unplan (M35): a refusal for no room within 365 days says so in its own words. */
+  const planning = async (work: () => Promise<ManufacturingOrder>, done: string, failure: string) => {
+    setBusy(true);
+    try {
+      const answer = await work();
+      notifications.show({ color: "teal", title: done, message: answer.number });
+      await invalidate();
+    } catch (error) {
+      if (isRevisionConflict(error)) {
+        notifications.show({ color: "yellow", title: t("revisionConflict"), message: t("revisionConflictHint") });
+        await invalidate();
+        return;
+      }
+      notifications.show({
+        color: refusalCode(error) === "no_capacity" ? "yellow" : "red",
+        title: failure,
+        message: refusalMessage(t, error as Error),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const short = data ? shortLinesOf(data, shortLines) : [];
   const site = data ? sites.data?.find((one) => one.id === data.siteId) : undefined;
   const canCancel = data && manage && (data.status === "draft" || isOpenOrder(data));
@@ -280,6 +309,11 @@ export const OrderPage = () => {
                   {t("late")}
                 </Badge>
               )}
+              {data.lateByDays !== null && data.lateByDays > 0 && (
+                <Badge variant="filled" color="red">
+                  {t("lateByDays", { count: data.lateByDays })}
+                </Badge>
+              )}
             </Group>
           ) : (
             t("order")
@@ -310,6 +344,31 @@ export const OrderPage = () => {
                 </Button>
               )}
               {manage && isOpenOrder(data) && data.reservationStatus !== "reserved" && reserveButton(data)}
+              {manage && isOpenOrder(data) && (
+                <Button
+                  variant="default"
+                  leftSection={<IconCalendarEvent size={16} />}
+                  loading={busy}
+                  data-assist="manufacturing.order.plan"
+                  onClick={() =>
+                    void planning(() => planOrder(data.id, data.revision), t("orderPlanned"), t("couldNotPlan"))
+                  }
+                >
+                  {data.plannedStart ? t("replan") : t("plan")}
+                </Button>
+              )}
+              {manage && isOpenOrder(data) && data.plannedStart && (
+                <Button
+                  variant="default"
+                  leftSection={<IconCalendarOff size={16} />}
+                  loading={busy}
+                  onClick={() =>
+                    void planning(() => unplanOrder(data.id, data.revision), t("orderUnplanned"), t("couldNotUnplan"))
+                  }
+                >
+                  {t("unplan")}
+                </Button>
+              )}
               {produce && isOpenOrder(data) && (
                 <Button leftSection={<IconClipboardCheck size={16} />} onClick={() => setProducing(true)}>
                   {t("registerProduction")}
@@ -386,6 +445,13 @@ export const OrderPage = () => {
                   ? `${data.plannedStart ? stamp(data.plannedStart) : "—"} – ${data.plannedFinish ? stamp(data.plannedFinish) : "—"}`
                   : "—"}
               </Fact>
+              {(data.requestedStart || data.requestedStartDefault) && (
+                <Fact label={t("requestedStart")}>
+                  {data.requestedStart
+                    ? day(data.requestedStart)
+                    : t("requestedStartDefaultValue", { date: day(data.requestedStartDefault ?? "") })}
+                </Fact>
+              )}
               <Fact label={t("priority")}>{t(`priority_${data.priority}`)}</Fact>
               <Fact label={t("responsible")}>{data.responsible?.displayName ?? "—"}</Fact>
               <Fact label={t("site")}>{site ? `${site.code} · ${site.name}` : data.siteId}</Fact>
@@ -423,6 +489,7 @@ export const OrderPage = () => {
               </Text>
             )}
           </PageSection>
+          {data.cost && <CostPanel cost={data.cost} currency={meta.data?.currency} />}
           {data.status === "draft" ? (
             <OrderComponents
               order={data}
