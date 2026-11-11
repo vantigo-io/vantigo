@@ -255,14 +255,74 @@
     "description": "The button on the Bills of materials page that opens the editor for a new one."
   },
   {
+    "key": "manufacturing.order.actions",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The buttons at the top of a manufacturing order: Edit, Confirm, Reserve now, Register production, Close and Cancel order, as the order's status allows."
+  },
+  {
+    "key": "manufacturing.order.add-component",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The button on a confirmed or in-progress manufacturing order that adds an extra component line."
+  },
+  {
+    "key": "manufacturing.order.components",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The component lines of a manufacturing order: required, reserved, available, consumed, scrapped and missing for each."
+  },
+  {
+    "key": "manufacturing.order.facts",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The facts of a manufacturing order: quantity, produced, due and planned dates, priority, responsible, site, bill of materials, origin, reservation and backorders."
+  },
+  {
+    "key": "manufacturing.order.form",
+    "route": "/manufacturing/orders/new",
+    "description": "The form for a manufacturing order: the product variant and its bill of materials, the quantity, the site, the locations, the dates, the priority, the responsible and a note."
+  },
+  {
+    "key": "manufacturing.order.history",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The history of a manufacturing order: each event, who did it and when."
+  },
+  {
+    "key": "manufacturing.order.short-lines",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The notice on a manufacturing order naming the components the site could not reserve, with Reserve now."
+  },
+  {
+    "key": "manufacturing.orders.filters",
+    "route": "/manufacturing/orders",
+    "description": "The filters of the Manufacturing orders list: search, status, site, variant, due dates, origin, responsible, reservation, sort and late only."
+  },
+  {
+    "key": "manufacturing.orders.list",
+    "route": "/manufacturing/orders",
+    "description": "The list of manufacturing orders with their status, reservation status, due date and responsible."
+  },
+  {
+    "key": "manufacturing.orders.new",
+    "route": "/manufacturing/orders",
+    "description": "The button on the Manufacturing orders page that opens the form for a new manufacturing order."
+  },
+  {
     "key": "manufacturing.overview.cards",
     "route": "/manufacturing",
     "description": "The cards at the top of the Manufacturing overview: active work centers, blocked work centers and active bills of materials."
   },
   {
+    "key": "manufacturing.overview.due",
+    "route": "/manufacturing",
+    "description": "The list on the Manufacturing overview of the open manufacturing orders that are late or due by the end of this week."
+  },
+  {
     "key": "manufacturing.overview.new-bom",
     "route": "/manufacturing",
     "description": "The button on the Manufacturing overview that opens the editor for a new bill of materials."
+  },
+  {
+    "key": "manufacturing.overview.new-order",
+    "route": "/manufacturing",
+    "description": "The button on the Manufacturing overview that opens the form for a new manufacturing order."
   },
   {
     "key": "manufacturing.work-center.actions",

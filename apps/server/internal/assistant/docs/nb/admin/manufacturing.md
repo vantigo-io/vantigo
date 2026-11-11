@@ -1,16 +1,17 @@
 ---
 title: Produksjon
-description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de fem rettighetene og hva hver gir, den sensitive kostnadsrettigheten og hvem som bør ha den, rollene du bygger av dem; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de fem rettighetene og hva hver gir, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, rollene du bygger av dem; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 51
 sources:
   - apps/server/internal/manufacturing/module.go
   - apps/server/internal/db/migrations/00156_manufacturing_baseline.sql
+  - apps/server/internal/db/migrations/00157_manufacturing_orders.sql
 ---
 
 Produksjon-modulen (**Manufacturing** på engelsk) beskriver hvordan virksomheten lager
 produktene sine: arbeidsstasjonene der arbeidet gjøres, og stykklistene som sier hva som
-går inn i hvert produkt. Denne siden handler om å slå den på og gi folk tilgang; hvordan
+går inn i hvert produkt, og produksjonsordrene som lager dem. Denne siden handler om å slå den på og gi folk tilgang; hvordan
 den brukes, står i [Produksjon](/nb/user/manufacturing/), og hver regel i
 [referansen](/en/reference/manufacturing/).
 
@@ -43,6 +44,11 @@ den brukes, står i [Produksjon](/nb/user/manufacturing/), og hver regel i
    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA manufacturing TO "vantigo_app";
    ```
 
+   Migreringen `00157_manufacturing_orders.sql` legger produksjonsordrenes tabeller til i
+   skjemaet. Standardrettighetene under Databaseroller dekker dem; en rolle som har fått
+   rettigheter tabell for tabell, trenger at `GRANT`-setningene kjøres på nytt etter
+   oppgraderingen.
+
 3. **Produksjon**-flisen vises for alle med `manufacturing:access`.
 
 Modulen starter ingen bakgrunnsjobb og har ingen egne innstillinger.
@@ -56,10 +62,10 @@ Ingen andre enn Owner kan bruke appen før en rolle gir rettighetene, under
 
 | Rettighet | Nøkkel | Gir |
 | --- | --- | --- |
-| Bruke Produksjon | `manufacturing:access` | Appen, og å lese arbeidsstasjoner, deres stengninger, stykklister og oversikten over dem |
+| Bruke Produksjon | `manufacturing:access` | Appen, og å lese arbeidsstasjoner, deres stengninger, stykklister og oversikten over dem, og produksjonsordrer med produksjonene og historikken deres |
 | Administrere stykklister og arbeidsstasjoner | `manufacturing:boms-manage` | Å opprette, redigere, arkivere, gjenaktivere og slette arbeidsstasjoner og deres stengninger; å opprette, redigere, arkivere og gjenaktivere stykklister og gjøre en til standard |
-| Administrere produksjonsordrer | `manufacturing:orders-manage` | Listet allerede; ingenting spør etter den ennå |
-| Arbeide i verkstedet | `manufacturing:shop-floor` | Listet allerede; ingenting spør etter den ennå |
+| Administrere produksjonsordrer | `manufacturing:orders-manage` | Å opprette, endre, bekrefte, reservere, lukke og kansellere produksjonsordrer; å legge til og endre komponentene deres; å registrere en produksjon |
+| Arbeide i verkstedet | `manufacturing:shop-floor` | Å registrere en produksjon på en produksjonsordre; arbeidsordrene og timeføringen kommer med verkstedet i en senere leveranse |
 | Se produksjonskostnader | `manufacturing:costs-view` | Alle kostnadstall: en arbeidsstasjons maskin- og arbeidssats, og å sette dem; standardkostene, verdiene, operasjonskostnadene og den samlede kostnaden i oversikten. Sensitiv, og kan ikke delegeres |
 
 **Se produksjonskostnader** er sensitiv: den viser hva hvert produkt koster å lage, og hva
@@ -72,9 +78,15 @@ Beholdningstallene i oversikten er Produksjons egne oppslag i Lager, så de krev
 rettighet i Lager. Å velge et produkt eller en komponent krever heller ingen rettighet i
 Produkter.
 
-Et vanlig oppsett: alle i produksjonen får Bruke Produksjon; den som holder oppskriftene og
-maskinene, får i tillegg Administrere stykklister og arbeidsstasjoner; produksjonsledelsen
-får i tillegg Se produksjonskostnader.
+Å registrere en produksjon krever enten **Arbeide i verkstedet** eller **Administrere
+produksjonsordrer** ved siden av Bruke Produksjon, så en operatør som melder hva som ble
+laget, ikke trenger å kunne opprette, bekrefte eller kansellere ordrer.
+
+Et vanlig oppsett: alle i produksjonen får Bruke Produksjon; operatørene får i tillegg
+Arbeide i verkstedet; planleggere og arbeidsledere får i tillegg Administrere
+produksjonsordrer; den som holder oppskriftene og maskinene, får i tillegg Administrere
+stykklister og arbeidsstasjoner; produksjonsledelsen får i tillegg Se
+produksjonskostnader.
 
 ## Kontroller
 
@@ -88,7 +100,14 @@ får i tillegg Se produksjonskostnader.
    tilgjengelig der, og operasjonen med sine forventede minutter.
 4. Med Se produksjonskostnader viser arbeidsstasjonen satsene sine og oversikten
    kostnadene. Uten den vises ingen av dem.
-5. Prøv å slette komponenten i Produkter: det nektes, og én stykkliste navngis.
+5. Som en med Administrere produksjonsordrer åpner du **Produksjonsordrer** → **Ny
+   produksjonsordre**, velger produktet, et antall og lagerstedet, og velger **Opprett
+   produksjonsordre** og deretter **Bekreft**. Ordren er **Bekreftet**, og enten er
+   komponenten reservert, eller siden navngir den som manglende.
+6. Velg **Registrer produksjon** og **Registrer**. En **Produksjon**-bevegelse listes under
+   **Bevegelser** i Lager, lenket til ordren, og ordren **Pågår**.
+7. Prøv å slette komponenten i Produkter: det nektes, og en stykkliste og den åpne ordren
+   navngis.
 
 ## Hva som kan gå galt
 
@@ -103,4 +122,8 @@ får i tillegg Se produksjonskostnader.
 | Å lagre en sats nektes | Personen mangler Se produksjonskostnader | Gi den, eller la en som har den sette satsene |
 | Oversikten sier **Kostnaden er ufullstendig** | En innkjøpt komponent har ingen standardkost i Produkter | Gi den en i Produkter |
 | **Gjenaktiver** på en arbeidsstasjon nektes | Lagerstedet er arkivert i Lager | Gjenåpne lagerstedet i Lager, eller bruk en arbeidsstasjon på et annet lagersted |
-| Produkter nekter å slette en variant eller gjøre produktet til en tjeneste | En aktiv stykkliste navngir den | Arkiver stykklisten, eller endre linjene |
+| Produkter nekter å slette en variant eller gjøre produktet til en tjeneste | En aktiv stykkliste eller en åpen produksjonsordre navngir den | Arkiver stykklisten, eller endre linjene; lukk eller kanseller ordren |
+| Ingen **Ny produksjonsordre**, **Bekreft** eller **Lukk** | Personen mangler Administrere produksjonsordrer | Gi den ved siden av Bruke Produksjon |
+| Ingen **Registrer produksjon** | Personen har verken Arbeide i verkstedet eller Administrere produksjonsordrer | Gi en av dem |
+| `permission denied for table orders` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00157` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |
+| En produksjon nektes for beholdning | Lagerstedet har ikke nok av en komponent, eller lagerstedet er arkivert i Lager | Ta imot eller flytt varene, gjenåpne lagerstedet, eller rett med en justering i Lager |
