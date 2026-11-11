@@ -581,6 +581,52 @@ describe("a goods line's manufacturing (manufacturing design M45, M48a)", () => 
     expect(screen.queryByRole("link", { name: "Create manufacturing order" })).not.toBeInTheDocument();
   });
 
+  it("says why make-to-order made no order for the line, to a caller who sees Manufacturing", async () => {
+    const notMade = confirmed({
+      siteId: 1,
+      lines: [goods({ hasBom: true, production: [], notMade: { code: "no_site", detail: "No site." } })],
+    });
+    server(notMade);
+    renderRoute("/orders/orders/2001");
+
+    expect(await screen.findByTestId("line-not-made")).toHaveTextContent(
+      "No manufacturing order made: the bill of materials has no operations and the order names no site.",
+    );
+  });
+
+  it("shows Manufacturing's own text for a reason it does not name", async () => {
+    server(
+      confirmed({
+        siteId: 1,
+        lines: [
+          goods({
+            hasBom: true,
+            production: [],
+            notMade: { code: "work_center_other_site", detail: "The work centers stand at another site." },
+          }),
+        ],
+      }),
+    );
+    renderRoute("/orders/orders/2001");
+
+    expect(await screen.findByTestId("line-not-made")).toHaveTextContent(
+      "No manufacturing order made: The work centers stand at another site.",
+    );
+  });
+
+  it("does not say why without manufacturing:access", async () => {
+    server(
+      confirmed({
+        siteId: 1,
+        lines: [goods({ hasBom: true, production: [], notMade: { code: "failed", detail: "" } })],
+      }),
+    );
+    renderRoute("/orders/orders/2001", { canViewManufacturing: false, canCreateManufacturingOrders: false });
+
+    await screen.findByRole("heading", { name: /Order 5001/ });
+    expect(screen.queryByTestId("line-not-made")).not.toBeInTheDocument();
+  });
+
   it("says when the goods were made at another site", async () => {
     server(
       confirmed({
