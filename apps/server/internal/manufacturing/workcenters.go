@@ -551,7 +551,7 @@ func (s *server) DeleteManufacturingWorkCenter(ctx context.Context, req gen.Dele
 		}
 		if used > 0 {
 			return conflict(codeWorkCenterInUse, "The work center is in use",
-				fmt.Sprintf("%d BoM operation(s) name %s. Archive it instead.", used, w.Code))
+				fmt.Sprintf("%d BoM operation(s), work order(s) or time log(s) name %s. Archive it instead.", used, w.Code))
 		}
 		_, err = txq.DeleteWorkCenter(ctx, w.ID)
 		return err
@@ -594,12 +594,19 @@ func (s *server) ArchiveManufacturingWorkCenter(ctx context.Context, req gen.Arc
 		if err != nil {
 			return err
 		}
-		// Delivery C's seam: archiving is refused while an open work order
-		// names the work center (work_center_has_open_work, 409, M8). There
-		// are no work orders in delivery A, so there is nothing to check.
 		if w.Status == statusArchived {
 			archived = w
 			return nil
+		}
+		// Archiving is refused while a work order not done or cancelled
+		// names the work center (work_center_has_open_work, M8).
+		open, err := txq.CountOpenWorkOrdersAtWorkCenter(ctx, w.ID)
+		if err != nil {
+			return err
+		}
+		if open > 0 {
+			return conflict(codeWorkCenterHasOpenWork, "The work center has open work",
+				fmt.Sprintf("%d work order(s) not done or cancelled are at this work center. Finish or cancel their orders first.", open))
 		}
 		archived, err = txq.SetWorkCenterStatus(ctx, store.SetWorkCenterStatusParams{ID: w.ID, Status: statusArchived, Now: s.deps.Clock()})
 		return err

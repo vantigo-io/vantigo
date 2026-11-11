@@ -167,72 +167,99 @@ func relockExhausted() error {
 }
 
 // withOrder runs fn on order id under the canonical lock order (M26a):
-// LockVariants on the order's product and components, taken from a plain
-// read, together with extra; the order FOR UPDATE; for a draft, or a write
-// with extra variants (a backorder's BoM), the order's BoM FOR SHARE, so its
-// lines stay as re-read until the commit; a re-read of the variants,
-// starting again from the lock when the set grew. fn's ledger calls come
-// after, on the same transaction. extra is read again on every attempt, so a
-// write whose own variants come from a row (a backorder's BoM) names them
-// there. A set that keeps growing is 409 revision_conflict.
+// withOrders on the one order.
 func (s *server) withOrder(ctx context.Context, id int64, extra func(context.Context, *store.Queries, store.ManufacturingOrder) ([]int32, error),
 	fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o *lockedOrder) error) error {
+	return s.withOrders(ctx, func(context.Context, *store.Queries) ([]int64, error) { return []int64{id}, nil }, extra,
+		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error {
+			return fn(ctx, tx, txq, orders[id])
+		})
+}
+
+// withOrders runs fn on the orders idsOf names under the canonical lock
+// order (M26a): LockVariants once on every order's product and components,
+// taken from a plain read, together with extra; the orders FOR UPDATE in id
+// order; for a draft, or a write with extra variants (a backorder's BoM),
+// the order's BoM FOR SHARE, so its lines stay as re-read until the commit;
+// a re-read of the variants, starting again from the lock when the set
+// grew. fn takes the work orders, the work center and the time logs after
+// (steps 4–6), and its ledger calls come last, on the same transaction.
+//
+// idsOf is read again on every attempt, on the pool: a write whose orders
+// come from a row — the order of the caller's open log elsewhere, the orders
+// of the logs at a work center — names them there, and fn returns errRelock
+// when the row moved to an order not locked, so the write starts again.
+// extra is read again on every attempt too. Locking every order of a write
+// together, in id order, before any work order, is what keeps two writes
+// across each other's orders from deadlocking. A set that keeps changing is
+// 409 revision_conflict. An id idsOf names that is not an order is 404.
+func (s *server) withOrders(ctx context.Context, idsOf func(context.Context, *store.Queries) ([]int64, error),
+	extra func(context.Context, *store.Queries, store.ManufacturingOrder) ([]int32, error),
+	fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error) error {
 	pool := store.New(s.deps.Pool)
+	variantsOf := func(ctx context.Context, q *store.Queries, o store.ManufacturingOrder) ([]int32, error) {
+		ids, err := orderVariants(ctx, q, o)
+		if err != nil || extra == nil {
+			return ids, err
+		}
+		more, err := extra(ctx, q, o)
+		return append(ids, more...), err
+	}
 	for attempt := 1; ; attempt++ {
-		pre, err := pool.GetOrder(ctx, id)
-		if noRows(err) {
-			return notFound()
-		}
+		orderIDs, err := idsOf(ctx, pool)
 		if err != nil {
 			return err
 		}
-		ids, err := orderVariants(ctx, pool, pre)
-		if err != nil {
-			return err
-		}
-		if extra != nil {
-			more, err := extra(ctx, pool, pre)
-			if err != nil {
-				return err
-			}
-			ids = append(ids, more...)
-		}
-		slices.Sort(ids)
-		ids = slices.Compact(ids)
-		err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-			locked, err := s.lockVariants(ctx, tx, ids)
-			if err != nil {
-				return err
-			}
-			o, err := txq.GetOrderForUpdate(ctx, id)
+		orderIDs = slices.Compact(slices.Sorted(slices.Values(orderIDs)))
+		var ids []int32
+		for _, id := range orderIDs {
+			pre, err := pool.GetOrder(ctx, id)
 			if noRows(err) {
 				return notFound()
 			}
 			if err != nil {
 				return err
 			}
-			if o.Status == orderDraft || extra != nil {
-				if _, err := txq.GetBomForShare(ctx, o.BomID); err != nil {
-					return err
-				}
-			}
-			now, err := orderVariants(ctx, txq, o)
+			more, err := variantsOf(ctx, pool, pre)
 			if err != nil {
 				return err
 			}
-			if extra != nil {
-				more, err := extra(ctx, txq, o)
+			ids = append(ids, more...)
+		}
+		ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+		err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+			locked, err := s.lockVariants(ctx, tx, ids)
+			if err != nil {
+				return err
+			}
+			orders := make(map[int64]*lockedOrder, len(orderIDs))
+			for _, id := range orderIDs {
+				o, err := txq.GetOrderForUpdate(ctx, id)
+				if noRows(err) {
+					return notFound()
+				}
 				if err != nil {
 					return err
 				}
-				now = append(now, more...)
+				if o.Status == orderDraft || extra != nil {
+					if _, err := txq.GetBomForShare(ctx, o.BomID); err != nil {
+						return err
+					}
+				}
+				orders[id] = &lockedOrder{order: o, locked: locked}
 			}
-			for _, v := range now {
-				if !slices.Contains(ids, v) {
-					return errRelock
+			for _, id := range orderIDs {
+				now, err := variantsOf(ctx, txq, orders[id].order)
+				if err != nil {
+					return err
+				}
+				for _, v := range now {
+					if !slices.Contains(ids, v) {
+						return errRelock
+					}
 				}
 			}
-			return fn(ctx, tx, txq, &lockedOrder{order: o, locked: locked})
+			return fn(ctx, tx, txq, orders)
 		})
 		if errors.Is(err, errRelock) {
 			if attempt < maxLockAttempts {
@@ -875,11 +902,11 @@ func coverageOf(components []store.ManufacturingOrderComponent, available map[in
 	}
 	switch covered {
 	case needing:
-		cov.status = gen.Ready
+		cov.status = gen.ManufacturingAvailabilityReady
 	case 0:
-		cov.status = gen.Waiting
+		cov.status = gen.ManufacturingAvailabilityWaiting
 	default:
-		cov.status = gen.PartlyAvailable
+		cov.status = gen.ManufacturingAvailabilityPartlyAvailable
 	}
 	return cov
 }
@@ -957,21 +984,26 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		}
 	}
 	for i, c := range components {
-		var cid *int64
-		if c.ID != 0 {
-			id := c.ID
-			cid = &id
-		}
-		remaining := remainingOf(c)
-		out.Components = append(out.Components, gen.ManufacturingOrderComponent{
-			Id: cid, Variant: componentRef(entries, c, costs), Required: numericText(c.Required, quantityPlaces),
-			Reserved: numericText(c.Reserved, quantityPlaces), Available: text(cov.available[c.VariantID], quantityPlaces),
-			Consumed: numericText(c.Consumed, quantityPlaces), Scrapped: numericText(c.Scrapped, quantityPlaces),
-			Remaining: text(remaining, quantityPlaces), Missing: text(cov.missing[i], quantityPlaces), Covered: cov.missing[i].Sign() == 0,
-			OperationId: c.OperationID, Added: c.Added, Note: c.Note, SortOrder: c.SortOrder,
-		})
+		out.Components = append(out.Components, componentAnswer(c, entries, costs, cov.available[c.VariantID], cov.missing[i]))
 	}
 	return out, nil
+}
+
+// componentAnswer is a component line as an answer, with the site's
+// available quantity of its variant and what it misses (M21a).
+func componentAnswer(c store.ManufacturingOrderComponent, entries map[int32]contracts.VariantEntry, costs bool, available, missing *big.Rat) gen.ManufacturingOrderComponent {
+	var cid *int64
+	if c.ID != 0 {
+		id := c.ID
+		cid = &id
+	}
+	return gen.ManufacturingOrderComponent{
+		Id: cid, Variant: componentRef(entries, c, costs), Required: numericText(c.Required, quantityPlaces),
+		Reserved: numericText(c.Reserved, quantityPlaces), Available: text(available, quantityPlaces),
+		Consumed: numericText(c.Consumed, quantityPlaces), Scrapped: numericText(c.Scrapped, quantityPlaces),
+		Remaining: text(remainingOf(c), quantityPlaces), Missing: text(missing, quantityPlaces), Covered: missing.Sign() == 0,
+		OperationId: c.OperationID, Added: c.Added, Note: c.Note, SortOrder: c.SortOrder,
+	}
 }
 
 // productDiscontinued is the catalog's status of a product being used up.

@@ -188,6 +188,14 @@ var markedByHand = map[string]string{
 	// manufacturing:access: the handler asks for shop-floor or orders-manage
 	// itself (manufacturing design M33), which the Assistant's gate cannot see.
 	"postManufacturingProduction": "never",
+	// The shop-floor actions are never the Assistant's: an agent does not clock
+	// in (manufacturing design §10).
+	"startManufacturingWorkOrder":       "never",
+	"pauseManufacturingWorkOrder":       "never",
+	"finishManufacturingWorkOrder":      "never",
+	"reportManufacturingWorkOrderScrap": "never",
+	"blockManufacturingWorkCenter":      "never",
+	"unblockManufacturingWorkCenter":    "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

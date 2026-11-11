@@ -179,7 +179,7 @@ func TestOrder_ConfirmSnapshotScrapAndShortLine(t *testing.T) {
 	}
 	// The bolt line: not reserved, 0.5 available covers part of it.
 	if bolt.Available != "0.5" || bolt.Missing != "0.234" || bolt.Covered || !wheel.Covered ||
-		got.Availability != gen.PartlyAvailable || *got.ReservationStatus != gen.ManufacturingReservationStatusPartlyReserved {
+		got.Availability != gen.ManufacturingAvailabilityPartlyAvailable || *got.ReservationStatus != gen.ManufacturingReservationStatusPartlyReserved {
 		t.Errorf("availability = %s, bolt %+v, reservation %v", got.Availability, bolt, got.ReservationStatus)
 	}
 	// A later BoM edit never reaches a confirmed order (M17).
@@ -197,7 +197,7 @@ func TestOrder_ConfirmSnapshotScrapAndShortLine(t *testing.T) {
 	var again gen.ManufacturingOrderWithShortLines
 	res.JSON(&again)
 	if len(again.ShortLines) != 0 || component(t, again.Order, varBolt).Reserved != "0.734" ||
-		again.Order.Availability != gen.Ready || *again.Order.ReservationStatus != gen.ManufacturingReservationStatusReserved {
+		again.Order.Availability != gen.ManufacturingAvailabilityReady || *again.Order.ReservationStatus != gen.ManufacturingReservationStatusReserved {
 		t.Errorf("after reserve now = %+v", again)
 	}
 	c.Do(http.MethodGet, ordersPath+"?reservation=reserved", nil).JSON(&page)

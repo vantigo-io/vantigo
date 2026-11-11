@@ -125,27 +125,29 @@ type productionValues struct {
 
 // judgeProduction is the request's shape (M22): every quantity 0 or more
 // with at most three decimals, each line once, and something to register.
-func (s *server) judgeProduction(ctx context.Context, in gen.ManufacturingProductionInput) (productionValues, fieldErrors) {
-	f := s.unknownProperties(ctx, productionInputSchema)
+// f carries what the body's closed schemas refused already; prefix is where
+// the production sits in the body ("" for a production's own post,
+// "production." inside a finish).
+func judgeProduction(in gen.ManufacturingProductionInput, f fieldErrors, prefix string) (productionValues, fieldErrors) {
 	v := productionValues{to: in.ToLocationId, outputScrap: new(big.Rat)}
 	if n := len([]rune(in.ClientRequestId)); n < 1 || n > maxClientRequestIDRunes {
-		f.add("clientRequestId", "1–100 characters")
+		f.add(prefix+"clientRequestId", "1–100 characters")
 	}
 	q, msg := parseDecimal(in.Quantity, quantityPlaces, maxQuantity)
-	f.addCoded("quantity", codeQuantityInvalid, msg)
+	f.addCoded(prefix+"quantity", codeQuantityInvalid, msg)
 	v.quantity = q
 	if in.OutputScrap != nil {
 		os, msg := parseDecimal(*in.OutputScrap, quantityPlaces, maxQuantity)
-		f.addCoded("outputScrap", codeQuantityInvalid, msg)
+		f.addCoded(prefix+"outputScrap", codeQuantityInvalid, msg)
 		v.outputScrap = os
 	}
 	if len(in.Lines) > maxProductionLines {
-		f.add("lines", "At most 400 lines")
+		f.add(prefix+"lines", "At most 400 lines")
 	}
 	seen := map[int64]bool{}
 	something := false
 	for i, l := range in.Lines {
-		at := fmt.Sprintf("lines[%d].", i)
+		at := fmt.Sprintf("%slines[%d].", prefix, i)
 		pl := productionLine{componentID: l.ComponentId, scrap: new(big.Rat), from: l.FromLocationId}
 		if seen[l.ComponentId] {
 			f.add(at+"componentId", "Two lines name this component line")
@@ -173,7 +175,7 @@ func (s *server) judgeProduction(ctx context.Context, in gen.ManufacturingProduc
 		return v, f
 	}
 	if v.quantity.Sign() == 0 && v.outputScrap.Sign() == 0 && !something {
-		f.addCoded("quantity", codeQuantityInvalid, "0 only with consumption, scrap or output scrap")
+		f.addCoded(prefix+"quantity", codeQuantityInvalid, "0 only with consumption, scrap or output scrap")
 		return v, f
 	}
 	v.hash = productionHash(v)
@@ -245,54 +247,70 @@ var errResplit = errors.New("manufacturing: the locations changed under the spli
 // maxSplitAttempts is how many times a post reads the locations and splits.
 const maxSplitAttempts = 3
 
-// replay is the answer to a clientRequestId already posted (M22a): the
-// first production with 200 when the body is the same, else
+// replayOf is the production a clientRequestId already posted answers
+// (M22a): p when the body is the same and of the same order, else
 // client_request_reused.
-func (s *server) replay(ctx context.Context, orderID int64, p store.ManufacturingProduction, hash string) (gen.PostManufacturingProductionResponseObject, error) {
+func replayOf(orderID int64, p store.ManufacturingProduction, hash string) (int64, error) {
 	if p.OrderID != orderID || p.RequestHash != hash {
-		return answer(conflict(codeClientRequestReused, "The request id was used for another production",
-			"A production with this clientRequestId was registered with another body. Send a new clientRequestId for a new production."), postAnswers())
+		return 0, conflict(codeClientRequestReused, "The request id was used for another production",
+			"A production with this clientRequestId was registered with another body. Send a new clientRequestId for a new production.")
 	}
-	out, err := s.productionAnswer(ctx, p.ID)
-	if err != nil {
-		return nil, err
-	}
-	return gen.PostManufacturingProduction200JSONResponse(out), nil
+	return p.ID, nil
 }
 
-// PostManufacturingProduction registers a production (M22, M22a): it needs
-// manufacturing:shop-floor or manufacturing:orders-manage (M33).
-func (s *server) PostManufacturingProduction(ctx context.Context, req gen.PostManufacturingProductionRequestObject) (gen.PostManufacturingProductionResponseObject, error) {
-	if !s.has(ctx, permShopFloor) && !s.has(ctx, permOrdersManage) {
-		return answer(refuse(problem(http.StatusForbidden, codeShopFloorRequired, "Registering production is not yours to do",
-			"Registering a production needs manufacturing:shop-floor or manufacturing:orders-manage.")), postAnswers())
+// requireShopFloor is the 403 shop_floor_required of a production or a
+// shop-floor action by a caller holding neither manufacturing:shop-floor nor
+// manufacturing:orders-manage (M33): the operation's rule asks only for
+// manufacturing:access, and the handler checks the either-or.
+func (s *server) requireShopFloor(ctx context.Context, what string) error {
+	if s.has(ctx, permShopFloor) || s.has(ctx, permOrdersManage) {
+		return nil
 	}
-	in := *req.Body
-	v, f := s.judgeProduction(ctx, in)
+	return refuse(problem(http.StatusForbidden, codeShopFloorRequired, what+" is not yours to do",
+		what+" needs manufacturing:shop-floor or manufacturing:orders-manage."))
+}
+
+// preparedProduction is a production request judged before its
+// transaction: its values, the order's site and component variants, and —
+// when its clientRequestId was posted before — the production it replays.
+type preparedProduction struct {
+	in       gen.ManufacturingProductionInput
+	v        productionValues
+	siteID   int64
+	variants []int32
+	replay   *store.ManufacturingProduction
+}
+
+// prepareProduction judges a production request for order orderID before
+// any transaction (M22, M22a, M26a): its shape, under prefix with f the
+// closed schemas' refusals; a replay of its clientRequestId; the order open;
+// its locations against the site's, read from Inventory now.
+func (s *server) prepareProduction(ctx context.Context, orderID int64, in gen.ManufacturingProductionInput, f fieldErrors, prefix string) (*preparedProduction, error) {
+	v, f := judgeProduction(in, f, prefix)
 	if f.failed() {
-		return answer(refuseInvalid(productionTitle, f), postAnswers())
+		return nil, refuseInvalid(productionTitle, f)
 	}
 	pool := store.New(s.deps.Pool)
 	if p, err := pool.ProductionByClientRequest(ctx, in.ClientRequestId); err == nil {
-		return s.replay(ctx, req.Id, p, v.hash)
+		return &preparedProduction{in: in, v: v, replay: &p}, nil
 	} else if !noRows(err) {
 		return nil, err
 	}
-	pre, err := pool.GetOrder(ctx, req.Id)
+	pre, err := pool.GetOrder(ctx, orderID)
 	if noRows(err) {
-		return gen.PostManufacturingProduction404Response{}, nil
+		return nil, notFound()
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !isOpen(pre.Status) {
-		return answer(orderNotOpen(pre.Status), postAnswers())
+		return nil, orderNotOpen(pre.Status)
 	}
 	// Inventory is read before the transaction (M26a): the site's locations
 	// to judge the request's, and where each component lies to split it.
 	locations, err := s.siteLocations(ctx, pre.SiteID)
 	if err != nil {
-		return answer(err, postAnswers())
+		return nil, err
 	}
 	active := map[int64]bool{}
 	for _, l := range locations {
@@ -300,36 +318,60 @@ func (s *server) PostManufacturingProduction(ctx context.Context, req gen.PostMa
 	}
 	var lf fieldErrors
 	if v.to != nil && !active[*v.to] {
-		lf.addCoded("toLocationId", codeLocationUnknown, "Not an active location of the order's site")
+		lf.addCoded(prefix+"toLocationId", codeLocationUnknown, "Not an active location of the order's site")
 	}
 	for i, l := range v.lines {
 		if l.from != nil && !active[*l.from] {
-			lf.addCoded(fmt.Sprintf("lines[%d].fromLocationId", i), codeLocationUnknown, "Not an active location of the order's site")
+			lf.addCoded(fmt.Sprintf("%slines[%d].fromLocationId", prefix, i), codeLocationUnknown, "Not an active location of the order's site")
 		}
 	}
 	if lf.failed() {
-		return answer(refuseInvalid(productionTitle, lf), postAnswers())
+		return nil, refuseInvalid(productionTitle, lf)
 	}
 	components, err := pool.ListOrderComponents(ctx, pre.ID)
 	if err != nil {
 		return nil, err
 	}
-	variants := make([]int32, 0, len(components))
+	prep := &preparedProduction{in: in, v: v, siteID: pre.SiteID, variants: make([]int32, 0, len(components))}
 	for _, c := range components {
-		variants = append(variants, c.VariantID)
+		prep.variants = append(prep.variants, c.VariantID)
 	}
-	who, err := s.actorOf(ctx)
-	if err != nil {
-		return nil, err
+	return prep, nil
+}
+
+// runProduction posts prep on order orderID under the lock order (M26a):
+// before, when set, does the write's own work-order and time-log writes on
+// the locked orders first (steps 4–6), then the production is posted,
+// Produce last (step 7). The locations are read before each attempt and the
+// split read again when another production took from them meanwhile
+// (errResplit). A nil prep runs before alone. A clientRequestId committed by
+// another request meanwhile answers that production as the replay. idsOf
+// names the orders the write locks, by default the production's alone; the
+// production's order is one of them.
+func (s *server) runProduction(ctx context.Context, orderID int64, idsOf func(context.Context, *store.Queries) ([]int64, error), prep *preparedProduction, who actor,
+	before func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error) (int64, error) {
+	if idsOf == nil {
+		idsOf = func(context.Context, *store.Queries) ([]int64, error) { return []int64{orderID}, nil }
 	}
 	var productionID int64
+	var err error
 	for attempt := 1; ; attempt++ {
 		var held map[int32][]contracts.StockLocation
-		if held, err = s.stockLocations(ctx, variants, pre.SiteID); err != nil {
-			return answer(err, postAnswers())
+		if prep != nil {
+			if held, err = s.stockLocations(ctx, prep.variants, prep.siteID); err != nil {
+				return 0, err
+			}
 		}
-		err = s.withOrder(ctx, req.Id, nil, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, lo *lockedOrder) error {
-			id, err := s.postProduction(ctx, tx, txq, lo.order, in, v, held, who, attempt == maxSplitAttempts)
+		err = s.withOrders(ctx, idsOf, nil, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error {
+			if before != nil {
+				if err := before(ctx, tx, txq, orders); err != nil {
+					return err
+				}
+			}
+			if prep == nil {
+				return nil
+			}
+			id, err := s.postProduction(ctx, tx, txq, orders[orderID].order, prep.in, prep.v, held, who, attempt == maxSplitAttempts)
 			productionID = id
 			return err
 		})
@@ -337,19 +379,66 @@ func (s *server) PostManufacturingProduction(ctx context.Context, req gen.PostMa
 			break
 		}
 	}
-	if errors.Is(err, errReplay) || db.IsUniqueViolation(err, productionUniqueIndex) {
-		p, rerr := pool.ProductionByClientRequest(ctx, in.ClientRequestId)
+	if prep != nil && (errors.Is(err, errReplay) || db.IsUniqueViolation(err, productionUniqueIndex)) {
+		p, rerr := store.New(s.deps.Pool).ProductionByClientRequest(ctx, prep.in.ClientRequestId)
 		if rerr != nil {
-			return nil, rerr
+			return 0, rerr
 		}
-		return s.replay(ctx, req.Id, p, v.hash)
+		id, rerr := replayOf(orderID, p, prep.v.hash)
+		if rerr != nil {
+			return 0, rerr
+		}
+		return id, errReplayed
+	}
+	return productionID, err
+}
+
+// errReplayed is runProduction's answer, with the first production's id,
+// when the post was a replay: the handler answers 200 rather than 201.
+var errReplayed = errors.New("manufacturing: the production was a replay")
+
+// PostManufacturingProduction registers a production (M22, M22a): it needs
+// manufacturing:shop-floor or manufacturing:orders-manage (M33).
+func (s *server) PostManufacturingProduction(ctx context.Context, req gen.PostManufacturingProductionRequestObject) (gen.PostManufacturingProductionResponseObject, error) {
+	if err := s.requireShopFloor(ctx, "Registering a production"); err != nil {
+		return answer(err, postAnswers())
+	}
+	prep, err := s.prepareProduction(ctx, req.Id, *req.Body, s.unknownProperties(ctx, productionInputSchema), "")
+	if err != nil {
+		return answer(err, postAnswers())
+	}
+	if prep.replay != nil {
+		id, err := replayOf(req.Id, *prep.replay, prep.v.hash)
+		if err != nil {
+			return answer(err, postAnswers())
+		}
+		return s.productionResponse(ctx, id, true)
+	}
+	who, err := s.actorOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := s.runProduction(ctx, req.Id, nil, prep, who, func(ctx context.Context, tx pgx.Tx, _ *store.Queries, orders map[int64]*lockedOrder) error {
+		return notifyOrder(ctx, tx, req.Id)
+	})
+	if errors.Is(err, errReplayed) {
+		return s.productionResponse(ctx, id, true)
 	}
 	if err != nil {
 		return answer(err, postAnswers())
 	}
-	out, err := s.productionAnswer(ctx, productionID)
+	return s.productionResponse(ctx, id, false)
+}
+
+// productionResponse is the post's answer: 200 for a replay, 201 for a
+// first post.
+func (s *server) productionResponse(ctx context.Context, id int64, replayed bool) (gen.PostManufacturingProductionResponseObject, error) {
+	out, err := s.productionAnswer(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if replayed {
+		return gen.PostManufacturingProduction200JSONResponse(out), nil
 	}
 	return gen.PostManufacturingProduction201JSONResponse(out), nil
 }
@@ -462,7 +551,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 	}); err != nil {
 		return 0, err
 	}
-	return p.ID, notifyOrder(ctx, tx, o.ID)
+	return p.ID, nil
 }
 
 // judgeDeviation is the consumption warning (M22, M22a): a sent consumed

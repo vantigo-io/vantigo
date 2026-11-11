@@ -1,6 +1,10 @@
 package manufacturing
 
-import "context"
+import (
+	"context"
+
+	"github.com/vantigo-io/vantigo/server/internal/module"
+)
 
 // InOpenTx exposes inOpenTx to the external tests, whose contract-call hook
 // uses it to tell a call made from inside one of this module's transactions
@@ -14,4 +18,9 @@ const LockVariantsCall = lockVariantsCall
 // reported to (contractscalls.go), once, from TestMain.
 func SetContractCallHook(hook func(ctx context.Context, method string)) {
 	contractCallHook = hook
+}
+
+// ErasureCycle runs one cycle of the erasure sweep: the notes it blanked.
+func ErasureCycle(ctx context.Context, d module.Deps) (int64, error) {
+	return (&erasureWorker{deps: d}).RunCycle(ctx)
 }

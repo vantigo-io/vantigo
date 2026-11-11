@@ -135,6 +135,24 @@ type ManufacturingProductionLine struct {
 	FromLocationID *int64
 }
 
+type ManufacturingTimeLog struct {
+	ID                 int64
+	WorkOrderID        *int64
+	WorkCenterID       int64
+	UserID             *uuid.UUID
+	UserDisplay        string
+	Kind               string
+	Reason             *string
+	Note               string
+	StartedAt          time.Time
+	EndedAt            *time.Time
+	Quantity           pgtype.Numeric
+	Forced             bool
+	CorrectedBy        *uuid.UUID
+	CorrectedByDisplay string
+	CorrectedAt        *time.Time
+}
+
 type ManufacturingWorkCenter struct {
 	ID                 int64
 	Code               string
@@ -160,4 +178,28 @@ type ManufacturingWorkCenterClosure struct {
 	FromDate     pgtype.Date
 	ToDate       pgtype.Date
 	Note         string
+}
+
+type ManufacturingWorkOrder struct {
+	ID              int64
+	OrderID         int64
+	OperationID     *int64
+	Sequence        int32
+	Name            string
+	WorkCenterID    int64
+	SetupMinutes    pgtype.Numeric
+	CleanupMinutes  pgtype.Numeric
+	MinutesPerCycle pgtype.Numeric
+	Capacity        int32
+	TimeEfficiency  int32
+	MachineRate     pgtype.Numeric
+	LabourRate      pgtype.Numeric
+	Instructions    string
+	ExpectedMinutes int64
+	PlannedStart    *time.Time
+	PlannedFinish   *time.Time
+	Status          string
+	StartedAt       *time.Time
+	FinishedAt      *time.Time
+	Revision        int32
 }

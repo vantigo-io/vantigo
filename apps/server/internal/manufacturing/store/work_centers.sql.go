@@ -28,11 +28,14 @@ func (q *Queries) CountActiveBomsAtWorkCenter(ctx context.Context, workCenterID 
 }
 
 const countOperationsOfWorkCenter = `-- name: CountOperationsOfWorkCenter :one
-SELECT count(*)::int FROM manufacturing.bom_operations WHERE work_center_id = $1
+SELECT ((SELECT count(*) FROM manufacturing.bom_operations o WHERE o.work_center_id = $1::bigint)
+      + (SELECT count(*) FROM manufacturing.work_orders w WHERE w.work_center_id = $1::bigint)
+      + (SELECT count(*) FROM manufacturing.time_logs l WHERE l.work_center_id = $1::bigint))::int
 `
 
-// CountOperationsOfWorkCenter is how many BoM operations name the work
-// center, of any BoM's status (work_center_in_use).
+// CountOperationsOfWorkCenter is how many BoM operations, work orders and
+// time logs name the work center, of any status (work_center_in_use): a
+// work order or a log keeps it as an operation does.
 func (q *Queries) CountOperationsOfWorkCenter(ctx context.Context, workCenterID int64) (int32, error) {
 	row := q.db.QueryRow(ctx, countOperationsOfWorkCenter, workCenterID)
 	var column_1 int32

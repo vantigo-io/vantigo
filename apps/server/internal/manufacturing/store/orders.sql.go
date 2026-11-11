@@ -652,8 +652,11 @@ WITH filtered AS (
     FROM manufacturing.orders o
     WHERE o.status = ANY($5::text[])
       AND ($6::bigint IS NULL OR o.site_id = $6)
-      AND ($7::bigint IS NULL OR EXISTS (
-            SELECT 1 FROM manufacturing.bom_operations op WHERE op.bom_id = o.bom_id AND op.work_center_id = $7))
+      AND ($7::bigint IS NULL
+           OR (o.status = 'draft' AND EXISTS (
+                SELECT 1 FROM manufacturing.bom_operations op WHERE op.bom_id = o.bom_id AND op.work_center_id = $7))
+           OR EXISTS (
+                SELECT 1 FROM manufacturing.work_orders wo WHERE wo.order_id = o.id AND wo.work_center_id = $7))
       AND ($8::int IS NULL OR o.variant_id = $8)
       AND ($9::date IS NULL OR o.due_date >= $9)
       AND ($10::date IS NULL OR o.due_date <= $10)
