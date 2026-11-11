@@ -55,6 +55,7 @@ const shipment = (overrides: Partial<Shipment> = {}): Shipment => ({
   deliveryNumber: 12,
   orderId: 2001,
   orderNumber: 5001,
+  customerId: 42,
   carrierAccountId: 1001,
   carrierAccountName: "Bring",
   carrier: "bring",
