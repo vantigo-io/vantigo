@@ -773,6 +773,11 @@ components:
                     type: string
                 variant:
                     $ref: '#/components/schemas/ManufacturingVariantRef'
+                warnings:
+                    description: 'What the order is allowed with but should be looked at, while it is not done or cancelled: variant_discontinued when its product or a component line''s variant is of a Discontinued product (a new MO warns but is allowed). Empty otherwise.'
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderWarning'
+                    type: array
             required:
                 - id
                 - number
@@ -809,6 +814,7 @@ components:
                 - closedAt
                 - revision
                 - updatedAt
+                - warnings
             type: object
         ManufacturingOrderComponent:
             additionalProperties: false
@@ -1222,6 +1228,11 @@ components:
                 - siteId
                 - priority
             type: object
+        ManufacturingOrderWarning:
+            description: 'A warning on an order: variant_discontinued — its product or a component is of a Discontinued product.'
+            enum:
+                - variant_discontinued
+            type: string
         ManufacturingOrderWithShortLines:
             additionalProperties: false
             description: An order after a write that reserves (confirm, reserve now, a line's add or edit), naming each line left short.
@@ -1748,6 +1759,10 @@ components:
                     description: Confirmed orders not started whose planned start is today or earlier.
                     format: int32
                     type: integer
+                today:
+                    description: Today in the business calendar's zone, the day the counts are of; the overview's week ends on the Sunday after it.
+                    format: date
+                    type: string
             required:
                 - activeWorkCenters
                 - blockedWorkCenters
@@ -1755,6 +1770,7 @@ components:
                 - ordersToStartToday
                 - ordersInProgress
                 - ordersLate
+                - today
             type: object
         ManufacturingStatus:
             description: A work center's or a BoM's status.
@@ -2677,6 +2693,7 @@ paths:
                   required: false
                   schema:
                     format: int32
+                    maximum: 100000
                     minimum: 1
                     type: integer
                 - description: Default 50.
@@ -3333,6 +3350,7 @@ paths:
             tags:
                 - Manufacturing
             x-vantigo-access: permission:manufacturing:access
+            x-vantigo-assistant: never
     /api/v1/manufacturing/orders/{id}/reserve:
         post:
             description: 'Reserve now: tries every line''s unreserved requirement again, in two passes (M20a).'

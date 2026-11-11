@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -725,5 +726,318 @@ func TestOrder_LiveNotifies(t *testing.T) {
 		case <-deadline:
 			t.Fatalf("live events missing: %v", want)
 		}
+	}
+}
+
+// TestOrder_ConfirmRelocksWhenAVariantIsNotLocked is M26a step 3 at the
+// snapshot: a BoM line whose variant LockVariants did not answer never
+// becomes a line without its snapshot. The write starts again from the lock,
+// and when the lock keeps not answering it the confirm is 409
+// revision_conflict, with nothing stored.
+func TestOrder_ConfirmRelocksWhenAVariantIsNotLocked(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	bikeBom(t, c)
+	o := createOrder(t, c, orderInput(varBike, "1"))
+	h.catalog.lockAnswer(varBolt, nil)
+	before := len(h.catalog.lockCalls())
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "confirm"), revisionInput(o.Revision)), http.StatusConflict, "revision_conflict",
+		"a component the lock does not answer")
+	if n := len(h.catalog.lockCalls()) - before; n != 4 {
+		t.Errorf("the confirm locked %d times, want 4 attempts", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.order_components WHERE order_id = $1`, o.Id); n != 0 {
+		t.Fatalf("%d component lines stored by a refused confirm", n)
+	}
+	if got := getOrder(t, c, o.Id); got.Status != gen.ManufacturingOrderStatusDraft || got.Revision != o.Revision {
+		t.Fatalf("after the refusal = %+v", got)
+	}
+
+	bolt := goods(varBolt, "BOLT-1", "Bolt", "0.25")
+	h.catalog.lockAnswer(varBolt, &bolt)
+	confirmOrder(t, c, o)
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.order_components WHERE order_id = $1 AND sku <> '' AND unit <> ''`, o.Id); n != 2 {
+		t.Errorf("%d snapshotted lines, want 2", n)
+	}
+}
+
+// TestOrder_ConfirmHoldsTheBomForShare is M26a step 3 against a BoM edit in
+// flight: confirm takes the draft's BoM row FOR SHARE before it re-reads the
+// lines, so it waits for the edit, then sees the line it changed, locks its
+// variant and snapshots it — never the line it did not lock.
+func TestOrder_ConfirmHoldsTheBomForShare(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	b := bikeBom(t, c)
+	o := createOrder(t, c, orderInput(varBike, "1"))
+	ctx := context.Background()
+	edit, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = edit.Rollback(ctx) })
+	// A BoM edit holds the row FOR UPDATE, as lockBom does, and moves the
+	// bolt line to the tube.
+	if _, err := edit.Exec(ctx, `SELECT 1 FROM manufacturing.boms WHERE id = $1 FOR UPDATE`, b.Id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := edit.Exec(ctx, `UPDATE manufacturing.bom_lines SET variant_id = $1 WHERE bom_id = $2 AND variant_id = $3`, varTube, b.Id, varBolt); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *modtest.Response, 1)
+	go func() { done <- c.Do(http.MethodPost, orderPath(o.Id, "confirm"), revisionInput(o.Revision)) }()
+	deadline := time.Now().Add(10 * time.Second)
+	for h.Count(t, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'
+		AND query LIKE '%manufacturing.boms%FOR SHARE%'`) == 0 {
+		select {
+		case res := <-done:
+			t.Fatalf("confirm did not wait for the BoM edit: %d %s", res.Status, res.Body)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("confirm never waited on the BoM's row")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := edit.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	res := <-done
+	mustStatus(t, res, http.StatusOK, "confirm after the BoM edit")
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.order_components WHERE order_id = $1 AND variant_id = $2 AND sku = 'TUBE-1'`, o.Id, varTube); n != 1 {
+		t.Errorf("tube lines = %d, want 1", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.order_components WHERE order_id = $1 AND (variant_id = $2 OR sku = '')`, o.Id, varBolt); n != 0 {
+		t.Errorf("%d stale or unsnapshotted lines", n)
+	}
+}
+
+// TestOrder_ConfirmedOrderKeepsItsPlace is M19 after confirm: the BoM moved
+// to another site's work centers, or the order's site archived, a confirmed
+// order still takes its dates, note and locations, judged against its own
+// site's locations; its site never changes.
+func TestOrder_ConfirmedOrderKeepsItsPlace(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	b := bikeBom(t, c)
+	o := confirmOrder(t, c, createOrder(t, c, orderInput(varBike, "1"))).Order
+
+	branch := createWorkCenter(t, c, workCenterInput("BR", siteBranch))
+	u := updateOf(getBom(t, c, b.Id))
+	u.Operations[0].WorkCenterId = branch.Id
+	mustStatus(t, c.Do(http.MethodPut, bomPath(b.Id), u), http.StatusOK, "move the BoM to the branch")
+	atMain := orderInput(varBike, "1")
+	atMain.SiteId = &[]int64{siteMain}[0]
+	expectRefusal(t, c.Do(http.MethodPost, ordersPath, atMain), http.StatusBadRequest, "work_center_other_site", "a new order at the old site")
+
+	upd := gen.ManufacturingOrderUpdate{Revision: o.Revision, BomId: b.Id, Quantity: "1", SiteId: siteMain, Priority: gen.ManufacturingPriorityNormal,
+		Note: str("After the move"), ComponentLocationId: &[]int64{locMainA1}[0]}
+	res := c.Do(http.MethodPut, orderPath(o.Id), upd)
+	mustStatus(t, res, http.StatusOK, "edit a confirmed order after its BoM moved")
+	o = orderOf(t, res)
+	if o.Note != "After the move" || o.ComponentLocationId == nil || *o.ComponentLocationId != locMainA1 || o.OutputLocationId != locMainRoot {
+		t.Fatalf("after the edit = %+v", o)
+	}
+
+	h.stock.archiveSite(siteMain)
+	upd.Revision, upd.Note = o.Revision, str("After the archive")
+	mustStatus(t, c.Do(http.MethodPut, orderPath(o.Id), upd), http.StatusOK, "edit a confirmed order at an archived site")
+	o = getOrder(t, c, o.Id)
+	upd.Revision = o.Revision
+	upd.ComponentLocationId = &[]int64{locBranchRoot}[0]
+	expectRefusal(t, c.Do(http.MethodPut, orderPath(o.Id), upd), http.StatusBadRequest, "location_unknown", "another site's location")
+	upd.ComponentLocationId, upd.SiteId = nil, siteBranch
+	expectRefusal(t, c.Do(http.MethodPut, orderPath(o.Id), upd), http.StatusConflict, "order_not_draft", "a confirmed order's site")
+}
+
+// TestOrder_ResponsibleMustBeActive refuses a disabled user as a new
+// responsible, while one disabled after being named stays through an edit.
+func TestOrder_ResponsibleMustBeActive(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	bikeBom(t, c)
+	_, named := h.SignInUser(t, reader...)
+	_, disabled := h.SignInUser(t, reader...)
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, disabled)
+
+	in := orderInput(varBike, "1")
+	in.ResponsibleUserId = &disabled
+	expectRefusal(t, c.Do(http.MethodPost, ordersPath, in), http.StatusBadRequest, "", "a disabled responsible")
+	in.ResponsibleUserId = &named
+	o := createOrder(t, c, in)
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, named)
+	b := o.BomId
+	upd := gen.ManufacturingOrderUpdate{Revision: o.Revision, BomId: b, Quantity: "1", SiteId: o.SiteId, Priority: o.Priority,
+		ResponsibleUserId: &named, Note: str("Still theirs")}
+	res := c.Do(http.MethodPut, orderPath(o.Id), upd)
+	mustStatus(t, res, http.StatusOK, "keep a responsible disabled since")
+	upd.Revision = orderOf(t, res).Revision
+	upd.ResponsibleUserId = &disabled
+	expectRefusal(t, c.Do(http.MethodPut, orderPath(o.Id), upd), http.StatusBadRequest, "", "change to a disabled responsible")
+}
+
+// TestProduction_ConcurrentSplitReadsTheLocationsAgain is M22a's split under
+// two productions at once: both split over the locations they read before
+// their transactions; the second's is stale once the first has taken from
+// the primary location, so Inventory refuses it, and it reads the locations
+// again and splits anew, posting since the site's total suffices.
+func TestProduction_ConcurrentSplitReadsTheLocationsAgain(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithPoolMaxConns(4))
+	c := h.SignIn(t, planner...)
+	bikeBom(t, c)
+	h.stock.put(varWheel, locMainA1, "4")
+	h.stock.put(varWheel, locMainA2, "4")
+	h.stock.setPrimary(varWheel, locMainA2)
+	h.stock.put(varBolt, locMainA1, "100")
+	o := confirmOrder(t, c, createOrder(t, c, orderInput(varBike, "4"))).Order
+	wheel := component(t, o, varWheel)
+
+	// The first Produce waits until both posts have read the locations, so
+	// both split over the same reading.
+	bothRead := make(chan struct{})
+	var reads atomic.Int32
+	h.stock.onLocations(func() {
+		if reads.Add(1) == 2 {
+			close(bothRead)
+		}
+	})
+	var first sync.Once
+	h.stock.onProduce(func(context.Context, pgx.Tx, contracts.StockProduction) error {
+		first.Do(func() {
+			select {
+			case <-bothRead:
+			case <-time.After(10 * time.Second):
+			}
+		})
+		return nil
+	})
+	accept := true
+	var wg sync.WaitGroup
+	statuses := make([]*modtest.Response, 2)
+	for i := range statuses {
+		wg.Go(func() {
+			post := gen.ManufacturingProductionInput{ClientRequestId: "split-" + strconv.Itoa(i), Quantity: "1", AcceptDeviation: &accept,
+				Lines: []gen.ManufacturingProductionLineInput{{ComponentId: *wheel.Id, Consumed: str("3")}}}
+			statuses[i] = h.SignIn(t, planner...).Do(http.MethodPost, orderPath(o.Id, "productions"), post)
+		})
+	}
+	wg.Wait()
+	for i, res := range statuses {
+		mustStatus(t, res, http.StatusCreated, "production "+strconv.Itoa(i))
+	}
+	if got := reads.Load(); got != 3 {
+		t.Errorf("Stock.Locations read %d times, want 3: one post read again", got)
+	}
+	ps := h.stock.productions()
+	if len(ps) != 2 || len(ps[1].Consume) != 2 || ps[1].Consume[0].FromLocationID != locMainA2 || ps[1].Consume[0].Quantity != "1.000" ||
+		ps[1].Consume[1].FromLocationID != locMainA1 || ps[1].Consume[1].Quantity != "2.000" {
+		t.Fatalf("productions = %+v", ps)
+	}
+	if h.stock.held(varWheel, locMainA2) != "0" || h.stock.held(varWheel, locMainA1) != "2" {
+		t.Errorf("wheels left: A1 %s, A2 %s", h.stock.held(varWheel, locMainA1), h.stock.held(varWheel, locMainA2))
+	}
+	if got := component(t, getOrder(t, c, o.Id), varWheel); got.Consumed != "6" {
+		t.Errorf("wheels consumed = %s, want 6", got.Consumed)
+	}
+}
+
+// TestProduction_ProduceLineRefusalNamesNoComponent is the refusal's
+// attribution: a line of Inventory's refusal names a component line only
+// when both its variant and its line id are that line's, so a refused
+// produce line — whose line id is the order's — names none.
+func TestProduction_ProduceLineRefusalNamesNoComponent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	bikeBom(t, c)
+	h.stock.put(varWheel, locMainA1, "100")
+	h.stock.put(varBolt, locMainA1, "100")
+	o := confirmOrder(t, c, createOrder(t, c, orderInput(varBike, "1"))).Order
+	wheel := component(t, o, varWheel)
+	h.stock.onProduce(func(context.Context, pgx.Tx, contracts.StockProduction) error {
+		line := contracts.StockLineRefusal{Code: contracts.StockVariantNotStocked, VariantID: varBike, LineID: *wheel.Id, Detail: "Not stocked."}
+		return &contracts.StockRefusal{Code: line.Code, VariantID: line.VariantID, LineID: line.LineID, Detail: line.Detail,
+			Lines: []contracts.StockLineRefusal{line}}
+	})
+	post := gen.ManufacturingProductionInput{ClientRequestId: "produce", Quantity: "1", Lines: []gen.ManufacturingProductionLineInput{}}
+	p := expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), post), http.StatusConflict, "variant_not_stocked", "the output refused")
+	if p.Lines == nil || len(*p.Lines) != 1 || (*p.Lines)[0].ComponentId != nil {
+		t.Errorf("refusal lines = %+v", p.Lines)
+	}
+}
+
+// TestOrder_BackorderOfAnArchivedBom is close's exception: a backorder keeps
+// its original's BoM even when it was archived since, and is confirmed at
+// once, while a draft on it can no longer be confirmed.
+func TestOrder_BackorderOfAnArchivedBom(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	b := bikeBom(t, c)
+	h.stock.put(varWheel, locMainA1, "100")
+	h.stock.put(varBolt, locMainA1, "100")
+	o := confirmOrder(t, c, createOrder(t, c, orderInput(varBike, "2"))).Order
+	draft := createOrder(t, c, orderInput(varBike, "1"))
+	post := gen.ManufacturingProductionInput{ClientRequestId: "half", Quantity: "1", Lines: []gen.ManufacturingProductionLineInput{}}
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), post), http.StatusCreated, "produce half")
+	b = getBom(t, c, b.Id)
+	mustStatus(t, c.Do(http.MethodPost, bomPath(b.Id, "archive"), revisionInput(b.Revision)), http.StatusOK, "archive the BoM")
+
+	o = getOrder(t, c, o.Id)
+	yes := true
+	res := c.Do(http.MethodPost, orderPath(o.Id, "close"), gen.ManufacturingCloseInput{Revision: o.Revision, Backorder: &yes})
+	mustStatus(t, res, http.StatusOK, "close with a backorder of an archived BoM")
+	var out gen.ManufacturingCloseResult
+	res.JSON(&out)
+	if out.Backorder == nil || out.Backorder.BomId != b.Id || out.Backorder.Status != gen.ManufacturingOrderStatusConfirmed {
+		t.Fatalf("backorder = %+v", out.Backorder)
+	}
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "confirm"), revisionInput(draft.Revision)), http.StatusConflict, "bom_not_active",
+		"confirm a draft of the archived BoM")
+}
+
+// TestOrder_DiscontinuedVariantWarns is §11's discontinued variant: a new
+// order whose component is of a Discontinued product is allowed, and the
+// create and confirm answers warn variant_discontinued; an order without one
+// warns nothing.
+func TestOrder_DiscontinuedVariantWarns(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	createBom(t, c, bomInput(varFrame, "1", line(varPaint, "1")))
+	bikeBom(t, c)
+	paint := goods(varPaint, "PAINT-1", "Paint", "")
+	paint.ProductStatus = "Discontinued"
+	h.catalog.seed(paint)
+
+	o := createOrder(t, c, orderInput(varFrame, "1"))
+	if fmt.Sprint(o.Warnings) != "[variant_discontinued]" {
+		t.Errorf("create warnings = %v", o.Warnings)
+	}
+	if out := confirmOrder(t, c, o); fmt.Sprint(out.Order.Warnings) != "[variant_discontinued]" {
+		t.Errorf("confirm warnings = %v", out.Order.Warnings)
+	}
+	if bike := createOrder(t, c, orderInput(varBike, "1")); bike.Warnings == nil || len(bike.Warnings) != 0 {
+		t.Errorf("a bicycle's warnings = %v", bike.Warnings)
+	}
+}
+
+// TestOrder_ListPageBounds refuses a page past 100000, whose offset would
+// overflow.
+func TestOrder_ListPageBounds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	mustStatus(t, c.Do(http.MethodGet, ordersPath+"?page=100001&pageSize=200", nil), http.StatusBadRequest, "a page past the last")
+	mustStatus(t, c.Do(http.MethodGet, ordersPath+"?page=100000&pageSize=200", nil), http.StatusOK, "the last page")
+	var stats gen.ManufacturingStats
+	c.Do(http.MethodGet, base+"/stats", nil).JSON(&stats)
+	if stats.Today.IsZero() {
+		t.Errorf("stats today = %v", stats.Today)
 	}
 }

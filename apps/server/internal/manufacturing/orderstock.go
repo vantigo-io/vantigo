@@ -44,13 +44,18 @@ func (s *server) ledger() (contracts.StockLedger, error) {
 
 // stockRefusal is Inventory's refusal as this module's 409, with its code
 // and each failing line named by its component line (Rounding and codes:
-// Inventory's refusals are passed through).
+// Inventory's refusals are passed through). A line is a component line's
+// only when both its variant and its line id are that line's: a production's
+// produce line carries the order's id as its line, which may equal a
+// component line's id, and names no component.
 func stockRefusal(r *contracts.StockRefusal, components []store.ManufacturingOrderComponent) error {
 	p := problem(http.StatusConflict, r.Code, "Inventory refused", r.Detail+" Nothing was changed.")
 	if len(r.Lines) > 0 {
 		lines := make([]gen.ManufacturingProblemLine, 0, len(r.Lines))
 		for _, l := range r.Lines {
-			index := slices.IndexFunc(components, func(c store.ManufacturingOrderComponent) bool { return c.ID == l.LineID })
+			index := slices.IndexFunc(components, func(c store.ManufacturingOrderComponent) bool {
+				return c.ID == l.LineID && c.VariantID == l.VariantID
+			})
 			line := gen.ManufacturingProblemLine{Index: int32(max(index, 0)), Code: l.Code, Detail: l.Detail}
 			if index >= 0 {
 				id := l.LineID
@@ -208,7 +213,10 @@ func (s *server) releaseAll(ctx context.Context, tx pgx.Tx, txq *store.Queries, 
 
 // snapshot copies the BoM's lines onto the order as its component lines
 // (M17, M18): required rounded up, the SKU, name and unit, and the standard
-// cost at confirm (M23a), all from what LockVariants answered.
+// cost at confirm (M23a), all from what LockVariants answered. A line whose
+// variant was not locked — the BoM changed after the lock, or the catalog no
+// longer answers the variant — is errRelock, never a line without its
+// snapshot.
 func snapshot(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, locked map[int32]contracts.VariantEntry) (int, error) {
 	bom, err := txq.GetBom(ctx, o.BomID)
 	if err != nil {
@@ -217,6 +225,11 @@ func snapshot(ctx context.Context, txq *store.Queries, o store.ManufacturingOrde
 	lines, err := txq.LinesOfBoms(ctx, []int64{o.BomID})
 	if err != nil {
 		return 0, err
+	}
+	for _, l := range lines {
+		if _, ok := locked[l.VariantID]; !ok {
+			return 0, errRelock
+		}
 	}
 	for _, l := range lines {
 		e := locked[l.VariantID]
@@ -629,7 +642,9 @@ func closeAnswers() answers[gen.CloseManufacturingOrderResponseObject] {
 // remains reserved and marks it done. Short of its quantity it asks for the
 // backorder (quantity_short): true makes one for the rest, numbered from the
 // root (M17b), with the same BoM, origin, place and dates, confirmed at once
-// because the original was — so it reserves again; false closes short.
+// because the original was — so it reserves again; false closes short. The
+// backorder's confirm is the one that does not refuse an archived BoM: it
+// keeps its original's, whatever happened to it since.
 func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManufacturingOrderRequestObject) (gen.CloseManufacturingOrderResponseObject, error) {
 	in := req.Body
 	who, err := s.actorOf(ctx)

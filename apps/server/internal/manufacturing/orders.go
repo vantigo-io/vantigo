@@ -54,6 +54,7 @@ const (
 	maxOrderNote    = 2000
 	defaultPageSize = 50
 	maxPageSize     = 200
+	maxPage         = 100000 // so (page − 1) × pageSize stays within int32
 	priorityNormal  = "normal"
 	originManual    = "manual"
 	maxLockAttempts = 4
@@ -158,13 +159,22 @@ func orderVariants(ctx context.Context, q *store.Queries, o store.ManufacturingO
 	return slices.Compact(ids), nil
 }
 
+// relockExhausted is the 409 of a write whose variants kept changing under
+// it for maxLockAttempts attempts: the caller reloads and tries again.
+func relockExhausted() error {
+	return conflict(codeRevisionConflict, "Revision conflict",
+		"The order's bill of materials or its lines changed while it was being saved. Reload it and try again.")
+}
+
 // withOrder runs fn on order id under the canonical lock order (M26a):
 // LockVariants on the order's product and components, taken from a plain
-// read, together with extra; the order FOR UPDATE; a re-read of the
-// variants, starting again from the lock when the set grew. fn's ledger
-// calls come after, on the same transaction. extra is read again on every
-// attempt, so a write whose own variants come from a row (a backorder's BoM)
-// names them there.
+// read, together with extra; the order FOR UPDATE; for a draft, or a write
+// with extra variants (a backorder's BoM), the order's BoM FOR SHARE, so its
+// lines stay as re-read until the commit; a re-read of the variants,
+// starting again from the lock when the set grew. fn's ledger calls come
+// after, on the same transaction. extra is read again on every attempt, so a
+// write whose own variants come from a row (a backorder's BoM) names them
+// there. A set that keeps growing is 409 revision_conflict.
 func (s *server) withOrder(ctx context.Context, id int64, extra func(context.Context, *store.Queries, store.ManufacturingOrder) ([]int32, error),
 	fn func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o *lockedOrder) error) error {
 	pool := store.New(s.deps.Pool)
@@ -201,6 +211,11 @@ func (s *server) withOrder(ctx context.Context, id int64, extra func(context.Con
 			if err != nil {
 				return err
 			}
+			if o.Status == orderDraft || extra != nil {
+				if _, err := txq.GetBomForShare(ctx, o.BomID); err != nil {
+					return err
+				}
+			}
 			now, err := orderVariants(ctx, txq, o)
 			if err != nil {
 				return err
@@ -219,8 +234,11 @@ func (s *server) withOrder(ctx context.Context, id int64, extra func(context.Con
 			}
 			return fn(ctx, tx, txq, &lockedOrder{order: o, locked: locked})
 		})
-		if errors.Is(err, errRelock) && attempt < maxLockAttempts {
-			continue
+		if errors.Is(err, errRelock) {
+			if attempt < maxLockAttempts {
+				continue
+			}
+			return relockExhausted()
 		}
 		return err
 	}
@@ -347,35 +365,52 @@ func (s *server) judgePlace(ctx context.Context, bomID int64, v *orderFields) (o
 		return place, refuseField(orderTitle, "siteId", codeSiteUnknown, "Not an active Inventory site")
 	}
 	place.site = site
-	locations, err := s.siteLocations(ctx, site.ID)
-	if err != nil {
-		return place, err
-	}
-	place.locations = map[int64]contracts.StockSiteLocation{}
-	for _, l := range locations {
-		place.locations[l.ID] = l
-	}
 	if v.outputLocationID == nil {
 		root := site.RootLocationID
 		v.outputLocationID = &root
 	}
+	place.locations, err = s.judgeLocations(ctx, site.ID, v)
+	return place, err
+}
+
+// judgeLocations judges the order's two locations against the site's
+// (M17a): each must be an active location of it (location_unknown); an
+// output location left out is the site's root.
+func (s *server) judgeLocations(ctx context.Context, siteID int64, v *orderFields) (map[int64]contracts.StockSiteLocation, error) {
+	locations, err := s.siteLocations(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[int64]contracts.StockSiteLocation{}
+	for _, l := range locations {
+		byID[l.ID] = l
+		if l.Root && v.outputLocationID == nil {
+			root := l.ID
+			v.outputLocationID = &root
+		}
+	}
 	var f fieldErrors
+	if v.outputLocationID == nil {
+		f.addCoded("outputLocationId", codeLocationUnknown, "The order's site has no root location")
+	}
 	for field, id := range map[string]*int64{"componentLocationId": v.componentLocationID, "outputLocationId": v.outputLocationID} {
 		if id == nil {
 			continue
 		}
-		if l, ok := place.locations[*id]; !ok || !l.Active {
+		if l, ok := byID[*id]; !ok || !l.Active {
 			f.addCoded(field, codeLocationUnknown, "Not an active location of the order's site")
 		}
 	}
 	if f.failed() {
-		return place, refuseInvalid(orderTitle, f)
+		return nil, refuseInvalid(orderTitle, f)
 	}
-	return place, nil
+	return byID, nil
 }
 
-// judgeResponsible refuses a responsible user the directory does not know.
-func (s *server) judgeResponsible(ctx context.Context, id *uuid.UUID) error {
+// judgeResponsible refuses a responsible user the directory does not know,
+// and a disabled one when the responsible changes from was (a disabled user
+// already responsible stays so through an edit of the other fields).
+func (s *server) judgeResponsible(ctx context.Context, id, was *uuid.UUID) error {
 	if id == nil {
 		return nil
 	}
@@ -383,8 +418,15 @@ func (s *server) judgeResponsible(ctx context.Context, id *uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	if _, ok := users[*id]; !ok && s.deps.Users != nil {
+	if s.deps.Users == nil {
+		return nil
+	}
+	u, ok := users[*id]
+	switch {
+	case !ok:
 		return refuseField(orderTitle, "responsibleUserId", "", "No such user")
+	case !u.Active && (was == nil || *was != *id):
+		return refuseField(orderTitle, "responsibleUserId", "", "The user is disabled")
 	}
 	return nil
 }
@@ -465,7 +507,7 @@ func (s *server) CreateManufacturingOrder(ctx context.Context, req gen.CreateMan
 	if _, err := s.judgePlace(ctx, b.ID, &v); err != nil {
 		return answer(err, createOrderAnswers())
 	}
-	if err := s.judgeResponsible(ctx, v.responsible); err != nil {
+	if err := s.judgeResponsible(ctx, v.responsible, nil); err != nil {
 		return answer(err, createOrderAnswers())
 	}
 	who, err := s.actorOf(ctx)
@@ -527,8 +569,11 @@ func (s *server) CreateManufacturingOrder(ctx context.Context, req gen.CreateMan
 			}
 			return notifyOrder(ctx, tx, o.ID)
 		})
-		if errors.Is(err, errRelock) && attempt < maxLockAttempts {
-			continue
+		if errors.Is(err, errRelock) {
+			if attempt < maxLockAttempts {
+				continue
+			}
+			err = relockExhausted()
 		}
 		if err != nil {
 			return answer(err, createOrderAnswers())
@@ -588,10 +633,22 @@ func (s *server) UpdateManufacturingOrder(ctx context.Context, req gen.UpdateMan
 		}
 	}
 	v.siteID = &in.SiteId
-	if _, err := s.judgePlace(ctx, bomID, &v); err != nil {
-		return answer(err, updateOrderAnswers())
+	if pre.Status == orderDraft {
+		if _, err := s.judgePlace(ctx, bomID, &v); err != nil {
+			return answer(err, updateOrderAnswers())
+		}
+	} else {
+		// A confirmed order keeps its BoM and site whatever happened to them
+		// since — the BoM's work centers moved, the site archived — so only
+		// its locations are judged, against its own site's.
+		if bomID != pre.BomID || in.SiteId != pre.SiteID || v.quantity.Cmp(ratOrZero(pre.Quantity)) != 0 {
+			return answer(orderNotDraft(pre.Status, "the BoM, the quantity and the site change"), updateOrderAnswers())
+		}
+		if _, err := s.judgeLocations(ctx, pre.SiteID, &v); err != nil {
+			return answer(err, updateOrderAnswers())
+		}
 	}
-	if err := s.judgeResponsible(ctx, v.responsible); err != nil {
+	if err := s.judgeResponsible(ctx, v.responsible, pre.ResponsibleUserID); err != nil {
 		return answer(err, updateOrderAnswers())
 	}
 	who, err := s.actorOf(ctx)
@@ -877,6 +934,7 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		Components: make([]gen.ManufacturingOrderComponent, 0, len(components)), Availability: cov.status,
 		Overrun:     text(positive(new(big.Rat).Sub(ratOrZero(o.Produced), ratOrZero(o.Quantity))), quantityPlaces),
 		ConfirmedAt: o.ConfirmedAt, ClosedAt: o.ClosedAt, Revision: o.Revision, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
+		Warnings: warningsOf(o, entries, components),
 	}
 	if o.BackorderOfID != nil {
 		if x, ok := r.related[*o.BackorderOfID]; ok {
@@ -914,6 +972,27 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		})
 	}
 	return out, nil
+}
+
+// productDiscontinued is the catalog's status of a product being used up.
+const productDiscontinued = "Discontinued"
+
+// warningsOf is what an order not done or cancelled is allowed with but
+// should be looked at (§11): variant_discontinued when its product or a
+// component line's variant is of a Discontinued product.
+func warningsOf(o store.ManufacturingOrder, entries map[int32]contracts.VariantEntry, components []store.ManufacturingOrderComponent) []gen.ManufacturingOrderWarning {
+	out := []gen.ManufacturingOrderWarning{}
+	if o.Status == orderDone || o.Status == orderCancelled {
+		return out
+	}
+	discontinued := entries[o.VariantID].ProductStatus == productDiscontinued
+	for _, c := range components {
+		discontinued = discontinued || entries[c.VariantID].ProductStatus == productDiscontinued
+	}
+	if discontinued {
+		out = append(out, gen.VariantDiscontinued)
+	}
+	return out
 }
 
 // people is the responsible users named, by id.
@@ -1043,8 +1122,8 @@ func (s *server) ListManufacturingOrders(ctx context.Context, req gen.ListManufa
 	if p.PageSize != nil {
 		params.PageSize = *p.PageSize
 	}
-	if page < 1 || params.PageSize < 1 || params.PageSize > maxPageSize {
-		return answer(refuseField("The list was not read", "page", "", "page from 1, pageSize 1–200"), listOrdersAnswers())
+	if page < 1 || page > maxPage || params.PageSize < 1 || params.PageSize > maxPageSize {
+		return answer(refuseField("The list was not read", "page", "", "page 1–100000, pageSize 1–200"), listOrdersAnswers())
 	}
 	params.PageOffset = (page - 1) * params.PageSize
 	today, _, err := s.today(ctx)

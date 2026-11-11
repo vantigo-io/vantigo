@@ -235,6 +235,16 @@ func postAnswers() answers[gen.PostManufacturingProductionResponseObject] {
 // first production answers.
 var errReplay = errors.New("manufacturing: the production was posted meanwhile")
 
+// errResplit is the post's answer when Inventory refused insufficient_stock
+// on a line split over the locations read before the transaction (M22a):
+// another production took from them meanwhile, so the transaction rolls back
+// and the post starts again from a fresh Stock.Locations, at most
+// maxSplitAttempts times.
+var errResplit = errors.New("manufacturing: the locations changed under the split; read them again")
+
+// maxSplitAttempts is how many times a post reads the locations and splits.
+const maxSplitAttempts = 3
+
 // replay is the answer to a clientRequestId already posted (M22a): the
 // first production with 200 when the body is the same, else
 // client_request_reused.
@@ -308,20 +318,25 @@ func (s *server) PostManufacturingProduction(ctx context.Context, req gen.PostMa
 	for _, c := range components {
 		variants = append(variants, c.VariantID)
 	}
-	held, err := s.stockLocations(ctx, variants, pre.SiteID)
-	if err != nil {
-		return answer(err, postAnswers())
-	}
 	who, err := s.actorOf(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var productionID int64
-	err = s.withOrder(ctx, req.Id, nil, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, lo *lockedOrder) error {
-		id, err := s.postProduction(ctx, tx, txq, lo.order, in, v, held, who)
-		productionID = id
-		return err
-	})
+	for attempt := 1; ; attempt++ {
+		var held map[int32][]contracts.StockLocation
+		if held, err = s.stockLocations(ctx, variants, pre.SiteID); err != nil {
+			return answer(err, postAnswers())
+		}
+		err = s.withOrder(ctx, req.Id, nil, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, lo *lockedOrder) error {
+			id, err := s.postProduction(ctx, tx, txq, lo.order, in, v, held, who, attempt == maxSplitAttempts)
+			productionID = id
+			return err
+		})
+		if !errors.Is(err, errResplit) {
+			break
+		}
+	}
 	if errors.Is(err, errReplay) || db.IsUniqueViolation(err, productionUniqueIndex) {
 		p, rerr := pool.ProductionByClientRequest(ctx, in.ClientRequestId)
 		if rerr != nil {
@@ -341,9 +356,10 @@ func (s *server) PostManufacturingProduction(ctx context.Context, req gen.PostMa
 
 // postProduction is the post on the locked order: the state, the lines, the
 // consumption warning, the production row, the split, Produce, and the
-// totals.
+// totals. Unless last, Inventory's insufficient_stock on a split line is
+// errResplit.
 func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, in gen.ManufacturingProductionInput,
-	v productionValues, held map[int32][]contracts.StockLocation, who actor) (int64, error) {
+	v productionValues, held map[int32][]contracts.StockLocation, who actor, last bool) (int64, error) {
 	if !isOpen(o.Status) {
 		return 0, orderNotOpen(o.Status)
 	}
@@ -406,6 +422,9 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 			// transaction rolls back, the production row with it (M2a).
 			var r *contracts.StockRefusal
 			if errors.As(err, &r) {
+				if !last && r.Code == contracts.StockInsufficientStock && splitRefused(r, o, v.lines) {
+					return 0, errResplit
+				}
 				return 0, stockRefusal(r, components)
 			}
 			return 0, fmt.Errorf("manufacturing: post production %d: %w", p.ID, err)
@@ -548,6 +567,31 @@ func splitConsumption(o store.ManufacturingOrder, byID map[int64]store.Manufactu
 		return nil, stockRefusal(r, components)
 	}
 	return out, nil
+}
+
+// splitRefused reports whether a refusal names — in its lines, or as its
+// own line when it lists none — a line the post split over the locations
+// holding it: one with neither its own fromLocationId nor the order's
+// component location.
+func splitRefused(r *contracts.StockRefusal, o store.ManufacturingOrder, lines []productionLine) bool {
+	if o.ComponentLocationID != nil {
+		return false
+	}
+	split := map[int64]bool{}
+	for _, l := range lines {
+		if l.from == nil {
+			split[l.componentID] = true
+		}
+	}
+	if len(r.Lines) == 0 {
+		return split[r.LineID]
+	}
+	for _, l := range r.Lines {
+		if split[l.LineID] {
+			return true
+		}
+	}
+	return false
 }
 
 // GetManufacturingProduction is one production with its order's id.
