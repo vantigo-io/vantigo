@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: Turning Manufacturing on — the two modules it requires, the migration and the manufacturing schema, granting it to a least-privilege role — the five permissions and what each gives, the sensitive cost permission and who should hold it, who manages manufacturing orders and who registers production, who works on the shop floor and who corrects time logs, the roles to build from them; setting up tablets on the floor — an account per operator, a current browser, keeping the screen awake, the work center each tablet remembers and the network; how to verify it, and what can go wrong.
+description: Turning Manufacturing on — the two modules it requires, the migration and the manufacturing schema, granting it to a least-privilege role — the five permissions and what each gives, the sensitive cost permission and who should hold it, who manages manufacturing orders and who registers production, who works on the shop floor and who corrects time logs, who plans the schedule, the roles to build from them; the business time zone the work centers' calendars run in; setting up tablets on the floor — an account per operator, a current browser, keeping the screen awake, the work center each tablet remembers and the network; how to verify it, and what can go wrong.
 sidebar:
   order: 51
 sources:
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/db/migrations/00156_manufacturing_baseline.sql
   - apps/server/internal/db/migrations/00157_manufacturing_orders.sql
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
+  - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
 ---
 
 The Manufacturing module (**Produksjon** in Norwegian) describes how the business makes
@@ -24,7 +25,12 @@ people use it is in [Manufacturing](/en/user/manufacturing/), and every rule in 
   overview shows what is available there. Set up at least one site in Inventory first
   ([Set up a site](/en/user/inventory/#set-up-a-site)).
 - Give the products you make and the components you use a **standard cost** in Products
-  if those who see costs should get a complete rolled-up cost.
+  if those who see costs should get a complete rolled-up cost, and a complete estimate
+  and actual on each manufacturing order.
+- Check the **business time zone** under **Workspace settings**
+  ([guide](/en/user/workspace-administration/#workspace-settings)). A work center's
+  weekly pattern is read as local times in that zone, so the production schedule plans
+  in it, the days around a change to or from daylight saving time included.
 
 ## Enable the module
 
@@ -46,8 +52,9 @@ people use it is in [Manufacturing](/en/user/manufacturing/), and every rule in 
    ```
 
    The migration `00157_manufacturing_orders.sql` adds the manufacturing orders' tables
-   to the schema, and `00158_manufacturing_work_orders.sql` the work orders and time logs
-   of the shop floor. The default privileges under Database roles cover them; a role
+   to the schema, `00158_manufacturing_work_orders.sql` the work orders and time logs
+   of the shop floor, and `00159_manufacturing_schedule.sql` the production schedule's
+   `work_order_slots` table and the orders' requested start, estimate and actual. The default privileges under Database roles cover them; a role
    granted table by table instead needs the `GRANT` statements run again after each
    upgrade.
 
@@ -68,11 +75,11 @@ beside it.
 
 | Permission | Key | Gives |
 | --- | --- | --- |
-| Use Manufacturing | `manufacturing:access` | The app, and reading work centers, their closures, bills of materials and their overview, and manufacturing orders with their productions and history |
+| Use Manufacturing | `manufacturing:access` | The app, and reading work centers, their closures, bills of materials and their overview, manufacturing orders with their productions and history, the production schedule, and the utilisation and time-deviation reports |
 | Manage bills of materials and work centers | `manufacturing:boms-manage` | Creating, editing, archiving, reactivating and deleting work centers and their closures; creating, editing, archiving and reactivating bills of materials and making one the default |
-| Manage manufacturing orders | `manufacturing:orders-manage` | Creating, changing, confirming, reserving, closing and cancelling manufacturing orders; adding and changing their components; registering a production; everything on the shop floor; correcting a time log and adding a missing one |
+| Manage manufacturing orders | `manufacturing:orders-manage` | Creating, changing, confirming, reserving, closing and cancelling manufacturing orders; adding and changing their components; registering a production; everything on the shop floor; correcting a time log and adding a missing one; planning orders on the production schedule and moving their work orders |
 | Work on the shop floor | `manufacturing:shop-floor` | On the shop floor: starting, pausing and finishing work orders, registering a production, reporting scrap, and blocking and unblocking a work center; registering a production on a manufacturing order |
-| See manufacturing costs | `manufacturing:costs-view` | Every cost figure: a work center's machine and labour rates, and setting them; the standard costs, extended values, operation costs and the rolled-up cost in the overview. Sensitive, and cannot be delegated |
+| See manufacturing costs | `manufacturing:costs-view` | Every cost figure: a work center's machine and labour rates, and setting them; the standard costs, extended values, operation costs and the rolled-up cost in the overview; a manufacturing order's **Cost** panel; the **Production cost** report. Sensitive, and cannot be delegated |
 
 **See manufacturing costs** is sensitive: it shows what each product costs to make and
 what an hour of each machine and of labour costs. Give it to whoever prices and
@@ -155,6 +162,10 @@ shows the right time without the server sending it.
    **Start**: the timer runs. Choose **Finish**: the work order leaves the queue.
 9. As a supervisor, open the order's **Work orders** tab: the operator's time is under
    **Time logs**, and **Correct** is offered.
+10. Confirm a third order and choose **Plan** on it. Open **Production schedule** and
+    choose the site: the order's work orders are bars on the work center's row. With See
+    manufacturing costs, the order shows its **Cost** panel, and **Overview** →
+    **Reports** offers **Production cost**.
 
 ## What can go wrong
 
@@ -180,4 +191,9 @@ shows the right time without the server sending it.
 | The tablet never offers **Continue at** | The browser forgets its data: a private window, or the data is cleared | Use a normal browser window and keep its site data |
 | The timer stops or the screen goes dark | The tablet locks itself | Lengthen the screen timeout, or use kiosk mode |
 | `permission denied for table work_orders` in the log after the upgrade | The role was granted table by table, before `00158` | Run the `GRANT` statements again ([Database roles](/en/admin/installation/#database-roles)) |
+| `permission denied for table work_order_slots` in the log after the upgrade | The role was granted table by table, before `00159` | Run the `GRANT` statements again ([Database roles](/en/admin/installation/#database-roles)) |
+| No **Plan**, **Unplan** or **Plan all**, and bars cannot be moved | The person lacks Manage manufacturing orders | Grant it to planners |
+| Planning is refused: a work order does not fit within 365 days | The work center is closed, or fully booked, for the next year: no pattern, a long closure | Correct the weekly pattern or the closures, or unplan other orders |
+| The schedule plans at the wrong hours | The business time zone is not the factory's | Set it under **Workspace settings** |
+| No **Cost** panel on an order, no **Production cost** report | The person lacks See manufacturing costs | Grant it to those who should see costs |
 | A production is refused for stock | The site does not hold enough of a component, or the site is archived in Inventory | Receive or move the stock, reactivate the site, or correct with an Inventory adjustment |

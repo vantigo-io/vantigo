@@ -280,6 +280,11 @@
     "description": "The component lines of a manufacturing order: required, reserved, available, consumed, scrapped and missing for each."
   },
   {
+    "key": "manufacturing.order.cost",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The order's estimate, actual cost and deviation per part, the cost per unit once closed and the downtime by reason. Shown only to someone who may see costs."
+  },
+  {
     "key": "manufacturing.order.facts",
     "route": "/manufacturing/orders/{orderId}",
     "description": "The facts of a manufacturing order: quantity, produced, due and planned dates, priority, responsible, site, bill of materials, origin, reservation and backorders."
@@ -293,6 +298,11 @@
     "key": "manufacturing.order.history",
     "route": "/manufacturing/orders/{orderId}",
     "description": "The history of a manufacturing order: each event, who did it and when."
+  },
+  {
+    "key": "manufacturing.order.plan",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "Plans the order's unfinished work orders forward on their work centers' calendars, from the requested start or now."
   },
   {
     "key": "manufacturing.order.short-lines",
@@ -348,6 +358,46 @@
     "key": "manufacturing.overview.new-order",
     "route": "/manufacturing",
     "description": "The button on the Manufacturing overview that opens the form for a new manufacturing order."
+  },
+  {
+    "key": "manufacturing.overview.reports",
+    "route": "/manufacturing",
+    "description": "Opens the reports: production cost, work-center utilisation and time deviation."
+  },
+  {
+    "key": "manufacturing.reports.download",
+    "route": "/manufacturing/reports",
+    "description": "Downloads the report shown, for the same period and site, as a CSV file."
+  },
+  {
+    "key": "manufacturing.reports.filters",
+    "route": "/manufacturing/reports",
+    "description": "The period, from and to, and the site the reports cover; empty dates take the last 30 days."
+  },
+  {
+    "key": "manufacturing.schedule.bar",
+    "route": "/manufacturing/schedule",
+    "description": "A planned work order, labelled with its manufacturing order and product. Drag it along its row to move it to another day or time, or press it to choose Move to."
+  },
+  {
+    "key": "manufacturing.schedule.board",
+    "route": "/manufacturing/schedule",
+    "description": "One row per work center and one column per day, with each day's load in per cent; a load above 100 % is marked, and closed days and blocked work centers are greyed."
+  },
+  {
+    "key": "manufacturing.schedule.plan-all",
+    "route": "/manufacturing/schedule",
+    "description": "Plans every unscheduled order at the site, urgent ones first and then by due date, and lists those that found no capacity within 365 days."
+  },
+  {
+    "key": "manufacturing.schedule.site",
+    "route": "/manufacturing/schedule",
+    "description": "The site whose work centers the production schedule shows; the board remembers the choice in this browser."
+  },
+  {
+    "key": "manufacturing.schedule.unscheduled",
+    "route": "/manufacturing/schedule",
+    "description": "The confirmed manufacturing orders that have no plan yet, each with a Plan button."
   },
   {
     "key": "manufacturing.shop-floor.block",

@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de fem rettighetene og hva hver gir, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, rollene du bygger av dem; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, og nettverket; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de fem rettighetene og hva hver gir, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, hvem som planlegger produksjonsplanen, rollene du bygger av dem; virksomhetens tidssone som arbeidsstasjonenes kalendere går i; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, og nettverket; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 51
 sources:
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/db/migrations/00156_manufacturing_baseline.sql
   - apps/server/internal/db/migrations/00157_manufacturing_orders.sql
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
+  - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
 ---
 
 Produksjon-modulen (**Manufacturing** på engelsk) beskriver hvordan virksomheten lager
@@ -24,7 +25,12 @@ den brukes, står i [Produksjon](/nb/user/manufacturing/), og hver regel i
   oversikten viser hva som er tilgjengelig der. Opprett minst ett lagersted i Lager først
   ([Opprett et lagersted](/nb/user/inventory/#opprett-et-lagersted)).
 - Gi produktene du lager og komponentene du bruker en **standardkost** i Produkter hvis
-  de som ser kostnader, skal få en fullstendig samlet kostnad.
+  de som ser kostnader, skal få en fullstendig samlet kostnad, og et fullstendig estimat
+  og faktisk kostnad på hver produksjonsordre.
+- Sjekk **Virksomhetens tidssone** under **Innstillinger for arbeidsområdet**
+  ([veiledning](/nb/user/workspace-administration/#innstillinger-for-arbeidsområdet)).
+  Ukemønsteret til en arbeidsstasjon leses som lokale tider i den sonen, så
+  produksjonsplanen planlegger i den, også dagene rundt overgangen til og fra sommertid.
 
 ## Slå på modulen
 
@@ -46,8 +52,9 @@ den brukes, står i [Produksjon](/nb/user/manufacturing/), og hver regel i
    ```
 
    Migreringen `00157_manufacturing_orders.sql` legger produksjonsordrenes tabeller til i
-   skjemaet, og `00158_manufacturing_work_orders.sql` verkstedets arbeidsordrer og
-   tidsregistreringer. Standardrettighetene under Databaseroller dekker dem; en rolle som
+   skjemaet, `00158_manufacturing_work_orders.sql` verkstedets arbeidsordrer og
+   tidsregistreringer, og `00159_manufacturing_schedule.sql` produksjonsplanens tabell
+   `work_order_slots` og ordrenes ønskede start, estimat og faktiske kostnad. Standardrettighetene under Databaseroller dekker dem; en rolle som
    har fått rettigheter tabell for tabell, trenger at `GRANT`-setningene kjøres på nytt
    etter hver oppgradering.
 
@@ -69,11 +76,11 @@ Ingen andre enn Owner kan bruke appen før en rolle gir rettighetene, under
 
 | Rettighet | Nøkkel | Gir |
 | --- | --- | --- |
-| Bruke Produksjon | `manufacturing:access` | Appen, og å lese arbeidsstasjoner, deres stengninger, stykklister og oversikten over dem, og produksjonsordrer med produksjonene og historikken deres |
+| Bruke Produksjon | `manufacturing:access` | Appen, og å lese arbeidsstasjoner, deres stengninger, stykklister og oversikten over dem, produksjonsordrer med produksjonene og historikken deres, produksjonsplanen, og rapportene om utnyttelse og tidsavvik |
 | Administrere stykklister og arbeidsstasjoner | `manufacturing:boms-manage` | Å opprette, redigere, arkivere, gjenaktivere og slette arbeidsstasjoner og deres stengninger; å opprette, redigere, arkivere og gjenaktivere stykklister og gjøre en til standard |
-| Administrere produksjonsordrer | `manufacturing:orders-manage` | Å opprette, endre, bekrefte, reservere, lukke og kansellere produksjonsordrer; å legge til og endre komponentene deres; å registrere en produksjon; alt i verkstedet; å korrigere en tidsregistrering og legge til en som mangler |
+| Administrere produksjonsordrer | `manufacturing:orders-manage` | Å opprette, endre, bekrefte, reservere, lukke og kansellere produksjonsordrer; å legge til og endre komponentene deres; å registrere en produksjon; alt i verkstedet; å korrigere en tidsregistrering og legge til en som mangler; å planlegge ordrer i produksjonsplanen og flytte arbeidsordrene deres |
 | Arbeide i verkstedet | `manufacturing:shop-floor` | I verkstedet: å starte, sette på pause og fullføre arbeidsordrer, å registrere en produksjon, å melde svinn, og å blokkere og oppheve blokkeringen av en arbeidsstasjon; å registrere en produksjon på en produksjonsordre |
-| Se produksjonskostnader | `manufacturing:costs-view` | Alle kostnadstall: en arbeidsstasjons maskin- og arbeidssats, og å sette dem; standardkostene, verdiene, operasjonskostnadene og den samlede kostnaden i oversikten. Sensitiv, og kan ikke delegeres |
+| Se produksjonskostnader | `manufacturing:costs-view` | Alle kostnadstall: en arbeidsstasjons maskin- og arbeidssats, og å sette dem; standardkostene, verdiene, operasjonskostnadene og den samlede kostnaden i oversikten; **Kostnad**-panelet på en produksjonsordre; rapporten **Produksjonskostnad**. Sensitiv, og kan ikke delegeres |
 
 **Se produksjonskostnader** er sensitiv: den viser hva hvert produkt koster å lage, og hva
 en time på hver maskin og en arbeidstime koster. Gi den til dem som priser og kalkulerer —
@@ -157,6 +164,10 @@ igjen, viser riktig tid uten at serveren sender den.
    **Ferdig**: arbeidsordren forsvinner fra køen.
 9. Som arbeidsleder åpner du fanen **Arbeidsordrer** på ordren: operatørens tid står under
    **Tidsregistreringer**, og **Korriger** tilbys.
+10. Bekreft en tredje ordre og velg **Planlegg** på den. Åpne **Produksjonsplan** og velg
+    lagerstedet: ordrens arbeidsordrer er stolper på arbeidsstasjonens rad. Med Se
+    produksjonskostnader viser ordren **Kostnad**-panelet, og **Oversikt** →
+    **Rapporter** tilbyr **Produksjonskostnad**.
 
 ## Hva som kan gå galt
 
@@ -182,4 +193,9 @@ igjen, viser riktig tid uten at serveren sender den.
 | Nettbrettet tilbyr aldri **Fortsett ved** | Nettleseren glemmer dataene sine: et privat vindu, eller dataene tømmes | Bruk et vanlig nettleservindu og behold nettstedsdataene |
 | Tidtakeren stopper eller skjermen blir mørk | Nettbrettet låser seg | Forleng tidsavbruddet for skjermen, eller bruk kioskmodus |
 | `permission denied for table work_orders` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00158` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |
+| `permission denied for table work_order_slots` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00159` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |
+| Ingen **Planlegg**, **Fjern plan** eller **Planlegg alle**, og stolpene kan ikke flyttes | Personen mangler Administrere produksjonsordrer | Gi den til planleggerne |
+| Planleggingen nektes: en arbeidsordre får ikke plass innen 365 dager | Arbeidsstasjonen er stengt, eller fullbooket, det neste året: intet mønster, en lang stengning | Rett ukemønsteret eller stengningene, eller fjern planen på andre ordrer |
+| Produksjonsplanen planlegger på feil klokkeslett | Virksomhetens tidssone er ikke fabrikkens | Sett den under **Innstillinger for arbeidsområdet** |
+| Ingen **Kostnad**-panel på en ordre, ingen rapport **Produksjonskostnad** | Personen mangler Se produksjonskostnader | Gi den til dem som skal se kostnader |
 | En produksjon nektes for beholdning | Lagerstedet har ikke nok av en komponent, eller lagerstedet er arkivert i Lager | Ta imot eller flytt varene, gjenåpne lagerstedet, eller rett med en justering i Lager |
