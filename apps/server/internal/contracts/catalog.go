@@ -45,6 +45,11 @@ type VariantEntry struct {
 	// (orders design O50: a shipment's parcel is proposed at the sum of its
 	// variants' weights).
 	WeightGrams *int64
+	// StandardCost is the variant's standard cost per unit as Products keeps
+	// it (no currency of its own), exact decimal text with two places
+	// ("12.50"), "" when it has none (manufacturing design M4: the one cost
+	// Manufacturing reads). Every read of the catalog fills it.
+	StandardCost string
 }
 
 // ProductImage is an image of a product as another module may read it

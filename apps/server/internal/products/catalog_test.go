@@ -115,6 +115,50 @@ func TestCatalog_VariantWeightInGrams(t *testing.T) {
 	}
 }
 
+// TestCatalog_StandardCost proves Variant, Variants and LockVariants answer
+// a variant's standard cost as exact decimal text (manufacturing design M4),
+// and "" for a variant without one.
+func TestCatalog_StandardCost(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	r := c.Do(http.MethodPost, "/api/v1/products", map[string]any{
+		"name": "Costed", "type": "Goods", "taxCategoryId": taxCategoryID,
+		"variants": []map[string]any{{"sku": sku(t, "costed"), "standardCost": 12.5}, {"sku": sku(t, "uncosted")}},
+	})
+	if r.Status != http.StatusCreated {
+		t.Fatalf("status %d body %s, want 201", r.Status, r.Body)
+	}
+	var created productJSON
+	r.JSON(&created)
+	costed, uncosted := created.Variants[0].Id, created.Variants[1].Id
+	catalog := products.Module().Products(h.Deps())
+	ctx := context.Background()
+
+	one, err := catalog.Variant(ctx, costed)
+	if err != nil || one == nil || one.StandardCost != "12.50" {
+		t.Errorf("Variant = %+v, %v; want StandardCost 12.50", one, err)
+	}
+	many, err := catalog.Variants(ctx, []int32{costed, uncosted})
+	if err != nil || len(many) != 2 {
+		t.Fatalf("Variants = %+v, %v", many, err)
+	}
+	byID := map[int32]string{many[0].ID: many[0].StandardCost, many[1].ID: many[1].StandardCost}
+	if byID[costed] != "12.50" || byID[uncosted] != "" {
+		t.Errorf("Variants' StandardCost = %v, want 12.50 and none", byID)
+	}
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	locked, err := catalog.LockVariants(ctx, tx, []int32{costed, uncosted})
+	if err != nil || len(locked) != 2 || locked[0].StandardCost != "12.50" || locked[1].StandardCost != "" {
+		t.Errorf("LockVariants = %+v, %v; want StandardCost 12.50 and none", locked, err)
+	}
+}
+
 // TestCatalog_VariantUnknownIDIsNilWithoutAnError proves a missing variant
 // is (nil, nil), never an error: a caller tells "does not exist" from "the
 // lookup failed" by checking err.

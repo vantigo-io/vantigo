@@ -477,15 +477,16 @@ ORDER BY day;
 
 -- Catalog (Task 3, contracts.ProductCatalog): the read-only cross-module
 -- view of a variant, joined with its product for the fields another module
--- may reference — never the detailed attributes (dimensions, cost) that stay
--- behind products' own contract and permissions. The barcode joined for
--- Inventory's scanning, and the weight for Orders' shipments (orders design
--- O50), which proposes a parcel's weight from the variants'.
+-- may reference — never the detailed attributes (dimensions, prices) that
+-- stay behind products' own contract and permissions. The barcode joined for
+-- Inventory's scanning, the weight for Orders' shipments (orders design O50),
+-- which proposes a parcel's weight from the variants', and the standard cost
+-- for Manufacturing's costing (manufacturing design M4).
 
 -- name: CatalogVariant :one
 -- CatalogVariant is contracts.ProductCatalog.Variant's lookup.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -495,7 +496,7 @@ WHERE v.id = @id;
 -- CatalogVariants batch-loads the same fields as CatalogVariant for a set of
 -- ids; an id that does not exist is simply absent from the result.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -505,7 +506,7 @@ WHERE v.id = ANY(@ids::int[]);
 -- CatalogVariantsOfProduct is contracts.ProductCatalog.VariantsOfProduct:
 -- every variant of a product in the order the product page lists them.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -516,7 +517,7 @@ ORDER BY v.id;
 -- CatalogLookupCode is contracts.ProductCatalog.LookupCode's variant half: a
 -- SKU equal to the code ignoring case, or a barcode equal to it exactly.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -527,7 +528,7 @@ ORDER BY v.id;
 -- CatalogLookupSKUs is contracts.ProductCatalog.LookupSKUs: every variant
 -- whose SKU, lowercased, is one of the given lowercased SKUs.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -540,7 +541,7 @@ ORDER BY v.id;
 -- products unless include_inactive, whose SKU, product name or barcode
 -- matches the pattern, by SKU.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -555,7 +556,7 @@ LIMIT @max_rows::int;
 -- the variants and their products, in variant id order, on the caller's
 -- transaction (inventory design I22).
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
