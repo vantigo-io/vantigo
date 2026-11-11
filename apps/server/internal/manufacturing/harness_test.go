@@ -45,7 +45,7 @@ func newHarness(t *testing.T, opts ...modtest.Option) *harness {
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(manufacturing.Module()),
 		modtest.WithProducts(h.catalog),
-		modtest.WithStock(h.stock, nil),
+		modtest.WithStock(h.stock, h.stock),
 	}
 	before := lockedContractCalls.count()
 	h.Harness = modtest.New(t, append(base, opts...)...)
@@ -284,17 +284,22 @@ func (c *fakeCatalog) OpenProductImage(context.Context, int32) (io.ReadCloser, c
 }
 
 // fakeStock is contracts.Stock over the sites a test seeds and the available
-// quantities it sets per site.
+// quantities it sets per site, and — fakes_ledger_test.go — the
+// contracts.StockLedger over the locations' on hand and the documents'
+// reservations.
 type fakeStock struct {
 	mu        sync.Mutex
 	sites     []contracts.StockSite
 	available map[int64]map[int32]string
 	batches   int
+	ledgerState
 }
 
 var _ contracts.Stock = (*fakeStock)(nil)
 
-func newFakeStock() *fakeStock { return &fakeStock{available: map[int64]map[int32]string{}} }
+func newFakeStock() *fakeStock {
+	return &fakeStock{available: map[int64]map[int32]string{}, ledgerState: newLedgerState()}
+}
 
 func (s *fakeStock) setAvailable(site int64, variant int32, q string) {
 	s.mu.Lock()
@@ -330,10 +335,16 @@ func (s *fakeStock) Available(ctx context.Context, ids []int32, site *int64) ([]
 	s.batches++
 	var out []contracts.StockQuantity
 	for _, id := range ids {
-		if site != nil {
-			if q, ok := s.available[*site][id]; ok {
-				out = append(out, contracts.StockQuantity{VariantID: id, Quantity: q})
-			}
+		if site == nil {
+			continue
+		}
+		q, set := s.available[*site][id]
+		free := s.free(id, *site)
+		if set {
+			free.Add(free, rat(q))
+		}
+		if set || free.Sign() != 0 {
+			out = append(out, contracts.StockQuantity{VariantID: id, Quantity: ratText(free)})
 		}
 	}
 	return out, nil
@@ -355,14 +366,18 @@ func (s *fakeStock) Sites(ctx context.Context) ([]contracts.StockSite, error) {
 	return out, nil
 }
 
-func (s *fakeStock) Locations(ctx context.Context, _ []int32, _ int64) ([]contracts.StockLocation, error) {
+func (s *fakeStock) Locations(ctx context.Context, ids []int32, site int64) ([]contracts.StockLocation, error) {
 	lockedContractCalls.note(ctx, "fake Stock.Locations")
-	return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.locationsHolding(ids, site), nil
 }
 
-func (s *fakeStock) SiteLocations(ctx context.Context, _ int64) ([]contracts.StockSiteLocation, error) {
+func (s *fakeStock) SiteLocations(ctx context.Context, site int64) ([]contracts.StockSiteLocation, error) {
 	lockedContractCalls.note(ctx, "fake Stock.SiteLocations")
-	return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.siteLocations(site), nil
 }
 
 // The paths the tests call.

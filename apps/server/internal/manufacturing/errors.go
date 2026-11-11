@@ -39,6 +39,18 @@ const (
 	codeBomNotActive          = "bom_not_active"            // 409
 	codeDependencyUnavailable = "dependency_unavailable"    // 503
 
+	// The manufacturing orders' codes (delivery B, §4, §15).
+	codeBomRequired         = "bom_required"          // 400
+	codeLocationUnknown     = "location_unknown"      // 400
+	codeRequiredBelowUsed   = "required_below_used"   // 400
+	codeOrderNotDraft       = "order_not_draft"       // 409
+	codeOrderNotOpen        = "order_not_open"        // 409
+	codeOrderHasProduction  = "order_has_production"  // 409
+	codeConsumptionDiffers  = "consumption_differs"   // 409
+	codeQuantityShort       = "quantity_short"        // 409
+	codeClientRequestReused = "client_request_reused" // 409
+	codeShopFloorRequired   = "shop_floor_required"   // 403
+
 	// A line's codes (ManufacturingProblemLine.code), each also a problem's
 	// own code when it is the first failing line's or a field's.
 	codeVariantNotGoods     = "variant_not_goods"
@@ -55,6 +67,8 @@ var refusalCodes = []string{
 	codeTooManyLines, codeTooManyOperations, codeWorkCenterUnknown, codeWorkCenterOtherSite, codeBomCycle,
 	codeBomTooDeep, codeBomTooLarge, codeBomNotActive, codeDependencyUnavailable,
 	codeVariantNotGoods, codeVariantNotFound, codeOperationKeyUnknown, codeQuantityInvalid,
+	codeBomRequired, codeLocationUnknown, codeRequiredBelowUsed, codeOrderNotDraft, codeOrderNotOpen,
+	codeOrderHasProduction, codeConsumptionDiffers, codeQuantityShort, codeClientRequestReused, codeShopFloorRequired,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

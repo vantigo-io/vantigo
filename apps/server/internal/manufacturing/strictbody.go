@@ -150,6 +150,14 @@ const (
 	bomUpdateSchema         = "ManufacturingBomUpdate"
 	bomOperationInputSchema = "ManufacturingBomOperationInput"
 	bomLineInputSchema      = "ManufacturingBomLineInput"
+
+	orderInputSchema          = "ManufacturingOrderInput"
+	orderUpdateSchema         = "ManufacturingOrderUpdate"
+	componentInputSchema      = "ManufacturingComponentInput"
+	componentUpdateSchema     = "ManufacturingComponentUpdate"
+	productionInputSchema     = "ManufacturingProductionInput"
+	productionLineInputSchema = "ManufacturingProductionLineInput"
+	closeInputSchema          = "ManufacturingCloseInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -158,6 +166,8 @@ const (
 var closedSchemas = []string{
 	workCenterInputSchema, workCenterUpdateSchema, weekPatternSchema, intervalSchema, revisionInputSchema,
 	closureInputSchema, bomInputSchema, bomUpdateSchema, bomOperationInputSchema, bomLineInputSchema,
+	orderInputSchema, orderUpdateSchema, componentInputSchema, componentUpdateSchema, productionInputSchema,
+	productionLineInputSchema, closeInputSchema,
 }
 
 // weekPatternDays is a week pattern's arrays, one per weekday, each of
@@ -171,9 +181,10 @@ var weekPatternDays = map[string]string{
 // closed schemas of their own: a key the contract does not name inside an
 // operation or a line is refused on operations[i].<key> or lines[i].<key>.
 var closedItems = map[string]map[string]string{
-	bomInputSchema:    {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
-	bomUpdateSchema:   {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
-	weekPatternSchema: weekPatternDays,
+	bomInputSchema:        {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
+	bomUpdateSchema:       {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
+	weekPatternSchema:     weekPatternDays,
+	productionInputSchema: {"lines": productionLineInputSchema},
 }
 
 // closedObjects is, per closed schema, its object properties that are closed

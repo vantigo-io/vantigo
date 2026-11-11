@@ -7,6 +7,7 @@ package store
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -50,6 +51,88 @@ type ManufacturingBomOperation struct {
 type ManufacturingCounter struct {
 	CounterName string
 	NextValue   int64
+}
+
+type ManufacturingOrder struct {
+	ID                  int64
+	Number              int64
+	Suffix              int32
+	VariantID           int32
+	BomID               int64
+	Quantity            pgtype.Numeric
+	Produced            pgtype.Numeric
+	OutputScrap         pgtype.Numeric
+	SiteID              int64
+	ComponentLocationID *int64
+	OutputLocationID    int64
+	DueDate             pgtype.Date
+	PlannedStart        *time.Time
+	PlannedFinish       *time.Time
+	Priority            string
+	ResponsibleUserID   *uuid.UUID
+	Note                string
+	OriginKind          string
+	OriginOrderID       *int64
+	OriginLineID        *int64
+	OriginReference     *string
+	ParentOrderID       *int64
+	BackorderOfID       *int64
+	Status              string
+	ConfirmedAt         *time.Time
+	ClosedAt            *time.Time
+	Revision            int32
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+type ManufacturingOrderComponent struct {
+	ID           int64
+	OrderID      int64
+	VariantID    int32
+	Sku          string
+	ProductName  string
+	Unit         string
+	Required     pgtype.Numeric
+	Reserved     pgtype.Numeric
+	Consumed     pgtype.Numeric
+	Scrapped     pgtype.Numeric
+	OperationID  *int64
+	StandardCost pgtype.Numeric
+	SortOrder    int32
+	Added        bool
+	Note         string
+}
+
+type ManufacturingOrderEvent struct {
+	ID           int64
+	OrderID      int64
+	Kind         string
+	Payload      []byte
+	ActorUserID  *uuid.UUID
+	ActorDisplay string
+	At           time.Time
+}
+
+type ManufacturingProduction struct {
+	ID              int64
+	OrderID         int64
+	ClientRequestID string
+	RequestHash     string
+	Quantity        pgtype.Numeric
+	OutputScrap     pgtype.Numeric
+	ToLocationID    int64
+	MovementID      *int64
+	PostedByUserID  *uuid.UUID
+	PostedByDisplay string
+	PostedAt        time.Time
+}
+
+type ManufacturingProductionLine struct {
+	ProductionID   int64
+	ComponentID    int64
+	Consumed       pgtype.Numeric
+	Scrapped       pgtype.Numeric
+	FromLocationID *int64
 }
 
 type ManufacturingWorkCenter struct {

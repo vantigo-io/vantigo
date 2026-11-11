@@ -93,7 +93,7 @@ func TestWorkCenter_CreateDefaultsAndReads(t *testing.T) {
 	in := workCenterInput(" saw1 ", siteMain)
 	w := createWorkCenter(t, c, in)
 	if w.Code != "SAW1" || w.Capacity != 1 || w.TimeEfficiency != 100 || w.SetupMinutes != "0" || w.CleanupMinutes != "0" ||
-		w.SiteCode != "MAIN" || w.SiteName != "Main" || w.WorkingState != gen.Normal || w.Status != gen.ManufacturingStatusActive || w.Revision != 1 {
+		w.SiteCode != "MAIN" || w.SiteName != "Main" || w.WorkingState != gen.ManufacturingWorkingStateNormal || w.Status != gen.ManufacturingStatusActive || w.Revision != 1 {
 		t.Errorf("created = %+v", w)
 	}
 	if len(w.Pattern.Monday) != 1 || w.Pattern.Monday[0] != (gen.ManufacturingInterval{Start: "07:00", End: "15:00"}) ||
@@ -311,7 +311,7 @@ func TestWorkCenter_RevisionAndWorkingState(t *testing.T) {
 	res := c.Do(http.MethodPut, workCenterPath(w.Id), up)
 	mustStatus(t, res, http.StatusOK, "update")
 	res.JSON(&got)
-	if got.WorkingState != gen.Blocked || got.SiteCode != "BRANCH" || got.Revision != 2 {
+	if got.WorkingState != gen.ManufacturingWorkingStateBlocked || got.SiteCode != "BRANCH" || got.Revision != 2 {
 		t.Errorf("after the edit = %+v, want still blocked at BRANCH", got)
 	}
 	expectRefusal(t, c.Do(http.MethodPut, workCenterPath(w.Id), up), http.StatusConflict, "revision_conflict", "stale update")
