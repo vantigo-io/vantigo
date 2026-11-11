@@ -49,7 +49,10 @@ stykklister**. Sett opp arbeidsstasjonene først: en operasjon i en stykkliste n
 Ordretallene på **Oversikt** er: **Ordrer som skal startes i dag**, bekreftede ordrer som ikke er
 startet, med planlagt start i dag eller tidligere; **Ordrer som pågår**; og **Forsinkede ordrer**, åpne
 ordrer som forfalt før i dag. Under dem listes ordrene som er forsinket eller forfaller
-denne uken, hver med om komponentene er klare; åpne en for å se den.
+innen slutten av denne uken — søndag, i virksomhetens egen tidssone — med forfallsdato og
+status; åpne en for å se om komponentene er klare. Om komponentene til en ordre er
+tilgjengelige, vises bare på ordresiden, ikke på **Oversikt** eller i listen. Tallene og
+listen følger ordrene etter hvert som de endres.
 
 ## Sett opp en arbeidsstasjon
 
@@ -298,7 +301,8 @@ seg selv når noen endrer en ordre.
    - **Forfallsdato**, **Planlagt start** og **Planlagt slutt** — slutten ikke før
      starten;
    - **Prioritet** — **Normal** eller **Haster**;
-   - **Ansvarlig** — personen som følger opp ordren;
+   - **Ansvarlig** — personen som følger opp ordren. En deaktivert bruker kan ikke
+     velges;
    - **Merknad** — opptil 2 000 tegn.
 4. Velg **Opprett produksjonsordre**. Ordren er et **Utkast**.
 
@@ -308,7 +312,11 @@ Lokasjonene som tilbys, er lagerstedets aktive.
 
 På et utkast kan du endre alt. På en bekreftet eller påbegynt ordre kan du bare endre
 datoene, prioriteten, den ansvarlige, merknaden og lokasjonene; for å lage et annet
-produkt eller antall, kanseller den og opprett en ny. En ferdig eller kansellert ordre kan
+produkt eller antall, kanseller den og opprett en ny. Lokasjonene må være aktive
+lokasjoner på ordrens eget lagersted; ordren beholder lagerstedet og stykklisten sin også
+når arbeidsstasjonene i stykklisten er flyttet til et annet lagersted, eller lagerstedet
+er arkivert, etter at den ble bekreftet. En ansvarlig som er deaktivert siden, blir
+stående på ordren, men du kan ikke velge en deaktivert. En ferdig eller kansellert ordre kan
 ikke endres. Når noen andre har lagret ordren etter at du åpnet den, nektes lagringen din,
 og du blir bedt om å laste inn på nytt.
 
@@ -323,7 +331,9 @@ På et utkast velger du **Bekreft**. Å bekrefte:
 
 Når lagerstedet ikke har nok av en komponent, blir ordren bekreftet likevel: linjene som
 ikke kunne reserveres, blir stående ureservert, og siden navngir hver av dem med mengden
-som mangler. En linje reserveres helt eller ikke i det hele tatt. Et utkast der
+som mangler. Når produktet eller en av komponentene er **utgått** i Produkter, blir ordren
+likevel opprettet og bekreftet, og ordresiden varsler **Et utgått produkt**: den bruker
+opp det som er igjen. En linje reserveres helt eller ikke i det hele tatt. Et utkast der
 stykklisten siden er arkivert, kan ikke bekreftes; opprett ordren på nytt fra en aktiv.
 
 ### Reserver linjene som mangler
@@ -399,7 +409,9 @@ Når mindre enn antallet ble produsert, blir du spurt om du vil **opprette en re
   samme stykkliste, lagersted, lokasjoner, forfallsdato, prioritet og ansvarlig. Den
   nummereres etter den opprinnelige: den første restordren av MO-12 er **MO-12-2**, den
   neste **MO-12-3**, også når den er en restordre av MO-12-2. Den bekreftes med en gang og
-  reserverer komponentene sine; linjene den ikke kunne reservere, navngis.
+  reserverer komponentene sine; linjene den ikke kunne reservere, navngis. Det gjelder også
+  når stykklisten er arkivert siden: restordren beholder den, mens en ny ordre eller et
+  utkast ikke kan bruke den.
 - **Nei** lukker ordren med det som ble produsert.
 
 ### Kanseller en ordre
