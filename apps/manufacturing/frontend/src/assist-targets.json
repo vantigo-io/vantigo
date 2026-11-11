@@ -1,0 +1,230 @@
+[
+  {
+    "key": "manufacturing.overview.new-bom",
+    "route": "/manufacturing",
+    "label": {
+      "en": "New bill of materials",
+      "nb": "Ny stykkliste"
+    },
+    "description": {
+      "en": "The button on the Manufacturing overview that opens the editor for a new bill of materials.",
+      "nb": "Knappen på Produksjon-oversikten som åpner redigeringen av en ny stykkliste."
+    }
+  },
+  {
+    "key": "manufacturing.overview.cards",
+    "route": "/manufacturing",
+    "label": {
+      "en": "Overview cards",
+      "nb": "Oversiktskortene"
+    },
+    "description": {
+      "en": "The cards at the top of the Manufacturing overview: active work centers, blocked work centers and active bills of materials.",
+      "nb": "Kortene øverst på Produksjon-oversikten: aktive arbeidsstasjoner, blokkerte arbeidsstasjoner og aktive stykklister."
+    }
+  },
+  {
+    "key": "manufacturing.work-centers.new",
+    "route": "/manufacturing/work-centers",
+    "label": {
+      "en": "New work center",
+      "nb": "Ny arbeidsstasjon"
+    },
+    "description": {
+      "en": "The button on the Work centers page that opens the form for a new work center.",
+      "nb": "Knappen på siden Arbeidsstasjoner som åpner skjemaet for en ny arbeidsstasjon."
+    }
+  },
+  {
+    "key": "manufacturing.work-centers.list",
+    "route": "/manufacturing/work-centers",
+    "label": {
+      "en": "Work center list",
+      "nb": "Listen over arbeidsstasjoner"
+    },
+    "description": {
+      "en": "The filters by status, site and code or name, and the work centers they find.",
+      "nb": "Filtrene på status, lagersted og kode eller navn, og arbeidsstasjonene de finner."
+    }
+  },
+  {
+    "key": "manufacturing.work-center.form",
+    "route": "/manufacturing/work-centers/new",
+    "label": {
+      "en": "Work center details",
+      "nb": "Detaljene for arbeidsstasjonen"
+    },
+    "description": {
+      "en": "The work center's code, name, site, capacity, efficiency, setup and cleanup minutes and, for someone who may see costs, its cost rates.",
+      "nb": "Arbeidsstasjonens kode, navn, lagersted, kapasitet, effektivitet, rigg- og rydde-minutter og, for den som kan se kostnader, kostnadssatsene."
+    }
+  },
+  {
+    "key": "manufacturing.work-center.pattern",
+    "route": "/manufacturing/work-centers/new",
+    "label": {
+      "en": "Weekly pattern",
+      "nb": "Ukemønster"
+    },
+    "description": {
+      "en": "The hours the work center is open each weekday: at most two intervals a day, in 15-minute steps.",
+      "nb": "Tidene arbeidsstasjonen er åpen hver ukedag: høyst to intervaller per dag, i kvarterssteg."
+    }
+  },
+  {
+    "key": "manufacturing.work-center.save",
+    "route": "/manufacturing/work-centers/new",
+    "label": {
+      "en": "Save",
+      "nb": "Lagre"
+    },
+    "description": {
+      "en": "The button that saves the work center.",
+      "nb": "Knappen som lagrer arbeidsstasjonen."
+    }
+  },
+  {
+    "key": "manufacturing.work-center.closures",
+    "route": "/manufacturing/work-centers/{workCenterId}",
+    "label": {
+      "en": "Closures",
+      "nb": "Stengninger"
+    },
+    "description": {
+      "en": "The days the work center is closed, such as an industrial holiday, and the fields to add one.",
+      "nb": "Dagene arbeidsstasjonen er stengt, som fellesferie, og feltene for å legge til en."
+    }
+  },
+  {
+    "key": "manufacturing.work-center.actions",
+    "route": "/manufacturing/work-centers/{workCenterId}",
+    "label": {
+      "en": "Archive, reactivate and delete",
+      "nb": "Arkiver, gjenaktiver og slett"
+    },
+    "description": {
+      "en": "The buttons at the top of a work center that archive, reactivate or delete it.",
+      "nb": "Knappene øverst på en arbeidsstasjon som arkiverer, gjenaktiverer eller sletter den."
+    }
+  },
+  {
+    "key": "manufacturing.boms.new",
+    "route": "/manufacturing/boms",
+    "label": {
+      "en": "New bill of materials",
+      "nb": "Ny stykkliste"
+    },
+    "description": {
+      "en": "The button on the Bills of materials page that opens the editor for a new one.",
+      "nb": "Knappen på siden Stykklister som åpner redigeringen av en ny."
+    }
+  },
+  {
+    "key": "manufacturing.boms.list",
+    "route": "/manufacturing/boms",
+    "label": {
+      "en": "Bill of materials list",
+      "nb": "Listen over stykklister"
+    },
+    "description": {
+      "en": "The filters by status, code or product and variant, and the bills of materials they find.",
+      "nb": "Filtrene på status, kode eller produkt og variant, og stykklistene de finner."
+    }
+  },
+  {
+    "key": "manufacturing.bom.header",
+    "route": "/manufacturing/boms/new",
+    "label": {
+      "en": "Bill of materials details",
+      "nb": "Detaljene for stykklisten"
+    },
+    "description": {
+      "en": "The product variant the bill makes, its code, output quantity, lead time, make to order and note.",
+      "nb": "Produktvarianten stykklisten lager, koden, produsert antall, ledetiden, produser mot ordre og merknaden."
+    }
+  },
+  {
+    "key": "manufacturing.bom.operations",
+    "route": "/manufacturing/boms/new",
+    "label": {
+      "en": "Operations",
+      "nb": "Operasjoner"
+    },
+    "description": {
+      "en": "The operations in sequence: each one's work center, setup, minutes per cycle and instructions for the shop floor.",
+      "nb": "Operasjonene i rekkefølge: arbeidsstasjonen, riggtiden, minutter per syklus og instruksjonene for verkstedet."
+    }
+  },
+  {
+    "key": "manufacturing.bom.lines",
+    "route": "/manufacturing/boms/new",
+    "label": {
+      "en": "Components",
+      "nb": "Komponenter"
+    },
+    "description": {
+      "en": "The components the product is made of: each one's quantity, scrap, the operation that consumes it and its order.",
+      "nb": "Komponentene produktet lages av: antallet, svinnet, operasjonen som bruker den og rekkefølgen."
+    }
+  },
+  {
+    "key": "manufacturing.bom.save",
+    "route": "/manufacturing/boms/new",
+    "label": {
+      "en": "Save",
+      "nb": "Lagre"
+    },
+    "description": {
+      "en": "The button that saves the bill of materials with its operations and components.",
+      "nb": "Knappen som lagrer stykklisten med operasjonene og komponentene."
+    }
+  },
+  {
+    "key": "manufacturing.bom.actions",
+    "route": "/manufacturing/boms/{bomId}",
+    "label": {
+      "en": "Overview, make default, archive",
+      "nb": "Oversikt, gjør til standard, arkiver"
+    },
+    "description": {
+      "en": "The buttons at the top of a bill of materials: its overview, make it the variant's default, archive or reactivate it.",
+      "nb": "Knappene øverst på en stykkliste: oversikten, gjør den til variantens standard, arkiver eller gjenaktiver den."
+    }
+  },
+  {
+    "key": "manufacturing.bom-overview.inputs",
+    "route": "/manufacturing/boms/{bomId}/overview",
+    "label": {
+      "en": "Quantity and site",
+      "nb": "Antall og lagersted"
+    },
+    "description": {
+      "en": "The quantity to explode the bill of materials at, and the site whose available stock is shown.",
+      "nb": "Antallet stykklisten foldes ut for, og lagerstedet der tilgjengelig beholdning vises."
+    }
+  },
+  {
+    "key": "manufacturing.bom-overview.cost",
+    "route": "/manufacturing/boms/{bomId}/overview",
+    "label": {
+      "en": "Rolled-up cost",
+      "nb": "Samlet kostnad"
+    },
+    "description": {
+      "en": "The components at standard cost, the operations' cost and their total, for someone who may see costs.",
+      "nb": "Komponentene til standardkost, operasjonenes kostnad og summen, for den som kan se kostnader."
+    }
+  },
+  {
+    "key": "manufacturing.bom-overview.tree",
+    "route": "/manufacturing/boms/{bomId}/overview",
+    "label": {
+      "en": "Structure",
+      "nb": "Struktur"
+    },
+    "description": {
+      "en": "The exploded bill of materials: each component made or bought, what is required and the operations' expected time.",
+      "nb": "Stykklisten foldet ut: hver komponent som lages eller kjøpes, hva som trengs og operasjonenes forventede tid."
+    }
+  }
+]
