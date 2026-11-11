@@ -761,11 +761,16 @@ Where an amendment and the text above differ, the amendment wins.
 - **M2a — The site and the codes for `Produce`.**
   - `Produce` and `ReserveForProduction` check only that the site exists
     (`site_unknown`) and is active (`site_archived`). They never read the *fulfils
-    orders* flag, so `Issue`'s `fulfillingSite` is not reused.
+    orders* flag (the shared site check takes it as a parameter).
   - A non-goods produce line is refused with the contract's code, `variant_not_stocked`.
-  - Shape errors are refusals coded `quantity_invalid`, never failures. These are: no
-    lines, a quantity ≤ 0, more than three decimals, or a quantity above the column's
-    maximum.
+  - Shape errors are refusals, never failures: no lines is `nothing_to_post`; a quantity
+    ≤ 0, with more than three decimals, or above the column's maximum is
+    `quantity_invalid`. A replay of a `Document` with a different body is
+    `document_reused`.
+  - **After a refusal from `Produce` (or `Issue`) the caller rolls back** its transaction
+    or a savepoint taken before the call: the engine has claimed the movement header by
+    then. Reserve and `ReserveForProduction` write nothing on a refusal, so M20a's
+    second pass runs in the same transaction.
   - The movement records `Document` as its source.
   - Its `source_line_id` carries the order id (`src.ID`). The movement page uses it for
     the M5 link, and renders the link only when the host has Manufacturing enabled.
