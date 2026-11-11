@@ -1,5 +1,7 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { endOfWeek } from "../lib/format";
+import { sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { stubManufacturingApi, workCenter } from "../test/server";
 
@@ -12,6 +14,19 @@ describe("the overview", () => {
     expect(screen.getByText("Active bills of materials")).toBeInTheDocument();
     expect(screen.queryByText("No bills of materials yet")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "New bill of materials" })).toBeInTheDocument();
+  });
+
+  it("lists the orders due by the Sunday of the business calendar's week", async () => {
+    const fetchMock = stubManufacturingApi({ stats: { today: "2026-12-02" } });
+    renderRoute("/manufacturing");
+    await waitFor(() => expect(sent(fetchMock, "GET", /\/orders\?.*dueTo=2026-12-06/)).toHaveLength(1));
+  });
+
+  it("ends the week on the Sunday on or after today, whatever the viewer's zone", () => {
+    expect(endOfWeek("2026-11-11")).toBe("2026-11-15");
+    expect(endOfWeek("2026-11-15")).toBe("2026-11-15");
+    expect(endOfWeek("2026-11-16")).toBe("2026-11-22");
+    expect(endOfWeek("2026-12-28")).toBe("2027-01-03");
   });
 
   it("points to Bills of materials when there are none", async () => {

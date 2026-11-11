@@ -78,3 +78,15 @@ export const availabilityColor = { ready: "teal", partly_available: "yellow", wa
 
 /** An order's reservation status badge colour (M21a). */
 export const reservationColor = { reserved: "teal", partly_reserved: "yellow", not_reserved: "red" } as const;
+
+/**
+ * The last day of the week of `today`, a calendar date such as `2026-11-11`
+ * — the business calendar's today, from `GET /stats` — the Sunday on or
+ * after it (`2026-11-15`). Computed on the date alone, in UTC, so the
+ * viewer's own zone never moves it.
+ */
+export const endOfWeek = (today: string): string => {
+  const day = new Date(`${today}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + ((7 - day.getUTCDay()) % 7));
+  return day.toISOString().slice(0, 10);
+};

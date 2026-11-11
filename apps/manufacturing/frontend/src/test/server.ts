@@ -192,6 +192,7 @@ export const orderFixture = (patch: Partial<ManufacturingOrder> = {}): Manufactu
     revision: 4,
     createdAt: STAMP,
     updatedAt: STAMP,
+    warnings: [],
     components: [
       {
         id: 60,
@@ -314,6 +315,7 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
     ordersToStartToday: 0,
     ordersInProgress: 0,
     ordersLate: 0,
+    today: "2026-11-11",
     ...server.stats,
   };
 

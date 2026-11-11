@@ -986,6 +986,8 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             variant: components["schemas"]["ManufacturingVariantRef"];
+            /** @description What the order is allowed with but should be looked at, while it is not done or cancelled: variant_discontinued when its product or a component line's variant is of a Discontinued product (a new MO warns but is allowed). Empty otherwise. */
+            warnings: components["schemas"]["ManufacturingOrderWarning"][];
         };
         /** @description A component line of an order (M18) with its live availability (M21, M21a). On a draft the lines follow the BoM and have no id. */
         ManufacturingOrderComponent: {
@@ -1238,6 +1240,11 @@ export interface components {
              */
             siteId: number;
         };
+        /**
+         * @description A warning on an order: variant_discontinued — its product or a component is of a Discontinued product.
+         * @enum {string}
+         */
+        ManufacturingOrderWarning: "variant_discontinued";
         /** @description An order after a write that reserves (confirm, reserve now, a line's add or edit), naming each line left short. */
         ManufacturingOrderWithShortLines: {
             order: components["schemas"]["ManufacturingOrder"];
@@ -1519,6 +1526,11 @@ export interface components {
              * @description Confirmed orders not started whose planned start is today or earlier.
              */
             ordersToStartToday: number;
+            /**
+             * Format: date
+             * @description Today in the business calendar's zone, the day the counts are of; the overview's week ends on the Sunday after it.
+             */
+            today: string;
         };
         /**
          * @description A work center's or a BoM's status.

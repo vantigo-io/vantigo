@@ -132,6 +132,19 @@ describe("the order page", () => {
     expect(screen.getAllByRole("button", { name: "Reserve now" }).length).toBeGreaterThan(0);
   });
 
+  it("warns of a discontinued product", async () => {
+    stubManufacturingApi({ orders: [orderFixture({ warnings: ["variant_discontinued"] })] });
+    renderRoute("/manufacturing/orders/5");
+    expect(await screen.findByText("A discontinued product")).toBeInTheDocument();
+  });
+
+  it("warns of nothing when the order has no warning", async () => {
+    stubManufacturingApi({ orders: [orderFixture()] });
+    renderRoute("/manufacturing/orders/5");
+    expect(await screen.findAllByText("MO-12")).not.toHaveLength(0);
+    expect(screen.queryByText("A discontinued product")).not.toBeInTheDocument();
+  });
+
   it("offers a draft Confirm and Cancel but no production", async () => {
     stubManufacturingApi({
       meta: { canManageOrders: true },
