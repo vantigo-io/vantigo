@@ -185,6 +185,29 @@ igjen, viser riktig tid uten at serveren sender den.
     **Produksjonsordrer** en bekreftet ordre med opphav **Salgsordre** og salgsordrens
     nummer, og salgsordrens linje viser den.
 
+### Se nærmere på produksjon mot ordre
+
+Hver bekreftede salgsordre etterlater én rad i `manufacturing.mto_requests`. Når en
+salgsordrelinje sier **Ingen produksjonsordre laget**, eller ikke viser noe i det hele
+tatt, leser du raden som databaseeier:
+
+```sql
+SELECT status, reasons, attempts, last_error, next_attempt_at, done_at
+FROM manufacturing.mto_requests
+WHERE sales_order_id = <salgsordrens id>;
+```
+
+- `pending` — ikke behandlet ennå; `attempts` og `last_error` sier om den har feilet og
+  venter til `next_attempt_at`. En rad som blir stående som pending, betyr at ingen
+  arbeidsprosess kjører.
+- `done` eller `skipped` — behandlet; `reasons` lister hver linje som ble utelatt, med kode
+  og grunn.
+- `failed` — åtte forsøk feilet; `last_error` sier hvorfor. Rett årsaken og opprett
+  produksjonsordrene manuelt fra salgsordrens linjer.
+- `cancelled` — salgsordren ble kansellert før ordrene ble laget.
+- Ingen rad — bekreftelsen ble ikke behandlet: Produksjon var av da salgsordren ble
+  bekreftet, eller utboksens fordeler kjører ikke.
+
 ## Hva som kan gå galt
 
 | Symptom | Årsak | Løsning |

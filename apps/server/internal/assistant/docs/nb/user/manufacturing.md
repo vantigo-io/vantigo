@@ -806,7 +806,9 @@ når én er laget, viser linjen den i stedet. Å kansellere ordren frigjør linj
 En kansellert salgsordre kansellerer **ikke** produksjonsordrene som ble laget for den:
 varene kan allerede være halvferdige. Hver merkes **Salgsordre kansellert**, i listen og
 på siden sin, og historikken sier det. Avgjør om den skal fullføres, lukkes eller
-kanselleres.
+kanselleres. En restordre av en slik ordre merkes også; underordrene dens merkes ikke — se
+på den overordnede. En salgsordre som kanselleres før produksjonsordrene er laget, får
+ingen.
 
 ### Når ordren er ferdig
 
@@ -819,11 +821,12 @@ linjen sier det.
 
 En komponent som selv produseres — den har en standard stykkliste — kan lages for en
 ordre. På en bekreftet eller pågående ordre der produserte komponenter mangler noe, velger
-du **Opprett underordrer**. Hver slik komponent listes med det den mangler, hver avkrysset;
-fjern krysset for dem du ikke skal lage nå, og velg **Opprett underordrer**. Hver blir en
-bekreftet ordre:
+du **Opprett underordrer**. Underordrene som allerede er åpne for ordren, listes under
+**Lages allerede**, med det hver har igjen å lage. Hver komponent som mangler mer enn de
+lager, listes med resten den mangler, hver avkrysset; fjern krysset for dem du ikke skal
+lage nå, og velg **Opprett underordrer**. Hver blir en bekreftet ordre:
 
-- for det komponenten mangler, etter sin standard stykkliste;
+- for det komponenten mangler utover de åpne underordrene, etter sin standard stykkliste;
 - med opphav **Overordnet ordre**, lenket til denne ordren;
 - med forfall når denne ordren er planlagt å starte, eller på den ønskede starten når den
   ikke er planlagt.
