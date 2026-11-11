@@ -282,3 +282,61 @@ func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
 	}
 	return zone, nil
 }
+
+// salesOrderLines is Orders' lines of one sales order, before any
+// transaction (M43a: consumer-gated, so the caller has decided). Orders off
+// is errDependencyUnavailable.
+func (s *server) salesOrderLines(ctx context.Context, orderID int64) ([]contracts.SalesOrderLine, error) {
+	if err := noteContractCall(ctx, "SalesOrderLines.OrderLines"); err != nil {
+		return nil, err
+	}
+	if s.deps.SalesOrderLines == nil {
+		return nil, errDependencyUnavailable
+	}
+	lines, err := s.deps.SalesOrderLines.OrderLines(ctx, orderID)
+	if err != nil {
+		return nil, fmt.Errorf("manufacturing: read sales order %d's lines: %w", orderID, err)
+	}
+	return lines, nil
+}
+
+// salesOrderLine is one sales order line, before any transaction; nil when
+// Orders does not answer it.
+func (s *server) salesOrderLine(ctx context.Context, lineID int64) (*contracts.SalesOrderLine, error) {
+	if err := noteContractCall(ctx, "SalesOrderLines.Lines"); err != nil {
+		return nil, err
+	}
+	if s.deps.SalesOrderLines == nil {
+		return nil, errDependencyUnavailable
+	}
+	lines, err := s.deps.SalesOrderLines.Lines(ctx, []int64{lineID})
+	if err != nil {
+		return nil, fmt.Errorf("manufacturing: read sales order line %d: %w", lineID, err)
+	}
+	for _, l := range lines {
+		if l.LineID == lineID {
+			return &l, nil
+		}
+	}
+	return nil, nil
+}
+
+// customerName is a customer's name through the customer directory, before
+// any transaction; "" when the directory is not composed or does not know
+// them. Only a caller holding orders:access is shown it (M43a).
+func (s *server) customerName(ctx context.Context, id int32) (string, error) {
+	if s.deps.Directory == nil {
+		return "", nil
+	}
+	if err := noteContractCall(ctx, "Directory.Customer"); err != nil {
+		return "", err
+	}
+	c, err := s.deps.Directory.Customer(ctx, id)
+	if err != nil {
+		return "", fmt.Errorf("manufacturing: read customer %d: %w", id, err)
+	}
+	if c == nil {
+		return "", nil
+	}
+	return c.Name, nil
+}

@@ -313,6 +313,7 @@ type orderFields struct {
 	componentLocationID *int64
 	outputLocationID    *int64
 	dueDate             pgtype.Date
+	requestedStart      pgtype.Date
 	priority            string
 	responsible         *uuid.UUID
 	note                string
@@ -550,6 +551,17 @@ func (s *server) CreateManufacturingOrder(ctx context.Context, req gen.CreateMan
 	if err != nil {
 		return answer(err, createOrderAnswers())
 	}
+	// Made for a sales order line (M45): the line is read through Orders
+	// before the transaction, and names the origin.
+	origin, originOrderID, originLineID, reference := originManual, (*int64)(nil), (*int64)(nil), (*string)(nil)
+	if in.SalesOrderLineId != nil {
+		l, err := s.judgeSalesOrderLine(ctx, *in.SalesOrderLineId, in.VariantId)
+		if err != nil {
+			return answer(err, createOrderAnswers())
+		}
+		ref := salesOrderReference(l.OrderNumber)
+		origin, originOrderID, originLineID, reference = originSalesOrder, &l.OrderID, &l.LineID, &ref
+	}
 	v.siteID = in.SiteId
 	if _, err := s.judgePlace(ctx, b.ID, &v); err != nil {
 		return answer(err, createOrderAnswers())
@@ -594,26 +606,12 @@ func (s *server) CreateManufacturingOrder(ctx context.Context, req gen.CreateMan
 					return errRelock
 				}
 			}
-			number, err := txq.NextOrderNumber(ctx)
-			if err != nil {
-				return err
-			}
-			at := s.deps.Clock()
-			o, err := txq.InsertOrder(ctx, store.InsertOrderParams{
-				Number: number, VariantID: in.VariantId, BomID: b.ID, Quantity: numeric(v.quantity, quantityPlaces),
-				SiteID: *v.siteID, ComponentLocationID: v.componentLocationID, OutputLocationID: *v.outputLocationID,
-				DueDate: v.dueDate, RequestedStart: requestedStartValue(in.RequestedStart),
-				Priority: v.priority, ResponsibleUserID: v.responsible, Note: v.note, OriginKind: originManual, Now: at,
-			})
+			v.requestedStart = requestedStartValue(in.RequestedStart)
+			o, err := s.insertOrder(ctx, txq, b.ID, in.VariantId, v, origin, originOrderID, originLineID, reference, nil, who)
 			if err != nil {
 				return err
 			}
 			id = o.ID
-			if err := event(ctx, txq, o.ID, gen.ManufacturingOrderEventKindCreated, who, at, map[string]any{
-				"number": orderNumber(o.Number, o.Suffix), "quantity": text(v.quantity, quantityPlaces),
-			}); err != nil {
-				return err
-			}
 			return notifyOrder(ctx, tx, o.ID)
 		})
 		if errors.Is(err, errRelock) {
@@ -992,6 +990,10 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 	}
 	costs := s.has(ctx, permCostsView)
 	cov := coverageOf(components, available)
+	componentBoms, err := s.componentBoms(ctx, components)
+	if err != nil {
+		return gen.ManufacturingOrder{}, err
+	}
 	sum := summaryOf(o, entries, people, today, costs, reservationStatusOf(o, r.components))
 	out := gen.ManufacturingOrder{
 		Id: sum.Id, Number: sum.Number, Variant: sum.Variant, BomId: o.BomID, BomCode: r.bom.Code,
@@ -1038,7 +1040,32 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		}
 	}
 	for i, c := range components {
-		out.Components = append(out.Components, componentAnswer(c, entries, costs, cov.available[c.VariantID], cov.missing[i]))
+		line := componentAnswer(c, entries, costs, cov.available[c.VariantID], cov.missing[i])
+		if id, ok := componentBoms[c.VariantID]; ok {
+			line.DefaultBomId = &id
+		}
+		out.Components = append(out.Components, line)
+	}
+	return out, s.withOrigin(ctx, &out)
+}
+
+// componentBoms is each component variant's default active BoM, for the
+// sub-assembly orders (M47).
+func (s *server) componentBoms(ctx context.Context, components []store.ManufacturingOrderComponent) (map[int32]int64, error) {
+	out := map[int32]int64{}
+	if len(components) == 0 {
+		return out, nil
+	}
+	ids := make([]int32, 0, len(components))
+	for _, c := range components {
+		ids = append(ids, c.VariantID)
+	}
+	rows, err := store.New(s.deps.Pool).DefaultActiveBomsOfVariants(ctx, slices.Compact(slices.Sorted(slices.Values(ids))))
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.VariantID] = r.ID
 	}
 	return out, nil
 }
@@ -1132,7 +1159,7 @@ func summaryOf(o store.ManufacturingOrder, entries map[int32]contracts.VariantEn
 		Status: gen.ManufacturingOrderStatus(o.Status), SiteId: o.SiteID, PlannedStart: o.PlannedStart, PlannedFinish: o.PlannedFinish,
 		Priority: gen.ManufacturingPriority(o.Priority), BackorderOfId: o.BackorderOfID, CreatedAt: o.CreatedAt,
 		Origin: gen.ManufacturingOrderOriginInfo{Kind: gen.ManufacturingOrigin(o.OriginKind), OrderId: o.OriginOrderID,
-			LineId: o.OriginLineID, Reference: o.OriginReference},
+			LineId: o.OriginLineID, Reference: o.OriginReference, Cancelled: o.OriginCancelled},
 	}
 	if o.DueDate.Valid {
 		out.DueDate = &openapi_types.Date{Time: o.DueDate.Time}
@@ -1254,7 +1281,8 @@ func (s *server) ListManufacturingOrders(ctx context.Context, req gen.ListManufa
 		o := store.ManufacturingOrder{ID: r.ID, Number: r.Number, Suffix: r.Suffix, VariantID: r.VariantID, BomID: r.BomID, Quantity: r.Quantity,
 			Produced: r.Produced, SiteID: r.SiteID, DueDate: r.DueDate, PlannedStart: r.PlannedStart, PlannedFinish: r.PlannedFinish,
 			Priority: r.Priority, ResponsibleUserID: r.ResponsibleUserID, OriginKind: r.OriginKind, OriginOrderID: r.OriginOrderID,
-			OriginLineID: r.OriginLineID, OriginReference: r.OriginReference, BackorderOfID: r.BackorderOfID, Status: r.Status, CreatedAt: r.CreatedAt}
+			OriginLineID: r.OriginLineID, OriginReference: r.OriginReference, OriginCancelled: r.OriginCancelled, BackorderOfID: r.BackorderOfID,
+			Status: r.Status, CreatedAt: r.CreatedAt}
 		var reservation *string
 		if r.ReservationStatus != "" {
 			reservation = &r.ReservationStatus

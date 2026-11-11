@@ -126,3 +126,42 @@ func TestWorkers_ResolvesStock(t *testing.T) {
 		t.Errorf("Workers' Deps: StockLedger %v, Stock %v; want the ledger and no read", got.StockLedger, got.Stock)
 	}
 }
+
+type fakeSalesOrderLines struct{}
+
+func (fakeSalesOrderLines) Lines(context.Context, []int64) ([]contracts.SalesOrderLine, error) {
+	return nil, nil
+}
+
+func (fakeSalesOrderLines) OrderLines(context.Context, int64) ([]contracts.SalesOrderLine, error) {
+	return nil, nil
+}
+
+type fakeProduction struct{}
+
+func (fakeProduction) ForOrderLines(context.Context, []int64) ([]contracts.LineProduction, error) {
+	return nil, nil
+}
+
+func (fakeProduction) HasBOM(context.Context, []int32) (map[int32]bool, error) { return nil, nil }
+
+// The two production reads resolve from the enabled modules only: with the
+// provider of each disabled, its slot is nil (manufacturing design M43, M46).
+func TestWorkers_ResolvesProductionReadsFromEnabledModules(t *testing.T) {
+	t.Parallel()
+	var seen Deps
+	consumer := Module{Name: "consumer", Workers: func(d Deps) []worker.Worker { seen = d; return nil }}
+	lines := Module{Name: "lines", SalesOrderLines: func(Deps) contracts.SalesOrderLines { return fakeSalesOrderLines{} }}
+	production := Module{Name: "production", Production: func(Deps) contracts.Production { return fakeProduction{} }}
+
+	Workers(Deps{Config: &config.Config{Modules: []string{"consumer", "lines", "production"}}}, consumer, lines, production)
+	if seen.SalesOrderLines == nil || seen.Production == nil {
+		t.Fatalf("Workers left a production read unset: lines %v, production %v", seen.SalesOrderLines, seen.Production)
+	}
+
+	seen = Deps{}
+	Workers(Deps{Config: &config.Config{Modules: []string{"consumer"}}}, consumer, lines, production)
+	if seen.SalesOrderLines != nil || seen.Production != nil {
+		t.Fatal("Workers resolved a production read from a disabled module")
+	}
+}

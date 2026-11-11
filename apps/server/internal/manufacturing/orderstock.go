@@ -709,7 +709,13 @@ func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManuf
 		if err := s.releaseAll(ctx, tx, txq, o.ID); err != nil {
 			return err
 		}
-		if _, err := txq.SetOrderStatus(ctx, store.SetOrderStatusParams{ID: o.ID, Status: orderDone, ClosedAt: &at, Now: at}); err != nil {
+		closed, err := txq.SetOrderStatus(ctx, store.SetOrderStatusParams{ID: o.ID, Status: orderDone, ClosedAt: &at, Now: at})
+		if err != nil {
+			return err
+		}
+		// Made for a sales order line, its close tells Orders, on this
+		// transaction, while it holds the order's row (M48).
+		if err := publishDone(ctx, tx, closed, at); err != nil {
 			return err
 		}
 		if err := event(ctx, txq, o.ID, gen.ManufacturingOrderEventKindClosed, who, at, map[string]any{

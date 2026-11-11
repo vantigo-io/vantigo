@@ -145,7 +145,7 @@ func (q *Queries) DeleteSlotsOfWorkOrders(ctx context.Context, ids []int64) erro
 }
 
 const doneOrdersClosedBetween = `-- name: DoneOrdersClosedBetween :many
-SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual FROM manufacturing.orders
+SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled FROM manufacturing.orders
 WHERE status = 'done' AND closed_at >= $1::timestamptz AND closed_at < $2::timestamptz
   AND ($3::bigint IS NULL OR site_id = $3::bigint)
 ORDER BY variant_id, closed_at, id
@@ -203,6 +203,7 @@ func (q *Queries) DoneOrdersClosedBetween(ctx context.Context, arg DoneOrdersClo
 			&i.RequestedStart,
 			&i.Estimate,
 			&i.Actual,
+			&i.OriginCancelled,
 		); err != nil {
 			return nil, err
 		}
@@ -495,7 +496,7 @@ UPDATE manufacturing.orders
 SET planned_start = $1, planned_finish = $2,
     revision = revision + 1, updated_at = $3
 WHERE id = $4
-RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual
+RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled
 `
 
 type SetOrderPlanParams struct {
@@ -548,6 +549,7 @@ func (q *Queries) SetOrderPlan(ctx context.Context, arg SetOrderPlanParams) (Man
 		&i.RequestedStart,
 		&i.Estimate,
 		&i.Actual,
+		&i.OriginCancelled,
 	)
 	return i, err
 }
@@ -721,7 +723,7 @@ func (q *Queries) UnplannedOrderIDsAtSite(ctx context.Context, siteID int64) ([]
 }
 
 const unscheduledOrdersAtSite = `-- name: UnscheduledOrdersAtSite :many
-SELECT o.id, o.number, o.suffix, o.variant_id, o.bom_id, o.quantity, o.produced, o.output_scrap, o.site_id, o.component_location_id, o.output_location_id, o.due_date, o.planned_start, o.planned_finish, o.priority, o.responsible_user_id, o.note, o.origin_kind, o.origin_order_id, o.origin_line_id, o.origin_reference, o.parent_order_id, o.backorder_of_id, o.status, o.confirmed_at, o.closed_at, o.revision, o.created_at, o.updated_at, o.requested_start, o.estimate, o.actual,
+SELECT o.id, o.number, o.suffix, o.variant_id, o.bom_id, o.quantity, o.produced, o.output_scrap, o.site_id, o.component_location_id, o.output_location_id, o.due_date, o.planned_start, o.planned_finish, o.priority, o.responsible_user_id, o.note, o.origin_kind, o.origin_order_id, o.origin_line_id, o.origin_reference, o.parent_order_id, o.backorder_of_id, o.status, o.confirmed_at, o.closed_at, o.revision, o.created_at, o.updated_at, o.requested_start, o.estimate, o.actual, o.origin_cancelled,
        (SELECT COALESCE(sum(w.expected_minutes), 0) FROM manufacturing.work_orders w
         WHERE w.order_id = o.id AND w.status NOT IN ('done', 'cancelled'))::bigint AS expected_minutes
 FROM manufacturing.orders o
@@ -786,6 +788,7 @@ func (q *Queries) UnscheduledOrdersAtSite(ctx context.Context, siteID int64) ([]
 			&i.ManufacturingOrder.RequestedStart,
 			&i.ManufacturingOrder.Estimate,
 			&i.ManufacturingOrder.Actual,
+			&i.ManufacturingOrder.OriginCancelled,
 			&i.ExpectedMinutes,
 		); err != nil {
 			return nil, err

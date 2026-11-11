@@ -441,7 +441,7 @@ func withBillables(deps Deps, enabled []Module) (Deps, error) {
 // while Inventory was on is still released by a cancel, an edit or a manual
 // marking after it is switched off, so a disabled Inventory still writes
 // its own reservations. Compose and Workers both call it, after the product
-// catalog.
+// catalog; it ends with withProduction.
 func withStock(deps Deps, given, enabled []Module) (Deps, error) {
 	stock, err := soleProvider(enabled, "a stock read", func(m Module) bool { return m.Stock != nil })
 	if err != nil {
@@ -456,6 +456,29 @@ func withStock(deps Deps, given, enabled []Module) (Deps, error) {
 	}
 	if ledger != nil {
 		deps.StockLedger = ledger.StockLedger(deps)
+	}
+	return withProduction(deps, enabled)
+}
+
+// withProduction resolves contracts.SalesOrderLines and contracts.Production
+// from the enabled modules — at most one may declare each — keeping a preset
+// value when none does (manufacturing design M43, M46). Neither provider
+// reads the other while it is built, so the two may come in either order;
+// withStock calls it last, for Compose and Workers both.
+func withProduction(deps Deps, enabled []Module) (Deps, error) {
+	lines, err := soleProvider(enabled, "sales order lines", func(m Module) bool { return m.SalesOrderLines != nil })
+	if err != nil {
+		return deps, err
+	}
+	if lines != nil {
+		deps.SalesOrderLines = lines.SalesOrderLines(deps)
+	}
+	production, err := soleProvider(enabled, "a production read", func(m Module) bool { return m.Production != nil })
+	if err != nil {
+		return deps, err
+	}
+	if production != nil {
+		deps.Production = production.Production(deps)
 	}
 	return deps, nil
 }

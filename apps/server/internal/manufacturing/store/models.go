@@ -53,6 +53,19 @@ type ManufacturingCounter struct {
 	NextValue   int64
 }
 
+type ManufacturingMtoRequest struct {
+	ID            int64
+	SalesOrderID  int64
+	EventID       int64
+	Status        string
+	Reasons       []byte
+	Attempts      int32
+	LastError     *string
+	NextAttemptAt time.Time
+	CreatedAt     time.Time
+	DoneAt        *time.Time
+}
+
 type ManufacturingOrder struct {
 	ID                  int64
 	Number              int64
@@ -86,6 +99,7 @@ type ManufacturingOrder struct {
 	RequestedStart      pgtype.Date
 	Estimate            []byte
 	Actual              []byte
+	OriginCancelled     bool
 }
 
 type ManufacturingOrderComponent struct {

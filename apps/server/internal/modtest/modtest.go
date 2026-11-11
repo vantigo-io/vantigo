@@ -174,6 +174,8 @@ type setup struct {
 	billableOrders    contracts.BillableOrders
 	stock             contracts.Stock
 	stockLedger       contracts.StockLedger
+	salesOrderLines   contracts.SalesOrderLines
+	production        contracts.Production
 	smtpVerify        func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend          func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore       storage.ObjectStore
@@ -252,6 +254,22 @@ func WithProducts(p contracts.ProductCatalog) Option {
 // ledger is Inventory switched off after reservations were made.
 func WithStock(stock contracts.Stock, ledger contracts.StockLedger) Option {
 	return func(s *setup) { s.stock, s.stockLedger = stock, ledger }
+}
+
+// WithSalesOrderLines sets Deps.SalesOrderLines directly, for a module under
+// test that reads Orders' sales order lines (manufacturing) without composing
+// orders beside it, for the reason WithProducts gives. Compose only
+// overwrites it when a composed module declares Module.SalesOrderLines.
+func WithSalesOrderLines(p contracts.SalesOrderLines) Option {
+	return func(s *setup) { s.salesOrderLines = p }
+}
+
+// WithProduction sets Deps.Production directly, for a module under test that
+// reads what Manufacturing makes for its lines (orders) without composing
+// manufacturing beside it. Compose only overwrites it when a composed module
+// declares Module.Production.
+func WithProduction(p contracts.Production) Option {
+	return func(s *setup) { s.production = p }
 }
 
 // WithProjects sets Deps.Projects directly to p, for a module under test
@@ -872,6 +890,8 @@ func New(t *testing.T, opts ...Option) *Harness {
 		BillableOrders:           s.billableOrders,
 		Stock:                    s.stock,
 		StockLedger:              s.stockLedger,
+		SalesOrderLines:          s.salesOrderLines,
+		Production:               s.production,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,
