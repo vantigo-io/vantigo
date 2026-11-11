@@ -96,6 +96,8 @@ days again.
   The bills of materials whose operations name it keep it.
 - **Reactivate** brings it back. That is refused when its site has been archived in
   Inventory since: reactivate the site first, or make a new work center at another site.
+  A work center at such a site can still be edited and keeps its site; moving it is to an
+  active site only.
 - **Delete** removes it for good, and is allowed only while no operation of any bill of
   materials names it. Otherwise you are told it is in use; archive it instead.
 
@@ -158,6 +160,9 @@ again.
   its own default BoM, at any depth — from something that is. The refusal names the path,
   such as *Bicycle → Frame → Bicycle*, so you can see which BoM to change.
 - **Be more than 10 levels deep**, counting each component made from a BoM of its own.
+  A BoM that is, or becomes, its product's default also counts the levels above it: the
+  default BoMs that use its product as a component, and those that use theirs. So a
+  product at the bottom of a chain ten levels deep cannot be given a default BoM.
 - **Use a service.** The product and every component must be goods. A product turned into
   a service, or deleted, since cannot be saved on a BoM; the refusal names the line.
 - **Spread its operations over sites.** Every operation's work center must stand at the
@@ -181,7 +186,9 @@ when the product is a component of something else.
   without one until you choose **Make default** on a BoM that can be.
 - **Reactivate** brings an archived BoM back. It becomes the default when the product has
   no active default. It is checked again as if it were saved, so it is refused if it
-  would now contain itself.
+  would now contain itself or go too deep, if a component is no longer goods, or if an
+  operation's work center has been archived, or moved so the operations stand at more than
+  one site, since.
 
 ## Read a bill of materials' overview
 

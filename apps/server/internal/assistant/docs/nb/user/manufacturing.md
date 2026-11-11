@@ -96,6 +96,8 @@ lenger trenger. Å slette en stengning åpner dagene igjen.
   Stykklistene der operasjoner navngir den, beholder den.
 - **Gjenaktiver** henter den tilbake. Det nektes når lagerstedet har blitt arkivert i Lager
   siden: gjenåpne lagerstedet i Lager først, eller lag en ny arbeidsstasjon på et annet lagersted.
+  En arbeidsstasjon på et slikt lagersted kan fortsatt redigeres og beholder lagerstedet;
+  flyttes den, er det bare til et aktivt lagersted.
 - **Slett** fjerner den for godt, og er bare tillatt så lenge ingen operasjon i noen
   stykkliste navngir den. Ellers får du beskjed om at den er i bruk; arkiver den i stedet.
 
@@ -161,7 +163,10 @@ last inn på nytt og gjør endringen din igjen.
   Avvisningen navngir veien, for eksempel *Sykkel → Ramme → Sykkel*, så du ser hvilken
   stykkliste du må endre.
 - **Være mer enn 10 nivåer dyp**, der hver komponent som lages av en egen stykkliste,
-  teller som et nivå.
+  teller som et nivå. En stykkliste som er, eller blir, produktets standard, teller også
+  nivåene over seg: standardstykklistene som bruker produktet som komponent, og de som
+  bruker deres. Et produkt nederst i en kjede ti nivåer dyp kan derfor ikke få en
+  standardstykkliste.
 - **Bruke en tjeneste.** Produktet og hver komponent må være varer. Et produkt som siden
   er gjort til en tjeneste, eller slettet, kan ikke lagres på en stykkliste; avvisningen
   navngir linjen.
@@ -187,7 +192,9 @@ produktet er komponent i noe annet.
   kan være det.
 - **Gjenaktiver** henter en arkivert stykkliste tilbake. Den blir standard når produktet
   ikke har noen aktiv standard. Den sjekkes på nytt som om den ble lagret, så den nektes
-  hvis den nå ville inneholde seg selv.
+  hvis den nå ville inneholde seg selv eller gå for dypt, hvis en komponent ikke lenger er
+  en vare, eller hvis arbeidsstasjonen til en operasjon siden er arkivert, eller flyttet
+  slik at operasjonene står på mer enn ett lagersted.
 
 ## Les oversikten over en stykkliste
 
