@@ -313,8 +313,6 @@ type orderFields struct {
 	componentLocationID *int64
 	outputLocationID    *int64
 	dueDate             pgtype.Date
-	plannedStart        *time.Time
-	plannedFinish       *time.Time
 	priority            string
 	responsible         *uuid.UUID
 	note                string
@@ -326,8 +324,6 @@ type orderInput struct {
 	componentLocationID *int64
 	outputLocationID    *int64
 	dueDate             *openapi_types.Date
-	plannedStart        *time.Time
-	plannedFinish       *time.Time
 	priority            *gen.ManufacturingPriority
 	responsible         *uuid.UUID
 	note                *string
@@ -337,15 +333,12 @@ type orderInput struct {
 func (s *server) judgeOrder(ctx context.Context, in orderInput, schema string) (orderFields, fieldErrors) {
 	f := s.unknownProperties(ctx, schema)
 	v := orderFields{componentLocationID: in.componentLocationID, outputLocationID: in.outputLocationID,
-		plannedStart: in.plannedStart, plannedFinish: in.plannedFinish, responsible: in.responsible, priority: priorityNormal}
+		responsible: in.responsible, priority: priorityNormal}
 	quantity, msg := parsePositive(in.quantity, quantityPlaces, maxQuantity)
 	f.addCoded("quantity", codeQuantityInvalid, msg)
 	v.quantity = quantity
 	if in.dueDate != nil {
 		v.dueDate = pgtype.Date{Time: in.dueDate.Time, Valid: true}
-	}
-	if in.plannedStart != nil && in.plannedFinish != nil && in.plannedFinish.Before(*in.plannedStart) {
-		f.add("plannedFinish", "Must not be before the planned start")
 	}
 	if in.priority != nil {
 		switch *in.priority {
@@ -548,7 +541,7 @@ func (s *server) CreateManufacturingOrder(ctx context.Context, req gen.CreateMan
 	in := req.Body
 	v, f := s.judgeOrder(ctx, orderInput{
 		quantity: in.Quantity, componentLocationID: in.ComponentLocationId, outputLocationID: in.OutputLocationId, dueDate: in.DueDate,
-		plannedStart: in.PlannedStart, plannedFinish: in.PlannedFinish, priority: in.Priority, responsible: in.ResponsibleUserId, note: in.Note,
+		priority: in.Priority, responsible: in.ResponsibleUserId, note: in.Note,
 	}, orderInputSchema)
 	if f.failed() {
 		return answer(refuseInvalid(orderTitle, f), createOrderAnswers())
@@ -609,7 +602,7 @@ func (s *server) CreateManufacturingOrder(ctx context.Context, req gen.CreateMan
 			o, err := txq.InsertOrder(ctx, store.InsertOrderParams{
 				Number: number, VariantID: in.VariantId, BomID: b.ID, Quantity: numeric(v.quantity, quantityPlaces),
 				SiteID: *v.siteID, ComponentLocationID: v.componentLocationID, OutputLocationID: *v.outputLocationID,
-				DueDate: v.dueDate, PlannedStart: v.plannedStart, PlannedFinish: v.plannedFinish, RequestedStart: requestedStartValue(in.RequestedStart),
+				DueDate: v.dueDate, RequestedStart: requestedStartValue(in.RequestedStart),
 				Priority: v.priority, ResponsibleUserID: v.responsible, Note: v.note, OriginKind: originManual, Now: at,
 			})
 			if err != nil {
@@ -665,7 +658,7 @@ func (s *server) UpdateManufacturingOrder(ctx context.Context, req gen.UpdateMan
 	in := req.Body
 	v, f := s.judgeOrder(ctx, orderInput{
 		quantity: in.Quantity, componentLocationID: in.ComponentLocationId, outputLocationID: in.OutputLocationId, dueDate: in.DueDate,
-		plannedStart: in.PlannedStart, plannedFinish: in.PlannedFinish, priority: &in.Priority, responsible: in.ResponsibleUserId, note: in.Note,
+		priority: &in.Priority, responsible: in.ResponsibleUserId, note: in.Note,
 	}, orderUpdateSchema)
 	if f.failed() {
 		return answer(refuseInvalid(orderTitle, f), updateOrderAnswers())
@@ -741,7 +734,7 @@ func (s *server) UpdateManufacturingOrder(ctx context.Context, req gen.UpdateMan
 		if _, err := txq.UpdateOrder(ctx, store.UpdateOrderParams{
 			ID: o.ID, BomID: bomID, Quantity: numeric(v.quantity, quantityPlaces), SiteID: in.SiteId,
 			ComponentLocationID: v.componentLocationID, OutputLocationID: *v.outputLocationID, DueDate: v.dueDate,
-			PlannedStart: v.plannedStart, PlannedFinish: v.plannedFinish, Priority: v.priority, ResponsibleUserID: v.responsible,
+			Priority: v.priority, ResponsibleUserID: v.responsible,
 			Note: v.note, RequestedStart: requestedStartValue(in.RequestedStart), Now: at,
 		}); err != nil {
 			return err

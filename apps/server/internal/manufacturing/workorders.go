@@ -809,6 +809,7 @@ func (s *server) BlockManufacturingWorkCenter(ctx context.Context, req gen.Block
 		}
 		n := newNotices()
 		n.workCenters[center.ID] = true
+		n.sites[center.SiteID] = true // the board greys a blocked center (M36)
 		now := s.deps.Clock()
 		for _, l := range open {
 			if l.Kind != logProductive || l.UserID == nil {
@@ -887,6 +888,7 @@ func (s *server) UnblockManufacturingWorkCenter(ctx context.Context, req gen.Unb
 		}
 		n := newNotices()
 		n.workCenters[center.ID] = true
+		n.sites[center.SiteID] = true
 		now := s.deps.Clock()
 		for _, l := range open {
 			if l.Kind != logDowntime {

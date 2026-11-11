@@ -38,10 +38,12 @@ SELECT * FROM manufacturing.orders WHERE id = @id FOR UPDATE;
 SELECT * FROM manufacturing.orders WHERE id = ANY(@ids::bigint[]) ORDER BY id;
 
 -- name: UpdateOrder :one
+-- UpdateOrder replaces an order's fields. Its planned window is never one of
+-- them: only planning sets it (M34).
 UPDATE manufacturing.orders SET
     bom_id = @bom_id, quantity = @quantity, site_id = @site_id,
     component_location_id = @component_location_id, output_location_id = @output_location_id,
-    due_date = @due_date, planned_start = @planned_start, planned_finish = @planned_finish,
+    due_date = @due_date,
     priority = @priority, responsible_user_id = @responsible_user_id, note = @note,
     requested_start = @requested_start,
     revision = revision + 1, updated_at = @now

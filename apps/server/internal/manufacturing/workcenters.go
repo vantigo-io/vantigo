@@ -475,7 +475,7 @@ func (s *server) UpdateManufacturingWorkCenter(ctx context.Context, req gen.Upda
 		return answer(err, updateAnswers())
 	}
 	var updated store.ManufacturingWorkCenter
-	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		// The BoM graph first, as every BoM write takes it before reading
 		// the work centers its operations name: a site change and a BoM
 		// write do not pass each other (M12a).
@@ -523,7 +523,14 @@ func (s *server) UpdateManufacturingWorkCenter(ctx context.Context, req gen.Upda
 		if db.IsUniqueViolation(err, codeUniqueIndex) {
 			return codeTaken(v.code)
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		// The board draws the pattern's days (M36): the site it was at and
+		// the site it is at both hear of it.
+		n := newNotices()
+		n.sites[w.SiteID], n.sites[updated.SiteID] = true, true
+		return n.send(ctx, tx)
 	})
 	if err != nil {
 		return answer(err, updateAnswers())
@@ -720,8 +727,9 @@ func (s *server) CreateManufacturingClosure(ctx context.Context, req gen.CreateM
 		return answer(refuseInvalid(closureTitle, f), reply)
 	}
 	var created store.ManufacturingWorkCenterClosure
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
-		if _, err := txq.GetWorkCenterForUpdate(ctx, req.Id); noRows(err) {
+	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		center, err := txq.GetWorkCenterForUpdate(ctx, req.Id)
+		if noRows(err) {
 			return notFound()
 		} else if err != nil {
 			return err
@@ -737,7 +745,10 @@ func (s *server) CreateManufacturingClosure(ctx context.Context, req gen.CreateM
 			WorkCenterID: req.Id, FromDate: pgtype.Date{Time: in.FromDate.Time, Valid: true},
 			ToDate: pgtype.Date{Time: in.ToDate.Time, Valid: true}, Note: note,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		return notifySchedule(ctx, tx, center.SiteID)
 	})
 	if err != nil {
 		return answer(err, reply)
@@ -747,12 +758,35 @@ func (s *server) CreateManufacturingClosure(ctx context.Context, req gen.CreateM
 
 // DeleteManufacturingClosure removes one closure of a work center.
 func (s *server) DeleteManufacturingClosure(ctx context.Context, req gen.DeleteManufacturingClosureRequestObject) (gen.DeleteManufacturingClosureResponseObject, error) {
-	n, err := store.New(s.deps.Pool).DeleteClosure(ctx, store.DeleteClosureParams{ID: req.ClosureId, WorkCenterID: req.Id})
+	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		center, err := txq.GetWorkCenterForUpdate(ctx, req.Id)
+		if noRows(err) {
+			return notFound()
+		} else if err != nil {
+			return err
+		}
+		n, err := txq.DeleteClosure(ctx, store.DeleteClosureParams{ID: req.ClosureId, WorkCenterID: req.Id})
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return notFound()
+		}
+		return notifySchedule(ctx, tx, center.SiteID)
+	})
 	if err != nil {
-		return nil, err
-	}
-	if n == 0 {
-		return gen.DeleteManufacturingClosure404Response{}, nil
+		return answer(err, answers[gen.DeleteManufacturingClosureResponseObject]{
+			notFound: func() gen.DeleteManufacturingClosureResponseObject {
+				return gen.DeleteManufacturingClosure404Response{}
+			},
+		})
 	}
 	return gen.DeleteManufacturingClosure204Response{}, nil
+}
+
+// notifySchedule tells the site's board that its calendars changed (M36).
+func notifySchedule(ctx context.Context, tx pgx.Tx, siteID int64) error {
+	n := newNotices()
+	n.sites[siteID] = true
+	return n.send(ctx, tx)
 }

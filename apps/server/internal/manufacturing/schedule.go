@@ -227,19 +227,18 @@ func expectedOf(wos []store.ManufacturingWorkOrder) int64 {
 
 // productiveLogged is each work order's productive time logged, open logs
 // counted to now: what an in-progress work order has done already (M35a).
+// It is the union of its logs, as the cost counts it (M40): two operators
+// on the work order at once have done that time once.
 func productiveLogged(logs []store.ManufacturingTimeLog, now time.Time) map[int64]time.Duration {
-	out := map[int64]time.Duration{}
+	spans := map[int64][]span{}
 	for _, l := range logs {
-		if l.WorkOrderID == nil || l.Kind != logProductive {
-			continue
+		if l.WorkOrderID != nil && l.Kind == logProductive {
+			spans[*l.WorkOrderID] = append(spans[*l.WorkOrderID], logSpan(l, now))
 		}
-		end := now
-		if l.EndedAt != nil {
-			end = *l.EndedAt
-		}
-		if end.After(l.StartedAt) {
-			out[*l.WorkOrderID] += end.Sub(l.StartedAt)
-		}
+	}
+	out := make(map[int64]time.Duration, len(spans))
+	for id, s := range spans {
+		out[id] = unionLength(s)
 	}
 	return out
 }
@@ -430,9 +429,12 @@ func workOrderIDs(wos []store.ManufacturingWorkOrder) []int64 {
 }
 
 // scheduleClock is the business zone and now, read before any transaction.
+// Now is cut to the second: a piece the planner starts at now is then never
+// shorter than the microsecond Postgres keeps, which would store it empty
+// (ck_work_order_slots_range).
 func (s *server) scheduleClock(ctx context.Context) (*time.Location, time.Time, error) {
 	zone, err := s.businessZone(ctx)
-	return zone, s.deps.Clock(), err
+	return zone, s.deps.Clock().Truncate(time.Second), err
 }
 
 func planAnswers() answers[gen.PlanManufacturingOrderResponseObject] {
@@ -573,9 +575,16 @@ func (s *server) PlanAllManufacturingOrders(ctx context.Context, req gen.PlanAll
 		}, nil,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error {
 			planned, skipped = nil, nil
+			// Read again under the locks: an order is unplanned when none of
+			// its open work orders holds a slot (M34), so planning one takes
+			// no booking away from the time the others are planned around.
+			unplanned, err := txq.UnplannedOrderIDsAtSite(ctx, siteID)
+			if err != nil {
+				return err
+			}
 			list := make([]store.ManufacturingOrder, 0, len(orders))
 			for _, lo := range orders {
-				if isOpen(lo.order.Status) && lo.order.PlannedStart == nil && lo.order.SiteID == siteID {
+				if isOpen(lo.order.Status) && lo.order.SiteID == siteID && slices.Contains(unplanned, lo.order.ID) {
 					list = append(list, lo.order)
 				}
 			}
@@ -586,16 +595,17 @@ func (s *server) PlanAllManufacturingOrders(ctx context.Context, req gen.PlanAll
 				lead   int32
 			}
 			read := map[int64]inputs{}
-			var except []int64
 			for _, o := range slices.SortedFunc(slices.Values(list), func(a, b store.ManufacturingOrder) int { return cmp.Compare(a.ID, b.ID) }) {
 				wos, logged, lead, err := planInputs(ctx, txq, o, now)
 				if err != nil {
 					return err
 				}
 				read[o.ID] = inputs{wos: wos, logged: logged, lead: lead}
-				except = append(except, workOrderIDs(wos)...)
 			}
-			p, err := loadPlanner(ctx, txq, lockedCenters(ctx), except, zone, now)
+			// No booking is left out: the orders planned hold none, so an
+			// order skipped as no_capacity keeps all it had and the others
+			// are planned around every booking there is.
+			p, err := loadPlanner(ctx, txq, lockedCenters(ctx), nil, zone, now)
 			if err != nil {
 				return err
 			}
@@ -869,11 +879,19 @@ func (s *server) RescheduleManufacturingWorkOrder(ctx context.Context, req gen.R
 	if err != nil {
 		return nil, err
 	}
-	list, ok := got.(gen.ListManufacturingOrderWorkOrders200JSONResponse)
-	if !ok {
-		return gen.RescheduleManufacturingWorkOrder404Response{}, nil
+	return rescheduleAnswerOf(got), nil
+}
+
+// rescheduleAnswerOf is a reschedule's answer from the order's work orders
+// read back: the list, the 503 of a module that is unavailable, else 404.
+func rescheduleAnswerOf(got gen.ListManufacturingOrderWorkOrdersResponseObject) gen.RescheduleManufacturingWorkOrderResponseObject {
+	switch list := got.(type) {
+	case gen.ListManufacturingOrderWorkOrders200JSONResponse:
+		return gen.RescheduleManufacturingWorkOrder200JSONResponse(list)
+	case gen.ListManufacturingOrderWorkOrders503ApplicationProblemPlusJSONResponse:
+		return gen.RescheduleManufacturingWorkOrder503ApplicationProblemPlusJSONResponse(list)
 	}
-	return gen.RescheduleManufacturingWorkOrder200JSONResponse(list), nil
+	return gen.RescheduleManufacturingWorkOrder404Response{}
 }
 
 // ---- the board -----------------------------------------------------------

@@ -1248,11 +1248,11 @@ const updateOrder = `-- name: UpdateOrder :one
 UPDATE manufacturing.orders SET
     bom_id = $1, quantity = $2, site_id = $3,
     component_location_id = $4, output_location_id = $5,
-    due_date = $6, planned_start = $7, planned_finish = $8,
-    priority = $9, responsible_user_id = $10, note = $11,
-    requested_start = $12,
-    revision = revision + 1, updated_at = $13
-WHERE id = $14
+    due_date = $6,
+    priority = $7, responsible_user_id = $8, note = $9,
+    requested_start = $10,
+    revision = revision + 1, updated_at = $11
+WHERE id = $12
 RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual
 `
 
@@ -1263,8 +1263,6 @@ type UpdateOrderParams struct {
 	ComponentLocationID *int64
 	OutputLocationID    int64
 	DueDate             pgtype.Date
-	PlannedStart        *time.Time
-	PlannedFinish       *time.Time
 	Priority            string
 	ResponsibleUserID   *uuid.UUID
 	Note                string
@@ -1273,6 +1271,8 @@ type UpdateOrderParams struct {
 	ID                  int64
 }
 
+// UpdateOrder replaces an order's fields. Its planned window is never one of
+// them: only planning sets it (M34).
 func (q *Queries) UpdateOrder(ctx context.Context, arg UpdateOrderParams) (ManufacturingOrder, error) {
 	row := q.db.QueryRow(ctx, updateOrder,
 		arg.BomID,
@@ -1281,8 +1281,6 @@ func (q *Queries) UpdateOrder(ctx context.Context, arg UpdateOrderParams) (Manuf
 		arg.ComponentLocationID,
 		arg.OutputLocationID,
 		arg.DueDate,
-		arg.PlannedStart,
-		arg.PlannedFinish,
 		arg.Priority,
 		arg.ResponsibleUserID,
 		arg.Note,

@@ -122,7 +122,7 @@ func TestSchedule_PlanUnplanAndTheBoard(t *testing.T) {
 func orderUpdateOf(o gen.ManufacturingOrder) gen.ManufacturingOrderUpdate {
 	return gen.ManufacturingOrderUpdate{Revision: o.Revision, BomId: o.BomId, Quantity: o.Quantity, SiteId: o.SiteId, Priority: o.Priority,
 		DueDate: o.DueDate, Note: &o.Note, OutputLocationId: &o.OutputLocationId, ComponentLocationId: o.ComponentLocationId,
-		PlannedStart: o.PlannedStart, PlannedFinish: o.PlannedFinish, RequestedStart: o.RequestedStart}
+		RequestedStart: o.RequestedStart}
 }
 
 // TestSchedule_RequestedStartAndInProgress is M35a: a requested start set by
@@ -396,6 +396,20 @@ func TestSchedule_LiveNotifiesTheSite(t *testing.T) {
 	c := h.SignIn(t, planner...)
 	newFloor(t, h, c)
 	o, _ := openOrder(t, c, "1")
+	heard := listenLive(t, h)
+	planOrder(t, c, o)
+	waitHeard(t, heard, scheduleEvent(siteMain), "plan")
+}
+
+// scheduleEvent is the board's notice of the site.
+func scheduleEvent(site int64) liveEvent {
+	key := strconv.FormatInt(site, 10)
+	return liveEvent{T: "manufacturing.schedule:" + key, K: "schedule.changed", ID: key}
+}
+
+// listenLive is every live event the harness's database sends from now on.
+func listenLive(t *testing.T, h *harness) <-chan liveEvent {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	conn, err := pgx.ConnectConfig(ctx, h.Pool().Config().ConnConfig.Copy())
 	if err != nil {
@@ -404,7 +418,7 @@ func TestSchedule_LiveNotifiesTheSite(t *testing.T) {
 	if _, err := conn.Exec(ctx, "LISTEN "+live.Channel); err != nil {
 		t.Fatal(err)
 	}
-	heard := make(chan liveEvent, 32)
+	heard := make(chan liveEvent, 64)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -415,7 +429,10 @@ func TestSchedule_LiveNotifiesTheSite(t *testing.T) {
 			}
 			var e liveEvent
 			if json.Unmarshal([]byte(n.Payload), &e) == nil && e.T != "" {
-				heard <- e
+				select {
+				case heard <- e:
+				default:
+				}
 			}
 		}
 	}()
@@ -424,9 +441,12 @@ func TestSchedule_LiveNotifiesTheSite(t *testing.T) {
 		<-done
 		_ = conn.Close(context.Background())
 	})
-	planOrder(t, c, o)
-	site := strconv.FormatInt(siteMain, 10)
-	want := liveEvent{T: "manufacturing.schedule:" + site, K: "schedule.changed", ID: site}
+	return heard
+}
+
+// waitHeard waits for want on heard, the events before it passed over.
+func waitHeard(t *testing.T, heard <-chan liveEvent, want liveEvent, after string) {
+	t.Helper()
 	deadline := time.After(10 * time.Second)
 	for {
 		select {
@@ -435,7 +455,219 @@ func TestSchedule_LiveNotifiesTheSite(t *testing.T) {
 				return
 			}
 		case <-deadline:
-			t.Fatalf("not heard: %v", want)
+			t.Fatalf("after %s, not heard: %v", after, want)
 		}
+	}
+}
+
+// TestSchedule_CalendarWritesNotifyTheBoard is the review's L2: the board
+// draws blocked centers, closures and the pattern's days, so blocking,
+// unblocking, a closure added or removed and a work center's edit each tell
+// the site's board.
+func TestSchedule_CalendarWritesNotifyTheBoard(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	f := newFloor(t, h, c)
+	heard := listenLive(t, h)
+	want := scheduleEvent(siteMain)
+
+	res := c.Do(http.MethodPost, workCenterPath(f.saw.Id, "closures"), gen.ManufacturingClosureInput{FromDate: openapi_types.Date{Time: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)}, ToDate: openapi_types.Date{Time: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)}})
+	mustStatus(t, res, http.StatusCreated, "add a closure")
+	var closure gen.ManufacturingClosure
+	res.JSON(&closure)
+	waitHeard(t, heard, want, "a closure added")
+
+	mustStatus(t, c.Do(http.MethodDelete, workCenterPath(f.saw.Id, "closures", strconv.FormatInt(closure.Id, 10)), nil), http.StatusNoContent, "remove the closure")
+	waitHeard(t, heard, want, "a closure removed")
+	mustStatus(t, c.Do(http.MethodDelete, workCenterPath(f.saw.Id, "closures", strconv.FormatInt(closure.Id, 10)), nil), http.StatusNotFound, "remove it again")
+
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(f.saw.Id, "block"), gen.ManufacturingBlockInput{Reason: gen.Breakdown}), http.StatusOK, "block")
+	waitHeard(t, heard, want, "a block")
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(f.saw.Id, "unblock"), nil), http.StatusOK, "unblock")
+	waitHeard(t, heard, want, "an unblock")
+
+	saw := getWorkCenter(t, c, f.saw.Id)
+	pattern := weekPattern("08:00", "16:00")
+	res = c.Do(http.MethodPut, workCenterPath(saw.Id), gen.ManufacturingWorkCenterUpdate{Code: saw.Code, Name: saw.Name, SiteId: saw.SiteId,
+		Pattern: &pattern, Revision: saw.Revision})
+	mustStatus(t, res, http.StatusOK, "change the pattern")
+	waitHeard(t, heard, want, "a pattern edit")
+}
+
+// weekPattern is Monday to Friday from start to end.
+func weekPattern(start, end string) gen.ManufacturingWeekPattern {
+	day := []gen.ManufacturingInterval{{Start: start, End: end}}
+	return gen.ManufacturingWeekPattern{Monday: day, Tuesday: day, Wednesday: day, Thursday: day, Friday: day,
+		Saturday: []gen.ManufacturingInterval{}, Sunday: []gen.ManufacturingInterval{}}
+}
+
+// TestSchedule_DoneWorkOrderEndsItsBars is the review's M1: a work order
+// finished early holds no time after it finished — its later slots leave
+// the board and the utilisation report's planned time, and the slot it
+// finished in ends there.
+func TestSchedule_DoneWorkOrderEndsItsBars(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	f := newFloor(t, h, c)
+	o, wos := openOrder(t, c, "120") // SAW 600 minutes: Monday 07:00–15:00 and Tuesday 07:00–09:00
+	planOrder(t, c, o)
+	h.Advance(42 * time.Hour) // Monday 08:00
+	c = h.SignIn(t, everything...)
+	act(t, c, wos[0].Id, "start", nil)
+	h.Advance(time.Hour)
+	act(t, c, wos[0].Id, "finish", nil)
+
+	s := scheduleOf(t, c, fmt.Sprintf("siteId=%d&from=2026-09-14", siteMain))
+	var saw gen.ManufacturingScheduleRow
+	for _, row := range s.WorkCenters {
+		if row.WorkCenter.Id == f.saw.Id {
+			saw = row
+		}
+	}
+	var bars []gen.ManufacturingScheduleBar
+	for _, b := range saw.Bars {
+		if b.WorkOrderId == wos[0].Id {
+			bars = append(bars, b)
+		}
+	}
+	if len(bars) != 1 || !bars[0].StartsAt.Equal(osloAt(9, 14, 7, 0)) || !bars[0].EndsAt.Equal(osloAt(9, 14, 9, 0)) {
+		t.Fatalf("the done work order's bars %+v, want Monday 07:00–09:00 only", bars)
+	}
+	if saw.Days[0].PlannedMinutes != 120 || saw.Days[1].PlannedMinutes != 0 {
+		t.Errorf("planned Monday %d, Tuesday %d minutes", saw.Days[0].PlannedMinutes, saw.Days[1].PlannedMinutes)
+	}
+
+	res := c.Do(http.MethodGet, fmt.Sprintf("%s/reports/utilisation?from=2026-09-14&to=2026-09-20&siteId=%d", base, siteMain), nil)
+	mustStatus(t, res, http.StatusOK, "utilisation")
+	var report gen.ManufacturingUtilisationReport
+	res.JSON(&report)
+	for _, row := range report.Rows {
+		if row.WorkCenter.Id == f.saw.Id && row.PlannedMinutes != 120 {
+			t.Errorf("SAW planned %d minutes in the week, want 120", row.PlannedMinutes)
+		}
+	}
+}
+
+// TestSchedule_OnlyPlanningSetsTheWindow is the review's M2: the planned
+// window is no input of the create or the update; an order is planned when
+// its open work orders hold slots, so one with a window and no slots — set
+// by hand before this rule — is still on the Unscheduled list, and plan all
+// plans it; an update keeps the window planning set.
+func TestSchedule_OnlyPlanningSetsTheWindow(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	newFloor(t, h, c)
+	for _, field := range []string{"plannedStart", "plannedFinish"} {
+		body := map[string]any{"variantId": varBike, "quantity": "1", field: "2026-09-14T07:00:00Z"}
+		expectRefusal(t, c.Do(http.MethodPost, ordersPath, body), http.StatusBadRequest, "", "a create naming "+field)
+	}
+
+	handSet, _ := openOrder(t, c, "1")
+	if _, err := h.Pool().Exec(context.Background(),
+		"UPDATE manufacturing.orders SET planned_start = $2, planned_finish = $2 WHERE id = $1", handSet.Id, osloAt(9, 20, 7, 0)); err != nil {
+		t.Fatal(err)
+	}
+	upd := orderUpdateOf(getOrder(t, c, handSet.Id))
+	b, err := json.Marshal(upd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatal(err)
+	}
+	raw["plannedStart"] = "2026-09-14T07:00:00Z"
+	expectRefusal(t, c.Do(http.MethodPut, orderPath(handSet.Id), raw), http.StatusBadRequest, "", "an update naming plannedStart")
+
+	s := scheduleOf(t, c, fmt.Sprintf("siteId=%d&from=2026-09-14", siteMain))
+	if len(s.Unscheduled) != 1 || s.Unscheduled[0].Id != handSet.Id {
+		t.Fatalf("unscheduled %+v, want the order with a window and no slots", s.Unscheduled)
+	}
+	res := c.Do(http.MethodPost, base+"/schedule/plan-all", gen.ManufacturingPlanAllInput{SiteId: siteMain})
+	mustStatus(t, res, http.StatusOK, "plan all")
+	var out gen.ManufacturingPlanAllResult
+	res.JSON(&out)
+	if len(out.Planned) != 1 || out.Planned[0].Id != handSet.Id {
+		t.Fatalf("plan all %+v", out)
+	}
+	planned := getOrder(t, c, handSet.Id)
+	if !sameInstant(planned.PlannedStart, osloAt(9, 14, 7, 0)) {
+		t.Errorf("planned from %v, want Monday 07:00", planned.PlannedStart)
+	}
+
+	res = c.Do(http.MethodPut, orderPath(planned.Id), orderUpdateOf(planned))
+	mustStatus(t, res, http.StatusOK, "update the planned order")
+	var updated gen.ManufacturingOrder
+	res.JSON(&updated)
+	if !sameInstant(updated.PlannedStart, *planned.PlannedStart) || !sameInstant(updated.PlannedFinish, *planned.PlannedFinish) {
+		t.Errorf("window after the update %v–%v, want %v–%v", updated.PlannedStart, updated.PlannedFinish, planned.PlannedStart, planned.PlannedFinish)
+	}
+	if s := scheduleOf(t, c, fmt.Sprintf("siteId=%d&from=2026-09-14", siteMain)); len(s.Unscheduled) != 0 {
+		t.Errorf("unscheduled after plan all %+v", s.Unscheduled)
+	}
+}
+
+// TestSchedule_PlanAllSkipsWithoutUnbooking is the review's L6: an order
+// plan all skips as no_capacity takes nothing out of the time the others
+// are planned around.
+func TestSchedule_PlanAllSkipsWithoutUnbooking(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	newFloor(t, h, c)
+	first, _ := openOrder(t, c, "60")
+	planOrder(t, c, first)
+	in := workCenterInput("IDLE", siteMain)
+	none := []gen.ManufacturingInterval{}
+	in.Pattern = &gen.ManufacturingWeekPattern{Monday: none, Tuesday: none, Wednesday: none, Thursday: none, Friday: none, Saturday: none, Sunday: none}
+	idle := createWorkCenter(t, c, in)
+	bom := bomInput(varWheel, "1")
+	bom.Operations = []gen.ManufacturingBomOperationInput{operation("a", 10, idle.Id, "5")}
+	createBom(t, c, bom)
+	skipped := confirmOrder(t, c, createOrder(t, c, orderInput(varWheel, "1"))).Order
+	second, _ := openOrder(t, c, "60")
+
+	res := c.Do(http.MethodPost, base+"/schedule/plan-all", gen.ManufacturingPlanAllInput{SiteId: siteMain})
+	mustStatus(t, res, http.StatusOK, "plan all")
+	var out gen.ManufacturingPlanAllResult
+	res.JSON(&out)
+	if len(out.Planned) != 1 || out.Planned[0].Id != second.Id || len(out.NoCapacity) != 1 || out.NoCapacity[0].Id != skipped.Id {
+		t.Fatalf("plan all %+v", out)
+	}
+	s := scheduleOf(t, c, fmt.Sprintf("siteId=%d&from=2026-09-14&days=14", siteMain))
+	for _, row := range s.WorkCenters {
+		for i, a := range row.Bars {
+			for _, b := range row.Bars[i+1:] {
+				if a.StartsAt.Before(b.EndsAt) && b.StartsAt.Before(a.EndsAt) {
+					t.Errorf("%s: %s %v–%v overlaps %s %v–%v", row.WorkCenter.Code, a.OrderNumber, a.StartsAt, a.EndsAt, b.OrderNumber, b.StartsAt, b.EndsAt)
+				}
+			}
+		}
+	}
+	if got := getOrder(t, c, first.Id); !sameInstant(got.PlannedStart, osloAt(9, 14, 7, 0)) {
+		t.Errorf("the first order moved to %v", got.PlannedStart)
+	}
+}
+
+// TestSchedule_PlanFromAnInstantBetweenMicroseconds is the review's L3: now
+// is cut to the second, so a running work order planned from an instant a
+// fraction of a microsecond before its interval ends stores a slot Postgres
+// keeps, not an empty one.
+func TestSchedule_PlanFromAnInstantBetweenMicroseconds(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	newFloor(t, h, c)
+	o, wos := openOrder(t, c, "60")
+	h.Advance(48*time.Hour + 59*time.Minute + 59*time.Second + 999_999_500*time.Nanosecond) // Monday 14:59:59.9999995
+	c = h.SignIn(t, everything...)
+	act(t, c, wos[0].Id, "start", nil)
+	planOrder(t, c, getOrder(t, c, o.Id))
+	got := workOrdersOf(t, c, o.Id)
+	if !sameInstant(got[0].PlannedStart, osloAt(9, 14, 14, 59).Add(59*time.Second)) {
+		t.Errorf("planned from %v, want Monday 14:59:59", got[0].PlannedStart)
 	}
 }

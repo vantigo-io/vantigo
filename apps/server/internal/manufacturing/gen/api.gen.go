@@ -905,10 +905,10 @@ type ManufacturingOrder struct {
 	Overrun string                  `json:"overrun"`
 	Parent  *ManufacturingOrderLink `json:"parent"`
 
-	// PlannedFinish Set by hand or by planning (delivery D).
+	// PlannedFinish The planned window's end (M34): the latest planned finish of the work orders, or the due date when the order has none. Set only by planning.
 	PlannedFinish *time.Time `json:"plannedFinish"`
 
-	// PlannedStart Set by hand or by planning (delivery D).
+	// PlannedStart The planned window's start (M34): the earliest planned start of the work orders, or the due date less the BoM's lead time in business days when the order has none. Set only by planning.
 	PlannedStart *time.Time `json:"plannedStart"`
 
 	// Priority An order's priority (M17).
@@ -1040,12 +1040,6 @@ type ManufacturingOrderInput struct {
 	// OutputLocationId An active location of the site; default the site's root location (M17a).
 	OutputLocationId *int64 `json:"outputLocationId,omitempty"`
 
-	// PlannedFinish Planned finish, not before the start.
-	PlannedFinish *time.Time `json:"plannedFinish,omitempty"`
-
-	// PlannedStart Planned start.
-	PlannedStart *time.Time `json:"plannedStart,omitempty"`
-
 	// Priority An order's priority (M17).
 	Priority *ManufacturingPriority `json:"priority,omitempty"`
 
@@ -1129,10 +1123,10 @@ type ManufacturingOrderSummary struct {
 	// Origin Where the order came from (M17).
 	Origin ManufacturingOrderOriginInfo `json:"origin"`
 
-	// PlannedFinish Set by hand or by planning (delivery D).
+	// PlannedFinish The planned window's end (M34): the latest planned finish of the work orders, or the due date when the order has none. Set only by planning.
 	PlannedFinish *time.Time `json:"plannedFinish"`
 
-	// PlannedStart Set by hand or by planning (delivery D).
+	// PlannedStart The planned window's start (M34): the earliest planned start of the work orders, or the due date less the BoM's lead time in business days when the order has none. Set only by planning.
 	PlannedStart *time.Time `json:"plannedStart"`
 
 	// Priority An order's priority (M17).
@@ -1170,12 +1164,6 @@ type ManufacturingOrderUpdate struct {
 
 	// OutputLocationId An active location of the site; default the site's root location (M17a).
 	OutputLocationId *int64 `json:"outputLocationId,omitempty"`
-
-	// PlannedFinish Planned finish, not before the start.
-	PlannedFinish *time.Time `json:"plannedFinish,omitempty"`
-
-	// PlannedStart Planned start.
-	PlannedStart *time.Time `json:"plannedStart,omitempty"`
 
 	// Priority An order's priority (M17).
 	Priority ManufacturingPriority `json:"priority"`
@@ -1383,7 +1371,9 @@ type ManufacturingProductionCostTotals struct {
 	DeviationPercent *string `json:"deviationPercent"`
 	Estimate         string  `json:"estimate"`
 	Orders           int32   `json:"orders"`
-	Produced         string  `json:"produced"`
+
+	// Produced The good output of the orders with an actual cost, the output the actual total paid for.
+	Produced string `json:"produced"`
 }
 
 // ManufacturingProductionDraft The production dialog's prefill (M22a).

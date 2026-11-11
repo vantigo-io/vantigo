@@ -863,12 +863,12 @@ components:
                         - $ref: '#/components/schemas/ManufacturingOrderLink'
                     nullable: true
                 plannedFinish:
-                    description: Set by hand or by planning (delivery D).
+                    description: 'The planned window''s end (M34): the latest planned finish of the work orders, or the due date when the order has none. Set only by planning.'
                     format: date-time
                     nullable: true
                     type: string
                 plannedStart:
-                    description: Set by hand or by planning (delivery D).
+                    description: 'The planned window''s start (M34): the earliest planned start of the work orders, or the due date less the BoM''s lead time in business days when the order has none. Set only by planning.'
                     format: date-time
                     nullable: true
                     type: string
@@ -1147,16 +1147,6 @@ components:
                     format: int64
                     nullable: true
                     type: integer
-                plannedFinish:
-                    description: Planned finish, not before the start.
-                    format: date-time
-                    nullable: true
-                    type: string
-                plannedStart:
-                    description: Planned start.
-                    format: date-time
-                    nullable: true
-                    type: string
                 priority:
                     $ref: '#/components/schemas/ManufacturingPriority'
                 quantity:
@@ -1305,12 +1295,12 @@ components:
                 origin:
                     $ref: '#/components/schemas/ManufacturingOrderOriginInfo'
                 plannedFinish:
-                    description: Set by hand or by planning (delivery D).
+                    description: 'The planned window''s end (M34): the latest planned finish of the work orders, or the due date when the order has none. Set only by planning.'
                     format: date-time
                     nullable: true
                     type: string
                 plannedStart:
-                    description: Set by hand or by planning (delivery D).
+                    description: 'The planned window''s start (M34): the earliest planned start of the work orders, or the due date less the BoM''s lead time in business days when the order has none. Set only by planning.'
                     format: date-time
                     nullable: true
                     type: string
@@ -1384,16 +1374,6 @@ components:
                     format: int64
                     nullable: true
                     type: integer
-                plannedFinish:
-                    description: Planned finish, not before the start.
-                    format: date-time
-                    nullable: true
-                    type: string
-                plannedStart:
-                    description: Planned start.
-                    format: date-time
-                    nullable: true
-                    type: string
                 priority:
                     $ref: '#/components/schemas/ManufacturingPriority'
                 quantity:
@@ -1839,6 +1819,7 @@ components:
                     format: int32
                     type: integer
                 produced:
+                    description: The good output of the orders with an actual cost, the output the actual total paid for.
                     type: string
             required:
                 - orders

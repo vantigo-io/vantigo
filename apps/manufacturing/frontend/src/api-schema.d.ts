@@ -1445,12 +1445,12 @@ export interface components {
             parent: components["schemas"]["ManufacturingOrderLink"] | null;
             /**
              * Format: date-time
-             * @description Set by hand or by planning (delivery D).
+             * @description The planned window's end (M34): the latest planned finish of the work orders, or the due date when the order has none. Set only by planning.
              */
             plannedFinish: string | null;
             /**
              * Format: date-time
-             * @description Set by hand or by planning (delivery D).
+             * @description The planned window's start (M34): the earliest planned start of the work orders, or the due date less the BoM's lead time in business days when the order has none. Set only by planning.
              */
             plannedStart: string | null;
             priority: components["schemas"]["ManufacturingPriority"];
@@ -1578,16 +1578,6 @@ export interface components {
              * @description An active location of the site; default the site's root location (M17a).
              */
             outputLocationId?: number | null;
-            /**
-             * Format: date-time
-             * @description Planned finish, not before the start.
-             */
-            plannedFinish?: string | null;
-            /**
-             * Format: date-time
-             * @description Planned start.
-             */
-            plannedStart?: string | null;
             priority?: components["schemas"]["ManufacturingPriority"];
             /** @description Exact decimal, more than 0, at most three decimals. */
             quantity: string;
@@ -1682,12 +1672,12 @@ export interface components {
             origin: components["schemas"]["ManufacturingOrderOriginInfo"];
             /**
              * Format: date-time
-             * @description Set by hand or by planning (delivery D).
+             * @description The planned window's end (M34): the latest planned finish of the work orders, or the due date when the order has none. Set only by planning.
              */
             plannedFinish: string | null;
             /**
              * Format: date-time
-             * @description Set by hand or by planning (delivery D).
+             * @description The planned window's start (M34): the earliest planned start of the work orders, or the due date less the BoM's lead time in business days when the order has none. Set only by planning.
              */
             plannedStart: string | null;
             priority: components["schemas"]["ManufacturingPriority"];
@@ -1726,16 +1716,6 @@ export interface components {
              * @description An active location of the site; default the site's root location (M17a).
              */
             outputLocationId?: number | null;
-            /**
-             * Format: date-time
-             * @description Planned finish, not before the start.
-             */
-            plannedFinish?: string | null;
-            /**
-             * Format: date-time
-             * @description Planned start.
-             */
-            plannedStart?: string | null;
             priority: components["schemas"]["ManufacturingPriority"];
             /** @description Exact decimal, more than 0. Changed only on a draft (order_not_draft). */
             quantity: string;
@@ -1950,6 +1930,7 @@ export interface components {
             estimate: string;
             /** Format: int32 */
             orders: number;
+            /** @description The good output of the orders with an actual cost, the output the actual total paid for. */
             produced: string;
         };
         /** @description The production dialog's prefill (M22a). */
