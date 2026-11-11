@@ -47,6 +47,9 @@ application.
   number series, quote validity, payment terms, the send channel, the mail texts and the
   quote templates. Map Products' tax categories to VAT codes in Invoices before people
   quote.
+- **Manufacturing.** [Manufacturing](/en/admin/manufacturing/) is on when `manufacturing` is
+  in `MODULES` beside `products` and `inventory`, which it requires; its five permissions,
+  of which **See manufacturing costs** is sensitive and cannot be delegated.
 - **Knowledge.** Knowledge is on when `knowledge` is in `MODULES` (or `MODULES` is unset); it needs
   no other module. Nobody has access until you give a role **Use Knowledge**
   (`knowledge:articles`); **Administer Knowledge** (`knowledge:manage`) adds the access
