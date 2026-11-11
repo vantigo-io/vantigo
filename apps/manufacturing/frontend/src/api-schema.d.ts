@@ -138,6 +138,271 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List manufacturing orders
+         * @description Filtered by status (default the open ones), site, work center, variant, due date range, late, origin, responsible and reservation status, sorted by due date, number or priority, a page at a time (M24, M21a).
+         */
+        get: operations["listManufacturingOrders"];
+        put?: never;
+        /**
+         * Create a manufacturing order
+         * @description Creates a draft numbered MO-<n> (M17, M17a, M17b). A draft follows its BoM until it is confirmed.
+         */
+        post: operations["createManufacturingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a manufacturing order
+         * @description With its component lines and their live availability at the site (M21a), and the orders it links to.
+         */
+        get: operations["getManufacturingOrder"];
+        /**
+         * Update a manufacturing order
+         * @description A draft changes everything; a confirmed or in-progress order its dates, priority, responsible, note and locations (M19).
+         */
+        put: operations["updateManufacturingOrder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a manufacturing order
+         * @description Allowed while nothing has been produced or consumed; releases every reservation (M19).
+         */
+        post: operations["cancelManufacturingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a manufacturing order
+         * @description Releases what remains reserved and marks the order done; with backorder true a new order for the rest, numbered from the root and confirmed at once when this one was (M23).
+         */
+        post: operations["closeManufacturingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/components": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a component line to a manufacturing order
+         * @description Adds an extra component to a confirmed or in-progress order and reserves it (M18).
+         */
+        post: operations["addManufacturingOrderComponent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/components/{componentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a component line's requirement
+         * @description Changes the requirement and adjusts the line's reservation (M18, M18a, M20).
+         */
+        put: operations["updateManufacturingOrderComponent"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a manufacturing order
+         * @description Snapshots the BoM's lines as component lines and reserves each line's requirement at the site; a short line is left unreserved and named in shortLines, never refused (M17, M20, M20a).
+         */
+        post: operations["confirmManufacturingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a manufacturing order's history
+         * @description The append-only timeline, oldest first (M26).
+         */
+        get: operations["listManufacturingOrderEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/production-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a production's proportional prefill
+         * @description Each line's consumption proportional to quantity + outputScrap (M22a).
+         */
+        get: operations["getManufacturingProductionDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/productions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a production
+         * @description Posts one production movement through Inventory consuming the components and producing the item, updates the line totals and moves the order to in progress (M22, M22a). Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler. A first post answers 201; a replay of its clientRequestId 200 with the first production.
+         */
+        post: operations["postManufacturingProduction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/reserve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reserve a manufacturing order's short lines
+         * @description Reserve now: tries every line's unreserved requirement again, in two passes (M20a).
+         */
+        post: operations["reserveManufacturingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search people for an order's responsible */
+        get: operations["searchManufacturingPeople"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/productions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a production
+         * @description A production record with its order's id, for the movement page's source.
+         */
+        get: operations["getManufacturingProduction"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/sites": {
         parameters: {
             query?: never;
@@ -147,6 +412,26 @@ export interface paths {
         };
         /** List the active Inventory sites */
         get: operations["listManufacturingSites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/sites/{id}/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a site's locations
+         * @description Every location of the site, archived ones too, by full code (M4a): what an order takes components from and puts its output on. An unknown site has none.
+         */
+        get: operations["listManufacturingSiteLocations"];
         put?: never;
         post?: never;
         delete?: never;
@@ -302,6 +587,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description An order's component status (M21, M21a), computed live: every line covered by its reservation and the site's available, some, or none.
+         * @enum {string}
+         */
+        ManufacturingAvailability: "ready" | "partly_available" | "waiting";
         /** @description A bill of materials (M10) with its operations and lines. */
         ManufacturingBom: {
             code: string | null;
@@ -496,6 +786,20 @@ export interface components {
              */
             revision: number;
         };
+        /** @description Closing an order (M23). */
+        ManufacturingCloseInput: {
+            /** @description When less than the quantity was produced: true creates a backorder for the rest, false closes short; absent is quantity_short (409). */
+            backorder?: boolean | null;
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @description A closed order and the backorder made for its rest. */
+        ManufacturingCloseResult: {
+            backorder: components["schemas"]["ManufacturingOrder"] | null;
+            order: components["schemas"]["ManufacturingOrder"];
+            /** @description The backorder's lines left unreserved when it was confirmed. */
+            shortLines: components["schemas"]["ManufacturingShortLine"][];
+        };
         /** @description A range of days a work center is closed, both included (M9). */
         ManufacturingClosure: {
             /** Format: date */
@@ -523,12 +827,69 @@ export interface components {
         ManufacturingClosureList: {
             items: components["schemas"]["ManufacturingClosure"][];
         };
+        /** @description A component added to a confirmed or in-progress order (M18). */
+        ManufacturingComponentInput: {
+            note?: string;
+            /**
+             * Format: int64
+             * @description The BoM operation that consumes it.
+             */
+            operationId?: number | null;
+            /** @description Exact decimal, more than 0, at most three decimals. */
+            required: string;
+            /** Format: int32 */
+            revision: number;
+            /**
+             * Format: int32
+             * @description A goods variant.
+             */
+            variantId: number;
+        };
+        /** @description A component line's new requirement (M18, M18a). */
+        ManufacturingComponentUpdate: {
+            /** @description Absent keeps the note. */
+            note?: string;
+            /** @description Exact decimal, 0 or more, never below consumed + scrapped (required_below_used). */
+            required: string;
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @description A consumed quantity more than 10 % off its proportional figure (M22). */
+        ManufacturingDeviation: {
+            /** Format: int64 */
+            componentId: number;
+            /** @description What the request sent. */
+            consumed: string;
+            /** @description The proportional figure. */
+            expected: string;
+            sku: string;
+        };
         /** @description One open interval of a day, local times in the workspace zone on a 15-minute grid: start before end; 24:00 is allowed as an end. */
         ManufacturingInterval: {
             /** @description HH:MM. */
             end: string;
             /** @description HH:MM. */
             start: string;
+        };
+        /** @description One location of an Inventory site (M4a). */
+        ManufacturingLocation: {
+            /** @description An archived location takes no stock. */
+            active: boolean;
+            fullCode: string;
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            /**
+             * Format: int64
+             * @description Null for the site's root.
+             */
+            parentId: number | null;
+            /** @description The site's root location, where stock lies when it has no place. */
+            root: boolean;
+        };
+        /** @description Every location of a site, archived ones too, by full code. */
+        ManufacturingLocationList: {
+            items: components["schemas"]["ManufacturingLocation"][];
         };
         /** @description What the caller may do in Manufacturing, for the screens to offer. */
         ManufacturingMeta: {
@@ -543,6 +904,350 @@ export interface components {
             /** @description The workspace currency every amount is in: NOK. */
             currency: string;
         };
+        /** @description A manufacturing order (M17) with its component lines and their availability. */
+        ManufacturingOrder: {
+            availability: components["schemas"]["ManufacturingAvailability"];
+            backorderOf: components["schemas"]["ManufacturingOrderLink"] | null;
+            /**
+             * Format: int64
+             * @description The order this one is the backorder of (M23).
+             */
+            backorderOfId: number | null;
+            /** @description The backorders of this order's chain made from it. */
+            backorders: components["schemas"]["ManufacturingOrderLink"][];
+            bomCode: string | null;
+            /** Format: int64 */
+            bomId: number;
+            /** @description The BoM's output quantity. */
+            bomOutputQuantity: string;
+            /** @description Sub-assembly orders (delivery E). */
+            children: components["schemas"]["ManufacturingOrderLink"][];
+            /**
+             * Format: date-time
+             * @description When it was closed.
+             */
+            closedAt: string | null;
+            /**
+             * Format: int64
+             * @description Where components are taken from; null takes each from its primary location, then where it lies (M22a).
+             */
+            componentLocationId: number | null;
+            components: components["schemas"]["ManufacturingOrderComponent"][];
+            /**
+             * Format: date-time
+             * @description When it was confirmed.
+             */
+            confirmedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date
+             * @description The day the finished goods must be ready.
+             */
+            dueDate: string | null;
+            /** Format: int64 */
+            id: number;
+            /** @description Due before today and not done or cancelled (M24). */
+            late: boolean;
+            note: string;
+            /** @description MO-<n>, or MO-<n>-<suffix> for a backorder (M17b). */
+            number: string;
+            origin: components["schemas"]["ManufacturingOrderOriginInfo"];
+            /** Format: int64 */
+            outputLocationId: number;
+            /** @description Finished units produced and discarded (M22a). */
+            outputScrap: string;
+            /** @description produced − quantity when more was produced, else 0 (M23). */
+            overrun: string;
+            parent: components["schemas"]["ManufacturingOrderLink"] | null;
+            /**
+             * Format: date-time
+             * @description Set by hand or by planning (delivery D).
+             */
+            plannedFinish: string | null;
+            /**
+             * Format: date-time
+             * @description Set by hand or by planning (delivery D).
+             */
+            plannedStart: string | null;
+            priority: components["schemas"]["ManufacturingPriority"];
+            /** @description Good output posted so far, exact decimal (M22a); more than quantity is an overrun. */
+            produced: string;
+            /** @description Exact decimal, more than 0, at most three decimals. */
+            quantity: string;
+            /** @description From the stored copies (M21a); null unless the order is confirmed or in progress. */
+            reservationStatus: components["schemas"]["ManufacturingReservationStatus"] | null;
+            responsible: components["schemas"]["ManufacturingPerson"] | null;
+            /** Format: int32 */
+            revision: number;
+            /** Format: int64 */
+            siteId: number;
+            status: components["schemas"]["ManufacturingOrderStatus"];
+            /** Format: date-time */
+            updatedAt: string;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description A component line of an order (M18) with its live availability (M21, M21a). On a draft the lines follow the BoM and have no id. */
+        ManufacturingOrderComponent: {
+            /** @description Added to the order after confirm (M18). */
+            added: boolean;
+            /** @description The variant's available quantity at the order's site, read live (M21a). */
+            available: string;
+            /** @description Consumed by productions so far. */
+            consumed: string;
+            /** @description reserved + available ≥ remaining (M21a). */
+            covered: boolean;
+            /**
+             * Format: int64
+             * @description Null on a draft, whose lines follow its BoM until it is confirmed.
+             */
+            id: number | null;
+            /** @description What neither the reservation nor the site's available covers, the site's available shared across the lines of one variant (M21a). */
+            missing: string;
+            note: string;
+            /**
+             * Format: int64
+             * @description The BoM operation that consumes it.
+             */
+            operationId: number | null;
+            /** @description required − consumed − scrapped, at least 0. */
+            remaining: string;
+            /** @description line quantity × order quantity / output quantity × (1 + scrap/100), rounded up to three decimals (M18), or as edited. */
+            required: string;
+            /** @description What the line holds reserved at the order's site (Manufacturing's copy, M20a). */
+            reserved: string;
+            /** @description Scrapped by productions so far. */
+            scrapped: string;
+            /** Format: int32 */
+            sortOrder: number;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description One event of an order's timeline (M26). */
+        ManufacturingOrderEvent: {
+            actorDisplay: string;
+            /** Format: uuid */
+            actorUserId: string | null;
+            /** Format: date-time */
+            at: string;
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["ManufacturingOrderEventKind"];
+            /** @description The event's figures: quantities as exact decimal text, ids, numbers. */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description What an event of the timeline records (M26).
+         * @enum {string}
+         */
+        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created";
+        /** @description An order's timeline, oldest first. */
+        ManufacturingOrderEventList: {
+            items: components["schemas"]["ManufacturingOrderEvent"][];
+        };
+        /** @description A new manufacturing order (M17), created as a draft. */
+        ManufacturingOrderInput: {
+            /**
+             * Format: int64
+             * @description An active BoM of the variant; default its default BoM.
+             */
+            bomId?: number | null;
+            /**
+             * Format: int64
+             * @description An active location of the site (location_unknown); null takes each component from its primary location, then where it lies.
+             */
+            componentLocationId?: number | null;
+            /**
+             * Format: date
+             * @description The day the goods must be ready.
+             */
+            dueDate?: string | null;
+            note?: string;
+            /**
+             * Format: int64
+             * @description An active location of the site; default the site's root location (M17a).
+             */
+            outputLocationId?: number | null;
+            /**
+             * Format: date-time
+             * @description Planned finish, not before the start.
+             */
+            plannedFinish?: string | null;
+            /**
+             * Format: date-time
+             * @description Planned start.
+             */
+            plannedStart?: string | null;
+            priority?: components["schemas"]["ManufacturingPriority"];
+            /** @description Exact decimal, more than 0, at most three decimals. */
+            quantity: string;
+            /** Format: uuid */
+            responsibleUserId?: string | null;
+            /**
+             * Format: int64
+             * @description An active Inventory site; default the BoM's work centers' site, else the first active site (M17a).
+             */
+            siteId?: number;
+            /**
+             * Format: int32
+             * @description A goods variant with an active BoM (bom_required).
+             */
+            variantId: number;
+        };
+        /** @description Another order an order names: its backorder, its parent or a child. */
+        ManufacturingOrderLink: {
+            /** Format: int64 */
+            id: number;
+            /** @description MO-<n>, or MO-<n>-<suffix> for a backorder (M17b). */
+            number: string;
+            /** @description Exact decimal: good output only. */
+            produced: string;
+            /** @description Exact decimal. */
+            quantity: string;
+            status: components["schemas"]["ManufacturingOrderStatus"];
+        };
+        /** @description Where the order came from (M17). */
+        ManufacturingOrderOriginInfo: {
+            kind: components["schemas"]["ManufacturingOrigin"];
+            /**
+             * Format: int64
+             * @description The sales order line (E).
+             */
+            lineId: number | null;
+            /**
+             * Format: int64
+             * @description The origin's order: a sales order (E) or the parent order.
+             */
+            orderId: number | null;
+            /** @description The origin's display reference, such as SO-12. */
+            reference: string | null;
+        };
+        /** @description One page of the list. */
+        ManufacturingOrderPage: {
+            items: components["schemas"]["ManufacturingOrderSummary"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            pageSize: number;
+            /** Format: int32 */
+            total: number;
+        };
+        /**
+         * @description The list's order (M24).
+         * @enum {string}
+         */
+        ManufacturingOrderSort: "dueDate" | "number" | "priority";
+        /**
+         * @description A manufacturing order's state (M19).
+         * @enum {string}
+         */
+        ManufacturingOrderStatus: "draft" | "confirmed" | "in_progress" | "done" | "cancelled";
+        /** @description A manufacturing order as the list shows it (M24). */
+        ManufacturingOrderSummary: {
+            /**
+             * Format: int64
+             * @description The order this one is the backorder of (M23).
+             */
+            backorderOfId: number | null;
+            /** Format: int64 */
+            bomId: number;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date
+             * @description The day the finished goods must be ready.
+             */
+            dueDate: string | null;
+            /** Format: int64 */
+            id: number;
+            /** @description Due before today and not done or cancelled (M24). */
+            late: boolean;
+            /** @description MO-<n>, or MO-<n>-<suffix> for a backorder (M17b). */
+            number: string;
+            origin: components["schemas"]["ManufacturingOrderOriginInfo"];
+            /**
+             * Format: date-time
+             * @description Set by hand or by planning (delivery D).
+             */
+            plannedFinish: string | null;
+            /**
+             * Format: date-time
+             * @description Set by hand or by planning (delivery D).
+             */
+            plannedStart: string | null;
+            priority: components["schemas"]["ManufacturingPriority"];
+            /** @description Good output posted so far, exact decimal (M22a); more than quantity is an overrun. */
+            produced: string;
+            /** @description Exact decimal, more than 0, at most three decimals. */
+            quantity: string;
+            /** @description From the stored copies (M21a); null unless the order is confirmed or in progress. */
+            reservationStatus: components["schemas"]["ManufacturingReservationStatus"] | null;
+            responsible: components["schemas"]["ManufacturingPerson"] | null;
+            /** Format: int64 */
+            siteId: number;
+            status: components["schemas"]["ManufacturingOrderStatus"];
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description An order's fields, replaced as a whole (M19): a draft changes everything; a confirmed or in-progress order only its dates, priority, responsible, note and locations. A nullable field left out is cleared. */
+        ManufacturingOrderUpdate: {
+            /**
+             * Format: int64
+             * @description Changed only on a draft (order_not_draft).
+             */
+            bomId: number;
+            /**
+             * Format: int64
+             * @description An active location of the site (location_unknown); null takes each component from its primary location, then where it lies.
+             */
+            componentLocationId?: number | null;
+            /**
+             * Format: date
+             * @description The day the goods must be ready.
+             */
+            dueDate?: string | null;
+            note?: string;
+            /**
+             * Format: int64
+             * @description An active location of the site; default the site's root location (M17a).
+             */
+            outputLocationId?: number | null;
+            /**
+             * Format: date-time
+             * @description Planned finish, not before the start.
+             */
+            plannedFinish?: string | null;
+            /**
+             * Format: date-time
+             * @description Planned start.
+             */
+            plannedStart?: string | null;
+            priority: components["schemas"]["ManufacturingPriority"];
+            /** @description Exact decimal, more than 0. Changed only on a draft (order_not_draft). */
+            quantity: string;
+            /** Format: uuid */
+            responsibleUserId?: string | null;
+            /**
+             * Format: int32
+             * @description The revision the client read (revision_conflict).
+             */
+            revision: number;
+            /**
+             * Format: int64
+             * @description Changed only on a draft (order_not_draft).
+             */
+            siteId: number;
+        };
+        /** @description An order after a write that reserves (confirm, reserve now, a line's add or edit), naming each line left short. */
+        ManufacturingOrderWithShortLines: {
+            order: components["schemas"]["ManufacturingOrder"];
+            shortLines: components["schemas"]["ManufacturingShortLine"][];
+        };
+        /**
+         * @description Where an order came from (M17): by hand, a sales order (delivery E) or a parent order (E).
+         * @enum {string}
+         */
+        ManufacturingOrigin: "manual" | "sales_order" | "parent";
         /** @description One node of the exploded BoM (M15): the root is the BoM's variant; a made node recurses through its default active BoM. */
         ManufacturingOverviewNode: {
             /** @description Available at siteId, exact decimal; null when no site was asked. */
@@ -585,10 +1290,27 @@ export interface components {
             /** Format: int64 */
             workCenterId: number;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM), quantity_invalid (400: not more than 0, or more than three decimals) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
+        /** @description A user as Manufacturing names one. */
+        ManufacturingPerson: {
+            displayName: string;
+            /** Format: uuid */
+            id: string;
+        };
+        /** @description Users matching a search, by display name. */
+        ManufacturingPersonList: {
+            items: components["schemas"]["ManufacturingPerson"][];
+        };
+        /**
+         * @description An order's priority (M17).
+         * @enum {string}
+         */
+        ManufacturingPriority: "normal" | "urgent";
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production needs manufacturing:shop-floor or manufacturing:orders-manage), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
         ManufacturingProblem: {
             code?: string | null;
             detail?: string | null;
+            /** @description consumption_differs only: every deviating line. */
+            deviations?: components["schemas"]["ManufacturingDeviation"][];
             errors?: {
                 [key: string]: string[];
             };
@@ -602,10 +1324,15 @@ export interface components {
             title?: string | null;
             type?: string | null;
         };
-        /** @description One failing line of a BoM. */
+        /** @description One failing line of a BoM, or of an order's production. */
         ManufacturingProblemLine: {
             /** @description The line's refusal code. */
             code: string;
+            /**
+             * Format: int64
+             * @description An order's component line, for a refusal of a production or a reserve.
+             */
+            componentId?: number;
             /** @description What a person reads. */
             detail: string;
             /**
@@ -620,6 +1347,108 @@ export interface components {
             /** Format: int32 */
             variantId: number;
         };
+        /** @description A production posted against an order (M22). */
+        ManufacturingProduction: {
+            clientRequestId: string;
+            /** Format: int64 */
+            id: number;
+            lines: components["schemas"]["ManufacturingProductionLine"][];
+            /**
+             * Format: int64
+             * @description Inventory's production movement; null when nothing went into or out of stock.
+             */
+            movementId: number | null;
+            /** Format: int64 */
+            orderId: number;
+            orderNumber: string;
+            /** @description Finished units discarded. */
+            outputScrap: string;
+            /** Format: date-time */
+            postedAt: string;
+            postedByDisplay: string;
+            /** Format: uuid */
+            postedByUserId: string | null;
+            /** @description Good output. */
+            quantity: string;
+            /** Format: int64 */
+            toLocationId: number;
+        };
+        /** @description The production dialog's prefill (M22a). */
+        ManufacturingProductionDraft: {
+            lines: components["schemas"]["ManufacturingProductionDraftLine"][];
+            /** @description The output scrap asked for. */
+            outputScrap: string;
+            /** @description The quantity asked for; default what remains to produce. */
+            quantity: string;
+            /** Format: int64 */
+            toLocationId: number;
+        };
+        /** @description A component line's prefill (M22a). */
+        ManufacturingProductionDraftLine: {
+            /** Format: int64 */
+            componentId: number;
+            /** @description required × (quantity + outputScrap) / order quantity, rounded half-up to three decimals. */
+            proposed: string;
+            /** @description required − consumed − scrapped. */
+            remaining: string;
+            /** @description The line's requirement. */
+            required: string;
+            /** @description Reserved for the line. */
+            reserved: string;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description A production registered against an order (M22, M22a). */
+        ManufacturingProductionInput: {
+            /** @description Post although a consumed quantity differs from the proportional figure by more than 10 % (consumption_differs). */
+            acceptDeviation?: boolean;
+            /** @description Makes the post idempotent: a replay answers 200 with the first production; another body is client_request_reused. */
+            clientRequestId: string;
+            /** @description Omitted lines are not judged and consume nothing. */
+            lines: components["schemas"]["ManufacturingProductionLineInput"][];
+            /** @description Finished units produced and discarded, exact decimal, 0 or more; default 0. */
+            outputScrap?: string;
+            /** @description Good output, exact decimal, 0 or more; 0 only with consumption, scrap or output scrap. */
+            quantity: string;
+            /**
+             * Format: int64
+             * @description Where the output is put; default the order's output location.
+             */
+            toLocationId?: number | null;
+        };
+        /** @description One component line of a production. */
+        ManufacturingProductionLine: {
+            /** Format: int64 */
+            componentId: number;
+            /** @description Exact decimal. */
+            consumed: string;
+            /**
+             * Format: int64
+             * @description The location the request named, if any.
+             */
+            fromLocationId: number | null;
+            /** @description Exact decimal. */
+            scrapped: string;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description What a production consumed and scrapped of one component line (M22). */
+        ManufacturingProductionLineInput: {
+            /** Format: int64 */
+            componentId: number;
+            /** @description Exact decimal, 0 or more, at most three decimals; judged against the proportional figure when sent (M22a). */
+            consumed?: string | null;
+            /**
+             * Format: int64
+             * @description Where it is taken from; default the order's component location, else split over the locations holding it (M22a).
+             */
+            fromLocationId?: number | null;
+            /** @description Exact decimal, 0 or more: lost, consumed with no output. */
+            scrap?: string | null;
+        };
+        /**
+         * @description What the list shows of an open order's components (M21a), from the stored reserved copies: every line's remaining requirement reserved, some reserved, or none.
+         * @enum {string}
+         */
+        ManufacturingReservationStatus: "reserved" | "partly_reserved" | "not_reserved";
         /** @description The revision the client read. */
         ManufacturingRevisionInput: {
             /** Format: int32 */
@@ -633,6 +1462,14 @@ export interface components {
             operations: string;
             /** @description components + operations. */
             total: string;
+        };
+        /** @description A component line left unreserved (M20, M20a). */
+        ManufacturingShortLine: {
+            /** Format: int64 */
+            componentId: number;
+            /** @description What the line still needs reserved. */
+            missing: string;
+            variant: components["schemas"]["ManufacturingVariantRef"];
         };
         /** @description An active Inventory site, as contracts.Stock answers it. */
         ManufacturingSite: {
@@ -667,6 +1504,21 @@ export interface components {
              * @description Active work centers whose working state is blocked.
              */
             blockedWorkCenters: number;
+            /**
+             * Format: int32
+             * @description Orders in progress.
+             */
+            ordersInProgress: number;
+            /**
+             * Format: int32
+             * @description Open orders due before today (M24).
+             */
+            ordersLate: number;
+            /**
+             * Format: int32
+             * @description Confirmed orders not started whose planned start is today or earlier.
+             */
+            ordersToStartToday: number;
         };
         /**
          * @description A work center's or a BoM's status.
@@ -1453,6 +2305,1024 @@ export interface operations {
             };
         };
     };
+    listManufacturingOrders: {
+        parameters: {
+            query?: {
+                /** @description Any of the statuses; default draft, confirmed and in_progress. */
+                status?: components["schemas"]["ManufacturingOrderStatus"][];
+                siteId?: number;
+                /** @description Orders whose BoM has an operation at the work center (work orders from delivery C). */
+                workCenterId?: number;
+                variantId?: number;
+                dueFrom?: string;
+                dueTo?: string;
+                /** @description Only orders due before today and not done or cancelled. */
+                late?: boolean;
+                origin?: components["schemas"]["ManufacturingOrigin"];
+                responsibleUserId?: string;
+                /** @description Only confirmed and in-progress orders with this reservation status. */
+                reservation?: components["schemas"]["ManufacturingReservationStatus"];
+                /** @description Matches the number (MO-12) and the product's SKU and name. */
+                q?: string;
+                /** @description Default dueDate. */
+                sort?: components["schemas"]["ManufacturingOrderSort"];
+                page?: number;
+                /** @description Default 50. */
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrderPage"];
+                };
+            };
+            /** @description Bad Request — a filter or the paging is out of range. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    createManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingOrderInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrder"];
+                };
+            };
+            /** @description Bad Request — field errors; bom_required, variant_not_found, variant_not_goods, site_unknown, location_unknown, work_center_other_site, quantity_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — bom_not_active. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    getManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrder"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    updateManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingOrderUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrder"];
+                };
+            };
+            /** @description Bad Request — field errors; site_unknown, location_unknown, work_center_other_site, quantity_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_draft (a draft's field on a confirmed order), order_not_open (done or cancelled), bom_not_active. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    cancelManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrder"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open (done or cancelled), order_has_production. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    closeManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingCloseInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingCloseResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open, quantity_short (less than the quantity produced and backorder not given). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    addManufacturingOrderComponent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingComponentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrderWithShortLines"];
+                };
+            };
+            /** @description Bad Request — field errors; variant_not_found, variant_not_goods, quantity_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open; Inventory's site_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    updateManufacturingOrderComponent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                componentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingComponentUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrderWithShortLines"];
+                };
+            };
+            /** @description Bad Request — field errors; required_below_used, quantity_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such order or component line. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open; Inventory's site_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    confirmManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrderWithShortLines"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_draft, bom_not_active; Inventory's site_archived and variant_not_stocked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    listManufacturingOrderEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrderEventList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getManufacturingProductionDraft: {
+        parameters: {
+            query?: {
+                /** @description Good output; default what remains to produce. */
+                quantity?: string;
+                /** @description Default 0. */
+                outputScrap?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingProductionDraft"];
+                };
+            };
+            /** @description Bad Request — quantity_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    postManufacturingProduction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingProductionInput"];
+            };
+        };
+        responses: {
+            /** @description OK — a replay: the production first posted with this clientRequestId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingProduction"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingProduction"];
+                };
+            };
+            /** @description Bad Request — field errors; quantity_invalid, location_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open, consumption_differs (deviations), client_request_reused; Inventory's insufficient_stock, site_archived, variant_not_stocked, document_reused (lines name the component lines). Nothing was posted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    reserveManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrderWithShortLines"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open; Inventory's site_archived and variant_not_stocked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    searchManufacturingPeople: {
+        parameters: {
+            query?: {
+                /** @description Part of the display name. */
+                q?: string;
+                /** @description Default 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingPersonList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getManufacturingProduction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingProduction"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such production. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listManufacturingSites: {
         parameters: {
             query?: never;
@@ -1469,6 +3339,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManufacturingSiteList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    listManufacturingSiteLocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingLocationList"];
                 };
             };
             /** @description Unauthorized */

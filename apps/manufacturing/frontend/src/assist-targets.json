@@ -226,5 +226,149 @@
       "en": "The exploded bill of materials: each component made or bought, what is required and the operations' expected time.",
       "nb": "Stykklisten foldet ut: hver komponent som lages eller kjøpes, hva som trengs og operasjonenes forventede tid."
     }
+  },
+  {
+    "key": "manufacturing.overview.new-order",
+    "route": "/manufacturing",
+    "label": {
+      "en": "New manufacturing order",
+      "nb": "Ny produksjonsordre"
+    },
+    "description": {
+      "en": "The button on the Manufacturing overview that opens the form for a new manufacturing order.",
+      "nb": "Knappen på Produksjon-oversikten som åpner skjemaet for en ny produksjonsordre."
+    }
+  },
+  {
+    "key": "manufacturing.overview.due",
+    "route": "/manufacturing",
+    "label": {
+      "en": "Late or due this week",
+      "nb": "Forsinket eller med frist denne uken"
+    },
+    "description": {
+      "en": "The list on the Manufacturing overview of the open manufacturing orders that are late or due by the end of this week.",
+      "nb": "Listen på Produksjon-oversikten over åpne produksjonsordrer som er forsinket eller har frist innen utgangen av denne uken."
+    }
+  },
+  {
+    "key": "manufacturing.orders.new",
+    "route": "/manufacturing/orders",
+    "label": {
+      "en": "New manufacturing order",
+      "nb": "Ny produksjonsordre"
+    },
+    "description": {
+      "en": "The button on the Manufacturing orders page that opens the form for a new manufacturing order.",
+      "nb": "Knappen på siden Produksjonsordrer som åpner skjemaet for en ny produksjonsordre."
+    }
+  },
+  {
+    "key": "manufacturing.orders.filters",
+    "route": "/manufacturing/orders",
+    "label": {
+      "en": "Filters",
+      "nb": "Filtrene"
+    },
+    "description": {
+      "en": "The filters of the Manufacturing orders list: search, status, site, variant, due dates, origin, responsible, reservation, sort and late only.",
+      "nb": "Filtrene i listen Produksjonsordrer: søk, status, lagersted, variant, frister, opphav, ansvarlig, reservasjon, sortering og bare forsinkede."
+    }
+  },
+  {
+    "key": "manufacturing.orders.list",
+    "route": "/manufacturing/orders",
+    "label": {
+      "en": "Manufacturing orders list",
+      "nb": "Listen over produksjonsordrer"
+    },
+    "description": {
+      "en": "The list of manufacturing orders with their status, reservation status, due date and responsible.",
+      "nb": "Listen over produksjonsordrer med status, reservasjonsstatus, frist og ansvarlig."
+    }
+  },
+  {
+    "key": "manufacturing.order.form",
+    "route": "/manufacturing/orders/new",
+    "label": {
+      "en": "Manufacturing order form",
+      "nb": "Skjemaet for produksjonsordren"
+    },
+    "description": {
+      "en": "The form for a manufacturing order: the product variant and its bill of materials, the quantity, the site, the locations, the dates, the priority, the responsible and a note.",
+      "nb": "Skjemaet for en produksjonsordre: produktvarianten og stykklisten, antallet, lagerstedet, lokasjonene, datoene, prioriteten, den ansvarlige og et notat."
+    }
+  },
+  {
+    "key": "manufacturing.order.actions",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Order actions",
+      "nb": "Handlingene på ordren"
+    },
+    "description": {
+      "en": "The buttons at the top of a manufacturing order: Edit, Confirm, Reserve now, Register production, Close and Cancel order, as the order's status allows.",
+      "nb": "Knappene øverst på en produksjonsordre: Rediger, Bekreft, Reserver nå, Registrer produksjon, Avslutt og Kanseller ordre, etter hva ordrens status tillater."
+    }
+  },
+  {
+    "key": "manufacturing.order.short-lines",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Not everything is reserved",
+      "nb": "Ikke alt er reservert"
+    },
+    "description": {
+      "en": "The notice on a manufacturing order naming the components the site could not reserve, with Reserve now.",
+      "nb": "Meldingen på en produksjonsordre som nevner komponentene lagerstedet ikke kunne reservere, med Reserver nå."
+    }
+  },
+  {
+    "key": "manufacturing.order.facts",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Order details",
+      "nb": "Ordredetaljene"
+    },
+    "description": {
+      "en": "The facts of a manufacturing order: quantity, produced, due and planned dates, priority, responsible, site, bill of materials, origin, reservation and backorders.",
+      "nb": "Opplysningene om en produksjonsordre: antall, produsert, frist og planlagte datoer, prioritet, ansvarlig, lagersted, stykkliste, opphav, reservasjon og restordrer."
+    }
+  },
+  {
+    "key": "manufacturing.order.components",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Components",
+      "nb": "Komponentene"
+    },
+    "description": {
+      "en": "The component lines of a manufacturing order: required, reserved, available, consumed, scrapped and missing for each.",
+      "nb": "Komponentlinjene på en produksjonsordre: behov, reservert, tilgjengelig, forbrukt, kassert og mangler for hver."
+    }
+  },
+  {
+    "key": "manufacturing.order.add-component",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Add component",
+      "nb": "Legg til komponent"
+    },
+    "description": {
+      "en": "The button on a confirmed or in-progress manufacturing order that adds an extra component line.",
+      "nb": "Knappen på en bekreftet eller pågående produksjonsordre som legger til en ekstra komponentlinje."
+    }
+  },
+  {
+    "key": "manufacturing.order.history",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "History",
+      "nb": "Historikken"
+    },
+    "description": {
+      "en": "The history of a manufacturing order: each event, who did it and when.",
+      "nb": "Historikken til en produksjonsordre: hver hendelse, hvem som gjorde den og når."
+    }
   }
 ]
