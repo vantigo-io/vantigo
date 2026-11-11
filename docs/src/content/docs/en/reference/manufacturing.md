@@ -157,8 +157,10 @@ A closure is a date range `{fromDate, toDate, note}` with `toDate` on or after `
 - **Archive** (`POST /work-centers/{id}/archive {revision}`) sets `archived`. An archived
   work center is not offered to a new operation (`work_center_unknown` names it on a BoM
   write); the BoMs whose operations name it keep it. Archiving is refused while a work
-  order that is neither `done` nor `cancelled` names it (`work_center_has_open_work`,
-  409).
+  order that is neither `done` nor `cancelled` names it, and while the work center is
+  [blocked](#block-and-unblock) (`work_center_has_open_work`, 409). A confirm takes the
+  work centers of the work orders it creates `FOR SHARE`, so an archive at the same moment
+  waits for it and counts them.
 - **Reactivate** sets `active` again, and is refused **409** `site_archived` when its site
   is no longer an active Inventory site. An update keeps a site that was archived since;
   only a change of `siteId` must name an active one (`site_unknown`, 400).
@@ -698,8 +700,12 @@ own transaction:
    from what step 1 locked, and a line whose variant step 1 did not lock starts it again
    too. After four attempts the write is **409** `revision_conflict`;
 4. the **work orders**, in id order;
-5. the **work center**: `FOR SHARE` for a start, `FOR UPDATE` for a block or an unblock;
-6. the **time logs**, in id order;
+5. the **work center**: `FOR SHARE` for a start, and for a confirm's work orders their
+   work centers in id order, `FOR UPDATE` for a block or an unblock;
+6. the **time logs**, in id order, then — for a correction or an addition — the person's
+   advisory lock, **`pg_advisory_xact_lock(19784, hashtext(user_id))`**, before the
+   overlap check, so two supervisors adding the same person's time on different orders at
+   once cannot both pass it;
 7. the ledger — `ReserveForProduction`, `Release`, `Produce`.
 
 A shop-floor action that starts from a work order first reads that work order's order id,
@@ -857,16 +863,23 @@ or a block's downtime. With no productive log left open on it, the work order is
 ### Finish
 
 `POST /work-orders/{id}/finish {quantity?, production?}` ends **every** open log on the
-work order, sets it `done` and makes the next `pending` work order by sequence `ready`.
+work order and sets it `done`. Then the order's first work order by sequence that is
+neither `done` nor `cancelled` becomes `ready` — only when it is `pending`, so every one
+before it is finished. One started out of sequence with `force` is left as it is, and the
+ones after it wait until it is finished too.
 
 - `quantity`, optional, is what the caller made at this operation, kept on the caller's
-  log.
+  open log. With no open log of the caller's on the work order it would be lost, and is
+  **400** on `quantity`.
 - `production`, optional, is a production body as `POST /orders/{id}/productions` takes
   it, posted in the **same transaction** through the same rules
   ([Productions](#productions)): the prefill, `consumption_differs`,
   `client_request_reused`, Inventory's refusals. On a refusal nothing changes — the work
-  order is not finished and the logs stay open. The shop floor offers it on the work order
-  whose `last` is true.
+  order is not finished and the logs stay open. The shop floor's **Register production**
+  on the work order whose `last` is true posts to `POST /orders/{id}/productions` and
+  leaves the work order running; only when the operator also ticks **Also finish this
+  operation** does it send the production with the finish, which stops every operator's
+  time on it.
 - Finishing a `done` work order again with the same production's `clientRequestId`
   answers **200** with that production; otherwise a `done` or `cancelled` work order is
   **409** `work_order_closed`. A `pending` one is **409** `work_order_pending`.
@@ -894,6 +907,10 @@ note of at most 2,000 characters:
 - opens the center's own downtime log, with no user and no work order, so the stopped
   time is counted.
 
+The `note` is the blocker's words, not the operators': every log the block opens records
+the blocker as its `note_by`, and the center's own log thereby records who blocked it,
+noted or not.
+
 Blocking a blocked center changes nothing and answers **200**. While it is blocked,
 starts there are **409** `work_center_blocked`, and pause and finish end the caller's
 downtime logs.
@@ -902,8 +919,9 @@ downtime logs.
 downtime log at the center, the operators' and its own; the work orders stay `paused`
 until an operator starts again. Unblocking a center that is not blocked answers **200**.
 
-Both answer the work center's queue. The block — its reason, note and since — is
-answered on the queue and the work order view while it lasts. `GET /stats` counts the
+Both answer the work center's queue. The block — its reason, note, `by` (who blocked it,
+with their display name at the time) and since — is answered on the queue and the work
+order view while it lasts. `GET /stats` counts the
 active work centers that are blocked.
 
 ### Corrections
@@ -913,14 +931,15 @@ A supervisor corrects the record (M29, M29a); both writes need `manufacturing:ac
 
 - **Correct** (`PATCH /time-logs/{id} {startedAt, endedAt, quantity?, note}`) changes a
   log's start, end and quantity (absent keeps it, `null` clears it); the `note`, 1–2,000
-  characters, is required. Only a work order's log is corrected: a work center's own
+  characters, is required, and replaces the log's note as the supervisor's words
+  (`note_by`). Only a work order's log is corrected: a work center's own
   downtime log, which has no work order, answers **404** as an id that does not exist. A
   log still open is closed at the given `endedAt`, and its work order is settled again —
   `paused` when no productive log is left open on it.
 - **Add** (`POST /work-orders/{id}/time-logs {userId, startedAt, endedAt, kind?, reason?,
   quantity?, note}`) adds a missing closed log for a user: productive, or downtime with
-  a `reason`. It changes no work order's state: only start, pause and finish on the
-  floor do.
+  a `reason`, its note the supervisor's words (`note_by`). It changes no work order's
+  state: only start, pause and finish on the floor do.
 
 Either is refused:
 
@@ -931,8 +950,8 @@ Either is refused:
 - **400** on the field when the end is not after the start, or lies in the future.
 
 Each correction is an event `time_log_corrected`, and each addition `time_log_added`, on
-the order's [timeline](#history), with who and when; the log answers `correctedBy` and
-`correctedAt`.
+the order's [timeline](#history), with who and when — the times and the person, not the
+note, which stays on the log alone; the log answers `correctedBy` and `correctedAt`.
 
 ### The queue and My work
 
@@ -961,7 +980,7 @@ Migration `00158_manufacturing_work_orders.sql` adds, in the `manufacturing` sch
 | Table | Holds |
 | --- | --- |
 | `work_orders` | A work order: `order_id`, `operation_id` (the BoM operation it was copied from, which its component lines name), `sequence`, `name`, `work_center_id`, `setup_minutes`, `cleanup_minutes`, `minutes_per_cycle`, `capacity`, `time_efficiency`, `machine_rate`, `labour_rate`, `instructions`, `expected_minutes`, `planned_start`, `planned_finish` (delivery D), `status`, `started_at`, `finished_at`, `revision` |
-| `time_logs` | A time log: `work_order_id` (null on the center's own), `work_center_id`, `user_id` and `user_display` (null and empty on the center's own), `kind`, `reason`, `note`, `started_at`, `ended_at`, `quantity`, `forced`, `corrected_by`, `corrected_by_display`, `corrected_at`; a partial unique index on `user_id` where `ended_at` is null |
+| `time_logs` | A time log: `work_order_id` (null on the center's own), `work_center_id`, `user_id` and `user_display` (null and empty on the center's own), `kind`, `reason`, `note`, `started_at`, `ended_at`, `quantity`, `forced`, `corrected_by`, `corrected_by_display`, `corrected_at`, `note_by` and `note_by_display` (whose words the note is: the supervisor's for a correction or an addition, the blocker's for a block's logs); a partial unique index on `user_id` where `ended_at` is null |
 
 A work order and a time log name their work center with a restricting foreign key inside
 the schema, which is why a work center they name cannot be deleted.
@@ -991,17 +1010,23 @@ BoMs and the orders together. A done or cancelled order holds nothing.
 Work centers, closures, BoMs and work orders hold no personal data. A manufacturing order
 names its `responsibleUserId`; a production its poster (`posted_by_user_id`,
 `posted_by_display`), an event its actor (`actor_user_id`, `actor_display`), and a time
-log its operator (`user_id`, `user_display`) and the supervisor who corrected it
-(`corrected_by`, `corrected_by_display`). These user ids stay with their display snapshot
+log its operator (`user_id`, `user_display`), the supervisor who corrected it
+(`corrected_by`, `corrected_by_display`) and whose words its note is (`note_by`,
+`note_by_display`). These user ids stay with their display snapshot
 as records after identity erases the person, as Inventory's ledger keeps its poster
 (rule 19 of the [module boundaries](/en/contributing/module-boundaries/)).
 
-A time log's free-text `note` is the person's own words and does not stay. No module is
+A time log's free-text `note` is its writer's own words and does not stay. The writer is
+not the operator: it is the supervisor who corrected or added the log, or the person who
+blocked the work center, kept as the log's `note_by` (`note_by_display`). No module is
 told of an erasure, so the module asks (rule 19): its one background worker,
-`manufacturing-erasure`, once a day pages through the operators whose time logs carry a
-note, 200 user ids at a time, asks `contracts.UserDirectory.Users` which still exist, and
-blanks the `note` of every time log of those that do not. The log, its times, its kind and
-its operator's id and display name are kept. The price is the sweep's cycle: a note can
+`manufacturing-erasure`, once a day pages through the writers of the notes, 200 user ids
+at a time, asks `contracts.UserDirectory.Users` which still exist, and blanks every note
+written by those that do not. It takes the logs in id order and skips any another
+transaction holds — a block or a correction under way — so it never waits on the shop
+floor; a skipped note goes in the next cycle. The log, its times, its kind, its operator's
+id and display name and the writer's are kept. The notes are not copied into the order's
+timeline, so nothing else is swept. The price is the sweep's cycle: a note can
 outlive the erasure by up to a day. A disabled user is still known, and keeps their
 notes. The sweep is idempotent, needs no lease, and holds no connection while it asks the
 directory. The module registers no customer `PersonalData` slot: it holds nothing about a
@@ -1019,7 +1044,7 @@ bodies are strict: an unknown property is a 400.
 | `revision_conflict` | 409 | A stale `revision` of a work center, a BoM or an order; also a unique-index race on the default (M14a), an order write whose variants kept changing under its lock, and a block or unblock whose center's open logs kept changing ([the order lock order](#the-order-lock-order)) |
 | `work_center_code_taken` | 409 | The code is another work center's (M8) |
 | `work_center_in_use` | 409 | Delete of a work center a BoM operation, a work order or a time log names; archive it instead (M8) |
-| `work_center_has_open_work` | 409 | Archive while a work order that is neither done nor cancelled names it (M8) |
+| `work_center_has_open_work` | 409 | Archive while a work order that is neither done nor cancelled names it (M8), or while the work center is blocked |
 | `closures_too_many` | 400 | More than 100 closures (M9) |
 | `site_unknown` | 400 | `siteId` is not an active Inventory site (M8) |
 | `site_archived` | 409 | Reactivating a work center whose site is archived |

@@ -114,7 +114,8 @@ lenger trenger. Å slette en stengning åpner dagene igjen.
   En arbeidsstasjon på et slikt lagersted kan fortsatt redigeres og beholder lagerstedet;
   flyttes den, er det bare til et aktivt lagersted.
   Å arkivere nektes så lenge en arbeidsordre som verken er ferdig eller kansellert, er på
-  arbeidsstasjonen: fullfør arbeidet, eller lukk eller kanseller ordrene, først.
+  arbeidsstasjonen, eller så lenge den er blokkert: fullfør arbeidet, eller lukk eller
+  kanseller ordrene, og opphev blokkeringen, først.
 - **Slett** fjerner den for godt, og er bare tillatt så lenge ingen operasjon i noen
   stykkliste, ingen arbeidsordre og ingen tidsregistrering navngir den. Ellers får du
   beskjed om at den er i bruk; arkiver den i stedet.
@@ -471,7 +472,8 @@ bare til å lese.
 1. I fanen **Arbeidsordrer** på ordren, under **Tidsregistreringer**, velger du
    **Korriger** på registreringen.
 2. I **Korriger tidsregistrering** endrer du **Startet**, **Avsluttet** eller **Antall
-   laget**, og skriver **Hvorfor** — det er påkrevd, og lagres i ordrens historikk.
+   laget**, og skriver **Hvorfor** — det er påkrevd, og lagres på registreringen som dine
+   ord; ordrens historikk viser korrigeringen, hvem som gjorde den og når.
 3. Velg **Korriger**. En registrering som fortsatt løper, avsluttes ved slutten du oppgir.
 
 For å føre tid ingen registrerte, velger du **Legg til manglende registrering**: velg
@@ -574,10 +576,14 @@ På ordrens siste operasjon står **Registrer produksjon** ved siden av **Ferdig
 åpner skjemaet fra ordresiden — **Antall** laget, eventuelle **Kasserte ferdigvarer**, og
 hver komponents forhåndsutfylte **Forbrukt** og **Svinn** (se
 [Registrer en produksjon](#registrer-en-produksjon)), med samme advarsel når et tall
-avviker mer enn 10 %. Å lagre registrerer produksjonen **og** fullfører arbeidsordren,
-sammen: når produksjonen nektes, for eksempel fordi lagerstedet ikke har nok av en
-komponent, registreres ingenting, arbeidsordren fullføres ikke, og tiden din fortsetter å
-løpe. Sendes den to ganger, bokføres den bare én gang.
+avviker mer enn 10 %. Å velge **Bokfør** registrerer produksjonen og lar arbeidsordren
+løpe videre, så du kan registrere mer underveis.
+
+Når dette er det siste, krysser du også av for **Fullfør også denne operasjonen**:
+produksjonen registreres **og** arbeidsordren fullføres, sammen — noe som stopper tiden for
+alle som jobber med den. Når produksjonen nektes, for eksempel fordi lagerstedet ikke har
+nok av en komponent, registreres ingenting, arbeidsordren fullføres ikke, og tiden
+fortsetter å løpe. Sendes den to ganger, bokføres den bare én gang.
 
 Å lukke ordren gjøres fortsatt på ordresiden, av en med Administrere produksjonsordrer.
 
@@ -595,13 +601,14 @@ Når maskinen bryter sammen, eller arbeidet stopper av en annen grunn:
 
 1. Velg **Blokker** på siden for arbeidsstasjonen.
 2. Velg **Årsak** — **Maskinstans**, **Mangler materiale**, **Omstilling**, **Venter på
-   operatør**, **Kvalitet** eller **Annet** — og skriv eventuelt et notat.
+   operatør**, **Kvalitet** eller **Annet** — og skriv eventuelt et notat. Notatet er
+   ditt: det lagres med navnet ditt, og forsvinner når brukeren din slettes.
 3. Velg **Blokker**.
 
 Fra det øyeblikket registreres tiden til alle som arbeider ved arbeidsstasjonen, som
 stopptid med den årsaken, arbeidsstasjonens egen stopptid telles, og ingen kan starte en
-arbeidsordre der: arbeidsstasjonen og arbeidsordrene viser **Blokkert** med årsaken og
-siden når, og Start tilbys ikke. **Oversikt** teller den under **Blokkerte
+arbeidsordre der: arbeidsstasjonen og arbeidsordrene viser **Blokkert** med årsaken,
+siden når og hvem som blokkerte den, og Start tilbys ikke. **Oversikt** teller den under **Blokkerte
 arbeidsstasjoner**. Å blokkere en arbeidsstasjon som allerede er blokkert, endrer
 ingenting.
 

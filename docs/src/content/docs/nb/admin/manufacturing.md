@@ -54,8 +54,9 @@ den brukes, står i [Produksjon](/nb/user/manufacturing/), og hver regel i
 3. **Produksjon**-flisen vises for alle med `manufacturing:access`.
 
 Modulen har ingen egne innstillinger. Den starter én bakgrunnsjobb,
-`manufacturing-erasure`, som én gang i døgnet tømmer fritekstnotatet på
-tidsregistreringene til personer identitetsmodulen har slettet
+`manufacturing-erasure`, som én gang i døgnet tømmer fritekstnotatene på
+tidsregistreringer skrevet av personer identitetsmodulen har slettet — en arbeidsleders
+korrigering eller tillegg, eller notatet til en blokkering
 ([personopplysninger](/en/reference/manufacturing/#personal-data)); den trenger ikke noe
 oppsett.
 
