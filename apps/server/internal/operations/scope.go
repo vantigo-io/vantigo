@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -113,10 +114,8 @@ func (e *entry) otherCustomer() *Error {
 
 // withEntry is m with key set, as a copy: the caller's map is not changed.
 func withEntry(m map[string]any, key string, value any) map[string]any {
-	out := make(map[string]any, len(m)+1)
-	for k, v := range m {
-		out[k] = v
-	}
+	out := make(map[string]any)
+	maps.Copy(out, m)
 	out[key] = value
 	return out
 }
