@@ -33,6 +33,7 @@ import {
 import {
   validateBomOverviewSearch,
   validateBomsSearch,
+  validateNewOrderSearch,
   validateOrdersSearch,
   validateWorkCentersSearch,
 } from "../lib/search";
@@ -67,7 +68,7 @@ export const makeRouteTree = () => {
   return rootRoute.addChildren([
     route(MANUFACTURING_HOME_ROUTE_PATH, ManufacturingOverviewPage),
     route(ORDERS_ROUTE_PATH, OrdersPage, validateOrdersSearch),
-    route(NEW_ORDER_ROUTE_PATH, NewOrderPage),
+    route(NEW_ORDER_ROUTE_PATH, NewOrderPage, validateNewOrderSearch),
     route(ORDER_ROUTE_PATH, OrderPage),
     route(BOMS_ROUTE_PATH, BomsPage, validateBomsSearch),
     route(NEW_BOM_ROUTE_PATH, NewBomPage),

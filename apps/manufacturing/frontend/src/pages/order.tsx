@@ -21,12 +21,13 @@ import {
   IconCheck,
   IconCircleCheck,
   IconClipboardCheck,
+  IconHierarchy,
   IconLock,
   IconPencil,
   IconX,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { manufacturingMetaQueryOptions } from "../api/meta";
@@ -41,11 +42,13 @@ import {
   orderEventsQueryOptions,
   orderQueryOptions,
   reserveOrder,
+  salesOrderLineQueryOptions,
   useOrdersLive,
 } from "../api/orders";
 import { isRevisionConflict, NotFoundError, refusalCode } from "../api/request";
 import { planOrder, unplanOrder } from "../api/schedule";
 import { manufacturingSitesQueryOptions } from "../api/sites";
+import { ChildrenDialog } from "../components/children-dialog";
 import { CloseDialog } from "../components/close-dialog";
 import { CostPanel } from "../components/cost-panel";
 import { OrderComponents } from "../components/order-components";
@@ -64,6 +67,8 @@ import {
   useManufacturingFormat,
 } from "../lib/format";
 import { MANUFACTURING_HOME_ROUTE_PATH, ORDERS_ROUTE_PATH, orderLinkOptions } from "../lib/routes";
+import type { NewOrderSearch } from "../lib/search";
+import { subAssemblyLines } from "../lib/sub-assembly";
 
 type TFunction = ReturnType<typeof useManufacturingFormat>["t"];
 
@@ -73,10 +78,19 @@ const breadcrumbs = (t: TFunction, label: string) => [
   { label },
 ];
 
-/** A new manufacturing order's form (M17); it says so when the caller may not create one. */
+/**
+ * A new manufacturing order's form (M17); it says so when the caller may not
+ * create one. Opened from a sales order's line (`?salesOrderLineId=`, M45)
+ * it is prefilled from the line, read through Orders, and made for it.
+ */
 export const NewOrderPage = () => {
   const { t } = useManufacturingFormat();
   const meta = useQuery(manufacturingMetaQueryOptions());
+  const { salesOrderLineId } = useSearch({ strict: false }) as NewOrderSearch;
+  const line = useQuery({
+    ...salesOrderLineQueryOptions(salesOrderLineId ?? 0),
+    enabled: salesOrderLineId !== undefined && canManageOrders(meta.data),
+  });
   return (
     <Stack gap="lg">
       <PageHeader
@@ -88,11 +102,15 @@ export const NewOrderPage = () => {
         <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
           {t("notAllowed_manageOrders")}
         </Alert>
-      ) : meta.isPending ? (
+      ) : meta.isPending || (salesOrderLineId !== undefined && line.isPending) ? (
         <ContentSkeleton rows={4} />
+      ) : salesOrderLineId !== undefined && line.error ? (
+        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotLoad")}>
+          {line.error instanceof NotFoundError ? t("salesOrderLineNotFound") : line.error.message}
+        </Alert>
       ) : (
         <PageSection>
-          <OrderForm />
+          <OrderForm key={line.data?.lineId ?? 0} salesOrderLine={line.data} />
         </PageSection>
       )}
     </Stack>
@@ -200,6 +218,7 @@ export const OrderPage = () => {
   const [editing, setEditing] = useState(false);
   const [producing, setProducing] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [makingChildren, setMakingChildren] = useState(false);
   const [busy, setBusy] = useState(false);
   const manage = canManageOrders(meta.data);
   const produce = canRegisterProduction(meta.data);
@@ -314,6 +333,11 @@ export const OrderPage = () => {
                   {t("lateByDays", { count: data.lateByDays })}
                 </Badge>
               )}
+              {data.origin.cancelled && (
+                <Badge variant="filled" color="orange" data-testid="origin-cancelled">
+                  {t("originCancelled")}
+                </Badge>
+              )}
             </Group>
           ) : (
             t("order")
@@ -374,6 +398,16 @@ export const OrderPage = () => {
                   {t("registerProduction")}
                 </Button>
               )}
+              {manage && isOpenOrder(data) && subAssemblyLines(data).length > 0 && (
+                <Button
+                  variant="default"
+                  leftSection={<IconHierarchy size={16} />}
+                  data-assist="manufacturing.order.children"
+                  onClick={() => setMakingChildren(true)}
+                >
+                  {t("createChildren")}
+                </Button>
+              )}
               {manage && isOpenOrder(data) && (
                 <Button variant="default" leftSection={<IconCircleCheck size={16} />} onClick={() => setClosing(true)}>
                   {t("closeOrder")}
@@ -396,6 +430,11 @@ export const OrderPage = () => {
         <ContentSkeleton rows={4} />
       ) : (
         <>
+          {data.origin.cancelled && (
+            <Alert color="orange" icon={<IconAlertTriangle size={16} />} title={t("originCancelledTitle")}>
+              {t("originCancelledHint", { reference: data.origin.reference ?? "" })}
+            </Alert>
+          )}
           {data.warnings.includes("variant_discontinued") && (
             <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("variantDiscontinuedTitle")}>
               {t("variantDiscontinuedHint")}
@@ -459,7 +498,26 @@ export const OrderPage = () => {
               <Fact label={t("origin")}>
                 {t(`origin_${data.origin.kind}`)}
                 {data.origin.reference ? ` · ${data.origin.reference}` : ""}
+                {data.origin.customerName && (
+                  <Text size="xs" c="dimmed">
+                    {data.origin.customerName}
+                  </Text>
+                )}
               </Fact>
+              {data.parent && (
+                <Fact label={t("parentOrder")}>
+                  <OrderLinkAnchor id={data.parent.id} number={data.parent.number} />
+                </Fact>
+              )}
+              {data.children.length > 0 && (
+                <Fact label={t("childOrders")}>
+                  <Group gap="xs">
+                    {data.children.map((link) => (
+                      <OrderLinkAnchor key={link.id} id={link.id} number={link.number} />
+                    ))}
+                  </Group>
+                </Fact>
+              )}
               {data.reservationStatus && (
                 <Fact label={t("reservation")}>
                   <Badge variant="light" color={reservationColor[data.reservationStatus]}>
@@ -534,6 +592,7 @@ export const OrderPage = () => {
           </Modal>
           <ProductionDialog order={data} opened={producing} onClose={() => setProducing(false)} />
           <CloseDialog order={data} opened={closing} onClose={() => setClosing(false)} />
+          <ChildrenDialog order={data} opened={makingChildren} onClose={() => setMakingChildren(false)} />
         </>
       )}
     </Stack>

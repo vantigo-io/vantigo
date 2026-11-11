@@ -3,6 +3,7 @@ import type {
   ManufacturingOrderInput,
   ManufacturingOrderUpdate,
   ManufacturingPriority,
+  ManufacturingSalesOrderLine,
 } from "../api/orders";
 import type { ManufacturingPerson } from "../api/people";
 import type { ManufacturingVariantRef } from "../api/variants";
@@ -28,6 +29,8 @@ export interface OrderValues {
   priority: ManufacturingPriority;
   responsible: ManufacturingPerson | undefined;
   note: string;
+  /** The sales order line the order is made for (M45); null by hand. */
+  salesOrderLineId: number | null;
 }
 
 export const orderValuesOf = (order?: ManufacturingOrder): OrderValues =>
@@ -44,6 +47,7 @@ export const orderValuesOf = (order?: ManufacturingOrder): OrderValues =>
         priority: order.priority,
         responsible: order.responsible ?? undefined,
         note: order.note,
+        salesOrderLineId: order.origin.kind === "sales_order" ? (order.origin.lineId ?? null) : null,
       }
     : {
         variant: undefined,
@@ -57,7 +61,23 @@ export const orderValuesOf = (order?: ManufacturingOrder): OrderValues =>
         priority: "normal",
         responsible: undefined,
         note: "",
+        salesOrderLineId: null,
       };
+
+/**
+ * A new order prefilled from a sales order line (M45): its variant, its open
+ * quantity, its delivery date as the due date and its BoM; the site is left
+ * to the BoM's work centers, else the sales order's.
+ */
+export const orderValuesOfLine = (line: ManufacturingSalesOrderLine): OrderValues => ({
+  ...orderValuesOf(),
+  variant: line.variant,
+  bomId: line.bomId,
+  quantity: line.quantity,
+  siteId: null,
+  dueDate: line.dueDate ?? "",
+  salesOrderLineId: line.lineId,
+});
 
 /** The problems the form can see before sending, by field: the key of each problem's words (`problem_<key>`). */
 export const orderProblems = (values: OrderValues): Record<string, string> => {
@@ -95,6 +115,7 @@ export const orderInputOf = (values: OrderValues, defaults: OrderDefaults): Manu
     ...(siteId !== null ? { siteId } : {}),
     ...(outputLocationId !== null ? { outputLocationId } : {}),
     ...(values.requestedStart ? { requestedStart: values.requestedStart } : {}),
+    ...(values.salesOrderLineId !== null ? { salesOrderLineId: values.salesOrderLineId } : {}),
     ...common(values),
   };
 };

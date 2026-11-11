@@ -588,6 +588,18 @@
     }
   },
   {
+    "key": "manufacturing.order.children",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Create sub-assembly orders",
+      "nb": "Opprett underordrer"
+    },
+    "description": {
+      "en": "Makes a confirmed order for each chosen made component that is missing, due when this order starts.",
+      "nb": "Lager en bekreftet ordre for hver valgte produserte komponent som mangler, med forfall når denne ordren starter."
+    }
+  },
+  {
     "key": "manufacturing.order.cost",
     "route": "/manufacturing/orders/{orderId}",
     "label": {

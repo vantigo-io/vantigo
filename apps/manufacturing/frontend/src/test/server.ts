@@ -6,6 +6,7 @@ import type {
   ManufacturingOrderEvent,
   ManufacturingOrderSummary,
   ManufacturingProductionDraft,
+  ManufacturingSalesOrderLine,
 } from "../api/orders";
 import type { ManufacturingPerson } from "../api/people";
 import type { ManufacturingSchedule, ManufacturingScheduleBar, ManufacturingScheduleDay } from "../api/schedule";
@@ -188,7 +189,7 @@ export const orderFixture = (patch: Partial<ManufacturingOrder> = {}): Manufactu
     priority: "normal",
     responsible: null,
     note: "",
-    origin: { kind: "manual", orderId: null, lineId: null, reference: null },
+    origin: { kind: "manual", orderId: null, lineId: null, reference: null, cancelled: false },
     status: "confirmed",
     late: false,
     availability: "ready",
@@ -429,6 +430,8 @@ export interface ManufacturingServer {
   schedule?: ManufacturingSchedule;
   /** The reports' JSON answers, by kind; an empty report of the period when absent. */
   reports?: Record<string, unknown>;
+  /** The sales order lines read through Orders (M45), by line id; any other is 404. */
+  salesOrderLines?: Record<number, ManufacturingSalesOrderLine>;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -586,6 +589,11 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
     const bom = /^\/boms\/(\d+)$/.exec(path);
     if (bom) {
       const found = boms.find((one) => one.id === Number(bom[1]));
+      return Promise.resolve(found ? jsonResponse(200, found) : manufacturingProblem(404, undefined));
+    }
+    const salesOrderLine = /^\/sales-order-lines\/(\d+)$/.exec(path);
+    if (salesOrderLine) {
+      const found = server.salesOrderLines?.[Number(salesOrderLine[1])];
       return Promise.resolve(found ? jsonResponse(200, found) : manufacturingProblem(404, undefined));
     }
     if (path === "/orders") {
