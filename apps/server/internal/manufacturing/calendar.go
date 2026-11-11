@@ -19,6 +19,7 @@ package manufacturing
 import (
 	"encoding/json"
 	"slices"
+	"sort"
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
@@ -147,30 +148,27 @@ func (c workCalendar) capacity(d time.Time) time.Duration {
 	return total
 }
 
-// freeSpans is open less booked, in order. booked is sorted by start and
-// may overlap itself.
-func freeSpans(open, booked []span) []span {
-	var out []span
-	for _, o := range open {
-		cur := o.start
-		for _, b := range booked {
-			if !b.start.Before(o.end) {
-				break
-			}
-			if !b.end.After(cur) {
-				continue
-			}
-			if b.start.After(cur) {
-				out = append(out, span{start: cur, end: b.start})
-			}
-			cur = b.end
-			if !cur.Before(o.end) {
-				break
-			}
+// busySpans is booked as disjoint spans in order: sorted by start, those
+// that overlap or touch joined, so their ends rise with their starts and a
+// binary search or a moving index finds the booking at an instant.
+func busySpans(booked []span) []span {
+	sorted := booked
+	if !slices.IsSortedFunc(booked, func(a, b span) int { return a.start.Compare(b.start) }) {
+		sorted = slices.Clone(booked)
+		slices.SortFunc(sorted, func(a, b span) int { return a.start.Compare(b.start) })
+	}
+	out := make([]span, 0, len(sorted))
+	for _, b := range sorted {
+		if !b.end.After(b.start) {
+			continue
 		}
-		if cur.Before(o.end) {
-			out = append(out, span{start: cur, end: o.end})
+		if n := len(out); n > 0 && !b.start.After(out[n-1].end) {
+			if b.end.After(out[n-1].end) {
+				out[n-1].end = b.end
+			}
+			continue
 		}
+		out = append(out, b)
 	}
 	return out
 }
@@ -195,34 +193,80 @@ func after(spans []span, from time.Time) []span {
 // order, looking no further than the civil day of until (M35, M35a). It
 // answers the pieces and the instant the last one ends, or ok false when the
 // horizon comes first. No need at all is no piece, finishing at from.
+//
+// The bookings are joined once into disjoint spans; a binary search finds
+// the first that ends after from — an instant inside one moves on to its
+// end, and so to the first day with free time — and from there one index
+// moves forward with the days, so a fill reads each booking at most once
+// however many there are.
 func (c workCalendar) fill(from time.Time, need time.Duration, booked []span, until time.Time) ([]span, time.Time, bool) {
 	if need <= 0 {
 		return nil, from, true
 	}
+	busy := busySpans(booked)
+	i := sort.Search(len(busy), func(k int) bool { return busy[k].end.After(from) })
+	if i < len(busy) && !busy[i].start.After(from) {
+		from = busy[i].end
+		i++
+	}
 	last := holidays.DayIn(until, c.zone)
 	var pieces []span
+	// take uses the free span f; it reports whether need is met.
+	take := func(f span) bool {
+		if f.length() >= need {
+			pieces = append(pieces, span{start: f.start, end: f.start.Add(need)})
+			return true
+		}
+		pieces = append(pieces, f)
+		need -= f.length()
+		return false
+	}
 	for d := holidays.DayIn(from, c.zone); !d.After(last); d = d.AddDate(0, 0, 1) {
 		open, _ := c.day(d)
-		if len(open) == 0 {
-			continue
-		}
-		for _, f := range freeSpans(after(open, from), booked) {
-			if f.length() >= need {
-				piece := span{start: f.start, end: f.start.Add(need)}
-				return append(pieces, piece), piece.end, true
+		for _, o := range after(open, from) {
+			cur := o.start
+			for i < len(busy) && !busy[i].end.After(cur) {
+				i++
 			}
-			pieces = append(pieces, f)
-			need -= f.length()
+			for cur.Before(o.end) {
+				if i >= len(busy) || !busy[i].start.Before(o.end) {
+					if take(span{start: cur, end: o.end}) {
+						return pieces, pieces[len(pieces)-1].end, true
+					}
+					break
+				}
+				if busy[i].start.After(cur) && take(span{start: cur, end: busy[i].start}) {
+					return pieces, pieces[len(pieces)-1].end, true
+				}
+				cur = busy[i].end
+				if cur.After(o.end) {
+					break // the booking runs on past this interval; the index stays on it
+				}
+				i++
+			}
 		}
 	}
 	return nil, time.Time{}, false
 }
 
-// book is booked with pieces added, sorted by start.
+// book is booked with pieces added, sorted by start: two sorted lists
+// merged, so adding a work order's pieces costs a pass, not a sort.
 func book(booked, pieces []span) []span {
-	out := append(slices.Clone(booked), pieces...)
-	slices.SortFunc(out, func(a, b span) int { return a.start.Compare(b.start) })
-	return out
+	sorted := slices.Clone(pieces)
+	slices.SortFunc(sorted, func(a, b span) int { return a.start.Compare(b.start) })
+	out := make([]span, 0, len(booked)+len(sorted))
+	i, j := 0, 0
+	for i < len(booked) && j < len(sorted) {
+		if sorted[j].start.Before(booked[i].start) {
+			out = append(out, sorted[j])
+			j++
+		} else {
+			out = append(out, booked[i])
+			i++
+		}
+	}
+	out = append(out, booked[i:]...)
+	return append(out, sorted[j:]...)
 }
 
 // overlap is how much of s lies in w.

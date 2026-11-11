@@ -26,10 +26,16 @@ SELECT id FROM manufacturing.work_centers WHERE site_id = @site_id ORDER BY id;
 
 -- name: UnplannedOrderIDsAtSite :many
 -- UnplannedOrderIDsAtSite is the open orders at the site with no plan:
--- what plan all plans (M35).
-SELECT id FROM manufacturing.orders
-WHERE site_id = @site_id AND status IN ('confirmed', 'in_progress') AND planned_start IS NULL
-ORDER BY id
+-- what plan all plans (M35). An order is planned when one of its open work
+-- orders holds a slot; one with no open work order, when it has a window.
+SELECT o.id FROM manufacturing.orders o
+WHERE o.site_id = @site_id AND o.status IN ('confirmed', 'in_progress')
+  AND NOT EXISTS (SELECT 1 FROM manufacturing.work_order_slots s
+                  JOIN manufacturing.work_orders w ON w.id = s.work_order_id
+                  WHERE w.order_id = o.id AND w.status NOT IN ('done', 'cancelled'))
+  AND (o.planned_start IS NULL OR EXISTS (SELECT 1 FROM manufacturing.work_orders w
+                                          WHERE w.order_id = o.id AND w.status NOT IN ('done', 'cancelled')))
+ORDER BY o.id
 LIMIT 500;
 
 -- name: BookedSlots :many
@@ -84,8 +90,11 @@ UPDATE manufacturing.orders SET actual = @actual WHERE id = @id;
 -- name: ScheduleSlots :many
 -- ScheduleSlots is the board's bars (M36): the slots at the work centers
 -- overlapping [from_at, to_at), of work orders and orders not cancelled,
--- with their work order's and order's figures.
-SELECT s.id, s.work_order_id, s.work_center_id, s.starts_at, s.ends_at,
+-- with their work order's and order's figures. A done work order's slots
+-- end where it finished: those after are dropped, the one it finished in is
+-- cut there.
+SELECT s.id, s.work_order_id, s.work_center_id, s.starts_at,
+       (CASE WHEN w.status = 'done' AND w.finished_at IS NOT NULL THEN LEAST(s.ends_at, w.finished_at) ELSE s.ends_at END)::timestamptz AS ends_at,
        w.sequence, w.name, w.status, w.revision, w.planned_start, w.planned_finish,
        o.id AS order_id, o.number AS order_number, o.suffix AS order_suffix, o.variant_id AS order_variant_id,
        o.priority AS order_priority, o.due_date AS order_due_date, o.status AS order_status
@@ -95,6 +104,8 @@ JOIN manufacturing.orders o ON o.id = w.order_id
 WHERE s.work_center_id = ANY(@work_center_ids::bigint[])
   AND s.starts_at < @to_at::timestamptz AND s.ends_at > @from_at::timestamptz
   AND w.status <> 'cancelled' AND o.status <> 'cancelled'
+  AND (w.status <> 'done' OR w.finished_at IS NULL OR s.starts_at < w.finished_at)
+  AND (w.status <> 'done' OR w.finished_at IS NULL OR w.finished_at > @from_at::timestamptz)
 ORDER BY s.work_center_id, s.starts_at, s.id;
 
 -- name: ClosuresOfWorkCenters :many
@@ -107,13 +118,19 @@ ORDER BY work_center_id, from_date, id;
 
 -- name: UnscheduledOrdersAtSite :many
 -- UnscheduledOrdersAtSite is the board's Unscheduled list (M36): the open
--- orders at the site with no plan, urgent first, then by due date, with the
--- expected minutes of their work orders not done or cancelled.
+-- orders at the site with no plan — as UnplannedOrderIDsAtSite judges it —
+-- urgent first, then by due date, with the expected minutes of their work
+-- orders not done or cancelled.
 SELECT sqlc.embed(o),
        (SELECT COALESCE(sum(w.expected_minutes), 0) FROM manufacturing.work_orders w
         WHERE w.order_id = o.id AND w.status NOT IN ('done', 'cancelled'))::bigint AS expected_minutes
 FROM manufacturing.orders o
-WHERE o.site_id = @site_id AND o.status IN ('confirmed', 'in_progress') AND o.planned_start IS NULL
+WHERE o.site_id = @site_id AND o.status IN ('confirmed', 'in_progress')
+  AND NOT EXISTS (SELECT 1 FROM manufacturing.work_order_slots s
+                  JOIN manufacturing.work_orders w ON w.id = s.work_order_id
+                  WHERE w.order_id = o.id AND w.status NOT IN ('done', 'cancelled'))
+  AND (o.planned_start IS NULL OR EXISTS (SELECT 1 FROM manufacturing.work_orders w
+                                          WHERE w.order_id = o.id AND w.status NOT IN ('done', 'cancelled')))
 ORDER BY (o.priority = 'urgent') DESC, o.due_date ASC NULLS LAST, o.number, o.suffix
 LIMIT 500;
 
@@ -130,12 +147,17 @@ LIMIT 5000;
 -- name: SlotsAtWorkCentersBetween :many
 -- SlotsAtWorkCentersBetween is the planned time at the work centers
 -- overlapping [from_at, to_at), of work orders not cancelled: the
--- utilisation report's planned time (M42).
-SELECT s.* FROM manufacturing.work_order_slots s
+-- utilisation report's planned time (M42). A done work order's slots end
+-- where it finished, as on the board.
+SELECT s.id, s.work_order_id, s.work_center_id, s.starts_at,
+       (CASE WHEN w.status = 'done' AND w.finished_at IS NOT NULL THEN LEAST(s.ends_at, w.finished_at) ELSE s.ends_at END)::timestamptz AS ends_at
+FROM manufacturing.work_order_slots s
 JOIN manufacturing.work_orders w ON w.id = s.work_order_id
 WHERE s.work_center_id = ANY(@work_center_ids::bigint[])
   AND s.starts_at < @to_at::timestamptz AND s.ends_at > @from_at::timestamptz
   AND w.status <> 'cancelled'
+  AND (w.status <> 'done' OR w.finished_at IS NULL OR s.starts_at < w.finished_at)
+  AND (w.status <> 'done' OR w.finished_at IS NULL OR w.finished_at > @from_at::timestamptz)
 ORDER BY s.work_center_id, s.starts_at;
 
 -- name: LogsAtWorkCentersBetween :many

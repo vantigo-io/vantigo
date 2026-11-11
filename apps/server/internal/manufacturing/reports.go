@@ -146,7 +146,6 @@ func productionCostOf(orders []store.ManufacturingOrder, entries map[int32]contr
 		if o.ClosedAt != nil {
 			row.ClosedAt = *o.ClosedAt
 		}
-		t.produced.Add(t.produced, ratOrZero(o.Produced))
 		estimate, actual := unmarshalCost(o.Estimate), unmarshalCost(o.Actual)
 		if estimate != nil {
 			row.Estimate = &estimate.Total
@@ -156,6 +155,9 @@ func productionCostOf(orders []store.ManufacturingOrder, entries map[int32]contr
 			row.Actual = &actual.Total
 			row.CostPerUnit = actual.CostPerUnit
 			t.actual.Add(t.actual, mustRat(actual.Total))
+			// The cost per unit of the total is the actual over the output it
+			// paid for: an order with no actual adds to neither.
+			t.produced.Add(t.produced, ratOrZero(o.Produced))
 		}
 		if estimate != nil && actual != nil {
 			d := deviationPart(actual.Total, estimate.Total)
@@ -215,7 +217,7 @@ func (s *server) GetManufacturingUtilisationReport(ctx context.Context, req gen.
 	var (
 		centers  []store.ManufacturingWorkCenter
 		closures []store.ManufacturingWorkCenterClosure
-		slots    []store.ManufacturingWorkOrderSlot
+		slots    []store.SlotsAtWorkCentersBetweenRow
 		logs     []store.ManufacturingTimeLog
 	)
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
@@ -248,10 +250,10 @@ func (s *server) GetManufacturingUtilisationReport(ctx context.Context, req gen.
 }
 
 // utilisationOf is the utilisation rows (M42): a row for each center and
-// ISO week with any capacity or any time; an archived center with neither
-// is left out. Productive time and downtime are each the union of the
+// ISO week with any capacity or any time; an archived center with no
+// planned, productive or down time is left out, whatever its calendar. Productive time and downtime are each the union of the
 // center's logs, so two operators on one machine count its time once.
-func utilisationOf(centers []store.ManufacturingWorkCenter, closures []store.ManufacturingWorkCenterClosure, slots []store.ManufacturingWorkOrderSlot,
+func utilisationOf(centers []store.ManufacturingWorkCenter, closures []store.ManufacturingWorkCenterClosure, slots []store.SlotsAtWorkCentersBetweenRow,
 	logs []store.ManufacturingTimeLog, p reportPeriod, siteID *int64) gen.ManufacturingUtilisationReport {
 	out := gen.ManufacturingUtilisationReport{From: openapi_types.Date{Time: p.from}, To: openapi_types.Date{Time: p.to}, SiteId: siteID,
 		Rows: []gen.ManufacturingUtilisationRow{}}
@@ -312,7 +314,9 @@ func utilisationOf(centers []store.ManufacturingWorkCenter, closures []store.Man
 				}
 			}
 			downtime := unionLength(all)
-			if c.Status != statusActive && capacity == 0 && planned == 0 && productive == 0 && downtime == 0 {
+			// An archived center has no calendar to report: its row stays
+			// only for the time that was planned or logged at it.
+			if c.Status != statusActive && planned == 0 && productive == 0 && downtime == 0 {
 				continue
 			}
 			year, week := monday.ISOWeek()
