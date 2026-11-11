@@ -1088,7 +1088,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     identity does not know and the sweep run on the module's own worker.
     Not every row naming a user is swept: Inventory's movements are immutable records of the
     stock ledger and keep the poster's user id and display name after the person is erased,
-    which its reference states ([Inventory](/en/reference/inventory/)).
+    which its reference states ([Inventory](/en/reference/inventory/)). Manufacturing's
+    productions and its orders' events are such records beside Inventory's: they keep the
+    poster's and the actor's user id and display name, and so will its time logs from
+    delivery C ([Manufacturing](/en/reference/manufacturing/#personal-data)).
 
 20. **Stock a variant holds is asked for inside Products' transaction.** Rule 8's
     holders write under the caller's lock; this one only answers, and is made for
@@ -1123,7 +1126,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     module's schema is still stock. Only products calls the slot. Inventory holds a
     variant by its balances and answers the same for either purpose, stock stopping
     both. Manufacturing holds one by its active bills of materials, which name it as
-    their product or on a line, and answers `open_documents` with their count for the
+    their product or on a line, and by its manufacturing orders not done or cancelled,
+    which name it as their product or on a component line, and answers
+    `open_documents` with their count for the
     type change as well as the delete: a service is neither consumed nor produced
     (manufacturing design M16a), which departs from Orders' O30 on purpose
     ([Products](/en/reference/products/#contracts-for-other-modules),
@@ -1895,15 +1900,25 @@ nothing else changes, but its holder still answers for the stock in its schema. 
 
 **Manufacturing depends on Products and Inventory.** It consumes `contracts.ProductCatalog`
 (products, **required**) — `SearchVariants` and its variant reads on the pool, before a
-transaction opens, and `LockVariants` first on every bill-of-materials write's own
-transaction, whose answer is where it judges a variant goods (rule 21) — and
-`contracts.Stock` (inventory, **required**): `Sites` and `SiteLocations` for the site a
-work center stands at, and `Available` for the BoM overview, both before a transaction.
-It fills the many-provider `VariantReferences` slot (rule 20) with its active bills of
-materials, so Products refuses to delete a variant, or to turn its product into a
-service, while an active BoM names it as its product or a component. It provides no
-single-provider contract, writes nothing outside the `manufacturing` schema and has no
-background worker. `MODULES` refuses it without `products` or `inventory`. See
+transaction opens, and `LockVariants` first on every bill-of-materials and
+manufacturing-order write's own transaction, whose answer is where it judges a variant
+goods and takes an order line's snapshot (rule 21) — and `contracts.Stock` (inventory,
+**required**): `Sites`, `SiteLocations`, `Locations` and `Available` — the site a work
+center stands at and an order's locations, where a production's components lie, and
+the availability of the BoM overview and the order page — all on the pool, before or
+after a transaction. Its orders call `contracts.StockLedger` (rule 24) on the order
+write's own transaction, after `LockVariants` and the order's row: `ReserveForProduction`,
+`Release`, `Produce` and `ReservationsFor`. Identity's `Deps.Users`
+(`contracts.UserDirectory`) gives it an order's responsible and a production's poster,
+and `Deps.Calendar` (`contracts.BusinessCalendar`) the business day "today" and "late"
+are judged in, both before a transaction. It declares two live topics through
+`Module.LiveTopics` — `manufacturing.orders` and `manufacturing.order:<id>` — notified on
+the writing transaction. It fills the many-provider `VariantReferences` slot (rule 20)
+with its active bills of materials and its manufacturing orders not done or cancelled,
+so Products refuses to delete a variant, or to turn its product into a service, while
+one names it as its product or a component. It provides no single-provider contract,
+writes nothing outside the `manufacturing` schema and has no background worker.
+`MODULES` refuses it without `products` or `inventory`. See
 [Manufacturing](/en/reference/manufacturing/).
 
 **The Assistant reads identity and calls the contract.** It is the one module that receives

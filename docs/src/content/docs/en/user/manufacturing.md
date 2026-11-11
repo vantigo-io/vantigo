@@ -48,8 +48,11 @@ materials**. Set up your work centers first: an operation of a BoM names one.
 
 The order figures on **Overview** are: **Orders to start today**, confirmed orders not yet
 started whose planned start is today or earlier; **Orders in progress**; and **Late orders**, open
-orders due before today. Below them, the orders late or due this week are listed, each
-with whether its components are ready; open one to see it.
+orders due before today. Below them, the orders late or due by the end of this week —
+Sunday, in the business's own time zone — are listed with their due date and status;
+open one to see whether its components are ready. Whether an order's components are
+available is shown on the order page only, not on **Overview** or in the list. The
+figures and the list follow the orders as they change.
 
 ## Set up a work center
 
@@ -293,7 +296,8 @@ due date, number or priority. The list updates by itself when someone changes an
    - **Due date**, **Planned start** and **Planned finish** — the finish not before the
      start;
    - **Priority** — **Normal** or **Urgent**;
-   - **Responsible** — the person who follows the order up;
+   - **Responsible** — the person who follows the order up. A disabled user cannot be
+     chosen;
    - **Note** — up to 2,000 characters.
 4. Choose **Create manufacturing order**. The order is a **Draft**.
 
@@ -303,7 +307,11 @@ The locations offered are the site's active ones.
 
 On a draft you can change everything. On a confirmed or in-progress order you can change
 only the dates, the priority, the responsible person, the note and the locations; to make
-another product or quantity, cancel it and create a new one. A done or cancelled order
+another product or quantity, cancel it and create a new one. The locations must be active
+locations of the order's own site; the order keeps its site and bill of materials even
+when the bill of materials' work centers have moved to another site, or the site has been
+archived, since it was confirmed. A responsible person who has been disabled since stays
+on the order, but you cannot choose a disabled one. A done or cancelled order
 cannot be changed. When someone else saved the order after you opened it, your save is
 refused and you are asked to reload.
 
@@ -319,7 +327,9 @@ On a draft, choose **Confirm**. Confirming:
 
 When the site does not have enough of a component, the order is confirmed all the same:
 the lines that could not be reserved are left unreserved, and the page names each one with
-the quantity missing. A line is reserved in full or not at all. A draft whose bill of
+the quantity missing. When the product or one of its components is **discontinued** in
+Products, the order is created and confirmed all the same, and the order page warns
+**A discontinued product**: it uses up what is left. A line is reserved in full or not at all. A draft whose bill of
 materials has been archived since cannot be confirmed; create the order again from an
 active one.
 
@@ -396,7 +406,9 @@ When less than the quantity was produced, you are asked whether to **create a ba
   the same bill of materials, site, locations, due date, priority and responsible person.
   It is numbered after the original: the first backorder of MO-12 is **MO-12-2**, the
   next **MO-12-3**, even when it is a backorder of MO-12-2. It is confirmed at once and
-  reserves its components; the lines it could not reserve are named.
+  reserves its components; the lines it could not reserve are named. This holds even when
+  the bill of materials has been archived since: the backorder keeps it, while a new order
+  or a draft cannot use it.
 - **No** closes the order short.
 
 ### Cancel an order
