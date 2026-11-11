@@ -95,8 +95,8 @@ describe("an order made for a sales order", () => {
     stubManufacturingApi({
       orders: [
         orderFixture({
-          parent: { id: 3, number: "MO-10", status: "confirmed", quantity: "1", produced: "0" },
-          children: [{ id: 8, number: "MO-14", status: "confirmed", quantity: "2", produced: "0" }],
+          parent: { id: 3, number: "MO-10", status: "confirmed", quantity: "1", produced: "0", variantId: 1 },
+          children: [{ id: 8, number: "MO-14", status: "confirmed", quantity: "2", produced: "0", variantId: 2 }],
         }),
       ],
     });
@@ -123,7 +123,16 @@ describe("create sub-assembly orders (M47)", () => {
         method === "POST" && path === "/orders/5/children"
           ? jsonResponse(200, {
               order: parent(),
-              children: [{ id: 9, number: "MO-13", status: "confirmed", quantity: "12", produced: "0" }],
+              children: [
+                {
+                  id: 9,
+                  number: "MO-13",
+                  status: "confirmed",
+                  quantity: "12",
+                  produced: "0",
+                  variantId: parent().components[0].variant.id,
+                },
+              ],
             })
           : undefined,
     });
@@ -136,6 +145,34 @@ describe("create sub-assembly orders (M47)", () => {
 
     await waitFor(() => expect(sent(fetchMock, "POST", /\/orders\/5\/children$/)).toHaveLength(1));
     expect(sent(fetchMock, "POST", /\/orders\/5\/children$/)[0].body).toEqual({ revision: 4, componentIds: [60] });
+  });
+
+  it("lists the open sub-assembly orders and offers only the rest", async () => {
+    const order = parent();
+    stubManufacturingApi({
+      meta: { canManageOrders: true },
+      orders: [
+        {
+          ...order,
+          children: [
+            {
+              id: 8,
+              number: "MO-14",
+              status: "in_progress",
+              quantity: "10",
+              produced: "2",
+              variantId: order.components[0].variant.id,
+            },
+          ],
+        },
+      ],
+    });
+    renderRoute("/manufacturing/orders/5");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Create sub-assembly orders" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByTestId("open-children")).toHaveTextContent(/MO-14 · BOARD.*: 8.* still to make/);
+    expect(within(dialog).getByRole("checkbox", { name: /BOARD .*: 4.* missing/ })).toBeChecked();
   });
 
   it("is not offered when no made component misses anything", async () => {

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { createChildOrders, type ManufacturingOrder } from "../api/orders";
 import { isRevisionConflict } from "../api/request";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
-import { subAssemblyLines } from "../lib/sub-assembly";
+import { openChildren, subAssemblyLines } from "../lib/sub-assembly";
 
 export interface ChildrenDialogProps {
   order: ManufacturingOrder;
@@ -14,9 +14,10 @@ export interface ChildrenDialogProps {
 }
 
 /**
- * Create sub-assembly orders (M47): every made component line missing
- * something, each checked, for its missing quantity. The orders are made
- * confirmed, due when the parent starts (M37). Never automatic.
+ * Create sub-assembly orders (M47): every made component line missing more
+ * than the open sub-assembly orders already make, each checked, for that
+ * rest, with the open ones listed above. The orders are made confirmed, due
+ * when the parent starts (M37). Never automatic.
  */
 export const ChildrenDialog = ({ order, opened, onClose }: ChildrenDialogProps) => {
   const { t } = useManufacturingFormat();
@@ -31,7 +32,8 @@ const ChildrenForm = ({ order, onClose }: { order: ManufacturingOrder; onClose: 
   const { t, quantity } = useManufacturingFormat();
   const invalidate = useInvalidateManufacturing();
   const lines = subAssemblyLines(order);
-  const [chosen, setChosen] = useState<number[]>(() => lines.map((line) => line.id as number));
+  const open = openChildren(order);
+  const [chosen, setChosen] = useState<number[]>(() => lines.map(({ line }) => line.id as number));
   const [problem, setProblem] = useState<string>();
   const [saving, setSaving] = useState(false);
 
@@ -63,13 +65,32 @@ const ChildrenForm = ({ order, onClose }: { order: ManufacturingOrder; onClose: 
   return (
     <Stack gap="md">
       <Text size="sm">{t("childrenHint")}</Text>
+      {open.length > 0 && (
+        <Stack gap={4} data-testid="open-children">
+          <Text size="sm" fw={500}>
+            {t("childrenOpen")}
+          </Text>
+          {open.map(({ child, remaining }) => {
+            const component = order.components.find((line) => line.variant.id === child.variantId);
+            return (
+              <Text key={child.id} size="sm" c="dimmed">
+                {t("childOpenLine", {
+                  number: child.number,
+                  sku: component?.variant.sku ?? "",
+                  remaining: quantity(remaining, component?.variant.unit),
+                })}
+              </Text>
+            );
+          })}
+        </Stack>
+      )}
       {lines.length === 0 ? (
         <Text size="sm" c="dimmed">
           {t("childrenNone")}
         </Text>
       ) : (
         <Stack gap="xs">
-          {lines.map((line) => {
+          {lines.map(({ line, missing }) => {
             const id = line.id as number;
             return (
               <Checkbox
@@ -82,7 +103,7 @@ const ChildrenForm = ({ order, onClose }: { order: ManufacturingOrder; onClose: 
                 label={t("childLine", {
                   sku: line.variant.sku,
                   name: line.variant.productName,
-                  missing: quantity(line.missing, line.variant.unit),
+                  missing: quantity(missing, line.variant.unit),
                 })}
               />
             );

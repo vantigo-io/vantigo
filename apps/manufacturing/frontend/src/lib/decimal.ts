@@ -41,6 +41,31 @@ export const compareDecimal = (a: string, b: string): number => {
   return difference === 0n ? 0 : difference < 0n ? -1 : 1;
 };
 
+/** The larger number of decimals of the two decimals. */
+const commonScale = (a: string, b: string): number =>
+  Math.max(normalizeDecimal(a).split(".")[1]?.length ?? 0, normalizeDecimal(b).split(".")[1]?.length ?? 0);
+
+/** A scaled integer of 0 or more as exact decimal text with no trailing zeros. */
+const unscaled = (value: bigint, scale: number): string => {
+  const raw = value.toString().padStart(scale + 1, "0");
+  const whole = scale > 0 ? raw.slice(0, -scale) : raw;
+  const fraction = scale > 0 ? raw.slice(-scale).replace(/0+$/, "") : "";
+  return fraction ? `${whole}.${fraction}` : whole;
+};
+
+/** `a` plus `b`, as exact decimal text with no trailing zeros. */
+export const addDecimal = (a: string, b: string): string => {
+  const scale = commonScale(a, b);
+  return unscaled(scaled(a, scale) + scaled(b, scale), scale);
+};
+
+/** `a` less `b`, never below 0, as exact decimal text with no trailing zeros (`2.5` less `0.5` → `2`). */
+export const subtractDecimal = (a: string, b: string): string => {
+  const scale = commonScale(a, b);
+  const difference = scaled(a, scale) - scaled(b, scale);
+  return difference <= 0n ? "0" : unscaled(difference, scale);
+};
+
 /** The decimal rounded half-up to `places` decimals, as text with exactly that many (`12.345` → `12.35`). */
 export const roundDecimal = (text: string, places: number): string => {
   const normal = normalizeDecimal(text);

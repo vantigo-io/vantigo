@@ -237,6 +237,11 @@ export const OrdersPage = () => {
                                 {t("priority_urgent")}
                               </Badge>
                             )}
+                            {order.origin.cancelled && (
+                              <Badge size="xs" variant="filled" color="orange" data-testid="origin-cancelled">
+                                {t("originCancelled")}
+                              </Badge>
+                            )}
                           </Group>
                         </Table.Td>
                         <Table.Td>

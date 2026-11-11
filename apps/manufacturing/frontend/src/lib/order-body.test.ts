@@ -60,6 +60,28 @@ describe("the components a sub-assembly order can be made for (M47)", () => {
         { ...line, id: null, defaultBomId: 9, missing: "2" },
       ],
     });
-    expect(subAssemblyLines(order).map((one) => one.id)).toEqual([1]);
+    expect(subAssemblyLines(order).map((one) => one.line.id)).toEqual([1]);
+  });
+
+  it("miss only what the open sub-assembly orders of the variant do not make", () => {
+    const [line] = orderFixture().components;
+    const child = (id: number, status: "confirmed" | "done" | "cancelled", quantity: string, produced: string) => ({
+      id,
+      number: `MO-${id}`,
+      status,
+      quantity,
+      produced,
+      variantId: line.variant.id,
+    });
+    const order = orderFixture({
+      components: [{ ...line, id: 1, defaultBomId: 9, missing: "5" }],
+      children: [child(20, "confirmed", "3", "1"), child(21, "done", "4", "4"), child(22, "cancelled", "9", "0")],
+    });
+    expect(subAssemblyLines(order)).toEqual([{ line: order.components[0], missing: "3" }]);
+    const covered = orderFixture({
+      components: [{ ...line, id: 1, defaultBomId: 9, missing: "2" }],
+      children: [child(20, "confirmed", "2", "0")],
+    });
+    expect(subAssemblyLines(covered)).toEqual([]);
   });
 });

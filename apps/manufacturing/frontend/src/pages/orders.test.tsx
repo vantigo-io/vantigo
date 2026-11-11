@@ -63,6 +63,21 @@ describe("the order list", () => {
     expect(screen.queryByRole("link", { name: "New manufacturing order" })).not.toBeInTheDocument();
   });
 
+  it("marks an order whose sales order was cancelled", async () => {
+    stubManufacturingApi({
+      orders: [
+        orderFixture({
+          origin: { kind: "sales_order", orderId: 77, lineId: 501, reference: "SO-1042", cancelled: true },
+        }),
+      ],
+    });
+    renderRoute("/manufacturing/orders");
+    await screen.findByRole("link", { name: "MO-12" });
+    expect(within(screen.getByRole("table")).getByTestId("origin-cancelled")).toHaveTextContent(
+      "Sales order cancelled",
+    );
+  });
+
   it("asks the server again with the filter chosen", async () => {
     const fetchMock = stubManufacturingApi({ meta: { canManageOrders: true } });
     renderRoute("/manufacturing/orders?siteId=1");
