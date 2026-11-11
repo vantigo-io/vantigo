@@ -141,7 +141,15 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `subscription` keyed with its kind beside its id, and the allocations an invoice line
    is built from; optional for its
    consumer, nil when Orders is off; its `Allocate` and `ReleaseAllocations` are
-   provider commands, below), and `Workforce`
+   provider commands, below), `SalesOrderLines` (`contracts.SalesOrderLines`, orders —
+   its sales orders' goods lines with their open quantity, which Manufacturing makes
+   orders from; consumer-gated, rule 12; optional, nil when Orders is off) and
+   `Production` (`contracts.Production`, manufacturing — the manufacturing orders made
+   for sales order lines and which variants have a bill of materials, which Orders' order
+   page shows; provider-gated, rule 12; optional, nil when Manufacturing is off) — both
+   resolved from the enabled modules by `withProduction`, after the stock slots, by
+   Compose and `module.Workers` alike, neither provider reading the other while it is
+   built; `modtest.WithSalesOrderLines` and `modtest.WithProduction` preset them —, and `Workforce`
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, its own account in an external directory, and how a proposed
@@ -654,13 +662,28 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     or an Outlook event's. Planning, its consumer, calls it with the request's context,
     never inside a transaction, and shows what comes back without re-stating the rule
     ([Calendar](/en/reference/calendar/#the-busy-time-contract)).
+    The single-provider `contracts.Production` is provider-gated too: Manufacturing, its
+    sole provider, checks `manufacturing:access` against the principal in `ctx` — a
+    request, or `AsUser` — and answers nothing, not an error, without it or with neither
+    (manufacturing design M46a). `ForOrderLines` answers the manufacturing orders made
+    for sales order lines, backorders included, with their number, status, quantities,
+    site and dates; `HasBOM` which variants have a default active bill of materials — ids,
+    figures and states, never a cost. Orders, its consumer, calls it with the request's
+    context on the pool, after its own transaction, and checks nothing itself
+    ([Manufacturing](/en/reference/manufacturing/#the-two-contracts)).
 
-    Three single-provider reads are the other class, **consumer-gated**:
+    Four single-provider reads are the other class, **consumer-gated**:
     `contracts.ProjectActuals` (Time → Projects), `contracts.Timesheets` (Time →
-    Staff) and `contracts.ProjectDirectory.ProjectsByStatus` (Projects → Planning).
+    Staff), `contracts.ProjectDirectory.ProjectsByStatus` (Projects → Planning) and
+    `contracts.SalesOrderLines` (Orders → Manufacturing).
     Their provider performs no authorization at all, because the rule that decides who
     may see the figures is the consumer's and the provider cannot know it — Projects'
-    financial rights, Staff's manager rule, Planning's `planning:view`. The consumer decides before it
+    financial rights, Staff's manager rule, Planning's `planning:view`, Manufacturing's
+    `manufacturing:orders-manage` for its new-order form and its make-to-order worker,
+    which calls with no principal. `SalesOrderLines` carries the customer's id and never
+    their name: Manufacturing shows the name only to a caller who also holds
+    `orders:access`, read through `contracts.CustomerDirectory` (manufacturing design
+    M43a). The consumer decides before it
     calls, with the request's context and never inside a transaction, and shows only
     what its own rule allows; the provider answers whatever was logged. A contract is
     one class or the other, said in its doc comment: a provider-gated read is never
@@ -1220,6 +1243,20 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     work (rule 10) — stays a synchronous contract call on that transaction. The first
     publisher and handlers come with Orders; delivery 0 built the outbox, its dispatcher
     and its operator calls with none composed.
+
+    **A handler that needs a contract queues for a worker.** A reaction that must read
+    another module, lock another's rows or call a ledger is not a handler's: the handler
+    inserts a request into its own schema, and a worker of its module does the rest,
+    reading the contract on the pool and only then opening its own transaction. The
+    first is Manufacturing's make-to-order (manufacturing design M44a):
+    `manufacturing.mto` on `orders.sales_order.confirmed` only inserts an
+    `mto_requests` row, unique by the sales order, and `manufacturing.mto-worker` reads
+    `SalesOrderLines`, then per sales order takes `LockVariants`, creates and confirms
+    the orders and reserves through `ReserveForProduction`. Orders' `orders.mto-reserve`
+    on `manufacturing.order.done` likewise only marks the line in its own schema: the
+    reserve stays the person's **Reserve now** (M48a). `manufacturing.mto-cancelled` on
+    `orders.sales_order.cancelled` sets a flag on Manufacturing's own orders and nothing
+    else.
 24. **Inventory reserves and issues on the caller's transaction.** The thirteenth
     sanctioned cross-module direction, a module → Inventory, made for an order that
     must refuse to promise stock it cannot have (orders design O45):
@@ -1920,9 +1957,16 @@ are judged in, both before a transaction. It declares four live topics through
 presence — notified on the writing transaction. It fills the many-provider `VariantReferences` slot (rule 20)
 with its active bills of materials and its manufacturing orders not done or cancelled,
 so Products refuses to delete a variant, or to turn its product into a service, while
-one names it as its product or a component. It provides no single-provider contract,
-writes nothing outside the `manufacturing` schema, and has one background worker,
-`manufacturing-erasure`, the rule-19 sweep that blanks the notes of erased operators' time logs.
+one names it as its product or a component. Orders is **optional**: Manufacturing reads
+`contracts.SalesOrderLines` (consumer-gated, rule 12) for make-to-order and its
+new-order form, and `contracts.CustomerDirectory` for a sales order's customer shown to
+a holder of `orders:access`; it provides `contracts.Production` (provider-gated) to
+Orders' order page; it handles `orders.sales_order.confirmed` and
+`orders.sales_order.cancelled` and publishes `manufacturing.order.done` (rule 23). It
+writes nothing outside the `manufacturing` schema, and has two background workers:
+`manufacturing-erasure`, the rule-19 sweep that blanks the notes of erased operators' time
+logs, and `manufacturing.mto-worker`, which makes the orders the make-to-order requests
+ask for, holding no connection while it reads a contract.
 `MODULES` refuses it without `products` or `inventory`. See
 [Manufacturing](/en/reference/manufacturing/).
 

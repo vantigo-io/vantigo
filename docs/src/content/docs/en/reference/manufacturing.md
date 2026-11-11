@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -10,6 +10,9 @@ sources:
   - apps/server/internal/db/migrations/00157_manufacturing_orders.sql
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
+  - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
+  - apps/server/internal/contracts/production.go
+  - apps/server/internal/contracts/events_manufacturing.go
   - apps/host/frontend/src/routes/manufacturing
 ---
 The Manufacturing module describes how the business makes its goods: the **work centers**
@@ -24,7 +27,9 @@ describes delivery A — the module, work centers, bills of materials, the BoM o
 the holder — delivery B, [manufacturing orders](#manufacturing-orders), and delivery C,
 [work orders and the shop floor](#work-orders-and-the-shop-floor), and delivery D,
 [the production schedule](#the-production-schedule), [the cost](#cost) and
-[the reports](#reports). Delivery 0, the seams in Inventory and Products this module builds on, is
+[the reports](#reports), and delivery E,
+[make-to-order and sub-assembly orders](#make-to-order-and-sub-assemblies), which completes
+phase 1. Delivery 0, the seams in Inventory and Products this module builds on, is
 described in [Inventory](/en/reference/inventory/#production) and
 [Products](/en/reference/products/).
 
@@ -45,7 +50,11 @@ for an order's locations; `contracts.BusinessCalendar` for the business time zon
 `ReservationsFor`, `Release` and `Produce` — for an order's reservations and productions.
 `MODULES` therefore refuses `manufacturing` without
 `products` or `inventory` (`manufacturing requires inventory`, naming the one missing).
-Orders is an optional partner of a later delivery (E); nothing in A, B or C reads it.
+Orders is an optional partner (delivery E): Manufacturing reads its sales order lines
+through `contracts.SalesOrderLines`, and the customer's name through
+`contracts.CustomerDirectory`, and gives it `contracts.Production`; with Orders off,
+make-to-order does nothing and everything else works as before
+([Make-to-order](#make-to-order-and-sub-assemblies)).
 
 The schema holds `counters`, `work_centers`, `work_center_closures`, `boms`,
 `bom_operations` and `bom_lines` (§9, migration `00156`), and, from delivery B, `orders`,
@@ -56,7 +65,10 @@ from delivery C, `work_orders` and `time_logs` (migration
 [the data model of the shop floor](#the-data-model-of-the-shop-floor)), and, from
 delivery D, `work_order_slots` and the order's `requested_start`, `estimate` and `actual`
 (migration `00159_manufacturing_schedule.sql`; see
-[the data model of the schedule](#the-data-model-of-the-schedule)). `boms` carries a partial unique index on
+[the data model of the schedule](#the-data-model-of-the-schedule)), and, from delivery E,
+`mto_requests`, the order's `origin_cancelled` and the one-live-order-per-line index
+(migration `00160_manufacturing_mto.sql`; see
+[the data model of make-to-order](#the-data-model-of-make-to-order)). `boms` carries a partial unique index on
 `variant_id` where the BoM is the default and active, which makes "one default per
 variant" a database fact.
 
@@ -403,7 +415,7 @@ A manufacturing order (M17; nb *produksjonsordre*) makes a quantity of one varia
 of its BoMs, at one site. Delivery B gives it its component lines, reservations,
 productions, close, backorder, cancel and history; delivery C its
 [work orders](#work-orders-and-the-shop-floor); its schedule and its cost are D's, and the
-origins `sales_order` and `parent` E's.
+origins `sales_order` and `parent` [E's](#make-to-order-and-sub-assemblies).
 
 ### The number
 
@@ -431,7 +443,7 @@ is unique. A cancelled order keeps its number.
 | `priority` | `normal` (default) or `urgent` |
 | `responsibleUserId` | Optional, a user found through `GET /people`, known to the directory and not disabled (400 on `responsibleUserId`) |
 | `note` | At most 2,000 characters |
-| `origin` | `manual` in this delivery |
+| `salesOrderLineId` | Optional: the order is made for this sales order line, origin `sales_order` ([A manual order for a line](#a-manual-order-for-a-line)); `manual` otherwise |
 
 Both locations must be **active locations of the order's site**, read through
 `Stock.SiteLocations`: **400** `location_unknown` otherwise (M17a). A draft's component
@@ -704,6 +716,8 @@ Each event has its `kind`, `at`, the actor's `actorUserId` and `actorDisplay`, a
 | `planned` | Plan, or plan all, with the planned window and the number of work orders placed |
 | `unplanned` | Unplan |
 | `rescheduled` | A work order moved on the board |
+| `children_created` | [Sub-assembly orders](#sub-assembly-orders) made from it, naming them |
+| `origin_cancelled` | Its sales order was cancelled ([the flag](#a-cancelled-sales-order)) |
 
 ### The order lock order
 
@@ -1250,6 +1264,153 @@ guarded against formulas, served as an attachment named
 The reports page (`/manufacturing/reports`) shows the production-cost report only to a
 holder of `manufacturing:costs-view`.
 
+## Make-to-order and sub-assemblies
+
+Delivery E (M43–M48, with the §15 amendments M43a, M44a, M44b, M46a and M48a) makes
+orders for sales orders, and orders for the made components of an order.
+
+### The two contracts
+
+| Contract | Provider → consumer | Class (rule 12) | Calls |
+| --- | --- | --- | --- |
+| `contracts.SalesOrderLines` (`contracts/production.go`) | Orders → Manufacturing | **Consumer-gated**: Orders authorises nothing; Manufacturing decides before it calls | `Lines(ids)`, `OrderLines(orderID)` |
+| `contracts.Production` (`contracts/production.go`) | Manufacturing → Orders | **Provider-gated** on `manufacturing:access` from `ctx`; nothing, not an error, without it or with no request | `ForOrderLines(lineIDs)`, `HasBOM(variantIDs)` |
+
+Both are single-provider slots on `module.Deps`, resolved from the enabled modules only
+(nil when the provider is off), and both are read on the pool and never inside a
+transaction, through the accessors in `contractscalls.go`. A `SalesOrderLine` carries
+the line, its order's id and number, the customer's id, the variant, the **open quantity**
+— ordered less cancelled less delivered, exact decimal text — the order's delivery date,
+its site and its status; never the customer's name (M43a). `Production.ForOrderLines`
+answers every order whose origin is one of the lines, **backorders included** and
+cancelled ones left out (M44b), with its number, status, quantity, produced, site,
+planned finish and due date. Each read names at most `contracts.MaxProductionLines`
+(500) ids.
+
+### Automatic make-to-order
+
+The handler **`manufacturing.mto`** receives `orders.sales_order.confirmed` v1 and only
+inserts one row of `mto_requests` for the sales order, on the delivery's transaction
+(rule 23, M44a): a redelivery, or a second confirm of the same order, finds the row by its
+unique sales order and adds nothing. It does nothing while `MODULES` leaves Manufacturing
+out.
+
+The worker **`manufacturing.mto-worker`** (every 15 seconds) takes the pending requests
+due, oldest first, at most 20 a cycle, and for each:
+
+1. reads the order's lines through `SalesOrderLines.OrderLines` on the pool, holding no
+   connection. No lines — the order is gone, or Orders is off — or a cancelled order
+   finishes the request **skipped**;
+2. judges each line, on the pool: the variant's **default active BoM** must have
+   `makeToOrder` (`no_bom`, `not_make_to_order` otherwise); the line must have something
+   open (`nothing_open`) and no live order (`has_order`). The order's **site** is the
+   site of the BoM's work centers; a BoM with no operations takes the sales order's site,
+   and with none on the order either the line is skipped `no_site`. The site and its
+   locations are judged as a new order's ([Creating an order](#creating-an-order)); a
+   refusal is recorded under its code;
+3. opens **one transaction for the sales order**: the make-to-order lease
+   `pg_advisory_xact_lock(0x4D46474D544F3031)` ("MFGMTO01", the bigint form, a key space
+   apart from the schedule's), then `LockVariants` on every product and component, then
+   the request read again — finished meanwhile, nothing is done — then, per line on a
+   savepoint, a draft created with origin `sales_order`, the sales order's id, the line's
+   id and the reference `SO-<number>`, the line's open quantity and its delivery date as
+   `dueDate`, by the system, and **confirmed** by the path a person's confirm takes: the
+   snapshot, the work orders, the estimate, and the two-pass reserve through
+   `ReserveForProduction`. **Shortage never stops it** (M20a): a short line is left
+   unreserved. A line Inventory refuses for another reason is rolled back to its savepoint
+   and recorded under the refusal's code;
+4. finishes the request **done** — some order made — or **skipped** — none — with every
+   line it left out in `reasons` (`[{lineId, code, detail}]`).
+
+A failure — a contract that cannot be read, a lost connection — counts an attempt and
+backs off a minute doubled per attempt, at most an hour; the eighth leaves the request
+`failed`. The worker holds no connection while it reads a contract and runs every
+transaction on one pooled connection, so it runs on a pool of one. A quantity raised on
+the sales order after confirm (`orders.sales_order.changed`) is **not** followed in phase
+1: the order page's production status shows the gap.
+
+### One live order per line
+
+The partial unique index `ux_orders_origin_line` is on `origin_line_id` where
+`origin_kind = 'sales_order'`, `backorder_of_id IS NULL` and the status is not
+`cancelled` (M44b). A backorder carries its original's origin and is left out, so a
+line's chain is one root and its backorders; a cancelled order frees the line. The
+worker skips a line with a live order; a person's create for one is **409**
+`sales_order_line_has_order`.
+
+### A manual order for a line
+
+`GET /sales-order-lines/{id}` (orders-manage) reads one line through
+`SalesOrderLines.Lines` — the route has already decided, as the consumer-gated class asks
+— and answers its variant, open quantity, delivery date, site, reference, the variant's
+default BoM and the orders already made for it: the new-order form's prefill (M45). A
+`POST /orders` with `salesOrderLineId` reads the line again: a goods line of a sales
+order that is not cancelled, of the order's variant, or **400**
+`sales_order_line_unknown`; with Orders off, **503**. The draft then carries origin
+`sales_order` with its ids and reference, and is confirmed as any other.
+
+### A cancelled sales order
+
+The handler **`manufacturing.mto-cancelled`** receives `orders.sales_order.cancelled` v1
+and sets **`origin_cancelled`** on every order made for the sales order that is not yet
+flagged, adding an `origin_cancelled` event to each one's timeline and telling its live
+topics — on the delivery's transaction, writing only this schema (M44). It never cancels
+them: the goods may be half made, and a person decides. The flag is
+`origin.cancelled` on the list and the order.
+
+### What the order shows of its origin
+
+`origin` carries `kind`, `orderId`, `lineId`, `reference` and `cancelled`. On one
+order's answer, and only to a caller who also holds **`orders:access`**, it carries the
+sales order's `customerName`, read after the order's snapshot: the line through
+`SalesOrderLines.Lines` for its customer's id, then `CustomerDirectory.Customer` (M43a).
+It is left out otherwise, and never on the list.
+
+### Done goods and the sales order
+
+Closing an order whose origin is `sales_order` publishes **`manufacturing.order.done`**
+v1 (`contracts/events_manufacturing.go`) on the closing transaction, while it holds the
+order's row (rule 23, M48): `manufacturingOrderId`, `salesOrderId`, `salesOrderLineId`,
+`siteId` and `produced` (exact decimal text) — ids and quantities only. It is published
+for a close short too, whether or not a backorder is made; an order of another origin
+publishes nothing. Orders' handler `orders.mto-reserve` marks the line
+([Orders](/en/reference/orders/#make-to-order)).
+
+### Sub-assembly orders
+
+`POST /orders/{id}/children {revision, componentIds}` (orders-manage, M47) on a confirmed
+or in-progress order (`order_not_open`) makes one **confirmed** child order per chosen
+component line, each:
+
+- by the component variant's **default active BoM**, which each component line answers
+  as `defaultBomId` (`bom_required` without one);
+- for the line's **missing** quantity (M21a), which must be more than 0
+  (`nothing_missing`);
+- with origin `parent`, `parentOrderId` the parent, the parent's priority, and the site of
+  its BoM's work centers, else the parent's site;
+- **due** on the parent's planned start, as a day of the business time zone; when the
+  parent is unplanned, its requested start, else the requested start planning would take
+  (M37).
+
+Every child is created and confirmed in one transaction under the parent's
+[lock order](#the-order-lock-order), with every child's variants locked with the
+parent's; each reserves as a confirm does. The parent's timeline gets
+`children_created`. The answer is `{order, children}`. It is never automatic. A child's
+output is not reserved to the parent: the parent's **Reserve now** picks it up once it
+lands. The parent answers its `children`, each child its `parent`.
+
+### The data model of make-to-order
+
+Migration `00160_manufacturing_mto.sql` adds:
+
+| Table or column | Holds |
+| --- | --- |
+| `mto_requests` | One per sales order (`sales_order_id` unique): the `event_id` that queued it, `status` (`pending`, `done`, `skipped`, `failed`), `reasons`, `attempts`, `last_error`, `next_attempt_at`, `created_at`, `done_at` |
+| `orders.origin_cancelled` | The sales order it was made for was cancelled |
+| `ux_orders_origin_line` | [One live order per line](#one-live-order-per-line) |
+
+The sales order and its line are Orders' ids, opaque here (rule 4).
+
 ## The variant holder
 
 The module fills the many-provider slot **`Module.VariantReferences`** with a
@@ -1346,6 +1507,10 @@ bodies are strict: an unknown property is a 400.
 | `log_overlaps` | 400 | A correction or addition overlapping the user's other logs (M29a) |
 | `no_capacity` | 409 | A plan or a reschedule whose work order does not fit on its work center's calendar within 365 days of the start; nothing is written (M35). Plan all names such orders in `noCapacity` instead |
 | `period_too_long` | 400 | A report whose `to` is more than 366 days after its `from` (M42) |
+| `sales_order_line_unknown` | 400 | A new order's `salesOrderLineId` is not a goods line of a sales order that is not cancelled, or names another variant (M45) |
+| `sales_order_line_has_order` | 409 | The sales order line already has its one live order (M44b) |
+| `component_unknown` | 400 | A sub-assembly order for an id that is not a component line of the order (M47) |
+| `nothing_missing` | 400 | A sub-assembly order for a component line whose missing quantity is 0 (M47) |
 | `insufficient_stock`, `insufficient_available`, `site_archived`, `variant_not_stocked`, `document_reused` | 409 | Inventory's refusal of a production or a reserve, passed through under its own code, `lines` naming the component lines; nothing is posted. A reserve's `insufficient_available` is not answered: it starts the second pass |
 | `dependency_unavailable` | 503 | The catalog or the stock contract is missing at run time; nothing is changed |
 
@@ -1396,7 +1561,9 @@ every order write may answer 503 `dependency_unavailable`.
 | `GET /sites/{id}/locations` (`listManufacturingSiteLocations`) | access | 200 — every location of the site, archived ones too, by full code |
 | `GET /people` (`searchManufacturingPeople`) | access | 200 — users matching `q`, by display name, for an order's responsible |
 | `GET /orders` (`listManufacturingOrders`) | access | 200 — a page of [the list](#the-list); 400 a filter or the paging out of range |
-| `POST /orders` (`createManufacturingOrder`) | orders-manage | 201 a draft; 400 fields, `bom_required`, `site_unknown`, `location_unknown`, `work_center_other_site`, `quantity_invalid`; 409 `bom_not_active` |
+| `POST /orders` (`createManufacturingOrder`) | orders-manage | 201 a draft; 400 fields, `bom_required`, `site_unknown`, `location_unknown`, `work_center_other_site`, `quantity_invalid`, `sales_order_line_unknown`; 409 `bom_not_active`, `sales_order_line_has_order`; 503 Orders off with a `salesOrderLineId` |
+| `POST /orders/{id}/children` (`createManufacturingChildOrders`) | orders-manage | 200 `{order, children}`; 400 `component_unknown`, `bom_required`, `nothing_missing`, `work_center_other_site`, `site_unknown`; 404; 409 `order_not_open`, `revision_conflict`, Inventory's refusals |
+| `GET /sales-order-lines/{id}` (`getManufacturingSalesOrderLine`) | orders-manage | 200 the line read through Orders, its default BoM and the orders made for it; 404; 503 Orders off |
 | `GET /orders/{id}` (`getManufacturingOrder`) | access | 200 with its lines and live availability; 404 |
 | `PUT /orders/{id}` (`updateManufacturingOrder`) | orders-manage | 200; 400 as create; 404; 409 `order_not_draft`, `order_not_open`, `revision_conflict` |
 | `POST /orders/{id}/confirm` (`confirmManufacturingOrder`) | orders-manage | 200 the order and its `shortLines`; 404; 409 `order_not_draft`, `bom_not_active`, Inventory's refusals |
