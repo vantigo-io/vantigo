@@ -15,8 +15,10 @@ import { enabledModuleKeys } from "./enabled-modules";
  * search `products:products-view`, the free-text line's VAT codes and the
  * links to an order's invoices `invoices:access`, the order's *Invoice*
  * `invoices:access` and `invoices:create`, the project picker
- * `projects:access`, and the send channel's choices
- * `communications:channels-manage`.
+ * `projects:access`, the send channel's choices
+ * `communications:channels-manage`, and a goods line's manufacturing orders
+ * Manufacturing mounted with `manufacturing:access`, creating one
+ * `manufacturing:orders-manage` too (manufacturing design M45).
  */
 export const ordersAccessOf = (
   permissions: string[] | undefined,
@@ -41,6 +43,8 @@ export const ordersAccessOf = (
     // Invoices' own judgement (useInvoiceAccess): the wizard asks both keys.
     canCreateInvoices: mounted("invoices", ["invoices:access", "invoices:create"]),
     canViewInvoices: mounted("invoices", ["invoices:access"]),
+    canViewManufacturing: mounted("manufacturing", ["manufacturing:access"]),
+    canCreateManufacturingOrders: mounted("manufacturing", ["manufacturing:access", "manufacturing:orders-manage"]),
     userId: user?.id,
     userDisplayName: user?.displayName,
   };

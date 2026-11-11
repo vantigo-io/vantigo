@@ -2223,6 +2223,12 @@ export interface components {
              * @description What Inventory holds reserved of the line at the order's site (O46). 0 when nothing is.
              */
             qtyReserved?: number;
+            /** @description Whether the line's variant has a default active bill of materials in Manufacturing (manufacturing design M45). Present on an order's goods lines only, and only to a caller holding manufacturing:access. */
+            hasBom?: boolean;
+            /** @description The manufacturing orders made for the line, backorders included and cancelled ones left out (manufacturing design M45, M46). Present on an order's goods lines only, and only to a caller holding manufacturing:access. */
+            production?: components["schemas"]["OrdersLineProduction"][];
+            /** @description Produced, ready to reserve (manufacturing design M48a): a manufacturing order made for the line was closed. Reserve now picks the goods up when they were made at the order's site; otherSite says when they were not, and a transfer is needed first. Present on an order's lines only; null when none was. */
+            readyToReserve?: components["schemas"]["OrdersLineReady"] | null;
             /**
              * Format: double
              * @description At most three decimals.
@@ -2256,6 +2262,51 @@ export interface components {
             vatCodeId?: number | null;
             /** Format: double */
             vatRatePercent?: number | null;
+        };
+        /** @description A manufacturing order made for an order line, as Manufacturing answers it (manufacturing design M46). */
+        OrdersLineProduction: {
+            /** Format: date */
+            dueDate: string | null;
+            /** Format: int64 */
+            manufacturingOrderId: number;
+            /** @description MO-<n>, or MO-<n>-<suffix> for a backorder. */
+            number: string;
+            /** Format: date-time */
+            plannedFinish: string | null;
+            /**
+             * Format: double
+             * @description Good output so far.
+             */
+            produced: number;
+            /** Format: double */
+            quantity: number;
+            /**
+             * Format: int64
+             * @description The site it is made at.
+             */
+            siteId: number;
+            /** @description draft, confirmed, in_progress or done. */
+            status: string;
+        };
+        /** @description A line marked produced, ready to reserve (manufacturing design M48a). */
+        OrdersLineReady: {
+            /**
+             * Format: int64
+             * @description The latest manufacturing order closed for the line.
+             */
+            manufacturingOrderId: number;
+            /** @description The goods were made at another site than the order's: Reserve now cannot pick them up until they are moved. */
+            otherSite: boolean;
+            /**
+             * Format: double
+             * @description What was produced for the line in all.
+             */
+            produced: number;
+            /**
+             * Format: int64
+             * @description The site the goods were made at.
+             */
+            siteId: number;
         };
         /** @description A line as the editor saves it; the document's lines are replaced whole on save, a line naming its id kept as that line (O15). A product line with a variantId is priced from the catalog unless unitPrice is given, which makes the price manual (O16); entered including VAT when the document's prices include VAT (O19). */
         OrdersLineInput: {

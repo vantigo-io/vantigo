@@ -45,6 +45,7 @@ import {
   withCurrentPackagings,
 } from "../lib/lines";
 import { GridDialog } from "./grid-dialog";
+import { LineProduction } from "./line-production";
 import { VariantPicker } from "./variant-picker";
 
 export interface LineGridProps {
@@ -283,6 +284,7 @@ export const LineGrid = ({
               </Text>
             )}
             {mode === "order" && saved && <LineStock line={saved} />}
+            {mode === "order" && saved && <LineProduction line={saved} access={access} />}
             {mode === "order" &&
               saved &&
               (editable && !priceHeld ? (
