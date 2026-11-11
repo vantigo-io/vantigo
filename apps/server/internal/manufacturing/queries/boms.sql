@@ -114,6 +114,16 @@ SELECT id, variant_id, output_quantity FROM manufacturing.boms
 WHERE variant_id = ANY(@variant_ids::int[]) AND is_default AND status = 'active'
 ORDER BY variant_id;
 
+-- name: DefaultBomsNamingVariants :many
+-- DefaultBomsNamingVariants is, per variant among variant_ids, the variants
+-- whose default active BoM names it on a line: the walk's way up, to count
+-- the levels above a BoM that becomes its variant's default (M14).
+SELECT DISTINCT l.variant_id AS component_id, b.variant_id AS parent_id
+FROM manufacturing.bom_lines l
+JOIN manufacturing.boms b ON b.id = l.bom_id
+WHERE l.variant_id = ANY(@variant_ids::int[]) AND b.is_default AND b.status = 'active'
+ORDER BY component_id, parent_id;
+
 -- name: VariantsWithActiveBom :many
 -- VariantsWithActiveBom is which of variant_ids have at least one active
 -- BoM, for the variant search's hasBom.

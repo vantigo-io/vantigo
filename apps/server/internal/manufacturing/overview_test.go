@@ -182,8 +182,9 @@ func TestOverview_Refusals(t *testing.T) {
 	expectRefusal(t, c.Do(http.MethodGet, fmt.Sprintf("%s?siteId=%d", bomPath(b.Id, "overview"), siteGone), nil), http.StatusBadRequest, "site_unknown", "an archived site")
 	mustStatus(t, c.Do(http.MethodGet, bomPath(999999, "overview"), nil), http.StatusNotFound, "unknown BoM")
 
-	// A chain ten deep is walked; a BoM added at its bottom later walks only
-	// downward, so the top's overview finds eleven levels: bom_too_deep.
+	// A chain ten deep is walked. A default BoM added at its bottom counts the
+	// levels above it and is refused; one written past the rule (straight into
+	// the table here) makes the top's overview eleven levels: bom_too_deep.
 	for i := range int32(12) {
 		h.catalog.seed(goods(301+i, fmt.Sprintf("LINK-%d", i), "Link", ""))
 	}
@@ -192,7 +193,10 @@ func TestOverview_Refusals(t *testing.T) {
 		top = createBom(t, c, bomInput(301+i, "1", line(302+i, "1")))
 	}
 	mustStatus(t, c.Do(http.MethodGet, bomPath(top.Id, "overview"), nil), http.StatusOK, "ten deep")
-	createBom(t, c, bomInput(311, "1", line(312, "1")))
+	expectRefusal(t, c.Do(http.MethodPost, bomsPath, bomInput(311, "1", line(312, "1"))), http.StatusBadRequest, "bom_too_deep", "a default BoM under ten levels")
+	h.Exec(t, `WITH b AS (INSERT INTO manufacturing.boms (variant_id, output_quantity, is_default, created_at, updated_at)
+	                      VALUES (311, 1, true, now(), now()) RETURNING id)
+	           INSERT INTO manufacturing.bom_lines (bom_id, variant_id, quantity) SELECT id, 312, 1 FROM b`)
 	expectRefusal(t, c.Do(http.MethodGet, bomPath(top.Id, "overview"), nil), http.StatusBadRequest, "bom_too_deep", "eleven deep")
 
 	// The stock is read in batches, each variant once.
@@ -212,4 +216,37 @@ func TestOverview_Refusals(t *testing.T) {
 	if !slices.Equal(skus, []string{"TUBE-1", "TUBE-1", "BOLT-1"}) {
 		t.Errorf("children = %v", skus)
 	}
+}
+
+// TestOverview_ExpectedMinutesPastInt32 is M28a at a large quantity: an
+// operation's expected minutes are answered whole past what an int32 holds,
+// its cost from the same minutes, and past 10^12 minutes the overview is
+// bom_too_large.
+func TestOverview_ExpectedMinutesPastInt32(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	press := workCenterInput("PRESS", siteMain)
+	press.LabourCostPerHour = json.RawMessage(`"60"`)
+	center := createWorkCenter(t, c, press)
+	in := bomInput(varFrame, "1", line(varBolt, "1"))
+	in.Operations = []gen.ManufacturingBomOperationInput{operation("press", 10, center.Id, "1000")}
+	b := createBom(t, c, in)
+
+	// 10^7 cycles × 1000 minutes = 10^10 minutes; 10^10/60 h × 60 = 10^10.
+	res := c.Do(http.MethodGet, bomPath(b.Id, "overview")+"?quantity=10000000", nil)
+	mustStatus(t, res, http.StatusOK, "overview at 10^7")
+	var o gen.ManufacturingBomOverview
+	res.JSON(&o)
+	ops := o.Root.Operations
+	if len(ops) != 1 || ops[0].ExpectedMinutes != 10_000_000_000 || string(ops[0].Cost) != `"10000000000.00"` {
+		t.Errorf("operations = %+v", ops)
+	}
+	if o.RolledUpCost == nil || o.RolledUpCost.Operations != "10000000000.00" {
+		t.Errorf("rolled up = %+v", o.RolledUpCost)
+	}
+
+	// 10^9 × 1000 is 10^12 minutes, the most answered; one more unit is past it.
+	mustStatus(t, c.Do(http.MethodGet, bomPath(b.Id, "overview")+"?quantity=1000000000", nil), http.StatusOK, "10^12 minutes")
+	expectRefusal(t, c.Do(http.MethodGet, bomPath(b.Id, "overview")+"?quantity=1000000001", nil), http.StatusBadRequest, "bom_too_large", "past 10^12 minutes")
 }

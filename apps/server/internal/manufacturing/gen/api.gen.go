@@ -358,16 +358,18 @@ type ManufacturingOverviewNode struct {
 // ManufacturingOverviewOperation An operation of a made node, at the node's quantity (M28a).
 type ManufacturingOverviewOperation struct {
 	// Cost expectedMinutes/60 × (machine + labour rate), exact decimal in NOK. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
-	Cost            json.RawMessage `json:"cost,omitempty"`
-	ExpectedMinutes int32           `json:"expectedMinutes"`
-	Name            string          `json:"name"`
-	OperationId     int64           `json:"operationId"`
-	Sequence        int32           `json:"sequence"`
-	WorkCenterCode  string          `json:"workCenterCode"`
-	WorkCenterId    int64           `json:"workCenterId"`
+	Cost json.RawMessage `json:"cost,omitempty"`
+
+	// ExpectedMinutes The operation's expected time at the node's quantity, in minutes (M28a). At most 10^12; past it the overview is refused bom_too_large.
+	ExpectedMinutes int64  `json:"expectedMinutes"`
+	Name            string `json:"name"`
+	OperationId     int64  `json:"operationId"`
+	Sequence        int32  `json:"sequence"`
+	WorkCenterCode  string `json:"workCenterCode"`
+	WorkCenterId    int64  `json:"workCenterId"`
 }
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (400: reactivating a work center whose site is archived), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels), bom_too_large (400: an overview past 2000 nodes), bom_not_active (409: an edit or make-default of an archived BoM), quantity_invalid (400: not more than 0, or more than three decimals) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM), quantity_invalid (400: not more than 0, or more than three decimals) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
 type ManufacturingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -3034,6 +3036,20 @@ func (response ArchiveManufacturingWorkCenter409ApplicationProblemPlusJSONRespon
 	return err
 }
 
+type ArchiveManufacturingWorkCenter503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ArchiveManufacturingWorkCenter503ApplicationProblemPlusJSONResponse) VisitArchiveManufacturingWorkCenterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListManufacturingClosuresRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -3237,20 +3253,6 @@ func (response ReactivateManufacturingWorkCenter200JSONResponse) VisitReactivate
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReactivateManufacturingWorkCenter400ApplicationProblemPlusJSONResponse ManufacturingProblem
-
-func (response ReactivateManufacturingWorkCenter400ApplicationProblemPlusJSONResponse) VisitReactivateManufacturingWorkCenterResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }

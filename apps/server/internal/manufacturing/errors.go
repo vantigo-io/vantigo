@@ -26,7 +26,7 @@ const (
 	codeWorkCenterHasOpenWork = "work_center_has_open_work" // 409, from C
 	codeClosuresTooMany       = "closures_too_many"         // 400
 	codeSiteUnknown           = "site_unknown"              // 400
-	codeSiteArchived          = "site_archived"             // 400
+	codeSiteArchived          = "site_archived"             // 409
 	codeCostsViewRequired     = "costs_view_required"       // 403
 	codeBomCodeTaken          = "bom_code_taken"            // 409
 	codeTooManyLines          = "too_many_lines"            // 400

@@ -112,6 +112,42 @@ func (q *Queries) DefaultActiveBomsOfVariants(ctx context.Context, variantIds []
 	return items, nil
 }
 
+const defaultBomsNamingVariants = `-- name: DefaultBomsNamingVariants :many
+SELECT DISTINCT l.variant_id AS component_id, b.variant_id AS parent_id
+FROM manufacturing.bom_lines l
+JOIN manufacturing.boms b ON b.id = l.bom_id
+WHERE l.variant_id = ANY($1::int[]) AND b.is_default AND b.status = 'active'
+ORDER BY component_id, parent_id
+`
+
+type DefaultBomsNamingVariantsRow struct {
+	ComponentID int32
+	ParentID    int32
+}
+
+// DefaultBomsNamingVariants is, per variant among variant_ids, the variants
+// whose default active BoM names it on a line: the walk's way up, to count
+// the levels above a BoM that becomes its variant's default (M14).
+func (q *Queries) DefaultBomsNamingVariants(ctx context.Context, variantIds []int32) ([]DefaultBomsNamingVariantsRow, error) {
+	rows, err := q.db.Query(ctx, defaultBomsNamingVariants, variantIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DefaultBomsNamingVariantsRow
+	for rows.Next() {
+		var i DefaultBomsNamingVariantsRow
+		if err := rows.Scan(&i.ComponentID, &i.ParentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteBomLines = `-- name: DeleteBomLines :exec
 DELETE FROM manufacturing.bom_lines WHERE bom_id = $1
 `
