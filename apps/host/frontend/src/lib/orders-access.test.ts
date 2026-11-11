@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ordersAccessOf } from "./orders-access";
 
-const every = ["orders", "customers", "products", "invoices", "projects", "communications"];
+const every = ["orders", "customers", "products", "invoices", "projects", "communications", "manufacturing"];
 
 describe("what the Orders pages may offer", () => {
   it("asks orders:access beside each Orders key", () => {
@@ -43,6 +43,17 @@ describe("what the Orders pages may offer", () => {
     expect(ordersAccessOf(["invoices:access", "invoices:create"], ["orders"])).toMatchObject({
       canCreateInvoices: false,
       canViewInvoices: false,
+    });
+  });
+
+  it("links a line's manufacturing orders with manufacturing:access, and creates one with orders-manage too", () => {
+    const viewer = ordersAccessOf(["orders:access", "manufacturing:access"], every);
+    expect(viewer).toMatchObject({ canViewManufacturing: true, canCreateManufacturingOrders: false });
+    const planner = ordersAccessOf(["orders:access", "manufacturing:access", "manufacturing:orders-manage"], every);
+    expect(planner).toMatchObject({ canViewManufacturing: true, canCreateManufacturingOrders: true });
+    expect(ordersAccessOf(["manufacturing:access", "manufacturing:orders-manage"], ["orders"])).toMatchObject({
+      canViewManufacturing: false,
+      canCreateManufacturingOrders: false,
     });
   });
 

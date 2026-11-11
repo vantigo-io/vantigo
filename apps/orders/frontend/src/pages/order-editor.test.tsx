@@ -524,3 +524,72 @@ describe("the new order", () => {
     );
   });
 });
+
+describe("a goods line's manufacturing (manufacturing design M45, M48a)", () => {
+  const goods = (overrides: Partial<Order["lines"][number]> = {}) =>
+    line({ deliveryMethod: "delivery", qtyReserved: 0, ...overrides });
+
+  it("offers Create manufacturing order on a line with a BoM and no order, to orders-manage", async () => {
+    server(confirmed({ siteId: 1, lines: [goods({ hasBom: true, production: [] })] }));
+    const { router } = renderRoute("/orders/orders/2001");
+
+    const create = await screen.findByRole("link", { name: "Create manufacturing order" });
+    expect(create).toHaveAttribute("href", "/manufacturing/orders/new?salesOrderLineId=5001");
+    await userEvent.click(create);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/manufacturing/orders/new"));
+  });
+
+  it("does not offer it without manufacturing:orders-manage", async () => {
+    server(confirmed({ siteId: 1, lines: [goods({ hasBom: true, production: [] })] }));
+    renderRoute("/orders/orders/2001", { canCreateManufacturingOrders: false });
+
+    await screen.findByRole("heading", { name: /Order 5001/ });
+    expect(screen.queryByRole("link", { name: "Create manufacturing order" })).not.toBeInTheDocument();
+  });
+
+  it("shows the orders made for the line, linking to them, and that the goods are ready to reserve", async () => {
+    server(
+      confirmed({
+        siteId: 1,
+        lines: [
+          goods({
+            hasBom: true,
+            production: [
+              {
+                manufacturingOrderId: 12,
+                number: "MO-12",
+                status: "done",
+                quantity: 3,
+                produced: 3,
+                siteId: 1,
+                plannedFinish: null,
+                dueDate: "2026-12-01",
+              },
+            ],
+            readyToReserve: { manufacturingOrderId: 12, produced: 3, siteId: 1, otherSite: false },
+          }),
+        ],
+      }),
+    );
+    renderRoute("/orders/orders/2001");
+
+    const production = await screen.findByTestId("line-production");
+    expect(within(production).getByRole("link", { name: "MO-12" })).toHaveAttribute("href", "/manufacturing/orders/12");
+    expect(production).toHaveTextContent("Done");
+    expect(production).toHaveTextContent("3 of 3 produced");
+    expect(screen.getByTestId("line-ready")).toHaveTextContent("ready to reserve");
+    expect(screen.queryByRole("link", { name: "Create manufacturing order" })).not.toBeInTheDocument();
+  });
+
+  it("says when the goods were made at another site", async () => {
+    server(
+      confirmed({
+        siteId: 1,
+        lines: [goods({ readyToReserve: { manufacturingOrderId: 12, produced: 2, siteId: 2, otherSite: true } })],
+      }),
+    );
+    renderRoute("/orders/orders/2001", { canViewManufacturing: false });
+
+    expect(await screen.findByTestId("line-ready")).toHaveTextContent("another site");
+  });
+});

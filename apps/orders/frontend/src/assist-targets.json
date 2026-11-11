@@ -492,6 +492,18 @@
     }
   },
   {
+    "key": "orders.lines.create-manufacturing-order",
+    "route": "/orders/orders/{orderId}",
+    "label": {
+      "en": "Create manufacturing order",
+      "nb": "Opprett produksjonsordre"
+    },
+    "description": {
+      "en": "Opens Manufacturing's new-order form prefilled from the goods line: its product, open quantity and delivery date.",
+      "nb": "Åpner Produksjons skjema for ny ordre, fylt ut fra varelinjen: produktet, det åpne antallet og leveringsdatoen."
+    }
+  },
+  {
     "key": "orders.delivery.ship",
     "route": "/orders/deliveries/{deliveryId}",
     "label": {

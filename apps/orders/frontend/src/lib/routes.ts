@@ -70,3 +70,20 @@ export const invoiceLinkOptions = (invoiceId: number) => ({
   to: INVOICE_ROUTE_PATH,
   params: { invoiceId: String(invoiceId) },
 });
+
+/**
+ * Manufacturing's routes a goods line links to (manufacturing design M45),
+ * owned by the Manufacturing app: a manufacturing order, and the new-order
+ * form prefilled from the line.
+ */
+const MANUFACTURING_ORDER_ROUTE_PATH = "/manufacturing/orders/$orderId";
+const NEW_MANUFACTURING_ORDER_ROUTE_PATH = "/manufacturing/orders/new";
+
+export const manufacturingOrderLinkOptions = (orderId: number) => ({
+  to: MANUFACTURING_ORDER_ROUTE_PATH,
+  params: { orderId: String(orderId) },
+});
+export const newManufacturingOrderLinkOptions = (salesOrderLineId: number) => ({
+  to: NEW_MANUFACTURING_ORDER_ROUTE_PATH,
+  search: { salesOrderLineId },
+});

@@ -34,6 +34,14 @@ export interface OrdersAccess {
   canCreateInvoices: boolean;
   /** The invoices module mounted and `invoices:access`: an order's invoices link to Invoices (O41). */
   canViewInvoices: boolean;
+  /** The manufacturing module mounted and `manufacturing:access`: a goods line's manufacturing orders link to Manufacturing (manufacturing design M45). */
+  canViewManufacturing: boolean;
+  /**
+   * The manufacturing module mounted, `manufacturing:access` and
+   * `manufacturing:orders-manage`: a goods line with a bill of materials offers
+   * *Create manufacturing order* (M45).
+   */
+  canCreateManufacturingOrders: boolean;
   /** The signed-in user, who may make themself a document's salesperson. */
   userId?: string;
   userDisplayName?: string;
@@ -54,4 +62,6 @@ export const noOrdersAccess: OrdersAccess = {
   canViewProjects: false,
   canCreateInvoices: false,
   canViewInvoices: false,
+  canViewManufacturing: false,
+  canCreateManufacturingOrders: false,
 };

@@ -58,6 +58,8 @@ export const fullAccess: OrdersAccess = {
   canViewProjects: true,
   canCreateInvoices: true,
   canViewInvoices: true,
+  canViewManufacturing: true,
+  canCreateManufacturingOrders: true,
   userId: "00000000-0000-4000-8000-000000000001",
   userDisplayName: "Kari Selger",
 };
@@ -150,6 +152,9 @@ const routeTree = (access: OrdersAccess, extra?: ReactNode) => {
     // Invoices' routes an order links to, owned by the Invoices app.
     route("/invoices/new/from-orders", () => <p>From orders wizard</p>),
     route("/invoices/$invoiceId", () => <p>An invoice</p>),
+    // Manufacturing's routes a goods line links to, owned by the Manufacturing app.
+    route("/manufacturing/orders/new", () => <p>New manufacturing order</p>),
+    route("/manufacturing/orders/$orderId", () => <p>A manufacturing order</p>),
   ]);
 };
 
