@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
+description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, å flytte en arbeidsordre ved å dra den eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
 sidebar:
   order: 66
 sources:
@@ -19,6 +19,8 @@ et produkt etter en av stykklistene: den reserverer komponentene og registrerer 
 **produksjon** — det som ble laget og det som gikk med. Hver operasjon i en bekreftet ordre
 er en **arbeidsordre** på arbeidsstasjonen sin, og **verkstedet** er der operatørene
 starter, setter på pause og fullfører dem, og registrerer tiden de arbeider.
+**Produksjonsplanen** legger arbeidsordrene inn i arbeidsstasjonenes kalendere, og
+**rapportene** sammenligner det som var planlagt, med det som skjedde.
 
 Produktene og komponentene kommer fra [Produkter](/nb/user/products/), og bare **varer**
 kan produseres eller brukes: aldri tjenester. Lagerstedene og beholdningen kommer fra
@@ -33,9 +35,10 @@ Sidemenyen viser:
 
 | Område i sidemenyen | Hva det inneholder |
 | --- | --- |
-| **Oversikt** | **Ordrer som skal startes i dag**, **Ordrer som pågår** og **Forsinkede ordrer**, og ordrene som er forsinket eller forfaller denne uken; **Aktive arbeidsstasjoner**, **Blokkerte arbeidsstasjoner** og **Aktive stykklister**: hvor mange det er |
+| **Oversikt** | **Rapporter** i toppen; **Ordrer som skal startes i dag**, **Ordrer som pågår** og **Forsinkede ordrer**, og ordrene som er forsinket eller forfaller denne uken; **Aktive arbeidsstasjoner**, **Blokkerte arbeidsstasjoner** og **Aktive stykklister**: hvor mange det er |
 | **Produksjonsordrer** | Alle åpne produksjonsordrer, med nummer, produkt, antall, lagersted, forfallsdato og reservasjonsstatus |
 | **Verksted** | Arbeidsstasjonenes køer, der operatørene starter, setter på pause og fullfører arbeidsordrer, og **Mitt arbeid** |
+| **Produksjonsplan** | Tavlen: arbeidsordrene som er planlagt på hver arbeidsstasjon, dag for dag, med belastningen, og ordrene som gjenstår å planlegge |
 | **Stykklister** | Alle stykklistene, med produktet, koden, produsert antall, om den er standard, og antall linjer og operasjoner |
 | **Arbeidsstasjoner** | Alle arbeidsstasjonene, etter kode, med lagerstedet sitt |
 
@@ -306,8 +309,9 @@ seg selv når noen endrer en ordre.
    - **Lokasjon for komponenter** — valgfri: der komponentene tas fra. La den stå tom for
      å ta hver komponent fra hovedlokasjonen sin, deretter fra de andre lokasjonene som
      har den;
-   - **Forfallsdato**, **Planlagt start** og **Planlagt slutt** — slutten ikke før
-     starten;
+   - **Forfallsdato**, **Planlagt start** og **Planlagt ferdig** — ferdig ikke før
+     starten. Du kan sette de planlagte datoene for hånd; å
+     [planlegge](#planlegg-en-ordre) ordren setter dem for deg;
    - **Prioritet** — **Normal** eller **Haster**;
    - **Ansvarlig** — personen som følger opp ordren. En deaktivert bruker kan ikke
      velges;
@@ -327,6 +331,10 @@ er arkivert, etter at den ble bekreftet. En ansvarlig som er deaktivert siden, b
 stående på ordren, men du kan ikke velge en deaktivert. En ferdig eller kansellert ordre kan
 ikke endres. Når noen andre har lagret ordren etter at du åpnet den, nektes lagringen din,
 og du blir bedt om å laste inn på nytt.
+
+Skjemaet har også **Ønsket start**: dagen [planleggingen](#planlegg-en-ordre) kan starte
+ordren fra. La den stå tom for å planlegge fra standarddatoen; på en ordre som finnes,
+nevner feltet den datoen.
 
 ### Bekreft en ordre
 
@@ -447,7 +455,9 @@ endres eller fjernes.
 
 Fanen **Arbeidsordrer** på ordresiden lister ordrens arbeidsordrer etter rekkefølge — én
 for hver operasjon i stykklisten — med arbeidsstasjonen, statusen, **Registrert /
-forventet** minutter og hvem som **Kjører nå**. Et utkast har ingen ennå: de lages når det
+forventet** minutter, **Faktisk tid** — tiden det ble arbeidet på arbeidsstasjonen, talt
+én gang uansett hvor mange operatører som var på den — og **Avvik** fra det forventede, i
+minutter og prosent, og hvem som **Kjører nå**. Et utkast har ingen ennå: de lages når det
 bekreftes.
 
 De **forventede minuttene** regnes ut én gang, ved bekreftelsen, fra operasjonen og
@@ -630,6 +640,117 @@ har sluttet, eller be en arbeidsleder [korrigere tiden](#korriger-en-tidsregistr
 En arbeidsordre nevner også de andre som har hatt tiden løpende så lenge, og ordrens
 tidsregistreringer merker en slik registrering **Over 12 t**.
 
+## Produksjonsplanen
+
+**Produksjonsplan** (`/manufacturing/schedule`) viser når hver arbeidsordre er planlagt å
+gå, i arbeidsstasjonens kalender. Alle med Bruke Produksjon leser den; å planlegge, flytte
+og fjerne en plan krever **Administrere produksjonsordrer**.
+
+### Planlegg en ordre
+
+På en bekreftet eller påbegynt ordre velger du **Planlegg**. Hver arbeidsordre som ikke er
+ferdig, legges inn i arbeidsstasjonens kalender, den ene etter den andre i rekkefølgen
+sin, i den første ledige tiden som er lang nok: arbeidsstasjonens åpningstid, minus tiden
+andre arbeidsordrer allerede har der. En arbeidsordre som ikke får plass i ett strekk,
+deles i biter rundt pauser, netter, stengte dager og andre bookinger. Ordrens **Planlagt**
+går da fra starten på den første biten til slutten på den siste.
+
+- Planleggingen starter fra dagen i **Ønsket start**, eller fra nå hvis den er passert.
+  Når ordren ikke har ønsket start, regnes standarden ut fra forfallsdatoen:
+  forfallsdatoen minus arbeidsdagene den forventede tiden trenger, med 7,5 timer per dag,
+  minus én dag til — og aldri før i dag. Uten forfallsdato er den i dag.
+- En arbeidsordre som allerede er i gang, eller på pause, planlegges for tiden den
+  fortsatt trenger — de forventede minuttene minus tiden som allerede er registrert på
+  den — fra nå. En ferdig arbeidsordre flyttes aldri.
+- Å planlegge en ordre som allerede har en plan (**Planlegg på nytt**), erstatter den
+  gamle planen.
+- En ordre uten arbeidsordrer får datoene fra forfallsdatoen minus stykklistens
+  ledetid til forfallsdatoen.
+
+Når planlagt ferdig faller etter forfallsdatoen, viser ordresiden **Forsinket n dager**,
+og stolpene på tavlen er røde. Når en arbeidsordre ikke finner plass i
+arbeidsstasjonens kalender innen 365 dager, planlegges ingenting, og du blir bedt om å
+frigjøre kapasitet eller endre kalenderen.
+
+**Fjern plan** fjerner ordrens plan: de planlagte datoene til ordren og til de uferdige
+arbeidsordrene tømmes, og tiden deres i kalenderne blir ledig igjen.
+
+### Les tavlen
+
+1. Åpne **Produksjonsplan** og velg **Lagersted**. Tavlen husker lagerstedet i denne
+   nettleseren.
+2. Velg **Uke** eller **To uker** under **Dager som vises**, og bla med **Tidligere**,
+   **I dag** og **Senere**.
+
+Tavlen har en rad for hver aktive arbeidsstasjon på lagerstedet og en kolonne for hver
+dag. Hver planlagte bit av en arbeidsordre er en stolpe på sitt tidspunkt, merket med
+ordrenummeret og produktet; en ordre som haster, er merket med en flamme. En stolpe er rød
+når ordren blir ferdig etter forfallsdatoen. En dag arbeidsstasjonen er stengt — en
+helligdag (**Helligdag**) eller en av stengningene (**Stengt**) — er grå, og det samme er
+raden til en arbeidsstasjon som er **Blokkert**.
+
+Under hver dag er **belastningen** tiden som er planlagt på arbeidsstasjonen den dagen, som
+en andel av timene den er åpen, for eksempel **Belastning 75 %**. Over 100 % er den merket
+**Overbelastet**. Tavlen oppdaterer seg selv når noen planlegger eller flytter arbeid på
+lagerstedet.
+
+### Planlegg ordrene som ikke er planlagt
+
+**Ikke planlagt**, under tavlen, lister lagerstedets bekreftede og påbegynte ordrer som
+ikke har noen plan, med forfallsdato, **Ønsket start** og **Forventet tid**. Velg
+**Planlegg** på én, eller **Planlegg alle** for å planlegge alle: de som haster først,
+deretter etter forfallsdato — de uten sist. En ordre som ikke finner kapasitet innen 365
+dager, blir stående uplanlagt og navngitt; de andre planlegges.
+
+### Flytt en arbeidsordre
+
+Dra en stolpe langs raden til en annen dag eller tid og slipp. Eller trykk på stolpen, og
+i **Flytt … til …** velger du **Dag** og **Tid** og **Flytt**; dialogen tilbyr også å åpne
+ordren.
+
+Arbeidsordren får den første ledige tiden fra tidspunktet du valgte — fra nå, hvis det er
+passert. De senere arbeidsordrene i samme ordre følger etter bare når de ellers ville
+startet før den er ferdig; arbeidsordrer i andre ordrer flyttes aldri. Å flytte til en
+annen arbeidsstasjon er ikke mulig ennå.
+
+## Kostnaden for en ordre
+
+Bare de med **Se produksjonskostnader** ser hva en ordre koster. For dem viser ordresiden
+et **Kostnad**-panel med, for hver del — **Komponenter**, **Maskin**, **Arbeid** og
+**Totalt** — **Estimat**, **Faktisk**, **Avvik** og **Avvik %**.
+
+- **Estimatet** lages når ordren bekreftes: komponentenes nødvendige mengder til
+  standardkost, og arbeidsordrenes forventede timer til arbeidsstasjonens maskinsats og
+  arbeidssats, for én operatør. Et utkast har ikke noe ennå.
+- **Det faktiske** løper mens ordren er åpen (**Løpende**): det som ble forbrukt og
+  kassert, til samme standardkost; maskinen for tiden det ble arbeidet på hver
+  arbeidsordre, talt én gang uansett hvor mange operatører som var på den; og arbeid for
+  hver operatørs produktive tid. Det låses når ordren lukkes (**Låst ved avslutning**),
+  sammen med **Kostnad per enhet**: den faktiske totalen delt på de gode enhetene som ble
+  laget.
+- **Nedetid per årsak** lister tiden arbeidsstasjonene sto stille. Den belastes aldri.
+
+Når en komponent manglet standardkost, eller en arbeidsstasjon manglet sats, regnes den
+som 0, og panelet sier at estimatet eller det faktiske er ufullstendig. Beløpene rundes
+til to desimaler, så delene kan avvike fra totalen med 0,01.
+
+## Rapporter
+
+På **Oversikt** velger du **Rapporter**. Velg perioden med **Fra** og **Til** — de siste
+30 dagene hvis du ikke endrer dem, høyst 366 dager — og eventuelt et **Lagersted**. Hver
+rapport har **Last ned CSV**, en fil som åpnes i et regneark med norsk tallformat.
+
+- **Produksjonskostnad** — ordrene som ble lukket i perioden, etter produkt: hver ordres
+  estimat, faktiske kostnad, avvik, avvik % og kostnad per enhet, med summer per
+  produkt. Den vises bare for dem med **Se produksjonskostnader**.
+- **Utnyttelse av arbeidsstasjoner** — per arbeidsstasjon og uke: **Kapasitet**, tiden
+  **Planlagt**, tiden **Produktiv**, **Nedetid** per årsak, og **Utnyttelse**, den
+  produktive tiden som andel av kapasiteten.
+- **Tidsavvik** — per operasjon i en stykkliste: **Gjennomsnittlig forventet** og
+  **Gjennomsnittlig faktisk** minutter over de siste 10 arbeidsordrene som ble ferdige i
+  perioden, og avviket i prosent. Bruk den til å se hvilke standardtider som bør
+  justeres.
+
 ## Å slette et produkt en stykkliste bruker
 
 Produkter nekter å slette en variant, eller å gjøre produktet til en tjeneste, så lenge en
@@ -650,6 +771,7 @@ stykklistene. Lukk eller kanseller ordren først.
 | **Ny stykkliste**, **Lagre**, **Arkiver**, **Gjenaktiver**, **Gjør til standard** på en stykkliste | ✓ | ✓ | – |
 | Maskin- og arbeidssatsene på en arbeidsstasjon, og å sette dem | ✓ | ✓ for å sette dem | ✓ |
 | Standardkostene, verdiene, operasjonskostnadene og den samlede kostnaden i oversikten | ✓ | – | ✓ |
+| En ordres **Kostnad**-panel, og rapporten **Produksjonskostnad** | ✓ | – | ✓ |
 
 Hver rad krever alle rettighetene den krysser av. **Se produksjonskostnader** er sensitiv:
 en administrator gir den bare til dem som skal se hva ting koster å lage, og den kan ikke
@@ -663,6 +785,8 @@ delegeres.
 | **Verksted**, en arbeidsstasjons **Kø**, en arbeidsordre, **Mitt arbeid**, en ordres **Arbeidsordrer** og **Tidsregistreringer** | ✓ | – | – |
 | **Start**, **Start likevel**, **Pause**, **Ferdig**, **Meld svinn**, **Blokker**, **Opphev blokkering** | ✓ | en av dem | en av dem |
 | **Korriger**, **Legg til manglende registrering** | ✓ | ✓ | – |
+| **Produksjonsplan**, **Rapporter** (uten produksjonskostnad) | ✓ | – | – |
+| **Planlegg**, **Planlegg på nytt**, **Fjern plan**, **Planlegg alle**, å flytte en arbeidsordre, **Ønsket start** | ✓ | ✓ | – |
 
 Å registrere en produksjon, og hver handling i verkstedet, krever Bruke Produksjon og en
 av de to andre. Assistenten utfører ingen handlinger i verkstedet: en operatør stempler

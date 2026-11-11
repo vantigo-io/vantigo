@@ -988,8 +988,17 @@ The rules Inventory's phase 1 kept for it still hold:
   My work, live; and the lock order extended to work orders, work centers and time logs
   ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md#the-shop-floor),
   the [reference](docs/src/content/docs/en/reference/manufacturing.md#work-orders-and-the-shop-floor)).
-- **D — The schedule and cost (planned).** Planning work orders on the work centers'
-  calendars, the board and its load; the estimate, the actual and the deviation.
+- **D — The schedule and cost (built).** The work centers' calendars in the business time
+  zone, true to daylight saving time, closed on public holidays and closures; planning an
+  order's work orders forward into slots from its requested start or its default, plan
+  all by priority, unplan, and moving a work order on the board, under a per-work-center
+  advisory lock taken before any row lock so no two plans double-book a center; the
+  production schedule board with its load, late and closed days, live; the estimate at
+  confirm, the running actual and the actual fixed at close with the cost per unit and
+  the deviation, for those who see costs; the duration deviation per work order; and the
+  production-cost, utilisation and time-deviation reports with CSV download
+  ([Manufacturing](docs/src/content/docs/en/user/manufacturing.md#the-production-schedule),
+  the [reference](docs/src/content/docs/en/reference/manufacturing.md#the-production-schedule)).
 - **E — Make-to-order and sub-assemblies (planned).** A manufacturing order from a sales
   order in Orders, and child orders for the components that are made.
 

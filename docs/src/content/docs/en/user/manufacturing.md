@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, moving a work order by dragging it or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -18,7 +18,9 @@ and how long the work is expected to take. A **manufacturing order** makes a qua
 a product by one of its bills of materials: it reserves the components, and records each
 **production** — what was made and what it used. Each operation of a confirmed order is a
 **work order** at its work center, and the **shop floor** is where operators start, pause
-and finish them, recording the time they work.
+and finish them, recording the time they work. The **production schedule** places the work
+orders on the work centers' calendars, and the **reports** compare what was planned with
+what happened.
 
 The products and components come from [Products](/en/user/products/), and only **goods**
 can be made or used: never services. The sites and the stock come from
@@ -33,9 +35,10 @@ The **Manufacturing** tile is shown to everyone with **Use Manufacturing**
 
 | Area in the sidebar | What it holds |
 | --- | --- |
-| **Overview** | **Orders to start today**, **Orders in progress** and **Late orders**, and the orders late or due this week; **Active work centers**, **Blocked work centers** and **Active bills of materials**: how many there are |
+| **Overview** | **Reports** in its header; **Orders to start today**, **Orders in progress** and **Late orders**, and the orders late or due this week; **Active work centers**, **Blocked work centers** and **Active bills of materials**: how many there are |
 | **Manufacturing orders** | Every open manufacturing order, with its number, product, quantity, site, due date and reservation status |
 | **Shop floor** | The work centers' queues, where operators start, pause and finish work orders, and **My work** |
+| **Production schedule** | The board: each work center's planned work orders, day by day, with its load, and the orders still to plan |
 | **Bills of materials** | Every bill of materials, with its product, its code, its output quantity, whether it is the default, and its number of lines and operations |
 | **Work centers** | Every work center, by code, with its site |
 
@@ -302,7 +305,8 @@ due date, number or priority. The list updates by itself when someone changes an
      empty to take each component from its primary location, then from the other
      locations that hold it;
    - **Due date**, **Planned start** and **Planned finish** — the finish not before the
-     start;
+     start. You may set the planned dates by hand; [planning](#plan-an-order) the order
+     sets them for you;
    - **Priority** — **Normal** or **Urgent**;
    - **Responsible** — the person who follows the order up. A disabled user cannot be
      chosen;
@@ -322,6 +326,10 @@ archived, since it was confirmed. A responsible person who has been disabled sin
 on the order, but you cannot choose a disabled one. A done or cancelled order
 cannot be changed. When someone else saved the order after you opened it, your save is
 refused and you are asked to reload.
+
+The form also has **Requested start**: the day [planning](#plan-an-order) may start the
+order from. Leave it empty to plan from the default; on an order that exists the field
+names that default.
 
 ### Confirm an order
 
@@ -444,7 +452,9 @@ changed or removed.
 
 The order page's **Work orders** tab lists the order's work orders by sequence — one for
 each operation of its bill of materials — with the work center, the state, **Logged /
-expected** minutes and who is **Running now**. A draft has none yet: they are made when it
+expected** minutes, the **Actual time** — the time the work center was worked, counted
+once however many operators were on it — and the **Deviation** from the expected, in
+minutes and per cent, and who is **Running now**. A draft has none yet: they are made when it
 is confirmed.
 
 The **expected minutes** are worked out once, at confirm, from the operation and the work
@@ -623,6 +633,116 @@ stopped working, or ask a supervisor to [correct the time](#correct-a-time-log).
 order also names the others whose time has run that long, and the order's time logs mark
 such a log **Over 12 h**.
 
+## The production schedule
+
+The **Production schedule** (`/manufacturing/schedule`) shows when each work order is
+planned to run, on its work center's calendar. Everyone with Use Manufacturing reads it;
+planning, moving and removing a plan need **Manage manufacturing orders**.
+
+### Plan an order
+
+On a confirmed or in-progress order, choose **Plan**. Each work order that is not done is
+placed on its work center's calendar, one after the other in their sequence, in the first
+free time long enough to hold it: the work center's open hours, less the time other work
+orders already hold there. A work order that does not fit in one stretch is cut into
+pieces around breaks, nights, closed days and other bookings. The order's **Planned**
+dates then run from the first piece's start to the last piece's finish.
+
+- Planning starts from the **Requested start** day, or from now if that has passed. When
+  the order has no requested start, the default is worked out from the due date: the due
+  date less the working days the expected time needs, at 7.5 hours a day, less one more
+  day — and never before today. Without a due date it is today.
+- A work order already in progress, or paused, is planned for the time it still needs —
+  its expected minutes less the time already logged on it — from now. A done work order is
+  never moved.
+- Planning an order that has a plan already (**Plan again**) replaces its old plan.
+- An order without work orders is given the dates from its due date less its bill of
+  materials' lead time to the due date.
+
+When the planned finish falls after the due date, the order page shows **Late by n days**,
+and its bars on the board are red. When a work order finds no room on its work center's
+calendar within 365 days, nothing is planned and you are told to free up capacity or
+change the calendar.
+
+**Unplan** removes the order's plan: its planned dates and those of its unfinished work
+orders are cleared, and their time on the calendars is free again.
+
+### Read the board
+
+1. Open **Production schedule** and choose the **Site**. The board remembers the site in
+   this browser.
+2. Choose **Week** or **Two weeks** under **Days shown**, and move with **Earlier**,
+   **Today** and **Later**.
+
+The board has a row for each active work center at the site and a column for each day.
+Each planned piece of a work order is a bar at its time, labelled with the order's number
+and the product; an urgent order is marked with a flame. A bar is red when its order will
+be finished after its due date. A day the work center is closed — a public holiday
+(**Holiday**) or one of its closures (**Closed**) — is greyed, and so is the row of a
+**Blocked** work center.
+
+Under each day the **load** is the time planned on the work center that day as a share of
+the hours it is open, such as **Load 75 %**. Above 100 %, it is marked **Overloaded**.
+The board updates by itself when someone plans or moves work at the site.
+
+### Plan the unscheduled orders
+
+**Unscheduled**, below the board, lists the site's confirmed and in-progress orders that
+have no plan, with their due date, **Requested start** and **Expected time**. Choose **Plan**
+on one, or **Plan all** to plan every one of them: the urgent ones first, then by due
+date — those without one last. An order that finds no capacity within 365 days is left
+unplanned and named; the others are planned.
+
+### Move a work order
+
+Drag a bar along its row to another day or time and let go. Or press the bar, and in
+**Move … to…** choose the **Day** and **Time** and **Move**; the dialog also offers to
+open the order.
+
+The work order takes the first free time from the moment you chose — from now, if that
+has passed. The later work orders of the same order follow it only when they would
+otherwise start before it is finished; work orders of other orders never move. A move to
+another work center is not possible yet.
+
+## The cost of an order
+
+Only those with **See manufacturing costs** see what an order costs. For them the order
+page shows a **Cost** panel with, for each part — **Components**, **Machine**, **Labour**
+and **Total** — the **Estimate**, the **Actual**, the **Deviation** and the
+**Deviation %**.
+
+- The **estimate** is made when the order is confirmed: the components' required
+  quantities at their standard cost, and the work orders' expected hours at the work
+  center's machine rate and at its labour rate, for one operator. A draft has none yet.
+- The **actual** runs while the order is open (**Running**): what was consumed and
+  scrapped at the same standard cost; the machine for the time each work order was
+  worked, counted once however many operators were on it; and labour for every
+  operator's productive time. It is fixed when the order is closed (**Fixed at close**),
+  together with the **Cost per unit**: the actual total divided by the good units made.
+- **Downtime by reason** lists the time the work centers stood still. It is never
+  charged.
+
+When a component had no standard cost, or a work center no rate, it is counted as 0 and
+the panel says the estimate or the actual is incomplete. Amounts are rounded to two
+decimals, so the parts may differ from the total by 0.01.
+
+## Reports
+
+On **Overview**, choose **Reports**. Choose the period with **From** and **To** — the last
+30 days unless you change them, at most 366 days — and, if you like, a **Site**. Each
+report has **Download CSV**, a file that opens in a spreadsheet with Norwegian number
+formatting.
+
+- **Production cost** — the orders closed in the period, by product: each order's
+  estimate, actual, deviation, deviation % and cost per unit, with each product's
+  totals. It is shown only to those with **See manufacturing costs**.
+- **Work-center utilisation** — per work center and week: its **Capacity**, the time
+  **Planned**, the time **Productive**, the **Downtime** by reason, and the
+  **Utilisation**, productive time as a share of capacity.
+- **Time deviation** — per operation of a bill of materials: the **Average expected** and
+  the **Average actual** minutes over the last 10 work orders finished in the period, and
+  the deviation in per cent. Use it to see which standard times need adjusting.
+
 ## Deleting a product a bill of materials uses
 
 Products refuses to delete a variant, or to turn its product into a service, while an
@@ -643,6 +763,7 @@ materials. Close or cancel the order first.
 | **New bill of materials**, **Save**, **Archive**, **Reactivate**, **Make default** on a BoM | ✓ | ✓ | – |
 | The machine and labour rates on a work center, and setting them | ✓ | ✓ to set them | ✓ |
 | The standard costs, extended values, operation costs and the rolled-up cost in the overview | ✓ | – | ✓ |
+| An order's **Cost** panel, and the **Production cost** report | ✓ | – | ✓ |
 
 Every row needs every permission it ticks. **See manufacturing costs** is sensitive: an
 administrator gives it only to those who should see what things cost to make, and it
@@ -656,6 +777,8 @@ cannot be delegated.
 | **Shop floor**, a work center's **Queue**, a work order, **My work**, an order's **Work orders** and **Time logs** | ✓ | – | – |
 | **Start**, **Start anyway**, **Pause**, **Finish**, **Report scrap**, **Block**, **Unblock** | ✓ | either | either |
 | **Correct**, **Add missing log** | ✓ | ✓ | – |
+| **Production schedule**, **Reports** (without production cost) | ✓ | – | – |
+| **Plan**, **Plan again**, **Unplan**, **Plan all**, moving a work order, **Requested start** | ✓ | ✓ | – |
 
 Registering a production, and every action on the shop floor, needs Use Manufacturing and
 either of the other two. The Assistant does not take shop-floor actions: an operator
