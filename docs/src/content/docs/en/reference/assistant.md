@@ -355,16 +355,17 @@ list does not name cannot be linked to. Its targets join [the registry](#guided-
 adjustment and move, bulk adding locations, printing labels, opening a count, the import's file, and since
 phase 2 the transfer list, a new transfer, the receive page's scan field and the low-stock list
 (`inventory.low-stock.list`, on `/inventory/low-stock`) — as
-`@vantigo/orders-ui` exports its forty-seven — a new quote and order and their customer pickers, saving, sending
+`@vantigo/orders-ui` exports its forty-eight — a new quote and order and their customer pickers, saving, sending
 and accepting a quote, saving and confirming an order, a new template, the settings and the customer tab's
 New quote and New order, since A2 a document's warnings, the settings' sales warnings, adding lines from
 the variant grid, and the analysis views and their CSV download, and since S a new subscription with its
 customer picker and create, and a subscription's save, activate, pause, resume, end and effective-from date and
 final period, since C an order's site, a delivery's creation, pick list and posting, the deliveries view and the
 default site, and since D adding and estimating a shipping line, shipping a delivery, a shipment's service and
-booking, the freight markup, and Integrations › Shipping's Add carrier account and Verify
+booking, the freight markup, and Integrations › Shipping's Add carrier account and Verify, and since
+Manufacturing's delivery E a goods line's Create manufacturing order
 ([Orders](/en/reference/orders/#assistant-tour-targets)) — as `@vantigo/manufacturing-ui` exports its
-fifty-three — the overview's cards, New bill of materials, New manufacturing order and the orders due,
+fifty-four — the overview's cards, New bill of materials, New manufacturing order and the orders due,
 the orders' list, filters and New manufacturing order, an order's form, facts, actions, short lines,
 components, Add component and history, the work centers' list and New work center, a
 work center's form, weekly pattern, save, closures and actions, the bills of materials' list and New bill of
@@ -373,7 +374,8 @@ since delivery C an order's Work orders tab, its work orders, its time logs and 
 floor's work center picker, a work center's queue and Block and Unblock, a work order's Start, Pause and
 Finish, its timer, who is here and its instructions, and My work's running log, and since delivery D an
 order's Plan and Cost, the production schedule's site, board, bars, Unscheduled and Plan all, the overview's
-Reports, and the reports' filters and Download CSV
+Reports, and the reports' filters and Download CSV, and since delivery E an order's Create sub-assembly
+orders
 ([Manufacturing](/en/reference/manufacturing/)) — and the host's `assist-targets.ts` collects them.
 
 ## Claude and preserved thinking
