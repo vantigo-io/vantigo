@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live and the stored reservation status, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, close with or without a backorder, cancel, the history; the order lock order; the live topics; the VariantReferenceHolder; personal data; the data model; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, close with or without a backorder, cancel, the history; the order lock order; the live topics; the VariantReferenceHolder; personal data; the data model; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -55,8 +55,13 @@ orders** (`/manufacturing/orders`), **Bills of materials** (`/manufacturing/boms
 *Produksjonsordrer*, *Stykklister* and *Arbeidsstasjoner*. The Overview reads
 `GET /stats`: the active work centers, the blocked ones and the active BoMs, and
 `ordersToStartToday` (confirmed orders not started whose planned start is today or
-earlier), `ordersInProgress` and `ordersLate` (open orders due before today); its list of
-orders late or due this week is a read of `GET /orders`.
+earlier), `ordersInProgress` and `ordersLate` (open orders due before today), with
+`today`, the business calendar's day they are counted on. Its list of orders late or due
+this week is a read of `GET /orders` with `dueTo` the Sunday on or after that `today`, so
+the week is the business calendar's, not the viewer's. It shows each order's due date and
+status, not its availability, which only the order page computes
+([Availability](#availability)). The counts and the list are read again on the
+`manufacturing.orders` live event ([Live](#live)).
 
 ## Permissions
 
@@ -75,7 +80,9 @@ of a manufacturing order against `manufacturing:access` **and**
 nothing. **Registering a production** is the exception: the route asks for
 `manufacturing:access`, and the handler then requires `manufacturing:shop-floor` **or**
 `manufacturing:orders-manage`, refusing **403** `shop_floor_required` with neither. The Assistant calls the writes in its confirm
-mode. The stock figures are Manufacturing's own reads of `contracts.Stock` and need no
+mode, except registering a production: `postManufacturingProduction` is
+`x-vantigo-assistant: never`, because its route names only `manufacturing:access` and the
+Assistant's gate cannot see the handler's either-or. The stock figures are Manufacturing's own reads of `contracts.Stock` and need no
 Inventory key (§8); the variant search is Manufacturing's own (`GET /variants`) and needs
 no Products key. `GET /meta` answers the caller's `canManageBoms`, `canSeeCosts`,
 `canManageOrders` and `canWorkShopFloor`, and the currency, `NOK`.
@@ -393,7 +400,7 @@ is unique. A cancelled order keeps its number.
 | `dueDate` | Optional, the day the goods must be ready |
 | `plannedStart`, `plannedFinish` | Optional timestamps, set by hand (planning in D); the finish not before the start |
 | `priority` | `normal` (default) or `urgent` |
-| `responsibleUserId` | Optional, a user found through `GET /people` |
+| `responsibleUserId` | Optional, a user found through `GET /people`, known to the directory and not disabled (400 on `responsibleUserId`) |
 | `note` | At most 2,000 characters |
 | `origin` | `manual` in this delivery |
 
@@ -401,6 +408,12 @@ Both locations must be **active locations of the order's site**, read through
 `Stock.SiteLocations`: **400** `location_unknown` otherwise (M17a). A draft's component
 lines are not stored: it answers the BoM's lines as they are now, without ids, and follows
 its BoM until it is confirmed.
+
+**A discontinued variant** (§11). An order whose product, or a component line's variant,
+is of a `Discontinued` product is created, confirmed and produced as any other — the item
+is being used up — and every answer of the order while it is not done or cancelled,
+the create's and the confirm's among them, carries `warnings: ["variant_discontinued"]`;
+`warnings` is empty otherwise. The order page shows the warning as a notice.
 
 ### States
 
@@ -416,7 +429,12 @@ An update (`PUT /orders/{id}`) replaces the order's fields under its `revision`
 - A **draft** changes everything.
 - A **confirmed** or **in-progress** order changes only its dates, priority, responsible
   user, note and locations. A change to a draft-only field — the variant, the BoM, the
-  quantity, the site — is **409** `order_not_draft`.
+  quantity, the site — is **409** `order_not_draft`. Its site and BoM are not judged
+  again: an order whose BoM's work centers have moved to another site, or whose site has
+  been archived, since it was confirmed still takes the edit. Only its two locations are
+  judged, against `Stock.SiteLocations` of its own site (`location_unknown`, 400).
+- A responsible user who changes must be known to the directory and not disabled; one
+  disabled after being named stays through an edit that leaves them.
 - **`done`** and **`cancelled`** are final: any write is **409** `order_not_open`.
   Undoing a production is *unbuild*, phase 2; until then an Inventory adjustment corrects
   a mistake.
@@ -481,8 +499,9 @@ the excess. Both answer `ManufacturingOrderWithShortLines`.
 
 ### Availability
 
-On the **order page** and the overview the availability is computed **live** (M21,
-M21a). For each line:
+On the **order page** — `GET /orders/{id}` and every answer of an order write — the
+availability is computed **live** (M21, M21a); neither the overview nor the list computes
+it. For each line:
 
 - `remaining = required − consumed − scrapped`, at least 0;
 - `available` is `Stock.Available` of the variant at the order's site;
@@ -511,7 +530,8 @@ remaining reserved), `partly_reserved` or `not_reserved`. The list can be filter
 - `q`, on the number (`MO-12`), the product's SKU and its name.
 
 It sorts by `dueDate` (default), `number` or `priority`, and answers a page —
-`page` from 1, `pageSize` 1–200, default 50 — with the total, as Orders' lists do.
+`page` from 1 to 100,000, `pageSize` 1–200, default 50 — with the total, as Orders' lists
+do; a page out of range is 400.
 
 ### Productions
 
@@ -552,7 +572,11 @@ A line's `consumed + scrap` is taken from its `fromLocationId`; else from the or
 component location; else it is **split**: the variant's primary location at the site
 first, then the other locations holding it, by full code, read through `Stock.Locations`
 before the transaction. **`insufficient_stock`** is answered only when the site's total
-falls short, or when Inventory refuses a location named.
+falls short, or when Inventory refuses a location named. When Inventory refuses
+`insufficient_stock` on a split line — another production took from those locations
+between the read and the post — the transaction is rolled back and the post reads
+`Stock.Locations` again and splits anew, at most three times in all; so two productions
+at once both post while the site's total suffices.
 
 #### Posting
 
@@ -580,7 +604,9 @@ nothing posted again. The same id with another body is **409** `client_request_r
 
 **Inventory's refusals** — `insufficient_stock`, `site_archived`, `variant_not_stocked`,
 `document_reused` — pass through as **409** under their own code, with `lines` naming the
-component lines, and **nothing** is posted: the whole transaction is rolled back.
+component lines, and **nothing** is posted: the whole transaction is rolled back. A
+refused line names a component line only when both its variant and its line id are that
+line's; a refused produce line, whose line id is the order's, names none.
 
 Producing **more** than the order's quantity is allowed; the order answers the overrun in
 `overrun`, and the page shows it. `GET /productions/{id}` reads one production.
@@ -600,7 +626,9 @@ When `produced` is less than `quantity`, the request must say `backorder`: absen
   origin, due date, priority and responsible user, numbered with the root's next suffix
   and linked by `backorderOfId`. As the original was confirmed, the backorder is
   **confirmed at once** and reserves by the two passes; the answer's `shortLines` name its
-  lines left short.
+  lines left short. This is the one confirm that does not refuse an archived BoM: the
+  backorder keeps its original's BoM even when it has been archived since, while a new
+  order or a draft's confirm on it is `bom_not_active`.
 - `false` closes short.
 
 The answer is `{order, backorder, shortLines}`. The actual cost at close is delivery D's
@@ -638,9 +666,15 @@ Every order write takes its locks in one order (M26a), on its own transaction:
 
 1. **`ProductCatalog.LockVariants`** on the order's variant and its component variants,
    the set taken from a plain read first;
-2. the order's row **`FOR UPDATE`**;
-3. a re-read of the component variants; when the set grew since step 1 — a line added
-   meanwhile — the transaction starts again from step 1;
+2. the order's row **`FOR UPDATE`**, then — for a draft, and for a write that names
+   variants of its own, such as close's backorder — its BoM's row **`FOR SHARE`**, so a
+   BoM edit, which takes that row `FOR UPDATE`, either commits before the re-read or
+   waits for the order write's commit;
+3. a re-read of the component variants — a draft's and a backorder's from its BoM's
+   lines; when the set grew since step 1 — a line added meanwhile — the transaction
+   starts again from step 1. The snapshot takes every line's SKU, name, unit and cost
+   from what step 1 locked, and a line whose variant step 1 did not lock starts it again
+   too. After four attempts the write is **409** `revision_conflict`;
 4. (the work orders, the work center and the time logs: delivery C);
 5. the ledger — `ReserveForProduction`, `Release`, `Produce`.
 
@@ -716,7 +750,7 @@ bodies are strict: an unknown property is a 400.
 
 | Code | Status | Rule |
 | --- | --- | --- |
-| `revision_conflict` | 409 | A stale `revision` of a work center, a BoM or an order; also a unique-index race on the default (M14a) |
+| `revision_conflict` | 409 | A stale `revision` of a work center, a BoM or an order; also a unique-index race on the default (M14a), and an order write whose variants kept changing under its lock ([the order lock order](#the-order-lock-order)) |
 | `work_center_code_taken` | 409 | The code is another work center's (M8) |
 | `work_center_in_use` | 409 | Delete of a work center a BoM operation names; archive it instead (M8) |
 | `work_center_has_open_work` | 409 | Archive while an open work order names it (M8; from delivery C) |
@@ -773,7 +807,7 @@ every order write may answer 503 `dependency_unavailable`.
 | Operation | Permission | Answers |
 | --- | --- | --- |
 | `GET /meta` (`getManufacturingMeta`) | access | 200 — the caller's abilities and the currency |
-| `GET /stats` (`getManufacturingStats`) | access | 200 — active and blocked work centers, active BoMs; orders to start today, in progress and late |
+| `GET /stats` (`getManufacturingStats`) | access | 200 — active and blocked work centers, active BoMs; orders to start today, in progress and late; the business calendar's `today` |
 | `GET /sites` (`listManufacturingSites`) | access | 200 — Inventory's active sites: `id`, `code`, `name`, `rootLocationId` |
 | `GET /variants` (`searchManufacturingVariants`) | access | 200 — goods variants of active products matching `q`, each with `hasBom`; `limit` clamped to 1–50, default 20 |
 | `GET /work-centers` (`listManufacturingWorkCenters`) | access | 200 — by code; `status`, `siteId`, `q` |
@@ -805,7 +839,7 @@ every order write may answer 503 `dependency_unavailable`.
 | `POST /orders/{id}/components` (`addManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `variant_not_found`, `variant_not_goods`, `quantity_invalid`; 404; 409 `order_not_open` |
 | `PUT /orders/{id}/components/{componentId}` (`updateManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `required_below_used`, `quantity_invalid`; 404; 409 `order_not_open` |
 | `GET /orders/{id}/production-draft` (`getManufacturingProductionDraft`) | access | 200 [the prefill](#productions); 400 `quantity_invalid`; 404; 409 `order_not_open` |
-| `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `consumption_differs`, `client_request_reused`, Inventory's refusals |
+| `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `consumption_differs`, `client_request_reused`, Inventory's refusals |
 | `POST /orders/{id}/close` (`closeManufacturingOrder`) | orders-manage | 200 `{order, backorder, shortLines}`; 404; 409 `order_not_open`, `quantity_short` |
 | `POST /orders/{id}/cancel` (`cancelManufacturingOrder`) | orders-manage | 200; 404; 409 `order_not_open`, `order_has_production` |
 | `GET /orders/{id}/events` (`listManufacturingOrderEvents`) | access | 200 [the history](#history), oldest first; 404 |
