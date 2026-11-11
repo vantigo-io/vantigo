@@ -117,9 +117,11 @@ func TestPlanChain_ManyBookingsStayFast(t *testing.T) {
 	cals := map[int64]workCalendar{1: testCalendar(t, weekdays(iv("07:00", "15:00")))}
 	booked := map[int64][]span{1: book(nil, manyBookings(20000))}
 	start := at(2026, time.March, 2, 7, 0)
-	began := time.Now()
+	var took time.Duration
 	for range 200 {
+		began := time.Now()
 		got, _, ok := planChain(cals, booked, []planWork{{id: 1, center: 1, need: 90 * time.Minute}}, start, start)
+		took += time.Since(began)
 		if !ok {
 			t.Fatal("no capacity")
 		}
@@ -132,7 +134,13 @@ func TestPlanChain_ManyBookingsStayFast(t *testing.T) {
 		}
 		booked[1] = book(booked[1], got[0].pieces)
 	}
-	if took := time.Since(began); took > 5*time.Second {
+	// Only the planner is timed, not the overlap check above; the race
+	// detector slows it by an order of magnitude, so its limit is wider.
+	limit := 5 * time.Second
+	if raceDetector {
+		limit = 60 * time.Second
+	}
+	if took > limit {
 		t.Errorf("200 work orders on 20,000 bookings took %v", took)
 	}
 }
