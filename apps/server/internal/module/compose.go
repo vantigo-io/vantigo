@@ -278,12 +278,9 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 		deps.SSOConnections = ssoConnectionsProvider.SSOConnections(deps)
 	}
 
-	productsProvider, err := soleProvider(mods, "a product catalog", func(m Module) bool { return m.Products != nil })
-	if err != nil {
+	// The product catalog, by the helper Workers uses too.
+	if deps, err = withProducts(deps, mods); err != nil {
 		return nil, nil, err
-	}
-	if productsProvider != nil {
-		deps.Products = productsProvider.Products(deps)
 	}
 
 	if deps, err = withProjects(deps, mods); err != nil {
@@ -341,12 +338,8 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 
 	// Sales tax (contracts.SalesTax, orders design O8) resolves right after
 	// receivables: the same module provides both, from its own tables only.
-	salesTaxProvider, err := soleProvider(mods, "sales tax", func(m Module) bool { return m.SalesTax != nil })
-	if err != nil {
+	if deps, err = withSalesTax(deps, mods); err != nil {
 		return nil, nil, err
-	}
-	if salesTaxProvider != nil {
-		deps.SalesTax = salesTaxProvider.SalesTax(deps)
 	}
 
 	// The three billable reads, consumption and billable orders resolve

@@ -532,6 +532,71 @@ func TestWorkers_ResolveTheProjectsBillableAndConsumptionSlots(t *testing.T) {
 	}
 }
 
+// Worker mode never composes, so Workers resolves the product catalog itself,
+// as Compose does (manufacturing design M44a): from the enabled provider,
+// before the stock slots so the stock ledger — Inventory's, which reserves
+// through it — is built with it, and the caller's own when no enabled module
+// provides one. Before this a worker-mode Deps had none, and
+// Manufacturing's make-to-order worker could lock no variant.
+func TestWorkers_ResolvesProducts(t *testing.T) {
+	var seen Deps
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d
+		return nil
+	}}
+	catalog := &fakeProductCatalog{}
+	var ledgerSaw contracts.ProductCatalog
+	owner := Module{Name: "owner", Products: func(Deps) contracts.ProductCatalog { return catalog }}
+	stock := Module{Name: "stock", StockLedger: func(d Deps) contracts.StockLedger {
+		ledgerSaw = d.Products
+		return fakeStockLedger{}
+	}}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner", "stock"}}}, reader, owner, stock)
+	if seen.Products != catalog {
+		t.Errorf("the workers saw Deps.Products = %v, want the enabled owner's", seen.Products)
+	}
+	if ledgerSaw != catalog {
+		t.Errorf("the stock ledger was built with Deps.Products = %v; want the catalog resolved before it", ledgerSaw)
+	}
+	preset := &fakeProductCatalog{}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, Products: preset}, reader, owner)
+	if seen.Products != preset {
+		t.Errorf("the workers saw Deps.Products = %v, want the caller's, the owner being disabled", seen.Products)
+	}
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), "a product catalog") {
+			t.Errorf("two catalogs: recovered %v, want a panic naming the slot", r)
+		}
+	}()
+	Workers(Deps{Config: &config.Config{Modules: []string{"owner", "other"}}}, owner,
+		Module{Name: "other", Products: func(Deps) contracts.ProductCatalog { return &fakeProductCatalog{} }})
+}
+
+// fakeSalesTax is a contracts.SalesTax no test calls.
+type fakeSalesTax struct{ contracts.SalesTax }
+
+// Worker mode never composes, so Workers resolves sales tax itself, as
+// Compose does: Orders' mail worker prints the seller block it reads into
+// every mail it sends, and read nil it failed every one.
+func TestWorkers_ResolvesSalesTax(t *testing.T) {
+	var seen Deps
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d
+		return nil
+	}}
+	tax := &fakeSalesTax{}
+	owner := Module{Name: "owner", SalesTax: func(Deps) contracts.SalesTax { return tax }}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}}, reader, owner)
+	if seen.SalesTax != tax {
+		t.Errorf("the workers saw Deps.SalesTax = %v, want the enabled owner's", seen.SalesTax)
+	}
+	preset := &fakeSalesTax{}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, SalesTax: preset}, reader, owner)
+	if seen.SalesTax != preset {
+		t.Errorf("the workers saw Deps.SalesTax = %v, want the caller's, the owner being disabled", seen.SalesTax)
+	}
+}
+
 // Two enabled providers of one of the slots Workers learned for the billing
 // worker are a bug in the binary's module list, which Compose refuses at
 // startup; Workers has no error to return, so it panics, naming the slot.

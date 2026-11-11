@@ -209,7 +209,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `Mount` runs, so a module's `Deps` already carries what it consumes; `Calendar`,
    then `Accounts` and then `SSOConnections` are resolved right after `Users`, so the
    accounts provider may read the user directory while it is built (`module.Workers`
-   leaves `SSOConnections` nil: no worker connects anyone); `Actuals`, `Timesheets` (right after
+   leaves `SSOConnections` nil: no worker connects anyone); `Products` comes next, before the
+   stock slots, whose ledger reserves through it — by Compose and `module.Workers` alike
+   (`withProducts`), since Manufacturing's make-to-order worker locks the variants of the
+   orders it makes through it; `Actuals`, `Timesheets` (right after
    `Actuals`, the same module owning both),
    `Expenses`, `Receivables`, `SalesTax` (right after `Receivables`, the same module
    owning both, from its own tables only) and the three `Billable*` are resolved last, after
@@ -224,9 +227,10 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `Deps.ChannelMailboxes` while it is built. `CalendarBusy` is resolved by
    Compose last of all, after the mailbox slots, since its provider — the calendar's
    server — reads the rest of `Deps` while it is built; `module.Workers` leaves it nil,
-   as no worker reads it; nor does it resolve `Receivables` or `SalesTax`, which no
-   worker reads either. Two providers are a compose error naming both, and a panic in
-   Workers.
+   as no worker reads it; nor does it resolve `Receivables`, which no worker reads
+   either. It does resolve `SalesTax` (`withSalesTax`, after the line-level reads): Orders'
+   mail worker prints the seller block into every mail it sends. Two providers are a
+   compose error naming both, and a panic in Workers.
    Twelve slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
