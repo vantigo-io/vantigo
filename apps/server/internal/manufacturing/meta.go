@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
@@ -40,7 +41,8 @@ func (s *server) GetManufacturingMeta(ctx context.Context, _ gen.GetManufacturin
 }
 
 // GetManufacturingStats is the overview's counts: work centers, BoMs and
-// the order cards (M7), today being the business calendar's.
+// the order cards (M7), today being the business calendar's, answered so
+// the overview's week is the business calendar's too.
 func (s *server) GetManufacturingStats(ctx context.Context, _ gen.GetManufacturingStatsRequestObject) (gen.GetManufacturingStatsResponseObject, error) {
 	today, tomorrow, err := s.today(ctx)
 	if err != nil {
@@ -58,6 +60,7 @@ func (s *server) GetManufacturingStats(ctx context.Context, _ gen.GetManufacturi
 	return gen.GetManufacturingStats200JSONResponse{
 		ActiveWorkCenters: stats.ActiveWorkCenters, BlockedWorkCenters: stats.BlockedWorkCenters, ActiveBoms: stats.ActiveBoms,
 		OrdersToStartToday: orders.ToStartToday, OrdersInProgress: orders.InProgress, OrdersLate: orders.Late,
+		Today: openapi_types.Date{Time: today},
 	}, nil
 }
 

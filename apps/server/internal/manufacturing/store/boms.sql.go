@@ -199,6 +199,35 @@ func (q *Queries) GetBom(ctx context.Context, id int64) (ManufacturingBom, error
 	return i, err
 }
 
+const getBomForShare = `-- name: GetBomForShare :one
+SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at FROM manufacturing.boms WHERE id = $1 FOR SHARE
+`
+
+// GetBomForShare takes the BoM's row FOR SHARE: an order write that
+// snapshots the BoM's lines (a draft's confirm, a backorder) holds it from
+// before its re-read of the lines to its commit, so a BoM edit — which takes
+// the row FOR UPDATE — commits before the re-read or waits for the write
+// (M26a step 3).
+func (q *Queries) GetBomForShare(ctx context.Context, id int64) (ManufacturingBom, error) {
+	row := q.db.QueryRow(ctx, getBomForShare, id)
+	var i ManufacturingBom
+	err := row.Scan(
+		&i.ID,
+		&i.VariantID,
+		&i.Code,
+		&i.OutputQuantity,
+		&i.IsDefault,
+		&i.MakeToOrder,
+		&i.LeadTimeDays,
+		&i.Note,
+		&i.Status,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getBomForUpdate = `-- name: GetBomForUpdate :one
 SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at FROM manufacturing.boms WHERE id = $1 FOR UPDATE
 `

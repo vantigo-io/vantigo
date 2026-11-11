@@ -46,6 +46,14 @@ SELECT * FROM manufacturing.boms WHERE id = @id;
 -- GetBomForUpdate takes the BoM's row FOR UPDATE, after LockBomGraph.
 SELECT * FROM manufacturing.boms WHERE id = @id FOR UPDATE;
 
+-- name: GetBomForShare :one
+-- GetBomForShare takes the BoM's row FOR SHARE: an order write that
+-- snapshots the BoM's lines (a draft's confirm, a backorder) holds it from
+-- before its re-read of the lines to its commit, so a BoM edit — which takes
+-- the row FOR UPDATE — commits before the re-read or waits for the write
+-- (M26a step 3).
+SELECT * FROM manufacturing.boms WHERE id = @id FOR SHARE;
+
 -- name: BomCodeTaken :one
 -- BomCodeTaken reports whether another BoM has the code (bom_code_taken); id
 -- 0 asks about a new one.

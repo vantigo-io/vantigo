@@ -184,6 +184,10 @@ var markedByHand = map[string]string{
 	"listRoleSuggestions":          "never",
 	"applyInstructionSuggestion":   "never",
 	"dismissInstructionSuggestion": "never",
+	// Registering a production posts a stock movement, and its route names only
+	// manufacturing:access: the handler asks for shop-floor or orders-manage
+	// itself (manufacturing design M33), which the Assistant's gate cannot see.
+	"postManufacturingProduction": "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

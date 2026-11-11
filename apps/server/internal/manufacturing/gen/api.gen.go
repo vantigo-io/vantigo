@@ -130,6 +130,21 @@ func (e ManufacturingOrderStatus) Valid() bool {
 	}
 }
 
+// Defines values for ManufacturingOrderWarning.
+const (
+	VariantDiscontinued ManufacturingOrderWarning = "variant_discontinued"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingOrderWarning enum.
+func (e ManufacturingOrderWarning) Valid() bool {
+	switch e {
+	case VariantDiscontinued:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ManufacturingOrigin.
 const (
 	Manual     ManufacturingOrigin = "manual"
@@ -656,6 +671,9 @@ type ManufacturingOrder struct {
 
 	// Variant A catalog variant as Manufacturing names it.
 	Variant ManufacturingVariantRef `json:"variant"`
+
+	// Warnings What the order is allowed with but should be looked at, while it is not done or cancelled: variant_discontinued when its product or a component line's variant is of a Discontinued product (a new MO warns but is allowed). Empty otherwise.
+	Warnings []ManufacturingOrderWarning `json:"warnings"`
 }
 
 // ManufacturingOrderComponent A component line of an order (M18) with its live availability (M21, M21a). On a draft the lines follow the BoM and have no id.
@@ -883,6 +901,9 @@ type ManufacturingOrderUpdate struct {
 	// SiteId Changed only on a draft (order_not_draft).
 	SiteId int64 `json:"siteId"`
 }
+
+// ManufacturingOrderWarning A warning on an order: variant_discontinued — its product or a component is of a Discontinued product.
+type ManufacturingOrderWarning string
 
 // ManufacturingOrderWithShortLines An order after a write that reserves (confirm, reserve now, a line's add or edit), naming each line left short.
 type ManufacturingOrderWithShortLines struct {
@@ -1162,6 +1183,9 @@ type ManufacturingStats struct {
 
 	// OrdersToStartToday Confirmed orders not started whose planned start is today or earlier.
 	OrdersToStartToday int32 `json:"ordersToStartToday"`
+
+	// Today Today in the business calendar's zone, the day the counts are of; the overview's week ends on the Sunday after it.
+	Today openapi_types.Date `json:"today"`
 }
 
 // ManufacturingStatus A work center's or a BoM's status.

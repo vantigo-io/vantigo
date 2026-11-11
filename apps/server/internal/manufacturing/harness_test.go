@@ -292,6 +292,9 @@ type fakeStock struct {
 	sites     []contracts.StockSite
 	available map[int64]map[int32]string
 	batches   int
+	// locationsHook, when set, runs after each Locations read: a test's
+	// window between the read a post splits on and its transaction.
+	locationsHook func()
 	ledgerState
 }
 
@@ -369,8 +372,19 @@ func (s *fakeStock) Sites(ctx context.Context) ([]contracts.StockSite, error) {
 func (s *fakeStock) Locations(ctx context.Context, ids []int32, site int64) ([]contracts.StockLocation, error) {
 	lockedContractCalls.note(ctx, "fake Stock.Locations")
 	s.mu.Lock()
+	out, hook := s.locationsHolding(ids, site), s.locationsHook
+	s.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return out, nil
+}
+
+// onLocations installs the Locations hook.
+func (s *fakeStock) onLocations(hook func()) {
+	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.locationsHolding(ids, site), nil
+	s.locationsHook = hook
 }
 
 func (s *fakeStock) SiteLocations(ctx context.Context, site int64) ([]contracts.StockSiteLocation, error) {
