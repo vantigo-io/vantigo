@@ -22,6 +22,7 @@ import {
   IconChartLine,
   IconChecklist,
   IconClipboardCheck,
+  IconClipboardList,
   IconClock,
   IconClockExclamation,
   IconFileDollar,
@@ -256,11 +257,12 @@ const inventoryNavPresentation: Record<InventoryNavItem["key"], Pick<NavItem, "l
  * The host's half of a Manufacturing sidebar entry, as Inventory's above:
  * where each destination is and which permission offers it are the
  * package's (`manufacturingNavItems`, manufacturing design M7); the label and
- * the icon are the host's. The three later entries (orders, shop floor,
- * schedule) join as their deliveries add them to the package.
+ * the icon are the host's. The two later entries (shop floor, schedule) join
+ * as their deliveries add them to the package.
  */
 const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   overview: { label: "navigation.manufacturingOverview", icon: IconBuildingFactory2 },
+  orders: { label: "navigation.manufacturingOrders", icon: IconClipboardList },
   boms: { label: "navigation.manufacturingBoms", icon: IconListDetails },
   workCenters: { label: "navigation.manufacturingWorkCenters", icon: IconTool },
 };
@@ -670,7 +672,7 @@ export const apps: readonly AppDefinition[] = [
     requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
   },
   // Every Manufacturing read asks for manufacturing:access (manufacturing
-  // design §8), which offers each of delivery A's three entries.
+  // design §8), which offers each of the app's entries.
   moduleApp(
     "manufacturing",
     "navigation.manufacturing",

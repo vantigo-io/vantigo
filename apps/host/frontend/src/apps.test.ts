@@ -4,6 +4,7 @@ import {
   IconCalendarEvent,
   IconCalendarStats,
   IconClipboardCheck,
+  IconClipboardList,
   IconFileImport,
   IconListDetails,
   IconPackageImport,
@@ -158,6 +159,7 @@ describe("the app registry", () => {
       "/inventory/low-stock",
       "/inventory/import",
       "/manufacturing",
+      "/manufacturing/orders",
       "/manufacturing/boms",
       "/manufacturing/work-centers",
       "/energy/metering-points",
@@ -759,9 +761,9 @@ describe("the app registry", () => {
   });
 
   // Manufacturing's destinations are the package's (`manufacturingNavItems`,
-  // M7): delivery A's Overview, Bills of materials and Work centers, each
-  // offered by manufacturing:access; the labels and icons are the host's.
-  it("registers Manufacturing with the package's three destinations, all manufacturing:access's", () => {
+  // M7): Overview, Manufacturing orders, Bills of materials and Work centers,
+  // each offered by manufacturing:access; the labels and icons are the host's.
+  it("registers Manufacturing with the package's four destinations, all manufacturing:access's", () => {
     const manufacturing = appForKey("manufacturing");
     expect(manufacturing).toMatchObject({
       module: "manufacturing",
@@ -773,18 +775,27 @@ describe("the app registry", () => {
     const items = manufacturing.navSections.flatMap((section) => section.items);
     expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
       ["navigation.manufacturingOverview", "/manufacturing", ["manufacturing:access"]],
+      ["navigation.manufacturingOrders", "/manufacturing/orders", ["manufacturing:access"]],
       ["navigation.manufacturingBoms", "/manufacturing/boms", ["manufacturing:access"]],
       ["navigation.manufacturingWorkCenters", "/manufacturing/work-centers", ["manufacturing:access"]],
     ]);
-    expect(items.map((item) => item.icon)).toEqual([IconBuildingFactory2, IconListDetails, IconTool]);
+    expect(items.map((item) => item.icon)).toEqual([
+      IconBuildingFactory2,
+      IconClipboardList,
+      IconListDetails,
+      IconTool,
+    ]);
     expect(items.map((item) => item.to)).toEqual(manufacturingNavItems.map((item) => item.to));
     expect(navigationCatalog.en["navigation.manufacturing"]).toBe("Manufacturing");
     expect(navigationCatalog.nb["navigation.manufacturing"]).toBe("Produksjon");
     expect(
-      ["navigation.manufacturingOverview", "navigation.manufacturingBoms", "navigation.manufacturingWorkCenters"].map(
-        (key) => navigationCatalog.nb[key as keyof typeof navigationCatalog.nb],
-      ),
-    ).toEqual(["Oversikt", "Stykklister", "Arbeidsstasjoner"]);
+      [
+        "navigation.manufacturingOverview",
+        "navigation.manufacturingOrders",
+        "navigation.manufacturingBoms",
+        "navigation.manufacturingWorkCenters",
+      ].map((key) => navigationCatalog.nb[key as keyof typeof navigationCatalog.nb]),
+    ).toEqual(["Oversikt", "Produksjonsordrer", "Stykklister", "Arbeidsstasjoner"]);
     const keys = (permissions: string[], enabled: readonly ModuleKey[]) =>
       switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
     expect(keys(["manufacturing:access"], ["manufacturing"])).toContainEqual(["manufacturing", true]);

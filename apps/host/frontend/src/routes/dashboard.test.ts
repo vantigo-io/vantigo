@@ -1492,7 +1492,18 @@ describe("the dashboard's manufacturing card", () => {
     const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value);
     expect(manufacturingKpi(undefined, formatNumber, t)).toEqual({ value: "—", hint: undefined });
     expect(
-      manufacturingKpi({ activeBoms: 1200, activeWorkCenters: 4, blockedWorkCenters: 1 }, formatNumber, t),
+      manufacturingKpi(
+        {
+          activeBoms: 1200,
+          activeWorkCenters: 4,
+          blockedWorkCenters: 1,
+          ordersToStartToday: 0,
+          ordersInProgress: 0,
+          ordersLate: 0,
+        },
+        formatNumber,
+        t,
+      ),
     ).toEqual({ value: "1,200", hint: 'dashboard.manufacturingWorkCentersHint:{"count":4}' });
     for (const lng of ["en", "nb"])
       expect(i18n.t("dashboard.manufacturingWorkCentersHint", { ns: "host", lng, count: 3 })).toContain("3");

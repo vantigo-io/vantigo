@@ -157,6 +157,9 @@ import { Route as InvoicesRemindersPrintRouteImport } from './routes/invoices/re
 import { Route as KnowledgeArticlesArticleIdRouteImport } from './routes/knowledge/articles.$articleId'
 import { Route as ManufacturingBomsIndexRouteImport } from './routes/manufacturing/boms.index'
 import { Route as ManufacturingBomsNewRouteImport } from './routes/manufacturing/boms.new'
+import { Route as ManufacturingOrdersIndexRouteImport } from './routes/manufacturing/orders.index'
+import { Route as ManufacturingOrdersOrderIdRouteImport } from './routes/manufacturing/orders.$orderId'
+import { Route as ManufacturingOrdersNewRouteImport } from './routes/manufacturing/orders.new'
 import { Route as ManufacturingWorkCentersIndexRouteImport } from './routes/manufacturing/work-centers.index'
 import { Route as ManufacturingWorkCentersWorkCenterIdRouteImport } from './routes/manufacturing/work-centers.$workCenterId'
 import { Route as ManufacturingWorkCentersNewRouteImport } from './routes/manufacturing/work-centers.new'
@@ -962,6 +965,23 @@ const ManufacturingBomsNewRoute = ManufacturingBomsNewRouteImport.update({
   path: '/boms/new',
   getParentRoute: () => ManufacturingRoute,
 } as any)
+const ManufacturingOrdersIndexRoute =
+  ManufacturingOrdersIndexRouteImport.update({
+    id: '/orders/',
+    path: '/orders/',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
+const ManufacturingOrdersOrderIdRoute =
+  ManufacturingOrdersOrderIdRouteImport.update({
+    id: '/orders/$orderId',
+    path: '/orders/$orderId',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
+const ManufacturingOrdersNewRoute = ManufacturingOrdersNewRouteImport.update({
+  id: '/orders/new',
+  path: '/orders/new',
+  getParentRoute: () => ManufacturingRoute,
+} as any)
 const ManufacturingWorkCentersIndexRoute =
   ManufacturingWorkCentersIndexRouteImport.update({
     id: '/work-centers/',
@@ -1366,6 +1386,8 @@ export interface FileRoutesByFullPath {
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
+  '/manufacturing/orders/$orderId': typeof ManufacturingOrdersOrderIdRoute
+  '/manufacturing/orders/new': typeof ManufacturingOrdersNewRoute
   '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
   '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
@@ -1405,6 +1427,7 @@ export interface FileRoutesByFullPath {
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/manufacturing/boms/': typeof ManufacturingBomsIndexRoute
+  '/manufacturing/orders/': typeof ManufacturingOrdersIndexRoute
   '/manufacturing/work-centers/': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries/': typeof OrdersDeliveriesIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
@@ -1539,6 +1562,8 @@ export interface FileRoutesByTo {
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
+  '/manufacturing/orders/$orderId': typeof ManufacturingOrdersOrderIdRoute
+  '/manufacturing/orders/new': typeof ManufacturingOrdersNewRoute
   '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
   '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
@@ -1578,6 +1603,7 @@ export interface FileRoutesByTo {
   '/invoices/billing-runs': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
   '/manufacturing/boms': typeof ManufacturingBomsIndexRoute
+  '/manufacturing/orders': typeof ManufacturingOrdersIndexRoute
   '/manufacturing/work-centers': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries': typeof OrdersDeliveriesIndexRoute
   '/orders/orders': typeof OrdersOrdersIndexRoute
@@ -1738,6 +1764,8 @@ export interface FileRoutesById {
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
   '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
+  '/manufacturing/orders/$orderId': typeof ManufacturingOrdersOrderIdRoute
+  '/manufacturing/orders/new': typeof ManufacturingOrdersNewRoute
   '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
   '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
@@ -1777,6 +1805,7 @@ export interface FileRoutesById {
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
   '/manufacturing/boms/': typeof ManufacturingBomsIndexRoute
+  '/manufacturing/orders/': typeof ManufacturingOrdersIndexRoute
   '/manufacturing/work-centers/': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries/': typeof OrdersDeliveriesIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
@@ -1938,6 +1967,8 @@ export interface FileRouteTypes {
     | '/invoices/reminders/print'
     | '/knowledge/articles/$articleId'
     | '/manufacturing/boms/new'
+    | '/manufacturing/orders/$orderId'
+    | '/manufacturing/orders/new'
     | '/manufacturing/work-centers/$workCenterId'
     | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
@@ -1977,6 +2008,7 @@ export interface FileRouteTypes {
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
     | '/manufacturing/boms/'
+    | '/manufacturing/orders/'
     | '/manufacturing/work-centers/'
     | '/orders/deliveries/'
     | '/orders/orders/'
@@ -2111,6 +2143,8 @@ export interface FileRouteTypes {
     | '/invoices/reminders/print'
     | '/knowledge/articles/$articleId'
     | '/manufacturing/boms/new'
+    | '/manufacturing/orders/$orderId'
+    | '/manufacturing/orders/new'
     | '/manufacturing/work-centers/$workCenterId'
     | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
@@ -2150,6 +2184,7 @@ export interface FileRouteTypes {
     | '/invoices/billing-runs'
     | '/invoices/payments'
     | '/manufacturing/boms'
+    | '/manufacturing/orders'
     | '/manufacturing/work-centers'
     | '/orders/deliveries'
     | '/orders/orders'
@@ -2309,6 +2344,8 @@ export interface FileRouteTypes {
     | '/invoices/reminders/print'
     | '/knowledge/articles/$articleId'
     | '/manufacturing/boms/new'
+    | '/manufacturing/orders/$orderId'
+    | '/manufacturing/orders/new'
     | '/manufacturing/work-centers/$workCenterId'
     | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
@@ -2348,6 +2385,7 @@ export interface FileRouteTypes {
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
     | '/manufacturing/boms/'
+    | '/manufacturing/orders/'
     | '/manufacturing/work-centers/'
     | '/orders/deliveries/'
     | '/orders/orders/'
@@ -3445,6 +3483,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ManufacturingBomsNewRouteImport
       parentRoute: typeof ManufacturingRoute
     }
+    '/manufacturing/orders/': {
+      id: '/manufacturing/orders/'
+      path: '/orders'
+      fullPath: '/manufacturing/orders/'
+      preLoaderRoute: typeof ManufacturingOrdersIndexRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/orders/$orderId': {
+      id: '/manufacturing/orders/$orderId'
+      path: '/orders/$orderId'
+      fullPath: '/manufacturing/orders/$orderId'
+      preLoaderRoute: typeof ManufacturingOrdersOrderIdRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/orders/new': {
+      id: '/manufacturing/orders/new'
+      path: '/orders/new'
+      fullPath: '/manufacturing/orders/new'
+      preLoaderRoute: typeof ManufacturingOrdersNewRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
     '/manufacturing/work-centers/': {
       id: '/manufacturing/work-centers/'
       path: '/work-centers'
@@ -4066,9 +4125,12 @@ const KnowledgeRouteWithChildren = KnowledgeRoute._addFileChildren(
 interface ManufacturingRouteChildren {
   ManufacturingIndexRoute: typeof ManufacturingIndexRoute
   ManufacturingBomsNewRoute: typeof ManufacturingBomsNewRoute
+  ManufacturingOrdersOrderIdRoute: typeof ManufacturingOrdersOrderIdRoute
+  ManufacturingOrdersNewRoute: typeof ManufacturingOrdersNewRoute
   ManufacturingWorkCentersWorkCenterIdRoute: typeof ManufacturingWorkCentersWorkCenterIdRoute
   ManufacturingWorkCentersNewRoute: typeof ManufacturingWorkCentersNewRoute
   ManufacturingBomsIndexRoute: typeof ManufacturingBomsIndexRoute
+  ManufacturingOrdersIndexRoute: typeof ManufacturingOrdersIndexRoute
   ManufacturingWorkCentersIndexRoute: typeof ManufacturingWorkCentersIndexRoute
   ManufacturingBomsBomIdOverviewRoute: typeof ManufacturingBomsBomIdOverviewRoute
   ManufacturingBomsBomIdIndexRoute: typeof ManufacturingBomsBomIdIndexRoute
@@ -4077,10 +4139,13 @@ interface ManufacturingRouteChildren {
 const ManufacturingRouteChildren: ManufacturingRouteChildren = {
   ManufacturingIndexRoute: ManufacturingIndexRoute,
   ManufacturingBomsNewRoute: ManufacturingBomsNewRoute,
+  ManufacturingOrdersOrderIdRoute: ManufacturingOrdersOrderIdRoute,
+  ManufacturingOrdersNewRoute: ManufacturingOrdersNewRoute,
   ManufacturingWorkCentersWorkCenterIdRoute:
     ManufacturingWorkCentersWorkCenterIdRoute,
   ManufacturingWorkCentersNewRoute: ManufacturingWorkCentersNewRoute,
   ManufacturingBomsIndexRoute: ManufacturingBomsIndexRoute,
+  ManufacturingOrdersIndexRoute: ManufacturingOrdersIndexRoute,
   ManufacturingWorkCentersIndexRoute: ManufacturingWorkCentersIndexRoute,
   ManufacturingBomsBomIdOverviewRoute: ManufacturingBomsBomIdOverviewRoute,
   ManufacturingBomsBomIdIndexRoute: ManufacturingBomsBomIdIndexRoute,

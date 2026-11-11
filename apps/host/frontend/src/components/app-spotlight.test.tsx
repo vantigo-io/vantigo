@@ -367,6 +367,34 @@ describe("AppSpotlight navigation authorization", () => {
     }
   });
 
+  // New manufacturing order (manufacturing design M17) opens the order form;
+  // it needs the module, manufacturing:access and manufacturing:orders-manage.
+  it("opens the order form from New manufacturing order for orders-manage with the app", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["manufacturing:access", "manufacturing:orders-manage"], false, false, onNavigate, [
+      "manufacturing",
+    ]);
+
+    fireEvent.click(await waitFor(() => screen.getByText("New manufacturing order", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/manufacturing/orders/new" }));
+  });
+
+  it("hides New manufacturing order without orders-manage, without the app's key and when the module is off", async () => {
+    for (const [permissions, modules] of [
+      [["manufacturing:access", "manufacturing:boms-manage"], ["manufacturing"]],
+      [["manufacturing:orders-manage"], ["manufacturing"]],
+      [["manufacturing:access", "manufacturing:orders-manage"], ["customers"]],
+    ] as [string[], ModuleKey[]][]) {
+      renderSpotlight([...permissions, "customers:create"], false, false, undefined, [...modules, "customers"]);
+      await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+      expect(screen.queryByText("New manufacturing order", { exact: true })).not.toBeInTheDocument();
+      cleanup();
+      spotlight.close();
+    }
+  });
+
   // Start count (inventory design §7, B) opens the counts with the start form
   // open; it needs counts-manage beside both views.
   it("opens the counts with the start form from Start count for counts-manage and both views", async () => {

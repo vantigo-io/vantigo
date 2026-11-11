@@ -7,6 +7,7 @@ import {
   IconBook2,
   IconBriefcase,
   IconBuilding,
+  IconBuildingFactory2,
   IconCalendarEvent,
   IconCalendarPlus,
   IconCalendarStats,
@@ -37,7 +38,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
 import { searchQueryOptions as knowledgeSearchQueryOptions } from "@vantigo/knowledge-ui/api/articles";
 import { ARTICLE_ROUTE_PATH, KNOWLEDGE_HOME_ROUTE_PATH } from "@vantigo/knowledge-ui/lib/routes";
-import { NEW_BOM_ROUTE_PATH } from "@vantigo/manufacturing-ui/lib/routes";
+import { NEW_BOM_ROUTE_PATH, NEW_ORDER_ROUTE_PATH } from "@vantigo/manufacturing-ui/lib/routes";
 import { NEW_QUOTE_ROUTE_PATH } from "@vantigo/orders-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
@@ -251,6 +252,21 @@ export const AppSpotlight = ({
     hasPermissions(permissions, ["manufacturing:access"]) &&
     hasPermissions(permissions, ["manufacturing:boms-manage"])
       ? [{ label: t("dashboard.newBom"), icon: IconListDetails, path: NEW_BOM_ROUTE_PATH, search: undefined }]
+      : []),
+    // New manufacturing order opens the order form (manufacturing design
+    // M17): creating one needs the app and manufacturing:orders-manage, each
+    // any-of on its own.
+    ...(enabledModules?.includes("manufacturing") &&
+    hasPermissions(permissions, ["manufacturing:access"]) &&
+    hasPermissions(permissions, ["manufacturing:orders-manage"])
+      ? [
+          {
+            label: t("dashboard.newManufacturingOrder"),
+            icon: IconBuildingFactory2,
+            path: NEW_ORDER_ROUTE_PATH,
+            search: undefined,
+          },
+        ]
       : []),
     // New article opens Knowledge with the new-article form (the package's
     // `new` seam, knowledge design K4): anyone with knowledge:articles may
