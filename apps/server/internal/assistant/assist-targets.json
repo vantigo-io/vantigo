@@ -275,6 +275,11 @@
     "description": "The button that opens the dialog for adding a time log someone forgot to record."
   },
   {
+    "key": "manufacturing.order.children",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "Makes a confirmed order for each chosen made component that is missing, due when this order starts."
+  },
+  {
     "key": "manufacturing.order.components",
     "route": "/manufacturing/orders/{orderId}",
     "description": "The component lines of a manufacturing order: required, reserved, available, consumed, scrapped and missing for each."
@@ -523,6 +528,11 @@
     "key": "orders.lines.add-shipping",
     "route": "/orders/quotes/{quoteId}",
     "description": "Adds a shipping line: the freight the customer pays, quantity 1, its price typed or estimated."
+  },
+  {
+    "key": "orders.lines.create-manufacturing-order",
+    "route": "/orders/orders/{orderId}",
+    "description": "Opens Manufacturing's new-order form prefilled from the goods line: its product, open quantity and delivery date."
   },
   {
     "key": "orders.lines.estimate-shipping",

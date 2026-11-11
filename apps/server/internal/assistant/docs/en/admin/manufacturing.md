@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00157_manufacturing_orders.sql
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
+  - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
 ---
 
 The Manufacturing module (**Produksjon** in Norwegian) describes how the business makes
@@ -54,17 +55,28 @@ people use it is in [Manufacturing](/en/user/manufacturing/), and every rule in 
    The migration `00157_manufacturing_orders.sql` adds the manufacturing orders' tables
    to the schema, `00158_manufacturing_work_orders.sql` the work orders and time logs
    of the shop floor, and `00159_manufacturing_schedule.sql` the production schedule's
-   `work_order_slots` table and the orders' requested start, estimate and actual. The default privileges under Database roles cover them; a role
+   `work_order_slots` table and the orders' requested start, estimate and actual, and
+   `00160_manufacturing_mto.sql` the make-to-order requests (`mto_requests`) and the
+   orders' origin-cancelled flag. The default privileges under Database roles cover them; a role
    granted table by table instead needs the `GRANT` statements run again after each
    upgrade.
 
 3. The **Manufacturing** tile appears for everyone with `manufacturing:access`.
 
-The module has no settings of its own. It starts one background worker,
-`manufacturing-erasure`, which once a day blanks the free-text notes on time logs written
-by people identity has erased — a supervisor's correction or addition, or a block's
-note ([personal data](/en/reference/manufacturing/#personal-data));
-it needs nothing configured.
+The module has no settings of its own. It starts two background workers, and neither
+needs anything configured:
+
+- `manufacturing-erasure`, which once a day blanks the free-text notes on time logs
+  written by people identity has erased — a supervisor's correction or addition, or a
+  block's note ([personal data](/en/reference/manufacturing/#personal-data));
+- `manufacturing.mto-worker`, which every 15 seconds makes the manufacturing orders for
+  the sales orders confirmed in Orders: one confirmed order per goods line whose product's
+  default bill of materials is **Make to order**
+  ([Make-to-order](/en/reference/manufacturing/#make-to-order-and-sub-assemblies)).
+  It needs **Orders** enabled, and the outbox's dispatcher running in a worker process to
+  hand it the confirmed orders; with Orders off it makes none, and everything else in
+  Manufacturing works as before. Its requests that keep failing are left `failed` in
+  `manufacturing.mto_requests` with the last error, after eight attempts.
 
 ## Give people access
 
@@ -166,6 +178,10 @@ shows the right time without the server sending it.
     choose the site: the order's work orders are bars on the work center's row. With See
     manufacturing costs, the order shows its **Cost** panel, and **Overview** →
     **Reports** offers **Production cost**.
+11. With Orders enabled, mark the product's default bill of materials **Make to order**,
+    then confirm a sales order with it in Orders. Within a minute **Manufacturing orders**
+    lists a confirmed order with origin **Sales order** and the sales order's number, and
+    the sales order's line shows it.
 
 ## What can go wrong
 
@@ -197,3 +213,5 @@ shows the right time without the server sending it.
 | The schedule plans at the wrong hours | The business time zone is not the factory's | Set it under **Workspace settings** |
 | No **Cost** panel on an order, no **Production cost** report | The person lacks See manufacturing costs | Grant it to those who should see costs |
 | A production is refused for stock | The site does not hold enough of a component, or the site is archived in Inventory | Receive or move the stock, reactivate the site, or correct with an Inventory adjustment |
+| A confirmed sales order gets no manufacturing order | The product's default bill of materials is not **Make to order**, Orders or the worker process is not running, the line already has an order, or the bill of materials has no operations and the sales order names no site | Mark the bill of materials, start the workers, give the sales order a site; the reason of each line left out is in `manufacturing.mto_requests.reasons` |
+| `permission denied for table mto_requests` in the log after the upgrade | The role was granted table by table, before `00160` | Run the `GRANT` statements again ([Database roles](/en/admin/installation/#database-roles)) |
