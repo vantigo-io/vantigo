@@ -52,6 +52,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Planning**           | Who works on what: allocations of people on projects, capacity, the unbooked. | 🚧 In development |
 | **Inventory**          | Stock of the catalog's goods in warehouses and stores: sites, locations, receipts, adjustments, moves, counts and labels. | 🚧 In development |
 | **Orders**             | Quotes and sales orders for customers, their PDFs and their sending.  | 🚧 In development |
+| **Manufacturing**      | Bills of materials, work centers, manufacturing orders and the shop floor. | 🚧 In development |
 | **Knowledge**          | The company's own articles in a tree: routines, policies and how-tos. | 🚧 In development |
 | **Virtual employees**  | AI employees that answer customers on the channels they are given, under rules the Owner sets. | 🚧 In development |
 | **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
@@ -87,7 +88,7 @@ docker compose up -d
 Compose starts PostgreSQL, applies the database migrations as a one-shot `migrate`
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
 Customers, Communications, Products, Energy, Projects, Time, Expenses, Invoices,
-Staff, Planning, Inventory, Orders, Knowledge, Calendar, Microsoft Entra ID, Google Workspace and Assistant are modules in that one application.
+Staff, Planning, Inventory, Orders, Manufacturing, Knowledge, Calendar, Microsoft Entra ID, Google Workspace and Assistant are modules in that one application.
 
 The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
 the first start — at least 32 bytes of key material, generated with
@@ -127,6 +128,7 @@ vantigo/
 │   │       ├── planning/            # Planning vertical slice (who works on what)
 │   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── orders/              # Orders vertical slice (quotes and sales orders)
+│   │       ├── manufacturing/       # Manufacturing vertical slice (work centers and bills of materials)
 │   │       ├── knowledge/           # Knowledge vertical slice (articles in a tree)
 │   │       ├── agents/              # Agents vertical slice (virtual employees)
 │   │       ├── calendar/            # Calendar vertical slice
@@ -149,6 +151,7 @@ vantigo/
 │   ├── planning/frontend/           # @vantigo/planning-ui
 │   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── orders/frontend/             # @vantigo/orders-ui
+│   ├── manufacturing/frontend/      # @vantigo/manufacturing-ui
 │   ├── knowledge/frontend/          # @vantigo/knowledge-ui
 │   ├── agents/frontend/             # @vantigo/agents-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui

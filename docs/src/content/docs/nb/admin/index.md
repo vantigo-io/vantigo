@@ -47,6 +47,9 @@ applikasjonen.
   nummerseriene, tilbudenes gyldighet, betalingsbetingelser, avsenderkanalen,
   e-posttekstene og tilbudsmalene. Koble avgiftskategoriene i Produkter til mva-koder i
   Fakturaer før noen lager tilbud.
+- **Produksjon.** [Produksjon](/nb/admin/manufacturing/) er på når `manufacturing` står i
+  `MODULES` ved siden av `products` og `inventory`, som den krever; de fem rettighetene,
+  der **Se produksjonskostnader** er sensitiv og ikke kan delegeres.
 - **Kunnskap.** Kunnskap er på når `knowledge` står i `MODULES` (eller `MODULES` ikke er satt);
   den krever ingen annen modul. Ingen har tilgang før du gir en rolle **Bruke Kunnskap**
   (`knowledge:articles`); **Administrere Kunnskap** (`knowledge:manage`) gir tilgang til
