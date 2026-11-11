@@ -353,6 +353,57 @@ describe("the admin permission catalog", () => {
     }
   });
 
+  // Hand-kept in step with `apps/server/internal/manufacturing/module.go` (`var
+  // permissions`), for the same reason as the lists above: one label per key,
+  // the English the server's own.
+  it("names the five manufacturing permissions in English and Norwegian, the English the server's own", () => {
+    const server: Record<string, [string, string, string]> = {
+      "manufacturing:access": [
+        "Use Manufacturing",
+        "See the Manufacturing app and read work centers, bills of materials and manufacturing orders.",
+        "Bruke Produksjon",
+      ],
+      "manufacturing:boms-manage": [
+        "Manage bills of materials and work centers",
+        "Create, change, archive and delete work centers and their closures, and create, change, archive and make default bills of materials.",
+        "Administrere stykklister og arbeidsstasjoner",
+      ],
+      "manufacturing:orders-manage": [
+        "Manage manufacturing orders",
+        "Create, confirm, change, cancel and close manufacturing orders and post their production.",
+        "Administrere produksjonsordrer",
+      ],
+      "manufacturing:shop-floor": [
+        "Work on the shop floor",
+        "Start, pause and finish work orders and log time at a work center.",
+        "Arbeide i verkstedet",
+      ],
+      "manufacturing:costs-view": [
+        "See manufacturing costs",
+        "See and write the work centers' cost rates, the standard costs and the rolled-up cost of a bill of materials.",
+        "Se produksjonskostnader",
+      ],
+    };
+    const en = adminCatalog.en as Record<string, string>;
+    const nb = adminCatalog.nb as Record<string, string>;
+    for (const [key, [display, description, norwegian]] of Object.entries(server)) {
+      const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
+      expect(translation, `no catalog entry for ${key}`).toBeDefined();
+      expect(translation.moduleKey).toBe("admin.permission.module.manufacturing");
+      expect(translation.categoryKey).toBe("admin.permission.category.manufacturing");
+      expect(en[translation.displayNameKey]).toBe(display);
+      expect(en[translation.descriptionKey]).toBe(description);
+      expect(nb[translation.displayNameKey]).toBe(norwegian);
+      for (const lng of ["en", "nb"] as const) {
+        const catalog = adminCatalog[lng] as Record<string, string>;
+        expect(catalog[translation.descriptionKey], `${key} description (${lng})`).toBeTruthy();
+        expect(catalog[translation.moduleKey], `${key} module (${lng})`).toBeTruthy();
+        expect(catalog[translation.categoryKey], `${key} category (${lng})`).toBeTruthy();
+      }
+    }
+    expect(nb["admin.permission.module.manufacturing"]).toBe("Produksjon");
+  });
+
   // Hand-kept in step with `apps/server/internal/calendar/module.go` (`var
   // permissions`), for the same reason as the lists above.
   it("names the three calendar permissions in English and Norwegian, the English the server's own", () => {

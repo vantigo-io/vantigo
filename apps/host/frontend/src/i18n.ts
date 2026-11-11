@@ -12,6 +12,7 @@ import "@vantigo/google-ui/i18n";
 import "@vantigo/inventory-ui/i18n";
 import "@vantigo/invoices-ui/i18n";
 import "@vantigo/knowledge-ui/i18n";
+import "@vantigo/manufacturing-ui/i18n";
 import "@vantigo/meta-ui/i18n";
 import "@vantigo/agents-ui/i18n";
 import "@vantigo/orders-ui/i18n";

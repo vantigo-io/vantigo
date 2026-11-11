@@ -25,6 +25,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as InvoicesRouteImport } from './routes/invoices'
 import { Route as KnowledgeRouteImport } from './routes/knowledge'
+import { Route as ManufacturingRouteImport } from './routes/manufacturing'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as PayRouteImport } from './routes/pay'
@@ -75,6 +76,7 @@ import { Route as InvoicesQuickRouteImport } from './routes/invoices/quick'
 import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings'
 import { Route as KnowledgeIndexRouteImport } from './routes/knowledge/index'
 import { Route as KnowledgeTrashRouteImport } from './routes/knowledge/trash'
+import { Route as ManufacturingIndexRouteImport } from './routes/manufacturing/index'
 import { Route as OrdersIndexRouteImport } from './routes/orders/index'
 import { Route as OrdersAnalysisRouteImport } from './routes/orders/analysis'
 import { Route as OrdersSettingsRouteImport } from './routes/orders/settings'
@@ -153,6 +155,11 @@ import { Route as InvoicesPaymentsVippsRouteImport } from './routes/invoices/pay
 import { Route as InvoicesReminderRunsRunIdRouteImport } from './routes/invoices/reminder-runs.$runId'
 import { Route as InvoicesRemindersPrintRouteImport } from './routes/invoices/reminders.print'
 import { Route as KnowledgeArticlesArticleIdRouteImport } from './routes/knowledge/articles.$articleId'
+import { Route as ManufacturingBomsIndexRouteImport } from './routes/manufacturing/boms.index'
+import { Route as ManufacturingBomsNewRouteImport } from './routes/manufacturing/boms.new'
+import { Route as ManufacturingWorkCentersIndexRouteImport } from './routes/manufacturing/work-centers.index'
+import { Route as ManufacturingWorkCentersWorkCenterIdRouteImport } from './routes/manufacturing/work-centers.$workCenterId'
+import { Route as ManufacturingWorkCentersNewRouteImport } from './routes/manufacturing/work-centers.new'
 import { Route as OrdersDeliveriesIndexRouteImport } from './routes/orders/deliveries.index'
 import { Route as OrdersDeliveriesDeliveryIdRouteImport } from './routes/orders/deliveries.$deliveryId'
 import { Route as OrdersOrdersIndexRouteImport } from './routes/orders/orders.index'
@@ -196,6 +203,8 @@ import { Route as InventoryMovementsNewReceiptRouteImport } from './routes/inven
 import { Route as InventoryTransfersTransferIdIndexRouteImport } from './routes/inventory/transfers.$transferId.index'
 import { Route as InventoryTransfersTransferIdReceiveRouteImport } from './routes/inventory/transfers.$transferId.receive'
 import { Route as InvoicesPaymentsFilesBankFileIdRouteImport } from './routes/invoices/payments.files.$bankFileId'
+import { Route as ManufacturingBomsBomIdIndexRouteImport } from './routes/manufacturing/boms.$bomId.index'
+import { Route as ManufacturingBomsBomIdOverviewRouteImport } from './routes/manufacturing/boms.$bomId.overview'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -275,6 +284,11 @@ const InvoicesRoute = InvoicesRouteImport.update({
 const KnowledgeRoute = KnowledgeRouteImport.update({
   id: '/knowledge',
   path: '/knowledge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManufacturingRoute = ManufacturingRouteImport.update({
+  id: '/manufacturing',
+  path: '/manufacturing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrdersRoute = OrdersRouteImport.update({
@@ -527,6 +541,11 @@ const KnowledgeTrashRoute = KnowledgeTrashRouteImport.update({
   id: '/trash',
   path: '/trash',
   getParentRoute: () => KnowledgeRoute,
+} as any)
+const ManufacturingIndexRoute = ManufacturingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ManufacturingRoute,
 } as any)
 const OrdersIndexRoute = OrdersIndexRouteImport.update({
   id: '/',
@@ -933,6 +952,34 @@ const KnowledgeArticlesArticleIdRoute =
     path: '/articles/$articleId',
     getParentRoute: () => KnowledgeRoute,
   } as any)
+const ManufacturingBomsIndexRoute = ManufacturingBomsIndexRouteImport.update({
+  id: '/boms/',
+  path: '/boms/',
+  getParentRoute: () => ManufacturingRoute,
+} as any)
+const ManufacturingBomsNewRoute = ManufacturingBomsNewRouteImport.update({
+  id: '/boms/new',
+  path: '/boms/new',
+  getParentRoute: () => ManufacturingRoute,
+} as any)
+const ManufacturingWorkCentersIndexRoute =
+  ManufacturingWorkCentersIndexRouteImport.update({
+    id: '/work-centers/',
+    path: '/work-centers/',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
+const ManufacturingWorkCentersWorkCenterIdRoute =
+  ManufacturingWorkCentersWorkCenterIdRouteImport.update({
+    id: '/work-centers/$workCenterId',
+    path: '/work-centers/$workCenterId',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
+const ManufacturingWorkCentersNewRoute =
+  ManufacturingWorkCentersNewRouteImport.update({
+    id: '/work-centers/new',
+    path: '/work-centers/new',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
 const OrdersDeliveriesIndexRoute = OrdersDeliveriesIndexRouteImport.update({
   id: '/deliveries/',
   path: '/deliveries/',
@@ -1169,6 +1216,18 @@ const InvoicesPaymentsFilesBankFileIdRoute =
     path: '/payments/files/$bankFileId',
     getParentRoute: () => InvoicesRoute,
   } as any)
+const ManufacturingBomsBomIdIndexRoute =
+  ManufacturingBomsBomIdIndexRouteImport.update({
+    id: '/boms/$bomId/',
+    path: '/boms/$bomId/',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
+const ManufacturingBomsBomIdOverviewRoute =
+  ManufacturingBomsBomIdOverviewRouteImport.update({
+    id: '/boms/$bomId/overview',
+    path: '/boms/$bomId/overview',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -1187,6 +1246,7 @@ export interface FileRoutesByFullPath {
   '/inventory': typeof InventoryRouteWithChildren
   '/invoices': typeof InvoicesRouteWithChildren
   '/knowledge': typeof KnowledgeRouteWithChildren
+  '/manufacturing': typeof ManufacturingRouteWithChildren
   '/orders': typeof OrdersRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/pay': typeof PayRoute
@@ -1274,6 +1334,7 @@ export interface FileRoutesByFullPath {
   '/inventory/': typeof InventoryIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
   '/knowledge/': typeof KnowledgeIndexRoute
+  '/manufacturing/': typeof ManufacturingIndexRoute
   '/orders/': typeof OrdersIndexRoute
   '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
@@ -1304,6 +1365,9 @@ export interface FileRoutesByFullPath {
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
+  '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
+  '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
+  '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
@@ -1340,6 +1404,8 @@ export interface FileRoutesByFullPath {
   '/inventory/transfers/': typeof InventoryTransfersIndexRoute
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
+  '/manufacturing/boms/': typeof ManufacturingBomsIndexRoute
+  '/manufacturing/work-centers/': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries/': typeof OrdersDeliveriesIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
   '/orders/quotes/': typeof OrdersQuotesIndexRoute
@@ -1356,8 +1422,10 @@ export interface FileRoutesByFullPath {
   '/inventory/movements/new/receipt': typeof InventoryMovementsNewReceiptRoute
   '/inventory/transfers/$transferId/receive': typeof InventoryTransfersTransferIdReceiveRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
+  '/manufacturing/boms/$bomId/overview': typeof ManufacturingBomsBomIdOverviewRoute
   '/energy/metering-points/import/': typeof EnergyMeteringPointsImportIndexRoute
   '/inventory/transfers/$transferId/': typeof InventoryTransfersTransferIdIndexRoute
+  '/manufacturing/boms/$bomId/': typeof ManufacturingBomsBomIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1439,6 +1507,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof InventoryIndexRoute
   '/invoices': typeof InvoicesIndexRoute
   '/knowledge': typeof KnowledgeIndexRoute
+  '/manufacturing': typeof ManufacturingIndexRoute
   '/orders': typeof OrdersIndexRoute
   '/planning': typeof PlanningIndexRoute
   '/products': typeof ProductsIndexRoute
@@ -1469,6 +1538,9 @@ export interface FileRoutesByTo {
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
+  '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
+  '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
+  '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
@@ -1505,6 +1577,8 @@ export interface FileRoutesByTo {
   '/inventory/transfers': typeof InventoryTransfersIndexRoute
   '/invoices/billing-runs': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments': typeof InvoicesPaymentsIndexRoute
+  '/manufacturing/boms': typeof ManufacturingBomsIndexRoute
+  '/manufacturing/work-centers': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries': typeof OrdersDeliveriesIndexRoute
   '/orders/orders': typeof OrdersOrdersIndexRoute
   '/orders/quotes': typeof OrdersQuotesIndexRoute
@@ -1521,8 +1595,10 @@ export interface FileRoutesByTo {
   '/inventory/movements/new/receipt': typeof InventoryMovementsNewReceiptRoute
   '/inventory/transfers/$transferId/receive': typeof InventoryTransfersTransferIdReceiveRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
+  '/manufacturing/boms/$bomId/overview': typeof ManufacturingBomsBomIdOverviewRoute
   '/energy/metering-points/import': typeof EnergyMeteringPointsImportIndexRoute
   '/inventory/transfers/$transferId': typeof InventoryTransfersTransferIdIndexRoute
+  '/manufacturing/boms/$bomId': typeof ManufacturingBomsBomIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1542,6 +1618,7 @@ export interface FileRoutesById {
   '/inventory': typeof InventoryRouteWithChildren
   '/invoices': typeof InvoicesRouteWithChildren
   '/knowledge': typeof KnowledgeRouteWithChildren
+  '/manufacturing': typeof ManufacturingRouteWithChildren
   '/orders': typeof OrdersRouteWithChildren
   '/password-reset': typeof PasswordResetRoute
   '/pay': typeof PayRoute
@@ -1629,6 +1706,7 @@ export interface FileRoutesById {
   '/inventory/': typeof InventoryIndexRoute
   '/invoices/': typeof InvoicesIndexRoute
   '/knowledge/': typeof KnowledgeIndexRoute
+  '/manufacturing/': typeof ManufacturingIndexRoute
   '/orders/': typeof OrdersIndexRoute
   '/planning/': typeof PlanningIndexRoute
   '/products/': typeof ProductsIndexRoute
@@ -1659,6 +1737,9 @@ export interface FileRoutesById {
   '/invoices/reminder-runs/$runId': typeof InvoicesReminderRunsRunIdRoute
   '/invoices/reminders/print': typeof InvoicesRemindersPrintRoute
   '/knowledge/articles/$articleId': typeof KnowledgeArticlesArticleIdRoute
+  '/manufacturing/boms/new': typeof ManufacturingBomsNewRoute
+  '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
+  '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
   '/orders/orders/$orderId': typeof OrdersOrdersOrderIdRoute
   '/orders/orders/new': typeof OrdersOrdersNewRoute
@@ -1695,6 +1776,8 @@ export interface FileRoutesById {
   '/inventory/transfers/': typeof InventoryTransfersIndexRoute
   '/invoices/billing-runs/': typeof InvoicesBillingRunsIndexRoute
   '/invoices/payments/': typeof InvoicesPaymentsIndexRoute
+  '/manufacturing/boms/': typeof ManufacturingBomsIndexRoute
+  '/manufacturing/work-centers/': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries/': typeof OrdersDeliveriesIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
   '/orders/quotes/': typeof OrdersQuotesIndexRoute
@@ -1711,8 +1794,10 @@ export interface FileRoutesById {
   '/inventory/movements/new/receipt': typeof InventoryMovementsNewReceiptRoute
   '/inventory/transfers/$transferId/receive': typeof InventoryTransfersTransferIdReceiveRoute
   '/invoices/payments/files/$bankFileId': typeof InvoicesPaymentsFilesBankFileIdRoute
+  '/manufacturing/boms/$bomId/overview': typeof ManufacturingBomsBomIdOverviewRoute
   '/energy/metering-points/import/': typeof EnergyMeteringPointsImportIndexRoute
   '/inventory/transfers/$transferId/': typeof InventoryTransfersTransferIdIndexRoute
+  '/manufacturing/boms/$bomId/': typeof ManufacturingBomsBomIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1733,6 +1818,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/invoices'
     | '/knowledge'
+    | '/manufacturing'
     | '/orders'
     | '/password-reset'
     | '/pay'
@@ -1820,6 +1906,7 @@ export interface FileRouteTypes {
     | '/inventory/'
     | '/invoices/'
     | '/knowledge/'
+    | '/manufacturing/'
     | '/orders/'
     | '/planning/'
     | '/products/'
@@ -1850,6 +1937,9 @@ export interface FileRouteTypes {
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
     | '/knowledge/articles/$articleId'
+    | '/manufacturing/boms/new'
+    | '/manufacturing/work-centers/$workCenterId'
+    | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
@@ -1886,6 +1976,8 @@ export interface FileRouteTypes {
     | '/inventory/transfers/'
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
+    | '/manufacturing/boms/'
+    | '/manufacturing/work-centers/'
     | '/orders/deliveries/'
     | '/orders/orders/'
     | '/orders/quotes/'
@@ -1902,8 +1994,10 @@ export interface FileRouteTypes {
     | '/inventory/movements/new/receipt'
     | '/inventory/transfers/$transferId/receive'
     | '/invoices/payments/files/$bankFileId'
+    | '/manufacturing/boms/$bomId/overview'
     | '/energy/metering-points/import/'
     | '/inventory/transfers/$transferId/'
+    | '/manufacturing/boms/$bomId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1985,6 +2079,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/invoices'
     | '/knowledge'
+    | '/manufacturing'
     | '/orders'
     | '/planning'
     | '/products'
@@ -2015,6 +2110,9 @@ export interface FileRouteTypes {
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
     | '/knowledge/articles/$articleId'
+    | '/manufacturing/boms/new'
+    | '/manufacturing/work-centers/$workCenterId'
+    | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
@@ -2051,6 +2149,8 @@ export interface FileRouteTypes {
     | '/inventory/transfers'
     | '/invoices/billing-runs'
     | '/invoices/payments'
+    | '/manufacturing/boms'
+    | '/manufacturing/work-centers'
     | '/orders/deliveries'
     | '/orders/orders'
     | '/orders/quotes'
@@ -2067,8 +2167,10 @@ export interface FileRouteTypes {
     | '/inventory/movements/new/receipt'
     | '/inventory/transfers/$transferId/receive'
     | '/invoices/payments/files/$bankFileId'
+    | '/manufacturing/boms/$bomId/overview'
     | '/energy/metering-points/import'
     | '/inventory/transfers/$transferId'
+    | '/manufacturing/boms/$bomId'
   id:
     | '__root__'
     | '/'
@@ -2087,6 +2189,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/invoices'
     | '/knowledge'
+    | '/manufacturing'
     | '/orders'
     | '/password-reset'
     | '/pay'
@@ -2174,6 +2277,7 @@ export interface FileRouteTypes {
     | '/inventory/'
     | '/invoices/'
     | '/knowledge/'
+    | '/manufacturing/'
     | '/orders/'
     | '/planning/'
     | '/products/'
@@ -2204,6 +2308,9 @@ export interface FileRouteTypes {
     | '/invoices/reminder-runs/$runId'
     | '/invoices/reminders/print'
     | '/knowledge/articles/$articleId'
+    | '/manufacturing/boms/new'
+    | '/manufacturing/work-centers/$workCenterId'
+    | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
     | '/orders/orders/$orderId'
     | '/orders/orders/new'
@@ -2240,6 +2347,8 @@ export interface FileRouteTypes {
     | '/inventory/transfers/'
     | '/invoices/billing-runs/'
     | '/invoices/payments/'
+    | '/manufacturing/boms/'
+    | '/manufacturing/work-centers/'
     | '/orders/deliveries/'
     | '/orders/orders/'
     | '/orders/quotes/'
@@ -2256,8 +2365,10 @@ export interface FileRouteTypes {
     | '/inventory/movements/new/receipt'
     | '/inventory/transfers/$transferId/receive'
     | '/invoices/payments/files/$bankFileId'
+    | '/manufacturing/boms/$bomId/overview'
     | '/energy/metering-points/import/'
     | '/inventory/transfers/$transferId/'
+    | '/manufacturing/boms/$bomId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -2277,6 +2388,7 @@ export interface RootRouteChildren {
   InventoryRoute: typeof InventoryRouteWithChildren
   InvoicesRoute: typeof InvoicesRouteWithChildren
   KnowledgeRoute: typeof KnowledgeRouteWithChildren
+  ManufacturingRoute: typeof ManufacturingRouteWithChildren
   OrdersRoute: typeof OrdersRouteWithChildren
   PasswordResetRoute: typeof PasswordResetRoute
   PayRoute: typeof PayRoute
@@ -2407,6 +2519,13 @@ declare module '@tanstack/react-router' {
       path: '/knowledge'
       fullPath: '/knowledge'
       preLoaderRoute: typeof KnowledgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/manufacturing': {
+      id: '/manufacturing'
+      path: '/manufacturing'
+      fullPath: '/manufacturing'
+      preLoaderRoute: typeof ManufacturingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orders': {
@@ -2758,6 +2877,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/knowledge/trash'
       preLoaderRoute: typeof KnowledgeTrashRouteImport
       parentRoute: typeof KnowledgeRoute
+    }
+    '/manufacturing/': {
+      id: '/manufacturing/'
+      path: '/'
+      fullPath: '/manufacturing/'
+      preLoaderRoute: typeof ManufacturingIndexRouteImport
+      parentRoute: typeof ManufacturingRoute
     }
     '/orders/': {
       id: '/orders/'
@@ -3305,6 +3431,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof KnowledgeArticlesArticleIdRouteImport
       parentRoute: typeof KnowledgeRoute
     }
+    '/manufacturing/boms/': {
+      id: '/manufacturing/boms/'
+      path: '/boms'
+      fullPath: '/manufacturing/boms/'
+      preLoaderRoute: typeof ManufacturingBomsIndexRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/boms/new': {
+      id: '/manufacturing/boms/new'
+      path: '/boms/new'
+      fullPath: '/manufacturing/boms/new'
+      preLoaderRoute: typeof ManufacturingBomsNewRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/work-centers/': {
+      id: '/manufacturing/work-centers/'
+      path: '/work-centers'
+      fullPath: '/manufacturing/work-centers/'
+      preLoaderRoute: typeof ManufacturingWorkCentersIndexRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/work-centers/$workCenterId': {
+      id: '/manufacturing/work-centers/$workCenterId'
+      path: '/work-centers/$workCenterId'
+      fullPath: '/manufacturing/work-centers/$workCenterId'
+      preLoaderRoute: typeof ManufacturingWorkCentersWorkCenterIdRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/work-centers/new': {
+      id: '/manufacturing/work-centers/new'
+      path: '/work-centers/new'
+      fullPath: '/manufacturing/work-centers/new'
+      preLoaderRoute: typeof ManufacturingWorkCentersNewRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
     '/orders/deliveries/': {
       id: '/orders/deliveries/'
       path: '/deliveries'
@@ -3606,6 +3767,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoicesPaymentsFilesBankFileIdRouteImport
       parentRoute: typeof InvoicesRoute
     }
+    '/manufacturing/boms/$bomId/': {
+      id: '/manufacturing/boms/$bomId/'
+      path: '/boms/$bomId'
+      fullPath: '/manufacturing/boms/$bomId/'
+      preLoaderRoute: typeof ManufacturingBomsBomIdIndexRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/boms/$bomId/overview': {
+      id: '/manufacturing/boms/$bomId/overview'
+      path: '/boms/$bomId/overview'
+      fullPath: '/manufacturing/boms/$bomId/overview'
+      preLoaderRoute: typeof ManufacturingBomsBomIdOverviewRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
   }
 }
 
@@ -3888,6 +4063,33 @@ const KnowledgeRouteWithChildren = KnowledgeRoute._addFileChildren(
   KnowledgeRouteChildren,
 )
 
+interface ManufacturingRouteChildren {
+  ManufacturingIndexRoute: typeof ManufacturingIndexRoute
+  ManufacturingBomsNewRoute: typeof ManufacturingBomsNewRoute
+  ManufacturingWorkCentersWorkCenterIdRoute: typeof ManufacturingWorkCentersWorkCenterIdRoute
+  ManufacturingWorkCentersNewRoute: typeof ManufacturingWorkCentersNewRoute
+  ManufacturingBomsIndexRoute: typeof ManufacturingBomsIndexRoute
+  ManufacturingWorkCentersIndexRoute: typeof ManufacturingWorkCentersIndexRoute
+  ManufacturingBomsBomIdOverviewRoute: typeof ManufacturingBomsBomIdOverviewRoute
+  ManufacturingBomsBomIdIndexRoute: typeof ManufacturingBomsBomIdIndexRoute
+}
+
+const ManufacturingRouteChildren: ManufacturingRouteChildren = {
+  ManufacturingIndexRoute: ManufacturingIndexRoute,
+  ManufacturingBomsNewRoute: ManufacturingBomsNewRoute,
+  ManufacturingWorkCentersWorkCenterIdRoute:
+    ManufacturingWorkCentersWorkCenterIdRoute,
+  ManufacturingWorkCentersNewRoute: ManufacturingWorkCentersNewRoute,
+  ManufacturingBomsIndexRoute: ManufacturingBomsIndexRoute,
+  ManufacturingWorkCentersIndexRoute: ManufacturingWorkCentersIndexRoute,
+  ManufacturingBomsBomIdOverviewRoute: ManufacturingBomsBomIdOverviewRoute,
+  ManufacturingBomsBomIdIndexRoute: ManufacturingBomsBomIdIndexRoute,
+}
+
+const ManufacturingRouteWithChildren = ManufacturingRoute._addFileChildren(
+  ManufacturingRouteChildren,
+)
+
 interface OrdersRouteChildren {
   OrdersAnalysisRoute: typeof OrdersAnalysisRoute
   OrdersSettingsRoute: typeof OrdersSettingsRoute
@@ -4168,6 +4370,7 @@ const rootRouteChildren: RootRouteChildren = {
   InventoryRoute: InventoryRouteWithChildren,
   InvoicesRoute: InvoicesRouteWithChildren,
   KnowledgeRoute: KnowledgeRouteWithChildren,
+  ManufacturingRoute: ManufacturingRouteWithChildren,
   OrdersRoute: OrdersRouteWithChildren,
   PasswordResetRoute: PasswordResetRoute,
   PayRoute: PayRoute,

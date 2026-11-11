@@ -15,6 +15,7 @@ import {
   invoicesKpi,
   invoicesOverdueHint,
   kpiCards,
+  manufacturingKpi,
   metrics,
   planningKpi,
   projectsCardHint,
@@ -1460,5 +1461,40 @@ describe("the dashboard's inventory card", () => {
         () => "unused",
       ),
     ).toBe(title);
+  });
+});
+
+/**
+ * Manufacturing's cards (manufacturing design §8, delivery A): the module
+ * card, shown with manufacturing:access, and a KPI card fed by
+ * `GET /manufacturing/stats` — the active bills of materials, with the active
+ * work centers as the hint. The stats ask for the app's own key alone.
+ */
+describe("the dashboard's manufacturing card", () => {
+  it("shows the card with the module and manufacturing:access, and not otherwise", () => {
+    const card = (modules: Parameters<typeof visibleModuleCards>[0], permissions: string[] | undefined) =>
+      visibleModuleCards(modules, permissions).find((one) => one.module === "manufacturing");
+    expect(card(["manufacturing"], ["manufacturing:access"])).toMatchObject({
+      title: "dashboard.manufacturing",
+      path: "/manufacturing",
+      requiredPermissions: ["manufacturing:access"],
+    });
+    expect(card(["manufacturing"], ["manufacturing:boms-manage"])).toBeUndefined();
+    expect(card(["inventory"], ["*"])).toBeUndefined();
+    const cards = visibleModuleCards(["manufacturing"], ["manufacturing:access"]);
+    expect(kpiCards(cards, ["manufacturing:access"]).map((one) => one.module)).toEqual(["manufacturing"]);
+    expect(dashboardCatalog.en["dashboard.manufacturing"]).toBe("Manufacturing");
+    expect(dashboardCatalog.nb["dashboard.manufacturing"]).toBe("Produksjon");
+  });
+
+  it("shows the active BoMs, with the active work centers as the hint", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${JSON.stringify(values)}`;
+    const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value);
+    expect(manufacturingKpi(undefined, formatNumber, t)).toEqual({ value: "—", hint: undefined });
+    expect(
+      manufacturingKpi({ activeBoms: 1200, activeWorkCenters: 4, blockedWorkCenters: 1 }, formatNumber, t),
+    ).toEqual({ value: "1,200", hint: 'dashboard.manufacturingWorkCentersHint:{"count":4}' });
+    for (const lng of ["en", "nb"])
+      expect(i18n.t("dashboard.manufacturingWorkCentersHint", { ns: "host", lng, count: 3 })).toContain("3");
   });
 });

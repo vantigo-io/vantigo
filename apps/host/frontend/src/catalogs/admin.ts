@@ -585,6 +585,36 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.knowledgeManage",
     descriptionKey: "admin.permission.knowledgeManageDescription",
   },
+  "manufacturing:access": {
+    moduleKey: "admin.permission.module.manufacturing",
+    categoryKey: "admin.permission.category.manufacturing",
+    displayNameKey: "admin.permission.manufacturingAccess",
+    descriptionKey: "admin.permission.manufacturingAccessDescription",
+  },
+  "manufacturing:boms-manage": {
+    moduleKey: "admin.permission.module.manufacturing",
+    categoryKey: "admin.permission.category.manufacturing",
+    displayNameKey: "admin.permission.manufacturingBomsManage",
+    descriptionKey: "admin.permission.manufacturingBomsManageDescription",
+  },
+  "manufacturing:orders-manage": {
+    moduleKey: "admin.permission.module.manufacturing",
+    categoryKey: "admin.permission.category.manufacturing",
+    displayNameKey: "admin.permission.manufacturingOrdersManage",
+    descriptionKey: "admin.permission.manufacturingOrdersManageDescription",
+  },
+  "manufacturing:shop-floor": {
+    moduleKey: "admin.permission.module.manufacturing",
+    categoryKey: "admin.permission.category.manufacturing",
+    displayNameKey: "admin.permission.manufacturingShopFloor",
+    descriptionKey: "admin.permission.manufacturingShopFloorDescription",
+  },
+  "manufacturing:costs-view": {
+    moduleKey: "admin.permission.module.manufacturing",
+    categoryKey: "admin.permission.category.manufacturing",
+    displayNameKey: "admin.permission.manufacturingCostsView",
+    descriptionKey: "admin.permission.manufacturingCostsViewDescription",
+  },
   "calendar:access": {
     moduleKey: "admin.permission.module.calendar",
     categoryKey: "admin.permission.category.calendar",
@@ -837,6 +867,7 @@ const en = {
   "admin.permission.module.inventory": "Inventory",
   "admin.permission.module.orders": "Orders",
   "admin.permission.module.knowledge": "Knowledge",
+  "admin.permission.module.manufacturing": "Manufacturing",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
   "admin.permission.category.legalIdentity": "Legal identity",
@@ -862,6 +893,7 @@ const en = {
   "admin.permission.category.inventory": "Inventory",
   "admin.permission.category.orders": "Orders",
   "admin.permission.category.knowledge": "Knowledge",
+  "admin.permission.category.manufacturing": "Manufacturing",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
   "admin.permission.customersView": "View customers",
@@ -1097,6 +1129,21 @@ const en = {
   "admin.permission.knowledgeManage": "Administer Knowledge",
   "admin.permission.knowledgeManageDescription":
     "See and change the access of every article that is not private, restore anyone's trashed article and empty the trash. Private articles stay private.",
+  "admin.permission.manufacturingAccess": "Use Manufacturing",
+  "admin.permission.manufacturingAccessDescription":
+    "See the Manufacturing app and read work centers, bills of materials and manufacturing orders.",
+  "admin.permission.manufacturingBomsManage": "Manage bills of materials and work centers",
+  "admin.permission.manufacturingBomsManageDescription":
+    "Create, change, archive and delete work centers and their closures, and create, change, archive and make default bills of materials.",
+  "admin.permission.manufacturingOrdersManage": "Manage manufacturing orders",
+  "admin.permission.manufacturingOrdersManageDescription":
+    "Create, confirm, change, cancel and close manufacturing orders and post their production.",
+  "admin.permission.manufacturingShopFloor": "Work on the shop floor",
+  "admin.permission.manufacturingShopFloorDescription":
+    "Start, pause and finish work orders and log time at a work center.",
+  "admin.permission.manufacturingCostsView": "See manufacturing costs",
+  "admin.permission.manufacturingCostsViewDescription":
+    "See and write the work centers' cost rates, the standard costs and the rolled-up cost of a bill of materials.",
   "admin.permission.calendarAccess": "Use Calendar",
   "admin.permission.calendarAccessDescription":
     "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
@@ -1575,6 +1622,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.inventory": "Lager",
   "admin.permission.module.orders": "Ordre",
   "admin.permission.module.knowledge": "Kunnskap",
+  "admin.permission.module.manufacturing": "Produksjon",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
   "admin.permission.category.legalIdentity": "Juridisk identitet",
@@ -1600,6 +1648,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.inventory": "Lager",
   "admin.permission.category.orders": "Ordre",
   "admin.permission.category.knowledge": "Kunnskap",
+  "admin.permission.category.manufacturing": "Produksjon",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
   "admin.permission.customersView": "Se kunder",
@@ -1842,6 +1891,21 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.knowledgeManage": "Administrere Kunnskap",
   "admin.permission.knowledgeManageDescription":
     "Se og endre tilgangen til alle artikler som ikke er private, gjenopprette andres artikler fra papirkurven og tømme papirkurven. Private artikler forblir private.",
+  "admin.permission.manufacturingAccess": "Bruke Produksjon",
+  "admin.permission.manufacturingAccessDescription":
+    "Se Produksjon-appen og lese arbeidsstasjoner, stykklister og produksjonsordrer.",
+  "admin.permission.manufacturingBomsManage": "Administrere stykklister og arbeidsstasjoner",
+  "admin.permission.manufacturingBomsManageDescription":
+    "Opprette, endre, arkivere og slette arbeidsstasjoner og stengningene deres, og opprette, endre, arkivere og gjøre stykklister til standard.",
+  "admin.permission.manufacturingOrdersManage": "Administrere produksjonsordrer",
+  "admin.permission.manufacturingOrdersManageDescription":
+    "Opprette, bekrefte, endre, kansellere og lukke produksjonsordrer og bokføre produksjonen deres.",
+  "admin.permission.manufacturingShopFloor": "Arbeide i verkstedet",
+  "admin.permission.manufacturingShopFloorDescription":
+    "Starte, pause og fullføre arbeidsordrer og føre tid ved en arbeidsstasjon.",
+  "admin.permission.manufacturingCostsView": "Se produksjonskostnader",
+  "admin.permission.manufacturingCostsViewDescription":
+    "Se og skrive arbeidsstasjonenes kostnadssatser, standardkostene og den samlede kostnaden for en stykkliste.",
   "admin.permission.calendarAccess": "Bruk Kalender",
   "admin.permission.calendarAccessDescription":
     "Bruk Kalender-appen: din egen kalender, avtalene dine og svarene dine på dem, og agendaen på kontrollpanelet.",

@@ -16,6 +16,7 @@ export const moduleKeys = [
   "inventory",
   "invoices",
   "knowledge",
+  "manufacturing",
   "meta",
   "orders",
   "planning",

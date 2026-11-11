@@ -10,6 +10,7 @@ import * as google from "@vantigo/google-ui/api/request";
 import * as inventory from "@vantigo/inventory-ui/api/request";
 import * as invoices from "@vantigo/invoices-ui/api/request";
 import * as knowledge from "@vantigo/knowledge-ui/api/request";
+import * as manufacturing from "@vantigo/manufacturing-ui/api/request";
 import * as meta from "@vantigo/meta-ui/api/request";
 import * as orders from "@vantigo/orders-ui/api/request";
 import * as planning from "@vantigo/planning-ui/api/request";
@@ -46,6 +47,7 @@ export const sessionClients: Record<string, SessionClient> = {
   "@vantigo/inventory-ui": inventory,
   "@vantigo/invoices-ui": invoices,
   "@vantigo/knowledge-ui": knowledge,
+  "@vantigo/manufacturing-ui": manufacturing,
   "@vantigo/meta-ui": meta,
   "@vantigo/agents-ui": agents,
   "@vantigo/orders-ui": orders,
