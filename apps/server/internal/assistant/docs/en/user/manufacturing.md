@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; why Products refuses to delete a variant a bill of materials names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -14,7 +14,9 @@ is done, with the hours it is open. A **bill of materials** (a BoM) tells how to
 product: which components go into it, in which quantities, and the **operations** — the
 steps, each at a work center — that turn them into the product. The **overview** of a BoM
 explodes it into everything a given quantity needs, level by level, with what is in stock
-and how long the work is expected to take.
+and how long the work is expected to take. A **manufacturing order** makes a quantity of
+a product by one of its bills of materials: it reserves the components, and records each
+**production** — what was made and what it used.
 
 The products and components come from [Products](/en/user/products/), and only **goods**
 can be made or used: never services. The sites and the stock come from
@@ -29,18 +31,25 @@ The **Manufacturing** tile is shown to everyone with **Use Manufacturing**
 
 | Area in the sidebar | What it holds |
 | --- | --- |
-| **Overview** | **Active work centers**, **Blocked work centers** and **Active bills of materials**: how many there are |
+| **Overview** | **Orders to start today**, **Orders in progress** and **Late orders**, and the orders late or due this week; **Active work centers**, **Blocked work centers** and **Active bills of materials**: how many there are |
+| **Manufacturing orders** | Every open manufacturing order, with its number, product, quantity, site, due date and reservation status |
 | **Bills of materials** | Every bill of materials, with its product, its code, its output quantity, whether it is the default, and its number of lines and operations |
 | **Work centers** | Every work center, by code, with its site |
 
-Everyone with Use Manufacturing reads all three. Creating and changing work centers and
+Everyone with Use Manufacturing reads them all. Creating and changing work centers and
 bills of materials needs **Manage bills of materials and work centers**
 (`manufacturing:boms-manage`) as well; without it the buttons that change something are
-not shown. Every cost figure needs **See manufacturing costs** (`manufacturing:costs-view`)
+not shown. Creating and working with manufacturing orders needs **Manage manufacturing
+orders** (`manufacturing:orders-manage`). Every cost figure needs **See manufacturing costs** (`manufacturing:costs-view`)
 — see [Who sees what](#who-sees-what).
 
 When there is no bill of materials yet, **Overview** says so and offers **Go to bills of
 materials**. Set up your work centers first: an operation of a BoM names one.
+
+The order figures on **Overview** are: **Orders to start today**, confirmed orders not yet
+started whose planned start is today or earlier; **Orders in progress**; and **Late orders**, open
+orders due before today. Below them, the orders late or due this week are listed, each
+with whether its components are ready; open one to see it.
 
 ## Set up a work center
 
@@ -232,12 +241,188 @@ is incomplete**. Set the standard cost in Products to complete it.
 A BoM whose tree would have more than 2,000 rows is too large to show; the overview says
 so.
 
+## Manufacturing orders
+
+A **manufacturing order** says: make this quantity of this product, by this bill of
+materials, at this site, by this date. It is numbered **MO-1**, **MO-2** and so on as it
+is created. **Manufacturing orders** lists the open ones — drafts, confirmed and in
+progress — with their product, quantity, site, due date, priority and, for a confirmed or
+started order, whether its components are **Reserved**, **Partly reserved** or **Not
+reserved**.
+
+Working with orders needs **Manage manufacturing orders** (`manufacturing:orders-manage`)
+beside Use Manufacturing; registering a production also allows **Work on the shop floor**
+(`manufacturing:shop-floor`) instead. Without them you read the orders, but the buttons
+that change something are not shown.
+
+An order goes through these states:
+
+| State | What it means |
+| --- | --- |
+| **Draft** | Being prepared; everything can change, and it follows its bill of materials as that changes |
+| **Confirmed** | The components are copied from the bill of materials and reserved |
+| **In progress** | At least one production is registered |
+| **Done** | Closed |
+| **Cancelled** | Cancelled before anything was produced |
+
+### Find an order
+
+On **Manufacturing orders**, filter by **Status**, **Site**, **Work center** (the orders
+whose bill of materials has an operation there), product, a due-date range, **Late** (due
+before today and not done or cancelled), origin, **Responsible**, or the reservation
+status, and search on the number, such as `MO-12`, or the product's SKU or name. Sort by
+due date, number or priority. The list updates by itself when someone changes an order.
+
+### Create an order
+
+1. Open **Manufacturing orders** and choose **New manufacturing order**.
+2. Pick the **Product variant**. Only products with an active bill of materials can be
+   made; for one without, make a bill of materials first.
+3. Fill in the order:
+   - **Bill of materials** — the product's default, unless you choose one of its
+     alternatives;
+   - **Quantity** — more than 0, with at most three decimals;
+   - **Site** — where it is made: the site of the bill of materials' work centers, else
+     the first active site. An order cannot be made at another site than the work centers
+     its operations name;
+   - **Output location** — where the finished goods are put; the site's top location
+     unless you choose one;
+   - **Component location** — optional: where the components are taken from. Leave it
+     empty to take each component from its primary location, then from the other
+     locations that hold it;
+   - **Due date**, **Planned start** and **Planned finish** — the finish not before the
+     start;
+   - **Priority** — **Normal** or **Urgent**;
+   - **Responsible** — the person who follows the order up;
+   - **Note** — up to 2,000 characters.
+4. Choose **Create manufacturing order**. The order is a **Draft**.
+
+The locations offered are the site's active ones.
+
+### Change an order
+
+On a draft you can change everything. On a confirmed or in-progress order you can change
+only the dates, the priority, the responsible person, the note and the locations; to make
+another product or quantity, cancel it and create a new one. A done or cancelled order
+cannot be changed. When someone else saved the order after you opened it, your save is
+refused and you are asked to reload.
+
+### Confirm an order
+
+On a draft, choose **Confirm**. Confirming:
+
+- copies the bill of materials' lines onto the order as its **components**, so later
+  changes to the bill of materials no longer reach it. Each component's **Required**
+  quantity is the line's quantity scaled to the order's quantity, with the scrap added,
+  rounded **up** to three decimals;
+- **reserves** the components at the site, so that nobody else takes them.
+
+When the site does not have enough of a component, the order is confirmed all the same:
+the lines that could not be reserved are left unreserved, and the page names each one with
+the quantity missing. A line is reserved in full or not at all. A draft whose bill of
+materials has been archived since cannot be confirmed; create the order again from an
+active one.
+
+### Reserve the short lines
+
+When stock has come in, choose **Reserve now** on a confirmed or in-progress order. It
+tries again to reserve every line that is not yet covered, in the same way, and names the
+lines still short.
+
+The order page shows for each component its **Required**, **Reserved**, **Available** at
+the site, **Consumed**, **Scrapped** and **Missing** quantities, and the order's component
+status:
+
+- **Ready** — every line's remaining need is reserved, or available at the site;
+- **Partly available** — some lines are covered, some are not;
+- **Waiting** — no line is covered.
+
+What is available at the site is shared between the lines of one component, in the order
+the lines stand. The page computes this as you look at it; the list shows only what is
+reserved.
+
+### Add or change a component
+
+On a confirmed or in-progress order:
+
+- **Add component** adds a line the bill of materials did not have — goods only — with its
+  **Required** quantity. It is reserved at once if the site has it.
+- Changing a line's **Required** reserves the difference when you raise it, and gives the
+  excess back when you lower it. It cannot go below what the line has already consumed and
+  scrapped.
+
+The bill of materials itself is not changed.
+
+### Register a production
+
+When goods are made, choose **Register production** on a confirmed or in-progress order.
+
+1. Fill in **Quantity** — the good units made — and, if any, **Output scrap** — finished
+   units made but thrown away. Output scrap never goes into stock and does not count as
+   produced.
+2. Each component line is **prefilled** with what that output should use: its required
+   quantity × (quantity + output scrap) / the order's quantity, rounded to three decimals.
+   Change **Consumed** where more or less was used, and add **Scrap** for components lost.
+   You can also choose the location a line is taken **From**, and where the output is put
+   (**To**, the order's output location unless you choose another). A line you remove
+   consumes nothing.
+3. Choose **Register**.
+
+If a consumed quantity differs from its prefilled figure by more than 10 %, you are warned
+and shown each such line with what was expected; choose to register it anyway, or correct
+it. A quantity of 0 is allowed only when something is consumed or scrapped.
+
+Registering takes the components out of stock — from the line's location, else the
+order's component location, else the component's primary location first and then the
+other locations that hold it — and puts the good units on the output location, in one
+**Production** movement in Inventory, which links back to the order. It is refused when
+the site does not hold enough of a component, when the site has been archived, or when
+Inventory refuses for another reason; nothing is then registered. The order moves to **In
+progress**. Registering more than the order's quantity is allowed: the page shows the
+overrun. Sending the same registration twice — a double click, a lost connection — posts it
+only once.
+
+A registered production cannot be undone in Manufacturing. Correct a mistake with an
+adjustment in [Inventory](/en/user/inventory/).
+
+### Close an order
+
+Choose **Close** on a confirmed or in-progress order when the work is finished. Whatever is
+still reserved for it is released, and the order is **Done**.
+
+When less than the quantity was produced, you are asked whether to **create a backorder**:
+
+- **Yes** creates a new order for the rest — the quantity less what was produced — with
+  the same bill of materials, site, locations, due date, priority and responsible person.
+  It is numbered after the original: the first backorder of MO-12 is **MO-12-2**, the
+  next **MO-12-3**, even when it is a backorder of MO-12-2. It is confirmed at once and
+  reserves its components; the lines it could not reserve are named.
+- **No** closes the order short.
+
+### Cancel an order
+
+Choose **Cancel order** on a draft, a confirmed or an in-progress order while nothing has
+been produced, consumed or scrapped on it. Its reservations are released and it keeps its
+number. Once something has been registered it cannot be cancelled; close it instead. A
+done or cancelled order is final.
+
+### Read an order's history
+
+The order page shows its **History**: every event — created, changed, confirmed,
+reserved, a production registered with its quantities, a component added or changed,
+closed, cancelled, a backorder created — with who did it and when. Nothing in it can be
+changed or removed.
+
 ## Deleting a product a bill of materials uses
 
 Products refuses to delete a variant, or to turn its product into a service, while an
 **active** bill of materials names it as its product or as a component. The refusal says
 how many bills of materials name it. Archive those BoMs, or change their lines, first. An
 archived BoM holds nothing back.
+
+The same goes for a **manufacturing order** that is not done or cancelled and names the
+variant as its product or as a component: the refusal counts it with the bills of
+materials. Close or cancel the order first.
 
 ## Who sees what
 
@@ -251,6 +436,15 @@ archived BoM holds nothing back.
 
 Every row needs every permission it ticks. **See manufacturing costs** is sensitive: an
 administrator gives it only to those who should see what things cost to make, and it
-cannot be delegated. The stock figures in the overview are Manufacturing's own and need
+cannot be delegated.
+
+| What | Use Manufacturing | Manage manufacturing orders | Work on the shop floor |
+| --- | --- | --- | --- |
+| **Manufacturing orders**, an order, its availability, its productions and its **History** | ✓ | – | – |
+| **New manufacturing order**, **Save**, **Confirm**, **Reserve now**, **Add component**, changing a component, **Close**, **Cancel order** | ✓ | ✓ | – |
+| **Register production** | ✓ | either | either |
+
+Registering a production needs Use Manufacturing and either of the other two. The stock
+figures in the overview and on an order are Manufacturing's own and need
 no Inventory permission. The full table is under
 [Permissions](/en/reference/manufacturing/#permissions) in the reference.
