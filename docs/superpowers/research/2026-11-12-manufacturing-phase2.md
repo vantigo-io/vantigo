@@ -357,9 +357,11 @@ says what an overturn changes.
 
 1. **A serial is a lot with quantity at most 1** — one table (Odoo, Monitor). The
    alternative, BC's separate serial and lot fields, doubles every key.
-2. **Quarantine is a lot status, not a location.** Stock on hold stays where it lies;
-   moving it to a quarantine shelf is still possible with a move. (Overturn: Odoo's
-   failure location, a location flag that refuses issue.)
+2. **Quarantine is a hold on the lot, not a location.** Stock on hold stays where it lies;
+   moving it to a quarantine shelf is still possible with a move. The spec's revision 2
+   keeps the default but stores it as holds, each owned by the document that put it, with
+   the lot's status derived from them, so one document's release cannot undo another's
+   block. (Overturn: Odoo's failure location, a location flag that refuses issue.)
 3. **Lots are chosen at issue and consume time.** Reservations stay per site without a
    lot; FEFO proposes the lot when the stock leaves.
 4. **Tracking changes only at zero stock.** No guided *assign lots to existing stock* in
