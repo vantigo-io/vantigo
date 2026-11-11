@@ -1,4 +1,4 @@
-import { Alert, Button, Group, List, Modal, SimpleGrid, Stack, Table, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, List, Modal, SimpleGrid, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
@@ -37,11 +37,14 @@ export interface ProductionDialogProps {
   opened: boolean;
   onClose: () => void;
   /**
-   * Sends the production instead of `POST /orders/{id}/productions`: the shop
-   * floor finishes the last work order with it, in one transaction (M29).
-   * Answers the production posted, or null when none is answered.
+   * Given, the dialog offers to finish the operation too: checked, it sends
+   * the production this way instead of `POST /orders/{id}/productions` — the
+   * shop floor finishes the last work order with it, in one transaction
+   * (M29), which stops every operator's time on it. Answers the production
+   * posted, or null when none is answered. Unchecked, the default, the
+   * production is posted alone and the work order runs on.
    */
-  submit?: (body: ManufacturingProductionInput) => Promise<ManufacturingProduction | null>;
+  finish?: (body: ManufacturingProductionInput) => Promise<ManufacturingProduction | null>;
 }
 
 /**
@@ -52,18 +55,19 @@ export interface ProductionDialogProps {
  *
  * One `clientRequestId` per opening makes the post idempotent: a retry and
  * the consumption warning's *Post anyway* resend the same body under it, the
- * latter with `acceptDeviation`. `submit` sends it another way.
+ * latter with `acceptDeviation`. `finish` offers to send it with the work
+ * order's finish instead.
  */
-export const ProductionDialog = ({ order, opened, onClose, submit }: ProductionDialogProps) => {
+export const ProductionDialog = ({ order, opened, onClose, finish }: ProductionDialogProps) => {
   const { t } = useManufacturingFormat();
   return (
     <Modal opened={opened} onClose={onClose} title={t("registerProductionTitle", { number: order.number })} size="xl">
-      {opened && <ProductionForm order={order} onClose={onClose} submit={submit} />}
+      {opened && <ProductionForm order={order} onClose={onClose} finish={finish} />}
     </Modal>
   );
 };
 
-const ProductionForm = ({ order, onClose, submit }: Omit<ProductionDialogProps, "opened">) => {
+const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, "opened">) => {
   const { t, quantity: showQuantity } = useManufacturingFormat();
   const invalidate = useInvalidateManufacturing();
   const [clientRequestId] = useState(() => crypto.randomUUID());
@@ -76,6 +80,7 @@ const ProductionForm = ({ order, onClose, submit }: Omit<ProductionDialogProps, 
   const [problem, setProblem] = useState<string>();
   const [posting, setPosting] = useState(false);
   const [sentBody, setSentBody] = useState<ManufacturingProductionInput>();
+  const [finishing, setFinishing] = useState(false);
 
   // The prefill follows the quantities once they are decimals; the first read takes the server's defaults.
   const wantedQuantity = quantity === undefined ? undefined : decimalOrUndefined(quantity);
@@ -152,7 +157,7 @@ const ProductionForm = ({ order, onClose, submit }: Omit<ProductionDialogProps, 
     setPosting(true);
     setProblem(undefined);
     try {
-      const production = await (submit ? submit(body) : postProduction(order.id, body));
+      const production = await (finish && finishing ? finish(body) : postProduction(order.id, body));
       notifications.show({
         color: "teal",
         title: t("productionPosted"),
@@ -290,6 +295,18 @@ const ProductionForm = ({ order, onClose, submit }: Omit<ProductionDialogProps, 
             </List>
           </Stack>
         </Alert>
+      )}
+      {finish && (
+        <Checkbox
+          size="md"
+          label={t("alsoFinishOperation")}
+          description={t("alsoFinishOperationHint")}
+          checked={finishing}
+          onChange={(event) => {
+            setDeviations([]);
+            setFinishing(event.currentTarget.checked);
+          }}
+        />
       )}
       {problem && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotPost")}>

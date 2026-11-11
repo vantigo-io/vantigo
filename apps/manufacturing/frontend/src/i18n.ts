@@ -352,6 +352,8 @@ export const manufacturingCatalog = {
     consumedOf: "Consumed of {{sku}}",
     scrapOf: "Scrap of {{sku}}",
     postProduction: "Post",
+    alsoFinishOperation: "Also finish this operation",
+    alsoFinishOperationHint: "Finishing stops the time of everyone working on it. Leave it unchecked to keep working.",
     postAnyway: "Post anyway",
     couldNotPost: "Could not post",
     productionPosted: "Production posted",
@@ -413,6 +415,7 @@ export const manufacturingCatalog = {
     blockReason: "Reason",
     blockedBecause: "Blocked: {{reason}}",
     blockedSince: "Since {{when}}",
+    blockedSinceBy: "Since {{when}}, by {{name}}",
     blockedCannotStart: "Nothing can be started at this work center until it is unblocked.",
     workCenterBlocked: "Work center blocked",
     workCenterUnblocked: "Work center unblocked",
@@ -518,7 +521,8 @@ export const manufacturingCatalog = {
     "refusal.revision_conflict": "It was changed by someone else since you opened it. Reload and try again.",
     "refusal.work_center_code_taken": "Another work center already has this code.",
     "refusal.work_center_in_use": "An operation uses this work center, so it cannot be deleted. Archive it instead.",
-    "refusal.work_center_has_open_work": "An open work order uses this work center. Finish or move it first.",
+    "refusal.work_center_has_open_work":
+      "An open work order uses this work center, or it is blocked. Finish the work and unblock it first.",
     "refusal.closures_too_many": "A work center can have at most 100 closures.",
     "refusal.site_unknown": "Choose an active site.",
     "refusal.site_archived": "The work center's site is archived. Reactivate the site first.",
@@ -902,6 +906,9 @@ export const manufacturingCatalog = {
     consumedOf: "Forbrukt av {{sku}}",
     scrapOf: "Svinn av {{sku}}",
     postProduction: "Bokfør",
+    alsoFinishOperation: "Fullfør også denne operasjonen",
+    alsoFinishOperationHint:
+      "Å fullføre stopper tiden for alle som jobber med den. La den stå uavkrysset for å jobbe videre.",
     postAnyway: "Bokfør likevel",
     couldNotPost: "Kunne ikke bokføre",
     productionPosted: "Produksjon bokført",
@@ -962,6 +969,7 @@ export const manufacturingCatalog = {
     blockReason: "Årsak",
     blockedBecause: "Blokkert: {{reason}}",
     blockedSince: "Siden {{when}}",
+    blockedSinceBy: "Siden {{when}}, av {{name}}",
     blockedCannotStart: "Ingenting kan startes ved denne arbeidsstasjonen før blokkeringen er opphevet.",
     workCenterBlocked: "Arbeidsstasjonen er blokkert",
     workCenterUnblocked: "Blokkeringen er opphevet",
@@ -1068,7 +1076,7 @@ export const manufacturingCatalog = {
     "refusal.work_center_in_use":
       "En operasjon bruker denne arbeidsstasjonen, så den kan ikke slettes. Arkiver den i stedet.",
     "refusal.work_center_has_open_work":
-      "En åpen arbeidsordre bruker denne arbeidsstasjonen. Fullfør eller flytt den først.",
+      "En åpen arbeidsordre bruker denne arbeidsstasjonen, eller den er blokkert. Fullfør arbeidet og opphev blokkeringen først.",
     "refusal.closures_too_many": "En arbeidsstasjon kan ha høyst 100 stengninger.",
     "refusal.site_unknown": "Velg et aktivt lagersted.",
     "refusal.site_archived": "Arbeidsstasjonens lagersted er arkivert. Gjenaktiver lagerstedet først.",

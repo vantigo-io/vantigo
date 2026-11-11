@@ -15,7 +15,9 @@ export const readRememberedWorkCenter = (): number | undefined => {
   }
 };
 
+/** Remembers a work center's id; anything but a positive whole id is not kept. */
 export const rememberWorkCenter = (workCenterId: number): void => {
+  if (!Number.isInteger(workCenterId) || workCenterId < 1) return;
   try {
     window.localStorage.setItem(SHOP_FLOOR_WORK_CENTER_STORAGE_KEY, String(workCenterId));
   } catch {

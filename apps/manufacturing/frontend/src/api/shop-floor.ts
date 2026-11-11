@@ -1,5 +1,6 @@
 import { queryOptions, useQueryClient } from "@tanstack/react-query";
-import { useLiveTopic } from "@vantigo/frontend-shell";
+import { useLiveClient, useLiveTopic } from "@vantigo/frontend-shell";
+import { useEffect, useRef } from "react";
 import type { components } from "../api-schema";
 import { ORDERS_POLL_MS } from "./orders";
 import { json, MANUFACTURING_QUERY_KEY, request, send } from "./request";
@@ -148,5 +149,44 @@ export function useWorkOrderLive(workOrderId: number): boolean {
   return useLiveTopic(`manufacturing.work-order:${workOrderId}`, () => {
     void client.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY, "shop-floor", "work-order", workOrderId] });
     void client.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY, "shop-floor", "mine"] });
+  });
+}
+
+/**
+ * Listens to `manufacturing.order:<id>` of every order named while mounted
+ * and calls `onEvent` on any of their events: an order's own writes — a
+ * production, a reservation, a component line — change what a shop-floor
+ * screen shows of it without touching a work order. One listen per order;
+ * it need not be memoised.
+ */
+function useOrderTopics(orderIds: readonly number[], onEvent: () => void): void {
+  const client = useLiveClient();
+  const latest = useRef(onEvent);
+  useEffect(() => {
+    latest.current = onEvent;
+  });
+  const key = [...new Set(orderIds)].sort((a, b) => a - b).join(",");
+  useEffect(() => {
+    if (!client || key === "") return;
+    const stops = key.split(",").map((id) => client.listen(`manufacturing.order:${id}`, () => latest.current()));
+    return () => {
+      for (const stop of stops) stop();
+    };
+  }, [client, key]);
+}
+
+/** Reads a work center's queue again on an event of an order in it. */
+export function useWorkCenterOrdersLive(workCenterId: number, orderIds: readonly number[]): void {
+  const client = useQueryClient();
+  useOrderTopics(orderIds, () => {
+    void client.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY, "shop-floor", "work-center", workCenterId] });
+  });
+}
+
+/** Reads a work order's view again on an event of its order. */
+export function useWorkOrderOrderLive(workOrderId: number, orderId: number | undefined): void {
+  const client = useQueryClient();
+  useOrderTopics(orderId === undefined ? [] : [orderId], () => {
+    void client.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY, "shop-floor", "work-order", workOrderId] });
   });
 }
