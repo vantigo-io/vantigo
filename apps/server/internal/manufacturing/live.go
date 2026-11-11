@@ -31,6 +31,11 @@ const (
 
 	eventWorkCenterChanged = "work-center.changed"
 	eventWorkOrderChanged  = "work-order.changed"
+
+	// liveSchedule is the production schedule of one site, keyed by the
+	// site's id (M36): plan, plan all, unplan and reschedule tell it.
+	liveSchedule         = "manufacturing.schedule"
+	eventScheduleChanged = "schedule.changed"
 )
 
 // liveTopics is the module's LiveTopics, authorised by the rule the GETs
@@ -48,6 +53,7 @@ func liveTopics(module.Deps) []live.Topic {
 		{Kind: liveOrder, Authorize: authorizeID},
 		{Kind: liveWorkCenter, Authorize: authorizeID},
 		{Kind: liveWorkOrder, Presence: true, Authorize: authorizeID},
+		{Kind: liveSchedule, Authorize: authorizeID},
 	}
 }
 
@@ -75,11 +81,11 @@ func notifyOrder(ctx context.Context, q live.Execer, id int64) error {
 // once (the K-D rules): collected while the write runs and sent on its
 // transaction at the end, so a listener hears it only if it commits.
 type notices struct {
-	orders, workCenters, workOrders map[int64]bool
+	orders, workCenters, workOrders, sites map[int64]bool
 }
 
 func newNotices() *notices {
-	return &notices{orders: map[int64]bool{}, workCenters: map[int64]bool{}, workOrders: map[int64]bool{}}
+	return &notices{orders: map[int64]bool{}, workCenters: map[int64]bool{}, workOrders: map[int64]bool{}, sites: map[int64]bool{}}
 }
 
 // workOrder notes a work order that changed, with its order and its work
@@ -106,6 +112,12 @@ func (n *notices) send(ctx context.Context, q live.Execer) error {
 	for _, id := range slices.Sorted(maps.Keys(n.workOrders)) {
 		key := strconv.FormatInt(id, 10)
 		if err := live.Notify(ctx, q, liveWorkOrder+":"+key, eventWorkOrderChanged, key); err != nil {
+			return err
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(n.sites)) {
+		key := strconv.FormatInt(id, 10)
+		if err := live.Notify(ctx, q, liveSchedule+":"+key, eventScheduleChanged, key); err != nil {
 			return err
 		}
 	}

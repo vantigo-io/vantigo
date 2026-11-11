@@ -60,6 +60,9 @@ const (
 	codeOrderClosed       = "order_closed"        // 409
 	codeLogOverlaps       = "log_overlaps"        // 400
 
+	// The reports' code (delivery D, §6, M42).
+	codePeriodTooLong = "period_too_long" // 400
+
 	// A line's codes (ManufacturingProblemLine.code), each also a problem's
 	// own code when it is the first failing line's or a field's.
 	codeVariantNotGoods     = "variant_not_goods"
@@ -79,6 +82,7 @@ var refusalCodes = []string{
 	codeBomRequired, codeLocationUnknown, codeRequiredBelowUsed, codeOrderNotDraft, codeOrderNotOpen,
 	codeOrderHasProduction, codeConsumptionDiffers, codeQuantityShort, codeClientRequestReused, codeShopFloorRequired,
 	codeWorkCenterBlocked, codeWorkOrderPending, codeWorkOrderClosed, codeLogConflict, codeLogLocked, codeOrderClosed, codeLogOverlaps,
+	codeNoCapacity, codePeriodTooLong,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

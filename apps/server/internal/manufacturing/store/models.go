@@ -83,6 +83,9 @@ type ManufacturingOrder struct {
 	Revision            int32
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	RequestedStart      pgtype.Date
+	Estimate            []byte
+	Actual              []byte
 }
 
 type ManufacturingOrderComponent struct {
@@ -204,4 +207,12 @@ type ManufacturingWorkOrder struct {
 	StartedAt       *time.Time
 	FinishedAt      *time.Time
 	Revision        int32
+}
+
+type ManufacturingWorkOrderSlot struct {
+	ID           int64
+	WorkOrderID  int64
+	WorkCenterID int64
+	StartsAt     time.Time
+	EndsAt       time.Time
 }

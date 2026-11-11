@@ -1043,6 +1043,7 @@ func workOrderOf(row store.WorkOrderRowsRow, r workOrderRead, entries map[int32]
 		}
 	}
 	out.LoggedMinutes = int64(logged / time.Minute)
+	out.ActualMinutes, out.DeviationMinutes, out.DeviationPercent = workOrderDuration(w, r.logs[w.ID], now)
 	return out
 }
 

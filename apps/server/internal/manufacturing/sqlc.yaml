@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00156_manufacturing_baseline.sql
       - ../db/migrations/00157_manufacturing_orders.sql
       - ../db/migrations/00158_manufacturing_work_orders.sql
+      - ../db/migrations/00159_manufacturing_schedule.sql
     queries: queries
     gen:
       go:
