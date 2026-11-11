@@ -9,6 +9,7 @@ import {
   IconBrandWindows,
   IconBriefcase,
   IconBuildingBank,
+  IconBuildingFactory2,
   IconBuildingWarehouse,
   IconCalendar,
   IconCalendarEvent,
@@ -34,6 +35,7 @@ import {
   IconInbox,
   IconLayoutDashboard,
   IconListCheck,
+  IconListDetails,
   IconMailbox,
   IconMailOff,
   IconMessageChatbot,
@@ -51,6 +53,7 @@ import {
   IconSparkles,
   IconTelescope,
   IconTemplate,
+  IconTool,
   IconTransfer,
   IconTrash,
   IconTrendingDown,
@@ -65,6 +68,7 @@ import {
 import { type AgentsNavItem, agentsNavItems } from "@vantigo/agents-ui";
 import { type InventoryNavItem, inventoryNavItems } from "@vantigo/inventory-ui";
 import { type KnowledgeNavItem, knowledgeNavItems } from "@vantigo/knowledge-ui";
+import { type ManufacturingNavItem, manufacturingNavItems } from "@vantigo/manufacturing-ui";
 import { type OrdersNavItem, ordersNavItems } from "@vantigo/orders-ui";
 import { type PlanningNavItem, planningNavItems } from "@vantigo/planning-ui";
 import { type StaffNavItem, staffNavItems } from "@vantigo/staff-ui";
@@ -246,6 +250,19 @@ const inventoryNavPresentation: Record<InventoryNavItem["key"], Pick<NavItem, "l
   counts: { label: "navigation.inventoryCounts", icon: IconClipboardCheck },
   lowStock: { label: "navigation.inventoryLowStock", icon: IconTrendingDown },
   import: { label: "navigation.inventoryImport", icon: IconFileImport },
+};
+
+/**
+ * The host's half of a Manufacturing sidebar entry, as Inventory's above:
+ * where each destination is and which permission offers it are the
+ * package's (`manufacturingNavItems`, manufacturing design M7); the label and
+ * the icon are the host's. The three later entries (orders, shop floor,
+ * schedule) join as their deliveries add them to the package.
+ */
+const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  overview: { label: "navigation.manufacturingOverview", icon: IconBuildingFactory2 },
+  boms: { label: "navigation.manufacturingBoms", icon: IconListDetails },
+  workCenters: { label: "navigation.manufacturingWorkCenters", icon: IconTool },
 };
 
 /** Every app, in switcher order. Home has no module and no sidebar. */
@@ -652,6 +669,19 @@ export const apps: readonly AppDefinition[] = [
     ),
     requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
   },
+  // Every Manufacturing read asks for manufacturing:access (manufacturing
+  // design §8), which offers each of delivery A's three entries.
+  moduleApp(
+    "manufacturing",
+    "navigation.manufacturing",
+    IconBuildingFactory2,
+    "/manufacturing",
+    manufacturingNavItems.map(({ key, to, requiredPermissions }) => ({
+      ...manufacturingNavPresentation[key],
+      to,
+      requiredPermissions,
+    })),
+  ),
   moduleApp("energy", "navigation.energy", IconBolt, "/energy", [
     {
       label: "navigation.meteringPoints",

@@ -30,6 +30,7 @@ import { AgendaWidget } from "@vantigo/calendar-ui/components/agenda-widget";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
 import { fetchInventoryStats } from "@vantigo/inventory-ui/api/stats";
+import { fetchManufacturingStats } from "@vantigo/manufacturing-ui/api/stats";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import {
@@ -66,6 +67,7 @@ import {
   inventoryKpi,
   invoicesKpi,
   kpiCards,
+  manufacturingKpi,
   metrics,
   moduleCards,
   planningKpi,
@@ -186,6 +188,14 @@ const DashboardPage = () => {
     queryKey: ["dashboard", "inventory", "stats"],
     queryFn: ({ signal }) => fetchInventoryStats(signal),
     enabled: allowed("inventory") && canReadInventoryStats(permissions),
+    retry: false,
+  });
+
+  // Manufacturing's figures are now, not the period's: its BoMs and work centers.
+  const manufacturingStats = useQuery({
+    queryKey: ["dashboard", "manufacturing", "stats"],
+    queryFn: ({ signal }) => fetchManufacturingStats(signal),
+    enabled: allowed("manufacturing"),
     retry: false,
   });
 
@@ -679,6 +689,17 @@ const DashboardPage = () => {
                 {...inventoryKpi(inventoryStats.data, formatters.formatNumber, t)}
                 href={href}
                 loading={inventoryStats.isPending}
+              />
+            );
+          }
+          if (module.module === "manufacturing") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.manufacturingActiveBoms")}
+                {...manufacturingKpi(manufacturingStats.data, formatters.formatNumber, t)}
+                href={href}
+                loading={manufacturingStats.isPending}
               />
             );
           }

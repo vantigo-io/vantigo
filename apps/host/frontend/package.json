@@ -44,6 +44,7 @@
     "@vantigo/inventory-ui": "workspace:*",
     "@vantigo/invoices-ui": "workspace:*",
     "@vantigo/knowledge-ui": "workspace:*",
+    "@vantigo/manufacturing-ui": "workspace:*",
     "@vantigo/meta-ui": "workspace:*",
     "@vantigo/orders-ui": "workspace:*",
     "@vantigo/planning-ui": "workspace:*",

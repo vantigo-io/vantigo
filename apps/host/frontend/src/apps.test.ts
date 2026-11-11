@@ -1,16 +1,20 @@
 import {
+  IconBuildingFactory2,
   IconBuildingWarehouse,
   IconCalendarEvent,
   IconCalendarStats,
   IconClipboardCheck,
   IconFileImport,
+  IconListDetails,
   IconPackageImport,
+  IconTool,
   IconTransfer,
   IconTrendingDown,
   IconTruckDelivery,
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { inventoryNavItems } from "@vantigo/inventory-ui";
+import { manufacturingNavItems } from "@vantigo/manufacturing-ui";
 import { planningNavItems } from "@vantigo/planning-ui";
 import { staffNavItems } from "@vantigo/staff-ui";
 import { describe, expect, it } from "vitest";
@@ -71,6 +75,7 @@ describe("the app registry", () => {
       "agents",
       "products",
       "inventory",
+      "manufacturing",
       "energy",
     ]);
     for (const app of apps.slice(1)) expect(app.module).toBe(app.key);
@@ -152,6 +157,9 @@ describe("the app registry", () => {
       "/inventory/counts",
       "/inventory/low-stock",
       "/inventory/import",
+      "/manufacturing",
+      "/manufacturing/boms",
+      "/manufacturing/work-centers",
       "/energy/metering-points",
       "/energy/prices",
       "/energy/tariffs",
@@ -750,6 +758,40 @@ describe("the app registry", () => {
     expect(paths(["inventory:locations-view", "inventory:counts-manage"])).toEqual(["navigation.inventoryOverview"]);
   });
 
+  // Manufacturing's destinations are the package's (`manufacturingNavItems`,
+  // M7): delivery A's Overview, Bills of materials and Work centers, each
+  // offered by manufacturing:access; the labels and icons are the host's.
+  it("registers Manufacturing with the package's three destinations, all manufacturing:access's", () => {
+    const manufacturing = appForKey("manufacturing");
+    expect(manufacturing).toMatchObject({
+      module: "manufacturing",
+      label: "navigation.manufacturing",
+      home: "/manufacturing",
+    });
+    expect(manufacturing.icon).toBe(IconBuildingFactory2);
+    expect(manufacturing.requiredPermissions).toEqual(["manufacturing:access"]);
+    const items = manufacturing.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
+      ["navigation.manufacturingOverview", "/manufacturing", ["manufacturing:access"]],
+      ["navigation.manufacturingBoms", "/manufacturing/boms", ["manufacturing:access"]],
+      ["navigation.manufacturingWorkCenters", "/manufacturing/work-centers", ["manufacturing:access"]],
+    ]);
+    expect(items.map((item) => item.icon)).toEqual([IconBuildingFactory2, IconListDetails, IconTool]);
+    expect(items.map((item) => item.to)).toEqual(manufacturingNavItems.map((item) => item.to));
+    expect(navigationCatalog.en["navigation.manufacturing"]).toBe("Manufacturing");
+    expect(navigationCatalog.nb["navigation.manufacturing"]).toBe("Produksjon");
+    expect(
+      ["navigation.manufacturingOverview", "navigation.manufacturingBoms", "navigation.manufacturingWorkCenters"].map(
+        (key) => navigationCatalog.nb[key as keyof typeof navigationCatalog.nb],
+      ),
+    ).toEqual(["Oversikt", "Stykklister", "Arbeidsstasjoner"]);
+    const keys = (permissions: string[], enabled: readonly ModuleKey[]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["manufacturing:access"], ["manufacturing"])).toContainEqual(["manufacturing", true]);
+    expect(keys(["manufacturing:access"], ["customers"])).toContainEqual(["manufacturing", false]);
+    expect(keys(["manufacturing:boms-manage"], ["manufacturing"]).map(([key]) => key)).not.toContain("manufacturing");
+  });
+
   it("treats Home as always enabled and module apps as enabled when their module is", () => {
     expect(isAppEnabled(appForKey("home"), [])).toBe(true);
     expect(isAppEnabled(appForKey("energy"), ["customers"])).toBe(false);
@@ -784,6 +826,7 @@ describe("the administration areas", () => {
       "agents",
       "products",
       "inventory",
+      "manufacturing",
       "energy",
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
@@ -1096,6 +1139,7 @@ describe("switcherTiles", () => {
       ["agents", false],
       ["products", false],
       ["inventory", false],
+      ["manufacturing", false],
       ["energy", false],
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);

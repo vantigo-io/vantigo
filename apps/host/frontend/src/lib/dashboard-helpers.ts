@@ -2,6 +2,7 @@ import {
   IconBolt,
   IconBook2,
   IconBriefcase,
+  IconBuildingFactory2,
   IconBuildingWarehouse,
   IconCalendar,
   IconCalendarStats,
@@ -24,6 +25,7 @@ import {
   TRANSFERS_ROUTE_PATH,
   transferLinkOptions,
 } from "@vantigo/inventory-ui/lib/routes";
+import type { ManufacturingStats } from "@vantigo/manufacturing-ui/api/stats";
 import type { DailyPoint, InvoicesSummary, PlanningStats, StaffStats } from "../api/dashboard";
 import { hasAllPermissions, hasPermissions, type ModuleKey } from "../navigation";
 
@@ -132,6 +134,15 @@ export const moduleCards = [
     requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
   },
   {
+    title: "dashboard.manufacturing",
+    description: "dashboard.manageManufacturing",
+    path: "/manufacturing",
+    icon: IconBuildingFactory2,
+    module: "manufacturing" as ModuleKey,
+    // Every Manufacturing read asks for the app's own key (manufacturing design §8).
+    requiredPermissions: ["manufacturing:access"],
+  },
+  {
     title: "dashboard.orders",
     description: "dashboard.manageOrders",
     path: "/orders",
@@ -202,7 +213,8 @@ export const canReadInventoryStats = (permissions: string[] | undefined) =>
  * serves no stats endpoints, and its place on the page is the agenda above
  * the row (calendar design D7). Nor has Orders yet: its figures, quotes
  * awaiting an answer and orders to invoice (orders design §10), come with the
- * module's own stats. Knowledge has none: it counts nothing.
+ * module's own stats. Knowledge has none: it counts nothing. Manufacturing's
+ * figures need nothing beyond the card's own manufacturing:access.
  */
 export const kpiCards = <Card extends { module: ModuleKey }>(
   cards: readonly Card[],
@@ -907,6 +919,24 @@ export const planningKpi = (
     .join(" · ");
   return { value: stats.peoplePlannedThisWeek, hint };
 };
+
+/**
+ * Manufacturing's KPI (delivery A): the active bills of materials, with the
+ * active work centers as the hint, from `GET /manufacturing/stats`, which
+ * asks for manufacturing:access alone. The manufacturing orders' figures join
+ * with delivery B.
+ */
+export const manufacturingKpi = (
+  stats: ManufacturingStats | undefined,
+  formatNumber: (value: number) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+) =>
+  stats
+    ? {
+        value: formatNumber(stats.activeBoms),
+        hint: t("dashboard.manufacturingWorkCentersHint", { count: stats.activeWorkCenters }),
+      }
+    : { value: "—", hint: undefined };
 
 /** Inventory's KPI: the stock lines, with this week's receipts as the hint. */
 export const inventoryKpi = (

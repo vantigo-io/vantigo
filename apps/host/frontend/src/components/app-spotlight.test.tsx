@@ -341,6 +341,32 @@ describe("AppSpotlight navigation authorization", () => {
     expect(screen.queryByText("Find location or item", { exact: true })).not.toBeInTheDocument();
   });
 
+  // New bill of materials (manufacturing design M10) opens the BoM editor; it
+  // needs the module, manufacturing:access and manufacturing:boms-manage.
+  it("opens the BoM editor from New bill of materials for boms-manage with the app", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["manufacturing:access", "manufacturing:boms-manage"], false, false, onNavigate, ["manufacturing"]);
+
+    fireEvent.click(await waitFor(() => screen.getByText("New bill of materials", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/manufacturing/boms/new" }));
+  });
+
+  it("hides New bill of materials without boms-manage, without the app's key and when the module is off", async () => {
+    for (const [permissions, modules] of [
+      [["manufacturing:access"], ["manufacturing"]],
+      [["manufacturing:boms-manage"], ["manufacturing"]],
+      [["manufacturing:access", "manufacturing:boms-manage"], ["customers"]],
+    ] as [string[], ModuleKey[]][]) {
+      renderSpotlight([...permissions, "customers:create"], false, false, undefined, [...modules, "customers"]);
+      await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+      expect(screen.queryByText("New bill of materials", { exact: true })).not.toBeInTheDocument();
+      cleanup();
+      spotlight.close();
+    }
+  });
+
   // Start count (inventory design §7, B) opens the counts with the start form
   // open; it needs counts-manage beside both views.
   it("opens the counts with the start form from Start count for counts-manage and both views", async () => {
