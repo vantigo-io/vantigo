@@ -64,9 +64,12 @@ RETURNING *;
 DELETE FROM manufacturing.work_centers WHERE id = @id;
 
 -- name: CountOperationsOfWorkCenter :one
--- CountOperationsOfWorkCenter is how many BoM operations name the work
--- center, of any BoM's status (work_center_in_use).
-SELECT count(*)::int FROM manufacturing.bom_operations WHERE work_center_id = @work_center_id;
+-- CountOperationsOfWorkCenter is how many BoM operations, work orders and
+-- time logs name the work center, of any status (work_center_in_use): a
+-- work order or a log keeps it as an operation does.
+SELECT ((SELECT count(*) FROM manufacturing.bom_operations o WHERE o.work_center_id = @work_center_id::bigint)
+      + (SELECT count(*) FROM manufacturing.work_orders w WHERE w.work_center_id = @work_center_id::bigint)
+      + (SELECT count(*) FROM manufacturing.time_logs l WHERE l.work_center_id = @work_center_id::bigint))::int;
 
 -- name: CountActiveBomsAtWorkCenter :one
 -- CountActiveBomsAtWorkCenter is how many active BoMs have an operation at

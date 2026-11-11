@@ -78,6 +78,9 @@ func Module() module.Module {
 		// has too (M16).
 		VariantReferences: newVariantHolder,
 		LiveTopics:        liveTopics,
+		// The erasure sweep needs the pool and the user directory, which a
+		// worker-mode Deps has (erasure.go).
+		Workers: workers,
 	}
 }
 

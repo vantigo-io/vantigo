@@ -51,6 +51,15 @@ const (
 	codeClientRequestReused = "client_request_reused" // 409
 	codeShopFloorRequired   = "shop_floor_required"   // 403
 
+	// The shop floor's codes (delivery C, §5, M29a).
+	codeWorkCenterBlocked = "work_center_blocked" // 409
+	codeWorkOrderPending  = "work_order_pending"  // 409
+	codeWorkOrderClosed   = "work_order_closed"   // 409
+	codeLogConflict       = "log_conflict"        // 409
+	codeLogLocked         = "log_locked"          // 409
+	codeOrderClosed       = "order_closed"        // 409
+	codeLogOverlaps       = "log_overlaps"        // 400
+
 	// A line's codes (ManufacturingProblemLine.code), each also a problem's
 	// own code when it is the first failing line's or a field's.
 	codeVariantNotGoods     = "variant_not_goods"
@@ -69,6 +78,7 @@ var refusalCodes = []string{
 	codeVariantNotGoods, codeVariantNotFound, codeOperationKeyUnknown, codeQuantityInvalid,
 	codeBomRequired, codeLocationUnknown, codeRequiredBelowUsed, codeOrderNotDraft, codeOrderNotOpen,
 	codeOrderHasProduction, codeConsumptionDiffers, codeQuantityShort, codeClientRequestReused, codeShopFloorRequired,
+	codeWorkCenterBlocked, codeWorkOrderPending, codeWorkOrderClosed, codeLogConflict, codeLogLocked, codeOrderClosed, codeLogOverlaps,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

@@ -158,6 +158,14 @@ const (
 	productionInputSchema     = "ManufacturingProductionInput"
 	productionLineInputSchema = "ManufacturingProductionLineInput"
 	closeInputSchema          = "ManufacturingCloseInput"
+
+	startInputSchema     = "ManufacturingStartInput"
+	finishInputSchema    = "ManufacturingFinishInput"
+	scrapInputSchema     = "ManufacturingScrapInput"
+	scrapLineInputSchema = "ManufacturingScrapLineInput"
+	blockInputSchema     = "ManufacturingBlockInput"
+	correctionSchema     = "ManufacturingTimeLogCorrection"
+	timeLogInputSchema   = "ManufacturingTimeLogInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -167,7 +175,8 @@ var closedSchemas = []string{
 	workCenterInputSchema, workCenterUpdateSchema, weekPatternSchema, intervalSchema, revisionInputSchema,
 	closureInputSchema, bomInputSchema, bomUpdateSchema, bomOperationInputSchema, bomLineInputSchema,
 	orderInputSchema, orderUpdateSchema, componentInputSchema, componentUpdateSchema, productionInputSchema,
-	productionLineInputSchema, closeInputSchema,
+	productionLineInputSchema, closeInputSchema, startInputSchema, finishInputSchema, scrapInputSchema, scrapLineInputSchema,
+	blockInputSchema, correctionSchema, timeLogInputSchema,
 }
 
 // weekPatternDays is a week pattern's arrays, one per weekday, each of
@@ -185,13 +194,16 @@ var closedItems = map[string]map[string]string{
 	bomUpdateSchema:       {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
 	weekPatternSchema:     weekPatternDays,
 	productionInputSchema: {"lines": productionLineInputSchema},
+	scrapInputSchema:      {"lines": scrapLineInputSchema},
 }
 
 // closedObjects is, per closed schema, its object properties that are closed
-// schemas of their own: a work center's weekly pattern (M9).
+// schemas of their own: a work center's weekly pattern (M9), a finish's
+// production (M29).
 var closedObjects = map[string]map[string]string{
 	workCenterInputSchema:  {"pattern": weekPatternSchema},
 	workCenterUpdateSchema: {"pattern": weekPatternSchema},
+	finishInputSchema:      {"production": productionInputSchema},
 }
 
 // checkClosedSchemas fails the mount unless the contract has every schema of

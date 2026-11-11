@@ -259,18 +259,31 @@ func snapshotCost(e contracts.VariantEntry) pgtype.Numeric {
 }
 
 // confirmOrder snapshots and reserves a locked draft (M17, M20), stamping
-// the timeline: the confirm itself and the reserve's outcome.
-func (s *server) confirmOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, locked map[int32]contracts.VariantEntry, who actor) ([]shortLine, error) {
+// the timeline: the confirm itself and the reserve's outcome. The snapshot
+// also creates the work orders (M27), whose work centers' queues are noted
+// on notes; the reserve, the ledger, comes after them (M26a).
+func (s *server) confirmOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, locked map[int32]contracts.VariantEntry, who actor, notes *notices) ([]shortLine, error) {
 	n, err := snapshot(ctx, txq, o, locked)
 	if err != nil {
 		return nil, err
+	}
+	bom, err := txq.GetBom(ctx, o.BomID)
+	if err != nil {
+		return nil, err
+	}
+	workOrders, err := snapshotWorkOrders(ctx, txq, o, bom)
+	if err != nil {
+		return nil, err
+	}
+	for _, w := range workOrders {
+		notes.workOrder(w.ID, w.OrderID, w.WorkCenterID)
 	}
 	at := s.deps.Clock()
 	o, err = txq.SetOrderStatus(ctx, store.SetOrderStatusParams{ID: o.ID, Status: orderConfirmed, ConfirmedAt: &at, Now: at})
 	if err != nil {
 		return nil, err
 	}
-	if err := event(ctx, txq, o.ID, gen.ManufacturingOrderEventKindConfirmed, who, at, map[string]any{"lines": n}); err != nil {
+	if err := event(ctx, txq, o.ID, gen.ManufacturingOrderEventKindConfirmed, who, at, map[string]any{"lines": n, "workOrders": len(workOrders)}); err != nil {
 		return nil, err
 	}
 	short, err := s.reserve(ctx, tx, txq, o, nil)
@@ -345,10 +358,12 @@ func (s *server) ConfirmManufacturingOrder(ctx context.Context, req gen.ConfirmM
 		if bom.Status != statusActive {
 			return notActive()
 		}
-		if short, err = s.confirmOrder(ctx, tx, txq, o, lo.locked, who); err != nil {
+		notes := newNotices()
+		if short, err = s.confirmOrder(ctx, tx, txq, o, lo.locked, who, notes); err != nil {
 			return err
 		}
-		return notifyOrder(ctx, tx, o.ID)
+		notes.orders[o.ID] = true
+		return notes.send(ctx, tx)
 	})
 	if err != nil {
 		return answer(err, confirmAnswers())
@@ -638,7 +653,8 @@ func closeAnswers() answers[gen.CloseManufacturingOrderResponseObject] {
 	}
 }
 
-// CloseManufacturingOrder finishes an order (M23, M23a): it releases what
+// CloseManufacturingOrder finishes an order (M23, M23a, M29a): it ends the
+// open logs of its work orders and cancels those not done, releases what
 // remains reserved and marks it done. Short of its quantity it asks for the
 // backorder (quantity_short): true makes one for the rest, numbered from the
 // root (M17b), with the same BoM, origin, place and dates, confirmed at once
@@ -673,10 +689,14 @@ func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManuf
 				fmt.Sprintf("%s of %s were produced. Say whether to create a backorder for the rest (backorder true) or to close short (false).",
 					numericText(o.Produced, quantityPlaces), numericText(o.Quantity, quantityPlaces)))
 		}
+		notes := newNotices()
+		at := s.deps.Clock()
+		if err := endOrderWork(ctx, txq, o.ID, at, notes); err != nil {
+			return err
+		}
 		if err := s.releaseAll(ctx, tx, txq, o.ID); err != nil {
 			return err
 		}
-		at := s.deps.Clock()
 		if _, err := txq.SetOrderStatus(ctx, store.SetOrderStatusParams{ID: o.ID, Status: orderDone, ClosedAt: &at, Now: at}); err != nil {
 			return err
 		}
@@ -692,14 +712,13 @@ func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManuf
 				return err
 			}
 			backorderID = b.ID
-			if short, err = s.confirmOrder(ctx, tx, txq, b, lo.locked, who); err != nil {
+			if short, err = s.confirmOrder(ctx, tx, txq, b, lo.locked, who, notes); err != nil {
 				return err
 			}
-			if err := notifyOrder(ctx, tx, b.ID); err != nil {
-				return err
-			}
+			notes.orders[b.ID] = true
 		}
-		return notifyOrder(ctx, tx, o.ID)
+		notes.orders[o.ID] = true
+		return notes.send(ctx, tx)
 	})
 	if err != nil {
 		return answer(err, closeAnswers())
@@ -761,7 +780,8 @@ func cancelAnswers() answers[gen.CancelManufacturingOrderResponseObject] {
 }
 
 // CancelManufacturingOrder cancels an order while nothing has been produced
-// or consumed (order_has_production otherwise), releasing every reservation
+// or consumed (order_has_production otherwise), ending the open logs of its
+// work orders and cancelling them (M29a), and releasing every reservation
 // (M19). It keeps its number.
 func (s *server) CancelManufacturingOrder(ctx context.Context, req gen.CancelManufacturingOrderRequestObject) (gen.CancelManufacturingOrderResponseObject, error) {
 	who, err := s.actorOf(ctx)
@@ -792,19 +812,24 @@ func (s *server) CancelManufacturingOrder(ctx context.Context, req gen.CancelMan
 			return conflict(codeOrderHasProduction, "The manufacturing order has production",
 				"Something was produced or consumed on this order, so it cannot be cancelled. Close it instead.")
 		}
+		notes := newNotices()
+		at := s.deps.Clock()
+		if err := endOrderWork(ctx, txq, o.ID, at, notes); err != nil {
+			return err
+		}
 		if o.Status != orderDraft {
 			if err := s.releaseAll(ctx, tx, txq, o.ID); err != nil {
 				return err
 			}
 		}
-		at := s.deps.Clock()
 		if _, err := txq.SetOrderStatus(ctx, store.SetOrderStatusParams{ID: o.ID, Status: orderCancelled, ClosedAt: &at, Now: at}); err != nil {
 			return err
 		}
 		if err := event(ctx, txq, o.ID, gen.ManufacturingOrderEventKindCancelled, who, at, nil); err != nil {
 			return err
 		}
-		return notifyOrder(ctx, tx, o.ID)
+		notes.orders[o.ID] = true
+		return notes.send(ctx, tx)
 	})
 	if err != nil {
 		return answer(err, cancelAnswers())
