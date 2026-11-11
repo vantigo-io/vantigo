@@ -224,10 +224,11 @@ export const editorProblems = (state: BomEditorState): Record<string, string> =>
     const at = `operations[${index}]`;
     if (operation.name.trim() === "") problems[`${at}.name`] = "required";
     if (operation.workCenterId === null) problems[`${at}.workCenterId`] = "required";
-    if (!isDecimal(operation.minutesPerCycle, 99) || !isPositiveDecimal(operation.minutesPerCycle))
-      problems[`${at}.minutesPerCycle`] = "positive";
-    if (operation.setupMinutes.trim() !== "" && !isDecimal(operation.setupMinutes, 99))
-      problems[`${at}.setupMinutes`] = "notNegative";
+    // Minutes are stored with two decimals, as the server judges them.
+    if (!isDecimal(operation.minutesPerCycle, 2) || !isPositiveDecimal(operation.minutesPerCycle))
+      problems[`${at}.minutesPerCycle`] = "minutes";
+    if (operation.setupMinutes.trim() !== "" && !isDecimal(operation.setupMinutes, 2))
+      problems[`${at}.setupMinutes`] = "setupMinutes";
   });
   state.lines.forEach((line, index) => {
     const at = `lines[${index}]`;

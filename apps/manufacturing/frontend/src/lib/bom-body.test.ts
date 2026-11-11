@@ -184,7 +184,7 @@ describe("what the editor tells before it sends", () => {
       editorProblems({
         ...state,
         header: { ...state.header, outputQuantity: "1.2345" },
-        operations: [{ ...operation, minutesPerCycle: "0" }],
+        operations: [{ ...operation, minutesPerCycle: "0", setupMinutes: "1.234" }],
         lines: [{ ...line, quantity: "-1", scrapPercent: "100" }],
       }),
     ).toEqual({
@@ -192,11 +192,21 @@ describe("what the editor tells before it sends", () => {
       outputQuantity: "quantity",
       "operations[0].name": "required",
       "operations[0].workCenterId": "required",
-      "operations[0].minutesPerCycle": "positive",
+      "operations[0].minutesPerCycle": "minutes",
+      "operations[0].setupMinutes": "setupMinutes",
       "lines[0].variantId": "required",
       "lines[0].quantity": "quantity",
       "lines[0].scrapPercent": "scrap",
     });
+  });
+
+  it("holds minutes to two decimals, as the server does", () => {
+    const state = emptyEditor();
+    const operation = { ...newOperation([]), name: "Cut", workCenterId: 1 };
+    const problems = (minutesPerCycle: string) =>
+      editorProblems({ ...state, operations: [{ ...operation, minutesPerCycle }] })["operations[0].minutesPerCycle"];
+    expect(problems("12.75")).toBeUndefined();
+    expect(problems("12.755")).toBe("minutes");
   });
 
   it("has nothing to say of a complete BoM", () => {

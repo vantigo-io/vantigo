@@ -61,9 +61,10 @@ describe("the manufacturing catalog", () => {
       ...[
         "required",
         "quantity",
-        "positive",
         "notNegative",
         "scrap",
+        "minutes",
+        "setupMinutes",
         "codeLength",
         "codeHint",
         "capacityHint",
