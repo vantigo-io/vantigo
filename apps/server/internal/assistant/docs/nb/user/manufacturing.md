@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
+description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
 sidebar:
   order: 66
 sources:
@@ -16,7 +16,9 @@ stegene, hvert på en arbeidsstasjon — som gjør dem om til produktet. **Overs
 stykkliste bryter den ned i alt en gitt mengde trenger, nivå for nivå, med det som er på
 lager og hvor lang tid arbeidet er ventet å ta. En **produksjonsordre** lager en mengde av
 et produkt etter en av stykklistene: den reserverer komponentene og registrerer hver
-**produksjon** — det som ble laget og det som gikk med.
+**produksjon** — det som ble laget og det som gikk med. Hver operasjon i en bekreftet ordre
+er en **arbeidsordre** på arbeidsstasjonen sin, og **verkstedet** er der operatørene
+starter, setter på pause og fullfører dem, og registrerer tiden de arbeider.
 
 Produktene og komponentene kommer fra [Produkter](/nb/user/products/), og bare **varer**
 kan produseres eller brukes: aldri tjenester. Lagerstedene og beholdningen kommer fra
@@ -33,6 +35,7 @@ Sidemenyen viser:
 | --- | --- |
 | **Oversikt** | **Ordrer som skal startes i dag**, **Ordrer som pågår** og **Forsinkede ordrer**, og ordrene som er forsinket eller forfaller denne uken; **Aktive arbeidsstasjoner**, **Blokkerte arbeidsstasjoner** og **Aktive stykklister**: hvor mange det er |
 | **Produksjonsordrer** | Alle åpne produksjonsordrer, med nummer, produkt, antall, lagersted, forfallsdato og reservasjonsstatus |
+| **Verksted** | Arbeidsstasjonenes køer, der operatørene starter, setter på pause og fullfører arbeidsordrer, og **Mitt arbeid** |
 | **Stykklister** | Alle stykklistene, med produktet, koden, produsert antall, om den er standard, og antall linjer og operasjoner |
 | **Arbeidsstasjoner** | Alle arbeidsstasjonene, etter kode, med lagerstedet sitt |
 
@@ -110,8 +113,11 @@ lenger trenger. Å slette en stengning åpner dagene igjen.
   siden: gjenåpne lagerstedet i Lager først, eller lag en ny arbeidsstasjon på et annet lagersted.
   En arbeidsstasjon på et slikt lagersted kan fortsatt redigeres og beholder lagerstedet;
   flyttes den, er det bare til et aktivt lagersted.
+  Å arkivere nektes så lenge en arbeidsordre som verken er ferdig eller kansellert, er på
+  arbeidsstasjonen: fullfør arbeidet, eller lukk eller kanseller ordrene, først.
 - **Slett** fjerner den for godt, og er bare tillatt så lenge ingen operasjon i noen
-  stykkliste navngir den. Ellers får du beskjed om at den er i bruk; arkiver den i stedet.
+  stykkliste, ingen arbeidsordre og ingen tidsregistrering navngir den. Ellers får du
+  beskjed om at den er i bruk; arkiver den i stedet.
 
 Når noen andre har lagret arbeidsstasjonen etter at du åpnet den, nektes lagringen din og
 du blir bedt om å laste inn på nytt, slik at ingen overskriver en annens endring uten å se
@@ -269,14 +275,15 @@ En ordre går gjennom disse statusene:
 | --- | --- |
 | **Utkast** | Under forberedelse; alt kan endres, og den følger stykklisten sin når den endres |
 | **Bekreftet** | Komponentene er kopiert fra stykklisten og reservert |
-| **Pågår** | Minst én produksjon er registrert |
+| **Pågår** | Minst én produksjon er registrert, eller en arbeidsordre er startet |
 | **Ferdig** | Lukket |
 | **Kansellert** | Kansellert før noe ble produsert |
 
 ### Finn en ordre
 
 På **Produksjonsordrer** filtrerer du på **Status**, **Lagersted**, **Arbeidsstasjon**
-(ordrene der stykklisten har en operasjon der), produkt, et intervall for forfallsdato,
+(ordrene med en arbeidsordre der; for et utkast, de der stykklisten har en operasjon
+der), produkt, et intervall for forfallsdato,
 **Forsinket** (forfalt før i dag og verken ferdig eller kansellert), opphav, **Ansvarlig**
 eller reservasjonsstatusen, og søker på nummeret, for eksempel `MO-12`, eller produktets
 varenummer eller navn. Sorter på forfallsdato, nummer eller prioritet. Listen oppdaterer
@@ -327,7 +334,11 @@ På et utkast velger du **Bekreft**. Å bekrefte:
 - kopierer stykklistens linjer til ordren som **komponentene** dens, så senere endringer i
   stykklisten ikke lenger når den. Hver komponents **Trengs** er linjens mengde skalert til
   ordrens antall, med svinnet lagt til, **rundet opp** til tre desimaler;
-- **reserverer** komponentene på lagerstedet, så ingen andre tar dem.
+- **reserverer** komponentene på lagerstedet, så ingen andre tar dem;
+- oppretter en **arbeidsordre** for hver operasjon i stykklisten, på arbeidsstasjonen
+  sin, med instruksjonene og de forventede minuttene. Den første operasjonen er klar til
+  å startes i [verkstedet](#verkstedet); de andre venter på tur. En ordre der stykklisten
+  ikke har operasjoner, har ingen arbeidsordrer.
 
 Når lagerstedet ikke har nok av en komponent, blir ordren bekreftet likevel: linjene som
 ikke kunne reserveres, blir stående ureservert, og siden navngir hver av dem med mengden
@@ -401,7 +412,8 @@ En registrert produksjon kan ikke angres i Produksjon. Rett en feil med en juste
 ### Lukk en ordre
 
 Velg **Lukk** på en bekreftet eller påbegynt ordre når arbeidet er ferdig. Det som
-fortsatt er reservert for den, frigjøres, og ordren er **Ferdig**.
+fortsatt er reservert for den, frigjøres, og ordren er **Ferdig**. Tid som fortsatt løper
+på arbeidsordrene, avsluttes, og arbeidsordrene som ikke er ferdige, kanselleres.
 
 Når mindre enn antallet ble produsert, blir du spurt om du vil **opprette en restordre**:
 
@@ -418,15 +430,198 @@ Når mindre enn antallet ble produsert, blir du spurt om du vil **opprette en re
 
 Velg **Kanseller ordre** på et utkast, en bekreftet eller en påbegynt ordre så lenge
 ingenting er produsert, forbrukt eller kassert på den. Reservasjonene frigjøres, og den
-beholder nummeret sitt. Når noe er registrert, kan den ikke kanselleres; lukk den i
+beholder nummeret sitt. Tid som fortsatt løper på arbeidsordrene, avsluttes, og
+arbeidsordrene kanselleres. Når noe er registrert, kan den ikke kanselleres; lukk den i
 stedet. En ferdig eller kansellert ordre er endelig.
 
 ### Les historikken til en ordre
 
 Ordresiden viser **Historikk**: hver hendelse — opprettet, endret, bekreftet, reservert,
 en produksjon registrert med mengdene, en komponent lagt til eller endret, lukket,
-kansellert, en restordre opprettet — med hvem som gjorde det og når. Ingenting i den kan
+kansellert, en restordre opprettet, en tidsregistrering korrigert eller lagt til — med
+hvem som gjorde det og når. Ingenting i den kan
 endres eller fjernes.
+
+### Arbeidsordrer og tidsregistreringer på ordresiden
+
+Fanen **Arbeidsordrer** på ordresiden lister ordrens arbeidsordrer etter rekkefølge — én
+for hver operasjon i stykklisten — med arbeidsstasjonen, statusen, **Registrert /
+forventet** minutter og hvem som **Kjører nå**. Et utkast har ingen ennå: de lages når det
+bekreftes.
+
+De **forventede minuttene** regnes ut én gang, ved bekreftelsen, fra operasjonen og
+arbeidsstasjonen slik de var da: riggingen, ryddingen og syklusene ordrens antall trenger
+med arbeidsstasjonens kapasitet og effektivitet, rundet til hele minutter — det samme
+tallet som [oversikten](#les-oversikten-over-en-stykkliste) gir. Senere endringer i
+stykklisten eller arbeidsstasjonen endrer dem ikke.
+
+**Tidsregistreringer** lister hver registrering på ordrens arbeidsordrer: **Person**,
+**Arbeidsordre**, **Type** — **Produktiv**, eller **Stopptid** med årsaken — **Startet**,
+**Avsluttet** (eller **Kjører**), **Varighet**, **Antall laget** og **Notat**. En
+registrering merkes **Utenfor rekkefølge** når arbeidsordren ble startet med Start
+likevel, **Korrigert** med hvem som korrigerte den og når, og **Over 12 t** når den har
+løpt så lenge.
+
+### Korriger en tidsregistrering
+
+Når en operatør glemte å sette på pause, eller startet på feil arbeidsordre, retter en
+arbeidsleder det opp. Det krever **Administrere produksjonsordrer**; uten den er fanen
+bare til å lese.
+
+1. I fanen **Arbeidsordrer** på ordren, under **Tidsregistreringer**, velger du
+   **Korriger** på registreringen.
+2. I **Korriger tidsregistrering** endrer du **Startet**, **Avsluttet** eller **Antall
+   laget**, og skriver **Hvorfor** — det er påkrevd, og lagres i ordrens historikk.
+3. Velg **Korriger**. En registrering som fortsatt løper, avsluttes ved slutten du oppgir.
+
+For å føre tid ingen registrerte, velger du **Legg til manglende registrering**: velg
+**Arbeidsordre** (når ordren har flere), **Person**, typen — **Produktiv** eller
+**Stopptid** med **Årsak** — **Startet** og **Avsluttet**, eventuelt **Antall laget**, og
+**Hvorfor**, og velg **Legg til**. En registrering som legges til, endrer ikke statusen
+til noen arbeidsordre: det gjør bare Start, Pause og Ferdig i verkstedet.
+
+En korrigering eller et tillegg nektes når:
+
+- registreringen, eller den nye starten, er mer enn **60 dager** gammel;
+- ordren er ferdig eller kansellert;
+- tiden overlapper en annen registrering for samme person;
+- slutten ikke er etter starten, eller ligger fram i tid.
+
+Hver korrigering og hvert tillegg tas vare på i ordrens **Historikk**, med hvem som gjorde
+det og når.
+
+## Verkstedet
+
+**Verksted** (`/manufacturing/shop-floor`) er der operatørene arbeider. Det er laget for et
+nettbrett ved arbeidsstasjonen: store knapper, ingen hover, lesbart på armlengdes
+avstand. Du arbeider som den som er logget inn, så hver operatør logger inn med sin egen
+konto; å bytte operatør betyr å bytte konto.
+
+Å arbeide i verkstedet krever **Arbeide i verkstedet** (`manufacturing:shop-floor`), eller
+**Administrere produksjonsordrer**, ved siden av Bruke Produksjon. Med bare Bruke
+Produksjon kan du se køene og arbeidsordrene, og en arbeidsordre sier *Du kan se, men ikke
+starte eller fullføre arbeid*: det finnes ingen Start, Pause, Ferdig, Registrer produksjon,
+Meld svinn, Blokker eller Opphev blokkering.
+
+En arbeidsordre går gjennom disse statusene:
+
+| Status | Hva den betyr |
+| --- | --- |
+| **Venter** | En tidligere operasjon i ordren er ikke ferdig ennå |
+| **Klar** | Den kan startes |
+| **Pågår** | Noen arbeider på den |
+| **Pauset** | Den er startet, og ingen arbeider på den nå |
+| **Ferdig** | Fullført |
+| **Kansellert** | Ordren ble lukket eller kansellert før den var ferdig |
+
+### Velg arbeidsstasjonen din
+
+1. Åpne **Verksted**.
+2. Under **Velg arbeidsstasjon** velger du den du arbeider ved. En blokkert
+   arbeidsstasjon er merket **Blokkert**.
+
+Nettbrettet husker arbeidsstasjonen det sist ble brukt ved, og tilbyr den først neste
+gang, som **Fortsett ved** med koden og navnet, over de andre. Valget lagres bare i
+nettleseren: på en annen enhet, eller etter at nettleserens data er slettet, velger du
+bare på nytt.
+
+Siden for arbeidsstasjonen viser **Kø**: arbeidsordrene som er klare, pågår eller er
+pauset, i ordrer som fortsatt er åpne — først etter planlagt start, så de hastende
+ordrene, så etter forfallsdato. Hver viser ordrens nummer, produktet, antallet som
+gjenstår, forfallsdatoen, om komponentene er reservert, og hvem som kjører den. Køen
+oppdaterer seg selv når andre starter og fullfører arbeid. **Mitt arbeid** står øverst på
+hver side i verkstedet.
+
+### Start, sett på pause og fullfør en arbeidsordre
+
+1. Velg arbeidsordren i **Kø**. Arbeidsordren viser ordren, antallet som gjenstår,
+   fristen, **Registrert / forventet** minutter, operasjonens **Instruksjoner** og
+   **Komponenter i denne operasjonen**. Under **Personer** viser **Kjører nå** hvem som
+   arbeider på den, og **Andre her** hvem andre som har den åpen akkurat nå.
+2. Velg **Start**. **Din tid** løper fra det øyeblikket. Den første starten på en ordre
+   setter den til **Pågår**.
+3. Velg **Pause** for en pause, eller når du forlater jobben for nå. Tiden din stopper;
+   når ingen andre arbeider på den, er arbeidsordren **Pauset**. Velg **Start** for å
+   fortsette.
+4. Velg **Ferdig** når operasjonen er gjort for hele ordren, og bekreft **Fullføre denne
+   arbeidsordren?**. Å fullføre avslutter tiden til alle som fortsatt arbeider på den,
+   setter den til **Ferdig**, og gjør neste operasjon **Klar** på arbeidsstasjonen sin.
+   Ferdig tilbys ikke på en arbeidsordre som venter. Å fullføre en som noen andre nettopp
+   har fullført, er ikke en feil.
+
+Flere operatører kan arbeide på én arbeidsordre samtidig, hver med sin egen tid.
+
+### Start en arbeidsordre utenfor rekkefølgen
+
+Operasjonene kjøres i rekkefølge: en arbeidsordre **Venter** til den før er ferdig. Når du
+velger **Start** på den, får du beskjed om at *En tidligere operasjon er ikke ferdig*. Når
+arbeidet overlapper i praksis, velger du **Start likevel**: arbeidet starter som vanlig,
+og tidsregistreringen merkes **Utenfor rekkefølge**, så arbeidslederen ser det.
+**Avbryt** lar den bli stående og vente.
+
+### Bytt til en annen arbeidsordre
+
+Du kjører én arbeidsordre om gangen, på tvers av alle arbeidsstasjoner. Når du åpner en
+annen arbeidsordre mens tiden din løper, varsler den *Du kjører en annen arbeidsordre*,
+med **Åpne den andre arbeidsordren**. Velger du **Start** likevel, avsluttes tiden din på
+den andre — du trenger ikke sette den på pause først — og du får beskjed om at *Den andre
+registreringen din ble stoppet*. Arbeidsordren du forlot, beholder de andre som arbeider
+på den; var du den siste, er den **Pauset**.
+
+### Registrer produksjon på den siste operasjonen
+
+På ordrens siste operasjon står **Registrer produksjon** ved siden av **Ferdig**. Den
+åpner skjemaet fra ordresiden — **Antall** laget, eventuelle **Kasserte ferdigvarer**, og
+hver komponents forhåndsutfylte **Forbrukt** og **Svinn** (se
+[Registrer en produksjon](#registrer-en-produksjon)), med samme advarsel når et tall
+avviker mer enn 10 %. Å lagre registrerer produksjonen **og** fullfører arbeidsordren,
+sammen: når produksjonen nektes, for eksempel fordi lagerstedet ikke har nok av en
+komponent, registreres ingenting, arbeidsordren fullføres ikke, og tiden din fortsetter å
+løpe. Sendes den to ganger, bokføres den bare én gang.
+
+Å lukke ordren gjøres fortsatt på ordresiden, av en med Administrere produksjonsordrer.
+
+### Meld svinn
+
+Velg **Meld svinn** på arbeidsordren når komponenter går tapt eller ferdige enheter
+kastes, i hvilken som helst operasjon. Oppgi svinnet for hver komponent og **Kasserte
+ferdigvarer**. Det registreres som en produksjon uten gode enheter: komponentene tas ut av
+lageret i Lager, og ordrens tall teller dem. Sendes det to ganger, bokføres det bare én
+gang.
+
+### Blokker en arbeidsstasjon som har stoppet
+
+Når maskinen bryter sammen, eller arbeidet stopper av en annen grunn:
+
+1. Velg **Blokker** på siden for arbeidsstasjonen.
+2. Velg **Årsak** — **Maskinstans**, **Mangler materiale**, **Omstilling**, **Venter på
+   operatør**, **Kvalitet** eller **Annet** — og skriv eventuelt et notat.
+3. Velg **Blokker**.
+
+Fra det øyeblikket registreres tiden til alle som arbeider ved arbeidsstasjonen, som
+stopptid med den årsaken, arbeidsstasjonens egen stopptid telles, og ingen kan starte en
+arbeidsordre der: arbeidsstasjonen og arbeidsordrene viser **Blokkert** med årsaken og
+siden når, og Start tilbys ikke. **Oversikt** teller den under **Blokkerte
+arbeidsstasjoner**. Å blokkere en arbeidsstasjon som allerede er blokkert, endrer
+ingenting.
+
+Mens den er blokkert, avslutter **Pause** eller **Ferdig** stopptiden din. Når den går
+igjen, velger du **Opphev blokkering**: stopptiden avsluttes, og arbeidsordrene blir
+stående **Pauset** — velg **Start** på din for å fortsette.
+
+### Mitt arbeid
+
+**Mitt arbeid** (`/manufacturing/shop-floor/mine`) viser under **Kjører nå** arbeidsordren
+du kjører, med tidtakeren din og **Åpne arbeidsordren**, og under **I dag**
+arbeidsordrene du har registrert tid på i dag.
+
+### Tid som blir stående og løpe
+
+Tiden avsluttes ikke av seg selv ved slutten av dagen. Når tiden din har løpt i mer enn
+**12 timer**, viser tidtakeren *Har kjørt i mer enn 12 timer*: sett den på pause hvis du
+har sluttet, eller be en arbeidsleder [korrigere tiden](#korriger-en-tidsregistrering).
+En arbeidsordre nevner også de andre som har hatt tiden løpende så lenge, og ordrens
+tidsregistreringer merker en slik registrering **Over 12 t**.
 
 ## Å slette et produkt en stykkliste bruker
 
@@ -458,8 +653,13 @@ delegeres.
 | **Produksjonsordrer**, en ordre, tilgjengeligheten, produksjonene og **Historikk** | ✓ | – | – |
 | **Ny produksjonsordre**, **Lagre**, **Bekreft**, **Reserver nå**, **Legg til komponent**, å endre en komponent, **Lukk**, **Kanseller ordre** | ✓ | ✓ | – |
 | **Registrer produksjon** | ✓ | en av dem | en av dem |
+| **Verksted**, en arbeidsstasjons **Kø**, en arbeidsordre, **Mitt arbeid**, en ordres **Arbeidsordrer** og **Tidsregistreringer** | ✓ | – | – |
+| **Start**, **Start likevel**, **Pause**, **Ferdig**, **Meld svinn**, **Blokker**, **Opphev blokkering** | ✓ | en av dem | en av dem |
+| **Korriger**, **Legg til manglende registrering** | ✓ | ✓ | – |
 
-Å registrere en produksjon krever Bruke Produksjon og en av de to andre.
+Å registrere en produksjon, og hver handling i verkstedet, krever Bruke Produksjon og en
+av de to andre. Assistenten utfører ingen handlinger i verkstedet: en operatør stempler
+inn selv.
 Beholdningstallene i oversikten og på en ordre er Produksjons egne og krever ingen
 rettighet i Lager. Hele tabellen står under [Permissions](/en/reference/manufacturing/#permissions) i
 referansen.

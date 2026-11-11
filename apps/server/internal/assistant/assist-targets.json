@@ -255,6 +255,11 @@
     "description": "The button on the Bills of materials page that opens the editor for a new one."
   },
   {
+    "key": "manufacturing.my-work.open-log",
+    "route": "/manufacturing/shop-floor/mine",
+    "description": "What you are running now, with its timer and a link to the work order."
+  },
+  {
     "key": "manufacturing.order.actions",
     "route": "/manufacturing/orders/{orderId}",
     "description": "The buttons at the top of a manufacturing order: Edit, Confirm, Reserve now, Register production, Close and Cancel order, as the order's status allows."
@@ -263,6 +268,11 @@
     "key": "manufacturing.order.add-component",
     "route": "/manufacturing/orders/{orderId}",
     "description": "The button on a confirmed or in-progress manufacturing order that adds an extra component line."
+  },
+  {
+    "key": "manufacturing.order.add-log",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The button that opens the dialog for adding a time log someone forgot to record."
   },
   {
     "key": "manufacturing.order.components",
@@ -288,6 +298,21 @@
     "key": "manufacturing.order.short-lines",
     "route": "/manufacturing/orders/{orderId}",
     "description": "The notice on a manufacturing order naming the components the site could not reserve, with Reserve now."
+  },
+  {
+    "key": "manufacturing.order.time-logs",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "Every time log on the order, with Correct for a supervisor."
+  },
+  {
+    "key": "manufacturing.order.work-orders",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The order's work orders, one per operation, with their status and logged against expected minutes."
+  },
+  {
+    "key": "manufacturing.order.work-orders-tab",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The tab on a manufacturing order that shows its work orders and time logs."
   },
   {
     "key": "manufacturing.orders.filters",
@@ -325,6 +350,21 @@
     "description": "The button on the Manufacturing overview that opens the form for a new manufacturing order."
   },
   {
+    "key": "manufacturing.shop-floor.block",
+    "route": "/manufacturing/shop-floor/work-centers/{workCenterId}",
+    "description": "The buttons that block the work center with a reason, or lift the block."
+  },
+  {
+    "key": "manufacturing.shop-floor.picker",
+    "route": "/manufacturing/shop-floor",
+    "description": "The work centers on the shop floor; the one last used on this device comes first."
+  },
+  {
+    "key": "manufacturing.shop-floor.queue",
+    "route": "/manufacturing/shop-floor/work-centers/{workCenterId}",
+    "description": "The work orders waiting, running or paused at the work center, with what remains and who runs each."
+  },
+  {
     "key": "manufacturing.work-center.actions",
     "route": "/manufacturing/work-centers/{workCenterId}",
     "description": "The buttons at the top of a work center that archive, reactivate or delete it."
@@ -358,6 +398,26 @@
     "key": "manufacturing.work-centers.new",
     "route": "/manufacturing/work-centers",
     "description": "The button on the Work centers page that opens the form for a new work center."
+  },
+  {
+    "key": "manufacturing.work-order.actions",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "description": "The large buttons on a work order: Start, Pause, Finish, Register production on the last operation and Report scrap."
+  },
+  {
+    "key": "manufacturing.work-order.instructions",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "description": "The operation's instructions from the bill of materials."
+  },
+  {
+    "key": "manufacturing.work-order.people",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "description": "Who runs the work order, and the others who have it open now."
+  },
+  {
+    "key": "manufacturing.work-order.timer",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "description": "The timer of your running log on the work order."
   },
   {
     "key": "orders.analysis.csv",
