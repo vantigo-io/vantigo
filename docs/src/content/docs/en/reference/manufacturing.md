@@ -427,7 +427,6 @@ is unique. A cancelled order keeps its number.
 | `outputLocationId` | Where the finished goods are put; default the site's root location (`RootLocationID`, M4a) |
 | `componentLocationId` | Optional. Empty, each component is taken from its primary location (Inventory placement), then from the other locations holding it, by full code ([where stock is taken from](#where-stock-is-taken-from)) |
 | `dueDate` | Optional, the day the goods must be ready |
-| `plannedStart`, `plannedFinish` | Optional timestamps, set by hand or by [planning](#planning); the finish not before the start |
 | `requestedStart` | Optional, the day [planning](#planning) may start from (M35a); empty takes the default, `requestedStartDefault` |
 | `priority` | `normal` (default) or `urgent` |
 | `responsibleUserId` | Optional, a user found through `GET /people`, known to the directory and not disabled (400 on `responsibleUserId`) |
@@ -760,7 +759,9 @@ Five live topics (M25, M32, M36), declared through `Module.LiveTopics`:
   Presence is allowed on it: the work order view shows the others who have it open
   through presence;
 - **`manufacturing.schedule:<siteId>`**: one site's [board](#the-board), event
-  **`schedule.changed`**, told by plan, plan all, unplan and reschedule.
+  **`schedule.changed`**, told by plan, plan all, unplan and reschedule, and by what the
+  board draws of a work center: block and unblock, a closure added or removed, and a work
+  center's update (its pattern among it) — both sites when it moves.
 
 Every order write notifies the list's topic and the order's own with the event
 **`order.changed`** carrying the order's id; a work-order or time-log write notifies its
@@ -1069,7 +1070,9 @@ neither `done` nor `cancelled` — read from the slots, never from a work order'
    center in order, starting no earlier than its predecessor's finish. A `ready` or
    `pending` work order needs its `expectedMinutes`. One that is `in_progress` or `paused`
    needs only its **remaining** minutes — expected less the productive minutes logged on
-   it, at least 0 — and starts from now. A `done` work order is never planned.
+   it, the union of its productive logs so time two operators logged at once counts once
+   (as [the machine cost](#the-running-actual) counts it), at least 0 — and starts from
+   now. A `done` work order is never planned.
 3. **The horizon** is 365 days from the search start. A work order that does not fit
    inside it is **409** `no_capacity`, and nothing is written.
 4. The order's earlier plan is **replaced**: its unfinished work orders' slots are deleted
@@ -1077,7 +1080,11 @@ neither `done` nor `cancelled` — read from the slots, never from a work order'
 
 The order's **window** is the earliest planned start to the latest planned finish of its
 work orders, written to its `plannedStart` and `plannedFinish`. An order with no work
-orders gets `dueDate −` its BoM's lead time in business days `… dueDate` (M34). The order
+orders gets `dueDate −` its BoM's lead time in business days `… dueDate` (M34). Planning
+is the only writer of the window: `plannedStart` and `plannedFinish` are no fields of the
+create or the update, and naming one is **400** (an unknown property); an update keeps the
+window as planning left it. An order is **planned** when one of its work orders that is
+not done or cancelled holds a slot; one with no such work order, when it has a window. The order
 answers `lateByDays`: the calendar days from the due date to the day of the planned finish
 in the business time zone, a finish at midnight belonging to the day it ends; the order
 page shows it when it is more than 0. Each plan is an event `planned` on the
@@ -1086,10 +1093,12 @@ page shows it when it is more than 0. Each plan is an event `planned` on the
 ### Plan all
 
 `POST /schedule/plan-all {siteId}` plans every open order at the site — `confirmed` or
-`in_progress` — that has no plan: **urgent** first, then by due date, those without one
-last, then by number. Each is planned as above, against the free time the ones before it
-left. An order that does not fit within its horizon is left unplanned and named in
-`noCapacity`; the others are planned. The answer is `{planned, noCapacity}`.
+`in_progress` — that has no plan, judged again under the locks: **urgent** first, then by
+due date, those without one last, then by number. Each is planned as above, against every
+booking at the site's work centers and the free time the ones before it left; the orders
+it plans hold no slots, so none is left out. An order that does not fit within its horizon
+is left unplanned, keeps what it had and is named in `noCapacity`; the others are planned.
+The answer is `{planned, noCapacity}`.
 
 ### Unplan
 
@@ -1111,7 +1120,14 @@ revision, moves one work order on the board:
 It is refused **409** `revision_conflict` on a stale revision, `order_not_open` when the
 order is not open, `work_order_closed` when the work order is done or cancelled, and
 `no_capacity` when it does not fit within 365 days; nothing is then changed. The answer is
-the order's work orders by sequence, and the move an event `rescheduled`. Moving a work
+the order's work orders by sequence — **503** when a module they are read with is
+unavailable, the move being made — and the move an event `rescheduled`. `start` is the
+**work order's** start: the board sends, for a bar dragged that is a later piece, the work
+order's planned start moved as far as the bar was, and **Move to…** starts from the work
+order's planned start, reading the day and time typed in the viewer's own time zone.
+
+For planning, plan all and reschedule, now is cut to the second, so a piece that starts
+at now is never shorter than the microsecond Postgres keeps. Moving a work
 order to another work center is phase 2.
 
 ### The schedule's locks
@@ -1137,9 +1153,13 @@ its closures and, per day, the open intervals, whether the day is closed (`holid
 `closure`), the capacity, the planned minutes and the **load** — planned minutes ÷ the
 day's capacity, in per cent, above 100 when overbooked — and the **bars**: each slot with
 its work order, the order's number, the product, whether the order is urgent and whether
-it is late (its planned finish after its due date). It also answers the site's
-**unscheduled** orders: open orders with no plan, with their due date, requested start
-and expected time. The board reads again on the `manufacturing.schedule:<siteId>` event
+it is late (its planned finish after its due date). A `done` work order's slots end at
+its `finishedAt`: those after it are left out, and the one it finished in is cut there, in
+the bars, the planned minutes and the load alike — the free time already ignores a done
+work order's slots. It also answers the site's **unscheduled** orders: open orders with no
+plan ([as planning judges it](#planning)), with their due date, requested start and
+expected time. A day nothing is open on is drawn over 06:00–22:00 in the business time
+zone. The board reads again on the `manufacturing.schedule:<siteId>` event
 ([Live](#live)); its site choice is kept in the browser's `localStorage` as a convenience.
 
 ### The data model of the schedule
@@ -1223,8 +1243,8 @@ guarded against formulas, served as an attachment named
 
 | Report | Operation | Permission | What |
 | --- | --- | --- | --- |
-| Production cost | `GET /reports/production-cost` | access **and** costs-view | The done orders closed in the period, grouped by product: per order the estimate, actual, deviation, deviation % and cost per unit as fixed at close, with each product's totals |
-| Work-center utilisation | `GET /reports/utilisation` | access | Per work center and ISO week, counting only the period's days: the calendar's capacity, the planned time (its slots), the productive time (the union of the productive logs at the center), the downtime (their union) and by reason, and utilisation = productive ÷ capacity |
+| Production cost | `GET /reports/production-cost` | access **and** costs-view | The done orders closed in the period, grouped by product: per order the estimate, actual, deviation, deviation % and cost per unit as fixed at close, with each product's totals. A total's `produced` is the good output of the orders with an actual, so its cost per unit is the actual total over the output it paid for |
+| Work-center utilisation | `GET /reports/utilisation` | access | Per work center and ISO week, counting only the period's days: the calendar's capacity, the planned time (its slots, a done work order's cut at its finish), the productive time (the union of the productive logs at the center), the downtime (their union) and by reason, and utilisation = productive ÷ capacity. An archived work center has a row only for a week with planned, productive or down time |
 | Time deviation | `GET /reports/time-deviation` | access | Per BoM operation (its BoM and sequence): the average expected and actual minutes over the last 10 done work orders finished in the period, and the deviation % |
 
 The reports page (`/manufacturing/reports`) shows the production-cost report only to a
