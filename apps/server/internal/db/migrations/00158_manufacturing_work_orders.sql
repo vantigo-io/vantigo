@@ -58,7 +58,11 @@ CREATE INDEX ix_work_orders_work_center ON manufacturing.work_orders (work_cente
 -- nor a work order, the center's own while it is blocked. quantity is what
 -- the operator registered at finish. forced marks a start out of sequence;
 -- corrected_by and corrected_at a supervisor's correction or addition
--- (M29). One open log per user in the whole workspace: the partial unique
+-- (M29). note_by is whose words the note is, with their display name at the
+-- time: the supervisor's for a correction or an addition, the blocker's for a
+-- block's downtime logs — on the center's own log it is who blocked it,
+-- noted or not. The erasure sweep blanks the notes of a note_by identity no
+-- longer knows. One open log per user in the whole workspace: the partial unique
 -- index below, which a race of two starts trips (log_conflict, M29a).
 CREATE TABLE manufacturing.time_logs (
     id                   bigint         GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
@@ -76,6 +80,8 @@ CREATE TABLE manufacturing.time_logs (
     corrected_by         uuid,
     corrected_by_display text           NOT NULL DEFAULT '',
     corrected_at         timestamptz,
+    note_by              uuid,
+    note_by_display      text           NOT NULL DEFAULT '',
     CONSTRAINT ck_time_logs_kind CHECK (kind IN ('productive', 'downtime')),
     CONSTRAINT ck_time_logs_reason CHECK (
         (kind = 'productive' AND reason IS NULL) OR
@@ -89,6 +95,7 @@ CREATE UNIQUE INDEX ux_time_logs_open_user ON manufacturing.time_logs (user_id) 
 CREATE INDEX ix_time_logs_work_order ON manufacturing.time_logs (work_order_id, started_at) WHERE work_order_id IS NOT NULL;
 CREATE INDEX ix_time_logs_open_work_center ON manufacturing.time_logs (work_center_id) WHERE ended_at IS NULL;
 CREATE INDEX ix_time_logs_user ON manufacturing.time_logs (user_id, started_at) WHERE user_id IS NOT NULL;
+CREATE INDEX ix_time_logs_note_by ON manufacturing.time_logs (note_by) WHERE note <> '';
 
 -- +goose Down
 DROP TABLE manufacturing.time_logs;

@@ -85,12 +85,15 @@ WHERE id = @id
 RETURNING *;
 
 -- name: ReadyNextWorkOrder :many
--- ReadyNextWorkOrder readies the first pending work order after the one
--- that finished, by sequence (M27).
-UPDATE manufacturing.work_orders SET status = 'ready', revision = revision + 1
-WHERE id = (SELECT n.id FROM manufacturing.work_orders n
-            WHERE n.order_id = @order_id AND n.status = 'pending' AND (n.sequence, n.id) > (@sequence::int, @id::bigint)
-            ORDER BY n.sequence, n.id LIMIT 1)
+-- ReadyNextWorkOrder readies the order's next work order once one finishes
+-- (M27): the first by sequence that is neither done nor cancelled, only when
+-- it is pending — so every one before it is done or cancelled. One started
+-- out of sequence is left as it is, and the ones after it wait for it.
+UPDATE manufacturing.work_orders w SET status = 'ready', revision = w.revision + 1
+WHERE w.id = (SELECT n.id FROM manufacturing.work_orders n
+              WHERE n.order_id = @order_id AND n.status NOT IN ('done', 'cancelled')
+              ORDER BY n.sequence, n.id LIMIT 1)
+  AND w.status = 'pending'
 RETURNING *;
 
 -- name: CancelOpenWorkOrders :many
@@ -118,6 +121,13 @@ WHERE work_center_id = @work_center_id AND status IN ('pending', 'ready', 'in_pr
 -- for the block.
 SELECT * FROM manufacturing.work_centers WHERE id = @id FOR SHARE;
 
+-- name: LockWorkCentersForShare :many
+-- LockWorkCentersForShare is step 5 of the lock order for a confirm's
+-- snapshot (M26a): its work centers FOR SHARE in id order, after the work
+-- orders are written, so an archive — which takes the row FOR UPDATE and
+-- counts the open work orders — waits for the confirm and sees them.
+SELECT id FROM manufacturing.work_centers WHERE id = ANY(@ids::bigint[]) ORDER BY id FOR SHARE;
+
 -- name: SetWorkingState :one
 UPDATE manufacturing.work_centers SET working_state = @working_state, updated_at = @now::timestamptz
 WHERE id = @id
@@ -125,10 +135,10 @@ RETURNING *;
 
 -- name: InsertTimeLog :one
 INSERT INTO manufacturing.time_logs (
-    work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced,
-    corrected_by, corrected_by_display, corrected_at)
-VALUES (@work_order_id, @work_center_id, @user_id, @user_display, @kind, @reason, @note, @started_at, @ended_at, @quantity, @forced,
-        @corrected_by, @corrected_by_display, @corrected_at)
+    work_order_id, work_center_id, user_id, user_display, kind, reason, note, note_by, note_by_display, started_at, ended_at,
+    quantity, forced, corrected_by, corrected_by_display, corrected_at)
+VALUES (@work_order_id, @work_center_id, @user_id, @user_display, @kind, @reason, @note, @note_by, @note_by_display, @started_at, @ended_at,
+        @quantity, @forced, @corrected_by, @corrected_by_display, @corrected_at)
 RETURNING *;
 
 -- name: GetTimeLog :one
@@ -165,12 +175,23 @@ SELECT * FROM manufacturing.time_logs WHERE work_order_id = ANY(@work_order_ids:
 
 -- name: CorrectTimeLog :one
 -- CorrectTimeLog is a supervisor's correction (M29): the times, the
--- quantity and the note, with who and when.
+-- quantity and the note, with who and when; the note is now the
+-- supervisor's words (note_by).
 UPDATE manufacturing.time_logs
 SET started_at = @started_at, ended_at = @ended_at, quantity = @quantity, note = @note,
+    note_by = @corrected_by, note_by_display = @corrected_by_display,
     corrected_by = @corrected_by, corrected_by_display = @corrected_by_display, corrected_at = @now::timestamptz
 WHERE id = @id
 RETURNING *;
+
+-- name: LockUserLogs :exec
+-- LockUserLogs serialises the corrections and additions of one user's time
+-- logs (M29a): a transaction-scoped advisory lock of class 19784 (the class
+-- after the schedule's 19783) and the hash of the user's id, taken last,
+-- after the time logs, before UserLogOverlaps — so two supervisors adding
+-- overlapping logs for the same person at once on different orders do not
+-- both pass the check.
+SELECT pg_advisory_xact_lock(19784, hashtext(sqlc.arg(user_id)::uuid::text));
 
 -- name: UserLogOverlaps :one
 -- UserLogOverlaps reports whether the user has another log, open or closed,

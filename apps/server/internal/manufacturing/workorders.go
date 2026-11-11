@@ -76,7 +76,8 @@ var errAlreadyDone = errors.New("manufacturing: the work order was finished by t
 // ready and the rest pending, each with the operation's and its work
 // center's figures as they are now, and its expected minutes — computed
 // once, here, and never again. A figure past maxExpectedMinutes is held at
-// it, as the overview refuses past it.
+// it, as the overview refuses past it. Their work centers are then taken FOR
+// SHARE (M26a step 5), so an archive waits for the confirm and counts them.
 func snapshotWorkOrders(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, bom store.ManufacturingBom) ([]store.ManufacturingWorkOrder, error) {
 	ops, err := txq.OperationsOfBoms(ctx, []int64{bom.ID})
 	if err != nil {
@@ -107,6 +108,13 @@ func snapshotWorkOrders(ctx context.Context, txq *store.Queries, o store.Manufac
 			return nil, err
 		}
 		out = append(out, w)
+	}
+	centers := make([]int64, 0, len(out))
+	for _, w := range out {
+		centers = append(centers, w.WorkCenterID)
+	}
+	if _, err := txq.LockWorkCentersForShare(ctx, slices.Compact(slices.Sorted(slices.Values(centers)))); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -456,11 +464,13 @@ func finishAnswers() answers[gen.FinishManufacturingWorkOrderResponseObject] {
 }
 
 // FinishManufacturingWorkOrder ends every open log on the work order, sets
-// it done and readies the next pending one by sequence (M27, M29). A
+// it done and readies the order's first work order not done or cancelled,
+// when it is pending (M27, M29). A
 // production in the body is posted in the same transaction, after the work
 // order's own writes and with the ledger last (M26a), through the
 // production's own rules (M22, M22a): a refusal changes nothing. A finish
-// sent again with the production it posted answers 200 with it.
+// sent again with the production it posted answers 200 with it. A quantity
+// is registered on the caller's open log: with none it is 400 on quantity.
 func (s *server) FinishManufacturingWorkOrder(ctx context.Context, req gen.FinishManufacturingWorkOrderRequestObject) (gen.FinishManufacturingWorkOrderResponseObject, error) {
 	if err := s.requireShopFloor(ctx, "Finishing a work order"); err != nil {
 		return answer(err, finishAnswers())
@@ -530,6 +540,13 @@ func (s *server) FinishManufacturingWorkOrder(ctx context.Context, req gen.Finis
 		if err != nil {
 			return err
 		}
+		// The quantity goes on the caller's open log; without one it would
+		// be lost, so it is refused on the field.
+		if quantity != nil && !slices.ContainsFunc(open, func(l store.ManufacturingTimeLog) bool {
+			return l.UserID != nil && *l.UserID == *who.id
+		}) {
+			return refuseField("The work order was not finished", "quantity", "", "You have no open time log on this work order to register it on")
+		}
 		now := s.deps.Clock()
 		if err := endLogs(ctx, txq, open, now, who.id, quantity, n); err != nil {
 			return err
@@ -537,7 +554,7 @@ func (s *server) FinishManufacturingWorkOrder(ctx context.Context, req gen.Finis
 		if _, err := txq.FinishWorkOrder(ctx, store.FinishWorkOrderParams{ID: w.ID, Now: now}); err != nil {
 			return err
 		}
-		next, err := txq.ReadyNextWorkOrder(ctx, store.ReadyNextWorkOrderParams{OrderID: o.ID, Sequence: w.Sequence, ID: w.ID})
+		next, err := txq.ReadyNextWorkOrder(ctx, o.ID)
 		if err != nil {
 			return err
 		}
@@ -754,7 +771,8 @@ var downtimeReasons = []gen.ManufacturingDowntimeReason{gen.Breakdown, gen.Mater
 // BlockManufacturingWorkCenter blocks a work center (M30, M29a): every
 // productive log at it ends now and becomes one downtime log per operator
 // from now with the reason, and the center's own downtime log, with no user,
-// opens. Its work orders are left paused. Blocking a blocked center is a
+// opens. Every one of them records the blocker as note_by: the note is their
+// words, and the center's log says who blocked it. Its work orders are left paused. Blocking a blocked center is a
 // no-op.
 func (s *server) BlockManufacturingWorkCenter(ctx context.Context, req gen.BlockManufacturingWorkCenterRequestObject) (gen.BlockManufacturingWorkCenterResponseObject, error) {
 	if err := s.requireShopFloor(ctx, "Blocking a work center"); err != nil {
@@ -780,7 +798,11 @@ func (s *server) BlockManufacturingWorkCenter(ctx context.Context, req gen.Block
 		return nil, err
 	}
 	reason := string(req.Body.Reason)
-	err := s.withCenter(ctx, req.Id, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, center store.ManufacturingWorkCenter,
+	who, err := s.actorOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = s.withCenter(ctx, req.Id, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, center store.ManufacturingWorkCenter,
 		open []store.ManufacturingTimeLog, wos map[int64]store.ManufacturingWorkOrder) error {
 		if center.WorkingState == stateBlocked {
 			return nil
@@ -797,13 +819,13 @@ func (s *server) BlockManufacturingWorkCenter(ctx context.Context, req gen.Block
 			}
 			if _, err := txq.InsertTimeLog(ctx, store.InsertTimeLogParams{
 				WorkOrderID: l.WorkOrderID, WorkCenterID: center.ID, UserID: l.UserID, UserDisplay: l.UserDisplay, Kind: logDowntime,
-				Reason: &reason, Note: note, StartedAt: now,
+				Reason: &reason, Note: note, NoteBy: who.id, NoteByDisplay: who.display, StartedAt: now,
 			}); err != nil {
 				return err
 			}
 		}
 		if _, err := txq.InsertTimeLog(ctx, store.InsertTimeLogParams{
-			WorkCenterID: center.ID, Kind: logDowntime, Reason: &reason, Note: note, StartedAt: now,
+			WorkCenterID: center.ID, Kind: logDowntime, Reason: &reason, Note: note, NoteBy: who.id, NoteByDisplay: who.display, StartedAt: now,
 		}); err != nil {
 			return err
 		}
@@ -1063,11 +1085,16 @@ func timeLogsOf(logs []store.ManufacturingTimeLog, now time.Time) []gen.Manufact
 }
 
 // blockOf is the work center's block from its open logs: its own downtime
-// log, with neither a user nor a work order (M30); nil when none is open.
+// log, with neither a user nor a work order (M30), and who blocked it, its
+// note_by; nil when none is open.
 func blockOf(open []store.ManufacturingTimeLog) *gen.ManufacturingWorkCenterBlock {
 	for _, l := range open {
 		if l.UserID == nil && l.WorkOrderID == nil && l.Reason != nil {
-			return &gen.ManufacturingWorkCenterBlock{Reason: gen.ManufacturingDowntimeReason(*l.Reason), Note: l.Note, Since: l.StartedAt}
+			b := &gen.ManufacturingWorkCenterBlock{Reason: gen.ManufacturingDowntimeReason(*l.Reason), Note: l.Note, Since: l.StartedAt}
+			if l.NoteBy != nil {
+				b.By = &gen.ManufacturingPerson{Id: *l.NoteBy, DisplayName: l.NoteByDisplay}
+			}
+			return b
 		}
 	}
 	return nil

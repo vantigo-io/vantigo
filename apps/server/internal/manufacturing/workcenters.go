@@ -569,7 +569,8 @@ func (s *server) DeleteManufacturingWorkCenter(ctx context.Context, req gen.Dele
 	return gen.DeleteManufacturingWorkCenter204Response{}, nil
 }
 
-// ArchiveManufacturingWorkCenter archives a work center under its revision.
+// ArchiveManufacturingWorkCenter archives a work center under its revision;
+// one with open work or blocked is work_center_has_open_work.
 func (s *server) ArchiveManufacturingWorkCenter(ctx context.Context, req gen.ArchiveManufacturingWorkCenterRequestObject) (gen.ArchiveManufacturingWorkCenterResponseObject, error) {
 	reply := answers[gen.ArchiveManufacturingWorkCenterResponseObject]{
 		notFound: func() gen.ArchiveManufacturingWorkCenterResponseObject {
@@ -607,6 +608,12 @@ func (s *server) ArchiveManufacturingWorkCenter(ctx context.Context, req gen.Arc
 		if open > 0 {
 			return conflict(codeWorkCenterHasOpenWork, "The work center has open work",
 				fmt.Sprintf("%d work order(s) not done or cancelled are at this work center. Finish or cancel their orders first.", open))
+		}
+		// A blocked work center is refused too: its own downtime log is
+		// open, and only an unblock ends it.
+		if w.WorkingState == stateBlocked {
+			return conflict(codeWorkCenterHasOpenWork, "The work center is blocked",
+				"The work center is blocked and its downtime is still running. Unblock it first.")
 		}
 		archived, err = txq.SetWorkCenterStatus(ctx, store.SetWorkCenterStatusParams{ID: w.ID, Status: statusArchived, Now: s.deps.Clock()})
 		return err

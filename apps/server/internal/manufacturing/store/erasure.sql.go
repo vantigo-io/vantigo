@@ -13,10 +13,17 @@ import (
 
 const blankNotesOfUsers = `-- name: BlankNotesOfUsers :execrows
 UPDATE manufacturing.time_logs SET note = ''
-WHERE user_id = ANY($1::uuid[]) AND note <> ''
+WHERE id IN (SELECT l.id FROM manufacturing.time_logs l
+             WHERE l.note_by = ANY($1::uuid[]) AND l.note <> ''
+             ORDER BY l.id
+             FOR UPDATE SKIP LOCKED)
 `
 
-// BlankNotesOfUsers blanks the notes of the erased operators' time logs.
+// BlankNotesOfUsers blanks the notes the erased people wrote. It takes the
+// rows in id order and skips those another transaction holds — a block or a
+// correction under way, which lock the logs in id order themselves — so the
+// sweep never waits on, nor deadlocks with, the shop floor; a skipped note
+// goes in the next cycle.
 func (q *Queries) BlankNotesOfUsers(ctx context.Context, userIds []uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, blankNotesOfUsers, userIds)
 	if err != nil {
@@ -27,9 +34,9 @@ func (q *Queries) BlankNotesOfUsers(ctx context.Context, userIds []uuid.UUID) (i
 
 const listNotedUserIDs = `-- name: ListNotedUserIDs :many
 
-SELECT DISTINCT user_id::uuid AS user_id
+SELECT DISTINCT note_by::uuid AS user_id
 FROM manufacturing.time_logs
-WHERE user_id IS NOT NULL AND note <> '' AND user_id > $1::uuid
+WHERE note_by IS NOT NULL AND note <> '' AND note_by > $1::uuid
 ORDER BY user_id
 LIMIT $2
 `
@@ -41,8 +48,9 @@ type ListNotedUserIDsParams struct {
 
 // The erasure sweep (manufacturing design §15, rule 19): a time log keeps its
 // operator's user id and display name as a record, and loses its free-text note
-// once identity no longer knows the operator.
-// ListNotedUserIDs is the operators whose time logs carry a note, after a
+// once identity no longer knows the person whose words it is (note_by: the
+// supervisor who corrected or added the log, or who blocked the work center).
+// ListNotedUserIDs is the people whose words a time log's note is, after a
 // given id, in id order: the sweep asks identity which of them still exist.
 func (q *Queries) ListNotedUserIDs(ctx context.Context, arg ListNotedUserIDsParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listNotedUserIDs, arg.After, arg.BatchSize)

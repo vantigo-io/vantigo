@@ -102,7 +102,8 @@ func logQuantity(f *fieldErrors, q *string) *big.Rat {
 // judgeLogRules is the rules a correction or an addition is refused by on
 // the locked order (M29, M29a): the order done or cancelled is
 // order_closed; a log, or a start, more than 60 days back is log_locked; a
-// time overlapping the user's other logs is log_overlaps.
+// time overlapping the user's other logs is log_overlaps, judged under the
+// user's advisory lock so two at once cannot both pass.
 func judgeLogRules(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, user *uuid.UUID, logID int64, starts []time.Time,
 	started, ended, now time.Time) error {
 	if o.Status == orderDone || o.Status == orderCancelled {
@@ -117,6 +118,9 @@ func judgeLogRules(ctx context.Context, txq *store.Queries, o store.Manufacturin
 	}
 	if user == nil {
 		return nil
+	}
+	if err := txq.LockUserLogs(ctx, *user); err != nil {
+		return err
 	}
 	overlaps, err := txq.UserLogOverlaps(ctx, store.UserLogOverlapsParams{UserID: user, ID: logID, StartedAt: started, EndedAt: ended})
 	if err != nil {
@@ -151,8 +155,9 @@ func correctAnswers() answers[gen.CorrectManufacturingTimeLogResponseObject] {
 
 // CorrectManufacturingTimeLog is a supervisor's correction of a work
 // order's log (M29, M29a): its times, its quantity (absent keeps it, null
-// clears it) and a note, kept in the order's timeline. A log still open is
-// closed at the end given.
+// clears it) and a note — the supervisor's words, on the log alone (note_by)
+// — kept in the order's timeline. A log still open is closed at the end
+// given.
 func (s *server) CorrectManufacturingTimeLog(ctx context.Context, req gen.CorrectManufacturingTimeLogRequestObject) (gen.CorrectManufacturingTimeLogResponseObject, error) {
 	in := req.Body
 	now := s.deps.Clock()
@@ -210,7 +215,7 @@ func (s *server) CorrectManufacturingTimeLog(ctx context.Context, req gen.Correc
 			}
 		}
 		payload := map[string]any{"logId": l.ID, "workOrderId": w.ID, "startedAt": in.StartedAt, "endedAt": in.EndedAt,
-			"wasStartedAt": l.StartedAt, "wasEndedAt": l.EndedAt, "note": note}
+			"wasStartedAt": l.StartedAt, "wasEndedAt": l.EndedAt}
 		if l.UserID != nil {
 			payload["user"] = l.UserDisplay
 		}
@@ -248,7 +253,7 @@ func addLogAnswers() answers[gen.AddManufacturingTimeLogResponseObject] {
 
 // AddManufacturingTimeLog is a supervisor's addition of a missing, closed
 // log for a user on the work order (M29, M29a), kept in the order's
-// timeline. It changes no work order's state: the floor's starts and
+// timeline; its note is the supervisor's words (note_by). It changes no work order's state: the floor's starts and
 // finishes do.
 func (s *server) AddManufacturingTimeLog(ctx context.Context, req gen.AddManufacturingTimeLogRequestObject) (gen.AddManufacturingTimeLogResponseObject, error) {
 	in := req.Body
@@ -302,7 +307,8 @@ func (s *server) AddManufacturingTimeLog(ctx context.Context, req gen.AddManufac
 		}
 		ended := in.EndedAt
 		l, err := txq.InsertTimeLog(ctx, store.InsertTimeLogParams{WorkOrderID: &w.ID, WorkCenterID: w.WorkCenterID, UserID: &user,
-			UserDisplay: person.DisplayName, Kind: kind, Reason: reason, Note: note, StartedAt: in.StartedAt, EndedAt: &ended,
+			UserDisplay: person.DisplayName, Kind: kind, Reason: reason, Note: note, NoteBy: who.id, NoteByDisplay: who.display,
+			StartedAt: in.StartedAt, EndedAt: &ended,
 			Quantity: numeric(quantity, quantityPlaces), CorrectedBy: who.id, CorrectedByDisplay: who.display, CorrectedAt: &now})
 		if err != nil {
 			return err
@@ -310,7 +316,7 @@ func (s *server) AddManufacturingTimeLog(ctx context.Context, req gen.AddManufac
 		id = l.ID
 		if err := event(ctx, txq, w.OrderID, gen.ManufacturingOrderEventKindTimeLogAdded, who, now, map[string]any{
 			"logId": l.ID, "workOrderId": w.ID, "user": person.DisplayName, "kind": kind, "startedAt": in.StartedAt,
-			"endedAt": in.EndedAt, "note": note,
+			"endedAt": in.EndedAt,
 		}); err != nil {
 			return err
 		}
