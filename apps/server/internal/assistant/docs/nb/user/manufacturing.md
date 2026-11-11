@@ -309,9 +309,9 @@ seg selv når noen endrer en ordre.
    - **Lokasjon for komponenter** — valgfri: der komponentene tas fra. La den stå tom for
      å ta hver komponent fra hovedlokasjonen sin, deretter fra de andre lokasjonene som
      har den;
-   - **Forfallsdato**, **Planlagt start** og **Planlagt ferdig** — ferdig ikke før
-     starten. Du kan sette de planlagte datoene for hånd; å
-     [planlegge](#planlegg-en-ordre) ordren setter dem for deg;
+   - **Forfallsdato** — dagen varene må være klare. De planlagte datoene settes ikke
+     her: bare [planleggingen](#planlegg-en-ordre) setter dem, og når du endrer en ordre,
+     viser skjemaet dem som **Planlagt**, uten at de kan endres;
    - **Prioritet** — **Normal** eller **Haster**;
    - **Ansvarlig** — personen som følger opp ordren. En deaktivert bruker kan ikke
      velges;
@@ -661,7 +661,8 @@ går da fra starten på den første biten til slutten på den siste.
   minus én dag til — og aldri før i dag. Uten forfallsdato er den i dag.
 - En arbeidsordre som allerede er i gang, eller på pause, planlegges for tiden den
   fortsatt trenger — de forventede minuttene minus tiden som allerede er registrert på
-  den — fra nå. En ferdig arbeidsordre flyttes aldri.
+  den, telt én gang når flere operatører jobbet på den samtidig — fra nå. En ferdig
+  arbeidsordre flyttes aldri.
 - Å planlegge en ordre som allerede har en plan (**Planlegg på nytt**), erstatter den
   gamle planen.
 - En ordre uten arbeidsordrer får datoene fra forfallsdatoen minus stykklistens
@@ -689,24 +690,33 @@ når ordren blir ferdig etter forfallsdatoen. En dag arbeidsstasjonen er stengt 
 helligdag (**Helligdag**) eller en av stengningene (**Stengt**) — er grå, og det samme er
 raden til en arbeidsstasjon som er **Blokkert**.
 
-Under hver dag er **belastningen** tiden som er planlagt på arbeidsstasjonen den dagen, som
-en andel av timene den er åpen, for eksempel **Belastning 75 %**. Over 100 % er den merket
-**Overbelastet**. Tavlen oppdaterer seg selv når noen planlegger eller flytter arbeid på
-lagerstedet.
+En arbeidsordre som ble ferdig før den planlagte tiden, beholder stolpene sine bare fram
+til den ble ferdig: tiden etter er ledig igjen og teller ikke lenger som planlagt.
+
+Tavlens dager er forretningskalenderens dager. Under hver dag er **belastningen** tiden som
+er planlagt på arbeidsstasjonen den dagen, som en andel av timene den er åpen, for eksempel
+**Belastning 75 %**. Over 100 % er den merket **Overbelastet**. Tavlen oppdaterer seg selv
+når noen planlegger eller flytter arbeid på lagerstedet, blokkerer en arbeidsstasjon eller
+opphever blokkeringen, legger til eller fjerner en stengning, eller endrer ukemønsteret til
+en arbeidsstasjon.
 
 ### Planlegg ordrene som ikke er planlagt
 
 **Ikke planlagt**, under tavlen, lister lagerstedets bekreftede og påbegynte ordrer som
-ikke har noen plan, med forfallsdato, **Ønsket start** og **Forventet tid**. Velg
+ikke har noen plan — ingen av de uferdige arbeidsordrene deres har tid på tavlen — med
+forfallsdato, **Ønsket start** og **Forventet tid**. Velg
 **Planlegg** på én, eller **Planlegg alle** for å planlegge alle: de som haster først,
 deretter etter forfallsdato — de uten sist. En ordre som ikke finner kapasitet innen 365
-dager, blir stående uplanlagt og navngitt; de andre planlegges.
+dager, blir stående uplanlagt og navngitt, og beholder det den hadde; de andre planlegges
+rundt den.
 
 ### Flytt en arbeidsordre
 
-Dra en stolpe langs raden til en annen dag eller tid og slipp. Eller trykk på stolpen, og
-i **Flytt … til …** velger du **Dag** og **Tid** og **Flytt**; dialogen tilbyr også å åpne
-ordren.
+Dra en stolpe langs raden til en annen dag eller tid og slipp. En arbeidsordre som er delt
+i biter, flyttes i sin helhet: drar du en av stolpene, flyttes starten på arbeidsordren like
+langt som du dro. Eller trykk på stolpen, og i **Flytt … til …** velger du **Dag** og
+**Tid** og **Flytt**; dialogen starter på arbeidsordrens planlagte start, dagen og tiden
+er i din egen tidssone, og den tilbyr også å åpne ordren.
 
 Arbeidsordren får den første ledige tiden fra tidspunktet du valgte — fra nå, hvis det er
 passert. De senere arbeidsordrene i samme ordre følger etter bare når de ellers ville
@@ -742,10 +752,12 @@ rapport har **Last ned CSV**, en fil som åpnes i et regneark med norsk tallform
 
 - **Produksjonskostnad** — ordrene som ble lukket i perioden, etter produkt: hver ordres
   estimat, faktiske kostnad, avvik, avvik % og kostnad per enhet, med summer per
-  produkt. Den vises bare for dem med **Se produksjonskostnader**.
+  produkt. Et produkts produserte sum og kostnad per enhet teller bare ordrene som har en
+  faktisk kostnad. Den vises bare for dem med **Se produksjonskostnader**.
 - **Utnyttelse av arbeidsstasjoner** — per arbeidsstasjon og uke: **Kapasitet**, tiden
   **Planlagt**, tiden **Produktiv**, **Nedetid** per årsak, og **Utnyttelse**, den
-  produktive tiden som andel av kapasiteten.
+  produktive tiden som andel av kapasiteten. En arkivert arbeidsstasjon vises bare for
+  ukene noe ble planlagt eller registrert på den.
 - **Tidsavvik** — per operasjon i en stykkliste: **Gjennomsnittlig forventet** og
   **Gjennomsnittlig faktisk** minutter over de siste 10 arbeidsordrene som ble ferdige i
   perioden, og avviket i prosent. Bruk den til å se hvilke standardtider som bør

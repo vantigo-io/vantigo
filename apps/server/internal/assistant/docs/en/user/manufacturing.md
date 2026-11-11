@@ -304,9 +304,9 @@ due date, number or priority. The list updates by itself when someone changes an
    - **Component location** — optional: where the components are taken from. Leave it
      empty to take each component from its primary location, then from the other
      locations that hold it;
-   - **Due date**, **Planned start** and **Planned finish** — the finish not before the
-     start. You may set the planned dates by hand; [planning](#plan-an-order) the order
-     sets them for you;
+   - **Due date** — the day the goods must be ready. The planned dates are not set here:
+     only [planning](#plan-an-order) sets them, and when you change an order the form
+     shows them as **Planned**, read-only;
    - **Priority** — **Normal** or **Urgent**;
    - **Responsible** — the person who follows the order up. A disabled user cannot be
      chosen;
@@ -653,8 +653,8 @@ dates then run from the first piece's start to the last piece's finish.
   date less the working days the expected time needs, at 7.5 hours a day, less one more
   day — and never before today. Without a due date it is today.
 - A work order already in progress, or paused, is planned for the time it still needs —
-  its expected minutes less the time already logged on it — from now. A done work order is
-  never moved.
+  its expected minutes less the time already logged on it, counted once when several
+  operators worked on it at the same time — from now. A done work order is never moved.
 - Planning an order that has a plan already (**Plan again**) replaces its old plan.
 - An order without work orders is given the dates from its due date less its bill of
   materials' lead time to the due date.
@@ -681,23 +681,31 @@ be finished after its due date. A day the work center is closed — a public hol
 (**Holiday**) or one of its closures (**Closed**) — is greyed, and so is the row of a
 **Blocked** work center.
 
-Under each day the **load** is the time planned on the work center that day as a share of
-the hours it is open, such as **Load 75 %**. Above 100 %, it is marked **Overloaded**.
-The board updates by itself when someone plans or moves work at the site.
+A work order that was finished before its planned time keeps its bars only up to the
+moment it was finished: the time after it is free again, and no longer counts as planned.
+
+The board's days are the business calendar's days. Under each day the **load** is the time
+planned on the work center that day as a share of the hours it is open, such as
+**Load 75 %**. Above 100 %, it is marked **Overloaded**. The board updates by itself when
+someone plans or moves work at the site, blocks or unblocks a work center, adds or removes
+a closure, or changes a work center's working pattern.
 
 ### Plan the unscheduled orders
 
 **Unscheduled**, below the board, lists the site's confirmed and in-progress orders that
-have no plan, with their due date, **Requested start** and **Expected time**. Choose **Plan**
+have no plan — none of their unfinished work orders holds time on the board — with their
+due date, **Requested start** and **Expected time**. Choose **Plan**
 on one, or **Plan all** to plan every one of them: the urgent ones first, then by due
 date — those without one last. An order that finds no capacity within 365 days is left
-unplanned and named; the others are planned.
+unplanned and named, and keeps what it had; the others are planned around it.
 
 ### Move a work order
 
-Drag a bar along its row to another day or time and let go. Or press the bar, and in
-**Move … to…** choose the **Day** and **Time** and **Move**; the dialog also offers to
-open the order.
+Drag a bar along its row to another day or time and let go. A work order cut into pieces
+moves as a whole: dragging any of its bars moves the work order's start by as far as you
+dragged it. Or press the bar, and in **Move … to…** choose the **Day** and **Time** and
+**Move**; the dialog starts at the work order's planned start, the day and time are in
+your own time zone, and it also offers to open the order.
 
 The work order takes the first free time from the moment you chose — from now, if that
 has passed. The later work orders of the same order follow it only when they would
@@ -735,10 +743,12 @@ formatting.
 
 - **Production cost** — the orders closed in the period, by product: each order's
   estimate, actual, deviation, deviation % and cost per unit, with each product's
-  totals. It is shown only to those with **See manufacturing costs**.
+  totals. A product's produced total and cost per unit count only the orders that have an
+  actual cost. It is shown only to those with **See manufacturing costs**.
 - **Work-center utilisation** — per work center and week: its **Capacity**, the time
   **Planned**, the time **Productive**, the **Downtime** by reason, and the
-  **Utilisation**, productive time as a share of capacity.
+  **Utilisation**, productive time as a share of capacity. An archived work center is
+  listed only for the weeks something was planned or logged at it.
 - **Time deviation** — per operation of a bill of materials: the **Average expected** and
   the **Average actual** minutes over the last 10 work orders finished in the period, and
   the deviation in per cent. Use it to see which standard times need adjusting.
