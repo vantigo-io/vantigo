@@ -15,6 +15,7 @@ import {
   IconClipboardCheck,
   IconClock,
   IconFileDollar,
+  IconHammer,
   IconListCheck,
   IconListDetails,
   IconMail,
@@ -38,7 +39,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
 import { searchQueryOptions as knowledgeSearchQueryOptions } from "@vantigo/knowledge-ui/api/articles";
 import { ARTICLE_ROUTE_PATH, KNOWLEDGE_HOME_ROUTE_PATH } from "@vantigo/knowledge-ui/lib/routes";
-import { NEW_BOM_ROUTE_PATH, NEW_ORDER_ROUTE_PATH } from "@vantigo/manufacturing-ui/lib/routes";
+import { NEW_BOM_ROUTE_PATH, NEW_ORDER_ROUTE_PATH, SHOP_FLOOR_ROUTE_PATH } from "@vantigo/manufacturing-ui/lib/routes";
 import { NEW_QUOTE_ROUTE_PATH } from "@vantigo/orders-ui/lib/routes";
 import { BOARD_ROUTE_PATH, REQUESTS_ROUTE_PATH } from "@vantigo/planning-ui/lib/routes";
 import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
@@ -267,6 +268,14 @@ export const AppSpotlight = ({
             search: undefined,
           },
         ]
+      : []),
+    // Open the shop floor goes to the work center picker (manufacturing
+    // design M31): it is for whoever may work there, the app with
+    // manufacturing:shop-floor or manufacturing:orders-manage (M33).
+    ...(enabledModules?.includes("manufacturing") &&
+    hasPermissions(permissions, ["manufacturing:access"]) &&
+    hasPermissions(permissions, ["manufacturing:shop-floor", "manufacturing:orders-manage"])
+      ? [{ label: t("dashboard.openShopFloor"), icon: IconHammer, path: SHOP_FLOOR_ROUTE_PATH, search: undefined }]
       : []),
     // New article opens Knowledge with the new-article form (the package's
     // `new` seam, knowledge design K4): anyone with knowledge:articles may

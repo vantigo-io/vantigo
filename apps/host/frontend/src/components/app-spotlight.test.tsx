@@ -395,6 +395,35 @@ describe("AppSpotlight navigation authorization", () => {
     }
   });
 
+  // Open the shop floor (manufacturing design M31) goes to the work center
+  // picker; it needs the module, manufacturing:access and shop-floor or orders-manage.
+  it("opens the shop floor from Open the shop floor for shop-floor or orders-manage with the app", async () => {
+    for (const permission of ["manufacturing:shop-floor", "manufacturing:orders-manage"]) {
+      const onNavigate = vi.fn();
+      renderSpotlight(["manufacturing:access", permission], false, false, onNavigate, ["manufacturing"]);
+      fireEvent.click(await waitFor(() => screen.getByText("Open the shop floor", { exact: true })));
+      expect(onNavigate).toHaveBeenCalledTimes(1);
+      expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/manufacturing/shop-floor" }));
+      cleanup();
+      spotlight.close();
+      navigateMock.mockClear();
+    }
+  });
+
+  it("hides Open the shop floor without shop-floor or orders-manage, without the app's key and when the module is off", async () => {
+    for (const [permissions, modules] of [
+      [["manufacturing:access", "manufacturing:boms-manage"], ["manufacturing"]],
+      [["manufacturing:shop-floor"], ["manufacturing"]],
+      [["manufacturing:access", "manufacturing:shop-floor"], ["customers"]],
+    ] as [string[], ModuleKey[]][]) {
+      renderSpotlight([...permissions, "customers:create"], false, false, undefined, [...modules, "customers"]);
+      await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+      expect(screen.queryByText("Open the shop floor", { exact: true })).not.toBeInTheDocument();
+      cleanup();
+      spotlight.close();
+    }
+  });
+
   // Start count (inventory design §7, B) opens the counts with the start form
   // open; it needs counts-manage beside both views.
   it("opens the counts with the start form from Start count for counts-manage and both views", async () => {
