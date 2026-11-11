@@ -125,16 +125,18 @@ func mtoReserve(ctx context.Context, tx pgx.Tx, ev events.Delivered, clock func(
 }
 
 // withProduction adds to an order's goods lines what Manufacturing makes
-// for them and whether it can (M45), and to every line its produced, ready to
-// reserve mark (M48a), after the order's transaction. Production is
-// provider-gated (M46a): it answers nothing to a caller without
-// manufacturing:access, and Orders checks nothing itself.
+// for them and whether it can (M45), why make-to-order made nothing for a
+// line that has no manufacturing order (M44a), and to every line its
+// produced, ready to reserve mark (M48a), after the order's transaction.
+// Production is provider-gated (M46a): it answers nothing to a caller
+// without manufacturing:access, and Orders checks nothing itself but the
+// mark's manufacturing order id, which it names to such a caller only.
 func (s *server) withProduction(ctx context.Context, out *gen.OrdersOrder) error {
 	marks, err := store.New(s.deps.Pool).ReadyLinesOfOrder(ctx, out.Id)
 	if err != nil {
 		return fmt.Errorf("orders: read the produced lines: %w", err)
 	}
-	ready := map[int64]store.OrdersLineProductionReady{}
+	ready := map[int64]store.ReadyLinesOfOrderRow{}
 	for _, m := range marks {
 		ready[m.LineID] = m
 	}
@@ -152,11 +154,20 @@ func (s *server) withProduction(ctx context.Context, out *gen.OrdersOrder) error
 	if err != nil {
 		return err
 	}
+	notMade, err := s.notMadeOf(ctx, out.Id, made)
+	if err != nil {
+		return err
+	}
+	seesManufacturing := s.has(ctx, "manufacturing:access")
 	for i := range out.Lines {
 		l := &out.Lines[i]
 		if m, ok := ready[l.Id]; ok {
-			l.ReadyToReserve = &gen.OrdersLineReady{ManufacturingOrderId: m.ManufacturingOrderID, SiteId: m.SiteID,
+			l.ReadyToReserve = &gen.OrdersLineReady{SiteId: m.SiteID,
 				Produced: wire(ratOrZero(m.Produced), quantityPlaces), OtherSite: out.SiteId == nil || *out.SiteId != m.SiteID}
+			if seesManufacturing {
+				id := m.ManufacturingOrderID
+				l.ReadyToReserve.ManufacturingOrderId = &id
+			}
 		}
 		if made == nil || l.Kind != gen.OrdersLineKindProduct || l.VariantId == nil {
 			continue
@@ -176,6 +187,42 @@ func (s *server) withProduction(ctx context.Context, out *gen.OrdersOrder) error
 			lines = append(lines, lp)
 		}
 		l.Production = &lines
+		if len(lines) == 0 {
+			l.NotMade = notMadeFor(notMade, l.Id, has)
+		}
+	}
+	return nil
+}
+
+// notMadeOf is why make-to-order made no order for the sales order's lines,
+// read only when the caller sees Manufacturing's production (made non-nil).
+func (s *server) notMadeOf(ctx context.Context, orderID int64, made []contracts.LineProduction) ([]contracts.LineNotMade, error) {
+	if made == nil {
+		return nil, nil
+	}
+	if err := noteContractCall(ctx, "Production.NotMade"); err != nil {
+		return nil, err
+	}
+	notMade, err := s.deps.Production.NotMade(ctx, orderID)
+	if err != nil {
+		return nil, fmt.Errorf("orders: read why Manufacturing made nothing for the lines: %w", err)
+	}
+	return notMade, nil
+}
+
+// notMadeFor is the reason a line with no manufacturing order shows: its
+// own, else — for a line whose variant has a BoM — the whole order's, when
+// the request failed for good.
+func notMadeFor(notMade []contracts.LineNotMade, lineID int64, hasBom bool) *gen.OrdersLineNotMade {
+	for _, n := range notMade {
+		if n.LineID == lineID {
+			return &gen.OrdersLineNotMade{Code: n.Code, Detail: n.Detail}
+		}
+	}
+	for _, n := range notMade {
+		if n.LineID == 0 && hasBom {
+			return &gen.OrdersLineNotMade{Code: n.Code, Detail: n.Detail}
+		}
 	}
 	return nil
 }

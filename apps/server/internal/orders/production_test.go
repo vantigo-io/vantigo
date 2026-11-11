@@ -86,7 +86,10 @@ func TestSalesOrderLines_AnswersAnOrdersGoodsLines(t *testing.T) {
 }
 
 // orders.mto-reserve marks the line produced, ready to reserve, once per
-// event, and says when the goods were made at another site (M48a).
+// manufacturing order — a backorder chain's orders summed, one order's event
+// handled twice counted once —, says when the goods were made at another
+// site (M48a), and names the manufacturing order only to a caller holding
+// manufacturing:access.
 func TestMtoReserve_MarksTheLineReady(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, harnessOptions{stock: true})
@@ -115,15 +118,22 @@ func TestMtoReserve_MarksTheLineReady(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	both := h.SignIn(t, append([]string{"manufacturing:access"}, stockKeys...)...)
 	done(1001, siteOslo, "5")
 	r := lineOf(t, getOrder(t, c, o.Id), varBolt).ReadyToReserve
-	if r == nil || r.ManufacturingOrderId != 1001 || r.Produced != 5 || r.OtherSite {
+	if r == nil || r.ManufacturingOrderId != nil || r.Produced != 5 || r.OtherSite {
 		t.Fatalf("ready = %+v", r)
 	}
+	if r := lineOf(t, getOrder(t, both, o.Id), varBolt).ReadyToReserve; r == nil || r.ManufacturingOrderId == nil || *r.ManufacturingOrderId != 1001 {
+		t.Fatalf("ready to manufacturing:access = %+v", r)
+	}
+	// The backorder of 1001 closes at another site; then 1001's event is
+	// handled again, as a republished event would be.
 	done(1002, siteBergen, "3")
-	r = lineOf(t, getOrder(t, c, o.Id), varBolt).ReadyToReserve
-	if r == nil || r.ManufacturingOrderId != 1002 || r.Produced != 8 || !r.OtherSite {
-		t.Fatalf("ready from another site = %+v", r)
+	done(1001, siteOslo, "5")
+	r = lineOf(t, getOrder(t, both, o.Id), varBolt).ReadyToReserve
+	if r == nil || r.ManufacturingOrderId == nil || *r.ManufacturingOrderId != 1002 || r.Produced != 8 || !r.OtherSite {
+		t.Fatalf("ready over the backorder chain = %+v", r)
 	}
 }
 
@@ -155,6 +165,27 @@ func TestOrder_ShowsProduction(t *testing.T) {
 	}
 	if f.HasBom == nil || *f.HasBom || f.Production == nil || len(*f.Production) != 0 {
 		t.Errorf("food = %+v %+v", f.HasBom, f.Production)
+	}
+	if b.NotMade != nil || f.NotMade != nil {
+		t.Errorf("not made with no reasons = %+v %+v", b.NotMade, f.NotMade)
+	}
+
+	// Why make-to-order made nothing (M44a): a line's own reason, and the
+	// whole order's failure on a line with a BoM and no manufacturing
+	// order; never on a line that has one.
+	food := lineOf(t, o, varFood)
+	prod.mu.Lock()
+	prod.notMade = []contracts.LineNotMade{{LineID: food.Id, Code: "no_site", Detail: "No site."}, {Code: contracts.NotMadeFailed, Detail: "Failed."}}
+	prod.mu.Unlock()
+	got = getOrder(t, c, o.Id)
+	if b, f := lineOf(t, got, varBolt), lineOf(t, got, varFood); b.NotMade != nil || f.NotMade == nil || f.NotMade.Code != "no_site" {
+		t.Errorf("not made = %+v %+v", b.NotMade, f.NotMade)
+	}
+	prod.mu.Lock()
+	prod.made = nil
+	prod.mu.Unlock()
+	if b := lineOf(t, getOrder(t, c, o.Id), varBolt); b.NotMade == nil || b.NotMade.Code != contracts.NotMadeFailed {
+		t.Errorf("a failed request on a line with a BoM = %+v", b.NotMade)
 	}
 
 	off := newHarness(t, harnessOptions{stock: true})
