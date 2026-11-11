@@ -61,7 +61,9 @@ none, and `CategoryName`, the category's own name — Orders' intake by category
 variant's option values (`OptionValues`, keyed by the option's name as it was typed, nil
 when it has none — Orders' variant grid), its own barcode (nil when it has none), its
 weight in grams (`WeightGrams`, the variant's weight in kilograms as whole grams, nil when it
-has none — Orders proposes a shipment's parcel from it) and its
+has none — Orders proposes a shipment's parcel from it), its standard cost
+(`StandardCost`, exact decimal text with two places such as `"12.50"`, `""` when it has
+none — the one cost Manufacturing reads, manufacturing design M4) and its
 **packagings** (`PackagingEntry`: id, name, kind, quantity as a three-place decimal
 such as `"600.000"`, barcode; by sort order then id, empty when it has none) — never
 enough to manage the catalog. Every read fills the packagings, `LockVariants` included,

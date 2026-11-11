@@ -770,21 +770,25 @@ received on each; with none it says *No transfer of this item has a difference.*
 
 ## Movements
 
-**Movements** lists every adjustment, move, receipt, count, issue and transfer
-movement, newest first. An **Issue** is stock taken out for an order's delivery; it
-shows the order's document as its source and is posted from Orders, never here. A
+**Movements** lists every adjustment, move, receipt, count, issue, transfer and
+production movement, newest first. An **Issue** is stock taken out for an order's
+delivery; it shows the order's document as its source and is posted from Orders, never
+here. A **Production** is what a manufacturing order consumed — components taken off
+their locations — and produced — the item put on its location — in one movement at one
+site; it is posted from Manufacturing, never here. A
 **Transfer out** is a transfer's send, taken off the from site's locations; a **Transfer
 in** is a transfer's receipt at the to site, or its cancel putting the stock back at the
 from site. Both link to their transfer and are posted from the transfer, never here.
 Filter by **Site**, **Location** (which includes everything below it), **Item**, **Kind**
 (**Adjustment**, **Move**, **Receipt**, **Count**, **Issue**, **Transfer out**, **Transfer
-in**) and **Posted between**, two days in your
+in**, **Production**) and **Posted between**, two days in your
 organisation's time zone. **Load more** fetches the next page. **Receipts** in the
 sidebar is the same list showing receipts only.
 
 A movement's page shows its kind, its site, when and by whom it was posted, the reason
 or the supplier and the supplier's reference, the note, the count it posted or the
-**Transfer** it belongs to, and its
+**Transfer** it belongs to, the **Source** another module posted it for — a
+production's links to its manufacturing order when Manufacturing is on — and its
 lines: **SKU**, **Product**, **From**, **To** and **Quantity**, with **Entered as** for a
 line entered in packagings. A movement is never edited or deleted.
 

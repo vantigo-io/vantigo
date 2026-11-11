@@ -1212,7 +1212,11 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     the site's available: on hand less what is reserved), `Release` (a line's
     reservation, part of it, or all of the document's), `Issue` (one movement of kind
     `issue`, taking stock off its locations and consuming the lines' reservations,
-    idempotent by the document) and `ReservationsFor`. Its rules:
+    idempotent by the document) and `ReservationsFor`. Manufacturing calls two more
+    (manufacturing design M2–M3): `ReserveForProduction` (`Reserve` at a site that need
+    not fulfil orders) and `Produce` (one movement of kind `production`, consume lines
+    from-only and produce lines to-only in one site, consuming the reservations as
+    `Issue` does, idempotent by the production record). Its rules:
     - **The lock order is Products, then the caller, then Inventory.** The caller calls
       `ProductCatalog.LockVariants` (rule 21) first, then locks its own rows, then calls
       the ledger, which locks Inventory's balances in (variant, location) order and then
@@ -1226,7 +1230,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
       but `LockVariants`.
     - **It refuses only through a typed `*contracts.StockRefusal`**, naming every
       failing line — `insufficient_available`, `insufficient_stock`,
-      `site_not_fulfilling`, `variant_not_stocked`, `site_unknown`, `location_unknown` —
+      `site_not_fulfilling`, `variant_not_stocked`, `site_unknown`, `location_unknown`,
+      and a production's `site_archived`, `quantity_invalid` and `nothing_to_post` —
       and writes nothing when it refuses; the caller rolls back or goes on without the
       write. Anything else is a failure.
     - **It is composed whatever `MODULES` says**, as rule 8's holders are: a

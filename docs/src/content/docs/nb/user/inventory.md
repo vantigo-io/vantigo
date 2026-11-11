@@ -799,21 +799,26 @@ ble mottatt på hver; uten noen står det *Ingen overføring av denne varen har 
 
 ## Bevegelser
 
-**Bevegelser** lister alle justeringer, flyttinger, varemottak, varetellinger, uttak og
-overføringsbevegelser, nyeste først. Et **Uttak** er varer tatt ut til en ordres
-leveranse; det viser ordrens dokument som kilde og bokføres fra Ordrer, aldri her. En
+**Bevegelser** lister alle justeringer, flyttinger, varemottak, varetellinger, uttak,
+overførings- og produksjonsbevegelser, nyeste først. Et **Uttak** er varer tatt ut til
+en ordres leveranse; det viser ordrens dokument som kilde og bokføres fra Ordrer, aldri
+her. En **Produksjon** er det en produksjonsordre forbrukte — komponenter tatt fra
+lokasjonene sine — og produserte — varen lagt på sin lokasjon — i én bevegelse på ett
+lagersted; den bokføres fra Produksjon, aldri her. En
 **Overføring ut** er sendingen av en overføring, tatt fra fra-lagerstedets lokasjoner; en
 **Overføring inn** er mottaket av en overføring på til-lagerstedet, eller avbrytelsen
 som legger varene tilbake på fra-lagerstedet. Begge lenker til overføringen og bokføres
 fra den, aldri her. Filtrer på **Lagersted**, **Lokasjon** (som tar med alt under den),
 **Vare**, **Type** (**Justering**, **Flytting**, **Varemottak**, **Varetelling**,
-**Uttak**, **Overføring ut**, **Overføring inn**) og **Bokført mellom**, to dager i
+**Uttak**, **Overføring ut**, **Overføring inn**, **Produksjon**) og **Bokført mellom**, to dager i
 organisasjonens tidssone. **Last flere** henter neste side. **Varemottak** i sidemenyen
 er den samme listen med bare varemottak.
 
 Siden for en bevegelse viser typen, lagerstedet, når og av hvem den ble bokført,
 årsaken eller leverandøren og leverandørens referanse, notatet, varetellingen den
-bokførte eller overføringen den hører til (**Overføring**), og linjene: **Varenummer**, **Produkt**, **Fra**, **Til** og **Antall**, med
+bokførte eller overføringen den hører til (**Overføring**), kilden (**Kilde**) en annen
+modul bokførte den for — en produksjons kilde lenker til produksjonsordren når
+Produksjon er i bruk — og linjene: **Varenummer**, **Produkt**, **Fra**, **Til** og **Antall**, med
 **Registrert som** for en linje registrert i pakninger. En bevegelse redigeres eller
 slettes aldri.
 
