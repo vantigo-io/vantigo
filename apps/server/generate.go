@@ -40,6 +40,7 @@ package server
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-planning.yaml ../../openapi/planning.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-inventory.yaml ../../openapi/inventory.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-orders.yaml ../../openapi/orders.yaml
+//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-manufacturing.yaml ../../openapi/manufacturing.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-knowledge.yaml ../../openapi/knowledge.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-calendar.yaml ../../openapi/calendar.yaml
 //go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 -config internal/openapi/gen/cfg-entra.yaml ../../openapi/entra.yaml
@@ -63,6 +64,7 @@ package server
 //go:generate sqlc generate -f internal/planning/sqlc.yaml
 //go:generate sqlc generate -f internal/inventory/sqlc.yaml
 //go:generate sqlc generate -f internal/orders/sqlc.yaml
+//go:generate sqlc generate -f internal/manufacturing/sqlc.yaml
 //go:generate sqlc generate -f internal/knowledge/sqlc.yaml
 //go:generate sqlc generate -f internal/calendar/sqlc.yaml
 //go:generate sqlc generate -f internal/entra/sqlc.yaml

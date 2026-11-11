@@ -2165,7 +2165,11 @@ var defaultModules = knownModules
 // contracts.ProductCatalog. orders depends on products, customers and
 // invoices (orders design O9): its lines are the catalog's variants, its
 // documents are a customer's, and its VAT codes and seller are Invoices'
-// (contracts.SalesTax). agents depends on communications (virtual employees
+// (contracts.SalesTax). manufacturing depends on products and inventory
+// (manufacturing design M6): its BoMs and orders are the catalog's goods
+// variants, read and locked through contracts.ProductCatalog, and every stock
+// movement goes through Inventory's ledger (contracts.Stock and
+// contracts.StockLedger). agents depends on communications (virtual employees
 // design, the module): its only role answers conversations. Identity is always
 // mounted and is never listed here.
 func modules(p *problems, env map[string]string) []string {
@@ -2226,6 +2230,11 @@ func modules(p *problems, env map[string]string) []string {
 	for _, needed := range []string{"products", "customers", "invoices"} {
 		if slices.Contains(out, "orders") && !slices.Contains(out, needed) {
 			p.add("MODULES", "orders requires %s", needed)
+		}
+	}
+	for _, needed := range []string{"products", "inventory"} {
+		if slices.Contains(out, "manufacturing") && !slices.Contains(out, needed) {
+			p.add("MODULES", "manufacturing requires %s", needed)
 		}
 	}
 

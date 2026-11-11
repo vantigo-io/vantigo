@@ -21,6 +21,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/knowledge"
+	"github.com/vantigo-io/vantigo/server/internal/manufacturing"
 	"github.com/vantigo-io/vantigo/server/internal/meta"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -47,7 +48,7 @@ func everyModule() []module.Module {
 	return []module.Module{
 		customers.Module(), products.Module(), energy.Module(), communications.Module(),
 		projects.Module(), timetracking.Module(), expenses.Module(), invoices.Module(),
-		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(), agents.Module(),
+		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), manufacturing.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(), agents.Module(),
 	}
 }
 

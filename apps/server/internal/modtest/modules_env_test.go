@@ -170,3 +170,15 @@ func TestModulesEnv_MetaBringsCommunications(t *testing.T) {
 		}
 	}
 }
+
+// TestModulesEnv_ListsProductsAndInventoryBesideManufacturing proves a
+// harness composing manufacturing lists products and inventory as enabled:
+// config.go refuses "manufacturing" without either, and manufacturing's own
+// tests stand in fakes of the catalog and the stock rather than compose them.
+func TestModulesEnv_ListsProductsAndInventoryBesideManufacturing(t *testing.T) {
+	t.Parallel()
+
+	if got := modulesEnv([]module.Module{{Name: "manufacturing"}}); got != "customers,inventory,manufacturing,products" {
+		t.Errorf("modulesEnv(manufacturing) = %q, want exactly %q", got, "customers,inventory,manufacturing,products")
+	}
+}

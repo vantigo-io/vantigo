@@ -1,0 +1,2158 @@
+components:
+    schemas:
+        ManufacturingBom:
+            additionalProperties: false
+            description: A bill of materials (M10) with its operations and lines.
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                isDefault:
+                    type: boolean
+                leadTimeDays:
+                    format: int32
+                    type: integer
+                lines:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingBomLine'
+                    type: array
+                makeToOrder:
+                    type: boolean
+                note:
+                    type: string
+                operations:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingBomOperation'
+                    type: array
+                outputQuantity:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                siteId:
+                    description: The site of its operations' work centers, null when it has none.
+                    format: int64
+                    nullable: true
+                    type: integer
+                status:
+                    $ref: '#/components/schemas/ManufacturingStatus'
+                updatedAt:
+                    format: date-time
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - id
+                - variant
+                - code
+                - outputQuantity
+                - isDefault
+                - makeToOrder
+                - leadTimeDays
+                - note
+                - status
+                - revision
+                - siteId
+                - operations
+                - lines
+                - createdAt
+                - updatedAt
+            type: object
+        ManufacturingBomInput:
+            additionalProperties: false
+            description: A new BoM with its operations and lines. The variant's first active BoM becomes its default.
+            properties:
+                code:
+                    description: 1–32 characters, unique among BoMs (bom_code_taken); null for none.
+                    maxLength: 32
+                    minLength: 1
+                    nullable: true
+                    type: string
+                isDefault:
+                    description: Make it the variant's default, unmarking the old one.
+                    type: boolean
+                leadTimeDays:
+                    description: 0 or more; default 0.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                lines:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingBomLineInput'
+                    maxItems: 200
+                    type: array
+                makeToOrder:
+                    description: Default false.
+                    type: boolean
+                note:
+                    maxLength: 2000
+                    type: string
+                operations:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingBomOperationInput'
+                    maxItems: 50
+                    type: array
+                outputQuantity:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                variantId:
+                    description: A goods variant (variant_not_goods), never changed after.
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - outputQuantity
+                - operations
+                - lines
+            type: object
+        ManufacturingBomLine:
+            additionalProperties: false
+            description: A component line of a BoM (M11), per the BoM's outputQuantity.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                note:
+                    type: string
+                operationId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                operationKey:
+                    description: The consuming operation's key, null when none.
+                    nullable: true
+                    type: string
+                quantity:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                scrapPercent:
+                    description: Exact decimal, 0 to 99.99.
+                    type: string
+                sortOrder:
+                    format: int32
+                    type: integer
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - id
+                - variant
+                - quantity
+                - scrapPercent
+                - operationId
+                - operationKey
+                - sortOrder
+                - note
+            type: object
+        ManufacturingBomLineInput:
+            additionalProperties: false
+            description: A component line as the editor sends it.
+            properties:
+                note:
+                    maxLength: 2000
+                    type: string
+                operationKey:
+                    description: The key of an operation in the same request (operation_key_unknown).
+                    nullable: true
+                    type: string
+                quantity:
+                    description: Exact decimal, more than 0, at most three decimals (quantity_invalid).
+                    type: string
+                scrapPercent:
+                    description: Exact decimal, 0 to 99.99; default 0.
+                    type: string
+                sortOrder:
+                    format: int32
+                    type: integer
+                variantId:
+                    description: A goods variant (variant_not_found, variant_not_goods).
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - quantity
+            type: object
+        ManufacturingBomList:
+            additionalProperties: false
+            description: A page of BoMs and the total matching.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingBomSummary'
+                    type: array
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+            type: object
+        ManufacturingBomOperation:
+            additionalProperties: false
+            description: An operation of a BoM (M12), run in sequence order.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                instructions:
+                    description: Markdown.
+                    type: string
+                key:
+                    description: The id as text, the editor's key for the operation.
+                    type: string
+                minutesPerCycle:
+                    description: Exact decimal, more than 0.
+                    type: string
+                name:
+                    type: string
+                sequence:
+                    format: int32
+                    type: integer
+                setupMinutes:
+                    description: Exact decimal; null when the work center's setup applies.
+                    nullable: true
+                    type: string
+                workCenterCode:
+                    type: string
+                workCenterId:
+                    format: int64
+                    type: integer
+                workCenterName:
+                    type: string
+            required:
+                - id
+                - key
+                - sequence
+                - name
+                - workCenterId
+                - workCenterCode
+                - workCenterName
+                - setupMinutes
+                - minutesPerCycle
+                - instructions
+            type: object
+        ManufacturingBomOperationInput:
+            additionalProperties: false
+            description: An operation as the editor sends it.
+            properties:
+                id:
+                    description: An existing operation of this BoM to keep; absent for a new one.
+                    format: int64
+                    type: integer
+                instructions:
+                    description: Markdown.
+                    maxLength: 20000
+                    type: string
+                key:
+                    description: 1–40 characters, unique in the request; lines name it in operationKey.
+                    maxLength: 40
+                    minLength: 1
+                    type: string
+                minutesPerCycle:
+                    description: Exact decimal, more than 0.
+                    type: string
+                name:
+                    maxLength: 200
+                    minLength: 1
+                    type: string
+                sequence:
+                    format: int32
+                    type: integer
+                setupMinutes:
+                    description: Exact decimal, 0 or more; null or absent for the work center's setup.
+                    nullable: true
+                    type: string
+                workCenterId:
+                    description: An active work center (work_center_unknown).
+                    format: int64
+                    type: integer
+            required:
+                - key
+                - sequence
+                - name
+                - workCenterId
+                - minutesPerCycle
+            type: object
+        ManufacturingBomOverview:
+            additionalProperties: false
+            description: A BoM exploded at a quantity, up to 10 levels and 2000 nodes.
+            properties:
+                bomId:
+                    format: int64
+                    type: integer
+                costIncomplete:
+                    description: A bought component has no standard cost and counted 0. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                    type: boolean
+                nodeCount:
+                    format: int32
+                    type: integer
+                quantity:
+                    description: Exact decimal.
+                    type: string
+                rolledUpCost:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingRolledUpCost'
+                    description: Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                root:
+                    $ref: '#/components/schemas/ManufacturingOverviewNode'
+                siteId:
+                    format: int64
+                    nullable: true
+                    type: integer
+            required:
+                - bomId
+                - quantity
+                - siteId
+                - nodeCount
+                - root
+            type: object
+        ManufacturingBomSummary:
+            additionalProperties: false
+            description: A BoM as the list shows it.
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                isDefault:
+                    type: boolean
+                lineCount:
+                    format: int32
+                    type: integer
+                makeToOrder:
+                    type: boolean
+                operationCount:
+                    format: int32
+                    type: integer
+                outputQuantity:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                status:
+                    $ref: '#/components/schemas/ManufacturingStatus'
+                updatedAt:
+                    format: date-time
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - id
+                - variant
+                - code
+                - outputQuantity
+                - isDefault
+                - makeToOrder
+                - status
+                - revision
+                - lineCount
+                - operationCount
+                - updatedAt
+            type: object
+        ManufacturingBomUpdate:
+            additionalProperties: false
+            description: A BoM's fields, operations and lines, replacing what it has, under its revision (M13).
+            properties:
+                code:
+                    description: 1–32 characters, unique among BoMs (bom_code_taken); null for none.
+                    maxLength: 32
+                    minLength: 1
+                    nullable: true
+                    type: string
+                leadTimeDays:
+                    description: 0 or more; default 0.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                lines:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingBomLineInput'
+                    maxItems: 200
+                    type: array
+                makeToOrder:
+                    description: Default false.
+                    type: boolean
+                note:
+                    maxLength: 2000
+                    type: string
+                operations:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingBomOperationInput'
+                    maxItems: 50
+                    type: array
+                outputQuantity:
+                    description: Exact decimal, more than 0, at most three decimals.
+                    type: string
+                revision:
+                    description: The revision the client read (revision_conflict).
+                    format: int32
+                    type: integer
+            required:
+                - outputQuantity
+                - operations
+                - lines
+                - revision
+            type: object
+        ManufacturingClosure:
+            additionalProperties: false
+            description: A range of days a work center is closed, both included (M9).
+            properties:
+                fromDate:
+                    format: date
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                note:
+                    type: string
+                toDate:
+                    format: date
+                    type: string
+                workCenterId:
+                    format: int64
+                    type: integer
+            required:
+                - id
+                - workCenterId
+                - fromDate
+                - toDate
+                - note
+            type: object
+        ManufacturingClosureInput:
+            additionalProperties: false
+            description: 'A closure: at most 100 per work center (closures_too_many).'
+            properties:
+                fromDate:
+                    format: date
+                    type: string
+                note:
+                    maxLength: 500
+                    type: string
+                toDate:
+                    description: On or after fromDate.
+                    format: date
+                    type: string
+            required:
+                - fromDate
+                - toDate
+            type: object
+        ManufacturingClosureList:
+            additionalProperties: false
+            description: A work center's closures, by fromDate.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingClosure'
+                    type: array
+            required:
+                - items
+            type: object
+        ManufacturingInterval:
+            additionalProperties: false
+            description: 'One open interval of a day, local times in the workspace zone on a 15-minute grid: start before end; 24:00 is allowed as an end.'
+            properties:
+                end:
+                    description: HH:MM.
+                    pattern: ^[0-9]{2}:[0-9]{2}$
+                    type: string
+                start:
+                    description: HH:MM.
+                    pattern: ^[0-9]{2}:[0-9]{2}$
+                    type: string
+            required:
+                - start
+                - end
+            type: object
+        ManufacturingMeta:
+            additionalProperties: false
+            description: What the caller may do in Manufacturing, for the screens to offer.
+            properties:
+                canManageBoms:
+                    description: Holds manufacturing:boms-manage.
+                    type: boolean
+                canManageOrders:
+                    description: Holds manufacturing:orders-manage.
+                    type: boolean
+                canSeeCosts:
+                    description: 'Holds manufacturing:costs-view: cost fields are answered.'
+                    type: boolean
+                canWorkShopFloor:
+                    description: Holds manufacturing:shop-floor.
+                    type: boolean
+                currency:
+                    description: 'The workspace currency every amount is in: NOK.'
+                    type: string
+            required:
+                - canManageBoms
+                - canSeeCosts
+                - canManageOrders
+                - canWorkShopFloor
+                - currency
+            type: object
+        ManufacturingOverviewNode:
+            additionalProperties: false
+            description: 'One node of the exploded BoM (M15): the root is the BoM''s variant; a made node recurses through its default active BoM.'
+            properties:
+                available:
+                    description: Available at siteId, exact decimal; null when no site was asked.
+                    nullable: true
+                    type: string
+                bomId:
+                    description: The BoM the node is made by, null when it is bought.
+                    format: int64
+                    nullable: true
+                    type: integer
+                children:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOverviewNode'
+                    type: array
+                depth:
+                    format: int32
+                    type: integer
+                extendedValue:
+                    description: quantityRequired × standardCost, null when it has none. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                made:
+                    type: boolean
+                operations:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOverviewOperation'
+                    type: array
+                quantityRequired:
+                    description: Exact decimal, including scrap, rounded up to three decimals.
+                    type: string
+                scrapPercent:
+                    description: Exact decimal.
+                    type: string
+                standardCost:
+                    description: Exact decimal in NOK, null when it has none. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - variant
+                - bomId
+                - made
+                - depth
+                - quantityRequired
+                - scrapPercent
+                - available
+                - operations
+                - children
+            type: object
+        ManufacturingOverviewOperation:
+            additionalProperties: false
+            description: An operation of a made node, at the node's quantity (M28a).
+            properties:
+                cost:
+                    description: expectedMinutes/60 × (machine + labour rate), exact decimal in NOK. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                expectedMinutes:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+                operationId:
+                    format: int64
+                    type: integer
+                sequence:
+                    format: int32
+                    type: integer
+                workCenterCode:
+                    type: string
+                workCenterId:
+                    format: int64
+                    type: integer
+            required:
+                - operationId
+                - sequence
+                - name
+                - workCenterId
+                - workCenterCode
+                - expectedMinutes
+            type: object
+        ManufacturingProblem:
+            description: 'An RFC 9457 problem with this module''s refusal code (manufacturing design §3, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant''s default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (400: reactivating a work center whose site is archived), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation''s work center is missing or archived), work_center_other_site (400: operations at more than one site), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels), bom_too_large (400: an overview past 2000 nodes), bom_not_active (409: an edit or make-default of an archived BoM), quantity_invalid (400: not more than 0, or more than three decimals) and dependency_unavailable (503). A line''s codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.'
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                lines:
+                    description: Every failing line, in the request's order.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingProblemLine'
+                    type: array
+                path:
+                    description: 'bom_cycle only: the variants of the cycle, from the BoM''s own.'
+                    items:
+                        $ref: '#/components/schemas/ManufacturingProblemPathStep'
+                    type: array
+                status:
+                    format: int32
+                    nullable: true
+                    type: integer
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        ManufacturingProblemLine:
+            additionalProperties: false
+            description: One failing line of a BoM.
+            properties:
+                code:
+                    description: The line's refusal code.
+                    type: string
+                detail:
+                    description: What a person reads.
+                    type: string
+                index:
+                    description: The line's position in the request, from 0.
+                    format: int32
+                    type: integer
+            required:
+                - index
+                - code
+                - detail
+            type: object
+        ManufacturingProblemPathStep:
+            additionalProperties: false
+            description: One variant of a cycle's path.
+            properties:
+                sku:
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+            required:
+                - variantId
+                - sku
+            type: object
+        ManufacturingRevisionInput:
+            additionalProperties: false
+            description: The revision the client read.
+            properties:
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - revision
+            type: object
+        ManufacturingRolledUpCost:
+            additionalProperties: false
+            description: The rolled-up cost (M15), exact decimals in NOK.
+            properties:
+                components:
+                    description: The components at standard cost.
+                    type: string
+                operations:
+                    description: The operations' expected cost.
+                    type: string
+                total:
+                    description: components + operations.
+                    type: string
+            required:
+                - components
+                - operations
+                - total
+            type: object
+        ManufacturingSite:
+            additionalProperties: false
+            description: An active Inventory site, as contracts.Stock answers it.
+            properties:
+                code:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                name:
+                    type: string
+                rootLocationId:
+                    description: The site's own node of the location tree.
+                    format: int64
+                    type: integer
+            required:
+                - id
+                - code
+                - name
+                - rootLocationId
+            type: object
+        ManufacturingSiteList:
+            additionalProperties: false
+            description: The active Inventory sites, by code.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingSite'
+                    type: array
+            required:
+                - items
+            type: object
+        ManufacturingStats:
+            additionalProperties: false
+            description: The overview's counts.
+            properties:
+                activeBoms:
+                    description: Active bills of materials.
+                    format: int32
+                    type: integer
+                activeWorkCenters:
+                    description: Active work centers.
+                    format: int32
+                    type: integer
+                blockedWorkCenters:
+                    description: Active work centers whose working state is blocked.
+                    format: int32
+                    type: integer
+            required:
+                - activeWorkCenters
+                - blockedWorkCenters
+                - activeBoms
+            type: object
+        ManufacturingStatus:
+            description: A work center's or a BoM's status.
+            enum:
+                - active
+                - archived
+            type: string
+        ManufacturingStatusFilter:
+            description: Which statuses a list answers.
+            enum:
+                - active
+                - archived
+                - all
+            type: string
+        ManufacturingVariantRef:
+            additionalProperties: false
+            description: A catalog variant as Manufacturing names it.
+            properties:
+                id:
+                    description: The catalog's variant id.
+                    format: int32
+                    type: integer
+                productName:
+                    type: string
+                productStatus:
+                    description: The product's status in the catalog.
+                    type: string
+                productType:
+                    description: Goods or Service.
+                    type: string
+                sku:
+                    type: string
+                standardCost:
+                    description: The catalog's standard cost (M4), exact decimal text in NOK; null when it has none. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                unit:
+                    description: The variant's unit.
+                    type: string
+            required:
+                - id
+                - sku
+                - productName
+                - unit
+                - productType
+                - productStatus
+            type: object
+        ManufacturingVariantSearchItem:
+            additionalProperties: false
+            description: A goods variant of an active product, and whether it has an active BoM.
+            properties:
+                hasBom:
+                    description: The variant has at least one active BoM.
+                    type: boolean
+                id:
+                    description: The catalog's variant id.
+                    format: int32
+                    type: integer
+                productName:
+                    type: string
+                productStatus:
+                    description: The product's status in the catalog.
+                    type: string
+                productType:
+                    description: Goods or Service.
+                    type: string
+                sku:
+                    type: string
+                standardCost:
+                    description: The catalog's standard cost (M4), exact decimal text in NOK; null when it has none. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                unit:
+                    description: The variant's unit.
+                    type: string
+            required:
+                - id
+                - sku
+                - productName
+                - unit
+                - productType
+                - productStatus
+                - hasBom
+            type: object
+        ManufacturingVariantSearchList:
+            additionalProperties: false
+            description: The search's goods variants, by SKU.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingVariantSearchItem'
+                    type: array
+            required:
+                - items
+            type: object
+        ManufacturingWeekPattern:
+            additionalProperties: false
+            description: 'A work center''s weekly working pattern (M9): at most two non-overlapping intervals per weekday. The default is Monday to Friday 07:00–15:00, the weekend closed.'
+            properties:
+                friday:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingInterval'
+                    maxItems: 2
+                    type: array
+                monday:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingInterval'
+                    maxItems: 2
+                    type: array
+                saturday:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingInterval'
+                    maxItems: 2
+                    type: array
+                sunday:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingInterval'
+                    maxItems: 2
+                    type: array
+                thursday:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingInterval'
+                    maxItems: 2
+                    type: array
+                tuesday:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingInterval'
+                    maxItems: 2
+                    type: array
+                wednesday:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingInterval'
+                    maxItems: 2
+                    type: array
+            required:
+                - monday
+                - tuesday
+                - wednesday
+                - thursday
+                - friday
+                - saturday
+                - sunday
+            type: object
+        ManufacturingWorkCenter:
+            additionalProperties: false
+            description: 'A work center (M8): a machine, a cell or a team at one Inventory site.'
+            properties:
+                capacity:
+                    description: Units processed in parallel per cycle, 1 or more.
+                    format: int32
+                    type: integer
+                cleanupMinutes:
+                    description: Exact decimal, 0 or more, once per work order.
+                    type: string
+                code:
+                    description: 1–16 characters A–Z and 0–9, unique.
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                labourCostPerHour:
+                    description: NOK per hour, null when unset. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                machineCostPerHour:
+                    description: NOK per hour, null when unset. Present only when the caller holds manufacturing:costs-view (M38); absent otherwise.
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                name:
+                    type: string
+                pattern:
+                    $ref: '#/components/schemas/ManufacturingWeekPattern'
+                revision:
+                    format: int32
+                    type: integer
+                setupMinutes:
+                    description: Exact decimal, 0 or more, once per work order.
+                    type: string
+                siteCode:
+                    type: string
+                siteId:
+                    format: int64
+                    type: integer
+                siteName:
+                    type: string
+                status:
+                    $ref: '#/components/schemas/ManufacturingStatus'
+                timeEfficiency:
+                    description: 'A percentage from 1 to 500: at 50 the work takes twice as long.'
+                    format: int32
+                    type: integer
+                updatedAt:
+                    format: date-time
+                    type: string
+                workingState:
+                    $ref: '#/components/schemas/ManufacturingWorkingState'
+            required:
+                - id
+                - code
+                - name
+                - siteId
+                - siteCode
+                - siteName
+                - capacity
+                - timeEfficiency
+                - setupMinutes
+                - cleanupMinutes
+                - pattern
+                - workingState
+                - status
+                - revision
+                - createdAt
+                - updatedAt
+            type: object
+        ManufacturingWorkCenterInput:
+            additionalProperties: false
+            description: A new work center. A field left out takes its default.
+            properties:
+                capacity:
+                    description: 1 or more; default 1.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                cleanupMinutes:
+                    description: Exact decimal, 0 or more; default 0.
+                    type: string
+                code:
+                    description: 1–16 characters A–Z and 0–9 after upper-casing, unique (work_center_code_taken).
+                    maxLength: 16
+                    minLength: 1
+                    type: string
+                labourCostPerHour:
+                    description: NOK per hour, 0 or more. Absent keeps the stored value on an update; null clears it. Sending it without manufacturing:costs-view is refused (costs_view_required).
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                machineCostPerHour:
+                    description: NOK per hour, 0 or more. Absent keeps the stored value on an update; null clears it. Sending it without manufacturing:costs-view is refused (costs_view_required).
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                name:
+                    maxLength: 200
+                    minLength: 1
+                    type: string
+                pattern:
+                    $ref: '#/components/schemas/ManufacturingWeekPattern'
+                setupMinutes:
+                    description: Exact decimal, 0 or more; default 0.
+                    type: string
+                siteId:
+                    description: An active Inventory site (site_unknown).
+                    format: int64
+                    type: integer
+                timeEfficiency:
+                    description: 1 to 500; default 100.
+                    format: int32
+                    maximum: 500
+                    minimum: 1
+                    type: integer
+            required:
+                - code
+                - name
+                - siteId
+            type: object
+        ManufacturingWorkCenterList:
+            additionalProperties: false
+            description: Work centers, by code.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingWorkCenter'
+                    type: array
+            required:
+                - items
+            type: object
+        ManufacturingWorkCenterUpdate:
+            additionalProperties: false
+            description: A work center's fields, under its revision. A field left out takes its default, but for the cost rates, which an absent field keeps.
+            properties:
+                capacity:
+                    description: 1 or more; default 1.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                cleanupMinutes:
+                    description: Exact decimal, 0 or more; default 0.
+                    type: string
+                code:
+                    description: 1–16 characters A–Z and 0–9 after upper-casing, unique (work_center_code_taken).
+                    maxLength: 16
+                    minLength: 1
+                    type: string
+                labourCostPerHour:
+                    description: NOK per hour, 0 or more. Absent keeps the stored value on an update; null clears it. Sending it without manufacturing:costs-view is refused (costs_view_required).
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                machineCostPerHour:
+                    description: NOK per hour, 0 or more. Absent keeps the stored value on an update; null clears it. Sending it without manufacturing:costs-view is refused (costs_view_required).
+                    nullable: true
+                    type: string
+                    x-go-type: json.RawMessage
+                    x-go-type-skip-optional-pointer: true
+                name:
+                    maxLength: 200
+                    minLength: 1
+                    type: string
+                pattern:
+                    $ref: '#/components/schemas/ManufacturingWeekPattern'
+                revision:
+                    description: The revision the client read (revision_conflict).
+                    format: int32
+                    type: integer
+                setupMinutes:
+                    description: Exact decimal, 0 or more; default 0.
+                    type: string
+                siteId:
+                    description: An active Inventory site (site_unknown).
+                    format: int64
+                    type: integer
+                timeEfficiency:
+                    description: 1 to 500; default 100.
+                    format: int32
+                    maximum: 500
+                    minimum: 1
+                    type: integer
+            required:
+                - code
+                - name
+                - siteId
+                - revision
+            type: object
+        ManufacturingWorkingState:
+            description: 'A work center''s working state (M30): changed only through block and unblock, never through an edit.'
+            enum:
+                - normal
+                - blocked
+            type: string
+info:
+    title: Vantigo Manufacturing API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/manufacturing/boms:
+        get:
+            operationId: listManufacturingBoms
+            parameters:
+                - in: query
+                  name: variantId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Default active.
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/ManufacturingStatusFilter'
+                - description: Matched against the BoM's code and the variant's SKU and product name.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+                - description: At most 200; default 50.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    format: int32
+                    maximum: 200
+                    minimum: 1
+                    type: integer
+                - in: query
+                  name: offset
+                  required: false
+                  schema:
+                    format: int32
+                    minimum: 0
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingBomList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: List bills of materials
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+        post:
+            operationId: createManufacturingBom
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingBomInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingBom'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; lines name every failing line (variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid); too_many_lines, too_many_operations, work_center_unknown, work_center_other_site, bom_cycle (path names the cycle), bom_too_deep.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — bom_code_taken, revision_conflict.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Create a bill of materials
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/boms/{id}:
+        get:
+            operationId: getManufacturingBom
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingBom'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such BoM. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Get a bill of materials
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+        put:
+            description: Replaces the BoM's fields, operations and lines in one request (M13); the variant is never changed.
+            operationId: updateManufacturingBom
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingBomUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingBom'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; lines name every failing line (variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid); too_many_lines, too_many_operations, work_center_unknown, work_center_other_site, bom_cycle (path names the cycle), bom_too_deep.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such BoM. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, bom_code_taken, bom_not_active.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Update a bill of materials
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/boms/{id}/archive:
+        post:
+            description: Archiving the default promotes the variant's oldest other active BoM, or leaves none (M14a).
+            operationId: archiveManufacturingBom
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingBom'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such BoM. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Archive a bill of materials
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/boms/{id}/make-default:
+        post:
+            description: Unmarks the variant's old default in the same transaction.
+            operationId: makeDefaultManufacturingBom
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingBom'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — bom_cycle, bom_too_deep.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such BoM. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, bom_not_active.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Make a bill of materials its variant's default
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/boms/{id}/overview:
+        get:
+            description: Explodes the BoM through each component's default active BoM, up to 10 levels and 2000 nodes (M15, M15a).
+            operationId: getManufacturingBomOverview
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Exact decimal, more than 0; default the BoM's outputQuantity.
+                  in: query
+                  name: quantity
+                  required: false
+                  schema:
+                    type: string
+                - description: 'An active Inventory site: each node''s available quantity there.'
+                  in: query
+                  name: siteId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingBomOverview'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — quantity_invalid; site_unknown; bom_too_deep, bom_too_large.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such BoM. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Explode a bill of materials
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/boms/{id}/reactivate:
+        post:
+            description: Re-runs the cycle walk; becomes the default when the variant has no active default.
+            operationId: reactivateManufacturingBom
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingBom'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — bom_cycle, bom_too_deep, variant_not_goods, work_center_unknown.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such BoM. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Reactivate a bill of materials
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/meta:
+        get:
+            operationId: getManufacturingMeta
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingMeta'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get what the caller may do in Manufacturing
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/sites:
+        get:
+            operationId: listManufacturingSites
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingSiteList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: List the active Inventory sites
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/stats:
+        get:
+            operationId: getManufacturingStats
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingStats'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the overview's counts
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/variants:
+        get:
+            description: Goods variants of active products whose SKU, product name or barcode contains q, by SKU, each with whether it has an active BoM.
+            operationId: searchManufacturingVariants
+            parameters:
+                - description: Matched against SKU, product name and barcode.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+                - description: At most 50; default 20.
+                  in: query
+                  name: limit
+                  required: false
+                  schema:
+                    format: int32
+                    maximum: 50
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingVariantSearchList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Search the catalog's goods variants
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/work-centers:
+        get:
+            operationId: listManufacturingWorkCenters
+            parameters:
+                - description: Default active.
+                  in: query
+                  name: status
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/ManufacturingStatusFilter'
+                - in: query
+                  name: siteId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - description: Matched against code and name.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingWorkCenterList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: List work centers
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+        post:
+            operationId: createManufacturingWorkCenter
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingWorkCenterInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingWorkCenter'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; site_unknown.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Forbidden — the caller lacks the permission, or (costs_view_required, a problem) sent a cost rate without manufacturing:costs-view.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — work_center_code_taken.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Create a work center
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/work-centers/{id}:
+        delete:
+            operationId: deleteManufacturingWorkCenter
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the client read.
+                  in: query
+                  name: revision
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such work center. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Conflict — revision_conflict; work_center_in_use: an operation names it, archive it instead.'
+            summary: Delete a work center
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+        get:
+            operationId: getManufacturingWorkCenter
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingWorkCenter'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such work center. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Get a work center
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+        put:
+            operationId: updateManufacturingWorkCenter
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingWorkCenterUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingWorkCenter'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors; site_unknown; work_center_other_site on siteId while an active bill of materials has an operation at the work center.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Forbidden — the caller lacks the permission, or (costs_view_required, a problem) sent a cost rate without manufacturing:costs-view.
+                "404":
+                    description: Not Found — no such work center. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, work_center_code_taken.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Update a work center
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/work-centers/{id}/archive:
+        post:
+            operationId: archiveManufacturingWorkCenter
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingWorkCenter'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such work center. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, work_center_has_open_work.
+            summary: Archive a work center
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/work-centers/{id}/closures:
+        get:
+            operationId: listManufacturingClosures
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingClosureList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such work center. The body is empty.
+            summary: List a work center's closures
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+        post:
+            operationId: createManufacturingClosure
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingClosureInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingClosure'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors (toDate before fromDate); closures_too_many.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such work center. The body is empty.
+            summary: Add a closure to a work center
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/work-centers/{id}/closures/{closureId}:
+        delete:
+            operationId: deleteManufacturingClosure
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: closureId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such work center or closure of it. The body is empty.
+            summary: Remove a closure from a work center
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/work-centers/{id}/reactivate:
+        post:
+            operationId: reactivateManufacturingWorkCenter
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingWorkCenter'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Bad Request — site_archived: its site is no longer active.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such work center. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Reactivate a work center
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+servers:
+    - url: /
