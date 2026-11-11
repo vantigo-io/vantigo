@@ -45,15 +45,34 @@ type Stock interface {
 	// (orders design O47's pick list). A variant held nowhere there has no
 	// entry.
 	Locations(ctx context.Context, variantIDs []int32, siteID int64) ([]StockLocation, error)
+	// SiteLocations is every location of the site, archived ones too, by
+	// full code: what a caller offers as the location a document takes stock
+	// from or puts it on (manufacturing design M2). An unknown site has none.
+	SiteLocations(ctx context.Context, siteID int64) ([]StockSiteLocation, error)
 }
 
 // StockSite is a site as Stock answers it: its id, code and name, whether it
-// fulfils orders, and whether it is active.
+// fulfils orders, whether it is active, and its root location — the site's
+// own node of the location tree, where stock lies when it has no place.
 type StockSite struct {
-	ID            int64
-	Code, Name    string
-	FulfilsOrders bool
-	Active        bool
+	ID             int64
+	Code, Name     string
+	FulfilsOrders  bool
+	Active         bool
+	RootLocationID int64
+}
+
+// StockSiteLocation is one location of a site as Stock answers it: its id,
+// its parent (nil for the root), its kind and full code, whether it is
+// active (an archived location takes no stock), and whether it is the
+// site's root.
+type StockSiteLocation struct {
+	ID       int64
+	ParentID *int64
+	Kind     string
+	FullCode string
+	Active   bool
+	Root     bool
 }
 
 // StockLocation is what one location of a site holds of a variant: the
@@ -100,9 +119,10 @@ func ValidateStockVariants(ids []int32) error {
 }
 
 // StockLedger is Inventory's write for another module's documents (orders
-// design O45, module-boundaries rule 24): it reserves stock for a document's
-// lines at a site, releases it, issues stock against it, and reads what a
-// document holds — every call inside the caller's transaction. It is composed
+// design O45, manufacturing design M2–M3, module-boundaries rule 24): it
+// reserves stock for a document's lines at a site, releases it, issues stock
+// against it, posts a production that consumes and produces it, and reads
+// what a document holds — every call inside the caller's transaction. It is composed
 // whatever MODULES says, as the reference holders are: a reservation made
 // while Inventory was on must still be released by a cancel, an edit or a
 // manual marking after it is switched off. A caller decides whether to
@@ -148,6 +168,32 @@ type StockLedger interface {
 	// ReservationsFor is every reservation the document holds, by line id
 	// then site id.
 	ReservationsFor(ctx context.Context, tx pgx.Tx, src StockSource) ([]Reservation, error)
+	// ReserveForProduction is Reserve without the check that the site
+	// fulfils orders (manufacturing design M3): a plant that sells nothing
+	// still reserves its components. Every other check stays — the variant is
+	// goods, the site exists and is active (an archived one is
+	// StockSiteArchived), and its available covers the line — and Release
+	// and ReservationsFor treat the reservation as any other.
+	ReserveForProduction(ctx context.Context, tx pgx.Tx, src StockSource, siteID int64, lines []StockLine) error
+	// Produce posts one movement of kind "production" at the site
+	// (manufacturing design M2): each consume line takes its quantity off its
+	// from-location, each produce line puts its quantity on its to-location,
+	// consume lines first. Consuming a line uses up as much of the line's
+	// reservation at the site as it consumed (never below zero), as Issue
+	// does. The movement's source is p.Document (src when zero), and posting
+	// is idempotent by that source: a second Produce for one document answers
+	// the first movement and consumes nothing again. At least one line is
+	// given; a production of consume lines only is a scrap of components.
+	// The movement keeps src's id as its source line id, so the movement
+	// names the producing order beside the production record (M5).
+	// The site need only exist and be active (StockSiteUnknown,
+	// StockSiteArchived), not fulfil orders; every location lies in it. A
+	// production of no lines is refused (StockNothingToPost), as is a line's
+	// bad quantity (StockQuantityInvalid); a variant that is unknown or not
+	// goods (StockVariantNotStocked) — a Discontinued one is still produced;
+	// and stock a location does not hold (StockInsufficientStock).
+	// Reservations of other documents never stop a production.
+	Produce(ctx context.Context, tx pgx.Tx, src StockSource, p StockProduction) (movementID int64, err error)
 }
 
 // StockSource names a document of another module: "orders", "order", the
@@ -207,6 +253,42 @@ type IssueLine struct {
 	Quantity       string
 }
 
+// StockProduction is a movement of stock within a site for a producing
+// document: the document the movement records (the production record; the
+// reserving source when zero), the site, the components consumed and the
+// items produced, and who posted it.
+type StockProduction struct {
+	Document StockSource
+	SiteID   int64
+	Consume  []ConsumeLine
+	Produce  []ProduceLine
+	// PostedByUserID and PostedByDisplay are the poster, as the movement
+	// keeps it; both may be empty for a system posting.
+	PostedByUserID  *uuid.UUID
+	PostedByDisplay string
+}
+
+// ConsumeLine is one component a production uses up: the variant, the
+// reserving document's line id whose reservation it consumes, the location
+// it is taken from, and a quantity more than 0 (exact decimal text, at most
+// three decimals).
+type ConsumeLine struct {
+	VariantID      int32
+	LineID         int64
+	FromLocationID int64
+	Quantity       string
+}
+
+// ProduceLine is one item a production puts in stock: the variant, the
+// producing document's line id, the location it is put on, and a quantity
+// more than 0 (exact decimal text, at most three decimals).
+type ProduceLine struct {
+	VariantID    int32
+	LineID       int64
+	ToLocationID int64
+	Quantity     string
+}
+
 // Reservation is what one line of a document holds at one site.
 type Reservation struct {
 	VariantID int32
@@ -220,17 +302,27 @@ const (
 	// StockInsufficientAvailable: the site's available does not cover a
 	// reservation.
 	StockInsufficientAvailable = "insufficient_available"
-	// StockInsufficientStock: the location does not hold what an issue takes
-	// (Inventory's own code, I10).
+	// StockInsufficientStock: the location does not hold what an issue or a
+	// production takes (Inventory's own code, I10).
 	StockInsufficientStock = "insufficient_stock"
-	// StockSiteNotFulfilling: the site is archived or does not fulfil orders.
+	// StockSiteNotFulfilling: the site is archived or does not fulfil orders
+	// (an order's reserve and issue).
 	StockSiteNotFulfilling = "site_not_fulfilling"
+	// StockSiteArchived: the site is archived (a production and its reserve,
+	// which do not ask that the site fulfil orders).
+	StockSiteArchived = "site_archived"
+	// StockQuantityInvalid: a line's quantity is not more than 0, has more
+	// than three decimals, or would take a balance beyond
+	// 99,999,999,999.999 (a production; an issue's last case only).
+	StockQuantityInvalid = "quantity_invalid"
+	// StockNothingToPost: a production names no line.
+	StockNothingToPost = "nothing_to_post"
 	// StockVariantNotStocked: the variant is unknown or not goods.
 	StockVariantNotStocked = "variant_not_stocked"
 	// StockSiteUnknown: no site has the id.
 	StockSiteUnknown = "site_unknown"
-	// StockLocationUnknown: an issue's from-location is unknown, archived or
-	// in another site.
+	// StockLocationUnknown: an issue's or a production's location is
+	// unknown, archived or in another site.
 	StockLocationUnknown = "location_unknown"
 )
 

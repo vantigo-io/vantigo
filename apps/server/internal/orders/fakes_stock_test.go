@@ -3,6 +3,7 @@ package orders_test
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"slices"
@@ -218,6 +219,11 @@ func (f *fakeStock) Locations(ctx context.Context, ids []int32, site int64) ([]c
 	return out, nil
 }
 
+// SiteLocations is Manufacturing's; Orders never calls it.
+func (f *fakeStock) SiteLocations(context.Context, int64) ([]contracts.StockSiteLocation, error) {
+	return nil, errors.New("fake stock: orders never lists a site's locations")
+}
+
 func (f *fakeStock) Reserve(ctx context.Context, _ pgx.Tx, src contracts.StockSource, site int64, lines []contracts.StockLine) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -351,6 +357,16 @@ func (f *fakeStock) ReservationsFor(ctx context.Context, _ pgx.Tx, src contracts
 		return cmp.Or(cmp.Compare(a.LineID, b.LineID), cmp.Compare(a.SiteID, b.SiteID))
 	})
 	return out, nil
+}
+
+// ReserveForProduction and Produce are Manufacturing's; Orders never calls
+// them, so the fake refuses to be called.
+func (f *fakeStock) ReserveForProduction(context.Context, pgx.Tx, contracts.StockSource, int64, []contracts.StockLine) error {
+	return errors.New("fake stock: orders never reserves for production")
+}
+
+func (f *fakeStock) Produce(context.Context, pgx.Tx, contracts.StockSource, contracts.StockProduction) (int64, error) {
+	return 0, errors.New("fake stock: orders never produces")
 }
 
 // variantHeld is the variant the document's line holds reserved, 0 when it

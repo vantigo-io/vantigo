@@ -209,6 +209,7 @@ const (
 	Count       InventoryMovementKind = "count"
 	Issue       InventoryMovementKind = "issue"
 	Move        InventoryMovementKind = "move"
+	Production  InventoryMovementKind = "production"
 	Receipt     InventoryMovementKind = "receipt"
 	TransferIn  InventoryMovementKind = "transfer_in"
 	TransferOut InventoryMovementKind = "transfer_out"
@@ -224,6 +225,8 @@ func (e InventoryMovementKind) Valid() bool {
 	case Issue:
 		return true
 	case Move:
+		return true
+	case Production:
 		return true
 	case Receipt:
 		return true
@@ -979,7 +982,7 @@ type InventoryMovement struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1).
 	Kind     InventoryMovementKind   `json:"kind"`
 	Lines    []InventoryMovementLine `json:"lines"`
 	Note     *string                 `json:"note,omitempty"`
@@ -1001,7 +1004,7 @@ type InventoryMovement struct {
 	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
 }
 
-// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.
+// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1).
 type InventoryMovementKind string
 
 // InventoryMovementLine A quantity of a variant from a location, to one, or both (I9).
@@ -1037,7 +1040,7 @@ type InventoryMovementSummary struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1).
 	Kind      InventoryMovementKind `json:"kind"`
 	LineCount int32                 `json:"lineCount"`
 	Note      *string               `json:"note,omitempty"`

@@ -29,6 +29,10 @@ func (fakeStock) Locations(context.Context, []int32, int64) ([]contracts.StockLo
 	return nil, nil
 }
 
+func (fakeStock) SiteLocations(context.Context, int64) ([]contracts.StockSiteLocation, error) {
+	return nil, nil
+}
+
 type fakeStockLedger struct{}
 
 func (fakeStockLedger) Reserve(context.Context, pgx.Tx, contracts.StockSource, int64, []contracts.StockLine) error {
@@ -45,6 +49,14 @@ func (fakeStockLedger) Issue(context.Context, pgx.Tx, contracts.StockSource, con
 
 func (fakeStockLedger) ReservationsFor(context.Context, pgx.Tx, contracts.StockSource) ([]contracts.Reservation, error) {
 	return nil, nil
+}
+
+func (fakeStockLedger) ReserveForProduction(context.Context, pgx.Tx, contracts.StockSource, int64, []contracts.StockLine) error {
+	return nil
+}
+
+func (fakeStockLedger) Produce(context.Context, pgx.Tx, contracts.StockSource, contracts.StockProduction) (int64, error) {
+	return 0, nil
 }
 
 // stockModule is a module providing both stock slots, as Inventory does.

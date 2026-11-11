@@ -1301,10 +1301,10 @@ export interface components {
             transfer?: components["schemas"]["InventoryTransferRef"];
         };
         /**
-         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production joins later.
+         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1).
          * @enum {string}
          */
-        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue" | "transfer_out" | "transfer_in";
+        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue" | "transfer_out" | "transfer_in" | "production";
         /** @description A quantity of a variant from a location, to one, or both (I9). */
         InventoryMovementLine: {
             entered?: components["schemas"]["InventoryEnteredSnapshot"];

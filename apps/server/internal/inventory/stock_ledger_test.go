@@ -469,6 +469,29 @@ func TestStock_SitesAndLocations(t *testing.T) {
 	if !slices.Equal(codes, []string{"BGO", "OSL"}) {
 		t.Errorf("Sites = %v, want [BGO OSL]", codes)
 	}
+	if len(sites) == 2 && (sites[0].RootLocationID != s.elsewhre.RootLocationId || sites[1].RootLocationID != s.site.RootLocationId) {
+		t.Errorf("Sites' roots = %+v, want each site's root location", sites)
+	}
+
+	// SiteLocations: every location of the site, archived ones too, by full
+	// code, the root marked.
+	archived := createLocation(t, c, s.site.RootLocationId, gen.InventoryLocationKindShelf, "9")
+	h.Exec(t, `UPDATE inventory.locations SET status = 'archived' WHERE id = $1`, archived.Id)
+	all, err := st.SiteLocations(t.Context(), s.site.Id)
+	if err != nil {
+		t.Fatalf("SiteLocations: %v", err)
+	}
+	var listed []string
+	for _, l := range all {
+		listed = append(listed, l.FullCode+":"+strconv.FormatBool(l.Active)+":"+strconv.FormatBool(l.Root))
+	}
+	wantListed := []string{"OSL:true:true", s.shelf1.FullCode + ":true:false", s.shelf2.FullCode + ":true:false", archived.FullCode + ":false:false"}
+	if !slices.Equal(listed, wantListed) || all[0].ID != s.site.RootLocationId || all[0].ParentID != nil || all[1].ParentID == nil || *all[1].ParentID != s.site.RootLocationId {
+		t.Errorf("SiteLocations = %v, want %v", listed, wantListed)
+	}
+	if none, err := st.SiteLocations(t.Context(), 999999); err != nil || len(none) != 0 {
+		t.Errorf("SiteLocations of an unknown site = %v, %v; want none", none, err)
+	}
 
 	locs, err := st.Locations(t.Context(), []int32{varBolt, varNut}, s.site.Id)
 	if err != nil {
