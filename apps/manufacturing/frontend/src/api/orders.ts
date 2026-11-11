@@ -28,6 +28,8 @@ export type ManufacturingComponentUpdate = Schemas["ManufacturingComponentUpdate
 export type ManufacturingProductionDraft = Schemas["ManufacturingProductionDraft"];
 export type ManufacturingProductionInput = Schemas["ManufacturingProductionInput"];
 export type ManufacturingProduction = Schemas["ManufacturingProduction"];
+export type ManufacturingSalesOrderLine = Schemas["ManufacturingSalesOrderLine"];
+export type ManufacturingChildrenCreated = Schemas["ManufacturingChildrenCreated"];
 
 /** Every state of an order (M19), in the order it goes through them. */
 export const orderStatuses: readonly ManufacturingOrderStatus[] = [
@@ -64,6 +66,8 @@ export const orderEventKinds: readonly ManufacturingOrderEventKind[] = [
   "planned",
   "unplanned",
   "rescheduled",
+  "children_created",
+  "origin_cancelled",
 ];
 
 /** A page of the order list. */
@@ -165,6 +169,25 @@ export const productionQueryOptions = (productionId: number) =>
     queryFn: ({ signal }) =>
       request<ManufacturingProduction>(`/api/v1/manufacturing/productions/${productionId}`, { signal }),
   });
+
+/**
+ * A sales order line, read through Orders, that a new order is made for
+ * (M45): its variant, open quantity, delivery date and site, the variant's
+ * default BoM and the orders already made for it.
+ */
+export const salesOrderLineQueryOptions = (lineId: number) =>
+  queryOptions({
+    queryKey: [MANUFACTURING_QUERY_KEY, "sales-order-line", lineId],
+    queryFn: ({ signal }) =>
+      request<ManufacturingSalesOrderLine>(`/api/v1/manufacturing/sales-order-lines/${lineId}`, { signal }),
+  });
+
+/** Makes one confirmed sub-assembly order per chosen component line (M47). */
+export const createChildOrders = (orderId: number, revision: number, componentIds: readonly number[]) =>
+  send<ManufacturingChildrenCreated>(
+    `/api/v1/manufacturing/orders/${orderId}/children`,
+    json("POST", { revision, componentIds }),
+  );
 
 /** A new draft order (M17): 201 with the order. */
 export const createOrder = (input: ManufacturingOrderInput) =>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { orderFixture } from "../test/server";
 import { orderInputOf, orderUpdateOf, orderValuesOf } from "./order-body";
+import { subAssemblyLines } from "./sub-assembly";
 
 const defaults = { bomId: null, siteId: null, outputLocationId: null };
 
@@ -37,5 +38,28 @@ describe("an order's update body", () => {
       expect(body).not.toHaveProperty("plannedStart");
       expect(body).not.toHaveProperty("plannedFinish");
     }
+  });
+});
+
+describe("a new order's sales order line (M45)", () => {
+  it("is sent only when the order is made for one", () => {
+    const values = orderValuesOf(undefined);
+    expect(orderInputOf(values, defaults)).not.toHaveProperty("salesOrderLineId");
+    expect(orderInputOf({ ...values, salesOrderLineId: 501 }, defaults)).toMatchObject({ salesOrderLineId: 501 });
+  });
+});
+
+describe("the components a sub-assembly order can be made for (M47)", () => {
+  it("are the stored lines with a default BoM that miss something", () => {
+    const [line] = orderFixture().components;
+    const order = orderFixture({
+      components: [
+        { ...line, id: 1, defaultBomId: 9, missing: "2" },
+        { ...line, id: 2, defaultBomId: 9, missing: "0" },
+        { ...line, id: 3, defaultBomId: null, missing: "2" },
+        { ...line, id: null, defaultBomId: 9, missing: "2" },
+      ],
+    });
+    expect(subAssemblyLines(order).map((one) => one.id)).toEqual([1]);
   });
 });

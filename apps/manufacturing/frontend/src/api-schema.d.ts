@@ -226,6 +226,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/orders/{id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create sub-assembly orders
+         * @description Create sub-assembly orders (M47): one confirmed child order per chosen component line whose variant has a default active BoM and whose missing quantity (M21a) is more than 0, for that quantity, with origin parent and due the parent's planned start, else its requested start (M37). Each child reserves as a confirm does; a short line never refuses it.
+         */
+        post: operations["createManufacturingChildOrders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/orders/{id}/components": {
         parameters: {
             query?: never;
@@ -535,6 +555,26 @@ export interface paths {
          * @description Per work center and ISO week, the capacity of its calendar, the planned time, the productive time and the downtime by reason, counting only the period's days (M42).
          */
         get: operations["getManufacturingUtilisationReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/sales-order-lines/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a sales order line to make
+         * @description A sales order line read through Orders (M43a, M45), for the new-order form: its variant, open quantity, delivery date and site, the variant's default BoM and the orders already made for it. No customer is named.
+         */
+        get: operations["getManufacturingSalesOrderLine"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1490,6 +1530,11 @@ export interface components {
             available: string;
             /** @description Consumed by productions so far. */
             consumed: string;
+            /**
+             * Format: int64
+             * @description The component variant's default active BoM, when it is made; a sub-assembly order is made by it (M47).
+             */
+            defaultBomId?: number | null;
             /** @description reserved + available ≥ remaining (M21a). */
             covered: boolean;
             /**
@@ -1547,10 +1592,10 @@ export interface components {
             };
         };
         /**
-         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36).
+         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44).
          * @enum {string}
          */
-        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added" | "planned" | "unplanned" | "rescheduled";
+        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added" | "planned" | "unplanned" | "rescheduled" | "children_created" | "origin_cancelled";
         /** @description An order's timeline, oldest first. */
         ManufacturingOrderEventList: {
             items: components["schemas"]["ManufacturingOrderEvent"][];
@@ -1590,6 +1635,11 @@ export interface components {
             responsibleUserId?: string | null;
             /**
              * Format: int64
+             * @description Made for this sales order line (M45): the origin is sales_order, the line must be a goods line of a sales order that is not cancelled, of the same variant (sales_order_line_unknown), with no live order made for it already (sales_order_line_has_order).
+             */
+            salesOrderLineId?: number | null;
+            /**
+             * Format: int64
              * @description An active Inventory site; default the BoM's work centers' site, else the first active site (M17a).
              */
             siteId?: number;
@@ -1626,6 +1676,10 @@ export interface components {
             orderId: number | null;
             /** @description The origin's display reference, such as SO-12. */
             reference: string | null;
+            /** @description The sales order it was made for was cancelled (M44); the order is left as it is for a person to decide. */
+            cancelled: boolean;
+            /** @description The sales order's customer, on one order's answer only, and only to a caller who also holds orders:access (M43a). Left out otherwise. */
+            customerName?: string | null;
         };
         /** @description One page of the list. */
         ManufacturingOrderPage: {
@@ -1819,7 +1873,7 @@ export interface components {
          * @enum {string}
          */
         ManufacturingPriority: "normal" | "urgent";
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
         ManufacturingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2019,6 +2073,46 @@ export interface components {
          * @enum {string}
          */
         ManufacturingReservationStatus: "reserved" | "partly_reserved" | "not_reserved";
+        /** @description The component lines to make sub-assembly orders for (M47), under the order's revision. */
+        ManufacturingChildrenInput: {
+            componentIds: number[];
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @description The parent order after the sub-assembly orders were made, and the orders made, each confirmed. */
+        ManufacturingChildrenCreated: {
+            children: components["schemas"]["ManufacturingOrderLink"][];
+            order: components["schemas"]["ManufacturingOrder"];
+        };
+        /** @description A sales order line to make an order for (M45): what the new-order form is prefilled from. */
+        ManufacturingSalesOrderLine: {
+            /**
+             * Format: int64
+             * @description The variant's default active BoM; null when it has none (bom_required on create).
+             */
+            bomId: number | null;
+            /**
+             * Format: date
+             * @description The sales order's delivery date.
+             */
+            dueDate: string | null;
+            /** Format: int64 */
+            lineId: number;
+            /** @description The orders already made for the line, backorders included, cancelled ones left out. */
+            orders: components["schemas"]["ManufacturingOrderLink"][];
+            /** @description The line's open quantity: ordered less cancelled less delivered, exact decimal. */
+            quantity: string;
+            /** @description The sales order's reference, SO-<number>. */
+            reference: string;
+            /** Format: int64 */
+            salesOrderId: number;
+            /**
+             * Format: int64
+             * @description The site the sales order is fulfilled from; null when it names none.
+             */
+            siteId: number | null;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
         /** @description The revision the client read. */
         ManufacturingRevisionInput: {
             /** Format: int32 */
@@ -3399,7 +3493,7 @@ export interface operations {
                     "application/json": components["schemas"]["ManufacturingOrder"];
                 };
             };
-            /** @description Bad Request — field errors; bom_required, variant_not_found, variant_not_goods, site_unknown, location_unknown, work_center_other_site, quantity_invalid. */
+            /** @description Bad Request — field errors; bom_required, variant_not_found, variant_not_goods, site_unknown, location_unknown, work_center_other_site, quantity_invalid, sales_order_line_unknown. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3426,7 +3520,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — bom_not_active. */
+            /** @description Conflict — bom_not_active, sales_order_line_has_order (the line already has its one live order, M44b). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3699,6 +3793,84 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — revision_conflict, order_not_open, quantity_short (less than the quantity produced and backorder not given). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    createManufacturingChildOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingChildrenInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingChildrenCreated"];
+                };
+            };
+            /** @description Bad Request — component_unknown (not a line of the order), bom_required (its variant has no default active BoM), nothing_missing (its missing quantity is 0); work_center_other_site, site_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open (only a confirmed or in-progress order makes sub-assembly orders); Inventory's site_archived and variant_not_stocked. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4743,6 +4915,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getManufacturingSalesOrderLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingSalesOrderLine"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such goods line of a sales order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: Orders, the catalog or Inventory is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
                 };
             };
         };

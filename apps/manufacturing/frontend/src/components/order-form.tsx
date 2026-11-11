@@ -1,11 +1,17 @@
 import { Alert, Button, Group, Select, SimpleGrid, Stack, Textarea, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconShoppingCart } from "@tabler/icons-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { bomQueryOptions, bomsQueryOptions } from "../api/boms";
-import { createOrder, type ManufacturingOrder, priorities, updateOrder } from "../api/orders";
+import {
+  createOrder,
+  type ManufacturingOrder,
+  type ManufacturingSalesOrderLine,
+  priorities,
+  updateOrder,
+} from "../api/orders";
 import { isRevisionConflict, refusalCode, refusedFields } from "../api/request";
 import { manufacturingSitesQueryOptions } from "../api/sites";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
@@ -16,6 +22,7 @@ import {
   orderProblems,
   orderUpdateOf,
   orderValuesOf,
+  orderValuesOfLine,
 } from "../lib/order-body";
 import { orderLinkOptions } from "../lib/routes";
 import { LocationSelect } from "./location-select";
@@ -43,11 +50,14 @@ const codeField: Record<string, string> = {
   quantity_invalid: "quantity",
   site_unknown: "siteId",
   work_center_other_site: "siteId",
+  sales_order_line_unknown: "variantId",
 };
 
 export interface OrderFormProps {
   /** The order edited; a new draft when absent. */
   order?: ManufacturingOrder;
+  /** The sales order line a new draft is made for (M45): it prefills the form and fixes the variant. */
+  salesOrderLine?: ManufacturingSalesOrderLine;
   /** After a save of an order edited. */
   onSaved?: () => void;
   onCancel?: () => void;
@@ -62,11 +72,13 @@ export interface OrderFormProps {
  * window is shown, not edited: only planning sets it (M34). A new order opens
  * its page once it is created.
  */
-export const OrderForm = ({ order, onSaved, onCancel }: OrderFormProps) => {
+export const OrderForm = ({ order, salesOrderLine, onSaved, onCancel }: OrderFormProps) => {
   const { t, day, stamp } = useManufacturingFormat();
   const navigate = useNavigate() as (options: unknown) => Promise<void>;
   const invalidate = useInvalidateManufacturing();
-  const [values, setValues] = useState<OrderValues>(() => orderValuesOf(order));
+  const [values, setValues] = useState<OrderValues>(() =>
+    salesOrderLine && !order ? orderValuesOfLine(salesOrderLine) : orderValuesOf(order),
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string>();
   const draft = !order || order.status === "draft";
@@ -137,12 +149,23 @@ export const OrderForm = ({ order, onSaved, onCancel }: OrderFormProps) => {
 
   return (
     <Stack gap="md" data-assist="manufacturing.order.form">
+      {salesOrderLine && !order && (
+        <Alert
+          color="blue"
+          icon={<IconShoppingCart size={16} />}
+          title={t("madeForSalesOrder", { reference: salesOrderLine.reference })}
+        >
+          {salesOrderLine.orders.length > 0
+            ? t("salesOrderLineHasOrders", { numbers: salesOrderLine.orders.map((one) => one.number).join(", ") })
+            : t("madeForSalesOrderHint")}
+        </Alert>
+      )}
       <SimpleGrid cols={{ base: 1, sm: 2 }}>
         <VariantPicker
           label={t("productVariant")}
           withAsterisk
           onlyWithBom
-          disabled={Boolean(order)}
+          disabled={Boolean(order) || values.salesOrderLineId !== null}
           value={values.variant}
           onChange={(next) => setValues((current) => ({ ...current, variant: next, bomId: null, siteId: null }))}
           error={errors.variantId}

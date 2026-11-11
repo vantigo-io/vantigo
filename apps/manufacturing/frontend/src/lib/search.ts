@@ -143,3 +143,13 @@ export const orderFilterOf = (search: OrdersSearch): OrderFilter => ({
   sort: search.sort,
   page: search.page,
 });
+
+export interface NewOrderSearch {
+  /** The sales order line the new order is made for (M45). */
+  salesOrderLineId?: number;
+}
+
+export const validateNewOrderSearch = (search: Record<string, unknown>): NewOrderSearch => {
+  const salesOrderLineId = positiveId(search.salesOrderLineId);
+  return salesOrderLineId ? { salesOrderLineId } : {};
+};

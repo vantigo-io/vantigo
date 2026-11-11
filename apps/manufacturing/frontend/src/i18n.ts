@@ -160,7 +160,8 @@ export const manufacturingCatalog = {
     makeDefault: "Make default",
     makeDefaultHint: "The variant's first bill of materials becomes its default anyway.",
     makeToOrder: "Make to order",
-    makeToOrderHint: "Made for each sales order rather than to stock.",
+    makeToOrderHint:
+      "Made for each sales order rather than to stock: when a sales order with this product is confirmed, a confirmed manufacturing order is made for its line, for the line's open quantity, due on its delivery date. This must be the product's default bill of materials.",
     operations: "Operations",
     noOperations: "No operations. The lead time is used instead.",
     addOperation: "Add operation",
@@ -572,6 +573,34 @@ export const manufacturingCatalog = {
     "refusal.no_capacity":
       "A work order does not fit on its work center's calendar within 365 days. Free up capacity or change the calendar.",
     "refusal.period_too_long": "A report covers at most 366 days. Choose a shorter period.",
+    event_children_created: "Sub-assembly orders created",
+    event_origin_cancelled: "Sales order cancelled",
+    "refusal.sales_order_line_unknown":
+      "The sales order line is not a goods line of an order that is not cancelled, or it is of another product.",
+    "refusal.sales_order_line_has_order":
+      "A manufacturing order is already made for this sales order line. Open it, or cancel it first.",
+    "refusal.component_unknown": "That component line is not on this order.",
+    "refusal.nothing_missing": "That component misses nothing; no sub-assembly order is needed.",
+    madeForSalesOrder: "Made for {{reference}}",
+    madeForSalesOrderHint:
+      "The product, quantity and due date come from the sales order line. When the order closes, the sales order can reserve the goods.",
+    salesOrderLineHasOrders: "Orders already made for this line: {{numbers}}.",
+    salesOrderLineNotFound: "The sales order line was not found, or it is not a goods line.",
+    originCancelled: "Sales order cancelled",
+    originCancelledTitle: "The sales order was cancelled",
+    originCancelledHint:
+      "{{reference}} was cancelled after this order was made. The order is left as it is; decide whether to finish, close or cancel it.",
+    parentOrder: "Parent order",
+    childOrders: "Sub-assembly orders",
+    createChildren: "Create sub-assembly orders",
+    childrenTitle: "Sub-assembly orders for {{number}}",
+    childrenHint:
+      "Each chosen component is made by its default bill of materials, for what is missing, as a confirmed order due when this order starts.",
+    childrenNone: "No component with a bill of materials is missing anything.",
+    childLine: "{{sku}} · {{name}}: {{missing}} missing",
+    childrenCreated_one: "{{count}} sub-assembly order created",
+    childrenCreated_other: "{{count}} sub-assembly orders created",
+    couldNotCreateChildren: "The sub-assembly orders were not created",
 
     // The production schedule and cost (delivery D, M34–M42)
     lateByDays_one: "Late by {{count}} day",
@@ -819,7 +848,8 @@ export const manufacturingCatalog = {
     makeDefault: "Gjør til standard",
     makeDefaultHint: "Variantens første stykkliste blir standard uansett.",
     makeToOrder: "Produser mot ordre",
-    makeToOrderHint: "Lages for hver salgsordre i stedet for til lager.",
+    makeToOrderHint:
+      "Lages for hver salgsordre i stedet for til lager: når en salgsordre med dette produktet bekreftes, lages en bekreftet produksjonsordre for linjen, for linjens åpne antall, med forfall på leveringsdatoen. Dette må være produktets standard stykkliste.",
     operations: "Operasjoner",
     noOperations: "Ingen operasjoner. Ledetiden brukes i stedet.",
     addOperation: "Legg til operasjon",
@@ -1229,6 +1259,34 @@ export const manufacturingCatalog = {
     "refusal.no_capacity":
       "En arbeidsordre får ikke plass i arbeidsstasjonens kalender innen 365 dager. Frigjør kapasitet eller endre kalenderen.",
     "refusal.period_too_long": "En rapport dekker høyst 366 dager. Velg en kortere periode.",
+    event_children_created: "Underordrer opprettet",
+    event_origin_cancelled: "Salgsordre kansellert",
+    "refusal.sales_order_line_unknown":
+      "Salgsordrelinjen er ikke en varelinje på en ordre som ikke er kansellert, eller den gjelder et annet produkt.",
+    "refusal.sales_order_line_has_order":
+      "Det er allerede laget en produksjonsordre for denne salgsordrelinjen. Åpne den, eller kanseller den først.",
+    "refusal.component_unknown": "Den komponentlinjen er ikke på denne ordren.",
+    "refusal.nothing_missing": "Den komponenten mangler ingenting; ingen underordre trengs.",
+    madeForSalesOrder: "Lages for {{reference}}",
+    madeForSalesOrderHint:
+      "Produktet, antallet og forfallsdatoen kommer fra salgsordrelinjen. Når ordren lukkes, kan salgsordren reservere varene.",
+    salesOrderLineHasOrders: "Ordrer som allerede er laget for denne linjen: {{numbers}}.",
+    salesOrderLineNotFound: "Fant ikke salgsordrelinjen, eller den er ikke en varelinje.",
+    originCancelled: "Salgsordre kansellert",
+    originCancelledTitle: "Salgsordren ble kansellert",
+    originCancelledHint:
+      "{{reference}} ble kansellert etter at denne ordren ble laget. Ordren står som den er; avgjør om den skal fullføres, lukkes eller kanselleres.",
+    parentOrder: "Overordnet ordre",
+    childOrders: "Underordrer",
+    createChildren: "Opprett underordrer",
+    childrenTitle: "Underordrer for {{number}}",
+    childrenHint:
+      "Hver valgte komponent lages etter sin standard stykkliste, for det som mangler, som en bekreftet ordre med forfall når denne ordren starter.",
+    childrenNone: "Ingen komponent med stykkliste mangler noe.",
+    childLine: "{{sku}} · {{name}}: {{missing}} mangler",
+    childrenCreated_one: "{{count}} underordre opprettet",
+    childrenCreated_other: "{{count}} underordrer opprettet",
+    couldNotCreateChildren: "Underordrene ble ikke opprettet",
 
     // The production schedule and cost (delivery D, M34–M42)
     lateByDays_one: "Forsinket {{count}} dag",
