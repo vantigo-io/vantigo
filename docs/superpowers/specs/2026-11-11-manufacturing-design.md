@@ -1,6 +1,7 @@
 # Manufacturing — work centers, bills of materials, manufacturing orders, the shop floor (phase 1)
 
-Revision 1, 2026-11-11. This spec builds on the research
+Revision 2, 2026-11-11, after a critic review. **§15 amends earlier decisions and wins
+where they differ**; §16 lists what changed. This spec builds on the research
 `docs/superpowers/research/2026-11-11-manufacturing-module.md` ("R"). It does not reopen
 R §8, and it does not reopen the defaults R §9 took for the readings. Decisions are
 numbered M*n*. The implementation plan is
@@ -101,8 +102,8 @@ for.
   `Variants` and `LockVariants`. It is the only cost Manufacturing reads (R §9 reading 6).
 - **M5 — A movement's source on screen.** When a movement's source module is
   `manufacturing`, the movement page links its source to `/manufacturing/orders/{id}`.
-  The link uses the order id carried on the production record's source (M22). This
-  follows the Orders link that already exists.
+  The link uses the order id carried on the movement's `source_line_id` (M2a). There
+  is no earlier link to follow: sources render as plain text today.
 
 ## 3. Decisions — delivery A, the module, work centers and BoMs
 
@@ -295,8 +296,8 @@ for.
     is the component line.
   - If the site does not have enough available, confirm still succeeds **without
     reserving the short lines**. The response and the order page name the short lines,
-    and **Reserve now** retries them later. Orders behaves the same way with *Confirm
-    without reserving*: confirming never fails for stock alone.
+    and **Reserve now** retries them later. Unlike Orders (which refuses a short
+    confirm, 409), confirming an MO never fails for stock alone (M20a).
   - A production consumes from the reservation (M2).
   - Editing a line adjusts its reservation.
   - Close and cancel release whatever remains.
@@ -749,3 +750,257 @@ All readings were defaulted (R §9). The ones whose overturn would cost the most
 
 - R §9 reading 2 (requiring Inventory);
 - R §9 reading 5 (lots in phase 2).
+
+## 15. Amendments (revision 2)
+
+These follow the critic review of revision 1. Each one names the decision it amends.
+Where an amendment and the text above differ, the amendment wins.
+
+### Delivery 0
+
+- **M2a — The site and the codes for `Produce`.**
+  - `Produce` and `ReserveForProduction` check only that the site exists
+    (`site_unknown`) and is active (`site_archived`). They never read the *fulfils
+    orders* flag, so `Issue`'s `fulfillingSite` is not reused.
+  - A non-goods produce line is refused with the contract's code, `variant_not_stocked`.
+  - Shape errors are refusals coded `quantity_invalid`, never failures. These are: no
+    lines, a quantity ≤ 0, more than three decimals, or a quantity above the column's
+    maximum.
+  - The movement records `Document` as its source.
+  - Its `source_line_id` carries the order id (`src.ID`). The movement page uses it for
+    the M5 link, and renders the link only when the host has Manufacturing enabled.
+  - §12 gains a test for `Produce` at a site that does not fulfil orders.
+- **M4a — A site's locations through the contract.**
+  - `contracts.Stock` gains `SiteLocations(ctx, siteID) ([]StockSiteLocation, error)`.
+    It returns every location of the site: id, parent, full code, kind, active and
+    root, ordered by full code.
+  - `StockSite` gains `RootLocationID`.
+  - Manufacturing defaults, validates and offers every location through these.
+
+### Delivery A
+
+- **M10a — Variants are locked.** Every BoM write, and every MO create, confirm and line
+  add, calls `ProductCatalog.LockVariants` on its own transaction first. That call
+  covers the product and every component. The goods-or-service judgement then comes
+  from what `LockVariants` answers, which keeps rule 20's holder answer true.
+- **M14a — The BoM graph is serialised.**
+  - Structural BoM writes (save, make default, archive) take
+    `pg_advisory_xact_lock(<manufacturing class>, 1)` after `LockVariants`.
+  - The cycle and depth walk also runs on make-default.
+  - Archiving the default BoM promotes the oldest other active BoM of the variant, or
+    leaves none.
+  - A new MO for a variant with no active BoM is refused with `bom_required` (400).
+  - A unique-index violation on the default is mapped to `revision_conflict` (409).
+- **M12a — Operations stay on one site.** A BoM whose operations name work centers at
+  more than one site is refused with `work_center_other_site` (400).
+- **M15a — The overview is bounded.**
+  - At most 2,000 nodes; beyond that the overview answers `bom_too_large` (400).
+  - Variants are deduplicated for the stock reads, which are batched at 1,000.
+- **M16a — What the holder answers.**
+  - The holder answers a count, because `VariantHold` carries no document list.
+  - Holding on a change to service departs from Orders' O30 on purpose: a service
+    cannot be consumed or produced.
+- **M28a — Cycles.**
+  - `cycles = ⌈(MO quantity / outputQuantity) / capacity⌉`, where
+    `minutesPerCycle` is the time for one cycle.
+  - Expected minutes = `setup + cleanup + cycles × minutesPerCycle × 100 /
+    timeEfficiency`, rounded half-up to the minute.
+  - The value is computed at the snapshot and never recomputed, since only a draft's
+    quantity may change.
+
+### Delivery B
+
+- **M17a — The MO's site and locations.**
+  - The site defaults to the BoM's work-center site.
+  - An MO whose site differs from its operations' site is refused with
+    `work_center_other_site` (400).
+  - The output location defaults to `RootLocationID` (M4a).
+  - Locations are validated against `SiteLocations` and must be active and in the
+    site (`location_unknown`, 400).
+- **M17b — Numbers.**
+  - An MO stores a `number` (integer, unique among roots) and a `suffix` (0 for a
+    root).
+  - It displays as `MO-<number>`, or `MO-<number>-<suffix>` for a backorder.
+  - A backorder of a backorder takes the next suffix of the **root**, so it shows
+    `MO-12-3`, never `MO-12-2-2`.
+- **M18a — Lowering a requirement.** Lowering `required` below `consumed + scrapped` is
+  refused with `required_below_used` (400).
+- **M20a — The two-pass reserve.**
+  - Confirm and *Reserve now* first try every line in one `ReserveForProduction` call.
+    That call is all-or-nothing.
+  - If it is refused with `insufficient_available`, they call again without the lines
+    it named. Each line is reserved all-or-nothing.
+  - The quantity reserved per line is `required − consumed − scrapped − held`, where
+    `held` is the reservation the line already has, from `ReservationsFor`.
+  - The response's `shortLines` lists each unreserved line with its missing quantity.
+  - Manufacturing keeps a `reserved` copy per component line, updated under the MO lock
+    whenever it reserves, consumes or releases.
+- **M21a — Where availability is computed.**
+  - The **order page** and the **overview card** compute availability live:
+    - from the line's `reserved` and `Stock.Available`, summed per variant across the
+      lines;
+    - a line counts as covered when `reserved + available ≥ remaining`.
+  - The **list** shows the reservation status only: *Reserved*, *Partly reserved* or
+    *Not reserved*, from the stored copies. The list can be filtered by that status.
+- **M22a — What a production counts.**
+  - The prefill base is `quantity + outputScrap`: each line's prefill is
+    `required × base / MO quantity`, rounded half-up to three decimals.
+  - The deviation check runs only on the lines sent, and only where the base is more
+    than 0. Omitted lines are not judged and consume nothing.
+  - The MO's `produced` counts only good output, never `outputScrap`.
+  - `outputScrap` is kept on the production and the MO, and is shown on cost.
+  - The components consumed per location are taken from the line's `fromLocationId`,
+    else the MO's component location. Failing both, they are split: the primary
+    location first, then the other locations holding stock, by full code.
+    `insufficient_stock` is refused only when the site's total falls short.
+  - A production is refused on an MO that is not `confirmed` or `in_progress`
+    (`order_not_open`, 409).
+  - A `clientRequestId` reused with a different body is refused with
+    `client_request_reused` (409). A replay answers 200 with the first production; a
+    first post answers 201.
+- **M23a — Cost at close.** In B, close fixes only the quantities and the release. D
+  adds the actual cost. B snapshots `order_components.standard_cost` at confirm so that
+  D can compute it.
+- **M26a — Lock order.** This is the canonical order for every MO, work-order and
+  time-log write:
+  1. `LockVariants`, on the MO's product and its components, taken from a plain read;
+  2. the MO `FOR UPDATE`;
+  3. a re-read of the component variants, retrying from step 1 if the set grew;
+  4. the work orders, in id order;
+  5. the work center: `FOR SHARE` for a start, `FOR UPDATE` for a block;
+  6. the time logs, in id order;
+  7. the ledger.
+
+  A shop-floor action that starts from a work order first reads that work order's MO
+  id, then follows the order above.
+
+### Delivery C
+
+- **M29a — The time-log rules, settled.**
+  - **Start** on a work order the caller already runs is a no-op that answers 200.
+  - The unique-index race (two starts by one user) is mapped to `log_conflict` (409).
+  - Starting a `pending` work order without `force` is refused with
+    `work_order_pending` (409).
+  - **Block** ends the productive logs at *now* and opens one downtime log per operator
+    from *now*, plus the center-level log. A work order with only downtime logs is
+    `paused`, not `in_progress`.
+  - **Pause** and **finish** during a block end the caller's downtime logs.
+  - **Unblock** ends the rest.
+  - **Cancel** and **close** end every open log of the MO at *now*.
+  - Corrections:
+    - after the MO is closed they are refused (`order_closed`, 409);
+    - a correction overlapping the user's other logs is refused (`log_overlaps`, 400).
+- **M27a — What C snapshots.** C snapshots the work center's capacity, efficiency and
+  both rates on each work order, so that D's estimate has them.
+
+### Delivery D
+
+- **M35a — Planning, one reading.**
+  - The requested start is a stored column, `requested_start`, on the MO. It can be set
+    by hand. When it is empty, it defaults to `dueDate − ⌈Σ expected minutes / 450⌉
+    business days − 1 business day`, clamped to today. 450 minutes is a 7.5-hour day,
+    used for this estimate only.
+  - Free time is computed from `work_order_slots`, never from
+    `plannedStart … plannedFinish`.
+  - A work order is cut into pieces that fill the open intervals in order, **around**
+    other bookings.
+  - An `in_progress` work order plans only its remaining minutes: expected less the
+    productive minutes logged, at least 0, starting from now. A `done` work order is
+    never planned.
+  - The locks are `pg_advisory_xact_lock(<manufacturing class>, workCenterID)`, one for
+    each center the operation touches, in id order, before any row lock. Plan, plan
+    all, reschedule and unplan all take them.
+  - *Plan all* takes the advisory locks of every center at the site first, then the MO
+    rows in id order. Only then does it plan in priority order, in memory.
+
+### Delivery E
+
+- **M44a — MTO leaves the handler (rule 23).**
+  - The `manufacturing.mto` handler only inserts a row into
+    `manufacturing.mto_requests` (order id, event id, unique by order) on its own schema.
+  - A lease worker, `manufacturing.mto-worker`, does the rest:
+    1. it reads `SalesOrderLines` on the pool;
+    2. per order it opens its own transaction: `LockVariants`, then create and confirm
+       the MO, then `ReserveForProduction`;
+    3. it marks the request done.
+  - The MO's site comes from the BoM's work centers.
+  - A line on an order with no site still gets an MO. When the BoM has no operations
+    and the order has no site, the line is skipped, and the request records the reason.
+  - A quantity raised after confirm (`SalesOrderChanged`) is not followed in phase 1.
+    The order page's production status shows the gap.
+- **M44b — Backorders keep their origin.** The unique index is
+  `(origin_line_id) WHERE origin_kind = 'sales_order' AND backorder_of_id IS NULL AND
+  status <> 'cancelled'`. A backorder carries the same origin, and
+  `ForOrderLines` returns the whole chain.
+- **M43a — `SalesOrderLines` is consumer-gated** (rule 12).
+  - The provider does no authorisation; a worker calls it with no principal.
+  - It carries no customer name, only `CustomerID`.
+  - Manufacturing shows the order number. It shows the customer's name only to a
+    caller who also holds `orders:access`, read through `contracts.CustomerDirectory`.
+- **M46a — `Production` is provider-gated** (rule 12). The provider checks
+  `manufacturing:access` from `ctx` and answers empty without it. Orders checks
+  nothing itself.
+- **M48a — Reserving for the order leaves the handler.**
+  - `orders.mto-reserve` only marks the order line *produced, ready to reserve*. The
+    flag is a column on Orders' own line.
+  - The order page then offers **Reserve now** on that line, which is Orders' existing
+    action.
+  - A reserve can only succeed when the MO's site is the order's site. Otherwise a
+    transfer is needed, and the page says so.
+
+### Rounding and codes
+
+- **Rounding.**
+  - Quantities are rounded half-up to three decimals, except M18's ceiling.
+  - Amounts are computed exactly and rounded half-up to two decimals, in NOK, once:
+    at the snapshot or at display.
+  - Percentages are rounded half-up to one decimal.
+- **The reference page carries the error table:** each code, its status and its rule.
+  Codes not named elsewhere:
+
+  | Code | Status |
+  | --- | --- |
+  | `bom_cycle`, `bom_too_deep`, `bom_too_large`, `bom_required` | 400 |
+  | `variant_not_goods`, `work_center_other_site`, `location_unknown`, `required_below_used`, `log_overlaps` | 400 |
+  | `work_center_in_use`, `work_center_has_open_work`, `order_has_production`, `order_not_open` | 409 |
+  | `consumption_differs`, `quantity_short`, `client_request_reused` | 409 |
+  | `work_center_blocked`, `work_order_pending`, `log_conflict` | 409 |
+  | `log_locked`, `order_closed`, `no_capacity`, `revision_conflict` | 409 |
+  | Inventory refusals, passed through (`insufficient_stock`, `insufficient_available`, `site_archived`) | 409 |
+
+- **Erasure.** Rule 19 is amended in `module-boundaries.md` to name Manufacturing's time
+  logs, productions and events beside Inventory's ledger. A time log's free-text `note`
+  is blanked by Manufacturing's `PersonalData` erase.
+
+## 16. Revision log
+
+**Revision 2, 2026-11-11.** A critic review found 25 points.
+
+- **Critical**, now fixed:
+  - the handlers breaking rule 23 (M44a, M48a);
+  - `Produce` refusing at a plant site (M2a).
+- **Major:**
+  - the backorder index (M44b);
+  - one site per MO (M12a, M17a);
+  - the permission classes (M43a, M46a);
+  - locking the variants (M10a);
+  - the lock order (M26a);
+  - the advisory locks (M35a);
+  - the BoM graph (M14a);
+  - site locations (M4a);
+  - the M5 link;
+  - the Orders precedent and the two-pass reserve (M20a);
+  - the overview bound (M15a);
+  - production arithmetic (M22a);
+  - availability on the list (M21a);
+  - the time-log rules (M29a);
+  - codes and rounding;
+  - planning (M35a).
+- **Minor:**
+  - cycles (M28a);
+  - scoping (M23a, M27a);
+  - the refusal codes (M2a);
+  - the holder (M16a);
+  - erasure;
+  - numbering (M17b);
+  - the MTO edge cases (M44a).
