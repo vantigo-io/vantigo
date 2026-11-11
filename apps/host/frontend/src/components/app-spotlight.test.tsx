@@ -424,6 +424,38 @@ describe("AppSpotlight navigation authorization", () => {
     }
   });
 
+  // Open the production schedule (manufacturing design M36) and Manufacturing
+  // reports (M42) need only the module and manufacturing:access.
+  it("opens the production schedule and the reports with manufacturing:access and the module", async () => {
+    for (const [label, path] of [
+      ["Open the production schedule", "/manufacturing/schedule"],
+      ["Manufacturing reports", "/manufacturing/reports"],
+    ]) {
+      const onNavigate = vi.fn();
+      renderSpotlight(["manufacturing:access"], false, false, onNavigate, ["manufacturing"]);
+      fireEvent.click(await waitFor(() => screen.getByText(label, { exact: true })));
+      expect(onNavigate).toHaveBeenCalledTimes(1);
+      expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: path }));
+      cleanup();
+      spotlight.close();
+      navigateMock.mockClear();
+    }
+  });
+
+  it("hides the production schedule and the reports without the app's key or when the module is off", async () => {
+    for (const [permissions, modules] of [
+      [["manufacturing:costs-view"], ["manufacturing"]],
+      [["manufacturing:access"], ["customers"]],
+    ] as [string[], ModuleKey[]][]) {
+      renderSpotlight([...permissions, "customers:create"], false, false, undefined, [...modules, "customers"]);
+      await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+      expect(screen.queryByText("Open the production schedule", { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByText("Manufacturing reports", { exact: true })).not.toBeInTheDocument();
+      cleanup();
+      spotlight.close();
+    }
+  });
+
   // Start count (inventory design §7, B) opens the counts with the start form
   // open; it needs counts-manage beside both views.
   it("opens the counts with the start form from Start count for counts-manage and both views", async () => {

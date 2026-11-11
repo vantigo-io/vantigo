@@ -14,6 +14,7 @@ import {
   IconCalendar,
   IconCalendarEvent,
   IconCalendarStats,
+  IconCalendarTime,
   IconCalendarUser,
   IconCashBanknote,
   IconCategory,
@@ -258,13 +259,13 @@ const inventoryNavPresentation: Record<InventoryNavItem["key"], Pick<NavItem, "l
  * The host's half of a Manufacturing sidebar entry, as Inventory's above:
  * where each destination is and which permission offers it are the
  * package's (`manufacturingNavItems`, manufacturing design M7); the label and
- * the icon are the host's. The schedule joins as delivery D adds it to the
- * package.
+ * the icon are the host's.
  */
 const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   overview: { label: "navigation.manufacturingOverview", icon: IconBuildingFactory2 },
   orders: { label: "navigation.manufacturingOrders", icon: IconClipboardList },
   shopFloor: { label: "navigation.manufacturingShopFloor", icon: IconHammer },
+  schedule: { label: "navigation.manufacturingSchedule", icon: IconCalendarTime },
   boms: { label: "navigation.manufacturingBoms", icon: IconListDetails },
   workCenters: { label: "navigation.manufacturingWorkCenters", icon: IconTool },
 };

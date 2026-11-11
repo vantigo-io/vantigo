@@ -77,6 +77,8 @@ import { Route as InvoicesSettingsRouteImport } from './routes/invoices/settings
 import { Route as KnowledgeIndexRouteImport } from './routes/knowledge/index'
 import { Route as KnowledgeTrashRouteImport } from './routes/knowledge/trash'
 import { Route as ManufacturingIndexRouteImport } from './routes/manufacturing/index'
+import { Route as ManufacturingReportsRouteImport } from './routes/manufacturing/reports'
+import { Route as ManufacturingScheduleRouteImport } from './routes/manufacturing/schedule'
 import { Route as OrdersIndexRouteImport } from './routes/orders/index'
 import { Route as OrdersAnalysisRouteImport } from './routes/orders/analysis'
 import { Route as OrdersSettingsRouteImport } from './routes/orders/settings'
@@ -552,6 +554,16 @@ const KnowledgeTrashRoute = KnowledgeTrashRouteImport.update({
 const ManufacturingIndexRoute = ManufacturingIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => ManufacturingRoute,
+} as any)
+const ManufacturingReportsRoute = ManufacturingReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => ManufacturingRoute,
+} as any)
+const ManufacturingScheduleRoute = ManufacturingScheduleRouteImport.update({
+  id: '/schedule',
+  path: '/schedule',
   getParentRoute: () => ManufacturingRoute,
 } as any)
 const OrdersIndexRoute = OrdersIndexRouteImport.update({
@@ -1333,6 +1345,8 @@ export interface FileRoutesByFullPath {
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/knowledge/trash': typeof KnowledgeTrashRoute
+  '/manufacturing/reports': typeof ManufacturingReportsRoute
+  '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1516,6 +1530,8 @@ export interface FileRoutesByTo {
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/knowledge/trash': typeof KnowledgeTrashRoute
+  '/manufacturing/reports': typeof ManufacturingReportsRoute
+  '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1719,6 +1735,8 @@ export interface FileRoutesById {
   '/invoices/quick': typeof InvoicesQuickRoute
   '/invoices/settings': typeof InvoicesSettingsRoute
   '/knowledge/trash': typeof KnowledgeTrashRoute
+  '/manufacturing/reports': typeof ManufacturingReportsRoute
+  '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1926,6 +1944,8 @@ export interface FileRouteTypes {
     | '/invoices/quick'
     | '/invoices/settings'
     | '/knowledge/trash'
+    | '/manufacturing/reports'
+    | '/manufacturing/schedule'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -2109,6 +2129,8 @@ export interface FileRouteTypes {
     | '/invoices/quick'
     | '/invoices/settings'
     | '/knowledge/trash'
+    | '/manufacturing/reports'
+    | '/manufacturing/schedule'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -2311,6 +2333,8 @@ export interface FileRouteTypes {
     | '/invoices/quick'
     | '/invoices/settings'
     | '/knowledge/trash'
+    | '/manufacturing/reports'
+    | '/manufacturing/schedule'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -2973,6 +2997,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/manufacturing/'
       preLoaderRoute: typeof ManufacturingIndexRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/reports': {
+      id: '/manufacturing/reports'
+      path: '/reports'
+      fullPath: '/manufacturing/reports'
+      preLoaderRoute: typeof ManufacturingReportsRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/schedule': {
+      id: '/manufacturing/schedule'
+      path: '/schedule'
+      fullPath: '/manufacturing/schedule'
+      preLoaderRoute: typeof ManufacturingScheduleRouteImport
       parentRoute: typeof ManufacturingRoute
     }
     '/orders/': {
@@ -4203,6 +4241,8 @@ const KnowledgeRouteWithChildren = KnowledgeRoute._addFileChildren(
 )
 
 interface ManufacturingRouteChildren {
+  ManufacturingReportsRoute: typeof ManufacturingReportsRoute
+  ManufacturingScheduleRoute: typeof ManufacturingScheduleRoute
   ManufacturingIndexRoute: typeof ManufacturingIndexRoute
   ManufacturingBomsNewRoute: typeof ManufacturingBomsNewRoute
   ManufacturingOrdersOrderIdRoute: typeof ManufacturingOrdersOrderIdRoute
@@ -4221,6 +4261,8 @@ interface ManufacturingRouteChildren {
 }
 
 const ManufacturingRouteChildren: ManufacturingRouteChildren = {
+  ManufacturingReportsRoute: ManufacturingReportsRoute,
+  ManufacturingScheduleRoute: ManufacturingScheduleRoute,
   ManufacturingIndexRoute: ManufacturingIndexRoute,
   ManufacturingBomsNewRoute: ManufacturingBomsNewRoute,
   ManufacturingOrdersOrderIdRoute: ManufacturingOrdersOrderIdRoute,
