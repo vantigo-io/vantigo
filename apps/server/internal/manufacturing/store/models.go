@@ -151,6 +151,8 @@ type ManufacturingTimeLog struct {
 	CorrectedBy        *uuid.UUID
 	CorrectedByDisplay string
 	CorrectedAt        *time.Time
+	NoteBy             *uuid.UUID
+	NoteByDisplay      string
 }
 
 type ManufacturingWorkCenter struct {

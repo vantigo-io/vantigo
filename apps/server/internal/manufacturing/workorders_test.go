@@ -701,3 +701,126 @@ func TestWorkCenter_BlockBesideStartsOnPoolOfFour(t *testing.T) {
 		t.Error("a user has more than one open log")
 	}
 }
+
+// TestWorkOrder_FinishReadiesOnlyTheNextInSequence is M27 after a forced
+// start: finishing the first work order leaves the second running and the
+// third pending; the third is readied once every work order before it is
+// done.
+func TestWorkOrder_FinishReadiesOnlyTheNextInSequence(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	f := newFloor(t, h, c)
+	in := bomInput(varBike, "1", line(varWheel, "2"))
+	in.Operations = []gen.ManufacturingBomOperationInput{
+		operation("a", 10, f.saw.Id, "5"), operation("b", 20, f.paint.Id, "2.5"), operation("c", 30, f.saw.Id, "1"),
+	}
+	b := createBom(t, c, in)
+	draft := orderInput(varBike, "1")
+	draft.BomId = &b.Id
+	o := confirmOrder(t, c, createOrder(t, c, draft)).Order
+	wos := workOrdersOf(t, c, o.Id)
+	if len(wos) != 3 {
+		t.Fatalf("work orders = %+v", wos)
+	}
+	op := h.SignIn(t, operator...)
+	act(t, op, wos[1].Id, "start", force)
+	act(t, c, wos[0].Id, "finish", nil)
+	got := workOrdersOf(t, c, o.Id)
+	if got[1].Status != gen.ManufacturingWorkOrderStatusInProgress || got[2].Status != gen.ManufacturingWorkOrderStatusPending {
+		t.Fatalf("after the first finish: %s, %s", got[1].Status, got[2].Status)
+	}
+	act(t, op, wos[1].Id, "finish", nil)
+	if got := workOrdersOf(t, c, o.Id); got[2].Status != gen.ManufacturingWorkOrderStatusReady {
+		t.Errorf("after the second finish the third is %s", got[2].Status)
+	}
+}
+
+// TestWorkOrder_FinishQuantityNeedsAnOpenLog is L4: a quantity sent with no
+// open log of the caller's on the work order is refused on the field, and
+// nothing changes.
+func TestWorkOrder_FinishQuantityNeedsAnOpenLog(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	newFloor(t, h, c)
+	_, wos := openOrder(t, c, "2")
+	quantity := "2"
+	p := expectRefusal(t, c.Do(http.MethodPost, workOrderPath(wos[0].Id, "finish"), gen.ManufacturingFinishInput{Quantity: &quantity}),
+		http.StatusBadRequest, "", "a quantity with no open log")
+	if p.Errors == nil || len((*p.Errors)["quantity"]) != 1 {
+		t.Errorf("errors = %+v", p.Errors)
+	}
+	if v := viewOf(t, c, wos[0].Id); v.WorkOrder.Status != gen.ManufacturingWorkOrderStatusReady {
+		t.Errorf("a refused finish left the work order %s", v.WorkOrder.Status)
+	}
+}
+
+// TestWorkOrder_FinishRefusedByTheLedger is L7: a finish whose production
+// the ledger itself refuses (insufficient_stock at the location named)
+// changes nothing — the work order stays in progress and its log open.
+func TestWorkOrder_FinishRefusedByTheLedger(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	newFloor(t, h, c)
+	o, wos := openOrder(t, c, "1")
+	act(t, c, wos[0].Id, "finish", nil)
+	op := h.SignIn(t, operator...)
+	act(t, op, wos[1].Id, "start", nil)
+	wheel := component(t, getOrder(t, c, o.Id), varWheel)
+	production := gen.ManufacturingProductionInput{ClientRequestId: "ledger-refuses", Quantity: "1",
+		Lines: []gen.ManufacturingProductionLineInput{{ComponentId: *wheel.Id, Consumed: str("2"), FromLocationId: &[]int64{locMainA2}[0]}}}
+	expectRefusal(t, op.Do(http.MethodPost, workOrderPath(wos[1].Id, "finish"), gen.ManufacturingFinishInput{Production: &production}),
+		http.StatusConflict, "insufficient_stock", "a finish the ledger refuses")
+	v := viewOf(t, c, wos[1].Id)
+	if v.WorkOrder.Status != gen.ManufacturingWorkOrderStatusInProgress || len(v.OpenLogs) != 1 {
+		t.Errorf("after the refusal the work order = %s with %d open logs", v.WorkOrder.Status, len(v.OpenLogs))
+	}
+	if got := getOrder(t, c, o.Id); got.Produced != "0" {
+		t.Errorf("produced %s", got.Produced)
+	}
+}
+
+// TestWorkCenter_ArchiveRefusesABlockedCenter is L3: a blocked work center
+// is not archived, even with no open work order.
+func TestWorkCenter_ArchiveRefusesABlockedCenter(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	wc := createWorkCenter(t, c, workCenterInput("SAW", siteMain))
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(wc.Id, "block"), gen.ManufacturingBlockInput{Reason: gen.Breakdown}), http.StatusOK, "block")
+	wc = getWorkCenter(t, c, wc.Id)
+	expectRefusal(t, c.Do(http.MethodPost, workCenterPath(wc.Id, "archive"), revisionInput(wc.Revision)),
+		http.StatusConflict, "work_center_has_open_work", "archive a blocked center")
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(wc.Id, "unblock"), nil), http.StatusOK, "unblock")
+	wc = getWorkCenter(t, c, wc.Id)
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(wc.Id, "archive"), revisionInput(wc.Revision)), http.StatusOK, "archive after the unblock")
+}
+
+// TestTimeLog_ConcurrentAdditionsDoNotOverlap is L5: two supervisors adding
+// overlapping logs for one person at once, on different orders, on a pool of
+// four: one is added, the other is log_overlaps.
+func TestTimeLog_ConcurrentAdditionsDoNotOverlap(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithPoolMaxConns(4))
+	c := h.SignIn(t, planner...)
+	newFloor(t, h, c)
+	_, first := openOrder(t, c, "1")
+	_, second := openOrder(t, c, "1")
+	_, person := h.SignInUser(t, operator...)
+	one, two := h.SignIn(t, planner...), h.SignIn(t, planner...)
+	for round := range 6 {
+		start := h.Now().Add(-time.Duration(round+1) * 24 * time.Hour)
+		in := gen.ManufacturingTimeLogInput{UserId: person, StartedAt: start, EndedAt: start.Add(time.Hour), Note: "Forgot"}
+		var wg sync.WaitGroup
+		statuses := make([]int, 2)
+		wg.Go(func() { statuses[0] = one.Do(http.MethodPost, workOrderPath(first[0].Id, "time-logs"), in).Status })
+		wg.Go(func() { statuses[1] = two.Do(http.MethodPost, workOrderPath(second[0].Id, "time-logs"), in).Status })
+		wg.Wait()
+		if (statuses[0] == http.StatusCreated) == (statuses[1] == http.StatusCreated) ||
+			(statuses[0] != http.StatusBadRequest && statuses[1] != http.StatusBadRequest) {
+			t.Fatalf("round %d answered %v, want one 201 and one 400", round, statuses)
+		}
+	}
+}

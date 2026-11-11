@@ -66,9 +66,10 @@ func (q *Queries) CancelOpenWorkOrders(ctx context.Context, orderID int64) ([]Ma
 const correctTimeLog = `-- name: CorrectTimeLog :one
 UPDATE manufacturing.time_logs
 SET started_at = $1, ended_at = $2, quantity = $3, note = $4,
+    note_by = $5, note_by_display = $6,
     corrected_by = $5, corrected_by_display = $6, corrected_at = $7::timestamptz
 WHERE id = $8
-RETURNING id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at
+RETURNING id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display
 `
 
 type CorrectTimeLogParams struct {
@@ -83,7 +84,8 @@ type CorrectTimeLogParams struct {
 }
 
 // CorrectTimeLog is a supervisor's correction (M29): the times, the
-// quantity and the note, with who and when.
+// quantity and the note, with who and when; the note is now the
+// supervisor's words (note_by).
 func (q *Queries) CorrectTimeLog(ctx context.Context, arg CorrectTimeLogParams) (ManufacturingTimeLog, error) {
 	row := q.db.QueryRow(ctx, correctTimeLog,
 		arg.StartedAt,
@@ -112,6 +114,8 @@ func (q *Queries) CorrectTimeLog(ctx context.Context, arg CorrectTimeLogParams) 
 		&i.CorrectedBy,
 		&i.CorrectedByDisplay,
 		&i.CorrectedAt,
+		&i.NoteBy,
+		&i.NoteByDisplay,
 	)
 	return i, err
 }
@@ -189,7 +193,7 @@ func (q *Queries) FinishWorkOrder(ctx context.Context, arg FinishWorkOrderParams
 }
 
 const getTimeLog = `-- name: GetTimeLog :one
-SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at FROM manufacturing.time_logs WHERE id = $1
+SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display FROM manufacturing.time_logs WHERE id = $1
 `
 
 func (q *Queries) GetTimeLog(ctx context.Context, id int64) (ManufacturingTimeLog, error) {
@@ -211,6 +215,8 @@ func (q *Queries) GetTimeLog(ctx context.Context, id int64) (ManufacturingTimeLo
 		&i.CorrectedBy,
 		&i.CorrectedByDisplay,
 		&i.CorrectedAt,
+		&i.NoteBy,
+		&i.NoteByDisplay,
 	)
 	return i, err
 }
@@ -281,11 +287,11 @@ func (q *Queries) GetWorkOrder(ctx context.Context, id int64) (ManufacturingWork
 
 const insertTimeLog = `-- name: InsertTimeLog :one
 INSERT INTO manufacturing.time_logs (
-    work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced,
-    corrected_by, corrected_by_display, corrected_at)
+    work_order_id, work_center_id, user_id, user_display, kind, reason, note, note_by, note_by_display, started_at, ended_at,
+    quantity, forced, corrected_by, corrected_by_display, corrected_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-        $12, $13, $14)
-RETURNING id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at
+        $12, $13, $14, $15, $16)
+RETURNING id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display
 `
 
 type InsertTimeLogParams struct {
@@ -296,6 +302,8 @@ type InsertTimeLogParams struct {
 	Kind               string
 	Reason             *string
 	Note               string
+	NoteBy             *uuid.UUID
+	NoteByDisplay      string
 	StartedAt          time.Time
 	EndedAt            *time.Time
 	Quantity           pgtype.Numeric
@@ -314,6 +322,8 @@ func (q *Queries) InsertTimeLog(ctx context.Context, arg InsertTimeLogParams) (M
 		arg.Kind,
 		arg.Reason,
 		arg.Note,
+		arg.NoteBy,
+		arg.NoteByDisplay,
 		arg.StartedAt,
 		arg.EndedAt,
 		arg.Quantity,
@@ -339,6 +349,8 @@ func (q *Queries) InsertTimeLog(ctx context.Context, arg InsertTimeLogParams) (M
 		&i.CorrectedBy,
 		&i.CorrectedByDisplay,
 		&i.CorrectedAt,
+		&i.NoteBy,
+		&i.NoteByDisplay,
 	)
 	return i, err
 }
@@ -456,7 +468,7 @@ func (q *Queries) LastWorkOrderOfOrders(ctx context.Context, orderIds []int64) (
 }
 
 const lockTimeLogs = `-- name: LockTimeLogs :many
-SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at FROM manufacturing.time_logs WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display FROM manufacturing.time_logs WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
 `
 
 // LockTimeLogs is step 6 of the lock order (M26a): the time logs, in id
@@ -486,10 +498,55 @@ func (q *Queries) LockTimeLogs(ctx context.Context, ids []int64) ([]Manufacturin
 			&i.CorrectedBy,
 			&i.CorrectedByDisplay,
 			&i.CorrectedAt,
+			&i.NoteBy,
+			&i.NoteByDisplay,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockUserLogs = `-- name: LockUserLogs :exec
+SELECT pg_advisory_xact_lock(19784, hashtext($1::uuid::text))
+`
+
+// LockUserLogs serialises the corrections and additions of one user's time
+// logs (M29a): a transaction-scoped advisory lock of class 19784 (the class
+// after the schedule's 19783) and the hash of the user's id, taken last,
+// after the time logs, before UserLogOverlaps — so two supervisors adding
+// overlapping logs for the same person at once on different orders do not
+// both pass the check.
+func (q *Queries) LockUserLogs(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockUserLogs, userID)
+	return err
+}
+
+const lockWorkCentersForShare = `-- name: LockWorkCentersForShare :many
+SELECT id FROM manufacturing.work_centers WHERE id = ANY($1::bigint[]) ORDER BY id FOR SHARE
+`
+
+// LockWorkCentersForShare is step 5 of the lock order for a confirm's
+// snapshot (M26a): its work centers FOR SHARE in id order, after the work
+// orders are written, so an archive — which takes the row FOR UPDATE and
+// counts the open work orders — waits for the confirm and sees them.
+func (q *Queries) LockWorkCentersForShare(ctx context.Context, ids []int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, lockWorkCentersForShare, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -546,7 +603,7 @@ func (q *Queries) LockWorkOrders(ctx context.Context, ids []int64) ([]Manufactur
 }
 
 const logsOfWorkOrders = `-- name: LogsOfWorkOrders :many
-SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at FROM manufacturing.time_logs WHERE work_order_id = ANY($1::bigint[]) ORDER BY started_at, id
+SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display FROM manufacturing.time_logs WHERE work_order_id = ANY($1::bigint[]) ORDER BY started_at, id
 `
 
 func (q *Queries) LogsOfWorkOrders(ctx context.Context, workOrderIds []int64) ([]ManufacturingTimeLog, error) {
@@ -574,6 +631,8 @@ func (q *Queries) LogsOfWorkOrders(ctx context.Context, workOrderIds []int64) ([
 			&i.CorrectedBy,
 			&i.CorrectedByDisplay,
 			&i.CorrectedAt,
+			&i.NoteBy,
+			&i.NoteByDisplay,
 		); err != nil {
 			return nil, err
 		}
@@ -586,7 +645,7 @@ func (q *Queries) LogsOfWorkOrders(ctx context.Context, workOrderIds []int64) ([
 }
 
 const openLogOfUser = `-- name: OpenLogOfUser :one
-SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at FROM manufacturing.time_logs WHERE user_id = $1 AND ended_at IS NULL
+SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display FROM manufacturing.time_logs WHERE user_id = $1 AND ended_at IS NULL
 `
 
 // OpenLogOfUser is the user's one open log, wherever it is (M29).
@@ -609,12 +668,14 @@ func (q *Queries) OpenLogOfUser(ctx context.Context, userID *uuid.UUID) (Manufac
 		&i.CorrectedBy,
 		&i.CorrectedByDisplay,
 		&i.CorrectedAt,
+		&i.NoteBy,
+		&i.NoteByDisplay,
 	)
 	return i, err
 }
 
 const openLogsAtWorkCenter = `-- name: OpenLogsAtWorkCenter :many
-SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at FROM manufacturing.time_logs WHERE work_center_id = $1 AND ended_at IS NULL ORDER BY id
+SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display FROM manufacturing.time_logs WHERE work_center_id = $1 AND ended_at IS NULL ORDER BY id
 `
 
 func (q *Queries) OpenLogsAtWorkCenter(ctx context.Context, workCenterID int64) ([]ManufacturingTimeLog, error) {
@@ -642,6 +703,8 @@ func (q *Queries) OpenLogsAtWorkCenter(ctx context.Context, workCenterID int64) 
 			&i.CorrectedBy,
 			&i.CorrectedByDisplay,
 			&i.CorrectedAt,
+			&i.NoteBy,
+			&i.NoteByDisplay,
 		); err != nil {
 			return nil, err
 		}
@@ -654,7 +717,7 @@ func (q *Queries) OpenLogsAtWorkCenter(ctx context.Context, workCenterID int64) 
 }
 
 const openLogsOfOrder = `-- name: OpenLogsOfOrder :many
-SELECT l.id, l.work_order_id, l.work_center_id, l.user_id, l.user_display, l.kind, l.reason, l.note, l.started_at, l.ended_at, l.quantity, l.forced, l.corrected_by, l.corrected_by_display, l.corrected_at FROM manufacturing.time_logs l JOIN manufacturing.work_orders w ON w.id = l.work_order_id
+SELECT l.id, l.work_order_id, l.work_center_id, l.user_id, l.user_display, l.kind, l.reason, l.note, l.started_at, l.ended_at, l.quantity, l.forced, l.corrected_by, l.corrected_by_display, l.corrected_at, l.note_by, l.note_by_display FROM manufacturing.time_logs l JOIN manufacturing.work_orders w ON w.id = l.work_order_id
 WHERE w.order_id = $1 AND l.ended_at IS NULL
 ORDER BY l.id
 `
@@ -684,6 +747,8 @@ func (q *Queries) OpenLogsOfOrder(ctx context.Context, orderID int64) ([]Manufac
 			&i.CorrectedBy,
 			&i.CorrectedByDisplay,
 			&i.CorrectedAt,
+			&i.NoteBy,
+			&i.NoteByDisplay,
 		); err != nil {
 			return nil, err
 		}
@@ -696,7 +761,7 @@ func (q *Queries) OpenLogsOfOrder(ctx context.Context, orderID int64) ([]Manufac
 }
 
 const openLogsOfWorkOrders = `-- name: OpenLogsOfWorkOrders :many
-SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at FROM manufacturing.time_logs
+SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display FROM manufacturing.time_logs
 WHERE work_order_id = ANY($1::bigint[]) AND ended_at IS NULL
 ORDER BY id
 `
@@ -726,6 +791,8 @@ func (q *Queries) OpenLogsOfWorkOrders(ctx context.Context, workOrderIds []int64
 			&i.CorrectedBy,
 			&i.CorrectedByDisplay,
 			&i.CorrectedAt,
+			&i.NoteBy,
+			&i.NoteByDisplay,
 		); err != nil {
 			return nil, err
 		}
@@ -738,23 +805,20 @@ func (q *Queries) OpenLogsOfWorkOrders(ctx context.Context, workOrderIds []int64
 }
 
 const readyNextWorkOrder = `-- name: ReadyNextWorkOrder :many
-UPDATE manufacturing.work_orders SET status = 'ready', revision = revision + 1
-WHERE id = (SELECT n.id FROM manufacturing.work_orders n
-            WHERE n.order_id = $1 AND n.status = 'pending' AND (n.sequence, n.id) > ($2::int, $3::bigint)
-            ORDER BY n.sequence, n.id LIMIT 1)
+UPDATE manufacturing.work_orders w SET status = 'ready', revision = w.revision + 1
+WHERE w.id = (SELECT n.id FROM manufacturing.work_orders n
+              WHERE n.order_id = $1 AND n.status NOT IN ('done', 'cancelled')
+              ORDER BY n.sequence, n.id LIMIT 1)
+  AND w.status = 'pending'
 RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision
 `
 
-type ReadyNextWorkOrderParams struct {
-	OrderID  int64
-	Sequence int32
-	ID       int64
-}
-
-// ReadyNextWorkOrder readies the first pending work order after the one
-// that finished, by sequence (M27).
-func (q *Queries) ReadyNextWorkOrder(ctx context.Context, arg ReadyNextWorkOrderParams) ([]ManufacturingWorkOrder, error) {
-	rows, err := q.db.Query(ctx, readyNextWorkOrder, arg.OrderID, arg.Sequence, arg.ID)
+// ReadyNextWorkOrder readies the order's next work order once one finishes
+// (M27): the first by sequence that is neither done nor cancelled, only when
+// it is pending — so every one before it is done or cancelled. One started
+// out of sequence is left as it is, and the ones after it wait for it.
+func (q *Queries) ReadyNextWorkOrder(ctx context.Context, orderID int64) ([]ManufacturingWorkOrder, error) {
+	rows, err := q.db.Query(ctx, readyNextWorkOrder, orderID)
 	if err != nil {
 		return nil, err
 	}
