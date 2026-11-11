@@ -311,6 +311,9 @@ export const manufacturingCatalog = {
     shortLinesHint:
       "The site did not have enough available of these components when the order was reserved. Reserve again when stock has come in.",
     shortLine: "{{sku}}: {{missing}} missing",
+    variantDiscontinuedTitle: "A discontinued product",
+    variantDiscontinuedHint:
+      "The product or one of its components is discontinued in Products. The order may still be made, using up what is left; check that this is what you want.",
     produced: "Produced",
     overrunValue: "{{quantity}} more than ordered",
     outputScrapValue: "{{quantity}} discarded",
@@ -735,6 +738,9 @@ export const manufacturingCatalog = {
     shortLinesHint:
       "Lagerstedet hadde ikke nok tilgjengelig av disse komponentene da ordren ble reservert. Reserver igjen når varene har kommet inn.",
     shortLine: "{{sku}}: {{missing}} mangler",
+    variantDiscontinuedTitle: "Et utgått produkt",
+    variantDiscontinuedHint:
+      "Produktet eller en av komponentene er utgått i Produkter. Ordren kan likevel lages og bruke opp det som er igjen; sjekk at det er det du vil.",
     produced: "Produsert",
     overrunValue: "{{quantity}} mer enn bestilt",
     outputScrapValue: "{{quantity}} kassert",

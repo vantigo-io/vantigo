@@ -322,6 +322,11 @@ export const OrderPage = () => {
         <ContentSkeleton rows={4} />
       ) : (
         <>
+          {data.warnings.includes("variant_discontinued") && (
+            <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("variantDiscontinuedTitle")}>
+              {t("variantDiscontinuedHint")}
+            </Alert>
+          )}
           {short.length > 0 && (
             <Alert
               color="yellow"

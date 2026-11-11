@@ -1500,6 +1500,7 @@ describe("the dashboard's manufacturing card", () => {
           ordersToStartToday: 0,
           ordersInProgress: 0,
           ordersLate: 0,
+          today: "2026-11-11",
         },
         formatNumber,
         t,

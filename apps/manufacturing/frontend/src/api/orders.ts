@@ -203,15 +203,18 @@ export const cancelOrder = (orderId: number, revision: number) =>
 /**
  * Listens to the orders' live topics (M25) and refetches on an event: the
  * list's keyless `manufacturing.orders`, or one order's
- * `manufacturing.order:<id>` with its timeline. Returns whether the topic is
- * live: the screens poll only while it is not.
+ * `manufacturing.order:<id>` with its timeline. The list's event also reads
+ * the overview's counts again, which the orders make. Returns whether the
+ * topic is live: the screens poll only while it is not.
  */
 export function useOrdersLive(orderId?: number): boolean {
   const client = useQueryClient();
   return useLiveTopic(orderId === undefined ? "manufacturing.orders" : `manufacturing.order:${orderId}`, () => {
-    void client.invalidateQueries({
-      queryKey:
-        orderId === undefined ? [MANUFACTURING_QUERY_KEY, "orders"] : [MANUFACTURING_QUERY_KEY, "order", orderId],
-    });
+    if (orderId !== undefined) {
+      void client.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY, "order", orderId] });
+      return;
+    }
+    void client.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY, "orders"] });
+    void client.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY, "stats"] });
   });
 }

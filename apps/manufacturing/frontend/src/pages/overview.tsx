@@ -7,7 +7,7 @@ import { manufacturingMetaQueryOptions } from "../api/meta";
 import { ordersQueryOptions, useOrdersLive } from "../api/orders";
 import { manufacturingStatsQueryOptions } from "../api/stats";
 import { canManageBoms, canManageOrders } from "../lib/capabilities";
-import { orderStatusColor, useManufacturingFormat } from "../lib/format";
+import { endOfWeek, orderStatusColor, useManufacturingFormat } from "../lib/format";
 import {
   BOMS_ROUTE_PATH,
   NEW_BOM_ROUTE_PATH,
@@ -20,18 +20,13 @@ import {
 /** How many of the late and due-this-week orders the overview lists. */
 const DUE_LIST_SIZE = 20;
 
-/** The last day of the viewer's week, Sunday, as a calendar date (`2026-11-15`). */
-const endOfWeek = (today: Date = new Date()): string => {
-  const sunday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + ((7 - today.getDay()) % 7));
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${sunday.getFullYear()}-${pad(sunday.getMonth() + 1)}-${pad(sunday.getDate())}`;
-};
-
 /** The open orders that are late or due by the end of this week, by due date (M7). */
-const DueThisWeek = () => {
+const DueThisWeek = ({ today }: { today: string }) => {
   const { t, quantity, day } = useManufacturingFormat();
   const live = useOrdersLive();
-  const orders = useQuery(ordersQueryOptions({ dueTo: endOfWeek(), sort: "dueDate", pageSize: DUE_LIST_SIZE }, live));
+  const orders = useQuery(
+    ordersQueryOptions({ dueTo: endOfWeek(today), sort: "dueDate", pageSize: DUE_LIST_SIZE }, live),
+  );
   return (
     <PageSection title={t("dueThisWeek")}>
       <div data-assist="manufacturing.overview.due">
@@ -96,8 +91,9 @@ const DueThisWeek = () => {
 /**
  * The app's home (M7): the manufacturing orders' cards — to start today, in
  * progress, late — beside the work centers' and the BoMs', all from
- * `GET /stats`, and below them the orders late or due this week. With no
- * BoM yet the page points to Bills of materials instead.
+ * `GET /stats`, read again on the orders' live event, and below them the
+ * orders late or due this week of the business calendar. With no BoM yet the
+ * page points to Bills of materials instead.
  */
 export const ManufacturingOverviewPage = () => {
   const { t } = useManufacturingFormat();
@@ -167,7 +163,7 @@ export const ManufacturingOverviewPage = () => {
             />
             <KpiCard label={t("activeBoms")} value={stats.data.activeBoms} href={BOMS_ROUTE_PATH} />
           </SimpleGrid>
-          {stats.data.activeBoms > 0 && <DueThisWeek />}
+          {stats.data.activeBoms > 0 && <DueThisWeek today={stats.data.today} />}
           {stats.data.activeBoms === 0 && (
             <EmptyState
               icon={IconListDetails}
