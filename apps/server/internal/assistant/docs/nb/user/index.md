@@ -89,7 +89,7 @@ kortere enn din:
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
 | [Lager](/nb/user/inventory/) | Oversikt, Overføringer, Bevegelser, Varemottak, Varetellinger, Lav beholdning, Importer inngående beholdning (og påfylling) |
 | [Ordre](/nb/user/orders/) | Tilbud, Ordre, Leveranser, Abonnement, Tilbudsmaler, Salgsanalyse, Ordreinnstillinger |
-| [Produksjon](/nb/user/manufacturing/) | Oversikt, Produksjonsordrer, Verksted, Stykklister, Arbeidsstasjoner |
+| [Produksjon](/nb/user/manufacturing/) | Oversikt, Produksjonsordrer, Verksted, Produksjonsplan, Stykklister, Arbeidsstasjoner |
 | [Kunnskap](/nb/user/knowledge/) | Artikler, Papirkurv |
 | [Energi](/nb/user/energy/) | Målepunkter |
 | [Microsoft Entra ID](/nb/user/entra/) | Microsoft Entra ID (tilkoblingens status og de seks stegene i oppsettet), for `entra:manage` |
@@ -110,7 +110,7 @@ ordre](/nb/user/invoices/#fakturere-ordre)).
 Søkefeltet i toppfeltet (eller hurtigtasten som vises i det) åpner et søk som hopper
 rett til et hvilket som helst skjermbilde du har tilgang til, så du trenger sjelden
 app-velgeren for et skjermbilde du vet navnet på. Det tilbyr også noen hurtighandlinger, som **Nytt tilbud**
-i Ordre for dem som kan lage tilbud, **Ny produksjonsordre** i Produksjon for dem som kan opprette ordrer, og **Åpne verkstedet** for dem som arbeider der.
+i Ordre for dem som kan lage tilbud, **Ny produksjonsordre** i Produksjon for dem som kan opprette ordrer, **Åpne verkstedet** for dem som arbeider der, og **Åpne produksjonsplanen** og **Produksjonsrapporter** for alle som bruker Produksjon.
 
 ## Kontoen din
 
