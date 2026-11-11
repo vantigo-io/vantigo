@@ -84,10 +84,10 @@ job, and then starts Vantigo:
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
 The Customers, Products, Energy, Communications, Projects, Time, Expenses, Invoices,
-Staff, Planning, Inventory, Orders, Knowledge, Calendar, Microsoft Entra ID, Google Workspace and Assistant modules are enabled by default
+Staff, Planning, Inventory, Orders, Manufacturing, Knowledge, Calendar, Microsoft Entra ID, Google Workspace and Assistant modules are enabled by default
 (`MODULES` in `vantigo.env`). They share one PostgreSQL database named `vantigo`, with
 independent `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `knowledge`, `calendar`, `entra`, `google` and `assistant`
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `manufacturing`, `knowledge`, `calendar`, `entra`, `google` and `assistant`
 schemas and migration histories.
 
 ## What the stack contains
@@ -189,10 +189,10 @@ and the recovery.
   deployment enables. `identity` is always mounted and never listed. Unset enables
   every module the binary can mount: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `inventory`, `orders`, `knowledge`, `calendar`, `entra`, `google` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
+  `inventory`, `orders`, `manufacturing`, `knowledge`, `calendar`, `entra`, `google` and `assistant`. `energy`, `communications`, `projects` and `invoices` each
   require `customers`, `time` requires `projects`, `planning` requires both `projects`
   and `staff`, `inventory` requires `products`, `orders` requires `products`, `customers`
-  and `invoices`, and `entra` and `google` each require `staff`; `projects` also
+  and `invoices`, `manufacturing` requires `products` and `inventory`, and `entra` and `google` each require `staff`; `projects` also
   uses `products` when it is enabled and answers 409 on its billing-line endpoints when
   it is not; `expenses` requires nothing and reads `projects` only when it happens to be
   enabled; `staff`, `calendar` and `assistant` require nothing (the assistant is of
@@ -269,9 +269,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
 ```
 
 ## Background workers and scaling
@@ -527,7 +527,7 @@ must be registered on the Internal web client
 prefixes remain `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` and `/api/v1/assistant`.
 
 For example, with nginx:
 
@@ -1052,6 +1052,19 @@ prunes old versions and sweeps erased users, and it adds two live topics
 [live updates](#live-updates-and-your-proxy) a proxy must let through. The Assistant gains
 Knowledge as a source. Rolling the migration back drops the schema with every article and
 its history. See [Knowledge](/en/user/knowledge/).
+
+**The release with Manufacturing.** It brings `00156_manufacturing_baseline.sql`, the
+`manufacturing` schema with no work centers and no bills of materials. An installation
+that leaves `MODULES` unset gets the module, its **Manufacturing** tile for everyone given
+`manufacturing:access`, on upgrade; one that lists `MODULES` gets it once `manufacturing`
+is added beside `products` and `inventory`, which it requires — `manufacturing` without
+either refuses to start, naming it. The five permissions are new and held by no custom
+role until an Owner adds them. A least-privilege role needs the `manufacturing` schema
+granted ([Database roles](#database-roles)). It starts no worker and needs no setting.
+From this release Products also refuses to delete a variant, or to make its product a
+service, while an active bill of materials names it. Rolling the migration back drops the
+schema with every work center and bill of materials. See
+[Manufacturing](/en/admin/manufacturing/).
 
 **The release with Staff competence.** It brings `00066_staff_competence.sql`: the
 competence catalogue — five categories and fifteen Norwegian certificates seeded — and

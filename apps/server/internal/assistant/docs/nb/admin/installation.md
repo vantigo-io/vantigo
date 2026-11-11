@@ -84,10 +84,10 @@ engangsjobb, og starter deretter Vantigo:
 - **API-kontrakten** — `GET http://localhost:8080/api/openapi.json` (krever en sesjon)
 
 Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter,
-Fakturaer, Ansatte, Bemanning, Lager, Ordre, Kunnskap, Kalender, Microsoft Entra ID, Google Workspace og Assistent er aktivert som standard
+Fakturaer, Ansatte, Bemanning, Lager, Ordre, Produksjon, Kunnskap, Kalender, Microsoft Entra ID, Google Workspace og Assistent er aktivert som standard
 (`MODULES` i `vantigo.env`). De deler én PostgreSQL-database ved navn `vantigo`, med
 uavhengige skjemaer `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `knowledge`, `calendar`, `entra`, `google` og `assistant`, hver med sin egen
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `manufacturing`, `knowledge`, `calendar`, `entra`, `google` og `assistant`, hver med sin egen
 migreringshistorikk.
 
 ## Hva stacken inneholder
@@ -191,10 +191,10 @@ prosedyrene og gjenopprettingen.
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `inventory`, `orders`, `knowledge`, `calendar`, `entra`, `google` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
+  `inventory`, `orders`, `manufacturing`, `knowledge`, `calendar`, `entra`, `google` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
   `customers`, `time` krever `projects`, `planning` krever både `projects` og `staff`,
   `inventory` krever `products`, `orders` krever `products`, `customers` og `invoices`,
-  og `entra` og `google` krever hver `staff`; `projects` bruker
+  `manufacturing` krever `products` og `inventory`, og `entra` og `google` krever hver `staff`; `projects` bruker
   også `products` når den er aktivert og svarer 409 på endepunktene for
   faktureringslinjer når den ikke er det; `expenses` krever ingenting og leser
   `projects` bare når den tilfeldigvis er aktivert; `staff`, `calendar` og `assistant` krever
@@ -273,9 +273,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
 -- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
 -- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
@@ -546,7 +546,7 @@ den interne nettklienten ([Google Workspace](/nb/admin/google-workspace/#tilkobl
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` og `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` og `/api/v1/assistant`.
 
 For eksempel, med nginx:
 
@@ -1088,6 +1088,20 @@ live-emner (`knowledge.article` og `knowledge.tree`) til
 [sanntidsoppdateringene](#sanntidsoppdateringer-og-proxyen-din) en proxy må slippe gjennom.
 Assistenten får Kunnskap som kilde. Å rulle migreringen tilbake fjerner skjemaet med alle
 artikler og historikken deres. Se [Kunnskap](/nb/user/knowledge/).
+
+**Utgivelsen med Produksjon.** Den har `00156_manufacturing_baseline.sql`, skjemaet
+`manufacturing` uten arbeidsstasjoner og uten stykklister. En installasjon som lar
+`MODULES` stå usatt, får modulen, med **Produksjon**-flisen for alle som får
+`manufacturing:access`, ved oppgradering; en som lister `MODULES`, får den når
+`manufacturing` legges til ved siden av `products` og `inventory`, som den krever —
+`manufacturing` uten en av dem nekter å starte og navngir den som mangler. De fem
+rettighetene er nye og ligger hos ingen egendefinert rolle før en Owner legger dem til. En
+rolle med færrest mulige rettigheter trenger skjemaet `manufacturing`
+([Databaseroller](#databaseroller)). Den starter ingen worker og trenger ingen innstilling.
+Fra denne utgivelsen nekter Produkter også å slette en variant, eller å gjøre produktet
+til en tjeneste, mens en aktiv stykkliste navngir den. Å rulle migreringen tilbake fjerner
+skjemaet med alle arbeidsstasjoner og stykklister. Se
+[Produksjon](/nb/admin/manufacturing/).
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og

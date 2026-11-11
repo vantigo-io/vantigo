@@ -205,6 +205,101 @@
     "description": "The button above the invoice list that starts a new invoice."
   },
   {
+    "key": "manufacturing.bom-overview.cost",
+    "route": "/manufacturing/boms/{bomId}/overview",
+    "description": "The components at standard cost, the operations' cost and their total, for someone who may see costs."
+  },
+  {
+    "key": "manufacturing.bom-overview.inputs",
+    "route": "/manufacturing/boms/{bomId}/overview",
+    "description": "The quantity to explode the bill of materials at, and the site whose available stock is shown."
+  },
+  {
+    "key": "manufacturing.bom-overview.tree",
+    "route": "/manufacturing/boms/{bomId}/overview",
+    "description": "The exploded bill of materials: each component made or bought, what is required and the operations' expected time."
+  },
+  {
+    "key": "manufacturing.bom.actions",
+    "route": "/manufacturing/boms/{bomId}",
+    "description": "The buttons at the top of a bill of materials: its overview, make it the variant's default, archive or reactivate it."
+  },
+  {
+    "key": "manufacturing.bom.header",
+    "route": "/manufacturing/boms/new",
+    "description": "The product variant the bill makes, its code, output quantity, lead time, make to order and note."
+  },
+  {
+    "key": "manufacturing.bom.lines",
+    "route": "/manufacturing/boms/new",
+    "description": "The components the product is made of: each one's quantity, scrap, the operation that consumes it and its order."
+  },
+  {
+    "key": "manufacturing.bom.operations",
+    "route": "/manufacturing/boms/new",
+    "description": "The operations in sequence: each one's work center, setup, minutes per cycle and instructions for the shop floor."
+  },
+  {
+    "key": "manufacturing.bom.save",
+    "route": "/manufacturing/boms/new",
+    "description": "The button that saves the bill of materials with its operations and components."
+  },
+  {
+    "key": "manufacturing.boms.list",
+    "route": "/manufacturing/boms",
+    "description": "The filters by status, code or product and variant, and the bills of materials they find."
+  },
+  {
+    "key": "manufacturing.boms.new",
+    "route": "/manufacturing/boms",
+    "description": "The button on the Bills of materials page that opens the editor for a new one."
+  },
+  {
+    "key": "manufacturing.overview.cards",
+    "route": "/manufacturing",
+    "description": "The cards at the top of the Manufacturing overview: active work centers, blocked work centers and active bills of materials."
+  },
+  {
+    "key": "manufacturing.overview.new-bom",
+    "route": "/manufacturing",
+    "description": "The button on the Manufacturing overview that opens the editor for a new bill of materials."
+  },
+  {
+    "key": "manufacturing.work-center.actions",
+    "route": "/manufacturing/work-centers/{workCenterId}",
+    "description": "The buttons at the top of a work center that archive, reactivate or delete it."
+  },
+  {
+    "key": "manufacturing.work-center.closures",
+    "route": "/manufacturing/work-centers/{workCenterId}",
+    "description": "The days the work center is closed, such as an industrial holiday, and the fields to add one."
+  },
+  {
+    "key": "manufacturing.work-center.form",
+    "route": "/manufacturing/work-centers/new",
+    "description": "The work center's code, name, site, capacity, efficiency, setup and cleanup minutes and, for someone who may see costs, its cost rates."
+  },
+  {
+    "key": "manufacturing.work-center.pattern",
+    "route": "/manufacturing/work-centers/new",
+    "description": "The hours the work center is open each weekday: at most two intervals a day, in 15-minute steps."
+  },
+  {
+    "key": "manufacturing.work-center.save",
+    "route": "/manufacturing/work-centers/new",
+    "description": "The button that saves the work center."
+  },
+  {
+    "key": "manufacturing.work-centers.list",
+    "route": "/manufacturing/work-centers",
+    "description": "The filters by status, site and code or name, and the work centers they find."
+  },
+  {
+    "key": "manufacturing.work-centers.new",
+    "route": "/manufacturing/work-centers",
+    "description": "The button on the Work centers page that opens the form for a new work center."
+  },
+  {
     "key": "orders.analysis.csv",
     "route": "/orders/analysis",
     "description": "Downloads the open view's table as a CSV file."
