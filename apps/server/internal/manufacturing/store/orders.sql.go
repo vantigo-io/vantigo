@@ -332,13 +332,13 @@ const insertOrder = `-- name: InsertOrder :one
 INSERT INTO manufacturing.orders (
     number, suffix, variant_id, bom_id, quantity, site_id, component_location_id, output_location_id,
     due_date, planned_start, planned_finish, requested_start, priority, responsible_user_id, note,
-    origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id,
+    origin_kind, origin_order_id, origin_line_id, origin_reference, origin_cancelled, parent_order_id, backorder_of_id,
     created_at, updated_at)
 VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
     $9, $10, $11, $12, $13, $14, $15,
-    $16, $17, $18, $19, $20, $21,
-    $22, $22)
+    $16, $17, $18, $19, $20, $21, $22,
+    $23, $23)
 RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled
 `
 
@@ -362,6 +362,7 @@ type InsertOrderParams struct {
 	OriginOrderID       *int64
 	OriginLineID        *int64
 	OriginReference     *string
+	OriginCancelled     bool
 	ParentOrderID       *int64
 	BackorderOfID       *int64
 	Now                 time.Time
@@ -388,6 +389,7 @@ func (q *Queries) InsertOrder(ctx context.Context, arg InsertOrderParams) (Manuf
 		arg.OriginOrderID,
 		arg.OriginLineID,
 		arg.OriginReference,
+		arg.OriginCancelled,
 		arg.ParentOrderID,
 		arg.BackorderOfID,
 		arg.Now,

@@ -67,6 +67,12 @@ type SalesOrderLine struct {
 //   - ForOrderLines answers every manufacturing order naming one of the lines
 //     as its sales-order origin, backorders included (M44b), cancelled ones
 //     left out, by line then number.
+//   - NotMade answers why make-to-order made no order for a line of one
+//     sales order (M44a): the lines its request left out, and the whole
+//     order when the request failed for good. It leaves out the lines that
+//     were never Manufacturing's to make — no bill of materials, or one not
+//     made to order — and those that already have an order; a request still
+//     pending, finished with nothing left out, or cancelled answers none.
 //   - It refuses more than MaxProductionLines ids as a failure.
 type Production interface {
 	// ForOrderLines is the manufacturing orders made for the lines.
@@ -74,6 +80,24 @@ type Production interface {
 	// HasBOM is, for each variant asked, whether it has a default active bill
 	// of materials; a variant with none is absent or false.
 	HasBOM(ctx context.Context, variantIDs []int32) (map[int32]bool, error)
+	// NotMade is why make-to-order made no manufacturing order for lines of
+	// the sales order salesOrderID.
+	NotMade(ctx context.Context, salesOrderID int64) ([]LineNotMade, error)
+}
+
+// NotMadeFailed is LineNotMade's Code when the sales order's request failed
+// for good, after its last attempt: no line of it was judged.
+const NotMadeFailed = "failed"
+
+// LineNotMade is why make-to-order made no manufacturing order for a sales
+// order line. LineID is 0 when it is the whole sales order's — Code is then
+// NotMadeFailed. Code is otherwise the reason the line was left out
+// (no_site, nothing_open, variant_not_goods, or the code of the rule the
+// order's creation or confirmation refused), and Detail says it in English.
+type LineNotMade struct {
+	LineID int64
+	Code   string
+	Detail string
 }
 
 // LineProduction is one manufacturing order made for a sales order line.

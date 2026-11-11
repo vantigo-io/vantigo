@@ -18,12 +18,12 @@ FROM manufacturing.orders WHERE number = @number;
 INSERT INTO manufacturing.orders (
     number, suffix, variant_id, bom_id, quantity, site_id, component_location_id, output_location_id,
     due_date, planned_start, planned_finish, requested_start, priority, responsible_user_id, note,
-    origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id,
+    origin_kind, origin_order_id, origin_line_id, origin_reference, origin_cancelled, parent_order_id, backorder_of_id,
     created_at, updated_at)
 VALUES (
     @number, @suffix, @variant_id, @bom_id, @quantity, @site_id, @component_location_id, @output_location_id,
     @due_date, @planned_start, @planned_finish, @requested_start, @priority, @responsible_user_id, @note,
-    @origin_kind, @origin_order_id, @origin_line_id, @origin_reference, @parent_order_id, @backorder_of_id,
+    @origin_kind, @origin_order_id, @origin_line_id, @origin_reference, @origin_cancelled, @parent_order_id, @backorder_of_id,
     @now, @now)
 RETURNING *;
 

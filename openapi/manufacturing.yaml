@@ -1203,12 +1203,17 @@ components:
                     type: string
                 status:
                     $ref: '#/components/schemas/ManufacturingOrderStatus'
+                variantId:
+                    description: 'The variant it makes: a sub-assembly order''s component (M47).'
+                    format: int32
+                    type: integer
             required:
                 - id
                 - number
                 - status
                 - quantity
                 - produced
+                - variantId
             type: object
         ManufacturingOrderOriginInfo:
             additionalProperties: false
@@ -4298,7 +4303,7 @@ paths:
             x-vantigo-access: permission:manufacturing:access+manufacturing:orders-manage
     /api/v1/manufacturing/orders/{id}/children:
         post:
-            description: 'Create sub-assembly orders (M47): one confirmed child order per chosen component line whose variant has a default active BoM and whose missing quantity (M21a) is more than 0, for that quantity, with origin parent and due the parent''s planned start, else its requested start (M37). Each child reserves as a confirm does; a short line never refuses it.'
+            description: 'Create sub-assembly orders (M47): one confirmed child order per chosen component line whose variant has a default active BoM and whose missing quantity (M21a), less what the order''s open sub-assembly orders of the variant still make, is more than 0, for that quantity, with origin parent and due the parent''s planned start, else its requested start (M37). Each child reserves as a confirm does; a short line never refuses it.'
             operationId: createManufacturingChildOrders
             parameters:
                 - in: path
@@ -4325,7 +4330,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/ManufacturingProblem'
-                    description: Bad Request — component_unknown (not a line of the order), bom_required (its variant has no default active BoM), nothing_missing (its missing quantity is 0); work_center_other_site, site_unknown.
+                    description: Bad Request — component_unknown (not a line of the order), bom_required (its variant has no default active BoM), nothing_missing (its missing quantity, less what the open sub-assembly orders still make, is 0); work_center_other_site, site_unknown.
                 "401":
                     content:
                         application/json:

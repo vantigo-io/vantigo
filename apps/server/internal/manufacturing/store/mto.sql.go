@@ -8,7 +8,32 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const cancelMtoRequest = `-- name: CancelMtoRequest :exec
+INSERT INTO manufacturing.mto_requests (sales_order_id, event_id, status, next_attempt_at, created_at, done_at)
+VALUES ($1, $2, 'cancelled', $3, $3, $3)
+ON CONFLICT (sales_order_id) DO UPDATE
+SET status = 'cancelled', done_at = EXCLUDED.done_at, last_error = NULL
+WHERE manufacturing.mto_requests.status = 'pending'
+`
+
+type CancelMtoRequestParams struct {
+	SalesOrderID int64
+	EventID      int64
+	Now          time.Time
+}
+
+// CancelMtoRequest marks a cancelled sales order's pending request
+// cancelled, or inserts it cancelled when the cancel is handled before the
+// confirm (M44): the worker, under the same lease, then makes nothing for it.
+// A request already finished is left as it is.
+func (q *Queries) CancelMtoRequest(ctx context.Context, arg CancelMtoRequestParams) error {
+	_, err := q.db.Exec(ctx, cancelMtoRequest, arg.SalesOrderID, arg.EventID, arg.Now)
+	return err
+}
 
 const defaultBomsOfVariants = `-- name: DefaultBomsOfVariants :many
 SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at FROM manufacturing.boms
@@ -150,10 +175,17 @@ func (q *Queries) FinishMtoRequest(ctx context.Context, arg FinishMtoRequestPara
 }
 
 const flagOriginCancelled = `-- name: FlagOriginCancelled :many
-UPDATE manufacturing.orders
+WITH flagged AS (
+    SELECT f.id FROM manufacturing.orders f
+    WHERE f.origin_kind = 'sales_order' AND f.origin_order_id = $2 AND NOT f.origin_cancelled
+    ORDER BY f.id
+    FOR UPDATE
+)
+UPDATE manufacturing.orders o
 SET origin_cancelled = true, updated_at = $1
-WHERE origin_kind = 'sales_order' AND origin_order_id = $2 AND NOT origin_cancelled
-RETURNING id
+FROM flagged
+WHERE o.id = flagged.id
+RETURNING o.id
 `
 
 type FlagOriginCancelledParams struct {
@@ -163,7 +195,9 @@ type FlagOriginCancelledParams struct {
 
 // FlagOriginCancelled marks the orders made for a cancelled sales order
 // (M44), leaving them as they are for a person to decide; the ones already
-// flagged are left alone. It answers the orders it flagged.
+// flagged are left alone. The rows are locked in id order first, as every
+// write of several orders locks them (M26a). It answers the orders it
+// flagged.
 func (q *Queries) FlagOriginCancelled(ctx context.Context, arg FlagOriginCancelledParams) ([]int64, error) {
 	rows, err := q.db.Query(ctx, flagOriginCancelled, arg.Now, arg.SalesOrderID)
 	if err != nil {
@@ -267,6 +301,67 @@ SELECT pg_advisory_xact_lock($1::bigint)
 func (q *Queries) LockMto(ctx context.Context, leaseKey int64) error {
 	_, err := q.db.Exec(ctx, lockMto, leaseKey)
 	return err
+}
+
+const mtoRequestOfSalesOrder = `-- name: MtoRequestOfSalesOrder :one
+SELECT id, sales_order_id, event_id, status, reasons, attempts, last_error, next_attempt_at, created_at, done_at FROM manufacturing.mto_requests WHERE sales_order_id = $1
+`
+
+// MtoRequestOfSalesOrder is the one request of a sales order, for what
+// contracts.Production says of the lines it made no order for (M46a).
+func (q *Queries) MtoRequestOfSalesOrder(ctx context.Context, salesOrderID int64) (ManufacturingMtoRequest, error) {
+	row := q.db.QueryRow(ctx, mtoRequestOfSalesOrder, salesOrderID)
+	var i ManufacturingMtoRequest
+	err := row.Scan(
+		&i.ID,
+		&i.SalesOrderID,
+		&i.EventID,
+		&i.Status,
+		&i.Reasons,
+		&i.Attempts,
+		&i.LastError,
+		&i.NextAttemptAt,
+		&i.CreatedAt,
+		&i.DoneAt,
+	)
+	return i, err
+}
+
+const openChildrenOfOrder = `-- name: OpenChildrenOfOrder :many
+SELECT variant_id, COALESCE(SUM(GREATEST(quantity - produced, 0)), 0)::numeric(14, 3) AS remaining
+FROM manufacturing.orders
+WHERE parent_order_id = $1 AND status IN ('draft', 'confirmed', 'in_progress')
+GROUP BY variant_id
+ORDER BY variant_id
+`
+
+type OpenChildrenOfOrderRow struct {
+	VariantID int32
+	Remaining pgtype.Numeric
+}
+
+// OpenChildrenOfOrder is, per variant, what the parent's sub-assembly orders
+// not done or cancelled have left to make (quantity less produced, at least
+// 0): a second sub-assembly order is made only for what they do not cover
+// (M47).
+func (q *Queries) OpenChildrenOfOrder(ctx context.Context, parentOrderID *int64) ([]OpenChildrenOfOrderRow, error) {
+	rows, err := q.db.Query(ctx, openChildrenOfOrder, parentOrderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OpenChildrenOfOrderRow
+	for rows.Next() {
+		var i OpenChildrenOfOrderRow
+		if err := rows.Scan(&i.VariantID, &i.Remaining); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const ordersForLines = `-- name: OrdersForLines :many

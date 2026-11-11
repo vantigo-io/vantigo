@@ -13,7 +13,11 @@
 -- contracts.SalesOrderLines, creates and confirms the orders, and marks it
 -- done — some line made — or skipped — none made —, with each line it left
 -- out and why in reasons ([{lineId, code, detail}]). A failure counts an
--- attempt and waits until next_attempt_at; the eighth leaves it failed.
+-- attempt and waits until next_attempt_at; the eighth leaves it failed. The
+-- manufacturing.mto-cancelled handler marks a pending request cancelled, or
+-- inserts it cancelled when the sales order's cancel is handled first, under
+-- the make-to-order lease, so the worker never makes orders for a sales order
+-- whose cancel it has not seen.
 CREATE TABLE manufacturing.mto_requests (
     id              bigint      GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     sales_order_id  bigint      NOT NULL,
@@ -25,7 +29,7 @@ CREATE TABLE manufacturing.mto_requests (
     next_attempt_at timestamptz NOT NULL,
     created_at      timestamptz NOT NULL,
     done_at         timestamptz,
-    CONSTRAINT ck_mto_requests_status CHECK (status IN ('pending', 'done', 'skipped', 'failed')),
+    CONSTRAINT ck_mto_requests_status CHECK (status IN ('pending', 'done', 'skipped', 'failed', 'cancelled')),
     CONSTRAINT ck_mto_requests_attempts CHECK (attempts >= 0)
 );
 CREATE UNIQUE INDEX ux_mto_requests_sales_order ON manufacturing.mto_requests (sales_order_id);

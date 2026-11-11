@@ -3,6 +3,7 @@ package manufacturing_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"sync"
@@ -26,6 +27,16 @@ import (
 type fakeSalesOrderLines struct {
 	mu    sync.Mutex
 	lines []contracts.SalesOrderLine
+	// onOrderLines, when set, runs once in the next OrderLines, before it
+	// answers: the worker's window between its read and its transaction.
+	onOrderLines func()
+}
+
+// beforeAnswer installs the OrderLines hook, run once.
+func (f *fakeSalesOrderLines) beforeAnswer(hook func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onOrderLines = hook
 }
 
 func (f *fakeSalesOrderLines) seed(lines ...contracts.SalesOrderLine) {
@@ -50,6 +61,13 @@ func (f *fakeSalesOrderLines) Lines(ctx context.Context, ids []int64) ([]contrac
 func (f *fakeSalesOrderLines) OrderLines(ctx context.Context, id int64) ([]contracts.SalesOrderLine, error) {
 	lockedContractCalls.note(ctx, "fake SalesOrderLines.OrderLines")
 	f.mu.Lock()
+	hook := f.onOrderLines
+	f.onOrderLines = nil
+	f.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []contracts.SalesOrderLine
 	for _, l := range f.lines {
@@ -58,6 +76,16 @@ func (f *fakeSalesOrderLines) OrderLines(ctx context.Context, id int64) ([]contr
 		}
 	}
 	return out, nil
+}
+
+// failingDirectory fails every customer read.
+type failingDirectory struct {
+	contracts.CustomerDirectory
+}
+
+func (failingDirectory) Customer(ctx context.Context, _ int32) (*contracts.CustomerEntry, error) {
+	lockedContractCalls.note(ctx, "fake Directory.Customer")
+	return nil, errors.New("the directory is down")
 }
 
 // customerDirectory names the customers of the sales orders.
@@ -474,8 +502,27 @@ func TestMto_ChildOrders(t *testing.T) {
 		child.DueDate == nil || !child.DueDate.Equal(time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("child = %+v", child)
 	}
+	if out.Order.Children[0].VariantId != varFrame {
+		t.Errorf("the child's link = %+v, want the frame's variant", out.Order.Children[0])
+	}
 	expectRefusal(t, c.Do(http.MethodPost, orderPath(parent.Id, "children"),
 		gen.ManufacturingChildrenInput{Revision: parent.Revision, ComponentIds: []int64{*frame.Id}}), http.StatusConflict, "revision_conflict", "a stale revision")
+	// The open child makes the 2 the frame line still misses: a second one
+	// is refused, never made for the same shortage (M47).
+	parent = getOrder(t, c, parent.Id)
+	if component(t, parent, varFrame).Missing != "2" {
+		t.Fatalf("the frame line misses %s, want 2 still", component(t, parent, varFrame).Missing)
+	}
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(parent.Id, "children"),
+		gen.ManufacturingChildrenInput{Revision: parent.Revision, ComponentIds: []int64{*frame.Id}}), http.StatusBadRequest, "nothing_missing", "what an open child makes")
+	// A shortage that grows past the child is made for the rest only.
+	h.stock.setAvailable(siteMain, varFrame, "0")
+	res = c.Do(http.MethodPost, orderPath(parent.Id, "children"), gen.ManufacturingChildrenInput{Revision: parent.Revision, ComponentIds: []int64{*frame.Id}})
+	mustStatus(t, res, http.StatusOK, "the rest of a grown shortage")
+	res.JSON(&out)
+	if len(out.Children) != 1 || out.Children[0].Quantity != "1" || len(out.Order.Children) != 2 {
+		t.Fatalf("second child = %+v / %+v", out.Children, out.Order.Children)
+	}
 	h.stock.setAvailable(siteMain, varFrame, "10")
 	parent = getOrder(t, c, parent.Id)
 	expectRefusal(t, c.Do(http.MethodPost, orderPath(parent.Id, "children"),
@@ -515,5 +562,200 @@ func TestMto_ProductionGated(t *testing.T) {
 	_, otherID := h.SignInUser(t, "orders:access")
 	if got, err := p.ForOrderLines(contracts.AsUser(context.Background(), otherID), []int64{1201}); err != nil || len(got) != 0 {
 		t.Errorf("to a caller without manufacturing:access = %+v, %v", got, err)
+	}
+}
+
+// TestMto_CancelBetweenReadAndTransaction is M44's race: a sales order
+// cancelled after the worker read its lines and before its transaction is
+// made nothing for — the cancel's handler marks the request cancelled under
+// the make-to-order lease, and the worker reads it again under the same
+// lease. A cancel handled before its confirm leaves the request cancelled
+// too, and the worker never picks it up.
+func TestMto_CancelBetweenReadAndTransaction(t *testing.T) {
+	t.Parallel()
+	h, lines := mtoHarness(t)
+	c := h.SignIn(t, planner...)
+	mtoBikeBom(t, c)
+	lines.seed(
+		contracts.SalesOrderLine{LineID: 1401, OrderID: 95, OrderNumber: 11, VariantID: varBike, Quantity: "1", OrderStatus: "confirmed"},
+		contracts.SalesOrderLine{LineID: 1402, OrderID: 96, OrderNumber: 12, VariantID: varBike, Quantity: "1", OrderStatus: "confirmed"},
+	)
+	publish(t, h, "orders", confirmed(95))
+	lines.beforeAnswer(func() {
+		publish(t, h, "orders", contracts.SalesOrderCancelled{OrderID: 95, Number: 11, CancelledAt: time.Now()})
+	})
+	runMto(t, h)
+	if r := requestOf(t, h, 95); r.status != "cancelled" {
+		t.Errorf("request = %+v, want cancelled", r)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.orders WHERE origin_order_id = 95`); n != 0 {
+		t.Errorf("orders made for a cancelled sales order = %d", n)
+	}
+
+	publish(t, h, "orders", contracts.SalesOrderCancelled{OrderID: 96, Number: 12, CancelledAt: time.Now()})
+	publish(t, h, "orders", confirmed(96))
+	if n := runMto(t, h); n != 0 {
+		t.Errorf("the worker finished %d requests, want none", n)
+	}
+	if r := requestOf(t, h, 96); r.status != "cancelled" {
+		t.Errorf("a cancel before its confirm = %+v, want cancelled", r)
+	}
+}
+
+// TestMto_TwoWorkersOnOneRequest is the lease's other half: a worker that
+// judged a request another replica's worker finished meanwhile makes
+// nothing and fails nothing (errMtoTaken).
+func TestMto_TwoWorkersOnOneRequest(t *testing.T) {
+	t.Parallel()
+	h, lines := mtoHarness(t)
+	c := h.SignIn(t, planner...)
+	mtoBikeBom(t, c)
+	lines.seed(contracts.SalesOrderLine{LineID: 1501, OrderID: 97, OrderNumber: 13, VariantID: varBike, Quantity: "1", OrderStatus: "confirmed"})
+	publish(t, h, "orders", confirmed(97))
+	lines.beforeAnswer(func() {
+		if n := runMto(t, h); n != 1 {
+			t.Errorf("the other worker finished %d", n)
+		}
+	})
+	if n := runMto(t, h); n != 1 {
+		t.Errorf("the first worker finished %d, want its one request counted", n)
+	}
+	if r := requestOf(t, h, 97); r.status != "done" {
+		t.Errorf("request = %+v", r)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.orders WHERE origin_line_id = 1501`); n != 1 {
+		t.Errorf("orders made for the line = %d, want 1", n)
+	}
+	if n := h.Count(t, `SELECT attempts FROM manufacturing.mto_requests WHERE sales_order_id = 97`); n != 0 {
+		t.Errorf("attempts = %d, want none failed", n)
+	}
+}
+
+// TestMto_LineRefusedInsideTheTransaction is L1 of the review: an order made
+// for a line by hand while the worker's transaction runs — the new-order form
+// takes no lease — is refused by the one-live-order index on the line's
+// savepoint, and the line is left out with the form's code, while the other
+// line's order is made.
+func TestMto_LineRefusedInsideTheTransaction(t *testing.T) {
+	t.Parallel()
+	h, lines := mtoHarness(t)
+	c := h.SignIn(t, planner...)
+	b := mtoBikeBom(t, c)
+	lines.seed(
+		contracts.SalesOrderLine{LineID: 1601, OrderID: 98, OrderNumber: 14, VariantID: varBike, Quantity: "1", OrderStatus: "confirmed"},
+		contracts.SalesOrderLine{LineID: 1602, OrderID: 98, OrderNumber: 14, VariantID: varBike, Quantity: "2", OrderStatus: "confirmed"},
+	)
+	publish(t, h, "orders", confirmed(98))
+	h.stock.onReserve(func() {
+		h.Exec(t, `INSERT INTO manufacturing.orders (number, variant_id, bom_id, quantity, site_id, output_location_id,
+			origin_kind, origin_order_id, origin_line_id, origin_reference, created_at, updated_at)
+			VALUES (9001, $1, $2, 2, $3, $4, 'sales_order', 98, 1602, 'SO-14', now(), now())`, varBike, b.Id, siteMain, locMainA1)
+	})
+	if n := runMto(t, h); n != 1 {
+		t.Fatalf("finished = %d", n)
+	}
+	r := requestOf(t, h, 98)
+	if r.status != "done" || r.reasons[1602] != "sales_order_line_has_order" || r.reasons[1601] != "" {
+		t.Fatalf("request = %+v", r)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.orders WHERE origin_line_id = 1601 AND status = 'confirmed'`); n != 1 {
+		t.Errorf("the other line's orders = %d, want 1", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.orders WHERE origin_line_id = 1602`); n != 1 {
+		t.Errorf("the refused line's orders = %d, want the hand-made one only", n)
+	}
+}
+
+// TestMto_BackorderKeepsTheCancelledFlag is M44 on a backorder: the
+// backorder of an order whose sales order was cancelled is flagged too.
+func TestMto_BackorderKeepsTheCancelledFlag(t *testing.T) {
+	t.Parallel()
+	h, lines := mtoHarness(t)
+	c := h.SignIn(t, planner...)
+	mtoBikeBom(t, c)
+	h.stock.put(varWheel, locMainA1, "100")
+	h.stock.put(varBolt, locMainA1, "100")
+	lines.seed(contracts.SalesOrderLine{LineID: 1701, OrderID: 99, OrderNumber: 15, VariantID: varBike, Quantity: "3", OrderStatus: "confirmed"})
+	publish(t, h, "orders", confirmed(99))
+	runMto(t, h)
+	publish(t, h, "orders", contracts.SalesOrderCancelled{OrderID: 99, Number: 15, CancelledAt: time.Now()})
+
+	var page gen.ManufacturingOrderPage
+	c.Do(http.MethodGet, ordersPath+"?origin=sales_order", nil).JSON(&page)
+	if len(page.Items) != 1 || !page.Items[0].Origin.Cancelled {
+		t.Fatalf("list = %+v", page.Items)
+	}
+	o := page.Items[0]
+	post := gen.ManufacturingProductionInput{ClientRequestId: "one", Quantity: "1", Lines: []gen.ManufacturingProductionLineInput{}}
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), post), http.StatusCreated, "produce one")
+	full := getOrder(t, c, o.Id)
+	yes := true
+	res := c.Do(http.MethodPost, orderPath(o.Id, "close"), gen.ManufacturingCloseInput{Revision: full.Revision, Backorder: &yes})
+	mustStatus(t, res, http.StatusOK, "close with a backorder")
+	var out gen.ManufacturingCloseResult
+	res.JSON(&out)
+	if out.Backorder == nil || !out.Backorder.Origin.Cancelled || out.Backorder.Origin.Kind != gen.SalesOrder {
+		t.Fatalf("backorder = %+v", out.Backorder)
+	}
+}
+
+// TestMto_NotMade is M46a's NotMade: to a caller holding manufacturing:access
+// the lines a request left out — not those never Manufacturing's to make —,
+// the whole sales order once it failed for good, and nothing to a caller
+// without the key.
+func TestMto_NotMade(t *testing.T) {
+	t.Parallel()
+	h, lines := mtoHarness(t)
+	c := h.SignIn(t, planner...)
+	in := bomInput(varFrame, "1", line(varPaint, "1"))
+	yes := true
+	in.MakeToOrder = &yes
+	createBom(t, c, in)
+	lines.seed(
+		contracts.SalesOrderLine{LineID: 1801, OrderID: 100, OrderNumber: 16, VariantID: varFrame, Quantity: "1", OrderStatus: "confirmed"},
+		contracts.SalesOrderLine{LineID: 1802, OrderID: 100, OrderNumber: 16, VariantID: varWheel, Quantity: "1", OrderStatus: "confirmed"},
+	)
+	publish(t, h, "orders", confirmed(100))
+	runMto(t, h)
+
+	p := manufacturing.Module().Production(h.Deps())
+	_, readerID := h.SignInUser(t, "manufacturing:access")
+	reader := contracts.AsUser(context.Background(), readerID)
+	got, err := p.NotMade(reader, 100)
+	if err != nil || len(got) != 1 || got[0].LineID != 1801 || got[0].Code != "no_site" || got[0].Detail == "" {
+		t.Fatalf("NotMade = %+v, %v", got, err)
+	}
+	_, otherID := h.SignInUser(t, "orders:access")
+	if got, err := p.NotMade(contracts.AsUser(context.Background(), otherID), 100); err != nil || len(got) != 0 {
+		t.Errorf("to a caller without manufacturing:access = %+v, %v", got, err)
+	}
+	if got, err := p.NotMade(reader, 4242); err != nil || len(got) != 0 {
+		t.Errorf("a sales order with no request = %+v, %v", got, err)
+	}
+	h.Exec(t, `UPDATE manufacturing.mto_requests SET status = 'failed', reasons = '[]' WHERE sales_order_id = 100`)
+	if got, err := p.NotMade(reader, 100); err != nil || len(got) != 1 || got[0].LineID != 0 || got[0].Code != contracts.NotMadeFailed {
+		t.Errorf("a failed request = %+v, %v", got, err)
+	}
+}
+
+// TestMto_CustomerNameLeftOutWhenTheDirectoryFails is L6 of the review: the
+// customer's name is a courtesy of the order's answer, and a directory that
+// fails leaves it out rather than failing the read.
+func TestMto_CustomerNameLeftOutWhenTheDirectoryFails(t *testing.T) {
+	t.Parallel()
+	h, lines := mtoHarness(t, modtest.WithDirectory(failingDirectory{}))
+	c := h.SignIn(t, planner...)
+	mtoBikeBom(t, c)
+	lines.seed(contracts.SalesOrderLine{LineID: 1901, OrderID: 101, OrderNumber: 17, CustomerID: 5, VariantID: varBike, Quantity: "1", OrderStatus: "confirmed"})
+	publish(t, h, "orders", confirmed(101))
+	runMto(t, h)
+	var page gen.ManufacturingOrderPage
+	c.Do(http.MethodGet, ordersPath+"?origin=sales_order", nil).JSON(&page)
+	if len(page.Items) != 1 {
+		t.Fatalf("list = %+v", page.Items)
+	}
+	both := h.SignIn(t, append([]string{"orders:access"}, planner...)...)
+	if o := getOrder(t, both, page.Items[0].Id); o.Origin.CustomerName != nil || o.Origin.Reference == nil || *o.Origin.Reference != "SO-17" {
+		t.Errorf("origin = %+v", o.Origin)
 	}
 }

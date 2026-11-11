@@ -144,6 +144,9 @@ func (fakeProduction) ForOrderLines(context.Context, []int64) ([]contracts.LineP
 }
 
 func (fakeProduction) HasBOM(context.Context, []int32) (map[int32]bool, error) { return nil, nil }
+func (fakeProduction) NotMade(context.Context, int64) ([]contracts.LineNotMade, error) {
+	return nil, nil
+}
 
 // The two production reads resolve from the enabled modules only: with the
 // provider of each disabled, its slot is nil (manufacturing design M43, M46).

@@ -1098,6 +1098,9 @@ type ManufacturingOrderLink struct {
 
 	// Status A manufacturing order's state (M19).
 	Status ManufacturingOrderStatus `json:"status"`
+
+	// VariantId The variant it makes: a sub-assembly order's component (M47).
+	VariantId int32 `json:"variantId"`
 }
 
 // ManufacturingOrderOriginInfo Where the order came from (M17).

@@ -71,9 +71,11 @@ const (
 
 // The request's states and the reasons a line is left out (M44, M44a).
 const (
-	mtoPending = "pending"
-	mtoDone    = "done"
-	mtoSkipped = "skipped"
+	mtoPending   = "pending"
+	mtoDone      = "done"
+	mtoSkipped   = "skipped"
+	mtoFailed    = "failed"
+	mtoCancelled = "cancelled"
 
 	reasonOrdersOff       = "orders_unavailable"
 	reasonOrderUnknown    = "order_unknown"
@@ -111,7 +113,7 @@ func eventHandlers(d module.Deps) []events.Handler {
 			Name:   mtoCancelledHandler,
 			Events: []events.EventRef{{Name: contracts.SalesOrderCancelled{}.EventName(), Version: 1}},
 			Handle: func(ctx context.Context, tx pgx.Tx, ev events.Delivered) error {
-				return flagOriginCancelled(ctx, tx, ev, clock)
+				return flagOriginCancelled(ctx, tx, ev, d, clock)
 			},
 		},
 	}
@@ -139,13 +141,28 @@ func queueMto(ctx context.Context, tx pgx.Tx, ev events.Delivered, d module.Deps
 // flagOriginCancelled flags the orders made for a cancelled sales order
 // (M44): it never cancels them, because the goods may already be half made.
 // Each flagged order's timeline says so, and its screens hear of it.
-func flagOriginCancelled(ctx context.Context, tx pgx.Tx, ev events.Delivered, clock func() time.Time) error {
+//
+// It takes the make-to-order lease first, as the worker's transaction does,
+// and with the module on marks the sales order's request cancelled — inserts
+// it cancelled when this cancel is handled before the confirm — so the
+// worker, which reads the request again under the lease, makes nothing for
+// it; orders the worker committed before are flagged here, under the lease,
+// after their commit.
+func flagOriginCancelled(ctx context.Context, tx pgx.Tx, ev events.Delivered, d module.Deps, clock func() time.Time) error {
 	var e contracts.SalesOrderCancelled
 	if err := json.Unmarshal(ev.Payload, &e); err != nil {
 		return fmt.Errorf("manufacturing: decode event %d: %w", ev.ID, err)
 	}
 	q := store.New(tx)
 	at := clock()
+	if err := q.LockMto(ctx, mtoLeaseKey); err != nil {
+		return err
+	}
+	if enabled(d) {
+		if err := q.CancelMtoRequest(ctx, store.CancelMtoRequestParams{SalesOrderID: e.OrderID, EventID: ev.ID, Now: at}); err != nil {
+			return err
+		}
+	}
 	ids, err := q.FlagOriginCancelled(ctx, store.FlagOriginCancelledParams{SalesOrderID: &e.OrderID, Now: at})
 	if err != nil {
 		return err
@@ -183,9 +200,12 @@ func (w *mtoWorker) Run(ctx context.Context) error {
 	}
 }
 
-func (w *mtoWorker) logger() *slog.Logger {
-	if w.s.deps.Logger != nil {
-		return w.s.deps.Logger
+func (w *mtoWorker) logger() *slog.Logger { return w.s.logger() }
+
+// logger is the Deps' logger, the default one when the Deps carry none.
+func (s *server) logger() *slog.Logger {
+	if s.deps.Logger != nil {
+		return s.deps.Logger
 	}
 	return slog.Default()
 }
@@ -470,6 +490,12 @@ func (s *server) makeMtoLine(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	reference := salesOrderReference(l.OrderNumber)
 	o, err := s.insertOrder(ctx, spq, p.bom.ID, l.VariantID, p.fields, originSalesOrder, &l.OrderID, &l.LineID, &reference, nil, systemActor)
 	if err != nil {
+		// An order made for the line by hand since the read under the lease
+		// (the new-order form takes no lease): ux_orders_origin_line refuses
+		// this one, and the line is left out, the savepoint rolled back.
+		if _, prob, ok := answerOf(err); ok {
+			return &mtoReason{l.LineID, deref(prob.Code), deref(prob.Detail)}, nil
+		}
 		return nil, err
 	}
 	if _, err := s.confirmOrder(ctx, sp, spq, o, locked, systemActor, notes); err != nil {
@@ -500,7 +526,8 @@ func (s *server) insertOrder(ctx context.Context, txq *store.Queries, bomID int6
 		SiteID: *v.siteID, ComponentLocationID: v.componentLocationID, OutputLocationID: *v.outputLocationID,
 		DueDate: v.dueDate, RequestedStart: v.requestedStart,
 		Priority: v.priority, ResponsibleUserID: v.responsible, Note: v.note, OriginKind: origin,
-		OriginOrderID: originOrderID, OriginLineID: originLineID, OriginReference: reference, ParentOrderID: parentID, Now: at,
+		OriginOrderID: originOrderID, OriginLineID: originLineID, OriginReference: reference, OriginCancelled: false,
+		ParentOrderID: parentID, Now: at,
 	})
 	if err != nil {
 		if isOriginTaken(err) {
@@ -578,6 +605,44 @@ func (p production) HasBOM(ctx context.Context, variantIDs []int32) (map[int32]b
 	}
 	for _, r := range rows {
 		out[r.VariantID] = true
+	}
+	return out, nil
+}
+
+// NotMade is why make-to-order made no order for lines of one sales order
+// (M44a): the lines its request left out, but those that were never this
+// module's to make — no BoM, or one not made to order — and those that have
+// an order; the whole sales order when the request failed for good. Pending,
+// cancelled and request-level skips answer none.
+func (p production) NotMade(ctx context.Context, salesOrderID int64) ([]contracts.LineNotMade, error) {
+	if !p.allowed(ctx) {
+		return nil, nil
+	}
+	r, err := store.New(p.deps.Pool).MtoRequestOfSalesOrder(ctx, salesOrderID)
+	if noRows(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("manufacturing: read sales order %d's make-to-order request: %w", salesOrderID, err)
+	}
+	switch r.Status {
+	case mtoFailed:
+		return []contracts.LineNotMade{{Code: contracts.NotMadeFailed,
+			Detail: "Make-to-order failed for the sales order after its last attempt."}}, nil
+	case mtoDone, mtoSkipped:
+	default:
+		return nil, nil
+	}
+	var reasons []mtoReason
+	if err := json.Unmarshal(r.Reasons, &reasons); err != nil {
+		return nil, fmt.Errorf("manufacturing: read request %d's reasons: %w", r.ID, err)
+	}
+	var out []contracts.LineNotMade
+	for _, x := range reasons {
+		if x.LineID == 0 || x.Code == reasonNoBom || x.Code == reasonNotMakeToOrder || x.Code == reasonHasOrder {
+			continue
+		}
+		out = append(out, contracts.LineNotMade{LineID: x.LineID, Code: x.Code, Detail: x.Detail})
 	}
 	return out, nil
 }
@@ -680,70 +745,87 @@ func childrenAnswers() answers[gen.CreateManufacturingChildOrdersResponseObject]
 }
 
 // childPlan is one sub-assembly order to make, judged before the
-// transaction.
+// transaction: missing is the component line's missing quantity (M21a), of
+// which what the parent's open sub-assembly orders still make is taken off
+// again under the parent's lock.
 type childPlan struct {
+	field       string
 	componentID int64
 	variantID   int32
 	bomID       int64
+	missing     *big.Rat
 	fields      orderFields
 }
 
 // CreateManufacturingChildOrders makes one confirmed child order per chosen
 // component line (M47): its variant's default active BoM, the line's missing
-// quantity (M21a) — more than 0, nothing_missing otherwise — origin parent,
-// at the BoM's work centers' site, else the parent's, due the parent's
-// planned start, else its requested start (M37). The parent's lock order
-// holds (M26a): LockVariants on the parent's and every child's variants, the
-// parent FOR UPDATE, then the children made and confirmed, reserving last.
+// quantity (M21a) less what the parent's open sub-assembly orders of the
+// variant still make — more than 0, nothing_missing otherwise —, origin
+// parent, at the BoM's work centers' site, else the parent's, due the
+// parent's planned start, else its requested start (M37). The parent's lock
+// order holds (M26a): LockVariants on the parent's and every child's
+// variants, the parent FOR UPDATE, then the open children read again, the
+// children made and confirmed, reserving last.
 func (s *server) CreateManufacturingChildOrders(ctx context.Context, req gen.CreateManufacturingChildOrdersRequestObject) (gen.CreateManufacturingChildOrdersResponseObject, error) {
 	in := req.Body
-	parent, err := s.orderAnswer(ctx, req.Id)
+	r, err := s.readOrder(ctx, req.Id)
 	if err != nil {
 		return answer(err, childrenAnswers())
 	}
-	if parent.Status != gen.ManufacturingOrderStatusConfirmed && parent.Status != gen.ManufacturingOrderStatusInProgress {
-		return answer(orderNotOpen(string(parent.Status)), childrenAnswers())
+	parent := r.order
+	if !isOpen(parent.Status) {
+		return answer(orderNotOpen(parent.Status), childrenAnswers())
 	}
-	if parent.Revision != in.Revision {
-		return answer(revisionConflict(orderWhat, parent.Revision, in.Revision), childrenAnswers())
+	if err := checkRevision(parent, in.Revision); err != nil {
+		return answer(err, childrenAnswers())
 	}
-	due, err := s.childDueDate(ctx, parent)
+	due, err := s.childDueDate(ctx, parent, r.workOrders)
+	if err != nil {
+		return answer(err, childrenAnswers())
+	}
+	missing, boms, err := s.childMissing(ctx, parent, r.components)
 	if err != nil {
 		return answer(err, childrenAnswers())
 	}
 	pool := store.New(s.deps.Pool)
+	open, err := openChildren(ctx, pool, parent.ID)
+	if err != nil {
+		return nil, err
+	}
 	var plans []childPlan
 	var f fieldErrors
 	for i, id := range slices.Compact(slices.Sorted(slices.Values(in.ComponentIds))) {
 		field := fmt.Sprintf("componentIds[%d]", i)
-		index := slices.IndexFunc(parent.Components, func(c gen.ManufacturingOrderComponent) bool { return c.Id != nil && *c.Id == id })
+		index := slices.IndexFunc(r.components, func(c store.ManufacturingOrderComponent) bool { return c.ID == id })
 		if index < 0 {
 			f.addCoded(field, codeComponentUnknown, "Not a component line of the order")
 			continue
 		}
-		c := parent.Components[index]
-		if c.DefaultBomId == nil {
+		c := r.components[index]
+		bomID, ok := boms[c.VariantID]
+		if !ok {
 			f.addCoded(field, codeBomRequired, "The component has no active bill of materials")
 			continue
 		}
-		missing := mustRat(c.Missing)
-		if missing.Sign() <= 0 {
-			f.addCoded(field, codeNothingMissing, "The component misses nothing")
+		short := missing[index]
+		if new(big.Rat).Sub(short, openOf(open, c.VariantID)).Sign() <= 0 {
+			f.addCoded(field, codeNothingMissing, "The component misses nothing its open sub-assembly orders do not make")
 			continue
 		}
-		v := orderFields{quantity: missing, priority: string(parent.Priority), dueDate: due}
-		operations, err := bomSite(ctx, pool, *c.DefaultBomId)
+		v := orderFields{priority: parent.Priority, dueDate: due}
+		operations, err := bomSite(ctx, pool, bomID)
 		if err != nil {
 			return nil, err
 		}
 		if operations == nil {
-			site := parent.SiteId
+			site := parent.SiteID
 			v.siteID = &site
 		}
-		if _, err := s.judgePlace(ctx, *c.DefaultBomId, &v); err != nil {
+		v.quantity = new(big.Rat).Sub(short, openOf(open, c.VariantID))
+		if _, err := s.judgePlace(ctx, bomID, &v); err != nil {
 			return answer(err, childrenAnswers())
 		}
-		plans = append(plans, childPlan{componentID: id, variantID: c.Variant.Id, bomID: *c.DefaultBomId, fields: v})
+		plans = append(plans, childPlan{field: field, componentID: id, variantID: c.VariantID, bomID: bomID, missing: short, fields: v})
 	}
 	if f.failed() {
 		return answer(refuseInvalid("The sub-assembly orders were not made", f), childrenAnswers())
@@ -772,6 +854,22 @@ func (s *server) CreateManufacturingChildOrders(ctx context.Context, req gen.Cre
 		if !isOpen(o.Status) {
 			return orderNotOpen(o.Status)
 		}
+		// The open children again, under the parent's lock every
+		// sub-assembly create takes: two creates at once never both make
+		// what the line misses.
+		open, err := openChildren(ctx, txq, o.ID)
+		if err != nil {
+			return err
+		}
+		var f fieldErrors
+		for _, p := range plans {
+			if new(big.Rat).Sub(p.missing, openOf(open, p.variantID)).Sign() <= 0 {
+				f.addCoded(p.field, codeNothingMissing, "The component misses nothing its open sub-assembly orders do not make")
+			}
+		}
+		if f.failed() {
+			return refuseInvalid("The sub-assembly orders were not made", f)
+		}
 		notes := newNotices()
 		made = made[:0]
 		for _, p := range plans {
@@ -782,7 +880,9 @@ func (s *server) CreateManufacturingChildOrders(ctx context.Context, req gen.Cre
 			if b.Status != statusActive {
 				return notActive()
 			}
-			child, err := s.insertOrder(ctx, txq, p.bomID, p.variantID, p.fields, originParent, &o.ID, nil, nil, &o.ID, who)
+			fields := p.fields
+			fields.quantity = new(big.Rat).Sub(p.missing, openOf(open, p.variantID))
+			child, err := s.insertOrder(ctx, txq, p.bomID, p.variantID, fields, originParent, &o.ID, nil, nil, &o.ID, who)
 			if err != nil {
 				return err
 			}
@@ -822,10 +922,56 @@ func (s *server) CreateManufacturingChildOrders(ctx context.Context, req gen.Cre
 	return out, nil
 }
 
+// childMissing is what each of the parent's component lines misses at the
+// parent's site (M21a), by line, and each component variant's default
+// active BoM, read before the transaction: the site's available stock
+// through contracts.Stock, the BoMs on the pool.
+func (s *server) childMissing(ctx context.Context, parent store.ManufacturingOrder, components []store.ManufacturingOrderComponent) ([]*big.Rat, map[int32]int64, error) {
+	ids := make([]int32, 0, len(components))
+	for _, c := range components {
+		ids = append(ids, c.VariantID)
+	}
+	var available map[int32]contracts.StockQuantity
+	if len(ids) > 0 {
+		site := parent.SiteID
+		var err error
+		if available, err = s.stockAvailable(ctx, slices.Compact(slices.Sorted(slices.Values(ids))), &site); err != nil {
+			return nil, nil, err
+		}
+	}
+	boms, err := s.componentBoms(ctx, components)
+	if err != nil {
+		return nil, nil, err
+	}
+	return coverageOf(components, available).missing, boms, nil
+}
+
+// openChildren is, per variant, what the parent's sub-assembly orders not
+// done or cancelled still make (M47).
+func openChildren(ctx context.Context, q *store.Queries, parentID int64) (map[int32]*big.Rat, error) {
+	rows, err := q.OpenChildrenOfOrder(ctx, &parentID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int32]*big.Rat{}
+	for _, r := range rows {
+		out[r.VariantID] = ratOrZero(r.Remaining)
+	}
+	return out, nil
+}
+
+// openOf is what open children of variant still make, 0 for none.
+func openOf(open map[int32]*big.Rat, variant int32) *big.Rat {
+	if r, ok := open[variant]; ok {
+		return r
+	}
+	return new(big.Rat)
+}
+
 // childDueDate is M37: the parent's planned start, as a day of the business
 // zone, else its requested start, else the requested start planning would
 // take.
-func (s *server) childDueDate(ctx context.Context, parent gen.ManufacturingOrder) (pgtype.Date, error) {
+func (s *server) childDueDate(ctx context.Context, parent store.ManufacturingOrder, workOrders []store.ManufacturingWorkOrder) (pgtype.Date, error) {
 	switch {
 	case parent.PlannedStart != nil:
 		zone, err := s.businessZone(ctx)
@@ -834,32 +980,39 @@ func (s *server) childDueDate(ctx context.Context, parent gen.ManufacturingOrder
 		}
 		local := parent.PlannedStart.In(zone)
 		return dateValue(time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)), nil
-	case parent.RequestedStart != nil:
-		return dateValue(parent.RequestedStart.Time), nil
-	case parent.RequestedStartDefault != nil:
-		return dateValue(parent.RequestedStartDefault.Time), nil
+	case parent.RequestedStart.Valid:
+		return parent.RequestedStart, nil
 	}
-	return pgtype.Date{}, nil
+	today, _, err := s.today(ctx)
+	if err != nil {
+		return pgtype.Date{}, err
+	}
+	return dateValue(defaultRequestedStart(dateOf(parent.DueDate), expectedOf(openWork(workOrders)), today)), nil
 }
 
 // withOrigin adds to an order's answer what its origin needs read out of
 // the module, after any transaction (M43a): the sales order's customer, to a
-// caller who also holds orders:access.
-func (s *server) withOrigin(ctx context.Context, out *gen.ManufacturingOrder) error {
+// caller who also holds orders:access. A read that fails is logged and the
+// name left out.
+func (s *server) withOrigin(ctx context.Context, out *gen.ManufacturingOrder) {
 	if out.Origin.Kind != gen.SalesOrder || out.Origin.LineId == nil || s.deps.SalesOrderLines == nil ||
 		s.deps.Directory == nil || !s.has(ctx, "orders:access") {
-		return nil
+		return
 	}
 	l, err := s.salesOrderLine(ctx, *out.Origin.LineId)
-	if err != nil || l == nil {
-		return err
+	var name string
+	if err == nil && l != nil {
+		name, err = s.customerName(ctx, l.CustomerID)
 	}
-	name, err := s.customerName(ctx, l.CustomerID)
-	if err != nil || name == "" {
-		return err
+	// The customer's name is a courtesy of the answer: a read that fails
+	// leaves it out, logged, rather than failing the order's answer.
+	if err != nil {
+		s.logger().WarnContext(ctx, "manufacturing: the sales order's customer could not be read", "order", out.Id, "error", err.Error())
+		return
 	}
-	out.Origin.CustomerName = &name
-	return nil
+	if name != "" {
+		out.Origin.CustomerName = &name
+	}
 }
 
 // deref is *p, "" for nil.
