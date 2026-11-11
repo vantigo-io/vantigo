@@ -68,6 +68,7 @@ export const movementKindColor = {
   issue: "indigo",
   transfer_out: "cyan",
   transfer_in: "lime",
+  production: "violet",
 } as const;
 
 /** A count status's badge colour. */

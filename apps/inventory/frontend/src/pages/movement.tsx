@@ -5,7 +5,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import type { InventoryLocationRef } from "../api/locations";
-import { movementQueryOptions } from "../api/movements";
+import { type InventoryMovement, movementQueryOptions } from "../api/movements";
 import { enteredText } from "../lib/breakdown";
 import { movementKindColor, useInventoryFormat } from "../lib/format";
 import {
@@ -14,6 +14,7 @@ import {
   locationLinkOptions,
   MOVEMENTS_ROUTE_PATH,
   siteLinkOptions,
+  sourceHref,
   transferLinkOptions,
   variantStockLinkOptions,
 } from "../lib/routes";
@@ -39,6 +40,19 @@ const LocationCell = ({ location }: { location?: InventoryLocationRef }) =>
       —
     </Text>
   );
+
+/** A movement's source as text, linked to its page in another module when it has one (M5). */
+const SourceText = ({ source }: { source: NonNullable<InventoryMovement["source"]> }) => {
+  const text = [source.module, source.kind, source.id, source.lineId].filter(Boolean).join(" · ");
+  const href = sourceHref(source);
+  return href ? (
+    <Anchor size="sm" renderRoot={(props) => <Link to={href as never} {...props} />}>
+      {text}
+    </Anchor>
+  ) : (
+    text
+  );
+};
 
 /**
  * One movement (I30): its header — kind, site, when and by whom, the reason
@@ -116,9 +130,7 @@ export const MovementPage = () => {
               )}
               {data.source && !data.transfer && (
                 <Fact label={t("source")}>
-                  {[data.source.module, data.source.kind, data.source.id, data.source.lineId]
-                    .filter(Boolean)
-                    .join(" · ")}
+                  <SourceText source={data.source} />
                 </Fact>
               )}
             </SimpleGrid>

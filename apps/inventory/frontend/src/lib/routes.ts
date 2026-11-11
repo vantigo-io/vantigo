@@ -1,4 +1,6 @@
+import { appConfig } from "@vantigo/frontend-shell";
 import type { InventoryLookupMatch } from "../api/lookup";
+import type { InventoryMovement } from "../api/movements";
 
 /** The app's paths, which the host mounts and the package's own test route tree mirrors. */
 export const INVENTORY_HOME_ROUTE_PATH = "/inventory";
@@ -85,3 +87,21 @@ export const LOW_STOCK_ROUTE_PATH = "/inventory/low-stock";
 
 /** The low-stock list, filtered to a site when one is given. */
 export const lowStockLinkOptions = (search: { siteId?: number } = {}) => ({ to: LOW_STOCK_ROUTE_PATH, search });
+
+// Manufacturing, delivery 0: a production's source on the movement page (M5).
+
+/**
+ * Where a movement's source opens in another module, when it has a page
+ * there: a production's manufacturing order, whose id the movement keeps as
+ * its source line id (manufacturing design M5). Undefined for any other
+ * source, and when the backend does not mount Manufacturing — no injected
+ * list (the Vite dev server) means every module.
+ */
+export const sourceHref = (
+  source: InventoryMovement["source"],
+  enabled: readonly string[] | undefined = appConfig().modules,
+): string | undefined => {
+  if (source?.module !== "manufacturing" || !source.lineId || !/^\d+$/.test(source.lineId)) return undefined;
+  if (enabled && !enabled.includes("manufacturing")) return undefined;
+  return `/manufacturing/orders/${source.lineId}`;
+};
