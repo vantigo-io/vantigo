@@ -15,9 +15,7 @@ import (
 const markLineReady = `-- name: MarkLineReady :exec
 INSERT INTO orders.line_production_ready (line_id, order_id, manufacturing_order_id, site_id, produced, marked_at)
 VALUES ($1, $2, $3, $4, $5, $6)
-ON CONFLICT (line_id) DO UPDATE
-SET manufacturing_order_id = EXCLUDED.manufacturing_order_id, site_id = EXCLUDED.site_id,
-    produced = orders.line_production_ready.produced + EXCLUDED.produced, marked_at = EXCLUDED.marked_at
+ON CONFLICT (line_id, manufacturing_order_id) DO NOTHING
 `
 
 type MarkLineReadyParams struct {
@@ -29,9 +27,9 @@ type MarkLineReadyParams struct {
 	Now                  time.Time
 }
 
-// MarkLineReady marks a sales order line produced, ready to reserve (M48a):
-// the latest manufacturing order closed for it and its site, and what was
-// produced for it in all.
+// MarkLineReady marks a sales order line produced, ready to reserve (M48a),
+// by one manufacturing order closed for it: once per order, however often
+// its event is handled.
 func (q *Queries) MarkLineReady(ctx context.Context, arg MarkLineReadyParams) error {
 	_, err := q.db.Exec(ctx, markLineReady,
 		arg.LineID,
@@ -57,26 +55,37 @@ func (q *Queries) OrderOfLine(ctx context.Context, id int64) (int64, error) {
 }
 
 const readyLinesOfOrder = `-- name: ReadyLinesOfOrder :many
-SELECT line_id, order_id, manufacturing_order_id, site_id, produced, marked_at FROM orders.line_production_ready WHERE order_id = $1
+SELECT DISTINCT ON (line_id) line_id, manufacturing_order_id, site_id,
+       (SUM(produced) OVER (PARTITION BY line_id))::numeric(14, 3) AS produced
+FROM orders.line_production_ready
+WHERE order_id = $1
+ORDER BY line_id, marked_at DESC, manufacturing_order_id DESC
 `
 
-// ReadyLinesOfOrder is the marks of one sales order's lines.
-func (q *Queries) ReadyLinesOfOrder(ctx context.Context, orderID int64) ([]OrdersLineProductionReady, error) {
+type ReadyLinesOfOrderRow struct {
+	LineID               int64
+	ManufacturingOrderID int64
+	SiteID               int64
+	Produced             pgtype.Numeric
+}
+
+// ReadyLinesOfOrder is the marks of one sales order's lines, one per line:
+// the latest manufacturing order closed for it and its site, and what every
+// order closed for it produced in all.
+func (q *Queries) ReadyLinesOfOrder(ctx context.Context, orderID int64) ([]ReadyLinesOfOrderRow, error) {
 	rows, err := q.db.Query(ctx, readyLinesOfOrder, orderID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []OrdersLineProductionReady
+	var items []ReadyLinesOfOrderRow
 	for rows.Next() {
-		var i OrdersLineProductionReady
+		var i ReadyLinesOfOrderRow
 		if err := rows.Scan(
 			&i.LineID,
-			&i.OrderID,
 			&i.ManufacturingOrderID,
 			&i.SiteID,
 			&i.Produced,
-			&i.MarkedAt,
 		); err != nil {
 			return nil, err
 		}

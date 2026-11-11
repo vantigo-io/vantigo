@@ -1281,6 +1281,10 @@ components:
                     items:
                         $ref: '#/components/schemas/OrdersLineProduction'
                     type: array
+                notMade:
+                    allOf:
+                        - $ref: '#/components/schemas/OrdersLineNotMade'
+                    description: "Why make-to-order made no manufacturing order for the line (manufacturing design M44a): the reason its request left the line out, or that the request failed for good. Present on an order's goods lines with no manufacturing order, only to a caller holding manufacturing:access, and only when there is a reason to show; absent otherwise."
                 readyToReserve:
                     allOf:
                         - $ref: '#/components/schemas/OrdersLineReady'
@@ -1394,19 +1398,33 @@ components:
                 - plannedFinish
                 - dueDate
             type: object
+        OrdersLineNotMade:
+            additionalProperties: false
+            description: "Why make-to-order made no manufacturing order for a line (manufacturing design M44a)."
+            properties:
+                code:
+                    description: "The reason: no_site, nothing_open, variant_not_goods, failed (the request failed after its last attempt), or the code of the Manufacturing rule that refused the order."
+                    type: string
+                detail:
+                    description: The reason in English, as Manufacturing recorded it.
+                    type: string
+            required:
+                - code
+                - detail
+            type: object
         OrdersLineReady:
             additionalProperties: false
             description: "A line marked produced, ready to reserve (manufacturing design M48a)."
             properties:
                 manufacturingOrderId:
-                    description: The latest manufacturing order closed for the line.
+                    description: "The latest manufacturing order closed for the line. Present only to a caller holding manufacturing:access."
                     format: int64
                     type: integer
                 otherSite:
                     description: "The goods were made at another site than the order's: Reserve now cannot pick them up until they are moved."
                     type: boolean
                 produced:
-                    description: What was produced for the line in all.
+                    description: "What was produced for the line in all, every manufacturing order closed for it counted once."
                     format: double
                     type: number
                 siteId:
@@ -1414,7 +1432,6 @@ components:
                     format: int64
                     type: integer
             required:
-                - manufacturingOrderId
                 - produced
                 - siteId
                 - otherSite

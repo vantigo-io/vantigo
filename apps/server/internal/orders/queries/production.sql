@@ -34,15 +34,19 @@ ORDER BY l.position;
 SELECT owner_id FROM orders.lines WHERE id = @id AND owner_kind = 'order';
 
 -- name: MarkLineReady :exec
--- MarkLineReady marks a sales order line produced, ready to reserve (M48a):
--- the latest manufacturing order closed for it and its site, and what was
--- produced for it in all.
+-- MarkLineReady marks a sales order line produced, ready to reserve (M48a),
+-- by one manufacturing order closed for it: once per order, however often
+-- its event is handled.
 INSERT INTO orders.line_production_ready (line_id, order_id, manufacturing_order_id, site_id, produced, marked_at)
 VALUES (@line_id, @order_id, @manufacturing_order_id, @site_id, @produced, @now)
-ON CONFLICT (line_id) DO UPDATE
-SET manufacturing_order_id = EXCLUDED.manufacturing_order_id, site_id = EXCLUDED.site_id,
-    produced = orders.line_production_ready.produced + EXCLUDED.produced, marked_at = EXCLUDED.marked_at;
+ON CONFLICT (line_id, manufacturing_order_id) DO NOTHING;
 
 -- name: ReadyLinesOfOrder :many
--- ReadyLinesOfOrder is the marks of one sales order's lines.
-SELECT * FROM orders.line_production_ready WHERE order_id = @order_id;
+-- ReadyLinesOfOrder is the marks of one sales order's lines, one per line:
+-- the latest manufacturing order closed for it and its site, and what every
+-- order closed for it produced in all.
+SELECT DISTINCT ON (line_id) line_id, manufacturing_order_id, site_id,
+       (SUM(produced) OVER (PARTITION BY line_id))::numeric(14, 3) AS produced
+FROM orders.line_production_ready
+WHERE order_id = @order_id
+ORDER BY line_id, marked_at DESC, manufacturing_order_id DESC;

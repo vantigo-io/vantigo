@@ -2179,6 +2179,9 @@ type OrdersLine struct {
 	LineNet   float64 `json:"lineNet"`
 	Name      *string `json:"name,omitempty"`
 
+	// NotMade Why make-to-order made no manufacturing order for the line (manufacturing design M44a): the reason its request left the line out, or that the request failed for good. Present on an order's goods lines with no manufacturing order, only to a caller holding manufacturing:access, and only when there is a reason to show; absent otherwise.
+	NotMade *OrdersLineNotMade `json:"notMade,omitempty"`
+
 	// Optional A quote's optional line (O21), left out of the totals.
 	Optional    bool   `json:"optional"`
 	PackagingId *int32 `json:"packagingId,omitempty"`
@@ -2290,6 +2293,15 @@ type OrdersLineInputKind string
 // OrdersLineInputPriceSource carrier marks a shipping line's unitPrice as the carrier's estimate with the markup (POST /shipping-estimate, O53); absent, a typed price is manual.
 type OrdersLineInputPriceSource string
 
+// OrdersLineNotMade Why make-to-order made no manufacturing order for a line (manufacturing design M44a).
+type OrdersLineNotMade struct {
+	// Code The reason: no_site, nothing_open, variant_not_goods, failed (the request failed after its last attempt), or the code of the Manufacturing rule that refused the order.
+	Code string `json:"code"`
+
+	// Detail The reason in English, as Manufacturing recorded it.
+	Detail string `json:"detail"`
+}
+
 // OrdersLineProduction A manufacturing order made for an order line, as Manufacturing answers it (manufacturing design M46).
 type OrdersLineProduction struct {
 	DueDate              *openapi_types.Date `json:"dueDate"`
@@ -2312,13 +2324,13 @@ type OrdersLineProduction struct {
 
 // OrdersLineReady A line marked produced, ready to reserve (manufacturing design M48a).
 type OrdersLineReady struct {
-	// ManufacturingOrderId The latest manufacturing order closed for the line.
-	ManufacturingOrderId int64 `json:"manufacturingOrderId"`
+	// ManufacturingOrderId The latest manufacturing order closed for the line. Present only to a caller holding manufacturing:access.
+	ManufacturingOrderId *int64 `json:"manufacturingOrderId,omitempty"`
 
 	// OtherSite The goods were made at another site than the order's: Reserve now cannot pick them up until they are moved.
 	OtherSite bool `json:"otherSite"`
 
-	// Produced What was produced for the line in all.
+	// Produced What was produced for the line in all, every manufacturing order closed for it counted once.
 	Produced float64 `json:"produced"`
 
 	// SiteId The site the goods were made at.
