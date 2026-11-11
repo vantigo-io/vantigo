@@ -366,6 +366,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/orders/{id}/time-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a manufacturing order's time logs
+         * @description Every time log on the order's work orders, by start (M29).
+         */
+        get: operations["listManufacturingOrderTimeLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/work-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a manufacturing order's work orders
+         * @description The order's work orders by sequence (M27); a draft and an order with no operations have none.
+         */
+        get: operations["listManufacturingOrderWorkOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/people": {
         parameters: {
             query?: never;
@@ -395,6 +435,26 @@ export interface paths {
          * @description A production record with its order's id, for the movement page's source.
          */
         get: operations["getManufacturingProduction"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/shop-floor/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read my work on the shop floor
+         * @description The caller's open log with its work order, and the work orders they logged time on today in the business calendar's day (M31).
+         */
+        get: operations["getManufacturingMyWork"];
         put?: never;
         post?: never;
         delete?: never;
@@ -455,6 +515,26 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/time-logs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Correct a time log
+         * @description A supervisor's correction of a log's times, quantity and note, kept in the order's timeline (M29, M29a). A log still open is closed at endedAt.
+         */
+        patch: operations["correctManufacturingTimeLog"];
         trace?: never;
     };
     "/api/v1/manufacturing/variants": {
@@ -531,6 +611,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/work-centers/{id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block a work center
+         * @description Sets the working state to blocked (M30, M29a): every productive log at the center ends now and becomes one downtime log per operator from now with the reason, and the center's own downtime log opens. Blocking a blocked center changes nothing and answers 200. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
+         */
+        post: operations["blockManufacturingWorkCenter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/work-centers/{id}/closures": {
         parameters: {
             query?: never;
@@ -566,6 +666,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/work-centers/{id}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a work center's queue
+         * @description The shop floor's work center page (M31): its ready, in-progress and paused work orders of open orders, by planned start, then the order's priority, then its due date, with the block while it is blocked.
+         */
+        get: operations["getManufacturingWorkCenterQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/work-centers/{id}/reactivate": {
         parameters: {
             query?: never;
@@ -583,6 +703,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/work-centers/{id}/unblock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unblock a work center
+         * @description Sets the working state back to normal and ends every open downtime log at the center, the operators' and its own (M30, M29a). Unblocking a center that is not blocked changes nothing and answers 200. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
+         */
+        post: operations["unblockManufacturingWorkCenter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a work order
+         * @description The shop floor's work order view (M31): the work order with its instructions, the components consumed at the operation, its open logs and the caller's own open log.
+         */
+        get: operations["getManufacturingWorkOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish a work order
+         * @description Ends every open log on the work order, sets it done and readies the next by sequence (M27, M29). A production in the body is posted in the same transaction, as the order's productions are (M22). Finishing a done work order again with the production it posted answers 200 with it. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
+         */
+        post: operations["finishManufacturingWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause a work order
+         * @description Ends the caller's open log on the work order, productive or a block's downtime (M29, M29a); with no productive log left open the work order is paused. With no open log of the caller's there it changes nothing and answers 200. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
+         */
+        post: operations["pauseManufacturingWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}/scrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report scrap at a work order
+         * @description Posts a production of the work order's order with no good output, only the components' scrap and the output scrap (M22, M31). A first report answers 201; a replay of its clientRequestId 200 with the first. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
+         */
+        post: operations["reportManufacturingWorkOrderScrap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a work order
+         * @description Opens a productive log for the caller (M29, M29a). The caller's open log elsewhere is ended first, in the same transaction. On a work order the caller already runs it is a no-op that answers 200. The first start of an order moves it to in progress. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
+         */
+        post: operations["startManufacturingWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}/time-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a work order's time logs
+         * @description Every time log on the work order, by start (M29).
+         */
+        get: operations["listManufacturingWorkOrderTimeLogs"];
+        put?: never;
+        /**
+         * Add a missing time log
+         * @description A supervisor's addition of a closed log for a user, with a note, kept in the order's timeline (M29, M29a).
+         */
+        post: operations["addManufacturingTimeLog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -592,6 +856,12 @@ export interface components {
          * @enum {string}
          */
         ManufacturingAvailability: "ready" | "partly_available" | "waiting";
+        /** @description Blocking a work center (M30). */
+        ManufacturingBlockInput: {
+            /** @description At most 2000 characters. */
+            note?: string;
+            reason: components["schemas"]["ManufacturingDowntimeReason"];
+        };
         /** @description A bill of materials (M10) with its operations and lines. */
         ManufacturingBom: {
             code: string | null;
@@ -864,6 +1134,18 @@ export interface components {
             expected: string;
             sku: string;
         };
+        /**
+         * @description Why a work center stopped (M29, M30).
+         * @enum {string}
+         */
+        ManufacturingDowntimeReason: "breakdown" | "material_missing" | "setup" | "waiting_for_operator" | "quality" | "other";
+        /** @description Finishing a work order (M29). */
+        ManufacturingFinishInput: {
+            /** @description A production registered in the same transaction (M22), as the order's productions take one. */
+            production?: components["schemas"]["ManufacturingProductionInput"];
+            /** @description What the caller made at this operation, exact decimal, kept on the caller's log. */
+            quantity?: string;
+        };
         /** @description One open interval of a day, local times in the workspace zone on a 15-minute grid: start before end; 24:00 is allowed as an end. */
         ManufacturingInterval: {
             /** @description HH:MM. */
@@ -903,6 +1185,13 @@ export interface components {
             canWorkShopFloor: boolean;
             /** @description The workspace currency every amount is in: NOK. */
             currency: string;
+        };
+        /** @description My work (M31): the caller's open log and the work orders they logged time on today, in the business calendar's day. */
+        ManufacturingMyWork: {
+            openLog: components["schemas"]["ManufacturingTimeLog"] | null;
+            openWorkOrder: components["schemas"]["ManufacturingWorkOrder"] | null;
+            /** @description Work orders the caller logged time on today or still runs, the latest first. */
+            today: components["schemas"]["ManufacturingWorkOrder"][];
         };
         /** @description A manufacturing order (M17) with its component lines and their availability. */
         ManufacturingOrder: {
@@ -1040,10 +1329,10 @@ export interface components {
             };
         };
         /**
-         * @description What an event of the timeline records (M26).
+         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor's corrections (M29).
          * @enum {string}
          */
-        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created";
+        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added";
         /** @description An order's timeline, oldest first. */
         ManufacturingOrderEventList: {
             items: components["schemas"]["ManufacturingOrderEvent"][];
@@ -1312,7 +1601,7 @@ export interface components {
          * @enum {string}
          */
         ManufacturingPriority: "normal" | "urgent";
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production needs manufacturing:shop-floor or manufacturing:orders-manage), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
         ManufacturingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1470,6 +1759,29 @@ export interface components {
             /** @description components + operations. */
             total: string;
         };
+        /** @description Scrap reported at a work order (M31): a production with no good output (M22). */
+        ManufacturingScrapInput: {
+            /** @description Makes the report idempotent, as a production's (M22a). */
+            clientRequestId: string;
+            lines: components["schemas"]["ManufacturingScrapLineInput"][];
+            /** @description Finished units produced and discarded, exact decimal; default 0. */
+            outputScrap?: string;
+        };
+        /** @description A component line's scrap. */
+        ManufacturingScrapLineInput: {
+            /** Format: int64 */
+            componentId: number;
+            /** @description Exact decimal, more than 0. */
+            scrap: string;
+        };
+        /** @description A shop-floor action's outcome: the work order after it, the log a start closed elsewhere, and the production a finish posted. */
+        ManufacturingShopFloorResult: {
+            /** @description The caller's log a start closed on another work order (M29); null otherwise. */
+            closedLog: components["schemas"]["ManufacturingTimeLog"] | null;
+            /** @description The production a finish posted in the same transaction; null otherwise. */
+            production: components["schemas"]["ManufacturingProduction"] | null;
+            workOrder: components["schemas"]["ManufacturingWorkOrderView"];
+        };
         /** @description A component line left unreserved (M20, M20a). */
         ManufacturingShortLine: {
             /** Format: int64 */
@@ -1493,6 +1805,11 @@ export interface components {
         /** @description The active Inventory sites, by code. */
         ManufacturingSiteList: {
             items: components["schemas"]["ManufacturingSite"][];
+        };
+        /** @description Starting a work order (M27, M29). */
+        ManufacturingStartInput: {
+            /** @description Start a pending work order out of sequence; the log is marked forced. Without it a pending work order is work_order_pending. */
+            force?: boolean;
         };
         /** @description The overview's counts. */
         ManufacturingStats: {
@@ -1542,6 +1859,70 @@ export interface components {
          * @enum {string}
          */
         ManufacturingStatusFilter: "active" | "archived" | "all";
+        /** @description A time log (M29, M30). A log with neither a user nor a work order is the work center's own downtime while it is blocked. */
+        ManufacturingTimeLog: {
+            /** Format: date-time */
+            correctedAt: string | null;
+            correctedBy: components["schemas"]["ManufacturingPerson"] | null;
+            /**
+             * Format: date-time
+             * @description Null while the log runs.
+             */
+            endedAt: string | null;
+            /** @description Started out of sequence with force (M27). */
+            forced: boolean;
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["ManufacturingTimeLogKind"];
+            /** @description Open for more than 12 hours: the shop floor warns, and nothing closes it automatically (M29). */
+            longRunning: boolean;
+            note: string;
+            /** @description What the operator registered at finish, exact decimal; null when none. */
+            quantity: string | null;
+            reason: components["schemas"]["ManufacturingDowntimeReason"] | null;
+            /** Format: date-time */
+            startedAt: string;
+            user: components["schemas"]["ManufacturingPerson"] | null;
+            /** Format: int64 */
+            workCenterId: number;
+            /** Format: int64 */
+            workOrderId: number | null;
+        };
+        /** @description A supervisor's correction of a log (M29): its times, its quantity and a note. A log still open is closed at endedAt. */
+        ManufacturingTimeLogCorrection: {
+            /** Format: date-time */
+            endedAt: string;
+            /** @description Why, 1–2000 characters. */
+            note: string;
+            /** @description Exact decimal; null clears it. */
+            quantity?: string | null;
+            /** Format: date-time */
+            startedAt: string;
+        };
+        /** @description A missing log added by a supervisor (M29). */
+        ManufacturingTimeLogInput: {
+            /** Format: date-time */
+            endedAt: string;
+            kind?: components["schemas"]["ManufacturingTimeLogKind"];
+            /** @description Why, 1–2000 characters. */
+            note: string;
+            quantity?: string | null;
+            /** @description Required for downtime, absent for productive time. */
+            reason?: components["schemas"]["ManufacturingDowntimeReason"] | null;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        /**
+         * @description A time log's kind (M29): an operator's productive time, or downtime with a reason.
+         * @enum {string}
+         */
+        ManufacturingTimeLogKind: "productive" | "downtime";
+        /** @description Time logs, by start. */
+        ManufacturingTimeLogList: {
+            items: components["schemas"]["ManufacturingTimeLog"][];
+        };
         /** @description A catalog variant as Manufacturing names it. */
         ManufacturingVariantRef: {
             /**
@@ -1633,6 +2014,13 @@ export interface components {
             updatedAt: string;
             workingState: components["schemas"]["ManufacturingWorkingState"];
         };
+        /** @description A work center's block (M30): the reason, the note and when it began, from the center's own downtime log. */
+        ManufacturingWorkCenterBlock: {
+            note: string;
+            reason: components["schemas"]["ManufacturingDowntimeReason"];
+            /** Format: date-time */
+            since: string;
+        };
         /** @description A new work center. A field left out takes its default. */
         ManufacturingWorkCenterInput: {
             /**
@@ -1666,6 +2054,22 @@ export interface components {
         /** @description Work centers, by code. */
         ManufacturingWorkCenterList: {
             items: components["schemas"]["ManufacturingWorkCenter"][];
+        };
+        /** @description A work center's queue (M31): its ready, in-progress and paused work orders of open orders, by planned start, then the order's priority, then its due date. */
+        ManufacturingWorkCenterQueue: {
+            block: components["schemas"]["ManufacturingWorkCenterBlock"] | null;
+            items: components["schemas"]["ManufacturingWorkOrder"][];
+            workCenter: components["schemas"]["ManufacturingWorkCenterRef"];
+        };
+        /** @description A work center as a work order names it. */
+        ManufacturingWorkCenterRef: {
+            code: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int64 */
+            siteId: number;
+            workingState: components["schemas"]["ManufacturingWorkingState"];
         };
         /** @description A work center's fields, under its revision. A field left out takes its default, but for the cost rates, which an absent field keeps. */
         ManufacturingWorkCenterUpdate: {
@@ -1701,6 +2105,108 @@ export interface components {
              * @description 1 to 500; default 100.
              */
             timeEfficiency?: number;
+        };
+        /** @description A work order (M27, M27a): an operation of the order's BoM as it was at confirm, at one work center. */
+        ManufacturingWorkOrder: {
+            /**
+             * Format: int32
+             * @description The work center's capacity at confirm (M27a).
+             */
+            capacity: number;
+            /** @description Exact decimal, as at confirm. */
+            cleanupMinutes: string;
+            /**
+             * Format: int64
+             * @description setup + cleanup + cycles × minutesPerCycle × 100 / timeEfficiency, cycles = ⌈(order quantity / output quantity) / capacity⌉, half-up to the minute; computed at confirm and never recomputed (M28a).
+             */
+            expectedMinutes: number;
+            /** Format: date-time */
+            finishedAt: string | null;
+            /** Format: int64 */
+            id: number;
+            /** @description The order's last work order that is not cancelled: its finish offers to register the production (M29). */
+            last: boolean;
+            /**
+             * Format: int64
+             * @description Productive minutes logged on it, open logs counted to now, rounded down.
+             */
+            loggedMinutes: number;
+            /** @description Exact decimal: the time for one cycle (M28a). */
+            minutesPerCycle: string;
+            name: string;
+            /** @description Who has an open log on it, by start. */
+            operators: components["schemas"]["ManufacturingWorkOrderOperator"][];
+            order: components["schemas"]["ManufacturingWorkOrderOrder"];
+            /** Format: int64 */
+            orderId: number;
+            /** Format: date-time */
+            plannedFinish: string | null;
+            /** Format: date-time */
+            plannedStart: string | null;
+            /** Format: int32 */
+            revision: number;
+            /** Format: int32 */
+            sequence: number;
+            /** @description Exact decimal: the operation's setup, else the work center's, as at confirm. */
+            setupMinutes: string;
+            /** Format: date-time */
+            startedAt: string | null;
+            status: components["schemas"]["ManufacturingWorkOrderStatus"];
+            /**
+             * Format: int32
+             * @description The work center's efficiency in per cent at confirm (M27a).
+             */
+            timeEfficiency: number;
+            workCenter: components["schemas"]["ManufacturingWorkCenterRef"];
+        };
+        /** @description Work orders, by sequence. */
+        ManufacturingWorkOrderList: {
+            items: components["schemas"]["ManufacturingWorkOrder"][];
+        };
+        /** @description Someone with an open log on a work order: who runs it. */
+        ManufacturingWorkOrderOperator: {
+            kind: components["schemas"]["ManufacturingTimeLogKind"];
+            /** Format: date-time */
+            startedAt: string;
+            user: components["schemas"]["ManufacturingPerson"];
+        };
+        /** @description The order a work order belongs to, as the shop floor shows it (M31). */
+        ManufacturingWorkOrderOrder: {
+            /** Format: date */
+            dueDate: string | null;
+            /** Format: int64 */
+            id: number;
+            /** @description MO-<n>, or MO-<n>-<suffix> for a backorder (M17b). */
+            number: string;
+            priority: components["schemas"]["ManufacturingPriority"];
+            /** @description Good output so far, exact decimal. */
+            produced: string;
+            /** @description The order's quantity, exact decimal. */
+            quantity: string;
+            /** @description quantity − produced, at least 0. */
+            remaining: string;
+            reservationStatus: components["schemas"]["ManufacturingReservationStatus"] | null;
+            status: components["schemas"]["ManufacturingOrderStatus"];
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /**
+         * @description A work order's state (M27): pending while an earlier work order is not done, ready, in_progress while a productive log is open, paused when started before with none open (a block's downtime logs leave it paused, M29a), done, cancelled.
+         * @enum {string}
+         */
+        ManufacturingWorkOrderStatus: "pending" | "ready" | "in_progress" | "paused" | "done" | "cancelled";
+        /** @description A work order as the shop floor's work order view shows it (M31). */
+        ManufacturingWorkOrderView: {
+            /** @description The work center's block while it is blocked; null otherwise. */
+            block: components["schemas"]["ManufacturingWorkCenterBlock"] | null;
+            /** @description The order's component lines consumed at this operation (M11), with their live availability (M21a). */
+            components: components["schemas"]["ManufacturingOrderComponent"][];
+            /** @description The operation's instructions as at confirm, Markdown. */
+            instructions: string;
+            /** @description The caller's one open log, wherever it is (M29): starting here closes it when it is elsewhere. */
+            myOpenLog: components["schemas"]["ManufacturingTimeLog"] | null;
+            /** @description Every open log on the work order, by start. */
+            openLogs: components["schemas"]["ManufacturingTimeLog"][];
+            workOrder: components["schemas"]["ManufacturingWorkOrder"];
         };
         /**
          * @description A work center's working state (M30): changed only through block and unblock, never through an edit.
@@ -3245,6 +3751,109 @@ export interface operations {
             };
         };
     };
+    listManufacturingOrderTimeLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingTimeLogList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listManufacturingOrderWorkOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkOrderList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
     searchManufacturingPeople: {
         parameters: {
             query?: {
@@ -3332,6 +3941,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getManufacturingMyWork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingMyWork"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
             };
         };
     };
@@ -3465,6 +4121,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    correctManufacturingTimeLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingTimeLogCorrection"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingTimeLog"];
+                };
+            };
+            /** @description Bad Request — field errors; log_overlaps (the user's other logs overlap it). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such time log of a work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_closed (the order is done or cancelled), log_locked (older than 60 days), revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
                 };
             };
         };
@@ -3825,7 +4559,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict; work_center_in_use: an operation names it, archive it instead. */
+            /** @description Conflict — revision_conflict; work_center_in_use: an operation, a work order or a time log names it, archive it instead. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3885,7 +4619,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict, work_center_has_open_work. */
+            /** @description Conflict — revision_conflict, work_center_has_open_work (a work order not done or cancelled names it). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3895,6 +4629,85 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    blockManufacturingWorkCenter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingBlockInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterQueue"];
+                };
+            };
+            /** @description Bad Request — field errors (reason, note). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work center. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict: the center's logs changed while it was being blocked; try again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4058,6 +4871,62 @@ export interface operations {
             };
         };
     };
+    getManufacturingWorkCenterQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterQueue"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work center. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
     reactivateManufacturingWorkCenter: {
         parameters: {
             query?: never;
@@ -4108,6 +4977,565 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — revision_conflict; site_archived: its site is no longer an active Inventory site. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    unblockManufacturingWorkCenter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterQueue"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work center. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict: the center's logs changed while it was being unblocked; try again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    getManufacturingWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkOrderView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    finishManufacturingWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingFinishInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingShopFloorResult"];
+                };
+            };
+            /** @description Bad Request — field errors; quantity_invalid, location_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open, work_order_closed, work_order_pending, revision_conflict; the production's consumption_differs, client_request_reused and Inventory's refusals. Nothing was changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    pauseManufacturingWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingShopFloorResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open, revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    reportManufacturingWorkOrderScrap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingScrapInput"];
+            };
+        };
+        responses: {
+            /** @description OK — a replay: the production first posted with this clientRequestId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingProduction"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingProduction"];
+                };
+            };
+            /** @description Bad Request — field errors; quantity_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open, client_request_reused; Inventory's refusals (lines name the component lines). Nothing was posted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    startManufacturingWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingStartInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingShopFloorResult"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open, work_order_closed (done or cancelled), work_order_pending (an earlier work order is not done; send force), work_center_blocked, log_conflict (another start of the caller's at the same instant), revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    listManufacturingWorkOrderTimeLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingTimeLogList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    addManufacturingTimeLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingTimeLogInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingTimeLog"];
+                };
+            };
+            /** @description Bad Request — field errors; log_overlaps (the user's other logs overlap it). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_closed (the order is done or cancelled), log_locked (older than 60 days), revision_conflict. */
             409: {
                 headers: {
                     [name: string]: unknown;

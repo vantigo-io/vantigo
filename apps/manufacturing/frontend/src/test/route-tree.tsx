@@ -16,13 +16,17 @@ import {
   BOM_ROUTE_PATH,
   BOMS_ROUTE_PATH,
   MANUFACTURING_HOME_ROUTE_PATH,
+  MY_WORK_ROUTE_PATH,
   NEW_BOM_ROUTE_PATH,
   NEW_ORDER_ROUTE_PATH,
   NEW_WORK_CENTER_ROUTE_PATH,
   ORDER_ROUTE_PATH,
   ORDERS_ROUTE_PATH,
+  SHOP_FLOOR_ROUTE_PATH,
+  SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
   WORK_CENTER_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
+  WORK_ORDER_ROUTE_PATH,
 } from "../lib/routes";
 import {
   validateBomOverviewSearch,
@@ -33,11 +37,14 @@ import {
 import { BomPage, NewBomPage } from "../pages/bom";
 import { BomOverviewPage } from "../pages/bom-overview";
 import { BomsPage } from "../pages/boms";
+import { MyWorkPage } from "../pages/my-work";
 import { NewOrderPage, OrderPage } from "../pages/order";
 import { OrdersPage } from "../pages/orders";
 import { ManufacturingOverviewPage } from "../pages/overview";
+import { ShopFloorPage, ShopFloorWorkCenterPage } from "../pages/shop-floor";
 import { NewWorkCenterPage, WorkCenterPage } from "../pages/work-center";
 import { WorkCentersPage } from "../pages/work-centers";
+import { WorkOrderPage } from "../pages/work-order";
 import "../i18n";
 
 /**
@@ -65,6 +72,10 @@ export const makeRouteTree = () => {
     route(WORK_CENTERS_ROUTE_PATH, WorkCentersPage, validateWorkCentersSearch),
     route(NEW_WORK_CENTER_ROUTE_PATH, NewWorkCenterPage),
     route(WORK_CENTER_ROUTE_PATH, WorkCenterPage),
+    route(SHOP_FLOOR_ROUTE_PATH, ShopFloorPage),
+    route(MY_WORK_ROUTE_PATH, MyWorkPage),
+    route(SHOP_FLOOR_WORK_CENTER_ROUTE_PATH, ShopFloorWorkCenterPage),
+    route(WORK_ORDER_ROUTE_PATH, WorkOrderPage),
   ]);
 };
 

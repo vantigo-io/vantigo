@@ -10,6 +10,10 @@ export const BOM_OVERVIEW_ROUTE_PATH = "/manufacturing/boms/$bomId/overview";
 export const WORK_CENTERS_ROUTE_PATH = "/manufacturing/work-centers";
 export const NEW_WORK_CENTER_ROUTE_PATH = "/manufacturing/work-centers/new";
 export const WORK_CENTER_ROUTE_PATH = "/manufacturing/work-centers/$workCenterId";
+export const SHOP_FLOOR_ROUTE_PATH = "/manufacturing/shop-floor";
+export const MY_WORK_ROUTE_PATH = "/manufacturing/shop-floor/mine";
+export const SHOP_FLOOR_WORK_CENTER_ROUTE_PATH = "/manufacturing/shop-floor/work-centers/$workCenterId";
+export const WORK_ORDER_ROUTE_PATH = "/manufacturing/shop-floor/work-orders/$workOrderId";
 
 export const orderLinkOptions = (orderId: number) => ({ to: ORDER_ROUTE_PATH, params: { orderId: String(orderId) } });
 export const bomLinkOptions = (bomId: number) => ({ to: BOM_ROUTE_PATH, params: { bomId: String(bomId) } });
@@ -22,5 +26,15 @@ export const workCenterLinkOptions = (workCenterId: number) => ({
   to: WORK_CENTER_ROUTE_PATH,
   params: { workCenterId: String(workCenterId) },
 });
+/** A work center's queue on the shop floor (M31). */
+export const shopFloorWorkCenterLinkOptions = (workCenterId: number) => ({
+  to: SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
+  params: { workCenterId: String(workCenterId) },
+});
+/** The work order view on the shop floor (M31). */
+export const workOrderLinkOptions = (workOrderId: number) => ({
+  to: WORK_ORDER_ROUTE_PATH,
+  params: { workOrderId: String(workOrderId) },
+});
 
-// Delivery C adds /manufacturing/shop-floor and D /manufacturing/schedule.
+// Delivery D adds /manufacturing/schedule.

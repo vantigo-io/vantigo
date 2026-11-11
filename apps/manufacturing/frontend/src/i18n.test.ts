@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import manufacturingYaml from "../../../../openapi/manufacturing.yaml?raw";
 import { refusalCodes } from "./api/request";
+import { downtimeReasons, timeLogKinds, workOrderStatuses } from "./api/shop-floor";
 import { statuses, statusFilters, workingStates } from "./api/work-centers";
 import { manufacturingCatalog } from "./i18n";
 import { manufacturingNavItems } from "./lib/navigation";
@@ -39,6 +40,26 @@ describe("the manufacturing catalog", () => {
     for (const key of Object.keys(en)) expect(placeholders(nb[key] ?? ""), `nb.${key}`).toEqual(placeholders(en[key]));
   });
 
+  it("uses the shop floor's agreed words (M31)", () => {
+    const nb = manufacturingCatalog.nb;
+    expect([nb.chooseWorkCenter, nb.queue, nb.startAnyway, nb.finish, nb.unblock, nb.reportScrap, nb.myWork]).toEqual([
+      "Velg arbeidsstasjon",
+      "Kø",
+      "Start likevel",
+      "Ferdig",
+      "Opphev blokkering",
+      "Meld svinn",
+      "Mitt arbeid",
+    ]);
+    expect([nb.workOrders, nb.timeLogs, nb.correct, nb.addMissingLog, nb.othersHere]).toEqual([
+      "Arbeidsordrer",
+      "Tidsregistreringer",
+      "Korriger",
+      "Legg til manglende registrering",
+      "Andre her",
+    ]);
+  });
+
   it("uses the trade's Norwegian names (M7)", () => {
     expect(manufacturingCatalog.nb.manufacturing).toBe("Produksjon");
     expect([
@@ -56,6 +77,10 @@ describe("the manufacturing catalog", () => {
       ...statuses.map((value) => `status_${value}`),
       ...statusFilters.map((value) => `statusFilter_${value}`),
       ...workingStates.map((value) => `workingState_${value}`),
+      ...workOrderStatuses.map((value) => `workOrderStatus_${value}`),
+      ...downtimeReasons.map((value) => `reason_${value}`),
+      ...timeLogKinds.map((value) => `logKind_${value}`),
+      ...["endBeforeStart", "endInFuture", "noteTooLong"].map((value) => `problem_${value}`),
       ...weekdays.map((value) => `weekday_${value}`),
       ...["grid", "order", "overlap", "tooMany"].map((value) => `patternProblem_${value}`),
       ...[
@@ -82,6 +107,9 @@ describe("the manufacturing catalog", () => {
     expect([...statuses].sort()).toEqual(enumOf("ManufacturingStatus").sort());
     expect([...statusFilters].sort()).toEqual(enumOf("ManufacturingStatusFilter").sort());
     expect([...workingStates].sort()).toEqual(enumOf("ManufacturingWorkingState").sort());
+    expect([...workOrderStatuses].sort()).toEqual(enumOf("ManufacturingWorkOrderStatus").sort());
+    expect([...downtimeReasons].sort()).toEqual(enumOf("ManufacturingDowntimeReason").sort());
+    expect([...timeLogKinds].sort()).toEqual(enumOf("ManufacturingTimeLogKind").sort());
   });
 
   it("words only refusals the contract names", () => {

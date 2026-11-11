@@ -1,8 +1,14 @@
-import { BOMS_ROUTE_PATH, MANUFACTURING_HOME_ROUTE_PATH, ORDERS_ROUTE_PATH, WORK_CENTERS_ROUTE_PATH } from "./routes";
+import {
+  BOMS_ROUTE_PATH,
+  MANUFACTURING_HOME_ROUTE_PATH,
+  ORDERS_ROUTE_PATH,
+  SHOP_FLOOR_ROUTE_PATH,
+  WORK_CENTERS_ROUTE_PATH,
+} from "./routes";
 
 /** One sidebar destination of the app (manufacturing design M7); the host owns its label and icon. */
 export interface ManufacturingNavItem {
-  key: "overview" | "orders" | "boms" | "workCenters";
+  key: "overview" | "orders" | "shopFloor" | "boms" | "workCenters";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -14,16 +20,16 @@ export interface ManufacturingNavItem {
 const access = ["manufacturing:access"] as const;
 
 /**
- * The sidebar in M7's order. Deliveries A and B have four of M7's six
- * destinations; the other two take their places between Manufacturing orders
- * and Bills of materials as they come: Shop floor (`navShopFloor`, C) and
- * Production schedule (`navSchedule`, D). Their labels are in the catalog
- * already.
+ * The sidebar in M7's order. Deliveries A to C have five of M7's six
+ * destinations; Production schedule (`navSchedule`, D) takes its place
+ * between Shop floor and Bills of materials when it comes. Its label is in
+ * the catalog already. The shop floor is read with the app's key; what may
+ * be done there is the meta's (M33).
  */
 export const manufacturingNavItems: readonly ManufacturingNavItem[] = [
   { key: "overview", label: "navOverview", to: MANUFACTURING_HOME_ROUTE_PATH, requiredPermissions: access },
   { key: "orders", label: "navOrders", to: ORDERS_ROUTE_PATH, requiredPermissions: access },
-  // C: { key: "shopFloor", label: "navShopFloor", to: "/manufacturing/shop-floor", … }
+  { key: "shopFloor", label: "navShopFloor", to: SHOP_FLOOR_ROUTE_PATH, requiredPermissions: access },
   // D: { key: "schedule", label: "navSchedule", to: "/manufacturing/schedule", … }
   { key: "boms", label: "navBoms", to: BOMS_ROUTE_PATH, requiredPermissions: access },
   { key: "workCenters", label: "navWorkCenters", to: WORK_CENTERS_ROUTE_PATH, requiredPermissions: access },
