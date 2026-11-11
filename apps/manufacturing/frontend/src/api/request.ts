@@ -95,6 +95,20 @@ export const refusalCodes = [
   "bom_too_large",
   "bom_not_active",
   "quantity_invalid",
+  "bom_required",
+  "location_unknown",
+  "required_below_used",
+  "order_not_draft",
+  "order_not_open",
+  "order_has_production",
+  "consumption_differs",
+  "quantity_short",
+  "client_request_reused",
+  "shop_floor_required",
+  "insufficient_stock",
+  "insufficient_available",
+  "variant_not_stocked",
+  "document_reused",
   "dependency_unavailable",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
@@ -104,6 +118,14 @@ export interface RefusedLine {
   index: number;
   code: string;
   detail: string;
+}
+
+/** A consumed quantity more than 10 % off its proportional figure (`consumption_differs`, M22). */
+export interface Deviation {
+  componentId: number;
+  sku: string;
+  expected: string;
+  consumed: string;
 }
 
 /** One variant of a refused cycle's path (`bom_cycle`). */
@@ -128,6 +150,7 @@ export const refusalOf = async (response: Response): Promise<Error> => {
     errors?: Record<string, string[]>;
     lines?: RefusedLine[];
     path?: CycleStep[];
+    deviations?: Deviation[];
   }>(response).catch(() => null);
   const message = problem?.detail ?? problem?.title ?? "";
   const extra = {
@@ -135,13 +158,14 @@ export const refusalOf = async (response: Response): Promise<Error> => {
     code: problem?.code ?? undefined,
     lines: problem?.lines ?? undefined,
     path: problem?.path ?? undefined,
+    deviations: problem?.deviations ?? undefined,
   };
   if (response.status === 404) return Object.assign(new NotFoundError(message), { ...extra, status: 404 as const });
   if (problem?.errors) return Object.assign(new ApiValidationError(message, problem.errors, response.status), extra);
   if (response.status === 409 && problem?.title)
     return Object.assign(
       new ApiConflictError(message, { title: problem.title, detail: problem.detail, code: problem.code, problem }),
-      { lines: extra.lines, path: extra.path },
+      { lines: extra.lines, path: extra.path, deviations: extra.deviations },
     );
   return Object.assign(new Error(message), extra);
 };
@@ -171,6 +195,12 @@ export const refusedLines = (error: unknown): readonly RefusedLine[] => {
 export const refusedPath = (error: unknown): readonly CycleStep[] => {
   const path = (error as { path?: unknown } | null)?.path;
   return Array.isArray(path) ? (path as CycleStep[]) : [];
+};
+
+/** A refused production's deviating lines (`consumption_differs`); empty for any other refusal. */
+export const refusedDeviations = (error: unknown): readonly Deviation[] => {
+  const deviations = (error as { deviations?: unknown } | null)?.deviations;
+  return Array.isArray(deviations) ? (deviations as Deviation[]) : [];
 };
 
 /** A refusal's field errors by camelCase path (`lines[3].quantity`), first message each; empty when none. */

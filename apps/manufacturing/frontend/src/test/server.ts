@@ -1,5 +1,13 @@
 import type { ManufacturingBom, ManufacturingBomOverview, ManufacturingBomSummary } from "../api/boms";
+import type { ManufacturingLocation } from "../api/locations";
 import type { ManufacturingMeta } from "../api/meta";
+import type {
+  ManufacturingOrder,
+  ManufacturingOrderEvent,
+  ManufacturingOrderSummary,
+  ManufacturingProductionDraft,
+} from "../api/orders";
+import type { ManufacturingPerson } from "../api/people";
 import type { ManufacturingSite } from "../api/sites";
 import type { ManufacturingStats } from "../api/stats";
 import type { ManufacturingVariantSearchItem } from "../api/variants";
@@ -136,12 +144,129 @@ export const summaryOf = (bom: ManufacturingBom): ManufacturingBomSummary => ({
   updatedAt: bom.updatedAt,
 });
 
+export const locations = (): ManufacturingLocation[] => [
+  { id: 10, fullCode: "OSL", kind: "site", parentId: null, root: true, active: true },
+  { id: 11, fullCode: "OSL-A1", kind: "shelf", parentId: 10, root: false, active: true },
+  { id: 12, fullCode: "OSL-OLD", kind: "shelf", parentId: 10, root: false, active: false },
+];
+
+export const people = (): ManufacturingPerson[] => [
+  { id: "7d1f2a51-9b0c-4c1e-8a4e-2f3b6c7d8e90", displayName: "Kari Nordmann" },
+];
+
+/** A confirmed order of ten tables, four boards a table, nothing produced yet. */
+export const orderFixture = (patch: Partial<ManufacturingOrder> = {}): ManufacturingOrder => {
+  const [table, board] = variants();
+  return {
+    id: 5,
+    number: "MO-12",
+    variant: ref(table),
+    bomId: 7,
+    bomCode: "Rev B",
+    bomOutputQuantity: "1",
+    quantity: "10",
+    produced: "0",
+    outputScrap: "0",
+    overrun: "0",
+    siteId: 1,
+    componentLocationId: null,
+    outputLocationId: 10,
+    dueDate: "2026-11-20",
+    plannedStart: null,
+    plannedFinish: null,
+    priority: "normal",
+    responsible: null,
+    note: "",
+    origin: { kind: "manual", orderId: null, lineId: null, reference: null },
+    status: "confirmed",
+    late: false,
+    availability: "ready",
+    reservationStatus: "reserved",
+    backorderOf: null,
+    backorderOfId: null,
+    backorders: [],
+    parent: null,
+    children: [],
+    confirmedAt: STAMP,
+    closedAt: null,
+    revision: 4,
+    createdAt: STAMP,
+    updatedAt: STAMP,
+    components: [
+      {
+        id: 60,
+        variant: ref(board),
+        required: "40",
+        reserved: "40",
+        available: "100",
+        consumed: "0",
+        scrapped: "0",
+        remaining: "40",
+        missing: "0",
+        covered: true,
+        added: false,
+        operationId: 30,
+        sortOrder: 10,
+        note: "",
+      },
+    ],
+    ...patch,
+  };
+};
+
+export const orderSummaryOf = (order: ManufacturingOrder): ManufacturingOrderSummary => ({
+  id: order.id,
+  number: order.number,
+  variant: order.variant,
+  bomId: order.bomId,
+  quantity: order.quantity,
+  produced: order.produced,
+  siteId: order.siteId,
+  dueDate: order.dueDate,
+  plannedStart: order.plannedStart,
+  plannedFinish: order.plannedFinish,
+  priority: order.priority,
+  responsible: order.responsible,
+  origin: order.origin,
+  status: order.status,
+  late: order.late,
+  reservationStatus: order.reservationStatus,
+  backorderOfId: order.backorderOfId,
+  createdAt: order.createdAt,
+});
+
+/**
+ * The prefill the server would answer (M22a) for an order whose every line
+ * needs `required` per `quantity`: `required × (quantity + outputScrap) / order quantity`,
+ * here on whole numbers only — enough for the fixtures.
+ */
+export const draftFor = (order: ManufacturingOrder, query: URLSearchParams): ManufacturingProductionDraft => {
+  const quantity = query.get("quantity") ?? String(Number(order.quantity) - Number(order.produced));
+  const outputScrap = query.get("outputScrap") ?? "0";
+  const base = Number(quantity) + Number(outputScrap);
+  return {
+    quantity,
+    outputScrap,
+    toLocationId: order.outputLocationId,
+    lines: order.components.map((line) => ({
+      componentId: line.id ?? 0,
+      variant: line.variant,
+      required: line.required,
+      remaining: line.remaining,
+      reserved: line.reserved,
+      proposed: ((Number(line.required) * base) / Number(order.quantity)).toFixed(3),
+    })),
+  };
+};
+
 export interface ManufacturingServer {
   meta?: Partial<ManufacturingMeta>;
   stats?: Partial<ManufacturingStats>;
   workCenters?: ManufacturingWorkCenter[];
   boms?: ManufacturingBom[];
   overview?: ManufacturingBomOverview;
+  orders?: ManufacturingOrder[];
+  events?: ManufacturingOrderEvent[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -181,10 +306,14 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
   };
   const centers = server.workCenters ?? [workCenter(1, "SAW"), workCenter(2, "PAINT")];
   const boms = server.boms ?? [bomFixture()];
+  const orders = server.orders ?? [orderFixture()];
   const stats: ManufacturingStats = {
     activeWorkCenters: centers.filter((one) => one.status === "active").length,
     blockedWorkCenters: centers.filter((one) => one.workingState === "blocked").length,
     activeBoms: boms.filter((one) => one.status === "active").length,
+    ordersToStartToday: 0,
+    ordersInProgress: 0,
+    ordersLate: 0,
     ...server.stats,
   };
 
@@ -198,6 +327,11 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       if (method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
       const bom = /^\/boms(?:\/(\d+))?/.exec(path);
       if (bom) return Promise.resolve(jsonResponse(bom[1] ? 200 : 201, { ...bomFixture(), id: Number(bom[1] ?? 99) }));
+      const order = /^\/orders(?:\/(\d+))?/.exec(path);
+      if (order) {
+        const found = orders.find((one) => one.id === Number(order[1])) ?? orderFixture({ id: 99, status: "draft" });
+        return Promise.resolve(jsonResponse(order[1] ? 200 : 201, found));
+      }
       const center = /^\/work-centers(?:\/(\d+))?/.exec(path);
       if (center)
         return Promise.resolve(jsonResponse(center[1] ? 200 : 201, workCenter(Number(center[1] ?? 99), "NEW")));
@@ -235,6 +369,26 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
     if (bom) {
       const found = boms.find((one) => one.id === Number(bom[1]));
       return Promise.resolve(found ? jsonResponse(200, found) : manufacturingProblem(404, undefined));
+    }
+    if (path === "/orders") {
+      const items = orders.map(orderSummaryOf);
+      return Promise.resolve(jsonResponse(200, { items, total: items.length, page: 1, pageSize: 50 }));
+    }
+    const order = /^\/orders\/(\d+)(\/events|\/production-draft)?$/.exec(path);
+    if (order) {
+      const found = orders.find((one) => one.id === Number(order[1]));
+      if (!found) return Promise.resolve(manufacturingProblem(404, undefined));
+      if (order[2] === "/events") return Promise.resolve(jsonResponse(200, { items: server.events ?? [] }));
+      if (order[2] === "/production-draft")
+        return Promise.resolve(jsonResponse(200, draftFor(found, url.searchParams)));
+      return Promise.resolve(jsonResponse(200, found));
+    }
+    if (/^\/sites\/\d+\/locations$/.test(path)) return Promise.resolve(jsonResponse(200, { items: locations() }));
+    if (path === "/people") {
+      const q = (url.searchParams.get("q") ?? "").toLowerCase();
+      return Promise.resolve(
+        jsonResponse(200, { items: people().filter((one) => one.displayName.toLowerCase().includes(q)) }),
+      );
     }
     if (/^\/boms\/\d+\/overview$/.test(path) && server.overview)
       return Promise.resolve(jsonResponse(200, server.overview));

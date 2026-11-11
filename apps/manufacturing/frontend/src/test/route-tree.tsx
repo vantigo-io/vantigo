@@ -17,14 +17,24 @@ import {
   BOMS_ROUTE_PATH,
   MANUFACTURING_HOME_ROUTE_PATH,
   NEW_BOM_ROUTE_PATH,
+  NEW_ORDER_ROUTE_PATH,
   NEW_WORK_CENTER_ROUTE_PATH,
+  ORDER_ROUTE_PATH,
+  ORDERS_ROUTE_PATH,
   WORK_CENTER_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
 } from "../lib/routes";
-import { validateBomOverviewSearch, validateBomsSearch, validateWorkCentersSearch } from "../lib/search";
+import {
+  validateBomOverviewSearch,
+  validateBomsSearch,
+  validateOrdersSearch,
+  validateWorkCentersSearch,
+} from "../lib/search";
 import { BomPage, NewBomPage } from "../pages/bom";
 import { BomOverviewPage } from "../pages/bom-overview";
 import { BomsPage } from "../pages/boms";
+import { NewOrderPage, OrderPage } from "../pages/order";
+import { OrdersPage } from "../pages/orders";
 import { ManufacturingOverviewPage } from "../pages/overview";
 import { NewWorkCenterPage, WorkCenterPage } from "../pages/work-center";
 import { WorkCentersPage } from "../pages/work-centers";
@@ -45,6 +55,9 @@ export const makeRouteTree = () => {
   ) => createRoute({ getParentRoute: () => rootRoute, path, component, ...(validateSearch ? { validateSearch } : {}) });
   return rootRoute.addChildren([
     route(MANUFACTURING_HOME_ROUTE_PATH, ManufacturingOverviewPage),
+    route(ORDERS_ROUTE_PATH, OrdersPage, validateOrdersSearch),
+    route(NEW_ORDER_ROUTE_PATH, NewOrderPage),
+    route(ORDER_ROUTE_PATH, OrderPage),
     route(BOMS_ROUTE_PATH, BomsPage, validateBomsSearch),
     route(NEW_BOM_ROUTE_PATH, NewBomPage),
     route(BOM_ROUTE_PATH, BomPage),

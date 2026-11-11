@@ -16,6 +16,8 @@ export interface VariantPickerProps {
   compact?: boolean;
   disabled?: boolean;
   withAsterisk?: boolean;
+  /** Offers only variants with an active BoM, as a new manufacturing order needs (bom_required). */
+  onlyWithBom?: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ export const VariantPicker = ({
   compact,
   disabled,
   withAsterisk,
+  onlyWithBom,
 }: VariantPickerProps) => {
   const { t } = useManufacturingFormat();
   const [search, setSearch] = useState("");
@@ -39,7 +42,7 @@ export const VariantPicker = ({
   const term = value && search === variantLabel(value) ? "" : search.trim();
   const [debounced] = useDebouncedValue(term, SEARCH_DEBOUNCE_MS);
   const { data, isFetching } = useQuery({ ...variantSearchQueryOptions(debounced), enabled: debounced !== "" });
-  const found = debounced === "" ? [] : (data ?? []);
+  const found = (debounced === "" ? [] : (data ?? [])).filter((variant) => !onlyWithBom || variant.hasBom);
   const options = found.map((variant) => ({ value: String(variant.id), label: variantLabel(variant) }));
   if (value && !options.some((option) => option.value === String(value.id)))
     options.unshift({ value: String(value.id), label: variantLabel(value) });

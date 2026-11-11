@@ -63,3 +63,18 @@ export const variantLabel = (variant: { sku: string; productName: string }) =>
 
 /** A status's badge colour. */
 export const statusColor = { active: "teal", archived: "gray" } as const;
+
+/** An order's status badge colour (M19). */
+export const orderStatusColor = {
+  draft: "gray",
+  confirmed: "blue",
+  in_progress: "yellow",
+  done: "teal",
+  cancelled: "red",
+} as const;
+
+/** An order's component availability badge colour (M21). */
+export const availabilityColor = { ready: "teal", partly_available: "yellow", waiting: "red" } as const;
+
+/** An order's reservation status badge colour (M21a). */
+export const reservationColor = { reserved: "teal", partly_reserved: "yellow", not_reserved: "red" } as const;
