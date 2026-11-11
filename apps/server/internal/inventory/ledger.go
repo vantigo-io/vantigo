@@ -824,11 +824,19 @@ func issueLineOf(lines []contracts.IssueLine) func(i int) (int32, int64) {
 // issueError is the engine's refusal of an issue or a production as the
 // contract's: each failing line's code as a StockRefusal code, the line
 // named by lineOf from the engine's index among n. A refusal that is no
-// line's — a reused key, an unknown site — or a code the contract has no
+// line's — an unknown site — or a code the contract has no
 // word for is a failure.
 func issueError(err error, lineOf func(i int) (int32, int64), n int) error {
 	var r *refusal
-	if !errors.As(err, &r) || r.problem.Lines == nil || len(*r.problem.Lines) == 0 {
+	if !errors.As(err, &r) {
+		return err
+	}
+	// A document posted before with another body is the contract's own
+	// refusal, so a caller tells it from a failure.
+	if r.problem.Code != nil && *r.problem.Code == codeClientRequestReused {
+		return siteRefusal(contracts.StockDocumentReused, "The document was posted before with other lines or quantities; a new posting needs a new document.")
+	}
+	if r.problem.Lines == nil || len(*r.problem.Lines) == 0 {
 		return err
 	}
 	var out []contracts.StockLineRefusal

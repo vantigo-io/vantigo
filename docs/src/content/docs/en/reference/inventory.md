@@ -191,11 +191,14 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
   caller's bug, answered as a failure — but by `Produce`, which refuses it
   (`quantity_invalid`). Every refusal is a **`*contracts.StockRefusal`**
   — `Code`, `VariantID`, `LineID` and `Detail` of the first failing line, and `Lines`,
-  every one — and nothing is written when one is answered. Its codes:
+  every one . `Reserve`, `ReserveForProduction` and
+  `Release` write nothing when they refuse. After a refusal from `Issue` or `Produce`
+  the caller must roll back its transaction (or a savepoint it took before the call):
+  the posting may already have claimed its movement and created balances. Its codes:
   `insufficient_available`, `insufficient_stock`, `site_not_fulfilling`,
-  `variant_not_stocked`, `site_unknown`, `location_unknown`, and for a production
-  `site_archived`, `quantity_invalid` and `nothing_to_post`. An issue whose line would
-  take a balance beyond 99,999,999,999.999 is `quantity_invalid` too.
+  `variant_not_stocked`, `site_unknown`, `location_unknown`, `document_reused`, and for
+  a production `site_archived`, `quantity_invalid` and `nothing_to_post`. A production
+  line that would take a balance beyond 99,999,999,999.999 is `quantity_invalid`.
 
 ## The schema
 
@@ -881,7 +884,8 @@ it.
   never below zero; an issue of another variant than the line holds consumes nothing.
   **An issue is idempotent by its document**: its key is a UUID derived from the
   document, so a second `Issue` for the same document answers the first movement and
-  consumes nothing again; one with different lines is a failure.
+  consumes nothing again when the body is the same (the same lines in the same order, the
+  same quantities as text); one with another body is refused `document_reused`.
 - **`ReservationsFor`** reads what the document holds, by line id then site id.
 
 **Inventory's own decreases ignore reservations.** An adjustment, a move and a count are
@@ -919,8 +923,10 @@ production is its own document, `manufacturing/production/30`.
   at the site of the variant consumed, as much as the line consumed, never below zero,
   as `Issue` does. **A production is idempotent by its record**: its key is a UUID
   derived from the record in a space of its own, so a second `Produce` for the same
-  record answers the first movement and consumes nothing again; one with other lines or
-  another reserving document is a failure.
+  record answers the first movement and consumes nothing again, provided the body is
+  the same: the same lines in the same order, the same quantities as text, the same
+  reserving document. One with another body is refused `document_reused`; a production
+  posted in parts gives each posting its own record.
 
 The lock order is the issue's: `LockVariants`, the caller's rows, then the engine's
 balances in (variant, location) order, and last the reserving document's reservations.
