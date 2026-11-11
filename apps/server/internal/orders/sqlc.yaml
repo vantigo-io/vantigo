@@ -12,6 +12,7 @@ sql:
       - ../db/migrations/00124_orders_subscriptions.sql
       - ../db/migrations/00126_orders_deliveries.sql
       - ../db/migrations/00127_orders_shipping.sql
+      - ../db/migrations/00161_orders_mto_ready.sql
     queries: queries
     gen:
       go:

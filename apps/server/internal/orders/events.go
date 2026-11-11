@@ -46,11 +46,23 @@ func eventHandlers(d module.Deps) []events.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	clock := d.Clock
+	if clock == nil {
+		clock = time.Now
+	}
 	return []events.Handler{{
 		Name:   queueConfirmationHandler,
 		Events: []events.EventRef{{Name: contracts.SalesOrderConfirmed{}.EventName(), Version: 1}},
 		Handle: func(ctx context.Context, tx pgx.Tx, ev events.Delivered) error {
 			return queueConfirmation(ctx, tx, ev, d.Clock, logger)
+		},
+	}, {
+		// Manufacturing's done goods for a sales order line (M48a,
+		// production.go): only the mark, in this module's own schema.
+		Name:   mtoReserveHandler,
+		Events: []events.EventRef{{Name: contracts.ManufacturingOrderDone{}.EventName(), Version: 1}},
+		Handle: func(ctx context.Context, tx pgx.Tx, ev events.Delivered) error {
+			return mtoReserve(ctx, tx, ev, clock, logger)
 		},
 	}}
 }
