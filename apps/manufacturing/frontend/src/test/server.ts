@@ -8,6 +8,13 @@ import type {
   ManufacturingProductionDraft,
 } from "../api/orders";
 import type { ManufacturingPerson } from "../api/people";
+import type {
+  ManufacturingMyWork,
+  ManufacturingTimeLog,
+  ManufacturingWorkCenterBlock,
+  ManufacturingWorkOrder,
+  ManufacturingWorkOrderView,
+} from "../api/shop-floor";
 import type { ManufacturingSite } from "../api/sites";
 import type { ManufacturingStats } from "../api/stats";
 import type { ManufacturingVariantSearchItem } from "../api/variants";
@@ -260,6 +267,65 @@ export const draftFor = (order: ManufacturingOrder, query: URLSearchParams): Man
   };
 };
 
+/** The first of MO-12's work orders: cutting at SAW, ready, nobody on it. */
+export const workOrderFixture = (patch: Partial<ManufacturingWorkOrder> = {}): ManufacturingWorkOrder => {
+  const [table] = variants();
+  return {
+    id: 40,
+    orderId: 5,
+    order: {
+      id: 5,
+      number: "MO-12",
+      variant: ref(table),
+      quantity: "10",
+      produced: "0",
+      remaining: "10",
+      dueDate: "2026-11-20",
+      priority: "normal",
+      status: "confirmed",
+      reservationStatus: "reserved",
+    },
+    sequence: 10,
+    name: "Cut",
+    workCenter: { id: 1, code: "SAW", name: "SAW station", siteId: 1, workingState: "normal" },
+    setupMinutes: "0",
+    cleanupMinutes: "0",
+    minutesPerCycle: "4",
+    capacity: 1,
+    timeEfficiency: 100,
+    expectedMinutes: 40,
+    loggedMinutes: 0,
+    plannedStart: null,
+    plannedFinish: null,
+    status: "ready",
+    startedAt: null,
+    finishedAt: null,
+    last: false,
+    operators: [],
+    revision: 1,
+    ...patch,
+  };
+};
+
+/** A closed productive log of Kari's on the first work order. */
+export const timeLogFixture = (patch: Partial<ManufacturingTimeLog> = {}): ManufacturingTimeLog => ({
+  id: 80,
+  workOrderId: 40,
+  workCenterId: 1,
+  user: people()[0],
+  kind: "productive",
+  reason: null,
+  note: "",
+  startedAt: "2026-11-10T08:00:00Z",
+  endedAt: "2026-11-10T09:30:00Z",
+  quantity: null,
+  forced: false,
+  correctedBy: null,
+  correctedAt: null,
+  longRunning: false,
+  ...patch,
+});
+
 export interface ManufacturingServer {
   meta?: Partial<ManufacturingMeta>;
   stats?: Partial<ManufacturingStats>;
@@ -268,6 +334,13 @@ export interface ManufacturingServer {
   overview?: ManufacturingBomOverview;
   orders?: ManufacturingOrder[];
   events?: ManufacturingOrderEvent[];
+  workOrders?: ManufacturingWorkOrder[];
+  timeLogs?: ManufacturingTimeLog[];
+  /** The work orders' views; by default each work order with no instructions, components or logs. */
+  views?: Partial<ManufacturingWorkOrderView>[];
+  /** A work center's block, by its id. */
+  blocks?: Record<number, ManufacturingWorkCenterBlock>;
+  myWork?: ManufacturingMyWork;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -308,6 +381,16 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
   const centers = server.workCenters ?? [workCenter(1, "SAW"), workCenter(2, "PAINT")];
   const boms = server.boms ?? [bomFixture()];
   const orders = server.orders ?? [orderFixture()];
+  const workOrders = server.workOrders ?? [workOrderFixture()];
+  const viewOf = (workOrder: ManufacturingWorkOrder): ManufacturingWorkOrderView => ({
+    workOrder,
+    instructions: "",
+    components: [],
+    openLogs: [],
+    myOpenLog: null,
+    block: server.blocks?.[workOrder.workCenter.id] ?? null,
+    ...server.views?.find((one) => one.workOrder?.id === workOrder.id),
+  });
   const stats: ManufacturingStats = {
     activeWorkCenters: centers.filter((one) => one.status === "active").length,
     blockedWorkCenters: centers.filter((one) => one.workingState === "blocked").length,
@@ -329,6 +412,30 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       if (method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
       const bom = /^\/boms(?:\/(\d+))?/.exec(path);
       if (bom) return Promise.resolve(jsonResponse(bom[1] ? 200 : 201, { ...bomFixture(), id: Number(bom[1] ?? 99) }));
+      const action = /^\/work-orders\/(\d+)\/(start|pause|finish)$/.exec(path);
+      if (action) {
+        const found = workOrders.find((one) => one.id === Number(action[1])) ?? workOrderFixture();
+        return Promise.resolve(jsonResponse(200, { workOrder: viewOf(found), closedLog: null, production: null }));
+      }
+      const blocking = /^\/work-centers\/(\d+)\/(block|unblock)$/.exec(path);
+      if (blocking) {
+        const found = centers.find((one) => one.id === Number(blocking[1])) ?? centers[0];
+        return Promise.resolve(
+          jsonResponse(200, {
+            workCenter: {
+              id: found.id,
+              code: found.code,
+              name: found.name,
+              siteId: found.siteId,
+              workingState: "normal",
+            },
+            block: null,
+            items: [],
+          }),
+        );
+      }
+      if (/^\/time-logs\/\d+$/.test(path) || /^\/work-orders\/\d+\/time-logs$/.test(path))
+        return Promise.resolve(jsonResponse(200, timeLogFixture()));
       const order = /^\/orders(?:\/(\d+))?/.exec(path);
       if (order) {
         const found = orders.find((one) => one.id === Number(order[1])) ?? orderFixture({ id: 99, status: "draft" });
@@ -385,6 +492,44 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
         return Promise.resolve(jsonResponse(200, draftFor(found, url.searchParams)));
       return Promise.resolve(jsonResponse(200, found));
     }
+    const orderWork = /^\/orders\/(\d+)\/(work-orders|time-logs)$/.exec(path);
+    if (orderWork)
+      return Promise.resolve(
+        jsonResponse(200, {
+          items:
+            orderWork[2] === "work-orders"
+              ? workOrders.filter((one) => one.orderId === Number(orderWork[1]))
+              : (server.timeLogs ?? []),
+        }),
+      );
+    const queue = /^\/work-centers\/(\d+)\/queue$/.exec(path);
+    if (queue) {
+      const found = centers.find((one) => one.id === Number(queue[1]));
+      if (!found) return Promise.resolve(manufacturingProblem(404, undefined));
+      const block = server.blocks?.[found.id] ?? null;
+      return Promise.resolve(
+        jsonResponse(200, {
+          workCenter: {
+            id: found.id,
+            code: found.code,
+            name: found.name,
+            siteId: found.siteId,
+            workingState: block ? "blocked" : "normal",
+          },
+          block,
+          items: workOrders.filter(
+            (one) => one.workCenter.id === found.id && !["done", "cancelled", "pending"].includes(one.status),
+          ),
+        }),
+      );
+    }
+    const workOrder = /^\/work-orders\/(\d+)$/.exec(path);
+    if (workOrder) {
+      const found = workOrders.find((one) => one.id === Number(workOrder[1]));
+      return Promise.resolve(found ? jsonResponse(200, viewOf(found)) : manufacturingProblem(404, undefined));
+    }
+    if (path === "/shop-floor/mine")
+      return Promise.resolve(jsonResponse(200, server.myWork ?? { openLog: null, openWorkOrder: null, today: [] }));
     if (/^\/sites\/\d+\/locations$/.test(path)) return Promise.resolve(jsonResponse(200, { items: locations() }));
     if (path === "/people") {
       const q = (url.searchParams.get("q") ?? "").toLowerCase();

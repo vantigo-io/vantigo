@@ -370,5 +370,149 @@
       "en": "The history of a manufacturing order: each event, who did it and when.",
       "nb": "Historikken til en produksjonsordre: hver hendelse, hvem som gjorde den og når."
     }
+  },
+  {
+    "key": "manufacturing.order.work-orders-tab",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Work orders tab",
+      "nb": "Fanen Arbeidsordrer"
+    },
+    "description": {
+      "en": "The tab on a manufacturing order that shows its work orders and time logs.",
+      "nb": "Fanen på en produksjonsordre som viser arbeidsordrene og tidsregistreringene."
+    }
+  },
+  {
+    "key": "manufacturing.order.work-orders",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Work orders",
+      "nb": "Arbeidsordrer"
+    },
+    "description": {
+      "en": "The order's work orders, one per operation, with their status and logged against expected minutes.",
+      "nb": "Ordrens arbeidsordrer, én per operasjon, med status og registrerte mot forventede minutter."
+    }
+  },
+  {
+    "key": "manufacturing.order.time-logs",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Time logs",
+      "nb": "Tidsregistreringer"
+    },
+    "description": {
+      "en": "Every time log on the order, with Correct for a supervisor.",
+      "nb": "Alle tidsregistreringer på ordren, med Korriger for en leder."
+    }
+  },
+  {
+    "key": "manufacturing.order.add-log",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Add missing log",
+      "nb": "Legg til manglende registrering"
+    },
+    "description": {
+      "en": "The button that opens the dialog for adding a time log someone forgot to record.",
+      "nb": "Knappen som åpner dialogen for å legge til en tidsregistrering noen glemte."
+    }
+  },
+  {
+    "key": "manufacturing.shop-floor.picker",
+    "route": "/manufacturing/shop-floor",
+    "label": {
+      "en": "Choose a work center",
+      "nb": "Velg arbeidsstasjon"
+    },
+    "description": {
+      "en": "The work centers on the shop floor; the one last used on this device comes first.",
+      "nb": "Arbeidsstasjonene i verkstedet; den som sist ble brukt på denne enheten kommer først."
+    }
+  },
+  {
+    "key": "manufacturing.shop-floor.queue",
+    "route": "/manufacturing/shop-floor/work-centers/{workCenterId}",
+    "label": {
+      "en": "Queue",
+      "nb": "Kø"
+    },
+    "description": {
+      "en": "The work orders waiting, running or paused at the work center, with what remains and who runs each.",
+      "nb": "Arbeidsordrene som venter, kjører eller er pauset ved arbeidsstasjonen, med hva som gjenstår og hvem som kjører dem."
+    }
+  },
+  {
+    "key": "manufacturing.shop-floor.block",
+    "route": "/manufacturing/shop-floor/work-centers/{workCenterId}",
+    "label": {
+      "en": "Block and Unblock",
+      "nb": "Blokker og Opphev blokkering"
+    },
+    "description": {
+      "en": "The buttons that block the work center with a reason, or lift the block.",
+      "nb": "Knappene som blokkerer arbeidsstasjonen med en årsak, eller opphever blokkeringen."
+    }
+  },
+  {
+    "key": "manufacturing.work-order.actions",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "label": {
+      "en": "Start, Pause and Finish",
+      "nb": "Start, Pause og Ferdig"
+    },
+    "description": {
+      "en": "The large buttons on a work order: Start, Pause, Finish, Register production on the last operation and Report scrap.",
+      "nb": "De store knappene på en arbeidsordre: Start, Pause, Ferdig, Registrer produksjon på siste operasjon og Meld svinn."
+    }
+  },
+  {
+    "key": "manufacturing.work-order.timer",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "label": {
+      "en": "Your time",
+      "nb": "Din tid"
+    },
+    "description": {
+      "en": "The timer of your running log on the work order.",
+      "nb": "Tidtakeren for registreringen din som kjører på arbeidsordren."
+    }
+  },
+  {
+    "key": "manufacturing.work-order.people",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "label": {
+      "en": "Who is here",
+      "nb": "Hvem som er her"
+    },
+    "description": {
+      "en": "Who runs the work order, and the others who have it open now.",
+      "nb": "Hvem som kjører arbeidsordren, og de andre som har den åpen nå."
+    }
+  },
+  {
+    "key": "manufacturing.work-order.instructions",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "label": {
+      "en": "Instructions",
+      "nb": "Instruksjoner"
+    },
+    "description": {
+      "en": "The operation's instructions from the bill of materials.",
+      "nb": "Operasjonens instruksjoner fra stykklisten."
+    }
+  },
+  {
+    "key": "manufacturing.my-work.open-log",
+    "route": "/manufacturing/shop-floor/mine",
+    "label": {
+      "en": "Running now",
+      "nb": "Kjører nå"
+    },
+    "description": {
+      "en": "What you are running now, with its timer and a link to the work order.",
+      "nb": "Det du kjører nå, med tidtaker og lenke til arbeidsordren."
+    }
   }
 ]

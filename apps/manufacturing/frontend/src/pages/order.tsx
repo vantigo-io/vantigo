@@ -1,4 +1,17 @@
-import { Alert, Anchor, Badge, Button, Group, List, Modal, SimpleGrid, Stack, Text, Timeline } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  List,
+  Modal,
+  SimpleGrid,
+  Stack,
+  Tabs,
+  Text,
+  Timeline,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
@@ -34,6 +47,7 @@ import { CloseDialog } from "../components/close-dialog";
 import { OrderComponents } from "../components/order-components";
 import { OrderForm } from "../components/order-form";
 import { ProductionDialog } from "../components/production-dialog";
+import { WorkOrdersPanel } from "../components/work-orders-panel";
 import { useRecordActions } from "../lib/actions";
 import { canManageOrders, canRegisterProduction } from "../lib/capabilities";
 import { compareDecimal } from "../lib/decimal";
@@ -162,7 +176,8 @@ const History = ({ orderId, live }: { orderId: number; live: boolean }) => {
  * One manufacturing order (M17–M26): its facts and status, the actions its
  * status and the caller's capabilities offer — Edit, Confirm, Reserve now,
  * Register production, Close, Cancel — its component lines with what is
- * missing, the short-line notice, and its history. It follows
+ * missing — beside its work orders and time logs once confirmed (M27, M29)
+ * — the short-line notice, and its history. It follows
  * `manufacturing.order:<id>`, polling only while live is down.
  */
 export const OrderPage = () => {
@@ -408,11 +423,32 @@ export const OrderPage = () => {
               </Text>
             )}
           </PageSection>
-          <OrderComponents
-            order={data}
-            canManage={manage}
-            onShortLines={(answer) => setShortLines(answer.shortLines)}
-          />
+          {data.status === "draft" ? (
+            <OrderComponents
+              order={data}
+              canManage={manage}
+              onShortLines={(answer) => setShortLines(answer.shortLines)}
+            />
+          ) : (
+            <Tabs defaultValue="components" keepMounted={false}>
+              <Tabs.List mb="md">
+                <Tabs.Tab value="components">{t("components")}</Tabs.Tab>
+                <Tabs.Tab value="work-orders" data-assist="manufacturing.order.work-orders-tab">
+                  {t("workOrders")}
+                </Tabs.Tab>
+              </Tabs.List>
+              <Tabs.Panel value="components">
+                <OrderComponents
+                  order={data}
+                  canManage={manage}
+                  onShortLines={(answer) => setShortLines(answer.shortLines)}
+                />
+              </Tabs.Panel>
+              <Tabs.Panel value="work-orders">
+                <WorkOrdersPanel order={data} live={live} canManage={manage} />
+              </Tabs.Panel>
+            </Tabs>
+          )}
           <History orderId={data.id} live={live} />
           <Modal
             opened={editing}

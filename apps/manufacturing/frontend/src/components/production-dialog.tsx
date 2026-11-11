@@ -6,6 +6,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   type ManufacturingOrder,
+  type ManufacturingProduction,
   type ManufacturingProductionInput,
   postProduction,
   productionDraftQueryOptions,
@@ -28,10 +29,19 @@ interface LineValues {
 const decimalOrUndefined = (text: string) =>
   text.trim() !== "" && isDecimal(text) ? normalizeDecimal(text) : undefined;
 
+/** The order fields the dialog reads: its id, number and site. */
+export type ProductionOrder = Pick<ManufacturingOrder, "id" | "number" | "siteId">;
+
 export interface ProductionDialogProps {
-  order: ManufacturingOrder;
+  order: ProductionOrder;
   opened: boolean;
   onClose: () => void;
+  /**
+   * Sends the production instead of `POST /orders/{id}/productions`: the shop
+   * floor finishes the last work order with it, in one transaction (M29).
+   * Answers the production posted, or null when none is answered.
+   */
+  submit?: (body: ManufacturingProductionInput) => Promise<ManufacturingProduction | null>;
 }
 
 /**
@@ -42,18 +52,18 @@ export interface ProductionDialogProps {
  *
  * One `clientRequestId` per opening makes the post idempotent: a retry and
  * the consumption warning's *Post anyway* resend the same body under it, the
- * latter with `acceptDeviation`.
+ * latter with `acceptDeviation`. `submit` sends it another way.
  */
-export const ProductionDialog = ({ order, opened, onClose }: ProductionDialogProps) => {
+export const ProductionDialog = ({ order, opened, onClose, submit }: ProductionDialogProps) => {
   const { t } = useManufacturingFormat();
   return (
     <Modal opened={opened} onClose={onClose} title={t("registerProductionTitle", { number: order.number })} size="xl">
-      {opened && <ProductionForm order={order} onClose={onClose} />}
+      {opened && <ProductionForm order={order} onClose={onClose} submit={submit} />}
     </Modal>
   );
 };
 
-const ProductionForm = ({ order, onClose }: { order: ManufacturingOrder; onClose: () => void }) => {
+const ProductionForm = ({ order, onClose, submit }: Omit<ProductionDialogProps, "opened">) => {
   const { t, quantity: showQuantity } = useManufacturingFormat();
   const invalidate = useInvalidateManufacturing();
   const [clientRequestId] = useState(() => crypto.randomUUID());
@@ -142,11 +152,14 @@ const ProductionForm = ({ order, onClose }: { order: ManufacturingOrder; onClose
     setPosting(true);
     setProblem(undefined);
     try {
-      const production = await postProduction(order.id, body);
+      const production = await (submit ? submit(body) : postProduction(order.id, body));
       notifications.show({
         color: "teal",
         title: t("productionPosted"),
-        message: t("productionPostedBody", { quantity: production.quantity, number: production.orderNumber }),
+        message: t("productionPostedBody", {
+          quantity: production?.quantity ?? body.quantity,
+          number: production?.orderNumber ?? order.number,
+        }),
       });
       await invalidate();
       onClose();

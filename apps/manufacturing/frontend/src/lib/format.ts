@@ -73,6 +73,16 @@ export const orderStatusColor = {
   cancelled: "red",
 } as const;
 
+/** A work order's status badge colour (M27). */
+export const workOrderStatusColor = {
+  pending: "gray",
+  ready: "blue",
+  in_progress: "yellow",
+  paused: "orange",
+  done: "teal",
+  cancelled: "red",
+} as const;
+
 /** An order's component availability badge colour (M21). */
 export const availabilityColor = { ready: "teal", partly_available: "yellow", waiting: "red" } as const;
 

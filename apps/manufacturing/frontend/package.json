@@ -21,7 +21,9 @@
     "@vantigo/frontend-shell": "workspace:*",
     "dayjs": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "react-markdown": "catalog:",
+    "remark-gfm": "catalog:"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

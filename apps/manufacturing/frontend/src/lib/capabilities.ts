@@ -16,3 +16,10 @@ export const canManageOrders = (meta: ManufacturingMeta | undefined): boolean =>
 /** Whether the caller may register a production: `manufacturing:shop-floor` or `manufacturing:orders-manage` (shop_floor_required). */
 export const canRegisterProduction = (meta: ManufacturingMeta | undefined): boolean =>
   meta?.canWorkShopFloor === true || meta?.canManageOrders === true;
+
+/**
+ * Whether the caller may start, pause and finish work orders, report scrap and
+ * block a work center: `manufacturing:shop-floor` or
+ * `manufacturing:orders-manage` (M33, shop_floor_required).
+ */
+export const canWorkOnShopFloor = (meta: ManufacturingMeta | undefined): boolean => canRegisterProduction(meta);
