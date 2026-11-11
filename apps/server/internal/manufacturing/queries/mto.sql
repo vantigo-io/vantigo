@@ -65,8 +65,44 @@ ORDER BY origin_line_id, number, suffix;
 -- name: FlagOriginCancelled :many
 -- FlagOriginCancelled marks the orders made for a cancelled sales order
 -- (M44), leaving them as they are for a person to decide; the ones already
--- flagged are left alone. It answers the orders it flagged.
-UPDATE manufacturing.orders
+-- flagged are left alone. The rows are locked in id order first, as every
+-- write of several orders locks them (M26a). It answers the orders it
+-- flagged.
+WITH flagged AS (
+    SELECT f.id FROM manufacturing.orders f
+    WHERE f.origin_kind = 'sales_order' AND f.origin_order_id = @sales_order_id AND NOT f.origin_cancelled
+    ORDER BY f.id
+    FOR UPDATE
+)
+UPDATE manufacturing.orders o
 SET origin_cancelled = true, updated_at = @now
-WHERE origin_kind = 'sales_order' AND origin_order_id = @sales_order_id AND NOT origin_cancelled
-RETURNING id;
+FROM flagged
+WHERE o.id = flagged.id
+RETURNING o.id;
+
+-- name: CancelMtoRequest :exec
+-- CancelMtoRequest marks a cancelled sales order's pending request
+-- cancelled, or inserts it cancelled when the cancel is handled before the
+-- confirm (M44): the worker, under the same lease, then makes nothing for it.
+-- A request already finished is left as it is.
+INSERT INTO manufacturing.mto_requests (sales_order_id, event_id, status, next_attempt_at, created_at, done_at)
+VALUES (@sales_order_id, @event_id, 'cancelled', @now, @now, @now)
+ON CONFLICT (sales_order_id) DO UPDATE
+SET status = 'cancelled', done_at = EXCLUDED.done_at, last_error = NULL
+WHERE manufacturing.mto_requests.status = 'pending';
+
+-- name: MtoRequestOfSalesOrder :one
+-- MtoRequestOfSalesOrder is the one request of a sales order, for what
+-- contracts.Production says of the lines it made no order for (M46a).
+SELECT * FROM manufacturing.mto_requests WHERE sales_order_id = @sales_order_id;
+
+-- name: OpenChildrenOfOrder :many
+-- OpenChildrenOfOrder is, per variant, what the parent's sub-assembly orders
+-- not done or cancelled have left to make (quantity less produced, at least
+-- 0): a second sub-assembly order is made only for what they do not cover
+-- (M47).
+SELECT variant_id, COALESCE(SUM(GREATEST(quantity - produced, 0)), 0)::numeric(14, 3) AS remaining
+FROM manufacturing.orders
+WHERE parent_order_id = @parent_order_id AND status IN ('draft', 'confirmed', 'in_progress')
+GROUP BY variant_id
+ORDER BY variant_id;

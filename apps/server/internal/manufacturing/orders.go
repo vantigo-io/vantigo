@@ -1046,7 +1046,8 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		}
 		out.Components = append(out.Components, line)
 	}
-	return out, s.withOrigin(ctx, &out)
+	s.withOrigin(ctx, &out)
+	return out, nil
 }
 
 // componentBoms is each component variant's default active BoM, for the
@@ -1121,7 +1122,7 @@ func (s *server) people(ctx context.Context, ids ...*uuid.UUID) (map[uuid.UUID]c
 
 func linkOf(o store.ManufacturingOrder) gen.ManufacturingOrderLink {
 	return gen.ManufacturingOrderLink{Id: o.ID, Number: orderNumber(o.Number, o.Suffix), Status: gen.ManufacturingOrderStatus(o.Status),
-		Quantity: numericText(o.Quantity, quantityPlaces), Produced: numericText(o.Produced, quantityPlaces)}
+		Quantity: numericText(o.Quantity, quantityPlaces), Produced: numericText(o.Produced, quantityPlaces), VariantId: o.VariantID}
 }
 
 // reservationStatusOf is the list's reservation status (M21a) from the

@@ -779,8 +779,9 @@ func (s *server) fixActual(ctx context.Context, txq *store.Queries, o store.Manu
 
 // createBackorder inserts the backorder of o for rest (M23, M17b): the next
 // suffix of the root's number, o's BoM, place, due date, priority,
-// responsible, note and origin, linked as its backorder. Its plan is not
-// carried: its work orders are new, and wait to be planned (M35).
+// responsible, note and origin — a cancelled sales order's flag too (M44) —,
+// linked as its backorder. Its plan is not carried: its work orders are new,
+// and wait to be planned (M35).
 func (s *server) createBackorder(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, rest *big.Rat, at time.Time, who actor) (store.ManufacturingOrder, error) {
 	suffix, err := txq.NextBackorderSuffix(ctx, o.Number)
 	if err != nil {
@@ -791,7 +792,7 @@ func (s *server) createBackorder(ctx context.Context, txq *store.Queries, o stor
 		SiteID: o.SiteID, ComponentLocationID: o.ComponentLocationID, OutputLocationID: o.OutputLocationID, DueDate: o.DueDate,
 		Priority: o.Priority, ResponsibleUserID: o.ResponsibleUserID,
 		Note: o.Note, OriginKind: o.OriginKind, OriginOrderID: o.OriginOrderID, OriginLineID: o.OriginLineID,
-		OriginReference: o.OriginReference, ParentOrderID: o.ParentOrderID, BackorderOfID: &o.ID, Now: at,
+		OriginReference: o.OriginReference, OriginCancelled: o.OriginCancelled, ParentOrderID: o.ParentOrderID, BackorderOfID: &o.ID, Now: at,
 	})
 	if err != nil {
 		return b, err

@@ -17,9 +17,10 @@ import (
 // line, and which variants have a BoM. It notes every call, so the lock rule
 // holds it out of a transaction.
 type fakeProduction struct {
-	mu     sync.Mutex
-	made   []contracts.LineProduction
-	hasBom map[int32]bool
+	mu      sync.Mutex
+	made    []contracts.LineProduction
+	hasBom  map[int32]bool
+	notMade []contracts.LineNotMade
 }
 
 func (f *fakeProduction) ForOrderLines(ctx context.Context, ids []int64) ([]contracts.LineProduction, error) {
@@ -46,6 +47,13 @@ func (f *fakeProduction) HasBOM(ctx context.Context, ids []int32) (map[int32]boo
 		out[id] = f.hasBom[id]
 	}
 	return out, nil
+}
+
+func (f *fakeProduction) NotMade(ctx context.Context, _ int64) ([]contracts.LineNotMade, error) {
+	lockedContractCalls.note(ctx, "fake Production.NotMade")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.notMade, nil
 }
 
 // SalesOrderLines answers an order's product lines naming a variant, with

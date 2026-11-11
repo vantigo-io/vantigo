@@ -32,6 +32,10 @@ type ledgerState struct {
 	// transaction before anything else and may refuse: a test's window on
 	// a refusal after the engine has written.
 	produceHook func(ctx context.Context, tx pgx.Tx, p contracts.StockProduction) error
+	// reserveHook, when set, runs once at the start of the next
+	// ReserveForProduction, on the caller's transaction: a test's window
+	// inside a transaction that makes orders.
+	reserveHook func()
 	produced    []contracts.StockProduction
 }
 
@@ -149,6 +153,13 @@ func (s *fakeStock) productions() []contracts.StockProduction {
 	return slices.Clone(s.produced)
 }
 
+// onReserve installs the reserve hook, run once.
+func (s *fakeStock) onReserve(hook func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reserveHook = hook
+}
+
 // onProduce installs the produce hook.
 func (s *fakeStock) onProduce(hook func(ctx context.Context, tx pgx.Tx, p contracts.StockProduction) error) {
 	s.mu.Lock()
@@ -233,6 +244,13 @@ func (s *fakeStock) Issue(context.Context, pgx.Tx, contracts.StockSource, contra
 func (s *fakeStock) ReserveForProduction(_ context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, lines []contracts.StockLine) error {
 	if tx == nil {
 		panic("ReserveForProduction without a transaction")
+	}
+	s.mu.Lock()
+	hook := s.reserveHook
+	s.reserveHook = nil
+	s.mu.Unlock()
+	if hook != nil {
+		hook()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
