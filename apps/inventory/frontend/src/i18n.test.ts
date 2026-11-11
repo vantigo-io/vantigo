@@ -55,12 +55,12 @@ describe("the inventory catalog", () => {
       ...locationKinds.map((value) => `locationKind_${value}`),
       ...statuses.map((value) => `status_${value}`),
       ...movementKinds.map((value) => `kind_${value}`),
-      // A count is posted from its counting screen, an issue by another
-      // module and a transfer's kinds by the transfer, not from a
-      // new-movement form, so only the three posting kinds
-      // have the form's words.
+      // A count is posted from its counting screen, an issue and a
+      // production by another module and a transfer's kinds by the
+      // transfer, not from a new-movement form, so only the three posting
+      // kinds have the form's words.
       ...movementKinds
-        .filter((value) => !["count", "issue", "transfer_out", "transfer_in"].includes(value))
+        .filter((value) => !["count", "issue", "transfer_out", "transfer_in", "production"].includes(value))
         .flatMap((value) => [
           `new_${value}`,
           `newDescription_${value}`,
