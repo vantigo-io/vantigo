@@ -797,6 +797,8 @@ order frees the line.
 A cancelled sales order does **not** cancel the manufacturing orders made for it: the
 goods may already be half made. Each is marked **Sales order cancelled**, on the list and
 on its page, and its history says so. Decide whether to finish it, close it or cancel it.
+A backorder of such an order is marked too; its sub-assembly orders are not — look at the
+parent. A sales order cancelled before its manufacturing orders were made gets none.
 
 ### When the order is done
 
@@ -809,11 +811,14 @@ the line says so.
 
 A component that is itself made — it has a default bill of materials — can be made for an
 order. On a confirmed or in-progress order whose made components miss something, choose
-**Create sub-assembly orders**. Every such component is listed with what it misses, each
-checked; uncheck those you will not make now and choose **Create sub-assembly orders**.
-Each becomes a confirmed order:
+**Create sub-assembly orders**. The sub-assembly orders already open for the order are
+listed under **Already being made**, with what each still has to make. Every component
+missing more than they make is listed with the rest it misses, each checked; uncheck those
+you will not make now and choose **Create sub-assembly orders**. Each becomes a confirmed
+order:
 
-- for what the component misses, by its default bill of materials;
+- for what the component misses beyond the open sub-assembly orders, by its default bill
+  of materials;
 - with origin **Parent order**, linked to this order;
 - due when this order is planned to start, or on its requested start when it is not
   planned.

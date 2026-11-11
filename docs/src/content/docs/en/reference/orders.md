@@ -752,23 +752,36 @@ transaction and on the pool, for each product line naming a variant:
   and answers nothing to a caller without it, and Orders checks nothing itself. With
   Manufacturing off, or nothing answered, the two fields are left out. A failure fails
   the answer;
+- **`notMade`** — `{code, detail}` — on a line with no manufacturing order, when the
+  production is answered: why make-to-order made none, read through
+  `Production.NotMade` for the order (M44a). It is the line's own reason — `no_site`,
+  `nothing_open`, `variant_not_goods`, `sales_order_line_has_order` or the code of the
+  Manufacturing rule that refused the order —, else, on a line whose variant has a bill
+  of materials, `failed` when the order's request failed after its last attempt. Left
+  out otherwise;
 - **`readyToReserve`** — `{manufacturingOrderId, produced, siteId, otherSite}` — once a
   manufacturing order made for the line closed: the latest one, what was produced for the
   line in all, the site it was made at, and `otherSite` when that is not the order's site.
+  `manufacturingOrderId` is Manufacturing's id, named only to a holder of
+  `manufacturing:access`; the rest is there for every caller.
 
 The order page shows each manufacturing order, linking to it for a holder of
 `manufacturing:access`, and offers **Create manufacturing order** — Manufacturing's
 new-order form prefilled from the line — on a line with a bill of materials and no order
-yet, to a holder of `manufacturing:access` and `manufacturing:orders-manage`.
+yet, to a holder of `manufacturing:access` and `manufacturing:orders-manage`. On a line
+with `notMade` it says *No manufacturing order made:* and the reason, to a holder of
+`manufacturing:access`.
 
 ### Produced, ready to reserve
 
 The handler **`orders.mto-reserve`** takes `manufacturing.order.done` v1 and only marks
-the line in Orders' own schema (rule 23, M48a): a row of `line_production_ready`, keyed by
-the line — a table rather than a column of `lines`, because a save replaces a
-document's lines whole — with the manufacturing order, its site and the produced quantity
-added to what was produced for the line before. A line that is no longer an order's, and a
-close that produced nothing, mark nothing. The handler reserves nothing: the order page
+the line in Orders' own schema (rule 23, M48a): a row of `line_production_ready` per
+line and manufacturing order closed for it — a table rather than a column of `lines`,
+because a save replaces a document's lines whole — with the order's site and what it
+produced. The row is keyed by the two, so one order's event handled twice counts its
+goods once; a backorder chain's orders are a row each. The line reads as one mark: the
+latest order closed and its site, and every row's produced summed. A line that is no
+longer an order's, and a close that produced nothing, mark nothing. The handler reserves nothing: the order page
 then says the goods are ready and offers its existing **Reserve now**
 ([Reservations](#reservations)), which reserves at the order's site. When the goods were
 made at another site, Reserve now cannot pick them up, and the page says a transfer is

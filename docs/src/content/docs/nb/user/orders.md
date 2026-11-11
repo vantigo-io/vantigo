@@ -327,7 +327,10 @@ produsert, og når den er planlagt ferdig. Et produkt som produseres mot ordre, 
 produksjonsordren sin av seg selv når du bekrefter ordren; for et annet produkt som lages
 etter en stykkliste, åpner **Opprett produksjonsordre** på linjen en ny ordre i
 Produksjon, fylt ut fra linjen. Den krever rettigheten til å administrere
-produksjonsordrer, og tilbys mens linjen ikke har noen.
+produksjonsordrer, og tilbys mens linjen ikke har noen. Når et produkt som produseres mot
+ordre, ikke fikk noen produksjonsordre, sier linjen **Ingen produksjonsordre laget:** og
+hvorfor — stykklisten har ingen operasjoner og ordren angir ikke noe lagersted, for
+eksempel, eller produksjonen mot ordre feilet og produksjonsordren må opprettes manuelt.
 
 Når en produksjonsordre laget for linjen lukkes, sier linjen hvor mye som er **produsert,
 klar til reservering**: velg **Reserver nå** for å reservere det. Når varene ble laget på

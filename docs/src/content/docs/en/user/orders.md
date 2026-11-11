@@ -329,7 +329,10 @@ produced of its quantity, and when it is planned to finish. A product made to or
 its manufacturing order by itself when you confirm the order; for any other product made
 by a bill of materials, **Create manufacturing order** on the line opens Manufacturing's
 new order filled in from the line. It needs the permission to manage manufacturing
-orders, and is offered while the line has none.
+orders, and is offered while the line has none. When a product made to order got no
+manufacturing order, the line says **No manufacturing order made:** and why — the bill of
+materials has no operations and the order names no site, say, or making it failed and the
+manufacturing order must be created by hand.
 
 When a manufacturing order made for the line is closed, the line says how much was
 **produced, ready to reserve**: choose **Reserve now** to reserve it. When the goods were
