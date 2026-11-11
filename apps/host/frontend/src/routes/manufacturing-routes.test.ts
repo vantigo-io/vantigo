@@ -5,20 +5,26 @@ import {
   BOM_ROUTE_PATH,
   BOMS_ROUTE_PATH,
   MANUFACTURING_HOME_ROUTE_PATH,
+  MY_WORK_ROUTE_PATH,
   manufacturingNavItems,
   NEW_BOM_ROUTE_PATH,
   NEW_ORDER_ROUTE_PATH,
   NEW_WORK_CENTER_ROUTE_PATH,
   ORDER_ROUTE_PATH,
   ORDERS_ROUTE_PATH,
+  SHOP_FLOOR_ROUTE_PATH,
+  SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
   WORK_CENTER_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
+  WORK_ORDER_ROUTE_PATH,
 } from "@vantigo/manufacturing-ui";
 import { describe, expect, it } from "vitest";
 import { routeTree } from "../routeTree.gen";
 import { Route as BomRoute } from "./manufacturing/boms.$bomId.index";
 import { Route as BomOverviewRoute } from "./manufacturing/boms.$bomId.overview";
 import { Route as OrderRoute } from "./manufacturing/orders.$orderId";
+import { Route as ShopFloorWorkCenterRoute } from "./manufacturing/shop-floor.work-centers.$workCenterId";
+import { Route as WorkOrderRoute } from "./manufacturing/shop-floor.work-orders.$workOrderId";
 import { Route as WorkCenterRoute } from "./manufacturing/work-centers.$workCenterId";
 
 /** Drives a route's `beforeLoad` with the params given; returns what it throws. */
@@ -60,8 +66,16 @@ describe("the Manufacturing routes", () => {
       WORK_CENTERS_ROUTE_PATH,
       NEW_WORK_CENTER_ROUTE_PATH,
       WORK_CENTER_ROUTE_PATH,
+      SHOP_FLOOR_ROUTE_PATH,
+      MY_WORK_ROUTE_PATH,
+      SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
+      WORK_ORDER_ROUTE_PATH,
     ]) {
-      const concrete = path.replace("$bomId", "7").replace("$workCenterId", "3").replace("$orderId", "5");
+      const concrete = path
+        .replace("$bomId", "7")
+        .replace("$workCenterId", "3")
+        .replace("$orderId", "5")
+        .replace("$workOrderId", "40");
       const ids = matchedRouteIds(concrete);
       expect(ids, concrete).toContain("/manufacturing");
       expect(ids.at(-1), concrete).toBe(path);
@@ -75,6 +89,10 @@ describe("the Manufacturing routes", () => {
     expect(isNotFound(runBeforeLoad(WorkCenterRoute, { workCenterId: "-1" }))).toBe(true);
     expect(isNotFound(runBeforeLoad(OrderRoute, { orderId: "MO-12" }))).toBe(true);
     expect(runBeforeLoad(OrderRoute, { orderId: "5" })).toBeUndefined();
+    expect(isNotFound(runBeforeLoad(ShopFloorWorkCenterRoute, { workCenterId: "mine" }))).toBe(true);
+    expect(isNotFound(runBeforeLoad(WorkOrderRoute, { workOrderId: "0" }))).toBe(true);
+    expect(runBeforeLoad(ShopFloorWorkCenterRoute, { workCenterId: "3" })).toBeUndefined();
+    expect(runBeforeLoad(WorkOrderRoute, { workOrderId: "40" })).toBeUndefined();
     expect(runBeforeLoad(BomRoute, { bomId: "7" })).toBeUndefined();
     expect(runBeforeLoad(WorkCenterRoute, { workCenterId: "3" })).toBeUndefined();
   });

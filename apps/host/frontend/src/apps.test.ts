@@ -6,6 +6,7 @@ import {
   IconClipboardCheck,
   IconClipboardList,
   IconFileImport,
+  IconHammer,
   IconListDetails,
   IconPackageImport,
   IconTool,
@@ -160,6 +161,7 @@ describe("the app registry", () => {
       "/inventory/import",
       "/manufacturing",
       "/manufacturing/orders",
+      "/manufacturing/shop-floor",
       "/manufacturing/boms",
       "/manufacturing/work-centers",
       "/energy/metering-points",
@@ -761,9 +763,10 @@ describe("the app registry", () => {
   });
 
   // Manufacturing's destinations are the package's (`manufacturingNavItems`,
-  // M7): Overview, Manufacturing orders, Bills of materials and Work centers,
-  // each offered by manufacturing:access; the labels and icons are the host's.
-  it("registers Manufacturing with the package's four destinations, all manufacturing:access's", () => {
+  // M7): Overview, Manufacturing orders, Shop floor, Bills of materials and
+  // Work centers, each offered by manufacturing:access; the labels and icons
+  // are the host's.
+  it("registers Manufacturing with the package's five destinations, all manufacturing:access's", () => {
     const manufacturing = appForKey("manufacturing");
     expect(manufacturing).toMatchObject({
       module: "manufacturing",
@@ -776,12 +779,14 @@ describe("the app registry", () => {
     expect(items.map((item) => [item.label, item.to, item.requiredPermissions])).toEqual([
       ["navigation.manufacturingOverview", "/manufacturing", ["manufacturing:access"]],
       ["navigation.manufacturingOrders", "/manufacturing/orders", ["manufacturing:access"]],
+      ["navigation.manufacturingShopFloor", "/manufacturing/shop-floor", ["manufacturing:access"]],
       ["navigation.manufacturingBoms", "/manufacturing/boms", ["manufacturing:access"]],
       ["navigation.manufacturingWorkCenters", "/manufacturing/work-centers", ["manufacturing:access"]],
     ]);
     expect(items.map((item) => item.icon)).toEqual([
       IconBuildingFactory2,
       IconClipboardList,
+      IconHammer,
       IconListDetails,
       IconTool,
     ]);
@@ -792,10 +797,11 @@ describe("the app registry", () => {
       [
         "navigation.manufacturingOverview",
         "navigation.manufacturingOrders",
+        "navigation.manufacturingShopFloor",
         "navigation.manufacturingBoms",
         "navigation.manufacturingWorkCenters",
       ].map((key) => navigationCatalog.nb[key as keyof typeof navigationCatalog.nb]),
-    ).toEqual(["Oversikt", "Produksjonsordrer", "Stykklister", "Arbeidsstasjoner"]);
+    ).toEqual(["Oversikt", "Produksjonsordrer", "Verksted", "Stykklister", "Arbeidsstasjoner"]);
     const keys = (permissions: string[], enabled: readonly ModuleKey[]) =>
       switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
     expect(keys(["manufacturing:access"], ["manufacturing"])).toContainEqual(["manufacturing", true]);
