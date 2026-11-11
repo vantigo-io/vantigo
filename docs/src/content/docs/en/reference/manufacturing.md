@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00156_manufacturing_baseline.sql
   - apps/server/internal/db/migrations/00157_manufacturing_orders.sql
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
+  - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
   - apps/host/frontend/src/routes/manufacturing
 ---
 The Manufacturing module describes how the business makes its goods: the **work centers**
@@ -21,8 +22,9 @@ and the design
 (decisions M*n*; its §15 amendments, such as M10a, win where they differ). This page
 describes delivery A — the module, work centers, bills of materials, the BoM overview and
 the holder — delivery B, [manufacturing orders](#manufacturing-orders), and delivery C,
-[work orders and the shop floor](#work-orders-and-the-shop-floor). The schedule and cost
-are delivery D. Delivery 0, the seams in Inventory and Products this module builds on, is
+[work orders and the shop floor](#work-orders-and-the-shop-floor), and delivery D,
+[the production schedule](#the-production-schedule), [the cost](#cost) and
+[the reports](#reports). Delivery 0, the seams in Inventory and Products this module builds on, is
 described in [Inventory](/en/reference/inventory/#production) and
 [Products](/en/reference/products/).
 
@@ -38,7 +40,8 @@ It reads the catalog through `contracts.ProductCatalog` — searching goods vari
 locking every variant a BoM write names (M10a) — and the sites and stock through
 `contracts.Stock`: `Sites` and `SiteLocations` for the site a work center stands at, and
 `Available` for the overview and an order's availability; `Locations` and `SiteLocations`
-for an order's locations; and `contracts.StockLedger` — `ReserveForProduction`,
+for an order's locations; `contracts.BusinessCalendar` for the business time zone the
+[calendar](#the-calendar) runs in; and `contracts.StockLedger` — `ReserveForProduction`,
 `ReservationsFor`, `Release` and `Produce` — for an order's reservations and productions.
 `MODULES` therefore refuses `manufacturing` without
 `products` or `inventory` (`manufacturing requires inventory`, naming the one missing).
@@ -50,16 +53,22 @@ The schema holds `counters`, `work_centers`, `work_center_closures`, `boms`,
 `00157_manufacturing_orders.sql`; see [the data model](#the-data-model-of-orders)), and,
 from delivery C, `work_orders` and `time_logs` (migration
 `00158_manufacturing_work_orders.sql`; see
-[the data model of the shop floor](#the-data-model-of-the-shop-floor)). `boms` carries a partial unique index on
+[the data model of the shop floor](#the-data-model-of-the-shop-floor)), and, from
+delivery D, `work_order_slots` and the order's `requested_start`, `estimate` and `actual`
+(migration `00159_manufacturing_schedule.sql`; see
+[the data model of the schedule](#the-data-model-of-the-schedule)). `boms` carries a partial unique index on
 `variant_id` where the BoM is the default and active, which makes "one default per
 variant" a database fact.
 
 The app's sidebar has, in order (M7), **Overview** (`/manufacturing`), **Manufacturing
 orders** (`/manufacturing/orders`), **Shop floor** (`/manufacturing/shop-floor`, with
-**My work** at `/manufacturing/shop-floor/mine`), **Bills of materials**
-(`/manufacturing/boms`) and **Work centers** (`/manufacturing/work-centers`). Its
-Norwegian labels are *Oversikt*, *Produksjonsordrer*, *Verksted*, *Stykklister* and
-*Arbeidsstasjoner*. The Overview reads
+**My work** at `/manufacturing/shop-floor/mine`), **Production schedule**
+(`/manufacturing/schedule`), **Bills of materials** (`/manufacturing/boms`) and **Work
+centers** (`/manufacturing/work-centers`). Its Norwegian labels are *Oversikt*,
+*Produksjonsordrer*, *Verksted*, *Produksjonsplan*, *Stykklister* and *Arbeidsstasjoner*.
+**Reports** (`/manufacturing/reports`, nb *Rapporter*) is reached from the Overview's
+header, not the sidebar. The spotlight offers **Open the production schedule** and
+**Manufacturing reports** to every holder of `manufacturing:access`. The Overview reads
 `GET /stats`: the active work centers, the blocked ones and the active BoMs, and
 `ordersToStartToday` (confirmed orders not started whose planned start is today or
 earlier), `ordersInProgress` and `ordersLate` (open orders due before today), with
@@ -74,11 +83,11 @@ status, not its availability, which only the order page computes
 
 | Key | Display (en / nb) | Covers | Sensitive | Delegable |
 | --- | --- | --- | --- | --- |
-| `manufacturing:access` | Use Manufacturing / Bruke Produksjon | See the app; read the meta, the stats, the sites and their locations, the variant and people searches, work centers and their closures, BoMs and their overview, manufacturing orders, their history, their production prefill and their productions; the work orders, the time logs, a work center's queue and My work | no | yes |
+| `manufacturing:access` | Use Manufacturing / Bruke Produksjon | See the app; read the meta, the stats, the sites and their locations, the variant and people searches, work centers and their closures, BoMs and their overview, manufacturing orders, their history, their production prefill and their productions; the work orders, the time logs, a work center's queue and My work; the schedule board; the utilisation and time-deviation reports | no | yes |
 | `manufacturing:boms-manage` | Manage bills of materials and work centers / Administrere stykklister og arbeidsstasjoner | Create, update, archive, reactivate and delete work centers; add and delete closures; create, update, archive and reactivate BoMs and make one the default | no | yes |
-| `manufacturing:orders-manage` | Manage manufacturing orders / Administrere produksjonsordrer | Create, update, confirm, reserve, close and cancel manufacturing orders; add and change their component lines; register a production; every shop-floor action; correct a time log and add a missing one | no | yes |
+| `manufacturing:orders-manage` | Manage manufacturing orders / Administrere produksjonsordrer | Create, update, confirm, reserve, close and cancel manufacturing orders; add and change their component lines; register a production; every shop-floor action; correct a time log and add a missing one; plan, plan all, unplan and reschedule, and set an order's requested start | no | yes |
 | `manufacturing:shop-floor` | Work on the shop floor / Arbeide i verkstedet | Register a production; start, pause and finish a work order, report scrap, block and unblock a work center | no | yes |
-| `manufacturing:costs-view` | See manufacturing costs / Se produksjonskostnader | Every cost field in a response, and writing a work center's rates | **yes** | **no** |
+| `manufacturing:costs-view` | See manufacturing costs / Se produksjonskostnader | Every cost field in a response — an order's `cost` among them — writing a work center's rates, and the production-cost report | **yes** | **no** |
 
 Every read is checked against `manufacturing:access`; every write of a work center or a
 BoM against `manufacturing:access` **and** `manufacturing:boms-manage`, and every write
@@ -104,7 +113,10 @@ no Products key. `GET /meta` answers the caller's `canManageBoms`, `canSeeCosts`
 Without `manufacturing:costs-view` every cost field is **left out** of the response —
 absent, not `null` (M38): a work center's `machineCostPerHour` and `labourCostPerHour`, a
 variant's `standardCost`, an overview node's `standardCost` and `extendedValue`, an
-operation's `cost`, and the overview's `rolledUpCost` and `costIncomplete`. A caller
+operation's `cost`, and the overview's `rolledUpCost` and `costIncomplete`; from delivery
+D an order's `cost` object and every component line's `standardCost` (M38). The
+production-cost report is all cost: its route asks for `manufacturing:access` **and**
+`manufacturing:costs-view`, and refuses the platform's **403** without it. A caller
 without the key who sends either rate on a work-center write — a value or `null` — is
 refused **403** `costs_view_required`, before any other field is judged. On an update a rate left out keeps the stored value, and `null`
 clears it — so a person without the key saves a work center and its rates stay.
@@ -283,8 +295,9 @@ in one order, on its own transaction:
    true (rule 20 of the [module boundaries](/en/contributing/module-boundaries/)).
 2. **`pg_advisory_xact_lock(19782, 1)`** (M14a): 19782 is `0x4D46`, "MF", the
    manufacturing class key, and key 1 is **the BoM graph**. It serialises the structural
-   writes, so two writes cannot each pass the cycle walk and together close a cycle. (A
-   later delivery locks `(19782, workCenterID)` for planning.)
+   writes, so two writes cannot each pass the cycle walk and together close a cycle. The
+   schedule has a class of its own, `19783` keyed by the work center
+   ([The schedule's locks](#the-schedules-locks)).
 3. Then the module's own rows.
 
 The lock is released when the transaction ends.
@@ -414,7 +427,8 @@ is unique. A cancelled order keeps its number.
 | `outputLocationId` | Where the finished goods are put; default the site's root location (`RootLocationID`, M4a) |
 | `componentLocationId` | Optional. Empty, each component is taken from its primary location (Inventory placement), then from the other locations holding it, by full code ([where stock is taken from](#where-stock-is-taken-from)) |
 | `dueDate` | Optional, the day the goods must be ready |
-| `plannedStart`, `plannedFinish` | Optional timestamps, set by hand (planning in D); the finish not before the start |
+| `plannedStart`, `plannedFinish` | Optional timestamps, set by hand or by [planning](#planning); the finish not before the start |
+| `requestedStart` | Optional, the day [planning](#planning) may start from (M35a); empty takes the default, `requestedStartDefault` |
 | `priority` | `normal` (default) or `urgent` |
 | `responsibleUserId` | Optional, a user found through `GET /people`, known to the directory and not disabled (400 on `responsibleUserId`) |
 | `note` | At most 2,000 characters |
@@ -451,6 +465,10 @@ An update (`PUT /orders/{id}`) replaces the order's fields under its `revision`
   judged, against `Stock.SiteLocations` of its own site (`location_unknown`, 400).
 - A responsible user who changes must be known to the directory and not disabled; one
   disabled after being named stays through an edit that leaves them.
+- `requestedStart`, a date or `null`, is the day [planning](#planning) may start from
+  (M35a); like the other nullable fields, one left out is cleared. The order answers
+  `requestedStartDefault` beside it, what planning uses when it is `null`, on a confirmed
+  or in-progress order.
 - **`done`** and **`cancelled`** are final: any write is **409** `order_not_open`.
   Undoing a production is *unbuild*, phase 2; until then an Inventory adjustment corrects
   a mistake.
@@ -471,8 +489,8 @@ required = line.quantity × order.quantity / bom.outputQuantity × (1 + scrapPer
 
 rounded **up** to three decimals. The line snapshots the variant's SKU, product name and
 unit, the BoM line's operation, and the catalog's **standard cost** at confirm, which
-delivery D's actual cost reads (M23a). The order records `confirmedAt`, creates its
-[work orders](#work-orders) and reserves. A backorder's confirm, at close, creates its own
+[the cost](#cost) reads (M23a). The order records `confirmedAt`, creates its
+[work orders](#work-orders), fixes its [estimate](#the-estimate) and reserves. A backorder's confirm, at close, creates its own
 work orders the same way.
 
 ### Reservations
@@ -651,8 +669,10 @@ When `produced` is less than `quantity`, the request must say `backorder`: absen
   order or a draft's confirm on it is `bom_not_active`.
 - `false` closes short.
 
-The answer is `{order, backorder, shortLines}`. The actual cost at close is delivery D's
-(M23a).
+The answer is `{order, backorder, shortLines}`. Close fixes the order's
+[actual cost](#the-actual-and-the-deviation) (M23a, M41). A backorder does not carry its
+original's plan: its work orders are new, and it is planned on its own; its estimate is
+fixed at its own confirm.
 
 ### Cancel
 
@@ -682,12 +702,18 @@ Each event has its `kind`, `at`, the actor's `actorUserId` and `actorDisplay`, a
 | `backorder_created` | Close with a backorder, naming it |
 | `time_log_corrected` | A supervisor's [correction](#corrections) of a time log |
 | `time_log_added` | A supervisor's addition of a missing time log |
+| `planned` | Plan, or plan all, with the planned window and the number of work orders placed |
+| `unplanned` | Unplan |
+| `rescheduled` | A work order moved on the board |
 
 ### The order lock order
 
 Every order, work-order and time-log write takes its locks in one order (M26a), on its
 own transaction:
 
+0. for a schedule write — plan, plan all, unplan, reschedule — **the schedule's advisory
+   lock** of every work center it touches, in id order, before anything else
+   ([The schedule's locks](#the-schedules-locks));
 1. **`ProductCatalog.LockVariants`** on the orders' variants and their component
    variants, the set taken from a plain read first;
 2. the orders' rows **`FOR UPDATE`**, in id order, then — for a draft, and for a write that names
@@ -724,7 +750,7 @@ productions at once on one order therefore run one after the other.
 
 ### Live
 
-Four live topics (M25, M32), declared through `Module.LiveTopics`:
+Five live topics (M25, M32, M36), declared through `Module.LiveTopics`:
 
 - **`manufacturing.orders`**, keyless: the list;
 - **`manufacturing.order:<id>`**: one order;
@@ -732,7 +758,9 @@ Four live topics (M25, M32), declared through `Module.LiveTopics`:
   **`work-center.changed`**;
 - **`manufacturing.work-order:<id>`**: one work order, event **`work-order.changed`**.
   Presence is allowed on it: the work order view shows the others who have it open
-  through presence.
+  through presence;
+- **`manufacturing.schedule:<siteId>`**: one site's [board](#the-board), event
+  **`schedule.changed`**, told by plan, plan all, unplan and reschedule.
 
 Every order write notifies the list's topic and the order's own with the event
 **`order.changed`** carrying the order's id; a work-order or time-log write notifies its
@@ -797,7 +825,9 @@ A work order answers its order's number, product, quantity, `produced` and `rema
 `loggedMinutes` — the productive minutes logged on it, open logs counted to now, rounded
 down; `operators`, who has an open log on it; and `last`, true for the order's last work
 order that is not cancelled. `GET /orders/{id}/work-orders` lists an order's work orders by
-sequence.
+sequence. From delivery D a work order also answers its `plannedStart` and `plannedFinish`,
+and its [duration deviation](#duration-deviation): `actualMinutes`, `deviationMinutes`
+and `deviationPercent`.
 
 ### Expected minutes
 
@@ -985,6 +1015,221 @@ Migration `00158_manufacturing_work_orders.sql` adds, in the `manufacturing` sch
 A work order and a time log name their work center with a restricting foreign key inside
 the schema, which is why a work center they name cannot be deleted.
 
+## The production schedule
+
+Delivery D (M34–M37, M35a) places the work orders of open orders on their work centers'
+calendars. The board is **Production schedule** (`/manufacturing/schedule`, nb
+*Produksjonsplan*).
+
+### The calendar
+
+A work center's calendar (M34) is computed, never stored:
+
+- each day's **open intervals** are its [weekly pattern](#the-weekly-working-pattern) for
+  that weekday — at most two intervals on the 15-minute grid, as local wall times in the
+  business time zone of `contracts.BusinessCalendar` — converted to UTC instants **for
+  that day**. A day on which daylight saving time changes therefore has its real length: a
+  pattern of a whole day is 23 hours on the spring day and 25 hours on the autumn day;
+- a Norwegian public holiday (`holidays.PublicHoliday`) is closed, whatever the pattern;
+- a day inside one of the work center's [closures](#closures) is closed;
+- the day's **capacity** is the length of its open intervals.
+
+The work center's `capacity` and `timeEfficiency` are already in each work order's
+[expected minutes](#expected-minutes); the calendar counts time, not units.
+
+### Slots
+
+A planned work order holds its time as **slots** (`work_order_slots`): pieces
+`[startsAt, endsAt)` each inside one open interval of its work center. A work order cut
+around a lunch break, a night, a closed day or other bookings has several. The **free
+time** at a work center is its open intervals less the slots of its work orders that are
+neither `done` nor `cancelled` — read from the slots, never from a work order's
+`plannedStart … plannedFinish`, which spans the gaps between its pieces. A work order's
+`plannedStart` and `plannedFinish` are its first slot's start and its last slot's end.
+
+### Planning
+
+`POST /orders/{id}/plan {revision}` (M35, M35a) plans a `confirmed` or `in_progress` order
+(`order_not_open`, 409, otherwise):
+
+1. **The search start** is the later of now and the start of the requested start day in
+   the business time zone. The requested start is the order's `requestedStart`, or, when
+   that is `null`, `requestedStartDefault`:
+
+   ```text
+   default = dueDate − ⌈Σ expectedMinutes of the unfinished work orders ÷ 450⌉ business days
+                     − 1 business day,
+             clamped to today; today when there is no due date
+   ```
+
+   450 minutes is a 7.5-hour day, used for this estimate only; a business day skips
+   weekends and Norwegian public holidays.
+2. **The work orders** that are not `done` or `cancelled` are placed forward, one after
+   the other by sequence. Each is cut into pieces that fill the free time of its work
+   center in order, starting no earlier than its predecessor's finish. A `ready` or
+   `pending` work order needs its `expectedMinutes`. One that is `in_progress` or `paused`
+   needs only its **remaining** minutes — expected less the productive minutes logged on
+   it, at least 0 — and starts from now. A `done` work order is never planned.
+3. **The horizon** is 365 days from the search start. A work order that does not fit
+   inside it is **409** `no_capacity`, and nothing is written.
+4. The order's earlier plan is **replaced**: its unfinished work orders' slots are deleted
+   before the free time is read, and the new slots written.
+
+The order's **window** is the earliest planned start to the latest planned finish of its
+work orders, written to its `plannedStart` and `plannedFinish`. An order with no work
+orders gets `dueDate −` its BoM's lead time in business days `… dueDate` (M34). The order
+answers `lateByDays`: the calendar days from the due date to the day of the planned finish
+in the business time zone, a finish at midnight belonging to the day it ends; the order
+page shows it when it is more than 0. Each plan is an event `planned` on the
+[timeline](#history).
+
+### Plan all
+
+`POST /schedule/plan-all {siteId}` plans every open order at the site — `confirmed` or
+`in_progress` — that has no plan: **urgent** first, then by due date, those without one
+last, then by number. Each is planned as above, against the free time the ones before it
+left. An order that does not fit within its horizon is left unplanned and named in
+`noCapacity`; the others are planned. The answer is `{planned, noCapacity}`.
+
+### Unplan
+
+`POST /orders/{id}/unplan {revision}` clears the planned dates of the order and of its
+work orders that are not done or cancelled, and deletes their slots, so their time is free
+again. It is an event `unplanned`.
+
+### Reschedule
+
+`POST /work-orders/{id}/reschedule {start, revision}` (M36), under the **work order's**
+revision, moves one work order on the board:
+
+- the work order takes the first free time of its work center from `start` — from now
+  when `start` is past — cut into pieces as planning does;
+- the later work orders of the same order that are planned move to after it **only** when
+  they would otherwise start before its finish; those that already start after it stay;
+- no other order's work order ever moves.
+
+It is refused **409** `revision_conflict` on a stale revision, `order_not_open` when the
+order is not open, `work_order_closed` when the work order is done or cancelled, and
+`no_capacity` when it does not fit within 365 days; nothing is then changed. The answer is
+the order's work orders by sequence, and the move an event `rescheduled`. Moving a work
+order to another work center is phase 2.
+
+### The schedule's locks
+
+Free time is read from the slots, so two plans that read it at once could book the same
+time. M35a prevents it with an advisory lock of its own: every plan, plan all, unplan and
+reschedule takes **`pg_advisory_xact_lock(19783, workCenterID)`** for every work center
+it touches, in id order, **before any row lock** — before `LockVariants` too. `19783` is
+`0x4D47`, the class after the BoM graph's `19782` (whose key 1 is
+[the BoM graph](#locks)). Then it follows the canonical
+[order lock order](#the-order-lock-order): `LockVariants`, the orders `FOR UPDATE` in id
+order, their work orders in id order. Plan all takes the locks of **every** work center at
+the site first, then the orders' rows in id order, and only then plans them one by one in
+priority order, in memory. Every writer of a center's slots holds that center's lock, so
+two concurrent plans never double-book a work center.
+
+### The board
+
+`GET /schedule?siteId&from&days` (M36) is the board of one site: `from` defaults to today
+in the business time zone, and `days` is `7` (the default) or `14` — anything else is
+**400** on `days`. It answers, per **active** work center at the site, its blocked state,
+its closures and, per day, the open intervals, whether the day is closed (`holiday` or
+`closure`), the capacity, the planned minutes and the **load** — planned minutes ÷ the
+day's capacity, in per cent, above 100 when overbooked — and the **bars**: each slot with
+its work order, the order's number, the product, whether the order is urgent and whether
+it is late (its planned finish after its due date). It also answers the site's
+**unscheduled** orders: open orders with no plan, with their due date, requested start
+and expected time. The board reads again on the `manufacturing.schedule:<siteId>` event
+([Live](#live)); its site choice is kept in the browser's `localStorage` as a convenience.
+
+### The data model of the schedule
+
+Migration `00159_manufacturing_schedule.sql` adds, in the `manufacturing` schema:
+
+| Table or column | Holds |
+| --- | --- |
+| `work_order_slots` | One piece of a planned work order: `work_order_id` (cascading), `work_center_id` (the work order's, restricting), `starts_at`, `ends_at` after it; indexed by work center and start, and by work order and start |
+| `orders.requested_start` | The day planning may start from, a civil date; `null` takes the default |
+| `orders.estimate` | The estimate fixed at confirm, `jsonb` `{components, machine, labour, total, incomplete}` with amounts as exact decimal text |
+| `orders.actual` | The actual fixed at close, the same shape with `costPerUnit` |
+
+## Cost
+
+An order's cost (M38–M41) is answered as its `cost` object, only to a holder of
+`manufacturing:costs-view` ([Cost shaping](#cost-shaping)): `{estimate, actual,
+actualFixed, deviation, costPerUnit, downtime}`. Each of `estimate` and `actual` is
+`{components, machine, labour, total, incomplete}`.
+
+### The estimate
+
+Fixed at confirm (M39), and at a backorder's confirm, and stored on the order:
+
+```text
+components = Σ line.required × line.standardCost        (the snapshot at confirm)
+machine    = Σ workOrder.expectedMinutes / 60 × workOrder.machineRate
+labour     = Σ workOrder.expectedMinutes / 60 × workOrder.labourRate   (one operator)
+total      = components + machine + labour
+```
+
+The rates are the work order's snapshot at confirm ([Work orders](#work-orders)). A draft's
+estimate is `null`.
+
+### The running actual
+
+While the order is open the actual runs (M40), open logs counted to now:
+
+```text
+components = Σ (line.consumed + line.scrapped) × line.standardCost
+machine    = Σ per work order: the union of its productive logs, in hours × its machine rate
+labour     = Σ every productive log, in hours × its work order's labour rate
+```
+
+The machine's time is the **union** of a work order's productive logs: time counts once
+however many operators logged it. Labour counts every operator. **Downtime** — the union
+of the order's downtime logs — is listed by reason in `downtime` and never charged.
+
+### The actual and the deviation
+
+At [close](#close-and-the-backorder) the actual is fixed (`actualFixed: true`) and stored,
+with **`costPerUnit`** = the actual total ÷ the good output, output scrap excluded; `null`
+when nothing good was produced. The **deviation** is answered per part: `amount = actual −
+estimate`, and `percent` of the estimate, `null` when the estimate is 0.
+
+`incomplete` is true when a component had no standard cost, or a work order no rate,
+counted as 0.
+
+**Rounding.** Amounts are computed exactly and rounded half-up to two decimals **once**:
+at the snapshot (the estimate at confirm, the actual at close) or at display (the running
+actual). The total is the exact sum rounded once, so the rounded parts may differ from the
+total by 0.01. Percentages are rounded half-up to one decimal.
+
+### Duration deviation
+
+Every work order answers its `actualMinutes` — the union of its productive logs, open logs
+counted to now, in whole minutes rounded down — `deviationMinutes` = `actualMinutes −
+expectedMinutes`, and `deviationPercent` of the expected, half-up to one decimal, `null`
+when nothing is expected (M41). It is not a cost and needs no cost key.
+
+## Reports
+
+Three reports (M42) under `/reports`, each with a period: `from` and `to`, days in the
+business time zone, both included; `to` defaults to today and `from` to 29 days before
+`to`. `from` after `to` is **400** on `from`; `to` more than 366 days after `from` is **400**
+`period_too_long` on `to`.
+An optional `siteId` limits the report to one site. `format` is `json` (the default) or
+`csv`: semicolon-separated, UTF-8 with a byte order mark, the decimal comma, each cell
+guarded against formulas, served as an attachment named
+`manufacturing-<report>-<from>-<to>.csv`.
+
+| Report | Operation | Permission | What |
+| --- | --- | --- | --- |
+| Production cost | `GET /reports/production-cost` | access **and** costs-view | The done orders closed in the period, grouped by product: per order the estimate, actual, deviation, deviation % and cost per unit as fixed at close, with each product's totals |
+| Work-center utilisation | `GET /reports/utilisation` | access | Per work center and ISO week, counting only the period's days: the calendar's capacity, the planned time (its slots), the productive time (the union of the productive logs at the center), the downtime (their union) and by reason, and utilisation = productive ÷ capacity |
+| Time deviation | `GET /reports/time-deviation` | access | Per BoM operation (its BoM and sequence): the average expected and actual minutes over the last 10 done work orders finished in the period, and the deviation % |
+
+The reports page (`/manufacturing/reports`) shows the production-cost report only to a
+holder of `manufacturing:costs-view`.
+
 ## The variant holder
 
 The module fills the many-provider slot **`Module.VariantReferences`** with a
@@ -1079,6 +1324,8 @@ bodies are strict: an unknown property is a 400.
 | `log_locked` | 409 | A correction or addition whose log, or new start, is more than 60 days old (M29) |
 | `order_closed` | 409 | A correction or addition on an order that is done or cancelled (M29a) |
 | `log_overlaps` | 400 | A correction or addition overlapping the user's other logs (M29a) |
+| `no_capacity` | 409 | A plan or a reschedule whose work order does not fit on its work center's calendar within 365 days of the start; nothing is written (M35). Plan all names such orders in `noCapacity` instead |
+| `period_too_long` | 400 | A report whose `to` is more than 366 days after its `from` (M42) |
 | `insufficient_stock`, `insufficient_available`, `site_archived`, `variant_not_stocked`, `document_reused` | 409 | Inventory's refusal of a production or a reserve, passed through under its own code, `lines` naming the component lines; nothing is posted. A reserve's `insufficient_available` is not answered: it starts the second pass |
 | `dependency_unavailable` | 503 | The catalog or the stock contract is missing at run time; nothing is changed |
 
@@ -1097,8 +1344,8 @@ migrated regardless.
 ## Endpoints
 
 All under `/api/v1/manufacturing`. Reads need `access`; writes of work centers and BoMs
-need `access` and `boms-manage`, writes of orders and time-log corrections `access` and
-`orders-manage`, and a production and every shop-floor action `access` and either
+need `access` and `boms-manage`, writes of orders, time-log corrections and the schedule
+`access` and `orders-manage`, the production-cost report `access` and `costs-view`, and a production and every shop-floor action `access` and either
 `shop-floor` or `orders-manage`; 401 and 403 are the platform's. Every write that takes a `revision` also answers 409 `revision_conflict`, and
 every order write may answer 503 `dependency_unavailable`.
 
@@ -1156,6 +1403,14 @@ every order write may answer 503 `dependency_unavailable`.
 | `POST /work-orders/{id}/time-logs` (`addManufacturingTimeLog`) | orders-manage | 201 the log; 400 fields, `log_overlaps`; 404; 409 `order_closed`, `log_locked`, `revision_conflict` |
 | `PATCH /time-logs/{id}` (`correctManufacturingTimeLog`) | orders-manage | 200 the log; 400 fields, `log_overlaps`; 404; 409 `order_closed`, `log_locked`, `revision_conflict` |
 | `GET /shop-floor/mine` (`getManufacturingMyWork`) | access | 200 [My work](#the-queue-and-my-work) |
+| `POST /orders/{id}/plan` (`planManufacturingOrder`) | orders-manage | 200 the order; 404; 409 `revision_conflict`, `order_not_open`, `no_capacity` |
+| `POST /orders/{id}/unplan` (`unplanManufacturingOrder`) | orders-manage | 200 the order; 404; 409 `revision_conflict`, `order_not_open` |
+| `POST /schedule/plan-all` (`planAllManufacturingOrders`) | orders-manage | 200 `{planned, noCapacity}`; 409 `revision_conflict` |
+| `POST /work-orders/{id}/reschedule` (`rescheduleManufacturingWorkOrder`) | orders-manage | 200 the order's work orders; 404; 409 `revision_conflict`, `order_not_open`, `work_order_closed`, `no_capacity` |
+| `GET /schedule` (`getManufacturingSchedule`) | access | 200 [the board](#the-board); 400 `days` |
+| `GET /reports/production-cost` (`getManufacturingProductionCostReport`) | access and costs-view | 200 JSON or CSV; 400 the period, `period_too_long` |
+| `GET /reports/utilisation` (`getManufacturingUtilisationReport`) | access | 200 JSON or CSV; 400 the period, `period_too_long` |
+| `GET /reports/time-deviation` (`getManufacturingTimeDeviationReport`) | access | 200 JSON or CSV; 400 the period, `period_too_long` |
 
 The full contract, with every schema, is `openapi/manufacturing.yaml`, published in the
 generated API reference (`/en/reference/api/manufacturing/`).
