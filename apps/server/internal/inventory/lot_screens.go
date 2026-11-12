@@ -532,13 +532,18 @@ func (s *server) PostInventoryLotHold(ctx context.Context, req gen.PostInventory
 // released with its note under the lot's lock, the status derived again and
 // the topics told. A hold another module's document put is shown with its
 // source and released there: hold_not_inventorys. A hold released already
-// answers the lot as it is.
+// answers the lot as it is. With downstream, the release of the lot page's
+// block also releases the blocks the same lot page put on the lots made from
+// it (M92): every lot is taken FOR NO KEY UPDATE in id order, and holds of
+// any other source stay.
 func (s *server) ReleaseInventoryLotHold(ctx context.Context, req gen.ReleaseInventoryLotHoldRequestObject) (gen.ReleaseInventoryLotHoldResponseObject, error) {
 	var f fieldErrors
 	var note *string
+	downstream := false
 	if req.Body != nil {
 		f = s.unknownProperties(ctx, lotHoldReleaseSchema)
 		note = optionalText(&f, "note", req.Body.Note, 1000)
+		downstream = req.Body.Downstream != nil && *req.Body.Downstream
 	}
 	if f.failed() {
 		return gen.ReleaseInventoryLotHold400ApplicationProblemPlusJSONResponse(invalid(invalidLotTitle, f)), nil
@@ -554,34 +559,66 @@ func (s *server) ReleaseInventoryLotHold(ctx context.Context, req gen.ReleaseInv
 			"The hold is another module's",
 			fmt.Sprintf("The hold was put by %s %s %s and is released there.", hold.SourceModule, hold.SourceKind, hold.SourceID))), nil
 	}
+	src := lotPageSource(req.Id)
+	// Only the lot page's own block reaches the lots made from it.
+	downstream = downstream && hold.Kind == "block" && hold.SourceKind == src.kind && hold.SourceID == src.id
 	if hold.ReleasedAt == nil {
 		who, err := s.actorFor(ctx)
 		if err != nil {
 			return nil, err
 		}
 		err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-			if _, err := lockLotForChange(ctx, txq, req.Id); err != nil {
-				return err
+			type held struct{ lot, hold int64 }
+			releases := []held{{req.Id, req.HoldId}}
+			if downstream {
+				others, err := txq.ActiveSourceHoldsOfKind(ctx, store.ActiveSourceHoldsOfKindParams{
+					Kind: "block", SourceModule: src.module, SourceKind: src.kind, SourceID: src.id})
+				if err != nil {
+					return fmt.Errorf("inventory: read the blocks of lot %d: %w", req.Id, err)
+				}
+				for _, o := range others {
+					if o.ID != req.HoldId {
+						releases = append(releases, held{o.LotID, o.ID})
+					}
+				}
 			}
-			released, err := txq.ReleaseLotHold(ctx, store.ReleaseLotHoldParams{
-				ID: req.HoldId, LotID: req.Id, ReleasedByUserID: who.UserID, ReleasedByDisplay: &who.Display, ReleaseNote: note, Now: s.deps.Clock(),
-			})
-			if noRows(err) {
-				return nil // released meanwhile
+			lotIDs := make([]int64, 0, len(releases))
+			update := map[int64]bool{}
+			for _, r := range releases {
+				lotIDs = append(lotIDs, r.lot)
+				update[r.lot] = true
 			}
+			locked, err := lockLots(ctx, txq, lotIDs, update)
 			if err != nil {
-				return fmt.Errorf("inventory: release hold %d: %w", req.HoldId, err)
-			}
-			if err := s.recordEvent(ctx, txq, who, event{EntityKind: entityLot, EntityID: req.Id, Kind: eventLotReleased,
-				Payload: map[string]any{"holdId": released.ID, "kind": released.Kind, "cause": released.Cause,
-					"source": released.SourceModule + "/" + released.SourceKind + "/" + released.SourceID}}); err != nil {
 				return err
 			}
-			if _, err := txq.DeriveLotStatuses(ctx, store.DeriveLotStatusesParams{Ids: []int64{req.Id}, Now: s.deps.Clock()}); err != nil {
+			if _, ok := locked[req.Id]; !ok {
+				return notFound()
+			}
+			for _, r := range releases {
+				released, err := txq.ReleaseLotHold(ctx, store.ReleaseLotHoldParams{
+					ID: r.hold, LotID: r.lot, ReleasedByUserID: who.UserID, ReleasedByDisplay: &who.Display, ReleaseNote: note, Now: s.deps.Clock(),
+				})
+				if noRows(err) {
+					continue // released meanwhile
+				}
+				if err != nil {
+					return fmt.Errorf("inventory: release hold %d: %w", r.hold, err)
+				}
+				if err := s.recordEvent(ctx, txq, who, event{EntityKind: entityLot, EntityID: r.lot, Kind: eventLotReleased,
+					Payload: map[string]any{"holdId": released.ID, "kind": released.Kind, "cause": released.Cause,
+						"source": released.SourceModule + "/" + released.SourceKind + "/" + released.SourceID}}); err != nil {
+					return err
+				}
+			}
+			if _, err := txq.DeriveLotStatuses(ctx, store.DeriveLotStatusesParams{Ids: lotIDs, Now: s.deps.Clock()}); err != nil {
 				return fmt.Errorf("inventory: derive the status of lot %d: %w", req.Id, err)
 			}
-			return notifyLots(ctx, tx, []int64{req.Id})
+			return notifyLots(ctx, tx, lotIDs)
 		})
+		if status, _, ok := answerOf(err); ok && status == http.StatusNotFound {
+			return gen.ReleaseInventoryLotHold404Response{}, nil
+		}
 		if err != nil {
 			return nil, err
 		}

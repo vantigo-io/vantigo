@@ -159,3 +159,42 @@ func (s *server) today(ctx context.Context) (time.Time, error) {
 	}
 	return businessToday(s.deps.Clock(), zone), nil
 }
+
+// tracedDeliveries is Orders' read of the posted deliveries a trace's issues
+// were for (manufacturing phase 2 M90), before any transaction, in batches of
+// contracts.MaxTracedDeliveries. A nil slot — Orders off — answers
+// errNoDeliveryTrace; contracts.ErrForbidden passes through, so the caller
+// shows the deliveries as their movements alone.
+func (s *server) tracedDeliveries(ctx context.Context, ids []int64) ([]contracts.TracedDelivery, error) {
+	if err := noteContractCall(ctx, "DeliveryTrace.Deliveries"); err != nil {
+		return nil, err
+	}
+	if s.deps.DeliveryTrace == nil {
+		return nil, errNoDeliveryTrace
+	}
+	var out []contracts.TracedDelivery
+	for start := 0; start < len(ids); start += contracts.MaxTracedDeliveries {
+		batch, err := s.deps.DeliveryTrace.Deliveries(ctx, ids[start:min(start+contracts.MaxTracedDeliveries, len(ids))])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, batch...)
+	}
+	return out, nil
+}
+
+// errNoDeliveryTrace is tracedDeliveries' answer when Orders is not composed.
+var errNoDeliveryTrace = errors.New("inventory: no delivery trace")
+
+// directoryCustomers is the customer directory's batch read, before any
+// transaction: the names of a trace's customers, which the caller shows
+// only to a holder of customers:view (M90). A nil directory answers none.
+func (s *server) directoryCustomers(ctx context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
+	if err := noteContractCall(ctx, "Directory.Customers"); err != nil {
+		return nil, err
+	}
+	if s.deps.Directory == nil || len(ids) == 0 {
+		return nil, nil
+	}
+	return s.deps.Directory.Customers(ctx, ids)
+}

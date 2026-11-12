@@ -337,7 +337,7 @@ export interface paths {
         };
         /**
          * Print lot labels
-         * @description A PDF of lot labels on Avery L7160 or L7163 sheets (manufacturing phase 2 M73), in the order the ids are given: each carries the lot's LOT token — LOT and its id, which the lookup reads back — as a Code 128 barcode across its top, the lot number large, the SKU and product name, and the expiry, else the best-before date. A serial is a lot of its own, so serials print one label each. These are internal labels; at most 1000 (labels_too_many).
+         * @description A PDF of lot labels on Avery L7160 or L7163 sheets (manufacturing phase 2 M73), in the order the ids are given: each carries the lot's LOT token — LOT and its id, which the lookup reads back — as a Code 128 barcode across its top, the lot number large, the SKU and product name, and the expiry, else the best-before date. A serial is a lot of its own, so serials print one label each. These are internal labels; with format gs1 each is a GS1-128 label instead (M93), the element string as its barcode and its AIs in brackets below it. At most 1000 (labels_too_many).
          */
         get: operations["printInventoryLotLabels"];
         put?: never;
@@ -416,6 +416,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/lots/{id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block a lot and the lots made from it
+         * @description Blocks the lot with the downstream list (manufacturing phase 2 M92): a block hold of the lot page, source inventory/lot/<id>, on the lot and, with downstream, on every lot made from it that still holds stock — the usage walk run again inside the block's transaction, after the lot's lock, so a lot produced since the dialog's summary is caught. Each lot is taken FOR NO KEY UPDATE in id order, with its own event naming the lot blocked. A walk beyond 2000 nodes is trace_too_large, and nothing is blocked.
+         */
+        post: operations["blockInventoryLot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/lots/{id}/holds": {
         parameters: {
             query?: never;
@@ -447,7 +467,7 @@ export interface paths {
         put?: never;
         /**
          * Release a lot's hold
-         * @description Releases one of Inventory's own holds on the lot (M64) — the lot page's, or a receipt's inspection — with a note; the status is derived again. A hold another module's document put is released there (409 hold_not_inventorys). A hold already released answers the lot as it is.
+         * @description Releases one of Inventory's own holds on the lot (M64) — the lot page's, or a receipt's inspection — with a note; the status is derived again. A hold another module's document put is released there (409 hold_not_inventorys). A hold already released answers the lot as it is. With downstream, the release of a block also releases the blocks the same lot page put on the lots made from it (M92).
          */
         post: operations["releaseInventoryLotHold"];
         delete?: never;
@@ -771,6 +791,66 @@ export interface paths {
          * @description Per variant and site asked for (I53): on hand, reserved, available, incoming, and the locations holding it — for the transfer form's columns and the send dialog's defaults.
          */
         get: operations["listInventoryStockAtSites"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trace a lot
+         * @description A lot's trace (manufacturing phase 2 M87–M90), read on the pool from Inventory's own movement lines: in a production movement every lot consumed is a parent of every lot produced; an unbuild is a reverse edge, shown as an end and never expanded. usage walks where the lot went, origin where it came from, up to maxDepth productions and at most 2000 nodes. An issue for an Orders delivery carries the delivery, its order and its customer when the caller holds orders:access (contracts.DeliveryTrace), and the customer's name when the caller also holds customers:view.
+         */
+        get: operations["getInventoryTrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/trace.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a lot's trace as CSV
+         * @description The trace as CSV (manufacturing phase 2 M91), with the same parameters: one row per node — depth, kind, lot, sku, product, quantity, unit, date, document, supplier or customer (a customer's name only under customers:view).
+         */
+        get: operations["exportInventoryTrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/trace.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Print a lot's trace
+         * @description The trace as a PDF (manufacturing phase 2 M91), with the same parameters and rows as the CSV, stating when it was made, by whom and in which direction — for an authority's within-hours answer.
+         */
+        get: operations["printInventoryTrace"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1268,6 +1348,11 @@ export interface components {
          * @enum {string}
          */
         InventoryLabelLayout: "l7160" | "l7163";
+        /**
+         * @description internal: the LOT token as Code 128 (M73). gs1: a GS1-128 label (manufacturing phase 2 M93) — FNC1, (01) the GTIN-14 when the variant's barcode is a valid GTIN, (11) the production date, (17) the expiry, (15) the best-before when there is no expiry, and (10) the lot or (21) the serial last; a lot whose variant has no valid GTIN falls back to the internal label, marked No GTIN — not a GS1 label.
+         * @enum {string}
+         */
+        InventoryLabelFormat: "internal" | "gs1";
         /** @description Labels to print (I7): each carries the location's LOC token as a Code 128 barcode, its full code and its name. */
         InventoryLabelsInput: {
             layout: components["schemas"]["InventoryLabelLayout"];
@@ -1335,6 +1420,32 @@ export interface components {
             uploadedAt: string;
             uploadedBy?: components["schemas"]["InventoryActor"];
         };
+        /** @description What a block with the downstream list did (manufacturing phase 2 M92) — the lot as it is now, and every lot the block holds, the lot itself first, as the walk found them inside the block's transaction. */
+        InventoryLotBlock: {
+            blocked: components["schemas"]["InventoryLotBlocked"][];
+            lot: components["schemas"]["InventoryLot"];
+        };
+        /** @description One lot a block holds. */
+        InventoryLotBlocked: {
+            /** Format: int64 */
+            id: number;
+            number: string;
+            productName: string;
+            /** @description True for the lot the block was asked for; false for a lot made from it. */
+            root: boolean;
+            sku: string;
+        };
+        /** @description A block of the lot page (manufacturing phase 2 M92): a block hold, source inventory/lot/<id>, on the lot and — with downstream, the default — on every lot made from it that still holds stock, as the usage trace finds them inside the block's transaction. A lot already blocked by this lot page is left as is, so a block may be asked again to catch the lots made since. */
+        InventoryLotBlockInput: {
+            /** @enum {string} */
+            cause: "recall" | "complaint" | "other";
+            /**
+             * @description Also block the lots made from it that still hold stock.
+             * @default true
+             */
+            downstream: boolean;
+            note?: string;
+        };
         /** @description The lots expiring soon (manufacturing phase 2 M72): lots holding stock whose expiry falls within the days asked for or has passed, by expiry, at most 1000. */
         InventoryLotExpiringPage: {
             lots: components["schemas"]["InventoryLotSummary"][];
@@ -1381,6 +1492,8 @@ export interface components {
         };
         /** @description The release of one of Inventory's own holds (M64), with why. */
         InventoryLotHoldRelease: {
+            /** @description For a block of the lot page (M92): also release the blocks it put on the lots made from it. A hold of another source on any of them stays. */
+            downstream?: boolean;
             note?: string;
         };
         /** @description What lies of a lot on one location. */
@@ -2173,6 +2286,121 @@ export interface components {
         /** @description One total per variant asked for that has stock, a reservation or something in transit; a variant with none is absent. */
         InventoryStockTotals: {
             totals: components["schemas"]["InventoryStockTotal"][];
+        };
+        /** @description A lot's trace (manufacturing phase 2 M88, M89): its nodes in tree order, each after its parent — the lot, the lots made from it (usage) or that it was made from (origin) through productions, and the movements that end each path. A lot reached twice is expanded once; later references carry seenAt. */
+        InventoryTrace: {
+            components: components["schemas"]["InventoryTraceComponents"];
+            /** @description True when the deliveries name their customers — the caller holds customers:view. */
+            customerNames: boolean;
+            /**
+             * @description shown: the deliveries carry their order and customer (orders:access, through contracts.DeliveryTrace); hidden: the caller may not see Orders' deliveries, so a delivery is its movement alone; unavailable: Orders is not composed.
+             * @enum {string}
+             */
+            deliveries: "shown" | "hidden" | "unavailable";
+            direction: components["schemas"]["InventoryTraceDirection"];
+            /** Format: date-time */
+            generatedAt: string;
+            /** Format: int64 */
+            lotId: number;
+            /** Format: int32 */
+            maxDepth: number;
+            nodes: components["schemas"]["InventoryTraceNode"][];
+        };
+        /**
+         * @description tracked (the default): the trace lists lots only. all: the origin trace also lists the untracked components each production consumed, as leaves without a lot.
+         * @enum {string}
+         */
+        InventoryTraceComponents: "tracked" | "all";
+        /** @description The delivery an issue was posted for, as Orders answers it (contracts.DeliveryTrace); the customer's name only for a caller holding customers:view. */
+        InventoryTraceDelivery: {
+            /** Format: int32 */
+            customerId: number;
+            customerName?: string;
+            /** Format: int64 */
+            deliveryId: number;
+            /** Format: int64 */
+            deliveryNumber: number;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            orderNumber: number;
+            /** Format: date-time */
+            postedAt: string;
+        };
+        /**
+         * @description usage: where the lot went — its own issues and the lots made from it, recursively. origin: where it came from — its receipts and the lots it was made from, recursively.
+         * @enum {string}
+         */
+        InventoryTraceDirection: "usage" | "origin";
+        /** @description The production that links a node to its parent — the parent lot's consumed quantity and the made lot's produced quantity in that movement. */
+        InventoryTraceEdge: {
+            /** Format: double */
+            consumed: number;
+            /** Format: int64 */
+            movementId: number;
+            /** Format: date-time */
+            postedAt: string;
+            /** Format: double */
+            produced: number;
+            source?: components["schemas"]["InventorySourceRef"];
+        };
+        /** @description A lot on the trace, with what was received or produced under it and what it holds now. */
+        InventoryTraceLot: {
+            /** Format: date */
+            bestBefore?: string | null;
+            /** Format: date */
+            expiry?: string | null;
+            /** Format: int64 */
+            id: number;
+            number: string;
+            /** Format: double */
+            onHand: number;
+            /** Format: date */
+            productionDate?: string | null;
+            /**
+             * Format: double
+             * @description Received, produced or adjusted in under the lot, over every movement.
+             */
+            quantityIn: number;
+            serial: boolean;
+            status: components["schemas"]["InventoryLotStatus"];
+            supplierLot?: string;
+        };
+        /** @description The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out or a production that made no lot on the usage side; an unbuild on either. */
+        InventoryTraceMovement: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["InventoryMovementKind"];
+            /** Format: date-time */
+            postedAt: string;
+            reason?: string;
+            source?: components["schemas"]["InventorySourceRef"];
+            supplierName?: string;
+            supplierReference?: string;
+        };
+        /** @description One node of a trace. kind lot is a lot (the root at depth 0, or one reached through a production, with its edge); component is an untracked component a production consumed (origin, components=all); every other kind is the movement that ends a path, named by its kind, with the lot's quantity on it. */
+        InventoryTraceNode: {
+            delivery?: components["schemas"]["InventoryTraceDelivery"];
+            /** Format: int32 */
+            depth: number;
+            /** @description True on a lot at maxDepth, which is not expanded. */
+            depthLimit: boolean;
+            edge?: components["schemas"]["InventoryTraceEdge"];
+            /** @description The node's path from the root, its indexes joined by dots ("0", "0.2", "0.2.1"). */
+            key: string;
+            /** @enum {string} */
+            kind: "lot" | "component" | "receipt" | "issue" | "adjustment" | "count" | "transfer_out" | "production" | "unbuild";
+            lot?: components["schemas"]["InventoryTraceLot"];
+            movement?: components["schemas"]["InventoryTraceMovement"];
+            parentKey?: string;
+            /**
+             * Format: double
+             * @description An end's quantity of the lot on its movement; a component's quantity consumed.
+             */
+            quantity?: number;
+            /** @description On a lot traced already, the key of the node where it is expanded; this one is not. */
+            seenAt?: string;
+            variant: components["schemas"]["InventoryVariantRef"];
         };
         /** @description A transfer of stock from one site to another (I36), with its lines and its actions. */
         InventoryTransfer: {
@@ -3710,6 +3938,7 @@ export interface operations {
                 /** @description Comma-separated lot ids, at most 1000. */
                 ids: number[];
                 layout?: components["schemas"]["InventoryLabelLayout"];
+                format?: components["schemas"]["InventoryLabelFormat"];
                 /** @description Labels per lot (default 1); copies × lots is at most 1000. */
                 copies?: number;
             };
@@ -3753,6 +3982,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed, which GS1 labels read the GTIN from. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
                 };
             };
         };
@@ -4075,6 +4313,75 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    blockInventoryLot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryLotBlockInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLotBlock"];
+                };
+            };
+            /** @description Bad Request — field errors, or trace_too_large. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
             };
         };
     };
@@ -5320,6 +5627,189 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["InventoryProblem"];
                 };
+            };
+        };
+    };
+    getInventoryTrace: {
+        parameters: {
+            query: {
+                /** @description The lot traced. */
+                lotId: number;
+                direction?: components["schemas"]["InventoryTraceDirection"];
+                components?: components["schemas"]["InventoryTraceComponents"];
+                /** @description How many productions deep the walk goes (default 10). */
+                maxDepth?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryTrace"];
+                };
+            };
+            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    exportInventoryTrace: {
+        parameters: {
+            query: {
+                /** @description The lot traced. */
+                lotId: number;
+                direction?: components["schemas"]["InventoryTraceDirection"];
+                components?: components["schemas"]["InventoryTraceComponents"];
+                /** @description How many productions deep the walk goes (default 10). */
+                maxDepth?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named trace-<lot>-<direction>.csv, and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    printInventoryTrace: {
+        parameters: {
+            query: {
+                /** @description The lot traced. */
+                lotId: number;
+                direction?: components["schemas"]["InventoryTraceDirection"];
+                components?: components["schemas"]["InventoryTraceComponents"];
+                /** @description How many productions deep the walk goes (default 10). */
+                maxDepth?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named trace-<lot>-<direction>.pdf, and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

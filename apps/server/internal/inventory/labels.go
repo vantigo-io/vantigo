@@ -70,6 +70,10 @@ func init() {
 // maxLabels is the most labels one request prints.
 const maxLabels = 1000
 
+// readableSize is the size in points of the line under a GS1-128 label's
+// barcode.
+const readableSize = 6.0
+
 // labelSheet is an Avery sheet's geometry on A4, in millimetres, and how a
 // label is laid out on it.
 type labelSheet struct {
@@ -94,12 +98,15 @@ func (l labelSheet) perSheet() int { return l.columns * l.rows }
 
 // label is what one label prints: the token as the barcode, the code large
 // below it — a location's full code, a lot's number — and up to two lines
-// under that.
+// under that. readable, when set, is a small line right under the barcode: a
+// GS1-128 label's element string with its AIs in brackets, or why a lot's
+// label is not one (manufacturing phase 2 M93).
 type label struct {
 	token    string
 	fullCode string
 	name     string
 	extra    string
+	readable string
 }
 
 // labelOf is a location's label.
@@ -149,17 +156,27 @@ func layoutLabels(labels []label, sheet labelSheet, title string) (core.Maroto, 
 				cell := col.New(tenths(sheet.width))
 				if i := r*sheet.columns + c; i < len(onSheet) {
 					l := onSheet[i]
+					// A readable line under the barcode moves the rest down.
+					shift := 0.0
+					if l.readable != "" {
+						shift = readableSize*0.3528 + 1
+					}
 					cell.Add(
 						code.NewBar(l.token, props.Barcode{
 							Left: (sheet.width - barcodeWidth) / 2, Top: 3, Percent: sheet.barcodePercent,
 							Proportion: props.Proportion{Width: 5, Height: 1},
 						}),
 						text.New(l.fullCode, props.Text{
-							Top: 3 + barcodeWidth/5 + 2, Size: sheet.codeSize, Style: fontstyle.Bold, Align: align.Center,
+							Top: 3 + barcodeWidth/5 + 2 + shift, Size: sheet.codeSize, Style: fontstyle.Bold, Align: align.Center,
 							Left: 2, Right: 2,
 						}),
 					)
-					nameTop := 3 + barcodeWidth/5 + 4 + sheet.codeSize*0.3528 + 1
+					if l.readable != "" {
+						cell.Add(text.New(oneLine(l.readable, readableSize, sheet.width-4), props.Text{
+							Top: 3 + barcodeWidth/5 + 0.5, Size: readableSize, Align: align.Center, Left: 2, Right: 2,
+						}))
+					}
+					nameTop := 3 + barcodeWidth/5 + 4 + sheet.codeSize*0.3528 + 1 + shift
 					if l.name != "" {
 						name := l.name
 						if l.extra != "" {
