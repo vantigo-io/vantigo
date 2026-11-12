@@ -116,6 +116,16 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 	var refused *apicommon.ProblemDetails
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// The type judged again under the product's FOR SHARE (L1a review
+		// L12, the review of M): a change to Service committed since the read
+		// above is seen here.
+		lockedType, err := txq.ShareProductType(ctx, req.Id)
+		if err != nil {
+			return fmt.Errorf("read the product type: %w", err)
+		}
+		if trackingRequiresGoods("", tracking, lockedType, errs); len(errs) > 0 {
+			return nil
+		}
 		if parsed.Barcode != nil {
 			if refused, err = duplicateVariantBarcode(ctx, txq, *parsed.Barcode, 0); err != nil || refused != nil {
 				return err
@@ -153,6 +163,9 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 	})
 	if err != nil {
 		return nil, fmt.Errorf("products: add variant: %w", err)
+	}
+	if len(errs) > 0 {
+		return gen.PostProductsByIdVariants400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid variant", errs)), nil
 	}
 	if refused != nil {
 		return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(*refused), nil

@@ -608,3 +608,11 @@ SELECT tracking, unit FROM products.product_variants WHERE id = @id;
 -- GetProductType is a variant write's read of its product's type: only a
 -- goods product's variant may be tracked (manufacturing phase 2 M49).
 SELECT type FROM products.products WHERE id = @id;
+
+-- name: ShareProductType :one
+-- ShareProductType is a new variant's read of its product's type FOR SHARE,
+-- in its transaction: a change to Service updates the product, so it has
+-- committed or waits, and a tracked variant never lands on a Service
+-- (manufacturing phase 2 M49). The new variant locks no variant row, so it
+-- makes no cycle with the change, which locks the variants first.
+SELECT type FROM products.products WHERE id = @id FOR SHARE;
