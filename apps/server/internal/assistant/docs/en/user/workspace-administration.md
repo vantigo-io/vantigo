@@ -484,7 +484,9 @@ subscriptions; **Manage deliveries** makes, picks, posts and cancels deliveries;
 ([Orders](/en/admin/orders/#give-people-access)). In Inventory, **Use expired lots** lets a person
 take a lot past its expiry date on a delivery or a production, when they choose that lot
 themselves; it does nothing until lot tracking is switched on
-([Inventory](/en/reference/inventory/#expiry-and-today)).
+([Inventory](/en/reference/inventory/#expiry-and-today)). **Manage lots** lets a person change a
+lot's dates, supplier lot and note, add and remove its files, and put and release its holds
+on the lot's page ([Inventory](/en/user/inventory/#lots-and-serial-numbers)).
 
 ### Assignments
 

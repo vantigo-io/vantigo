@@ -101,7 +101,9 @@ card and, when the product has more than one variant, the **Variants** card.
 When your organisation uses Inventory and you hold `inventory:locations-view` and
 `inventory:stock-view`, a **Stock** card sits above **Prices**: the total on hand, and
 the stock per site, each opening to the locations where the item lies — per variant
-when the product has several. A service has no Stock card. See
+when the product has several. For an item kept in lots, each location lists its lots with
+their expiry date and status, each linked to the lot's page, and a site with stock on hold
+or expired says *of which … on hold or expired*. A service has no Stock card. See
 [Inventory](/en/user/inventory/).
 
 ## Variants and units

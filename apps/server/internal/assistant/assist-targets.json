@@ -140,6 +140,16 @@
     "description": "The field on the Import page where the CSV of opening balances — location, sku and quantity — is chosen before a dry run."
   },
   {
+    "key": "inventory.lot.holds",
+    "route": "/inventory/lots/{lotId}",
+    "description": "The Holds panel on a lot's page: every hold with its kind, cause, note and source, active ones first. Quarantine or Block puts a hold of the lot page; Release ends one of Inventory's own holds. A hold another module's document put is released there."
+  },
+  {
+    "key": "inventory.lots.list",
+    "route": "/inventory/lots",
+    "description": "The list on the Lots page: every lot of a tracked item with its number, item, supplier lot, expiry and best-before dates, status and what lies of it, searched by lot number, supplier lot or SKU and filtered by site, status and hold cause. Open a lot to see its holds, where it lies, its movements and its files."
+  },
+  {
     "key": "inventory.low-stock.list",
     "route": "/inventory/low-stock",
     "description": "The list on the Low stock page: every item at or below its reorder point at a site, filtered by site and searched by SKU or name, with what is available and incoming, the suggested quantity and how it was rounded up to whole packagings, and what other sites have. Choose rows at one site to create a transfer to it, or export the list as CSV."

@@ -101,7 +101,9 @@ eller sier at ingen er registrert. Under følger kortet [**Bilder**](#bilder), k
 Når organisasjonen bruker Lager og du har `inventory:locations-view` og
 `inventory:stock-view`, ligger kortet **Beholdning** over **Priser**: totalen på lager, og
 beholdningen per lagersted, som hver åpnes til lokasjonene der varen ligger — per variant
-når produktet har flere. En tjeneste har ikke noe beholdningskort. Se
+når produktet har flere. For en vare som holdes i partier, lister hver lokasjon partiene
+sine med utløpsdato og status, hvert med lenke til siden for partiet, og et lagersted med
+sperret eller utløpt beholdning sier *herav … sperret eller utløpt*. En tjeneste har ikke noe beholdningskort. Se
 [Lager](/nb/user/inventory/).
 
 ## Varianter og enheter
