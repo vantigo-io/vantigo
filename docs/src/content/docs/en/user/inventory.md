@@ -430,7 +430,11 @@ GTIN-8, -12, -13 or -14 —, the production date, the expiry date (or the best-b
 when there is none) and the lot number, or the serial number, and the same is printed in
 brackets under it: *(01)04006381333931(17)261231(10)B1*. An item without a valid GTIN
 cannot have a GS1 label: its lots get the internal label, marked *No GTIN — not a GS1
-label*.
+label*. The barcode runs across the whole label, so its bars are as wide as the label
+allows; still, the longer the lot number, the narrower they get. Choose **Avery L7163** for
+labels your customers will scan: on **Avery L7160** the bars of most lots are narrower than
+GS1's usual minimum, and a customer's scanner may not read them. Try a label on the
+scanner that will read it before printing a batch.
 
 ### Trace a lot
 
@@ -441,7 +445,9 @@ productions it went through and where they lead, as a tree.
 - **Where it went** follows the lot forward: the lots made from it, and the lots made from
   those, each with what of the lot it used and what it made; and where each path ends — a
   **delivery**, with its delivery and order numbers and the customer, an adjustment or a
-  count down, a transfer to another site, or a production that made no lot.
+  count down, a transfer to another site — *Sent to* and the site —, or a production that
+  made no lot. A lot sent to another site and delivered there shows both the transfer
+  and the delivery.
 - **Where it came from** follows it back: the lots it was made from, down to their
   **receipts**, with the supplier and the supplier's reference. **Show the components
   without a lot** also lists the items that a production used but that are not kept in
@@ -450,12 +456,15 @@ productions it went through and where they lead, as a tree.
 Each lot shows its status and what it holds now, and links to its page; each production
 links to its manufacturing order. A lot reached twice — the same flour in the dough and
 in the bread — is shown in full once; later it says *Already shown above*, which jumps
-there. The arrow beside a lot folds what lies under it. Taking a finished item apart
+there, opening a folded branch on the way. The arrow beside a lot folds what lies under it. Taking a finished item apart
 (an unbuild) ends the path: the finished lot shows *Unbuilt by unbuild …*, the parts it
 gave back *Returned by unbuild …*, and the trace does not go from one into the other.
 
-The trace follows ten productions deep and shows at most 2,000 rows; a larger one is
-refused — *The trace has more than 2,000 rows* — so trace a lot further down the tree.
+The trace follows ten productions deep; a lot at the tenth says *Not traced further: the
+depth limit* when more was made from it. It shows at most 2,000 lots and 20,000
+deliveries, receipts and other rows, so a lot delivered thousands of times still traces;
+a larger one is refused — *The trace has more than 2,000 lots …* — so trace a lot further
+down the tree.
 
 Who received the lot comes from Orders: you see the delivery, its order and the
 customer's number only if you may use Orders, and the customer's name only if you may
@@ -479,8 +488,11 @@ The block is put on the lot and on every lot made from it that still holds stock
 moment it is put: a lot produced since the dialog opened is caught too, and the answer
 lists every lot blocked — *Blocked 4 lots* — marking such a lot *New*. Lots that hold
 nothing any more are not blocked; the trace and the deliveries say where they went.
-A block can be asked again to catch lots made since. A trace too large to walk blocks
-nothing.
+A block can be asked again to catch lots made since. The block follows every production,
+however deep — not only the ten levels the trace shows. More than 2,000 lots blocks
+nothing. If lots keep being made from the lot while it is being blocked, nothing is
+blocked and the dialog says *Lots were being made from this lot while it was blocked*:
+press **Block** again.
 
 **Release** on the lot's block offers **Also release the blocks it put on the lots made
 from it**, ticked: it lifts them all at once. A lot's block can also be released on its

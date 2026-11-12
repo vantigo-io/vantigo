@@ -771,8 +771,11 @@ row of 0 or a lot and location chosen twice before posting.
 Manufacturing's own rows, the `outputs` — each lot made with its quantity over the
 productions and how many put output in it — and per component line the lots consumed with
 their expiry, consumed and scrapped. The order page's **Lots** tab and the work order's
-page on the shop floor show them, each linked to Inventory's lot page through the host's
-router.
+page on the shop floor show them, each linked to Inventory's lot page and to its trace
+(M94) through the host's router — only when the meta's **`canTraceLots`** says so:
+Inventory keeps stock (`contracts.Stock` is composed) and the caller holds both of its
+views, `inventory:locations-view` and `inventory:stock-view`, which those pages need, as
+Orders' delivery does. Otherwise the lot number is shown alone.
 
 **The event** (M85). `production_posted` carries `outputLots`, the lot ids made, and
 `lotRows`, the count of consumed lot rows.
@@ -1708,7 +1711,7 @@ every order write may answer 503 `dependency_unavailable`.
 
 | Operation | Permission | Answers |
 | --- | --- | --- |
-| `GET /meta` (`getManufacturingMeta`) | access | 200 — the caller's abilities and the currency |
+| `GET /meta` (`getManufacturingMeta`) | access | 200 — the caller's abilities (`canTraceLots` among them) and the currency |
 | `GET /stats` (`getManufacturingStats`) | access | 200 — active and blocked work centers, active BoMs; orders to start today, in progress and late; the business calendar's `today` |
 | `GET /sites` (`listManufacturingSites`) | access | 200 — Inventory's active sites: `id`, `code`, `name`, `rootLocationId` |
 | `GET /variants` (`searchManufacturingVariants`) | access | 200 — goods variants of active products matching `q`, each with `hasBom`; `limit` clamped to 1–50, default 20 |

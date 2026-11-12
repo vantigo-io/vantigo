@@ -1121,9 +1121,14 @@ tree, read on the pool in **one snapshot** (`REPEATABLE READ`, read-only).
   (`0`, `0.2`, `0.2.1`), its movements in the order they were posted. **A lot reached
   twice is expanded once**, where it is first laid out; every later reference carries
   **`seenAt`**, the first one's key, and no children — so a cycle cannot loop either. A
-  lot at `maxDepth` carries `depthLimit` and is not expanded.
-- **At most 2,000 nodes** (D1 M15a's bound), lots, ends and components together, and at
-  most 2,000 lots found by the walk: beyond it **`trace_too_large`** (400).
+  lot at `maxDepth` still shows its ends but no production; it carries `depthLimit` only
+  when a production on the walk's side — one that consumed it (usage) or made it
+  (origin) — was left unexpanded, so a lot at the limit with nothing beyond it is not
+  marked.
+- **At most 2,000 lots** (D1 M15a's bound, M88) — found by the walk, and laid out as lot
+  nodes, a `seenAt` reference counted — and **at most 20,000 other nodes**, the ends and
+  the components, so a lot delivered thousands of times still traces: beyond either
+  **`trace_too_large`** (400).
 - **Every node** carries its variant as the lines snapshotted it. A **lot** node carries
   the lot — number, serial, status, dates, supplier lot — with **`quantityIn`** (what was
   received, produced or adjusted in under it, every movement; a transfer's arrival not)
@@ -1131,7 +1136,10 @@ tree, read on the pool in **one snapshot** (`REPEATABLE READ`, read-only).
   carries its **`edge`**: the movement, when it was posted, its source (the production and
   its manufacturing order), **`consumed`** (the parent's quantity used in it) and
   **`produced`** (the made lot's quantity in it). An **end** carries its **`movement`** —
-  id, kind, when, reason, supplier, source — and **`quantity`**, the lot's on it.
+  id, kind, when, reason, supplier, source, and for a `transfer_out` **`toSiteName`**,
+  the site its transfer was sent to — and **`quantity`**, the lot's on it. A lot sent to
+  another site and delivered there shows both: the `transfer_out` and, beside it, the
+  issue at the other site, for a lot's lines are read at every site.
 
 ### Who received it
 
@@ -1155,7 +1163,8 @@ has one row per node — `key`, `depth`, `kind`, `lot` (an end's lot is the lot 
 consumed on an origin edge, an end's or a component's own), `unit`, `date` (in the
 workspace's zone), `document` (*Delivery 3001, order 2001*; *Delivery, movement 6001* when
 hidden; *Receipt, movement …, ref …*; *Production 1, manufacturing order 5*; *Unbuild …*),
-`party` (the supplier, or the customer — named only under `customers:view`) and `note`
+`party` (the supplier, the customer — named only under `customers:view` — or, for a
+transfer out, *Sent to <site>*) and `note`
 (*Already shown at 0.0.0*, *Not traced further: depth limit*) — the house's CSV:
 semicolons, CRLF, a byte-order mark, decimal commas and the formula guard. The PDF is the
 house style — maroto and the labels' Noto Sans — in Norwegian and English together, and
@@ -1167,12 +1176,19 @@ hidden or unknown, for an authority's *within hours* answer.
 **`POST /lots/{id}/block`** `{cause: recall|complaint|other, note?, downstream?}` (M92),
 `lots-manage`:
 
-1. The lot is taken **`FOR NO KEY UPDATE`**.
+1. Without `downstream`, the lot is taken **`FOR NO KEY UPDATE`**.
 2. With **`downstream`** (the default), the **usage walk runs again on the block's own
-   transaction**, after that lock: the dialog's summary was a trace read on the pool and
-   may be stale, and a production posted since may have made another lot of it. The walk
-   is the trace's, with its bounds; beyond them **`trace_too_large`** and nothing is
-   blocked.
+   transaction**: the dialog's summary was a trace read on the pool and may be stale,
+   and a production posted since may have made another lot of it. The block's walk reads
+   lots only — it lays no tree out, so a lot's deliveries do not count — and has **no
+   depth limit**: every lot made from it however deep, at most 2,000, beyond which
+   **`trace_too_large`** and nothing is blocked. It is read **before any lock**; then
+   every lot it found, the lot itself among them, is taken **`FOR NO KEY UPDATE` in id
+   order** — the lock a production consuming or making one of them takes — and the walk
+   is read again under those locks. A lot made meanwhile by a production that held its
+   locks first is locked too and the walk read once more, at most three times; past
+   that, **`trace_changed`** (409) and nothing is blocked. A block that loses a deadlock
+   runs once more.
 3. One **`block`** hold of the lot page — source **`inventory/lot/<id>`**, the cause and
    note as given — is put on the lot and on **every lot the walk reached that still holds
    stock**, through the code of `HoldLots`: the lots `FOR NO KEY UPDATE` in id order, a
@@ -1183,8 +1199,8 @@ hidden or unknown, for an authority's *within hours* answer.
 
 It answers **`InventoryLotBlock`**: the lot's page and **`blocked`**, the lots it holds —
 the lot first (`root`), then the others in id order — which the dialog compares with its
-summary to mark a lot it did not show as new. The lock taken first and the walk's lots
-after it in id order are the block's [lock order](#the-lock-order). The
+summary to mark a lot it did not show as new. The walk's lots in id order, and those
+made meanwhile after them, are the block's [lock order](#the-lock-order). The
 [release with `downstream`](#the-lot-pages-holds) undoes it; a hold of any other source
 stays. Recall campaigns — contact logs, returns — are phase 3.
 
@@ -1416,7 +1432,13 @@ its start. Under the barcode the label prints the AIs in brackets —
 *(01)04006381333931(17)261231(10)B1* — then the lot number, the SKU and name and the date
 as the internal label. **Without a valid GTIN** (10) and (21) are not valid, so the lot
 gets the internal label, marked *No GTIN — not a GS1 label*. A lot number of up to 20
-characters always fits (M52). Without the catalog, `dependency_unavailable` (503). ZPL is
+characters always fits (M52). The **bars span the label** but for a quiet zone of ten
+modules on each side, so the module — the X dimension a scanner must resolve — is as wide
+as the label allows, and stand up to 15 mm tall as the lines under them leave room (about
+14.7 mm on L7160, 13 mm on L7163). The module follows from the element string's length:
+a lot with two dates and a short number gets about 0.35 mm on L7163 and 0.22 mm on L7160,
+a 20-character number much less; GS1's general minimum is 0.25 mm, so L7163 is the sheet
+for scanning partners. Without the catalog, `dependency_unavailable` (503). ZPL is
 phase 3. A test decodes the bars boombuler draws back to the string, with a table read
 from the encoder's own symbols.
 
@@ -2326,7 +2348,8 @@ placements import *Invalid import*, as the opening-balance import does.
 | `lot_expired`, `lot_blocked` | 409 (line) | An issue or consume line taking an expired lot without the override, or a lot on hold; a receipt into a blocked lot. The problem's code is the first such line's. |
 | `hold_not_inventorys` | 409 | The lot page releasing a hold another module's document put; it is released there. |
 | `hold_exists` | 409 | The lot page putting a quarantine or a block while its own of that kind is active on the lot. |
-| `trace_too_large` | 400 | A trace, or a block's downstream walk, beyond 2,000 nodes or lots; the block then blocks nothing. |
+| `trace_too_large` | 400 | A trace beyond 2,000 lots or 20,000 other nodes, or a block's downstream walk beyond 2,000 lots; the block then blocks nothing. |
+| `trace_changed` | 409 | Lots kept being made from the lot while its block locked them; nothing was blocked, and the block may be tried again. |
 | `lot_dates_invalid` | 400 | A lot's dates out of order — an expiry before the production date, or a best-before date after the expiry — on `PUT /lots/{id}` or a receipt or adjustment line's new lot (a field error with the code). |
 | `attachment_too_large`, `too_many_attachments` | 400 | A lot's file over 20 MiB, or a 21st. |
 | `attachment_type` | 415 | A lot's file that is not a PDF, JPEG or PNG, or whose bytes disagree with the type or extension it is sent under. |
@@ -2550,7 +2573,7 @@ requires, all of them.
 | `POST /transfers/{id}/receive` | `locations-view` + `stock-view` + `transfers-manage` | Receive what arrived, and close the difference; no `If-Match`; 200, a replay too. |
 | `POST /transfers/{id}/cancel` | `locations-view` + `stock-view` + `transfers-manage` | Cancel a sent transfer back to its sources, with `If-Match`; 200, a replay too. |
 | `GET /transfers/{id}/note.pdf` | `locations-view` + `stock-view` | The følgeseddel of a transfer sent or later; a draft's is 404. |
-| `GET /trace` | `locations-view` + `stock-view` | A lot's trace, usage or origin, up to 10 productions and 2,000 nodes. |
+| `GET /trace` | `locations-view` + `stock-view` | A lot's trace, usage or origin, up to 10 productions, 2,000 lots and 20,000 other nodes. |
 | `GET /trace.csv` | `locations-view` + `stock-view` | The trace as CSV. |
 | `GET /trace.pdf` | `locations-view` + `stock-view` | The trace as a PDF. |
 | `POST /lots/{id}/block` | `locations-view` + `stock-view` + `lots-manage` | Block a lot and the lots made from it still in stock. |
