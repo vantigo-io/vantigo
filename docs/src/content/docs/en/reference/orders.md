@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; make-to-order — contracts.SalesOrderLines for Manufacturing, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve"
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its lots proposed FEFO, chosen and posted per lot, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; make-to-order — contracts.SalesOrderLines for Manufacturing, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve"
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00126_orders_deliveries.sql
   - apps/server/internal/db/migrations/00127_orders_shipping.sql
   - apps/server/internal/db/migrations/00161_orders_mto_ready.sql
+  - apps/server/internal/db/migrations/00166_orders_delivery_lots.sql
   - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/billable_orders.go
   - apps/server/internal/contracts/events_orders.go
@@ -803,9 +804,11 @@ confirm, an accept and confirm, *Reserve now*, a confirmed order's save — read
 business day on the pool before its transaction and passes it to `Reserve` as `today`,
 the day a lot's expiry is judged on; a delivery's post reads the day and whether the
 poster holds `inventory:expired-override` the same way and passes them as the issue's
-`Today` and `ExpiredOverride`. Delivery lines name no lot yet (`LotID` 0): picking lots
-is manufacturing phase 2's layer O, and until then Products keeps every variant
-untracked. `Issue` answers a `StockPosted`, whose `MovementID` the delivery keeps.
+`Today` and `ExpiredOverride`. A tracked variant's delivery line issues one ledger line per
+lot it picks ([Lots on a delivery](#lots-on-a-delivery)); an untracked line names none
+(`LotID` 0). Orders never sets `AutoLot`: every lot a delivery takes is on the delivery,
+proposed or chosen, before the post. `Issue` answers a `StockPosted`, whose `MovementID`
+the delivery keeps.
 
 ### The site and the line's delivery method
 
@@ -909,6 +912,55 @@ picked. One delivery names an order line once.
 A confirmed order's save refuses to remove a line a draft delivery names, or change its
 item (`line_has_progress`, 409).
 
+### Lots on a delivery
+
+Manufacturing phase 2's layer O (M75–M79). A variant whose catalog `Tracking` is `lot` or
+`serial` is **tracked**: its delivery line is picked by lot, not by location. Its quantity
+is held in **picks** (`orders.delivery_line_lots`): one row per lot and location, with the
+quantity (more than 0, three decimals), `allow_expired`, `chosen`, and the lot's number,
+its expiry and the location's full code as snapshots for the PDFs — the lot and the location
+are Inventory's, named by id only. The line's own `from_location_id` stays null. The
+delivery answers per line `tracked`, `lots`, `short` (what the picks leave uncovered of the
+quantity, 0 when none) and, on a draft, `lotChoices` — `Stock.Lots` for the variant at the
+site, in FEFO order, each with its expiry, best-before, status, quantity and whether it is
+expired on the workspace's today.
+
+- **The proposal** (M76). Create reads `Stock.Lots` for the order's delivery-method
+  variants on the pool before its transaction, with the business day, and under the
+  variants' locks fills each tracked line with `contracts.ProposeLots`: expiry first (none
+  last), then received, then lot id, skipping a lot on hold and an expired one, a serial
+  whole or not at all. The lines of one variant draw on the lots in line order. A line
+  the lots cannot cover keeps its quantity with the picks they give; it is `short`, and
+  the post refuses it until the picks add up. Proposed picks are `chosen` false.
+- **Editing** (M77). Save takes, per line, `lots: [{lotId, locationId, quantity,
+  allowExpired}]`. Each must be a lot of `Stock.Lots` holding the variant at that location
+  (`lot_unknown`) — a pick the line already had stands even when its lot no longer shows
+  there — named once per location (`line_invalid`), at a valid quantity
+  (`quantity_invalid`); lots on an untracked line are `lot_not_allowed`. All are 400 line
+  failures; a failure about one pick carries its `lotIndex` (its place in the line's
+  `lots`) and `lotId`. Lots sent as the line had them keep their `chosen`; any change marks
+  them all chosen. A tracked line sent **without** `lots` keeps its picks while they add up
+  to its quantity, and is proposed again otherwise.
+- **Posting** (M78). The post reads `Today` and whether the poster holds
+  `inventory:expired-override` on the pool before its transaction (rule 24). Under the
+  locks, a tracked line with no pick is `lot_required` and one whose picks do not add up
+  to its quantity `picks_mismatch` (both 400). Each pick is one `IssueLine` with the order
+  line's id as `LineID` — so the reservation is consumed as before — its location, its
+  `LotID` and its `AllowExpired`. Inventory's refusals come back through the refusal's
+  `Index`: a line failure names the delivery line, and for a pick its `lotIndex` and
+  `lotId` — `lot_expired` (an expired lot without both `allowExpired` and the override),
+  `lot_blocked` (a lot on hold), `insufficient_stock`.
+- **Proposed again, once** (M65a). When every failing pick is `insufficient_stock` or
+  `lot_blocked` on a line whose picks are all proposed, the post — after its transaction
+  rolled back — reads `Stock.Lots` again, proposes those lines anew from what is there
+  less what the delivery's other lines pick, and posts once more, replacing their picks
+  inside that transaction; the delivery keeps the new picks. A line the lots no longer
+  cover answers the first refusal; a second refusal is answered as it is. A person's
+  chosen picks are never proposed again.
+- **After the post** the picks stay with the delivery; nothing else changes in the
+  order's buckets. `GET /deliveries` answers each delivery's `lots`, its lot numbers once
+  each in line order, which the order page's deliveries card shows.
+
 ### Back orders
 
 What is not delivered stays open on the order; no back-order document is made. `GET
@@ -922,10 +974,15 @@ Both are A4 PDFs in the module's style, in the order's language. The **pick list
 the lines sorted by the picked location's full code, those not picked last, each with the
 site's locations holding its variant and how much — the variant's
 [primary location](/en/reference/inventory/#placement) first, then by full code, as the
-draft's location picker lists them (`stockLocations` sorts on `Primary`, stably). The **packing slip** (`GET
+draft's location picker lists them (`stockLocations` sorts on `Primary`, stably). A tracked
+line prints a row per pick, under the pick's location, with the lot number and expiry in
+the *Lot* column (*Parti*), and a *Not chosen* row for what its picks leave short. The **packing slip** (`GET
 /deliveries/{id}/packing-slip`, *pakkseddel*) prints the seller, the order's delivery
 address, contact and references, and per line what was ordered, what this delivery takes
-and what is left as back order; a posted delivery's is the stored one (`orders.documents`,
+and what is left as back order, and under a tracked line its lots — each number once, with
+its expiry and, when the line takes more than one lot, the quantity; serial numbers listed
+and wrapped — so the stored slip is the customer's record of which lots went to them
+(M79); a posted delivery's is the stored one (`orders.documents`,
 owner kind `delivery`, kind `packing_slip`), a draft's is printed now with the draft mark.
 Once a shipment of the delivery is booked, the packing slip is printed now — dated the day
 the delivery was posted — with each booked shipment's carrier, service and consignment
@@ -1446,7 +1503,8 @@ cells guarded against formulas, the headers the API's own names, and named
 Every refusal is an RFC 9457 problem with this module's `code`; a client keys off the code,
 never the words. 404 is a bare body for an id that does not exist. A 400 names the failing
 fields in `errors` (keyed by the request's camelCase field), and a document's line refusals
-in `lines` — every failing line at once, each with its `index`, `code` and `detail` —
+in `lines` — every failing line at once, each with its `index`, `code` and `detail`, and on
+a delivery's tracked line the `lotIndex` and `lotId` of the pick it is about —
 the first of which is also the problem's `code`. A request the server could not decode is
 a bare 400.
 
@@ -1471,6 +1529,11 @@ a bare 400.
 | `undo_exceeds_delivered` | 400 | More taken back than delivered |
 | `delivered_below_invoiced` | 400 | Delivered taken below invoiced |
 | `line_not_found` | 400 | A delivery line not on the order |
+| `lot_unknown` | 400 | A delivery's pick names a lot that holds none of the item at that location of the site |
+| `lot_not_allowed` | 400 | A delivery's untracked line names lots |
+| `lot_required` | 400 | Posting a tracked delivery line with no lot |
+| `picks_mismatch` | 400 | Posting a tracked delivery line whose lots do not add up to its quantity |
+| `lot_expired`, `lot_blocked` | 409 | Inventory refused a delivery's pick: the lot is expired (without *Use expired lot* and `inventory:expired-override`), or on hold |
 | `series_start_too_low` | 400 | A series start below the next number |
 | `send_channel_unknown` | 400 | No such channel to send from |
 | `version_conflict` | 409 | Made from a stale revision or version, or from an `updatedAt` older than the document's last write — reload |
@@ -1544,8 +1607,9 @@ a bare 400.
 
 The answer also lists the send channels Communications offers and whether sending is
 available. `GET /meta` gives every holder of `orders:access` what the screens need of it:
-`sendingAvailable`, `quoteValidityDays`, `defaultPaymentTermsDays`, `baseCurrency` and
-`stockKept` — whether Inventory keeps stock. `GET /sites` lists Inventory's sites that are
+`sendingAvailable`, `quoteValidityDays`, `defaultPaymentTermsDays`, `baseCurrency`,
+`stockKept` — whether Inventory keeps stock — and `canOverrideExpired` — whether the caller
+holds `inventory:expired-override`, which offers a delivery's *Use expired lot*. `GET /sites` lists Inventory's sites that are
 not archived, through `contracts.Stock`, for the order's and the default site's pickers;
 empty without Inventory.
 
@@ -1697,11 +1761,11 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /orders/{id}/documents` | access | 200 the stored confirmations; 404 |
 | `GET /orders/{id}/mailings` | access | 200 every send, with the version that went out; 404 |
 | `GET /orders/{id}/changes` | access | 200 the change log; 404 |
-| `GET /deliveries` | access | 200 — newest first, by status, order, customer, site and a search; 400 paging |
+| `GET /deliveries` | access | 200 — newest first, by status, order, customer, site and a search, each with its lots; 400 paging |
 | `POST /deliveries` | deliveries-manage | 201; 400; 404 the order; 409 `order_not_confirmed`, `order_on_hold`, `order_has_no_site`, `nothing_to_deliver`; 503 without stock |
-| `GET /deliveries/{id}` | access | 200 with lines and, on a draft, the locations holding each variant; 404 |
-| `PUT /deliveries/{id}` | deliveries-manage | 200; 400 `line_not_found`, `line_invalid`, `quantity_invalid`, `over_delivery`, `location_unknown`; 404; 409 `version_conflict`, `delivery_not_draft`; 503 |
-| `POST /deliveries/{id}/post` | deliveries-manage | 200; 400 `location_missing`, `over_delivery`; 404; 409 `version_conflict`, `delivery_not_draft`, `order_on_hold`, `insufficient_stock`, `location_unknown`, `site_not_fulfilling`, `variant_not_stocked`; 503 |
+| `GET /deliveries/{id}` | access | 200 with lines, their lots and, on a draft, the locations and lots holding each variant; 404 |
+| `PUT /deliveries/{id}` | deliveries-manage | 200; 400 `line_not_found`, `line_invalid`, `quantity_invalid`, `over_delivery`, `location_unknown`, `lot_unknown`, `lot_not_allowed`; 404; 409 `version_conflict`, `delivery_not_draft`; 503 |
+| `POST /deliveries/{id}/post` | deliveries-manage | 200; 400 `location_missing`, `over_delivery`, `lot_required`, `picks_mismatch`; 404; 409 `version_conflict`, `delivery_not_draft`, `order_on_hold`, `insufficient_stock`, `location_unknown`, `site_not_fulfilling`, `variant_not_stocked`, `lot_expired`, `lot_blocked`, `lot_unknown`, `lot_required`, `lot_not_allowed`, `serial_quantity`; 503 |
 | `POST /deliveries/{id}/cancel` | deliveries-manage | 200; 404; 409 `version_conflict`, `delivery_not_draft` |
 | `GET /deliveries/{id}/pick-list` | access | 200 printed now; 404 |
 | `GET /deliveries/{id}/packing-slip` | access | 200 the stored one of a posted delivery, a draft's printed now; 404 |
