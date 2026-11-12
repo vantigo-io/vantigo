@@ -853,6 +853,13 @@ Beholdning-kortet og på en vares beholdningsside ser du da *Reservert … · di
 - **Disponibelt** er beholdningen på lagerstedet, summert over alle lokasjonene, minus
   det som er reservert. Det er det en ny ordre fortsatt kan reservere.
 
+For en vare som holdes i **partier**, teller disponibelt bare beholdning som kan brukes:
+et parti som er sperret — i karantene eller blokkert — eller har passert utløpsdatoen,
+blir stående i beholdningen, men holdes utenfor disponibelt, og dermed utenfor det en ny
+ordre kan reservere og utenfor lista over lav beholdning. En sperring på beholdning som
+allerede er reservert, kan gjøre disponibelt negativt; reservasjonene blir stående.
+Partisporing slås på per vare når leveranser og produksjoner kan registrere partier.
+
 En ordres leveranse tar varene ut fra hyllene de plukkes fra og bruker opp
 reservasjonen. Kanselleres ordren, eller reduseres en linje, gis reservasjonen tilbake.
 
