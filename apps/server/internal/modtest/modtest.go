@@ -176,6 +176,7 @@ type setup struct {
 	stockLedger       contracts.StockLedger
 	salesOrderLines   contracts.SalesOrderLines
 	production        contracts.Production
+	deliveryTrace     contracts.DeliveryTrace
 	smtpVerify        func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend          func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore       storage.ObjectStore
@@ -270,6 +271,14 @@ func WithSalesOrderLines(p contracts.SalesOrderLines) Option {
 // declares Module.Production.
 func WithProduction(p contracts.Production) Option {
 	return func(s *setup) { s.production = p }
+}
+
+// WithDeliveryTrace sets Deps.DeliveryTrace directly, for a module under
+// test that reads Orders' posted deliveries (inventory's trace) without
+// composing orders beside it. Compose only overwrites it when a composed
+// module declares Module.DeliveryTrace.
+func WithDeliveryTrace(p contracts.DeliveryTrace) Option {
+	return func(s *setup) { s.deliveryTrace = p }
 }
 
 // WithProjects sets Deps.Projects directly to p, for a module under test
@@ -892,6 +901,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		StockLedger:              s.stockLedger,
 		SalesOrderLines:          s.salesOrderLines,
 		Production:               s.production,
+		DeliveryTrace:            s.deliveryTrace,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,

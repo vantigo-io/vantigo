@@ -174,3 +174,13 @@ SELECT ll.*, dl.delivery_id FROM orders.delivery_line_lots ll
 JOIN orders.delivery_lines dl ON dl.id = ll.delivery_line_id
 WHERE dl.delivery_id = ANY(sqlc.arg(delivery_ids)::bigint[])
 ORDER BY dl.delivery_id, dl.position, ll.id;
+
+-- name: DeliveriesForTrace :many
+-- DeliveriesForTrace is the posted deliveries among the ids, with their
+-- order's number and customer (manufacturing phase 2 M90: Inventory's trace
+-- through contracts.DeliveryTrace), by id.
+SELECT d.id, d.number, d.order_id, o.number AS order_number, o.customer_id, d.posted_at::timestamptz AS posted_at
+FROM orders.deliveries d
+JOIN orders.orders o ON o.id = d.order_id
+WHERE d.id = ANY(@ids::bigint[]) AND d.status = 'posted'
+ORDER BY d.id;

@@ -2481,7 +2481,10 @@ type OrdersMeta struct {
 	BaseCurrency string `json:"baseCurrency"`
 
 	// CanOverrideExpired Whether the caller holds inventory:expired-override: a delivery's Use expired lot is offered (manufacturing phase 2 M77).
-	CanOverrideExpired      bool  `json:"canOverrideExpired"`
+	CanOverrideExpired bool `json:"canOverrideExpired"`
+
+	// CanTraceLots Whether Inventory keeps stock and the caller holds inventory:locations-view and inventory:stock-view: a delivery's lots link to their pages and their trace in Inventory (manufacturing phase 2 M94).
+	CanTraceLots            bool  `json:"canTraceLots"`
 	DefaultPaymentTermsDays int32 `json:"defaultPaymentTermsDays"`
 	QuoteValidityDays       int32 `json:"quoteValidityDays"`
 
