@@ -21,7 +21,8 @@ export interface DeliveriesCardProps {
 
 /**
  * An order's deliveries (orders design O47): each one's number, state and
- * when it was posted, linking to its page, and *Create delivery*, which
+ * when it was posted, linking to its page, the lots it takes when any
+ * (manufacturing phase 2 M79), and *Create delivery*, which
  * proposes every open goods line at what is available and opens the draft.
  */
 export const DeliveriesCard = ({ orderId, canCreate, blocked }: DeliveriesCardProps) => {
@@ -40,6 +41,8 @@ export const DeliveriesCard = ({ orderId, canCreate, blocked }: DeliveriesCardPr
       notifications.show({ color: "red", title: t("couldNotCreateDelivery"), message: refusalMessage(error, t) }),
   });
   const items = deliveries.data?.items ?? [];
+  // The lots each delivery takes, when any does (manufacturing phase 2 M79).
+  const withLots = items.some((d) => d.lots.length > 0);
   return (
     <PageSection data-testid="deliveries-card">
       <Stack gap="md">
@@ -72,6 +75,7 @@ export const DeliveriesCard = ({ orderId, canCreate, blocked }: DeliveriesCardPr
                 <Table.Th>{t("status")}</Table.Th>
                 <Table.Th>{t("postedAt")}</Table.Th>
                 <Table.Th ta="right">{t("lines")}</Table.Th>
+                {withLots && <Table.Th>{t("lotsColumn")}</Table.Th>}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -91,6 +95,11 @@ export const DeliveriesCard = ({ orderId, canCreate, blocked }: DeliveriesCardPr
                   <Table.Td ta="right">
                     <Text size="sm">{d.lines}</Text>
                   </Table.Td>
+                  {withLots && (
+                    <Table.Td>
+                      <Text size="sm">{d.lots.length > 0 ? d.lots.join(", ") : "—"}</Text>
+                    </Table.Td>
+                  )}
                 </Table.Tr>
               ))}
             </Table.Tbody>
