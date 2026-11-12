@@ -130,6 +130,10 @@ export interface InventoryServer {
   locationLimit?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
+  /** A variant's rules, by variant id (manufacturing phase 2 M100); none — off at revision 0 — when absent. */
+  rules?: Record<number, { inspectOnReceipt: boolean; revision: number }>;
+  /** The lots awaiting inspection the stats answer (M100). */
+  lotsAwaitingInspection?: number;
   /** Answers `GET /trace` for its query (manufacturing phase 2 M89); the exports answer bytes that do not matter. */
   trace?: (query: URLSearchParams) => InventoryTrace | Response;
 }
@@ -1232,6 +1236,11 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         variants: catalog.filter((one) => one.productId === productId).map(variantStock),
       });
     }
+    match = /^\/variants\/(\d+)\/rules$/.exec(path);
+    if (match && method === "GET") {
+      const rules = server.rules?.[Number(match[1])] ?? { inspectOnReceipt: false, revision: 0 };
+      return jsonResponse(200, { variantId: Number(match[1]), updatedAt: null, ...rules });
+    }
     match = /^\/variants\/(\d+)\/stock$/.exec(path);
     if (match) {
       const variant = variantOf(Number(match[1]));
@@ -1561,6 +1570,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         stockLines: state.balances.length,
         receiptsThisWeek: state.movements.filter((one) => one.kind === "receipt").length,
         openCounts: 0,
+        lotsAwaitingInspection: server.lotsAwaitingInspection ?? 0,
       });
     return new Response(null, { status: 404 });
   };

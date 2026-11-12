@@ -142,3 +142,26 @@ export const traceLinkOptions = (lotId: number, direction?: "usage" | "origin") 
 /** The href of a lot's trace, for a module that may only link (Manufacturing's Lots tab, Orders' delivery page). */
 export const traceHref = (lotId: number, direction?: "usage" | "origin") =>
   `/inventory/trace?lotId=${lotId}${direction === "origin" ? "&direction=origin" : ""}`;
+
+// Manufacturing phase 2, Q: deviations (M99).
+
+/** Whether the backend mounts Manufacturing; no injected list (the Vite dev server) means every module. */
+const manufacturingMounted = (enabled: readonly string[] | undefined) => !enabled || enabled.includes("manufacturing");
+
+/** A hold's deviation in Manufacturing (source manufacturing/deviation/<id>), when the module is mounted. */
+export const deviationHref = (
+  source: { module: string; kind: string; id: string },
+  enabled: readonly string[] | undefined = appConfig().modules,
+): string | undefined =>
+  source.module === "manufacturing" &&
+  source.kind === "deviation" &&
+  /^\d+$/.test(source.id) &&
+  manufacturingMounted(enabled)
+    ? `/manufacturing/deviations/${source.id}`
+    : undefined;
+
+/** Report a deviation of the lot in Manufacturing, when the module is mounted. */
+export const reportDeviationHref = (
+  lotId: number,
+  enabled: readonly string[] | undefined = appConfig().modules,
+): string | undefined => (manufacturingMounted(enabled) ? `/manufacturing/deviations?new=1&lotId=${lotId}` : undefined);

@@ -214,5 +214,41 @@
       "en": "The Trace page of a lot: Where it went shows the lots made from it and the deliveries that received it; Where it came from shows its receipts and the lots it was made of. Export CSV and Download PDF hand the trace over.",
       "nb": "Sporingssiden for et parti: Hvor det gikk viser partiene laget av det og leveransene som fikk det; Hvor det kom fra viser mottakene og partiene det ble laget av. Eksporter CSV og Last ned PDF gir sporingen videre."
     }
+  },
+  {
+    "key": "inventory.variant.inspection",
+    "route": "/inventory/variants/{variantId}",
+    "label": {
+      "en": "Inspect on receipt",
+      "nb": "Kontroller ved mottak"
+    },
+    "description": {
+      "en": "The switch on a tracked variant's page that puts every lot a receipt makes or adds to in quarantine for inspection.",
+      "nb": "Bryteren på siden til en sporet variant som setter hvert parti et mottak lager eller legger til, i karantene for kontroll."
+    }
+  },
+  {
+    "key": "inventory.home.awaiting-inspection",
+    "route": "/inventory",
+    "label": {
+      "en": "Awaiting inspection",
+      "nb": "Venter på kontroll"
+    },
+    "description": {
+      "en": "The notice on the Inventory home page that links to the lots held for inspection on receipt.",
+      "nb": "Meldingen på Lager-forsiden som lenker til partiene som holdes for kontroll ved mottak."
+    }
+  },
+  {
+    "key": "inventory.lot.report-deviation",
+    "route": "/inventory/lots/{lotId}",
+    "label": {
+      "en": "Report a deviation",
+      "nb": "Meld avvik"
+    },
+    "description": {
+      "en": "The button on a lot's page that reports a deviation of the lot in Manufacturing, which can put it in quarantine.",
+      "nb": "Knappen på et partis side som melder et avvik på partiet i Produksjon, som kan sette det i karantene."
+    }
   }
 ]

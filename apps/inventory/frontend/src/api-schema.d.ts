@@ -1035,6 +1035,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/variants/{variantId}/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a variant's rules
+         * @description The variant's rules in Inventory (manufacturing phase 2 M100); a variant with none answers them off, at revision 0.
+         */
+        get: operations["getInventoryVariantRules"];
+        /**
+         * Set a variant's rules
+         * @description Sets the variant's rules (manufacturing phase 2 M100). Under ProductCatalog.LockVariants on the variant, inspectOnReceipt is refused inspection_requires_tracking for a variant that is not tracked in lots or serials. A receipt posted after it puts a quarantine hold of cause inspection, source inventory/receipt/<movement id>, on each lot it creates or adds to.
+         */
+        put: operations["putInventoryVariantRules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/variants/{variantId}/stock": {
         parameters: {
             query?: never;
@@ -1819,6 +1843,8 @@ export interface components {
              * @description The count this movement posted, for a count movement.
              */
             countId?: number;
+            /** @description A receipt's lots put under a quarantine hold for inspection (manufacturing phase 2 M100): a lot received into that held stock already is in quarantine as a whole until it is released. */
+            inspectionLots?: number[];
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["InventoryMovementKind"];
@@ -1977,7 +2003,7 @@ export interface components {
             /** Format: double */
             reorderPoint: number | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module's document put, which is released there), hold_exists (409: the lot page putting a second active hold of one kind on a lot), lot_dates_invalid (400: a lot's dates stated out of order — an expiry before the production date, or a best-before date after the expiry — on a lot's edit or a receipt or adjustment line's new lot; errors names the field), attachment_too_large and too_many_attachments (400: a lot's file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), lot_invalid (a count line's new lot whose number is not 1–20 characters A–Z, a–z, 0–9 and . _ / -, or whose supplier lot or note is too long) and lot_dates_invalid on a count line (its new lot's dates out of order), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module's document put, which is released there), hold_exists (409: the lot page putting a second active hold of one kind on a lot), lot_dates_invalid (400: a lot's dates stated out of order — an expiry before the production date, or a best-before date after the expiry — on a lot's edit or a receipt or adjustment line's new lot; errors names the field), attachment_too_large and too_many_attachments (400: a lot's file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), lot_invalid (a count line's new lot whose number is not 1–20 characters A–Z, a–z, 0–9 and . _ / -, or whose supplier lot or note is too long) and lot_dates_invalid on a count line (its new lot's dates out of order), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. inspection_requires_tracking (400: inspect on receipt for a variant that is not tracked, manufacturing phase 2 M100). A request the server could not decode answers a bare 400 with neither. */
         InventoryProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2193,6 +2219,11 @@ export interface components {
              * @description Active locations, roots excluded.
              */
             locations: number;
+            /**
+             * Format: int32
+             * @description Lots with an active inspection hold (manufacturing phase 2 M100): the inspection queue, to a caller with stock-view.
+             */
+            lotsAwaitingInspection?: number;
             /**
              * Format: int32
              * @description Counts still counting.
@@ -2704,6 +2735,23 @@ export interface components {
              */
             tracking?: "none" | "lot" | "serial";
             unit: string;
+        };
+        /** @description A variant's rules in Inventory (manufacturing phase 2 M100). inspectOnReceipt puts every lot a receipt of the variant creates or adds to under a quarantine hold of cause inspection, released on the lot page. revision is 0 while the variant has no rules. */
+        InventoryVariantRules: {
+            inspectOnReceipt: boolean;
+            /** Format: int32 */
+            revision: number;
+            /** Format: date-time */
+            updatedAt: string | null;
+            updatedBy?: components["schemas"]["InventoryActor"];
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description A variant's rules as sent: inspectOnReceipt only for a tracked variant (inspection_requires_tracking), under the revision read (0 when it had none). */
+        InventoryVariantRulesInput: {
+            inspectOnReceipt: boolean;
+            /** Format: int32 */
+            revision: number;
         };
         /** @description One variant's stock by site (I27). */
         InventoryVariantStock: {
@@ -6676,6 +6724,124 @@ export interface operations {
             };
             /** @description Conflict — revision_conflict. */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    getInventoryVariantRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                variantId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryVariantRules"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInventoryVariantRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                variantId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryVariantRulesInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryVariantRules"];
+                };
+            };
+            /** @description Bad Request — field errors; inspection_requires_tracking. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the catalog knows no such variant. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

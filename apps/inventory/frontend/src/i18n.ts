@@ -892,6 +892,22 @@ export const inventoryCatalog = {
     labelFormatHint: "A lot whose item has no GTIN gets the internal label, marked as not GS1.",
     labelFormat_internal: "Internal: the LOT code, which a scan reads back",
     labelFormat_gs1: "GS1-128: the GTIN, the dates and the lot",
+
+    // Manufacturing phase 2, Q: inspection on receipt and deviations (M99, M100)
+    inspectOnReceipt: "Inspect on receipt",
+    inspectOnReceiptHint:
+      "Every lot a receipt makes or adds to is put in quarantine until it is released on the lot page.",
+    inspectionOn: "Receipts are inspected",
+    inspectionOff: "Receipts are no longer inspected",
+    awaitingInspection_one: "{{count}} lot awaiting inspection",
+    awaitingInspection_other: "{{count}} lots awaiting inspection",
+    heldForInspection_one: "{{count}} lot held for inspection",
+    heldForInspection_other: "{{count}} lots held for inspection",
+    heldForInspectionHint:
+      "The whole lot is in quarantine, what was there before with it, until its inspection hold is released on the lot page.",
+    receiptById: "Receipt {{id}}",
+    deviationById: "Deviation {{id}}",
+    reportDeviation: "Report a deviation",
   },
   nb: {
     inventory: "Lager",
@@ -1776,6 +1792,22 @@ export const inventoryCatalog = {
     labelFormatHint: "Et parti uten GTIN på varen får den interne etiketten, merket som ikke GS1.",
     labelFormat_internal: "Intern: LOT-koden, som en skanning leser tilbake",
     labelFormat_gs1: "GS1-128: GTIN, datoene og partiet",
+
+    // Manufacturing phase 2, Q: inspection on receipt and deviations (M99, M100)
+    inspectOnReceipt: "Kontroller ved mottak",
+    inspectOnReceiptHint:
+      "Hvert parti et mottak lager eller legger til, settes i karantene til det frigis på partisiden.",
+    inspectionOn: "Mottak kontrolleres",
+    inspectionOff: "Mottak kontrolleres ikke lenger",
+    awaitingInspection_one: "{{count}} parti venter på kontroll",
+    awaitingInspection_other: "{{count}} partier venter på kontroll",
+    heldForInspection_one: "{{count}} parti holdt for kontroll",
+    heldForInspection_other: "{{count}} partier holdt for kontroll",
+    heldForInspectionHint:
+      "Hele partiet er i karantene, også det som lå der fra før, til kontrollsperren frigis på partisiden.",
+    receiptById: "Mottak {{id}}",
+    deviationById: "Avvik {{id}}",
+    reportDeviation: "Meld avvik",
   },
 } satisfies CatalogResources;
 

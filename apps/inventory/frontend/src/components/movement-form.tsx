@@ -107,6 +107,15 @@ export const MovementForm = ({ kind, sites, siteId: initialSite, locationId, var
         title: t(`posted_${kind}`),
         message: t("postedNumber", { id: movement.id }),
       });
+      // A receipt of a variant inspected on receipt holds its lots for inspection (manufacturing phase 2 M100).
+      const held = movement.inspectionLots?.length ?? 0;
+      if (held > 0)
+        notifications.show({
+          color: "orange",
+          autoClose: false,
+          title: t("heldForInspection", { count: held }),
+          message: t("heldForInspectionHint"),
+        });
       await invalidate();
     },
     onError: (error, { sent }) => {
