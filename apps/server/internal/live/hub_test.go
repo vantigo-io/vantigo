@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -549,6 +550,34 @@ func TestNotify_Validates(t *testing.T) {
 	}
 	if len(q.args) != 1 || q.args[0][0] != Channel || q.args[0][1] != `{"t":"alpha.list","k":"row.changed","id":"7"}` {
 		t.Errorf("sent %v", q.args)
+	}
+}
+
+// NotifyAll sends every event in one statement, the payloads as one array,
+// refuses the whole batch for one bad event, and sends nothing for none.
+func TestNotifyAll_OneStatement(t *testing.T) {
+	var q recordingExecer
+	if err := NotifyAll(context.Background(), &q, nil); err != nil || len(q.args) != 0 {
+		t.Fatalf("no events: %v, sent %v", err, q.args)
+	}
+	if err := NotifyAll(context.Background(), &q, []Event{{"alpha.list", "row.changed", ""}, {"Bad topic", "row.changed", ""}}); err == nil || len(q.args) != 0 {
+		t.Fatalf("a batch with a bad topic: %v, sent %v", err, q.args)
+	}
+	events := make([]Event, 0, 501)
+	events = append(events, Event{Topic: "alpha.list", Kind: "row.changed"})
+	for i := range 500 {
+		events = append(events, Event{Topic: "alpha.row:" + strconv.Itoa(i+1), Kind: "row.changed", ID: strconv.Itoa(i + 1)})
+	}
+	if err := NotifyAll(context.Background(), &q, events); err != nil {
+		t.Fatal(err)
+	}
+	if len(q.args) != 1 {
+		t.Fatalf("statements = %d, want 1", len(q.args))
+	}
+	bodies, ok := q.args[0][1].([]string)
+	if q.args[0][0] != Channel || !ok || len(bodies) != 501 || bodies[0] != `{"t":"alpha.list","k":"row.changed"}` ||
+		bodies[500] != `{"t":"alpha.row:500","k":"row.changed","id":"500"}` {
+		t.Errorf("sent %v", q.args[0])
 	}
 }
 

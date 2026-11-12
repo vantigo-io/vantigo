@@ -388,8 +388,9 @@ func (s *server) removeObject(ctx context.Context, lotID int64, key string) {
 }
 
 // lotAttachmentDownload sets the headers every file read answers with: never
-// cached, never sniffed, a policy of its own, and the name it was uploaded
-// under.
+// cached, never sniffed, a policy of its own, and saved as an attachment
+// under the name it was uploaded with — a browser's PDF viewer does not run
+// under the sandbox policy, so the file is never shown in place.
 type lotAttachmentDownload struct {
 	body        gen.GetInventoryLotAttachmentResponseObject
 	disposition string
@@ -425,7 +426,7 @@ func (s *server) GetInventoryLotAttachment(ctx context.Context, req gen.GetInven
 	}
 	return lotAttachmentDownload{
 		body:        gen.GetInventoryLotAttachment200AsteriskResponse{Body: body, ContentType: a.ContentType, ContentLength: a.SizeBytes},
-		disposition: fmt.Sprintf("inline; filename*=UTF-8''%s", rfc5987(a.FileName)),
+		disposition: fmt.Sprintf("attachment; filename*=UTF-8''%s", rfc5987(a.FileName)),
 	}, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
@@ -42,7 +43,23 @@ func readNewLot(f *fieldErrors, field string, in *gen.InventoryNewLot) *lotReque
 	if in.Expiry != nil {
 		r.expiry = ptr(in.Expiry.Time)
 	}
+	checkLotDates(f, field+".", r.production, r.bestBefore, r.expiry)
 	return r
+}
+
+// checkLotDates refuses a lot's dates stated out of order, under prefix's
+// fields (lot_dates_invalid): an expiry before the production date, or a
+// best-before date after the expiry. A date left out is not compared.
+func checkLotDates(f *fieldErrors, prefix string, production, bestBefore, expiry *time.Time) {
+	if expiry == nil {
+		return
+	}
+	if production != nil && expiry.Before(*production) {
+		f.addCoded(prefix+"expiry", codeLotDatesInvalid, "The expiry is before the production date")
+	}
+	if bestBefore != nil && bestBefore.After(*expiry) {
+		f.addCoded(prefix+"bestBefore", codeLotDatesInvalid, "The best-before date is after the expiry")
+	}
 }
 
 // serialNumbers is the serial numbers a receipt line's serials give, or the

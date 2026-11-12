@@ -19,10 +19,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/live"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -225,6 +227,15 @@ func TestLotScreens_EditAndHolds(t *testing.T) {
 		t.Fatalf("after a block = %+v", blocked)
 	}
 	mustStatus(t, c.Do(http.MethodPost, lotPath(e1)+"/holds", gen.InventoryLotHoldInput{Kind: "freeze", Cause: "other"}), http.StatusBadRequest, "an unknown kind")
+	// A second hold of one kind is refused, not dropped (M2 of the L1b review).
+	expectRefusal(t, c.Do(http.MethodPost, lotPath(e1)+"/holds", gen.InventoryLotHoldInput{Kind: "quarantine", Cause: "other"}),
+		http.StatusConflict, "hold_exists", "a second quarantine")
+	if got := getLot(t, c, e1); len(got.Holds) != 2 {
+		t.Errorf("after the refused quarantine the holds = %+v, want 2", got.Holds)
+	}
+	if res := c.Do(http.MethodPost, lotPath(999999)+"/holds", gen.InventoryLotHoldInput{Kind: "quarantine", Cause: "other"}); res.Status != http.StatusNotFound {
+		t.Errorf("a hold of no lot = %d", res.Status)
+	}
 	var block gen.InventoryLotHold
 	for _, x := range blocked.Holds {
 		if x.Kind == gen.InventoryLotHoldKindBlock {
@@ -261,6 +272,39 @@ func TestLotScreens_EditAndHolds(t *testing.T) {
 		http.StatusConflict, "hold_not_inventorys", "another module's hold")
 	if got := getLot(t, c, e2); got.Status != gen.InventoryLotStatusQuarantine {
 		t.Errorf("e2 = %s, want still quarantined", got.Status)
+	}
+	// Another module's quarantine is no hold of the lot page's.
+	mustStatus(t, c.Do(http.MethodPost, lotPath(e2)+"/holds", gen.InventoryLotHoldInput{Kind: "quarantine", Cause: "other"}), http.StatusOK,
+		"the page's quarantine beside a deviation's")
+}
+
+// TestLotScreens_DatesInOrder is lot_dates_invalid (L6 of the L1b review):
+// an expiry before the production date, or a best-before after the expiry,
+// refused on a lot's edit and on a receipt's new lot; dates left out are not
+// compared.
+func TestLotScreens_DatesInOrder(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, lotManager...)
+	admin, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, admin)
+	e1, _, _ := receiveLots(t, h, c, s)
+	l := getLot(t, c, e1)
+	for name, edit := range map[string]gen.InventoryLotUpdate{
+		"an expiry before production": {ProductionDate: date(2026, 9, 10), Expiry: date(2026, 9, 9)},
+		"a best-before after expiry":  {BestBefore: date(2026, 12, 2), Expiry: date(2026, 12, 1)},
+	} {
+		res := c.Do(http.MethodPut, lotPath(e1), edit, ifMatch(l.Revision))
+		expectRefusal(t, res, http.StatusBadRequest, "lot_dates_invalid", name)
+	}
+	mustStatus(t, c.Do(http.MethodPut, lotPath(e1), gen.InventoryLotUpdate{ProductionDate: date(2026, 9, 10), BestBefore: date(2026, 12, 1), Expiry: date(2026, 12, 1)},
+		ifMatch(l.Revision)), http.StatusOK, "dates in order, best-before on the expiry")
+	mustStatus(t, c.Do(http.MethodPut, lotPath(e1), gen.InventoryLotUpdate{BestBefore: date(2027, 1, 1)}, ifMatch(l.Revision+1)), http.StatusOK,
+		"a best-before with no expiry")
+	res := postReceipt(c, s.site.Id, s.shelf1.Id, lotLine(varLot, 1, gen.InventoryNewLot{Number: ptr("D1"), ProductionDate: date(2026, 9, 10), Expiry: date(2026, 9, 1)}))
+	expectRefusal(t, res, http.StatusBadRequest, "lot_dates_invalid", "a receipt's lot expiring before it was made")
+	if p := problemOf(t, res); p.Errors == nil || (*p.Errors)["lines[0].lot.expiry"] == nil {
+		t.Errorf("the refusal's errors = %v, want lines[0].lot.expiry", p.Errors)
 	}
 }
 
@@ -438,6 +482,13 @@ func TestLotScreens_Attachments(t *testing.T) {
 	if !bytes.Equal(dl.Body, testCertificate()) {
 		t.Errorf("downloaded %q", dl.Body)
 	}
+	// Saved, not shown: a PDF viewer does not run under the sandbox policy (L3 of the L1b review).
+	if got := dl.Header("Content-Disposition"); got != "attachment; filename*=UTF-8''Sertifikat%203.1%20%C3%B8.pdf" {
+		t.Errorf("Content-Disposition = %q", got)
+	}
+	if got := dl.Header("Content-Security-Policy"); got != "default-src 'none'; sandbox" {
+		t.Errorf("Content-Security-Policy = %q", got)
+	}
 	if res := viewer.Do(http.MethodGet, fmt.Sprintf("%s/%d/attachments/%d", lotsPath, e1+1, a.Id), nil); res.Status != http.StatusNotFound {
 		t.Errorf("a file under another lot = %d", res.Status)
 	}
@@ -599,11 +650,90 @@ func TestLotScreens_Live(t *testing.T) {
 	events := listenLots(t, h)
 	e1, _, _ := receiveLots(t, h, c, s)
 	key := strconv.FormatInt(e1, 10)
-	want := []lotEvent{{T: "inventory.lots", K: "lot.changed", ID: key}, {T: "inventory.lot:" + key, K: "lot.changed", ID: key}}
+	want := []lotEvent{{T: "inventory.lots", K: "lot.changed"}, {T: "inventory.lot:" + key, K: "lot.changed", ID: key}}
 	expectLotEvents(t, events, want...)
 	mustStatus(t, c.Do(http.MethodPost, lotPath(e1)+"/holds", gen.InventoryLotHoldInput{Kind: "quarantine", Cause: "inspection"}), http.StatusOK, "hold")
 	expectLotEvents(t, events, want...)
 	l := getLot(t, c, e1)
 	mustStatus(t, c.Do(http.MethodPut, lotPath(e1), gen.InventoryLotUpdate{Note: ptr("x")}, ifMatch(l.Revision)), http.StatusOK, "edit")
 	expectLotEvents(t, events, want...)
+}
+
+// TestLotScreens_LiveSerialReceipt is a receipt of 500 serials (M1 of the
+// L1b review): the list is told once, each new lot's page once — 501 events
+// from the one statement, not two per lot.
+func TestLotScreens_LiveSerialReceipt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, admin)
+	events := listenLots(t, h)
+	receive(t, admin, s.site.Id, s.shelf1.Id, gen.InventoryReceiptLine{VariantId: varSerial, Serials: &gen.InventorySerials{First: ptr("SN0001"), Count: ptr(500)}})
+	// A marker after the receipt: everything the receipt sent arrives first.
+	h.Exec(t, `SELECT pg_notify($1, '{"t":"inventory.marker","k":"done"}')`, live.Channel)
+	list, pages := 0, map[string]bool{}
+	deadline := time.After(10 * time.Second)
+	for done := false; !done; {
+		select {
+		case e := <-events:
+			switch {
+			case e.T == "inventory.marker":
+				done = true
+			case e.T == "inventory.lots":
+				list++
+			case strings.HasPrefix(e.T, "inventory.lot:"):
+				pages[e.T] = true
+			}
+		case <-deadline:
+			t.Fatalf("no marker: the list heard %d, the pages %d", list, len(pages))
+		}
+	}
+	if list != 1 || len(pages) != 500 {
+		t.Errorf("the list heard %d events, %d lot pages were told; want 1 and 500", list, len(pages))
+	}
+}
+
+// TestLotScreens_LiveAuthorize is the topics' Authorize (§17, L5 of the L1b
+// review): both views for either, the list keyless, a lot's key a canonical
+// id, so a malformed key and a missing view are refused alike.
+func TestLotScreens_LiveAuthorize(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, both := signIn(t, h, "inventory:locations-view", "inventory:stock-view")
+	_, stockOnly := signIn(t, h, "inventory:stock-view")
+	_, locationsOnly := signIn(t, h, "inventory:locations-view")
+	topics := map[string]live.Topic{}
+	for _, tp := range inventory.Module().LiveTopics(h.Deps()) {
+		topics[tp.Kind] = tp
+	}
+	if len(topics) != 2 {
+		t.Fatalf("topics = %v, want inventory.lots and inventory.lot", topics)
+	}
+	for name, tc := range map[string]struct {
+		user  uuid.UUID
+		kind  string
+		key   string
+		allow bool
+	}{
+		"the list":                  {both, "inventory.lots", "", true},
+		"the list with a key":       {both, "inventory.lots", "1", false},
+		"the list without stock":    {locationsOnly, "inventory.lots", "", false},
+		"the list without places":   {stockOnly, "inventory.lots", "", false},
+		"a lot":                     {both, "inventory.lot", "42", true},
+		"a lot no one has":          {both, "inventory.lot", "999999999", true},
+		"a lot without stock":       {locationsOnly, "inventory.lot", "42", false},
+		"a lot without places":      {stockOnly, "inventory.lot", "42", false},
+		"a lot with a leading zero": {both, "inventory.lot", "01", false},
+		"a lot of zero":             {both, "inventory.lot", "0", false},
+		"a lot of a word":           {both, "inventory.lot", "abc", false},
+		"a lot with no key":         {both, "inventory.lot", "", false},
+	} {
+		err := live.Authorize(context.Background(), h.Deps().Access, tc.user, topics[tc.kind], tc.key)
+		if tc.allow && err != nil {
+			t.Errorf("%s: %v, want allowed", name, err)
+		}
+		if !tc.allow && !errors.Is(err, live.ErrForbidden) {
+			t.Errorf("%s: %v, want live.ErrForbidden", name, err)
+		}
+	}
 }
