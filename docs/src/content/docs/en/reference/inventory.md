@@ -747,7 +747,7 @@ failures:
 | a tracked variant's line names no lot (and is not `AutoLot`) | `lot_required` (400) |
 | an untracked variant's line names a lot | `lot_not_allowed` (400) |
 | the lot is unknown or another variant's | `lot_unknown` (400) |
-| a serial line's quantity is not 1, a serial set above 1, or a serial that would hold more than 1 over every location | `serial_quantity` (400) |
+| a serial line's quantity is not 1, a serial set to anything but 0 or 1, or a serial that would hold more than 1 over every location | `serial_quantity` (400) |
 | a receipt's first serial ending in no digits | `serial_first_invalid` (400) |
 | a stated date differs from the existing lot's | `lot_dates_differ` (400) |
 | a new lot's dates stated out of order: an expiry before the production date, or a best-before date after the expiry | `lot_dates_invalid` (400, a field error on `lines[i].lot.expiry` or `.bestBefore`) |
@@ -1138,12 +1138,19 @@ most three decimals) or an [entry](#the-entry) (I18):
 **Lots (M69).** A line is one balance, `(variant, location, lot)`. A line of a tracked
 variant names its lot: **`lotId`**, one of the variant's (`lot_unknown` otherwise), or
 **`lot`** — `{number, supplierLot, productionDate, bestBefore, expiry, note}` — found or
-made by number exactly as a [receipt's](#receipts-moves-and-adjustments-with-lots) is,
-in the `PUT`'s own transaction, with origin `inventory/count/<count id>`; both is a field
-error. An untracked variant's line naming one is `lot_not_allowed`; a tracked variant's
-line naming none is `lot_required`, unless the count already has that line without a
-lot (frozen before the variant became tracked), which may still be counted. A serial is
-counted 0 or 1 (`serial_quantity`). The lots are taken after `LockVariants`: the lot
+made by number as a [receipt's](#receipts-moves-and-adjustments-with-lots) is, in the
+`PUT`'s own transaction, with origin `inventory/count/<count id>`; both is a field
+error. A lot a count makes takes **only the dates the line states**: the variant's
+best-before and expiry days are not applied, since nobody knows the day a counted lot
+was made. A new lot that does not read refuses **its line**, not the request:
+**`lot_invalid`** for a number that is not 1–20 characters `A–Z a–z 0–9 . _ / -` (or a
+supplier lot or note too long), `lot_dates_invalid` for dates out of order — each with
+the line's index, so the screen marks the row. An untracked variant's line naming one
+is `lot_not_allowed`; a tracked variant's line naming none is `lot_required`, unless the
+count already has that line without a lot (frozen before the variant became tracked),
+which may still be counted. A serial is counted **0 or 1 exactly** — 2 or 0.5 is
+`serial_quantity` — and the post's set to a serial's lot is held to the same. The lots
+are taken after `LockVariants`: the lot
 counter and the new lots, then every lot named `FOR SHARE` in id order (M58), then the
 locations.
 
@@ -1244,7 +1251,9 @@ of **lot labels** on the same sheets — `layout` `l7160` by default — as
 `lot-labels-<layout>.pdf`. Each label carries the lot's **token**, `LOT` and its id
 (`LOT1001`), as the Code 128 across its top — which the [lookup](#the-lookup) reads back
 — the lot **number** in bold below it, the SKU and product name (`MILK-1 · Milk`), and
-the **expiry** (`EXP 2026-12-31`), else the **best-before** date (`BB …`). The labels are
+the **expiry** (`EXP 2026-12-31`), else the **best-before** date (`BB …`). The SKU and
+name are cut to **one line** with an ellipsis, measured in the label's font, so they
+never run into the date below. The labels are
 in the order the ids are given, `copies` (1 by default) of each in a run; a serial is a
 lot of its own, so serials print one label each. At most **1000** labels — `ids` × `copies`
 — else `labels_too_many`; a lot that does not exist is a field error on `ids` with the
@@ -1283,8 +1292,9 @@ places a site's first stock (I32). It needs `stock-adjust` and both views.
     number not 1–20 of `[A-Za-z0-9._/-]`, a supplier lot over 40 characters, a date that
     is not `YYYY-MM-DD` or `DD.MM.YYYY`, details without a number, or dates out of order
     (an expiry before the production date, a best-before after the expiry) are
-    **`lot_invalid`**; a serial variant's row of a quantity other than 1 is
-    **`serial_quantity`**.
+    **`lot_invalid`**; a serial variant's row of a quantity other than 1, or naming a
+    serial an earlier row of the file names already, is **`serial_quantity`** — judged
+    in the dry run too, on the later row.
 
   Each row answers its `row` (the header being row 1), the `location`, `sku` and
   `quantity` as written — and `lot` when the file has the column — its `outcome` and a
@@ -1969,7 +1979,10 @@ against packagings that hold until the commit.
   variant's on hand across every location, summed exactly, with `reserved` across every
   site and `available`, and **`inTransit`** — what is on its way between sites, which is
   not part of `onHand` — for at most **100** ids
-  (comma-separated, de-duplicated); none or more than 100 is a 400 on `variantIds`. A
+  (comma-separated, de-duplicated); none or more than 100 is a 400 on `variantIds`.
+  With **`lotId`** (manufacturing phase 2 M74) only that lot's stock counts — its on hand
+  and what of it is in transit; a reservation names no lot, so `reserved` is 0 and
+  `available` the lot's on hand; a `lotId` below 1 is a 400. A
   variant with no stock, no reservation and nothing in transit is absent from `totals`;
   one wholly in transit keeps its row. Products reads nothing of Inventory on
   the server: the host composes the column into Products' list through the list's
@@ -2083,7 +2096,9 @@ list](#the-expiring-list)'s rule). Each has `id` its type, `entityId` `lots`,
 **`count`** the lots, `occurredAt` the time of the read, and `title` *3 lots in stock have
 expired* or *… expire within 14 days*; the dashboard words them with the count in the
 reader's language and links to the expiring list. They are raised to a caller with **both
-views**, last. Every item keeps the shape every module shares; the enum gained the two
+views**, last. When the business day cannot be read — the calendar fails — the two items
+are left out and the failure logged, and the rest of the list still answers. Every item
+keeps the shape every module shares; the enum gained the two
 phase 2 types and the two lot types and nothing else.
 
 ## Personal data
@@ -2147,6 +2162,7 @@ placements import *Invalid import*, as the opening-balance import does.
 | `from_location_required` | 400 (line) | A send's line with no source location; the index is the line's place on the transfer. |
 | `transfer_over_received` | 400 (line) | A receive's line taking more than the line has outstanding; the index is the line's place in the request. |
 | `lot_required`, `lot_not_allowed`, `lot_unknown`, `serial_quantity`, `serial_first_invalid`, `lot_dates_differ` | 400 (line) | The [lot rules](#the-lot-rules) (manufacturing phase 2 M56, M57) — on a posting, a count's `PUT` and post, a transfer's draft and send (L2, M69, M70), and as the opening-balance import's row outcomes `lot_required`, `lot_not_allowed`, `lot_invalid` and `serial_quantity` (M71). |
+| `lot_invalid`, `lot_dates_invalid` | 400 (line) | A count line's new lot whose number does not read (or whose supplier lot or note is too long), or whose dates are out of order (M69); the line's index names the row. |
 | `lot_expired`, `lot_blocked` | 409 (line) | An issue or consume line taking an expired lot without the override, or a lot on hold; a receipt into a blocked lot. The problem's code is the first such line's. |
 | `hold_not_inventorys` | 409 | The lot page releasing a hold another module's document put; it is released there. |
 | `hold_exists` | 409 | The lot page putting a quarantine or a block while its own of that kind is active on the lot. |
@@ -2325,7 +2341,7 @@ requires, all of them.
 | `GET /locations/{id}/contents` | `locations-view` + `stock-view` | What lies on the location, and below it unless `subtree=false`. |
 | `GET /products/{productId}/stock` | `locations-view` + `stock-view` | Every goods variant of a product with its stock. |
 | `GET /variants` | `locations-view` + `stock-view` | Goods variants by SKU, name or barcode; with `siteId`, each with its primary location there. |
-| `GET /stock` | `locations-view` + `stock-view` | On hand of up to 100 variants across every location. |
+| `GET /stock` | `locations-view` + `stock-view` | On hand of up to 100 variants across every location, or of one lot (`lotId`). |
 | `GET /variants/{variantId}/stock` | `locations-view` + `stock-view` | One variant's stock, a deleted one by its snapshot. |
 | `GET /lots` | `locations-view` + `stock-view` | The lots, filtered, by variant then number. |
 | `GET /lots/expiring` | `locations-view` + `stock-view` | The lots with stock expiring within `days` (30) or expired, by expiry, at most 1000. |

@@ -414,13 +414,15 @@ lagersted.* Den krever begge visningsrettighetene.
 ### Skriv ut partietiketter
 
 **Skriv ut etiketter** på siden for et parti, på listen **Partier** — for partiene den
-viser — og på **Utløper snart** laster ned en PDF med partietiketter, på de samme
+viser, som dialogen sier fra om når listen har flere å hente (*Bare de 100 partiene som
+vises, skrives ut. Bla ned i listen for å hente flere først.*) — og på **Utløper snart** laster ned en PDF med partietiketter, på de samme
 Avery-arkene som [lokasjonsetikettene](#skriv-ut-lokasjonsetiketter): velg **Avery L7160**
 (21 etiketter per A4) eller **Avery L7163** (14 per A4) og hvor mange **Etiketter per
 parti**, og trykk **Last ned PDF**. Hver etikett har partiets `LOT`-kode som strekkode
 øverst — `LOT1001`, nummeret i Lager, som aldri endres —, partinummeret med store tegn,
-varenummeret og produktets navn, og utløpsdatoen (*EXP 2026-12-31*), eller best
-før-datoen (*BB …*) når partiet ikke har noen utløpsdato. Et serienummer er et parti for
+varenummeret og produktets navn, forkortet til én linje så det aldri går inn i datoen, og
+utløpsdatoen (*EXP 2026-12-31*), eller best før-datoen (*BB …*) når partiet ikke har noen
+utløpsdato. Et serienummer er et parti for
 seg, så serienumre får en etikett hver. Å skanne en etikett i **Finn lokasjon eller
 vare**, eller på en varetelling, finner partiet. Høyst 1000 etiketter om gangen. Dette er
 etiketter for egne hyller; etiketter med GS1-strekkoder for kunder kommer senere.
@@ -507,6 +509,8 @@ Dialogen varsler deg før du sender:
 
 - *Lokasjonen har bare …; sendingen vil bli avvist.* — velg en annen lokasjon, eller del
   linjen i utkastet;
+- *Partiet har bare … her: del linjen i utkastet for å sende resten fra et annet parti.*
+  — en linje sender ett parti, så resten trenger en egen linje;
 - *Bare … av … ligger på OSL; sendingen vil bli avvist.* — lagerstedet har mindre enn
   overføringen tar;
 - *… av … er reservert for ordrer på OSL; sendingen gjør at de mangler.* — sendingen
@@ -821,11 +825,21 @@ En vare som holdes i [partier](#partier-og-serienumre), har en linje per parti p
 lokasjon, under hverandre, hver med partiets nummer — lenket til siden — og utløpsdato i
 kolonnen **Parti**: tell hvert parti på sin egen linje. Å skanne et partis
 [etikett](#skriv-ut-partietiketter) eller skrive nummeret går til det partiets linje, eller
-legger til en. En vare som holdes i partier og skannes der ingen av partiene var
-forventet, får en ny linje med feltet **Partinummer**: skriv nummeret på pakken — et parti
-varen har, telles, et nytt nummer lager et nytt parti når linjen lagres. Et serienummer
-telles 0 eller 1 (*Et serienummer gjelder nøyaktig én, og er på lager én gang.*).
-Bokføringen setter hvert parti på hver lokasjon til det som ble telt.
+legger til en; et partinummer som brukes av mer enn én vare, går til varen som allerede
+er på lokasjonen, ellers spør siden **Hvilken vare?**. Å skanne varens egen strekkode
+eller en forpaknings kan ikke si hvilket parti du holder, så når varen har linjer på
+lokasjonen, spør siden **Hvilket parti av MILK-1?** — velg en linje, eller **Nytt parti
+…**. En vare uten linjer der, eller **Nytt parti …**, får en ny linje med feltet
+**Partinummer** og en kalenderknapp for partiets **Produksjonsdato**, **Best før** og
+**Utløpsdato**. Skriv nummeret på pakken og trykk **Enter** eller gå videre: nummeret tas
+først da, så et halvskrevet nummer blir aldri et parti, og et nummer som ikke kan leses,
+sier *1–20 tegn: A–Z, a–z, 0–9 og . _ / -* med en gang. Et parti varen har, telles; et
+nytt nummer lager et nytt parti når linjen lagres, med **bare datoene du ga** — et parti
+funnet i en telling får ingen fra varens dager. Flere nye partier av én vare kan legges
+til side om side. En linje serveren avviser — *Partinummeret kan ikke leses* eller datoer
+i feil rekkefølge — markeres rødt med grunnen. Et serienummer telles nøyaktig 0 eller 1
+(*Et serienummer gjelder nøyaktig én, og er på lager én gang.*). Bokføringen setter hvert
+parti på hver lokasjon til det som ble telt.
 
 Ble en vare holdt i partier etter at varetellingen ble åpnet, har linjene dens ikke noe
 parti. De bokføres som de er når ingenting var forventet og ingenting telt; ellers avvises
@@ -888,14 +902,15 @@ visningsrettighetene).
    slik vare oppgir partiets nummer, og kan oppgi leverandørparti og datoer (`2026-12-31`
    eller `31.12.2026`); står datoene tomme, følger de av varens dager. Et nummer varen
    allerede har, legges til i det partiet; et nytt lager partiet, med importen som
-   opphav. En rad med et serienummer har antall 1. Partikolonnene kan utelates i en fil
+   opphav. Et serienummer står på én rad, med antall 1: en rad til med det samme avvises
+   allerede i prøvekjøringen. Partikolonnene kan utelates i en fil
    uten partier, og stå tomme på radene for andre varer.
 2. Velg **Lagersted** og **CSV-fil**, og trykk **Prøvekjøring**. Ingenting bokføres:
    hver rad viser sitt **Resultat** — **OK**, **Lokasjonen finnes ikke på
    lagerstedet**, **Varenummeret finnes ikke**, **En tjeneste, holdes ikke på lager**,
    **Ikke et gyldig antall**, **Varen spores i partier: oppgi partiet**, **Varen spores
-   ikke i partier**, **Partiet eller datoene kan ikke leses** eller **En rad med et
-   serienummer har antall 1** — og, når filen har partier, **Parti** for hver rad.
+   ikke i partier**, **Partiet eller datoene kan ikke leses** eller **Et serienummer står
+   på én rad, med antall 1** — og, når filen har partier, **Parti** for hver rad.
 3. Når alle radene er OK (*Alle 120 rader er klare til bokføring.*), trykker du
    **Importer**. Radene bokføres som **én justering** med årsaken **Inngående
    beholdning**, og siden sier **Inngående beholdning bokført** med en lenke til den.

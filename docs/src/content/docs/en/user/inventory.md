@@ -406,14 +406,16 @@ choose a site.* It needs both views.
 
 ### Print lot labels
 
-**Print labels** on a lot's page, on the **Lots** list — for the lots it shows — and on
+**Print labels** on a lot's page, on the **Lots** list — for the lots it shows, which the
+dialog says when the list has more to load (*Only the 100 lots shown are printed. Scroll
+down the list to load more first.*) — and on
 **Expiring** downloads a PDF of lot labels, on the same Avery sheets as
 [location labels](#print-location-labels): choose **Avery L7160** (21 labels per A4) or
 **Avery L7163** (14 per A4) and how many **Labels per lot**, and press **Download PDF**.
 Each label carries the lot's `LOT` code as a barcode across its top — `LOT1001`, its
 number in Inventory, which never changes —, the lot number large, the SKU and the
-product's name, and the expiry date (*EXP 2026-12-31*), or the best-before date (*BB …*)
-when the lot has no expiry. A serial number is a lot of its own, so serials get a label
+product's name, shortened to one line so it never runs into the date, and the expiry date
+(*EXP 2026-12-31*), or the best-before date (*BB …*) when the lot has no expiry. A serial number is a lot of its own, so serials get a label
 each. Scanning a label in **Find location or item**, or on a count, finds the lot. At
 most 1000 labels at a time. These are labels for your own shelves; labels with GS1
 barcodes for customers come later.
@@ -498,6 +500,8 @@ The dialog warns you before you send:
 
 - *The location holds only …; the send will be refused.* — choose another location, or
   split the line on the draft;
+- *The lot holds only … here: split the line on the draft to send the rest from another
+  lot.* — a line sends one lot, so the rest needs a line of its own;
 - *Only … of … lie at OSL; the send will be refused.* — the site holds less than the
   transfer takes;
 - *… of … are reserved for orders at OSL; sending leaves them short.* — the send takes
@@ -795,12 +799,22 @@ is scrolled into view wherever it lies, and **Tab** moves on to the next line as
 An item kept in [lots](#lots-and-serial-numbers) has a line per lot on each location,
 one under the other, each with the lot's number — linked to its page — and expiry date in
 the **Lot** column: count each lot on its own line. Scanning a lot's
-[label](#print-lot-labels) or typing its number goes to that lot's line, or adds one. An
-item kept in lots that is scanned where none of its lots was expected gets a new line
-with a **Lot number** field: type the number on the pack — a lot the item has is counted,
-a new number makes a new lot when the line is saved. A serial number is counted 0 or 1
-(*A serial number holds exactly one, and is in stock once.*). Posting sets each lot on
-each location to what was counted.
+[label](#print-lot-labels) or typing its number goes to that lot's line, or adds one; a
+lot number more than one item uses goes to the item already on the location, else the
+page asks **Which item?**. Scanning an item's own barcode or a packaging's cannot say
+which lot is in your hand, so when the item has lines on the location the page asks
+**Which lot of MILK-1?** — pick a line, or **New lot…**. An item with none there, or
+**New lot…**, gets a new line with a **Lot number** field and a calendar button for the
+lot's **Production date**, **Best before** and **Expiry date**. Type the number on the
+pack and press **Enter** or move on: the number is taken only then, so a half-typed one
+never becomes a lot, and a number that does not read says *1–20 characters: A–Z, a–z,
+0–9 and . _ / -* at once. A lot the item has is counted; a new number makes a new lot
+when the line is saved, with **only the dates you gave** — a lot found in a count gets
+none from the item's days. Several new lots of one item can be added side by side. A
+line the server refuses — *The lot number does not read* or dates out of order — is
+marked red with the reason. A serial number is counted 0 or 1 exactly (*A serial number
+holds exactly one, and is in stock once.*). Posting sets each lot on each location to
+what was counted.
 
 If an item became kept in lots after the count was opened, its lines have no lot. They
 post as they are when nothing was expected and nothing counted; otherwise the post is
@@ -861,13 +875,14 @@ the sidebar (it needs **Adjust stock** and both views).
    row of such an item gives its lot's number, and may give its supplier lot and dates
    (`2026-12-31` or `31.12.2026`); left empty, the dates follow from the item's days. A
    number the item already has adds to that lot; a new one makes it, with the import as
-   where it came from. A serial number's row is of quantity 1. The lot columns may be left
+   where it came from. A serial number is one row, of quantity 1: a second row naming it
+   is refused in the dry run already. The lot columns may be left
    out of a file without lots, and left empty on the rows of other items.
 2. Choose the **Site** and the **CSV file**, and press **Dry run**. Nothing is posted:
    each row shows its **Outcome** — **OK**, **No such location in the site**, **No such
    SKU**, **A service, not kept in stock**, **Not a valid quantity**, **The item is
    tracked in lots: give its lot**, **The item is not tracked in lots**, **The lot or its
-   dates do not read** or **A serial number's row is of quantity 1** — and, when the file
+   dates do not read** or **A serial number is one row, of quantity 1** — and, when the file
    has lots, the **Lot** of each row.
 3. When every row is OK (*All 120 rows are ready to post.*), press **Commit**. The rows
    are posted as **one adjustment** with the reason **Opening balance**, and the page
