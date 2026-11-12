@@ -4,7 +4,7 @@ import { IconCircleCheck, IconDeviceFloppy, IconPlayerPause, IconX } from "@tabl
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   cancelDelivery,
   deliveryQueryOptions,
@@ -13,14 +13,17 @@ import {
   postDelivery,
   updateDelivery,
 } from "../api/deliveries";
+import { metaQueryOptions } from "../api/meta";
 import { NotFoundError, ORDERS_QUERY_KEY, refusedLines } from "../api/request";
-import type { Delivery } from "../api/types";
+import type { Delivery, DeliveryLineInput } from "../api/types";
 import { ConfirmDialog } from "../components/confirm-dialog";
+import { DeliveryLots } from "../components/delivery-lots";
 import { PdfButton } from "../components/pdf-button";
 import { ShipmentsCard } from "../components/shipments-card";
 import { DeliveryDocumentBadge } from "../components/status-badges";
 import "../i18n";
 import { noOrdersAccess, type OrdersAccess } from "../lib/access";
+import { type LotPickRow, lotsTotal } from "../lib/delivery-lots";
 import { lineRefusalWords, refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 import { addressLine } from "../lib/header";
@@ -37,7 +40,9 @@ export interface DeliveryEditorPageProps {
  * each is picked from, among the site's locations holding it — with the pick
  * list, the packing slip, *Post* and *Cancel*. A posted delivery is shown as
  * it was posted and no longer changes, and is shipped from its Shipments card
- * (O50).
+ * (O50). A line of an item tracked by lot or serial number is picked by lot
+ * instead of by location (manufacturing phase 2 M77): its lots, proposed
+ * FEFO, are shown under it and changed there.
  */
 export const DeliveryEditorPage = ({ deliveryId, access = noOrdersAccess }: DeliveryEditorPageProps) => {
   const { t } = useOrdersFormat();
@@ -64,6 +69,9 @@ interface Row {
   orderLineId: number;
   quantity: number | "";
   fromLocationId: number | null;
+  /** A tracked line's lots; sent only once the person changed them. */
+  lots: LotPickRow[];
+  lotsEdited: boolean;
 }
 
 const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: OrdersAccess }) => {
@@ -72,15 +80,25 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
   const detailKey = deliveryQueryOptions(delivery.id).queryKey;
   const draft = delivery.status === "draft";
   const editable = draft && access.canManageDeliveries;
+  const meta = useQuery({ ...metaQueryOptions(), enabled: editable });
   const [rows, setRows] = useState<Row[]>(() =>
     delivery.lines.map((line) => ({
       orderLineId: line.orderLineId,
       quantity: line.quantity,
       fromLocationId: line.fromLocationId ?? null,
+      lots: line.lots.map((lot) => ({
+        lotId: lot.lotId,
+        locationId: lot.locationId,
+        quantity: lot.quantity,
+        allowExpired: lot.allowExpired,
+      })),
+      lotsEdited: false,
     })),
   );
   const [dirty, setDirty] = useState(false);
   const [refused, setRefused] = useState<ReadonlyMap<number, string>>(new Map());
+  // A refusal naming a tracked line's lot row, by "line:lot".
+  const [refusedLots, setRefusedLots] = useState<ReadonlyMap<string, string>>(new Map());
   const [dialog, setDialog] = useState<"cancel" | null>(null);
 
   const done = async (next: Delivery, message: string) => {
@@ -94,7 +112,20 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
   };
   const refuse = (title: string) => (error: unknown) => {
     const failing = refusedLines(error);
-    setRefused(new Map(failing.map((line) => [line.index, lineRefusalWords(line.code, line.detail, t)])));
+    setRefused(
+      new Map(
+        failing
+          .filter((line) => line.lotIndex === undefined)
+          .map((line) => [line.index, lineRefusalWords(line.code, line.detail, t)]),
+      ),
+    );
+    setRefusedLots(
+      new Map(
+        failing
+          .filter((line) => line.lotIndex !== undefined)
+          .map((line) => [`${line.index}:${line.lotIndex}`, lineRefusalWords(line.code, line.detail, t)]),
+      ),
+    );
     notifications.show({ color: "red", title, message: refusalMessage(error, t) });
   };
   const save = useMutation({
@@ -104,11 +135,25 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
         delivery,
         rows
           .filter((row) => row.quantity !== "" && row.quantity > 0)
-          .map((row) => ({
-            orderLineId: row.orderLineId,
-            quantity: row.quantity as number,
-            fromLocationId: row.fromLocationId,
-          })),
+          .map((row): DeliveryLineInput => {
+            const input: DeliveryLineInput = {
+              orderLineId: row.orderLineId,
+              quantity: row.quantity as number,
+              fromLocationId: row.fromLocationId,
+            };
+            if (!row.lotsEdited) return input;
+            return {
+              ...input,
+              lots: row.lots
+                .filter((lot) => lot.quantity !== "" && lot.quantity > 0)
+                .map((lot) => ({
+                  lotId: lot.lotId,
+                  locationId: lot.locationId,
+                  quantity: lot.quantity as number,
+                  ...(lot.allowExpired ? { allowExpired: true } : {}),
+                })),
+            };
+          }),
       ),
     onSuccess: (next) => done(next, t("deliverySaved")),
     onError: refuse(t("couldNotSave")),
@@ -127,16 +172,22 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
     setDirty(true);
     setRefused(new Map());
+    setRefusedLots(new Map());
   };
   const busy = save.isPending || post.isPending || cancel.isPending;
-  const unpicked = rows.some((row) => row.fromLocationId === null);
+  const unpicked = rows.some((row, index) => !delivery.lines[index]?.tracked && row.fromLocationId === null);
+  const lotsOff = rows.some(
+    (row, index) => delivery.lines[index]?.tracked && lotsTotal(row.lots) !== (row.quantity === "" ? 0 : row.quantity),
+  );
   const postBlocked = delivery.orderOnHold
     ? t("heldTakesNoDelivery")
     : dirty
       ? t("saveFirst")
       : unpicked
         ? t("pickEveryLine")
-        : undefined;
+        : lotsOff
+          ? t("lotsMustAddUp")
+          : undefined;
   const title = t("deliveryNumber", { number: delivery.number });
   const address = addressLine(delivery.deliveryAddress);
 
@@ -245,55 +296,82 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
                   if (line.fromLocationId != null && !options.some((o) => o.value === String(line.fromLocationId)))
                     options.unshift({ value: String(line.fromLocationId), label: line.fromLocationCode ?? "" });
                   const problem = refused.get(index);
+                  const lotProblems = new Map<number, string>();
+                  for (const [key, words] of refusedLots) {
+                    const [lineIndex, lotIndex] = key.split(":").map(Number);
+                    if (lineIndex === index && lotIndex !== undefined) lotProblems.set(lotIndex, words);
+                  }
                   return (
-                    <Table.Tr key={line.id}>
-                      <Table.Td>
-                        <Text size="sm">{[line.sku, line.name].filter(Boolean).join(" ")}</Text>
-                        {problem && (
-                          <Text size="xs" c="red" role="alert">
-                            {problem}
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td ta="right">
-                        <Text size="sm">{quantity(line.ordered)}</Text>
-                      </Table.Td>
-                      <Table.Td ta="right">
-                        <Text size="sm">{quantity(line.open)}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        {editable ? (
-                          <NumberInput
-                            size="xs"
-                            aria-label={t("deliveryQuantity", { position: index + 1 })}
-                            min={0}
-                            max={line.open}
-                            decimalScale={3}
-                            value={row.quantity}
-                            onChange={(value) => set(index, { quantity: typeof value === "number" ? value : "" })}
-                            rightSection={<Text size="xs">{line.unit}</Text>}
-                          />
-                        ) : (
-                          <Text size="sm">
-                            {quantity(line.quantity)} {line.unit}
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        {editable ? (
-                          <Select
-                            size="xs"
-                            aria-label={t("deliveryLocation", { position: index + 1 })}
-                            placeholder={options.length === 0 ? t("noStockAtSite") : t("chooseLocation")}
-                            data={options}
-                            value={row.fromLocationId === null ? null : String(row.fromLocationId)}
-                            onChange={(value) => set(index, { fromLocationId: value ? Number(value) : null })}
-                          />
-                        ) : (
-                          <Text size="sm">{line.fromLocationCode ?? "—"}</Text>
-                        )}
-                      </Table.Td>
-                    </Table.Tr>
+                    <Fragment key={line.id}>
+                      <Table.Tr>
+                        <Table.Td>
+                          <Text size="sm">{[line.sku, line.name].filter(Boolean).join(" ")}</Text>
+                          {problem && (
+                            <Text size="xs" c="red" role="alert">
+                              {problem}
+                            </Text>
+                          )}
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Text size="sm">{quantity(line.ordered)}</Text>
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Text size="sm">{quantity(line.open)}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          {editable ? (
+                            <NumberInput
+                              size="xs"
+                              aria-label={t("deliveryQuantity", { position: index + 1 })}
+                              min={0}
+                              max={line.open}
+                              decimalScale={3}
+                              value={row.quantity}
+                              onChange={(value) => set(index, { quantity: typeof value === "number" ? value : "" })}
+                              rightSection={<Text size="xs">{line.unit}</Text>}
+                            />
+                          ) : (
+                            <Text size="sm">
+                              {quantity(line.quantity)} {line.unit}
+                            </Text>
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {line.tracked ? (
+                            <Text size="sm" c="dimmed">
+                              {t("pickedByLot")}
+                            </Text>
+                          ) : editable ? (
+                            <Select
+                              size="xs"
+                              aria-label={t("deliveryLocation", { position: index + 1 })}
+                              placeholder={options.length === 0 ? t("noStockAtSite") : t("chooseLocation")}
+                              data={options}
+                              value={row.fromLocationId === null ? null : String(row.fromLocationId)}
+                              onChange={(value) => set(index, { fromLocationId: value ? Number(value) : null })}
+                            />
+                          ) : (
+                            <Text size="sm">{line.fromLocationCode ?? "—"}</Text>
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                      {line.tracked && (
+                        <Table.Tr>
+                          <Table.Td colSpan={5} pl="xl">
+                            <DeliveryLots
+                              line={line}
+                              position={index + 1}
+                              picks={row.lots}
+                              quantity={row.quantity === "" ? 0 : row.quantity}
+                              editable={editable}
+                              canOverrideExpired={meta.data?.canOverrideExpired ?? false}
+                              onChange={(lots) => set(index, { lots, lotsEdited: true })}
+                              refused={lotProblems}
+                            />
+                          </Table.Td>
+                        </Table.Tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </Table.Tbody>

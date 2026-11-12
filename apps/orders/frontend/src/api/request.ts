@@ -75,6 +75,9 @@ export interface RefusedLine {
   index: number;
   code: string;
   detail: string;
+  /** On a delivery's tracked line, the lot row the refusal names and its lot (manufacturing phase 2 M78). */
+  lotIndex?: number;
+  lotId?: number;
 }
 
 /**
