@@ -339,9 +339,12 @@ type StockLedger interface {
 	// EnsureLots finds or creates each lot, inside tx, after the caller's rows and
 	// before Produce, and answers the lot ids in the order given. A lot that exists
 	// for the variant is answered as is: only the dates the NewLot states are
-	// compared (StockLotDatesDiffer); nil dates are ignored for it. A new serial
-	// whose number holds stock is StockSerialQuantity. After a refusal the caller
-	// rolls back, as after Produce.
+	// compared (StockLotDatesDiffer); nil dates are ignored for it. A NewLot that
+	// MustCreate is refused StockLotExists instead when its number is taken —
+	// by an existing lot, or by an earlier NewLot of the call. A new serial
+	// whose number holds stock is StockSerialQuantity. Each refusal's Index is
+	// the NewLot's. After a refusal the caller rolls back, as after Produce (or
+	// to a savepoint it took before the call).
 	EnsureLots(ctx context.Context, tx pgx.Tx, src StockSource, today time.Time, lots []NewLot) ([]int64, error)
 	// HoldLots puts one hold per entry for src's document (Q's deviation), inside
 	// tx, taking the lots FOR NO KEY UPDATE in id order. A lot that already holds
@@ -378,6 +381,10 @@ type NewLot struct {
 	ProductionDate time.Time  // required: today for a production, unless the person gave one
 	BestBefore     *time.Time // nil: production date + BestBeforeDays, on creation only
 	Expiry         *time.Time // nil: production date + ExpiryDays, on creation only
+	// MustCreate refuses the lot StockLotExists rather than answering an
+	// existing one: a production's counted lot number or serial, which names
+	// a new lot or none.
+	MustCreate bool
 }
 
 // LotHold is one hold HoldLots puts (manufacturing phase 2 M64).
@@ -559,6 +566,9 @@ const (
 	StockLotExpired     = "lot_expired"
 	StockLotBlocked     = "lot_blocked"
 	StockLotDatesDiffer = "lot_dates_differ"
+	// StockLotExists: an EnsureLots NewLot that MustCreate names a number the
+	// variant already has (manufacturing phase 2 M80, M81).
+	StockLotExists = "lot_exists"
 )
 
 // StockRefusal is the one error a StockLedger write answers for what it will

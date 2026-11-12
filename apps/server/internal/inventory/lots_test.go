@@ -612,6 +612,20 @@ func TestLots_EnsureLotsAndProduce(t *testing.T) {
 	if got := modtest.One[string](t, h.Harness, `SELECT expiry::text || ' ' || origin_module || '/' || origin_kind || '/' || origin_id FROM inventory.lots WHERE id = $1`, ids[0]); got != "2026-10-12 manufacturing/order/3" {
 		t.Errorf("the made lot = %s", got)
 	}
+	// A lot that must be new: an existing number, or one named twice in the
+	// call, is lot_exists at its own index; a free number is made.
+	if _, err := ensure(contracts.NewLot{VariantID: varLot, Number: "MO-3", ProductionDate: testToday, MustCreate: true}); refusalCode(err) != contracts.StockLotExists {
+		t.Errorf("an existing lot that must be new = %v", err)
+	}
+	_, err = ensure(contracts.NewLot{VariantID: varLot, Number: "MO-5", ProductionDate: testToday, MustCreate: true},
+		contracts.NewLot{VariantID: varLot, Number: "mo-5", ProductionDate: testToday, MustCreate: true})
+	var twice *contracts.StockRefusal
+	if !errors.As(err, &twice) || len(twice.Lines) != 1 || twice.Lines[0].Index != 1 || twice.Lines[0].Code != contracts.StockLotExists {
+		t.Errorf("one new number named twice = %v", err)
+	}
+	if fresh, err := ensure(contracts.NewLot{VariantID: varLot, Number: "MO-4", ProductionDate: testToday, MustCreate: true}); err != nil || fresh[0] == ids[0] {
+		t.Errorf("a new lot that must be new = %v, %v", fresh, err)
+	}
 	other := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
 	if _, err := ensure(contracts.NewLot{VariantID: varLot, Number: "MO-3", ProductionDate: testToday, Expiry: &other}); refusalCode(err) != contracts.StockLotDatesDiffer {
 		t.Errorf("a differing expiry = %v", err)

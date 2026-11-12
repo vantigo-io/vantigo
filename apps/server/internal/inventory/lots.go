@@ -454,6 +454,9 @@ func (l ledger) EnsureLots(ctx context.Context, tx pgx.Tx, src contracts.StockSo
 	}
 	for i, o := range outcomes {
 		switch {
+		case lots[i].MustCreate && !o.created:
+			failures = append(failures, contracts.StockLineRefusal{Code: contracts.StockLotExists, VariantID: lots[i].VariantID, Index: i, LotID: o.lot.ID,
+				Detail: fmt.Sprintf("The lot %s exists already.", o.lot.Number)})
 		case o.failCode != "":
 			failures = append(failures, contracts.StockLineRefusal{Code: o.failCode, VariantID: lots[i].VariantID, Index: i, LotID: o.lot.ID, Detail: o.failText})
 		case serial[o.lot.ID] && held[o.lot.ID] != nil && held[o.lot.ID].Sign() > 0:
