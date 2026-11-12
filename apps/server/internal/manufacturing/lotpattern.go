@@ -86,33 +86,35 @@ func judgeLotPattern(j *judgement, pattern, sku string) {
 
 // renderLotNumber is the number of a production's lot: the order's pattern
 // on the production day, taking the next {N} of its prefix under the
-// counter's row lock when it has one. A number that is no lot number is the
-// 400 lot_pattern_invalid, before any counter is taken when the prefix alone
-// is too long.
-func renderLotNumber(ctx context.Context, txq *store.Queries, pattern, mo string, day time.Time, sku string) (string, error) {
+// counter's row lock when it has one — counted then reports it, a number
+// that names a new lot or none (M57: a counted number that names another
+// document's lot is skipped). A number that is no lot number is the 400
+// lot_pattern_invalid at prefix's outputLot.number, before any counter is
+// taken when the prefix alone is too long.
+func renderLotNumber(ctx context.Context, txq *store.Queries, pattern, mo string, day time.Time, sku, at string) (number string, counted bool, err error) {
 	prefix := lotPrefix(pattern, mo, day, sku)
 	invalid := func(number string) error {
-		return refuseField(productionTitle, "outputLot.number", codeLotPatternInvalid,
+		return refuseField(productionTitle, at+"outputLot.number", codeLotPatternInvalid,
 			fmt.Sprintf("The order's lot pattern %q renders %q, which is no lot number. Send the number in outputLot.", pattern, number))
 	}
 	if !strings.Contains(prefix, counterToken) {
 		if !lotNumberPattern.MatchString(prefix) {
-			return "", invalid(prefix)
+			return "", false, invalid(prefix)
 		}
-		return prefix, nil
+		return prefix, false, nil
 	}
 	if bare := strings.ReplaceAll(prefix, counterToken, "1"); !lotNumberPattern.MatchString(bare) {
-		return "", invalid(bare)
+		return "", false, invalid(bare)
 	}
 	n, err := txq.NextLotCounter(ctx, lotCounterPrefix+prefix)
 	if err != nil {
-		return "", fmt.Errorf("manufacturing: count lot %q: %w", prefix, err)
+		return "", false, fmt.Errorf("manufacturing: count lot %q: %w", prefix, err)
 	}
-	number := withCounter(prefix, n)
+	number = withCounter(prefix, n)
 	if !lotNumberPattern.MatchString(number) {
-		return "", invalid(number)
+		return "", false, invalid(number)
 	}
-	return number, nil
+	return number, true, nil
 }
 
 // previewLotNumber is renderLotNumber for the production draft, on the pool:
@@ -166,8 +168,23 @@ func countUpSerials(first string, count int) ([]string, string) {
 }
 
 // defaultSerialFirst is the first serial a production makes by default: the
-// order's number, then four digits continuing from the serials it made
-// before (M81).
-func defaultSerialFirst(mo string, before int) string {
-	return fmt.Sprintf("%s-%04d", mo, before+1)
+// order's number, then four digits continuing after the highest {MO}-<digits>
+// serial the order's productions made before (M81) — not after their count,
+// which a serial typed in that shape would make collide.
+func defaultSerialFirst(mo string, before []string) string {
+	highest := new(big.Int)
+	for _, n := range before {
+		digits, ok := strings.CutPrefix(n, mo+"-")
+		if !ok || digits == "" || strings.Trim(digits, "0123456789") != "" {
+			continue
+		}
+		if v, ok := new(big.Int).SetString(digits, 10); ok && v.Cmp(highest) > 0 {
+			highest = v
+		}
+	}
+	next := highest.Add(highest, big.NewInt(1)).String()
+	if len(next) < 4 {
+		next = strings.Repeat("0", 4-len(next)) + next
+	}
+	return mo + "-" + next
 }

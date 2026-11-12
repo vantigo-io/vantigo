@@ -185,10 +185,11 @@ ORDER BY production_id, lot_number;
 -- name: ProductionIDsOfOrder :many
 SELECT id FROM manufacturing.productions WHERE order_id = @order_id ORDER BY id;
 
--- name: CountSerialOutputsOfOrder :one
--- CountSerialOutputsOfOrder is how many serials the order's productions
--- made so far: the default serials of the next continue after them (M81).
-SELECT count(*)::int FROM manufacturing.production_outputs po
+-- name: SerialOutputNumbersOfOrder :many
+-- SerialOutputNumbersOfOrder is the numbers of the serials the order's
+-- productions made so far: the default serials of the next continue after
+-- the highest of them (M81).
+SELECT po.lot_number FROM manufacturing.production_outputs po
 JOIN manufacturing.productions p ON p.id = po.production_id
 WHERE p.order_id = @order_id AND po.serial;
 

@@ -236,6 +236,14 @@ func TestWorkOrder_StateMachine(t *testing.T) {
 	if v := viewOf(t, c, b.Id); v.WorkOrder.Status != gen.ManufacturingWorkOrderStatusInProgress {
 		t.Fatalf("a refused finish changed the work order: %s", v.WorkOrder.Status)
 	}
+	// A refusal raised in the transaction names its field inside the finish.
+	stranger := production
+	stranger.Lines = []gen.ManufacturingProductionLineInput{{ComponentId: 999999, Consumed: str("4")}}
+	r := expectRefusal(t, op.Do(http.MethodPost, workOrderPath(b.Id, "finish"), gen.ManufacturingFinishInput{Production: &stranger}),
+		http.StatusBadRequest, "", "a line of another order")
+	if r.Errors == nil || (*r.Errors)["production.lines[0].componentId"] == nil {
+		t.Errorf("the finish's field errors = %+v", r.Errors)
+	}
 	finished := act(t, op, b.Id, "finish", gen.ManufacturingFinishInput{Production: &production})
 	if finished.Production == nil || finished.Production.Quantity != "2" || finished.WorkOrder.WorkOrder.Status != gen.ManufacturingWorkOrderStatusDone {
 		t.Fatalf("finish with production = %+v", finished)

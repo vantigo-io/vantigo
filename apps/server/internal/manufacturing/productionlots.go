@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -34,6 +35,10 @@ const (
 	maxLotRows       = 100
 	maxSupplierLot   = 40
 	sqlStateDeadlock = "40P01"
+	// maxCounterSkips is how many counted lot numbers ({N}) a production
+	// skips because another document's lot has them (M57) before it answers
+	// lot_exists.
+	maxCounterSkips = 100
 )
 
 // lotRow is one lot a production line takes from (M82): a lot at a location,
@@ -211,6 +216,9 @@ func judgeSerials(f *fieldErrors, prefix string, in *gen.ManufacturingOutputSeri
 		v.first = strings.TrimSpace(*in.First)
 	}
 	if in.Numbers != nil {
+		if len(*in.Numbers) == 0 {
+			f.add(prefix+"outputSerials.numbers", "At least one serial")
+		}
 		seen := map[string]bool{}
 		for i, n := range *in.Numbers {
 			n = strings.TrimSpace(n)
@@ -244,10 +252,12 @@ type consumeRef struct {
 	proposed    bool
 }
 
-// outputLot is a lot a production makes, as EnsureLots is asked for it.
+// outputLot is a lot a production makes, as EnsureLots is asked for it;
+// counted is a number the order's {N} counter handed out.
 type outputLot struct {
 	number   string
 	serial   bool
+	counted  bool
 	quantity *big.Rat
 	lotID    int64
 }
@@ -257,9 +267,12 @@ type outputLot struct {
 // product; the request's number or the order's pattern rendered on the
 // production date for a lot-tracked one; one serial per unit for a serial
 // one. A lot or serials sent for an untracked product is lot_not_allowed.
+// A counted number and every serial must be a new lot (MustCreate); a
+// number typed for a lot-tracked product names its lot (M57). at is where
+// the production sits in the body.
 func (s *server) outputLots(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, e contracts.VariantEntry, v productionValues,
-	today time.Time) ([]outputLot, []contracts.NewLot, error) {
-	field := func(name, code, msg string) error { return refuseField(productionTitle, name, code, msg) }
+	today time.Time, at string) ([]outputLot, []contracts.NewLot, error) {
+	field := func(name, code, msg string) error { return refuseField(productionTitle, at+name, code, msg) }
 	switch e.Tracking {
 	case contracts.TrackingLot, contracts.TrackingSerial:
 	default:
@@ -283,18 +296,18 @@ func (s *server) outputLots(ctx context.Context, txq *store.Queries, o store.Man
 		if v.serials != nil {
 			return nil, nil, field("outputSerials", codeLotNotAllowed, fmt.Sprintf("%s is tracked in lots, not serials.", e.SKU))
 		}
-		number := ""
+		number, counted := "", false
 		if v.outputLot != nil {
 			number = v.outputLot.number
 		}
 		if number == "" {
 			var err error
-			if number, err = renderLotNumber(ctx, txq, o.LotPattern, mo, lot.ProductionDate, e.SKU); err != nil {
+			if number, counted, err = renderLotNumber(ctx, txq, o.LotPattern, mo, lot.ProductionDate, e.SKU, at); err != nil {
 				return nil, nil, err
 			}
 		}
-		lot.Number = number
-		return []outputLot{{number: number, quantity: v.quantity}}, []contracts.NewLot{lot}, nil
+		lot.Number, lot.MustCreate = number, counted
+		return []outputLot{{number: number, counted: counted, quantity: v.quantity}}, []contracts.NewLot{lot}, nil
 	}
 	// A serial product: one serial per whole unit (M81).
 	if v.outputLot != nil && v.outputLot.number != "" {
@@ -321,11 +334,11 @@ func (s *server) outputLots(ctx context.Context, txq *store.Queries, o store.Man
 			first = v.serials.first
 		}
 		if first == "" {
-			before, err := txq.CountSerialOutputsOfOrder(ctx, o.ID)
+			before, err := txq.SerialOutputNumbersOfOrder(ctx, o.ID)
 			if err != nil {
 				return nil, nil, err
 			}
-			first = defaultSerialFirst(mo, int(before))
+			first = defaultSerialFirst(mo, before)
 		}
 		var msg string
 		if numbers, msg = countUpSerials(first, count); msg != "" {
@@ -336,11 +349,114 @@ func (s *server) outputLots(ctx context.Context, txq *store.Queries, o store.Man
 	lots := make([]contracts.NewLot, 0, count)
 	for _, n := range numbers {
 		l := lot
-		l.Number = n
+		l.Number, l.MustCreate = n, true
 		lots = append(lots, l)
 		outs = append(outs, outputLot{number: n, serial: true, quantity: big.NewRat(1, 1)})
 	}
 	return outs, lots, nil
+}
+
+// ensureOutputLots is step 7a (M80, M81, M86): the output's lots found or
+// made by EnsureLots, their ids set on outs. A counted number another
+// document's lot has already — one a person typed — is skipped under the
+// counter's row lock and the next taken, each try in a savepoint so a refused
+// one leaves nothing behind, at most maxCounterSkips times. Inventory's
+// refusal of the output is the 400 of the field it names (outputRefusal).
+func (s *server) ensureOutputLots(ctx context.Context, tx pgx.Tx, txq *store.Queries, ledger contracts.StockLedger, o store.ManufacturingOrder,
+	e contracts.VariantEntry, prep *preparedProduction, productionID int64, outs []outputLot, lots []contracts.NewLot) error {
+	src := productionSource(productionID)
+	counted := len(outs) == 1 && outs[0].counted
+	for skips := 0; ; skips++ {
+		var ids []int64
+		var err error
+		if counted {
+			ids, err = ensureInSavepoint(ctx, tx, ledger, src, prep.today, lots)
+		} else {
+			ids, err = ledger.EnsureLots(ctx, tx, src, prep.today, lots)
+		}
+		var r *contracts.StockRefusal
+		if errors.As(err, &r) && counted && skips < maxCounterSkips && onlyCode(r, contracts.StockLotExists) {
+			number, _, err := renderLotNumber(ctx, txq, o.LotPattern, orderNumber(o.Number, o.Suffix), lots[0].ProductionDate, e.SKU, prep.prefix)
+			if err != nil {
+				return err
+			}
+			lots[0].Number, outs[0].number = number, number
+			continue
+		}
+		if r != nil {
+			return outputRefusal(r, prep.prefix, prep.v, outs)
+		}
+		if err != nil {
+			return fmt.Errorf("manufacturing: ensure production %d's lots: %w", productionID, err)
+		}
+		for i := range outs {
+			outs[i].lotID = ids[i]
+		}
+		return nil
+	}
+}
+
+// ensureInSavepoint is EnsureLots in a savepoint of tx, rolled back when it
+// fails, so a refused try creates no lot and holds no lot's lock.
+func ensureInSavepoint(ctx context.Context, tx pgx.Tx, ledger contracts.StockLedger, src contracts.StockSource, today time.Time,
+	lots []contracts.NewLot) ([]int64, error) {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := ledger.EnsureLots(ctx, sp, src, today, lots)
+	if err != nil {
+		if rerr := sp.Rollback(ctx); rerr != nil {
+			return nil, errors.Join(err, rerr)
+		}
+		return nil, err
+	}
+	return ids, sp.Commit(ctx)
+}
+
+// onlyCode reports whether every line of r is refused code.
+func onlyCode(r *contracts.StockRefusal, code string) bool {
+	if len(r.Lines) == 0 {
+		return r.Code == code
+	}
+	for _, l := range r.Lines {
+		if l.Code != code {
+			return false
+		}
+	}
+	return true
+}
+
+// outputRefusal is Inventory's refusal of a production's output lots: the
+// 400 of the field each line names — a stated date that differs from the
+// existing lot's (lot_dates_differ) at outputLot, a number taken
+// (lot_exists) at outputLot.number, a serial's at outputSerials.numbers[i] or
+// outputSerials.first — and any other the 409 passed through.
+func outputRefusal(r *contracts.StockRefusal, at string, v productionValues, outs []outputLot) error {
+	lines := r.Lines
+	if len(lines) == 0 {
+		lines = []contracts.StockLineRefusal{{Code: r.Code, Detail: r.Detail}}
+	}
+	var f fieldErrors
+	for _, l := range lines {
+		switch l.Code {
+		case contracts.StockLotDatesDiffer, contracts.StockSerialQuantity, contracts.StockLotExists:
+		default:
+			return stockRefusal(r, nil)
+		}
+		field := at + "outputLot"
+		switch {
+		case l.Index < 0 || l.Index >= len(outs):
+		case outs[l.Index].serial && v.serials != nil && v.serials.numbers != nil:
+			field = fmt.Sprintf("%soutputSerials.numbers[%d]", at, l.Index)
+		case outs[l.Index].serial:
+			field = at + "outputSerials.first"
+		case l.Code == contracts.StockLotExists:
+			field = at + "outputLot.number"
+		}
+		f.addCoded(field, l.Code, l.Detail)
+	}
+	return refuseInvalid(productionTitle, f)
 }
 
 // splitAuto spreads what a component line consumed and scrapped over the
@@ -384,10 +500,10 @@ var errLotsMoved = errors.New("manufacturing: a lot taken was not read before th
 
 // writeLineLots writes the lots a production took per component line (M82):
 // the rows the request named, and the lots Inventory took for the AutoLot
-// lines, consumed first. Unless last, a lot it has no number of is
-// errLotsMoved; on the last attempt its number is kept empty.
+// lines, consumed first. A lot it has no number of is errLotsMoved, on every
+// attempt: a row is never written without its number.
 func writeLineLots(ctx context.Context, txq *store.Queries, productionID int64, lines []productionLine, refs []consumeRef,
-	posted contracts.StockPosted, known map[int64]lotInfo, last bool) (int, error) {
+	posted contracts.StockPosted, known map[int64]lotInfo) (int, error) {
 	picksOf := map[int64][]contracts.StockPick{}
 	for _, p := range posted.Picks {
 		if p.Index < len(refs) && refs[p.Index].auto {
@@ -409,7 +525,7 @@ func writeLineLots(ctx context.Context, txq *store.Queries, productionID int64, 
 				continue
 			}
 			info, ok := known[r.lotID]
-			if !ok && !last {
+			if !ok {
 				return 0, errLotsMoved
 			}
 			if err := txq.InsertProductionLineLot(ctx, store.InsertProductionLineLotParams{
@@ -427,8 +543,12 @@ func writeLineLots(ctx context.Context, txq *store.Queries, productionID int64, 
 
 // errRepropose is a post refused insufficient_stock or lot_blocked on lots
 // only the draft proposed (M65a): the transaction rolls back and the lines
-// named are proposed again from the stock then, once.
-type errRepropose struct{ components map[int64]bool }
+// named are proposed again from the stock then, once. refusal is the
+// refusal's answer, given when the stock no longer covers a line.
+type errRepropose struct {
+	components map[int64]bool
+	refusal    error
+}
 
 func (e *errRepropose) Error() string {
 	return "manufacturing: proposed lots were refused; propose them again"
@@ -457,9 +577,11 @@ func reproposable(r *contracts.StockRefusal, refs []consumeRef) map[int64]bool {
 
 // repropose proposes the lots of the named lines again (M65a), FEFO from
 // Stock.Lots read now, at the line's location, else the order's component
-// location, else the whole site; consumed first, then scrap. A line the stock
-// no longer covers keeps what it can, and its post is refused.
-func (s *server) repropose(ctx context.Context, prep *preparedProduction, componentLocation *int64, components map[int64]bool) error {
+// location, else the whole site; consumed first, then scrap. When the stock
+// no longer covers a line in full, the post is refused as it was the first
+// time (again.refusal): a part of a line is never posted for the whole.
+func (s *server) repropose(ctx context.Context, prep *preparedProduction, componentLocation *int64, again *errRepropose) error {
+	components := again.components
 	byComponent, err := store.New(s.deps.Pool).ListOrderComponents(ctx, prep.orderID)
 	if err != nil {
 		return err
@@ -490,9 +612,12 @@ func (s *server) repropose(ctx context.Context, prep *preparedProduction, compon
 			consumed = l.consumed
 		}
 		total := new(big.Rat).Add(consumed, l.scrap)
-		picks, _, err := pool.propose(variantOf[l.componentID], total, at, prep.today)
+		picks, short, err := pool.propose(variantOf[l.componentID], total, at, prep.today)
 		if err != nil {
 			return err
+		}
+		if short.Sign() > 0 {
+			return again.refusal
 		}
 		prep.v.lines[i].lots = splitAuto(consumed, l.scrap, picks)
 	}
@@ -608,6 +733,13 @@ func lotInfos(lots map[int32][]contracts.StockLot) map[int64]lotInfo {
 func isDeadlock(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == sqlStateDeadlock
+}
+
+// lotsMovedConflict is the 409 of a production whose lots taken were still
+// not all read on its last attempt: other writers kept changing them.
+func lotsMovedConflict() error {
+	return conflict(codeRevisionConflict, "Revision conflict",
+		"The lots the production took kept changing under it. Nothing was changed; try again.")
 }
 
 // deadlockConflict is the 409 of a production that deadlocked twice (M86).

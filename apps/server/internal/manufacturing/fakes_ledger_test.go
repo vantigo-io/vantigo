@@ -301,8 +301,8 @@ func (s *fakeStock) ensureCalls() [][]contracts.NewLot {
 }
 
 // EnsureLots finds each lot by its variant and number, comparing only the
-// dates stated, or creates it: Inventory's rule (M57, M67), without the
-// catalog's offsets.
+// dates stated — or refusing lot_exists for one that MustCreate — or creates
+// it: Inventory's rule (M57, M67), without the catalog's offsets.
 func (s *fakeStock) EnsureLots(_ context.Context, tx pgx.Tx, src contracts.StockSource, today time.Time, lots []contracts.NewLot) ([]int64, error) {
 	if tx == nil {
 		panic("EnsureLots without a transaction")
@@ -327,6 +327,12 @@ func (s *fakeStock) EnsureLots(_ context.Context, tx pgx.Tx, src contracts.Stock
 			if l.variant == n.VariantID && strings.EqualFold(l.number, n.Number) {
 				found = id
 			}
+		}
+		if found != 0 && n.MustCreate {
+			refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLotExists, VariantID: n.VariantID, Index: i, LotID: found,
+				Detail: "The lot exists already."})
+			ids = append(ids, found)
+			continue
 		}
 		if found != 0 {
 			l := s.lots[found]

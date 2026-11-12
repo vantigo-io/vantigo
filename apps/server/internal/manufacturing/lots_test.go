@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
@@ -155,8 +156,16 @@ func TestProductionLots_OrderLotAcrossDays(t *testing.T) {
 	if len(second.OutputLots) != 1 || second.OutputLots[0].LotId != first.OutputLots[0].LotId {
 		t.Errorf("second output lots = %+v, want the first's lot", second.OutputLots)
 	}
+	// A stated date that differs from the lot's is the 400 of the output lot.
+	differ := post
+	differ.ClientRequestId = "differ"
+	differ.OutputLot = &gen.ManufacturingOutputLotInput{Expiry: &openapi_types.Date{Time: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)}}
+	r := expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), differ), http.StatusBadRequest, "lot_dates_differ", "another expiry")
+	if r.Errors == nil || (*r.Errors)["outputLot"] == nil {
+		t.Errorf("another expiry's errors = %+v", r.Errors)
+	}
 	calls := h.stock.ensureCalls()
-	if len(calls) != 2 || calls[0][0].ProductionDate.Equal(calls[1][0].ProductionDate) || calls[1][0].Expiry != nil {
+	if len(calls) != 3 || calls[0][0].ProductionDate.Equal(calls[1][0].ProductionDate) || calls[1][0].Expiry != nil {
 		t.Errorf("EnsureLots calls = %+v", calls)
 	}
 	if got := h.stock.lotAt(first.OutputLots[0].LotId, o.OutputLocationId); got != "4" {
@@ -212,9 +221,22 @@ func TestProductionLots_PatternPerProduction(t *testing.T) {
 	if numbers[0] != prefix+"1" || numbers[1] != prefix+"2" {
 		t.Errorf("lot numbers = %v, want %s1 and %s2", numbers, prefix, prefix)
 	}
+	// A number typed in the counter's shape names its own lot; the counter
+	// skips it rather than join that lot (M57).
+	post.ClientRequestId = "typed"
+	post.OutputLot = &gen.ManufacturingOutputLotInput{Number: str(prefix + "3")}
+	res := c.Do(http.MethodPost, orderPath(o.Id, "productions"), post)
+	mustStatus(t, res, http.StatusCreated, "a typed number ahead of the counter")
+	typed := productionOf(t, res).OutputLots[0]
+	post.ClientRequestId, post.OutputLot = "p3", nil
+	res = c.Do(http.MethodPost, orderPath(o.Id, "productions"), post)
+	mustStatus(t, res, http.StatusCreated, "the counter past a typed number")
+	if got := productionOf(t, res).OutputLots[0]; got.LotNumber != prefix+"4" || got.LotId == typed.LotId {
+		t.Errorf("the counted lot after a typed %s3 = %+v, want a new %s4", prefix, got, prefix)
+	}
 	post.ClientRequestId = "named"
 	post.OutputLot = &gen.ManufacturingOutputLotInput{Number: str("BATCH-7"), SupplierLot: str("S-1")}
-	res := c.Do(http.MethodPost, orderPath(o.Id, "productions"), post)
+	res = c.Do(http.MethodPost, orderPath(o.Id, "productions"), post)
 	mustStatus(t, res, http.StatusCreated, "a named lot")
 	if got := productionOf(t, res).OutputLots[0].LotNumber; got != "BATCH-7" {
 		t.Errorf("named lot = %s", got)
@@ -277,6 +299,41 @@ func TestProductionLots_Serials(t *testing.T) {
 	mustStatus(t, res, http.StatusCreated, "a listed serial")
 	expectRefusal(t, post("e", "1.5", nil), http.StatusBadRequest, "serial_quantity", "half a pump")
 	expectRefusal(t, post("f", "2", &gen.ManufacturingOutputSerialsInput{Numbers: &[]string{"Y-1"}}), http.StatusBadRequest, "serial_quantity", "one number for two")
+	r := expectRefusal(t, post("g", "1", &gen.ManufacturingOutputSerialsInput{Numbers: &[]string{}}), http.StatusBadRequest, "", "an empty list")
+	if r.Errors == nil || (*r.Errors)["outputSerials.numbers"] == nil {
+		t.Errorf("an empty list's errors = %+v", r.Errors)
+	}
+	// A serial is a new lot: one that exists is lot_exists at its field.
+	r = expectRefusal(t, post("h", "1", &gen.ManufacturingOutputSerialsInput{Numbers: &[]string{o.Number + "-0002"}}), http.StatusBadRequest, "lot_exists",
+		"a listed serial made before")
+	if r.Errors == nil || (*r.Errors)["outputSerials.numbers[0]"] == nil {
+		t.Errorf("a listed serial's errors = %+v", r.Errors)
+	}
+	r = expectRefusal(t, post("i", "2", &gen.ManufacturingOutputSerialsInput{First: str("SN0100")}), http.StatusBadRequest, "lot_exists", "a first counted into one made")
+	if r.Errors == nil || (*r.Errors)["outputSerials.first"] == nil {
+		t.Errorf("a counted serial's errors = %+v", r.Errors)
+	}
+
+	// The default continues after the highest {MO}-NNNN serial, not after the
+	// count: a serial typed in that shape is never handed out again.
+	other := confirmOrder(t, c, createOrder(t, c, orderInput(varPump, "10"))).Order
+	postOther := func(id string, serials *gen.ManufacturingOutputSerialsInput) *modtest.Response {
+		return c.Do(http.MethodPost, orderPath(other.Id, "productions"), gen.ManufacturingProductionInput{ClientRequestId: id, Quantity: "1",
+			Lines: []gen.ManufacturingProductionLineInput{}, OutputSerials: serials})
+	}
+	mustStatus(t, postOther("typed", &gen.ManufacturingOutputSerialsInput{Numbers: &[]string{other.Number + "-0002"}}), http.StatusCreated, "a typed 0002")
+	res = c.Do(http.MethodGet, orderPath(other.Id, "production-draft"), nil)
+	mustStatus(t, res, http.StatusOK, "the draft after a typed serial")
+	var draft gen.ManufacturingProductionDraft
+	res.JSON(&draft)
+	if draft.Output.SerialFirst == nil || *draft.Output.SerialFirst != other.Number+"-0003" {
+		t.Errorf("the draft's first serial = %v, want %s-0003", draft.Output.SerialFirst, other.Number)
+	}
+	res = postOther("default", nil)
+	mustStatus(t, res, http.StatusCreated, "the default after a typed 0002")
+	if got := numbersOf(res); len(got) != 1 || got[0] != other.Number+"-0003" {
+		t.Errorf("the default serial = %v, want %s-0003", got, other.Number)
+	}
 }
 
 // TestProductionLots_ConsumedRows is M82's named lots: one consume line per
@@ -330,8 +387,8 @@ func TestProductionLots_ConsumedRows(t *testing.T) {
 
 // TestProductionLots_ProposedAgainOnce is M65a: lots the draft proposed and
 // the person did not change, refused lot_blocked, are proposed again once
-// from the stock then and posted; chosen lots are not; a second refusal is
-// answered.
+// from the stock then and posted; chosen lots are not; a re-proposal that
+// finds nothing answers the first refusal.
 func TestProductionLots_ProposedAgainOnce(t *testing.T) {
 	t.Parallel()
 	h := lotHarness(t)
@@ -355,8 +412,40 @@ func TestProductionLots_ProposedAgainOnce(t *testing.T) {
 		t.Errorf("lots after the re-proposal = %+v", l)
 	}
 	h.stock.setLotStatus(next, contracts.LotBlocked)
-	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), proposed("twice", false)), http.StatusConflict, "insufficient_stock",
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), proposed("twice", false)), http.StatusConflict, "lot_blocked",
 		"a re-proposal that finds nothing")
+}
+
+// TestProductionLots_ReproposalShort is M65a against M82's sum: a
+// re-proposal the stock covers only in part answers the first refusal, and
+// posts nothing — never a production that takes less than it records.
+func TestProductionLots_ReproposalShort(t *testing.T) {
+	t.Parallel()
+	h := lotHarness(t)
+	c := h.SignIn(t, planner...)
+	now := h.Now()
+	first := h.stock.receiveLot(varBerry, "B-FIRST", locMainA1, "4", now, day(2027, 1, 1))
+	next := h.stock.receiveLot(varBerry, "B-NEXT", locMainA1, "1", now, day(2027, 2, 1))
+	h.stock.put(varSugar, locMainA1, "100")
+	o := jamOrder(t, c, "10", "")
+	berry := component(t, o, varBerry)
+	h.stock.setLotStatus(first, contracts.LotBlocked)
+	post := gen.ManufacturingProductionInput{ClientRequestId: "short", Quantity: "1",
+		Lines: []gen.ManufacturingProductionLineInput{{ComponentId: *berry.Id, Consumed: str("2"), LotsProposed: &[]bool{true}[0],
+			Lots: &[]gen.ManufacturingProductionLotInput{{LotId: first, LocationId: locMainA1, Consumed: str("2")}}}}}
+	r := expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), post), http.StatusConflict, "lot_blocked", "a re-proposal covering 1 of 2")
+	if r.Lines == nil || (*r.Lines)[0].LotId == nil || *(*r.Lines)[0].LotId != first {
+		t.Errorf("refusal lines = %+v", r.Lines)
+	}
+	if got := h.stock.lotAt(next, locMainA1); got != "1" {
+		t.Errorf("B-NEXT holds %s after a refused production, want 1", got)
+	}
+	if n := len(h.stock.productions()); n != 0 {
+		t.Errorf("%d productions posted to the ledger", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.productions WHERE client_request_id = 'short'`); n != 0 {
+		t.Errorf("%d productions committed", n)
+	}
 }
 
 // TestProduction_DeadlockRetriedOnce is M86's retry: a production chosen as
