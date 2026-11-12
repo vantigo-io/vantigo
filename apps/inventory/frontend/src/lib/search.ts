@@ -144,3 +144,15 @@ export const validateLotsSearch = (search: Record<string, unknown>): LotsSearch 
   holdCause: holdCauseValues.find((value) => value === search.holdCause),
   stock: search.stock === "all" ? "all" : undefined,
 });
+
+/** A trace's search (manufacturing phase 2 M89): the lot, the direction and the untracked components, in the URL. */
+export interface TraceSearch {
+  lotId?: number;
+  direction?: "usage" | "origin";
+  components?: "all";
+}
+export const validateTraceSearch = (search: Record<string, unknown>): TraceSearch => ({
+  lotId: positive(search.lotId),
+  direction: search.direction === "origin" ? "origin" : undefined,
+  components: search.components === "all" ? "all" : undefined,
+});

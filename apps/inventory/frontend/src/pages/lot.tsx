@@ -4,8 +4,10 @@ import {
   Anchor,
   Badge,
   Button,
+  Checkbox,
   FileButton,
   Group,
+  List,
   Modal,
   Select,
   SimpleGrid,
@@ -24,6 +26,7 @@ import {
   IconLock,
   IconPencil,
   IconPrinter,
+  IconRoute,
   IconShieldPause,
   IconTrash,
   IconUpload,
@@ -52,6 +55,15 @@ import {
 } from "../api/lots";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { INVENTORY_QUERY_KEY } from "../api/request";
+import {
+  blockCauses,
+  blockLot,
+  downstreamInStock,
+  type InventoryLotBlock,
+  type InventoryLotBlockCause,
+  tracedDeliveries,
+  traceQueryOptions,
+} from "../api/trace";
 import { LotStatusBadges } from "../components/lot-status";
 import { PrintLotLabelsDialog } from "../components/print-lot-labels-dialog";
 import { canManageLots } from "../lib/capabilities";
@@ -61,8 +73,10 @@ import {
   INVENTORY_HOME_ROUTE_PATH,
   LOTS_ROUTE_PATH,
   locationLinkOptions,
+  lotLinkOptions,
   movementLinkOptions,
   siteLinkOptions,
+  traceLinkOptions,
   variantStockLinkOptions,
 } from "../lib/routes";
 
@@ -259,13 +273,174 @@ const HoldDialog = ({ lot, kind, onClose }: { lot: InventoryLot; kind: Inventory
   );
 };
 
+/**
+ * Blocking the lot with its downstream list (manufacturing phase 2 M92): the
+ * usage trace's summary first — the lots made from it still in stock, and the
+ * deliveries that received it — then a block of the lot page on the lot and,
+ * by default, on every lot made from it. The server walks the trace again
+ * inside the block, so the answer may name lots the summary did not show,
+ * which are marked new.
+ */
+const BlockDialog = ({ lot, onClose }: { lot: InventoryLot; onClose: () => void }) => {
+  const { t, quantity } = useInventoryFormat();
+  const queryClient = useQueryClient();
+  const summary = useQuery(traceQueryOptions({ lotId: lot.id, direction: "usage" }));
+  const [cause, setCause] = useState<InventoryLotBlockCause>("recall");
+  const [note, setNote] = useState("");
+  const [downstream, setDownstream] = useState(true);
+  const [done, setDone] = useState<InventoryLotBlock>();
+  const made = summary.data ? downstreamInStock(summary.data) : [];
+  const delivered = summary.data ? tracedDeliveries(summary.data) : [];
+  const blocking = useMutation({
+    mutationFn: () => blockLot(lot.id, { cause, downstream, ...(note.trim() ? { note: note.trim() } : {}) }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(lotQueryOptions(lot.id).queryKey, saved.lot);
+      void queryClient.invalidateQueries({ queryKey: [INVENTORY_QUERY_KEY] });
+      setDone(saved);
+    },
+  });
+  if (done) {
+    const shown = new Set(made.map((node) => node.lot?.id));
+    return (
+      <Modal opened onClose={onClose} title={t("holdTitle_block")}>
+        <Stack gap="sm">
+          <Text size="sm">{t("blockedCount", { count: done.blocked.length })}</Text>
+          <List size="sm" spacing={4}>
+            {done.blocked.map((row) => (
+              <List.Item key={row.id}>
+                <Group gap={6}>
+                  <Anchor
+                    size="sm"
+                    ff="monospace"
+                    renderRoot={(props) => <Link {...lotLinkOptions(row.id)} {...props} />}
+                  >
+                    {row.number}
+                  </Anchor>
+                  <Text size="sm" c="dimmed">
+                    {row.sku} · {row.productName}
+                  </Text>
+                  {!row.root && !shown.has(row.id) && (
+                    <Badge size="xs" color="red" variant="light">
+                      {t("blockedNew")}
+                    </Badge>
+                  )}
+                </Group>
+              </List.Item>
+            ))}
+          </List>
+          <Group justify="flex-end">
+            <Button onClick={onClose}>{t("done")}</Button>
+          </Group>
+        </Stack>
+      </Modal>
+    );
+  }
+  return (
+    <Modal opened onClose={onClose} title={t("holdTitle_block")} size="lg">
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          {t("blockHint")}
+        </Text>
+        {summary.error ? (
+          <Alert color="red" icon={<IconAlertCircle size={16} />}>
+            {refusalMessage(t, summary.error)}
+          </Alert>
+        ) : !summary.data ? (
+          <ContentSkeleton rows={2} />
+        ) : (
+          <Stack gap={6} data-testid="block-summary">
+            <Text size="sm" fw={600}>
+              {t("blockMadeFromIt")}
+            </Text>
+            {made.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                {t("blockMadeNone")}
+              </Text>
+            ) : (
+              <List size="sm" spacing={2}>
+                {made.map((node) => (
+                  <List.Item key={node.key}>
+                    {node.lot?.number} · {node.variant.sku} · {quantity(node.lot?.onHand ?? 0, node.variant.unit)}
+                  </List.Item>
+                ))}
+              </List>
+            )}
+            <Text size="sm" fw={600}>
+              {t("blockDeliveredTo")}
+            </Text>
+            {delivered.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                {t("blockDeliveredNone")}
+              </Text>
+            ) : (
+              <List size="sm" spacing={2}>
+                {delivered.map((node) => (
+                  <List.Item key={node.key}>
+                    {node.delivery
+                      ? `${t("traceDelivery", { delivery: node.delivery.deliveryNumber, order: node.delivery.orderNumber })} · ${
+                          node.delivery.customerName ?? t("traceCustomerId", { id: node.delivery.customerId })
+                        }`
+                      : t("movementNumber", { id: node.movement?.id })}
+                    {` · ${quantity(node.quantity ?? 0, node.variant.unit)} ${node.variant.sku}`}
+                  </List.Item>
+                ))}
+              </List>
+            )}
+          </Stack>
+        )}
+        <Select
+          label={t("holdCause")}
+          allowDeselect={false}
+          data={blockCauses.map((value) => ({ value, label: t(`holdCause_${value}`) }))}
+          value={cause}
+          onChange={(next) => next && setCause(next as InventoryLotBlockCause)}
+        />
+        <Textarea
+          label={t("holdNote")}
+          maxLength={1000}
+          minRows={2}
+          value={note}
+          onChange={(event) => setNote(event.currentTarget.value)}
+        />
+        <Checkbox
+          label={t("blockDownstream")}
+          checked={downstream}
+          onChange={(event) => setDownstream(event.currentTarget.checked)}
+        />
+        {blocking.error && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />}>
+            {refusalMessage(t, blocking.error)}
+          </Alert>
+        )}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            {t("cancel")}
+          </Button>
+          <Button color="red" loading={blocking.isPending} onClick={() => blocking.mutate()}>
+            {t("blockLot")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+};
+
+/** Whether a hold is this lot page's own block, whose release may reach the lots it blocked (M92). */
+const pageBlock = (lot: InventoryLot, hold: InventoryLotHold) =>
+  hold.kind === "block" &&
+  hold.source.module === "inventory" &&
+  hold.source.kind === "lot" &&
+  hold.source.id === String(lot.id);
+
 /** Releasing one of Inventory's own holds (M64), with why. */
 const ReleaseDialog = ({ lot, hold, onClose }: { lot: InventoryLot; hold: InventoryLotHold; onClose: () => void }) => {
   const { t } = useInventoryFormat();
   const queryClient = useQueryClient();
   const [note, setNote] = useState("");
+  const [downstream, setDownstream] = useState(true);
+  const reaches = pageBlock(lot, hold);
   const releasing = useMutation({
-    mutationFn: () => releaseLotHold(lot.id, hold.id, note),
+    mutationFn: () => releaseLotHold(lot.id, hold.id, note, reaches && downstream),
     onSuccess: (saved) => {
       queryClient.setQueryData(lotQueryOptions(lot.id).queryKey, saved);
       void queryClient.invalidateQueries({ queryKey: [INVENTORY_QUERY_KEY] });
@@ -283,6 +458,13 @@ const ReleaseDialog = ({ lot, hold, onClose }: { lot: InventoryLot; hold: Invent
           value={note}
           onChange={(event) => setNote(event.currentTarget.value)}
         />
+        {reaches && (
+          <Checkbox
+            label={t("releaseDownstream")}
+            checked={downstream}
+            onChange={(event) => setDownstream(event.currentTarget.checked)}
+          />
+        )}
         {releasing.error && (
           <Alert color="red" icon={<IconAlertCircle size={16} />}>
             {refusalMessage(t, releasing.error)}
@@ -404,7 +586,8 @@ const HoldsPanel = ({ lot, manage, moduleLabel }: { lot: InventoryLot; manage: b
           </Table>
         )}
       </Stack>
-      {putting && <HoldDialog lot={lot} kind={putting} onClose={() => setPutting(undefined)} />}
+      {putting === "quarantine" && <HoldDialog lot={lot} kind={putting} onClose={() => setPutting(undefined)} />}
+      {putting === "block" && <BlockDialog lot={lot} onClose={() => setPutting(undefined)} />}
       {releasing && <ReleaseDialog lot={lot} hold={releasing} onClose={() => setReleasing(undefined)} />}
     </PageSection>
   );
@@ -594,6 +777,13 @@ export const LotPage = ({ moduleLabel = ownKey }: { moduleLabel?: ModuleLabel })
         actions={
           data && (
             <Group gap="xs">
+              <Button
+                variant="default"
+                leftSection={<IconRoute size={16} />}
+                renderRoot={(props) => <Link {...traceLinkOptions(data.id)} {...props} />}
+              >
+                {t("traceLot")}
+              </Button>
               <Button variant="default" leftSection={<IconPrinter size={16} />} onClick={() => setPrinting(true)}>
                 {t("printLotLabels")}
               </Button>

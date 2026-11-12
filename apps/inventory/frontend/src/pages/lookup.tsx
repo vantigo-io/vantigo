@@ -6,7 +6,7 @@ import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/f
 import { lookupQueryOptions } from "../api/lookup";
 import { InventoryLookupField } from "../components/lookup-field";
 import { useInventoryFormat } from "../lib/format";
-import { INVENTORY_HOME_ROUTE_PATH, matchLinkOptions } from "../lib/routes";
+import { INVENTORY_HOME_ROUTE_PATH, matchLinkOptions, traceLinkOptions } from "../lib/routes";
 import type { LookupSearch } from "../lib/search";
 
 /**
@@ -64,6 +64,14 @@ export const LookupPage = () => {
                                 ? `${match.variant.sku} · ${match.variant.productName}`
                                 : match.variant?.productName)}
                           </Text>
+                          {match.kind === "lot" && match.lot && (
+                            <Anchor
+                              size="sm"
+                              renderRoot={(props) => <Link {...traceLinkOptions(match.lot?.id ?? 0)} {...props} />}
+                            >
+                              {t("traceLot")}
+                            </Anchor>
+                          )}
                         </Group>
                       </Table.Td>
                     </Table.Tr>

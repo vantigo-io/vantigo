@@ -7,6 +7,7 @@ import type { InventoryMovement, InventoryMovementKind } from "../api/movements"
 import type { InventoryLowStockRow, InventoryPlacement, InventoryPlacementImportRow } from "../api/placements";
 import type { InventorySite, InventorySiteRef } from "../api/sites";
 import type { InventoryProductStock, InventoryVariantRef, InventoryVariantStock } from "../api/stock";
+import type { InventoryTrace } from "../api/trace";
 import type { InventoryTransfer, InventoryTransferLine } from "../api/transfers";
 import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
@@ -129,6 +130,8 @@ export interface InventoryServer {
   locationLimit?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
+  /** Answers `GET /trace` for its query (manufacturing phase 2 M89); the exports answer bytes that do not matter. */
+  trace?: (query: URLSearchParams) => InventoryTrace | Response;
 }
 
 export interface InventoryState {
@@ -870,6 +873,40 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         }));
       return jsonResponse(200, { lots: rows, more: false, today: meta.today, until });
     }
+    // The block with its downstream list (manufacturing phase 2 M92): the lot alone here, a block of the lot page.
+    const blocking = /^\/lots\/(\d+)\/block$/.exec(path);
+    if (blocking && method === "POST") {
+      const index = state.lots.findIndex((one) => one.id === Number(blocking[1]));
+      if (index < 0) return new Response(null, { status: 404 });
+      const one = state.lots[index];
+      const input = body as { cause: InventoryLotHoldInput["cause"]; note?: string };
+      if (!one.holds.some((h) => !h.releasedAt && h.kind === "block" && h.source.kind === "lot")) {
+        const hold = {
+          id: nextId++,
+          kind: "block" as const,
+          cause: input.cause,
+          note: input.note,
+          source: { module: "inventory", kind: "lot", id: String(one.id) },
+          inventorys: true,
+          createdAt: STAMP,
+          createdBy: { displayName: "Kari N." },
+        };
+        state.lots[index] = derive({ ...one, holds: [hold, ...one.holds] });
+      }
+      const blocked = state.lots[index];
+      return jsonResponse(200, {
+        lot: blocked,
+        blocked: [
+          {
+            id: blocked.id,
+            number: blocked.number,
+            sku: blocked.variant.sku,
+            productName: blocked.variant.productName,
+            root: true,
+          },
+        ],
+      });
+    }
     const page = /^\/lots\/(\d+)(\/holds(?:\/(\d+)\/release)?)?$/.exec(path);
     if (!page) return undefined;
     const index = state.lots.findIndex((one) => one.id === Number(page[1]));
@@ -922,6 +959,45 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       if (custom) return custom;
     }
     if (path === "/meta") return jsonResponse(200, meta);
+    if (path === "/trace" && server.trace) {
+      const traced = server.trace(query);
+      return traced instanceof Response ? traced : jsonResponse(200, traced);
+    }
+    // Without a trace of its own, a lot's trace is the lot alone: nothing made from it, nothing delivered.
+    if (path === "/trace") {
+      const one = state.lots.find((lot) => lot.id === Number(query.get("lotId")));
+      if (!one) return new Response(null, { status: 404 });
+      return jsonResponse(200, {
+        lotId: one.id,
+        direction: query.get("direction") ?? "usage",
+        components: query.get("components") ?? "tracked",
+        maxDepth: 10,
+        generatedAt: STAMP,
+        deliveries: "shown",
+        customerNames: true,
+        nodes: [
+          {
+            key: "0",
+            depth: 0,
+            kind: "lot",
+            variant: one.variant,
+            depthLimit: false,
+            lot: {
+              id: one.id,
+              number: one.number,
+              serial: one.serial,
+              status: one.status,
+              quantityIn: one.onHand,
+              onHand: one.onHand,
+            },
+          },
+        ],
+      });
+    }
+    if (path === "/trace.csv")
+      return new Response("key;depth\r\n", { status: 200, headers: { "Content-Type": "text/csv" } });
+    if (path === "/trace.pdf")
+      return new Response("%PDF-1.3", { status: 200, headers: { "Content-Type": "application/pdf" } });
     if (path === "/sites" && method === "GET") {
       const status = query.get("status") ?? "active";
       return jsonResponse(200, { sites: state.sites.filter((one) => one.status === status).map(siteFigures) });

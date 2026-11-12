@@ -130,3 +130,15 @@ export const sourceHref = (
   if (enabled && !enabled.includes("manufacturing")) return undefined;
   return `/manufacturing/orders/${source.lineId}`;
 };
+
+// Manufacturing phase 2, T: a lot's trace (M87).
+export const TRACE_ROUTE_PATH = "/inventory/trace";
+
+/** A lot's trace, in one direction (usage, the default: where it went; origin: where it came from). */
+export const traceLinkOptions = (lotId: number, direction?: "usage" | "origin") => ({
+  to: TRACE_ROUTE_PATH,
+  search: direction && direction !== "usage" ? { lotId, direction } : { lotId },
+});
+/** The href of a lot's trace, for a module that may only link (Manufacturing's Lots tab, Orders' delivery page). */
+export const traceHref = (lotId: number, direction?: "usage" | "origin") =>
+  `/inventory/trace?lotId=${lotId}${direction === "origin" ? "&direction=origin" : ""}`;

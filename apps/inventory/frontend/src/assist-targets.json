@@ -202,5 +202,17 @@
       "en": "The Holds panel on a lot's page: every hold with its kind, cause, note and source, active ones first. Quarantine or Block puts a hold of the lot page; Release ends one of Inventory's own holds. A hold another module's document put is released there.",
       "nb": "Panelet Sperringer på et partis side: alle sperringer med type, årsak, merknad og kilde, de aktive først. Karantene eller Sperr setter en sperring fra partisiden; Frigi avslutter en av Lagers egne sperringer. En sperring som et dokument i en annen modul har satt, frigis der."
     }
+  },
+  {
+    "key": "inventory.trace.tree",
+    "route": "/inventory/trace",
+    "label": {
+      "en": "A lot's trace",
+      "nb": "Sporingen av et parti"
+    },
+    "description": {
+      "en": "The Trace page of a lot: Where it went shows the lots made from it and the deliveries that received it; Where it came from shows its receipts and the lots it was made of. Export CSV and Download PDF hand the trace over.",
+      "nb": "Sporingssiden for et parti: Hvor det gikk viser partiene laget av det og leveransene som fikk det; Hvor det kom fra viser mottakene og partiene det ble laget av. Eksporter CSV og Last ned PDF gir sporingen videre."
+    }
   }
 ]

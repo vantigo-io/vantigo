@@ -171,13 +171,15 @@ describe("the lot page", () => {
     await userEvent.click(screen.getByRole("button", { name: "Block" }));
     const dialog = await screen.findByRole("dialog", { name: "Block the lot" });
     await userEvent.type(within(dialog).getByRole("textbox", { name: "Note" }), "Supplier recall");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Put on hold" }));
-    await waitFor(() => expect(sent(fetchMock, "POST", /\/lots\/1001\/holds$/)).toHaveLength(1));
-    expect(sent(fetchMock, "POST", /\/lots\/1001\/holds$/)[0].body).toEqual({
-      kind: "block",
+    // Block is the block with its downstream list (manufacturing phase 2 M92).
+    await userEvent.click(within(dialog).getByRole("button", { name: "Block" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/lots\/1001\/block$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/lots\/1001\/block$/)[0].body).toEqual({
       cause: "recall",
+      downstream: true,
       note: "Supplier recall",
     });
+    await userEvent.click(await screen.findByRole("button", { name: "Done" }));
     expect(await screen.findAllByText("Blocked")).not.toHaveLength(0);
     // The page holds a lot once per kind: Block waits for this block's release.
     expect(screen.getByRole("button", { name: "Block" })).toBeDisabled();
@@ -190,7 +192,7 @@ describe("the lot page", () => {
     await userEvent.type(within(release).getByRole("textbox", { name: "Why it is released" }), "Cleared");
     await userEvent.click(within(release).getByRole("button", { name: "Release" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/holds\/\d+\/release$/)).toHaveLength(1));
-    expect(sent(fetchMock, "POST", /\/holds\/\d+\/release$/)[0].body).toEqual({ note: "Cleared" });
+    expect(sent(fetchMock, "POST", /\/holds\/\d+\/release$/)[0].body).toEqual({ note: "Cleared", downstream: true });
     // Only the deviation's hold is left, and it offers no Release.
     await waitFor(() => expect(screen.queryByRole("button", { name: "Release" })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Block" })).toBeEnabled();

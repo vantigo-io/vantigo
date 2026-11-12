@@ -30,6 +30,7 @@ import {
   NEW_TRANSFER_ROUTE_PATH,
   RECEIVE_TRANSFER_ROUTE_PATH,
   SITE_ROUTE_PATH,
+  TRACE_ROUTE_PATH,
   TRANSFER_ROUTE_PATH,
   TRANSFERS_ROUTE_PATH,
   VARIANT_STOCK_ROUTE_PATH,
@@ -43,6 +44,7 @@ import {
   validateMovementsSearch,
   validateNewMovementSearch,
   validateNewTransferSearch,
+  validateTraceSearch,
   validateTransfersSearch,
 } from "../lib/search";
 import { CountPage } from "../pages/count";
@@ -63,6 +65,7 @@ import { NewReceiptPage } from "../pages/new-receipt";
 import { NewTransferPage } from "../pages/new-transfer";
 import { ReceiveTransferPage } from "../pages/receive-transfer";
 import { SitePage } from "../pages/site";
+import { TracePage } from "../pages/trace";
 import { TransferPage } from "../pages/transfer";
 import { TransfersPage } from "../pages/transfers";
 import { VariantStockPage } from "../pages/variant";
@@ -107,6 +110,7 @@ export const makeRouteTree = () => {
     route(LOTS_ROUTE_PATH, LotsPage, validateLotsSearch),
     route(EXPIRING_ROUTE_PATH, ExpiringPage, validateExpiringSearch),
     route(LOT_ROUTE_PATH, () => <LotPage />),
+    route(TRACE_ROUTE_PATH, TracePage, validateTraceSearch),
     route(PRODUCT_TEST_PATH, ProductSlot),
   ]);
 };
