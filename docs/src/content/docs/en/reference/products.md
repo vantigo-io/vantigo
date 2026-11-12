@@ -202,6 +202,10 @@ Products' titles, since Products' problems carry no code:
   `FOR UPDATE`. A change to Service takes every variant `FOR UPDATE` before it updates
   the product, so the second read is the committed type: a product turned into a service
   while the update waited never gains a tracked variant (the same 400 on `tracking`).
+  A new variant (`POST /api/v1/products/{id}/variants`) reads the type again in its
+  transaction under the **product's** `FOR SHARE`, which the change to Service's update of
+  the product conflicts with: the add has committed first, or it waits and reads Service.
+  It locks no variant row, so it makes no cycle with the change.
 - **Every mode is open** — since layer M of manufacturing phase 2, deliveries pick lots
   and productions name and consume them, so `lot` and `serial` are accepted on every
   write — a variant's create or update, a product's create — and the variant form shows

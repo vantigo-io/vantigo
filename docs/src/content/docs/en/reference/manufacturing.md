@@ -692,7 +692,8 @@ Anything else is literal. A BoM save renders a sample (`MO-99999-9`, 31 December
 SKU, `{N}` 9999) and refuses one that is not a lot number — 1–20 characters `A–Z a–z 0–9 .
 _ / -` — `lot_pattern_invalid` (400); a production whose rendered number is none is
 refused the same, on `outputLot.number`, before any counter is taken when the prefix alone
-is too long.
+is too long. The BoM editor judges the same sample, so a pattern whose preview
+fits today but a later order's number outgrows is flagged before the save.
 
 **The output lot.** A production of a lot-tracked product with good output more than 0
 names one lot: `outputLot.number`, else the pattern rendered on the production date.
@@ -700,18 +701,27 @@ names one lot: `outputLot.number`, else the pattern rendered on the production d
 M62); `expiry` and `bestBefore`, when not sent, are Inventory's defaults on creation — the
 production date plus the variant's `expiryDays` and `bestBeforeDays` (M84). Manufacturing
 calls `StockLedger.EnsureLots` with source `manufacturing/production/<id>` after the
-order's lock and before `Produce`; a lot that exists — the `{MO}` lot's second production
-— is answered as it is, and only the dates the request **states** are compared
-(`lot_dates_differ`), never the production date, so productions on different days add to
-one lot. `outputSerials` or an output lot for an untracked product is `lot_not_allowed`
-(400). Output scrap never makes a lot.
+order's lock and before `Produce`; a lot that exists — the `{MO}` lot's second production,
+or a number sent — is answered as it is, and only the dates the request **states** are
+compared (`lot_dates_differ`, 400 on `outputLot`), never the production date, so
+productions on different days add to one lot. A number the `{N}` counter hands out is
+always a **new** lot: it is asked with `NewLot.MustCreate`, and when another document's lot
+has it already — a number someone typed in the counter's shape — Inventory refuses it
+`lot_exists`, the try is rolled back to a savepoint taken before it, and the next counter
+value is taken under the counter's row lock, up to 100 times before the production is
+refused `lot_exists` (400 on `outputLot.number`). `outputSerials` or an output lot for an
+untracked product is `lot_not_allowed` (400). Output scrap never makes a lot.
 
 **Serial output** (M81). A serial product's good quantity must be a whole number of at
 most 500 (`serial_quantity`, 400). Each unit is its own lot and its own produce line of 1:
-`outputSerials.numbers`, one per unit (`serial_quantity` otherwise); or
-`outputSerials.first`, counted up by its trailing digits keeping their width; by default
-`{MO}-0001` upwards, continuing from the serials the order's productions made before. A
-serial that exists and holds stock is Inventory's `serial_quantity` (409).
+`outputSerials.numbers`, one per unit (`serial_quantity` otherwise; an empty list is a
+field error); or `outputSerials.first`, counted up by its trailing digits keeping their
+width; by default `{MO}-0001` upwards, continuing after the **highest** `{MO}-<digits>`
+serial the order's productions made — not after their count, which a serial typed in that
+shape would make collide. Every serial is a **new** lot (`NewLot.MustCreate`): one that
+exists already, in stock or delivered, is `lot_exists` (400, on
+`outputSerials.numbers[i]`, or on `outputSerials.first` for a counted or default one), so a
+new unit never takes a shipped unit's identity.
 
 **Consumed lots** (M82). A line of a tracked component may send `lots: [{lotId,
 locationId, consumed, scrapped, allowExpired}]`, each lot and location once, the rows
@@ -727,15 +737,20 @@ takes the lots first-expiry-first under its own locks and answers them in
 `StockPosted.Picks`, which the production writes back, consumed first, then scrapped.
 `production_lines` stays the per-component total; `production_line_lots` keeps the split,
 with each lot's number and expiry as `Stock.Lots` read them before the transaction (a lot
-taken that was not read starts the post again, as a split does). Refusals carry the
-component line and, in `lines[].lotId`, the lot, mapped by the refusal's `Index`.
+taken that was not read starts the post again, as a split does; on the third attempt it is
+**409** `revision_conflict`, so a row is never kept without its number). Before
+`Produce`, a line's rows must still sum to its consumed and scrap, else
+`insufficient_stock` (409). Refusals carry the component line and, in `lines[].lotId`,
+the lot, mapped by the refusal's `Index`; a field refusal raised inside the transaction
+names its field under `production.` when the production comes with a finish.
 
 **Proposed again once** (M65a). A line sent with `lotsProposed: true` — the draft's
 proposal as it was — that Inventory refuses `insufficient_stock` or `lot_blocked` on its
 rows only (every failing line such a row) is proposed again from `Stock.Lots` read then —
 at the line's location, else the order's component location, else the whole site — and
-posted once more, outside the first transaction. A second refusal is answered; chosen lots
-are never proposed again. The request's hash is the request's, so a replay of it still
+posted once more, outside the first transaction — unless the stock then covers a line only
+in part, when the first refusal is answered: a production never posts part of a line for
+the whole. A second refusal is answered; chosen lots are never proposed again. The request's hash is the request's, so a replay of it still
 matches.
 
 **The draft** (M82). `GET /orders/{id}/production-draft` answers, per line, its
@@ -748,13 +763,16 @@ the picker. Its `output` answers the product's `tracking`, the order's `lotPatte
 `lotNumber` it renders today with `{N}` as the next the counter would hand out (nothing is
 taken), the production date, the default `expiry` and `bestBefore`, and a serial
 product's `serialFirst`. The production dialog leaves an unchanged proposal to `AutoLot`
-and sends lots a person chose.
+and sends lots a person chose; when the person picks the line's location, it proposes again
+from `lotChoices` at that location, as `AutoLot` will take them there, and it refuses a lot
+row of 0 or a lot and location chosen twice before posting.
 
 **The order's lots** (M83). `GET /orders/{id}/lots` (`access`) answers, from
 Manufacturing's own rows, the `outputs` — each lot made with its quantity over the
 productions and how many put output in it — and per component line the lots consumed with
 their expiry, consumed and scrapped. The order page's **Lots** tab and the work order's
-page on the shop floor show them, each linked to Inventory's lot page.
+page on the shop floor show them, each linked to Inventory's lot page through the host's
+router.
 
 **The event** (M85). `production_posted` carries `outputLots`, the lot ids made, and
 `lotRows`, the count of consumed lot rows.
@@ -765,7 +783,9 @@ lots), **7b** Q's holds, **7c** `Produce`. Two productions of one order are seri
 the order row, so the shared `{MO}` lot is never inserted twice. A production that
 PostgreSQL chooses as a deadlock's victim (`40P01`) runs again once from the start; a
 second deadlock is **409** `revision_conflict`. The integration suite races two
-productions and a hold on one lot on a pool of four.
+productions and a hold on one lot on a pool of four, and closes a cycle on purpose: a
+writer taking the consumed lot and then the output lot `FOR NO KEY UPDATE` around a
+production, which answers 201 having consumed and produced once.
 
 ### Close and the backorder
 
@@ -1658,9 +1678,11 @@ bodies are strict: an unknown property is a 400.
 | `nothing_missing` | 400 | A sub-assembly order for a component line whose missing quantity, less what the open sub-assembly orders of its variant still make, is 0 (M47) |
 | `lot_pattern_invalid` | 400 | A BoM's lot pattern whose sample render is no lot number; a production's rendered number that is none (M80) |
 | `picks_mismatch` | 400 | A component line's lots do not sum to its consumed and scrap (M82) |
-| `serial_quantity` | 400 | A serial product's good output that is not a whole number up to 500, or serial numbers not one per unit (M81); from Inventory, 409, a serial that holds stock |
+| `serial_quantity` | 400 | A serial product's good output that is not a whole number up to 500, or serial numbers not one per unit (M81) |
+| `lot_exists` | 400 | A serial that exists already, on `outputSerials.numbers[i]` or `outputSerials.first`; a counted lot number with no free value in 100, on `outputLot.number` (M57, M80, M81) |
 | `lot_not_allowed` | 400 | An output lot or serials for an untracked product; from Inventory, 409, a lot on an untracked component |
-| `lot_required`, `lot_unknown`, `lot_expired`, `lot_blocked`, `lot_dates_differ` | 409 | Inventory's lot refusals of a production, passed through with `lines[].lotId` (M56, M57, M62) |
+| `lot_dates_differ` | 400 | A date sent for the output lot that differs from the existing lot's, on `outputLot` (M57, M80) |
+| `lot_required`, `lot_unknown`, `lot_expired`, `lot_blocked` | 409 | Inventory's lot refusals of a production, passed through with `lines[].lotId` (M56, M57, M62) |
 | `insufficient_stock`, `insufficient_available`, `site_archived`, `variant_not_stocked`, `document_reused` | 409 | Inventory's refusal of a production or a reserve, passed through under its own code, `lines` naming the component lines; nothing is posted. A reserve's `insufficient_available` is not answered: it starts the second pass |
 | `dependency_unavailable` | 503 | The catalog or the stock contract is missing at run time; nothing is changed |
 
@@ -1721,7 +1743,7 @@ every order write may answer 503 `dependency_unavailable`.
 | `POST /orders/{id}/components` (`addManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `variant_not_found`, `variant_not_goods`, `quantity_invalid`; 404; 409 `order_not_open` |
 | `PUT /orders/{id}/components/{componentId}` (`updateManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `required_below_used`, `quantity_invalid`; 404; 409 `order_not_open` |
 | `GET /orders/{id}/production-draft` (`getManufacturingProductionDraft`) | access | 200 [the prefill](#productions) with the lots proposed and offered and the output's lot ([lots on productions](#lots-on-productions)); 400 `quantity_invalid`; 404; 409 `order_not_open` |
-| `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`, `lot_pattern_invalid`, `picks_mismatch`, `serial_quantity`, `lot_not_allowed`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `consumption_differs`, `client_request_reused`, `revision_conflict` (two deadlocks), Inventory's refusals |
+| `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`, `lot_pattern_invalid`, `picks_mismatch`, `serial_quantity`, `lot_not_allowed`, `lot_dates_differ`, `lot_exists`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `consumption_differs`, `client_request_reused`, `revision_conflict` (two deadlocks, or lots that kept moving), Inventory's refusals |
 | `GET /orders/{id}/lots` (`getManufacturingOrderLots`) | access | 200 [the lots made and consumed](#lots-on-productions); 404 |
 | `POST /orders/{id}/close` (`closeManufacturingOrder`) | orders-manage | 200 `{order, backorder, shortLines}`; 404; 409 `order_not_open`, `quantity_short` |
 | `POST /orders/{id}/cancel` (`cancelManufacturingOrder`) | orders-manage | 200; 404; 409 `order_not_open`, `order_has_production` |
