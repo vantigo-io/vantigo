@@ -15,10 +15,11 @@ import (
 
 const balancesAt = `-- name: BalancesAt :many
 
-SELECT b.variant_id, b.location_id, b.on_hand
+SELECT b.variant_id, b.location_id, sum(b.on_hand)::numeric AS on_hand
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE l.id = $1 OR ($2::boolean AND l.ancestors @> ARRAY[$1::bigint])
+GROUP BY b.variant_id, b.location_id, l.full_code
 ORDER BY l.full_code, b.variant_id
 `
 
@@ -34,7 +35,8 @@ type BalancesAtRow struct {
 }
 
 // The reads (design I27, I29, I30): what lies where, and the movements.
-// BalancesAt is what lies on the location and, with subtree, below it.
+// BalancesAt is what lies on the location and, with subtree, below it, per
+// variant and location, summed over the lots (manufacturing phase 2 M55).
 func (q *Queries) BalancesAt(ctx context.Context, arg BalancesAtParams) ([]BalancesAtRow, error) {
 	rows, err := q.db.Query(ctx, balancesAt, arg.ID, arg.Subtree)
 	if err != nil {
@@ -56,9 +58,10 @@ func (q *Queries) BalancesAt(ctx context.Context, arg BalancesAtParams) ([]Balan
 }
 
 const balancesOfVariants = `-- name: BalancesOfVariants :many
-SELECT b.variant_id, b.location_id, b.on_hand
+SELECT b.variant_id, b.location_id, sum(b.on_hand)::numeric AS on_hand
 FROM inventory.balances b
 WHERE b.variant_id = ANY($1::int[])
+GROUP BY b.variant_id, b.location_id
 ORDER BY b.variant_id, b.location_id
 `
 
@@ -68,7 +71,8 @@ type BalancesOfVariantsRow struct {
 	OnHand     pgtype.Numeric
 }
 
-// BalancesOfVariants is every balance of the variants.
+// BalancesOfVariants is every balance of the variants, per location, summed
+// over the lots (manufacturing phase 2 M55).
 func (q *Queries) BalancesOfVariants(ctx context.Context, variantIds []int32) ([]BalancesOfVariantsRow, error) {
 	rows, err := q.db.Query(ctx, balancesOfVariants, variantIds)
 	if err != nil {
@@ -257,7 +261,7 @@ func (q *Queries) ListMovements(ctx context.Context, arg ListMovementsParams) ([
 }
 
 const movementLines = `-- name: MovementLines :many
-SELECT id, movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered FROM inventory.movement_lines WHERE movement_id = $1 ORDER BY line_no
+SELECT id, movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered, lot_id, expired_override FROM inventory.movement_lines WHERE movement_id = $1 ORDER BY line_no
 `
 
 func (q *Queries) MovementLines(ctx context.Context, movementID int64) ([]InventoryMovementLine, error) {
@@ -281,6 +285,8 @@ func (q *Queries) MovementLines(ctx context.Context, movementID int64) ([]Invent
 			&i.ToLocationID,
 			&i.Quantity,
 			&i.Entered,
+			&i.LotID,
+			&i.ExpiredOverride,
 		); err != nil {
 			return nil, err
 		}
@@ -392,6 +398,51 @@ func (q *Queries) StockTotals(ctx context.Context, variantIds []int32) ([]StockT
 	for rows.Next() {
 		var i StockTotalsRow
 		if err := rows.Scan(&i.VariantID, &i.OnHand, &i.Reserved); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const usableBySite = `-- name: UsableBySite :many
+SELECT b.variant_id, l.site_id, sum(b.on_hand)::text AS on_hand
+FROM inventory.balances b
+JOIN inventory.locations l ON l.id = b.location_id
+LEFT JOIN inventory.lots t ON t.id = b.lot_id
+WHERE b.variant_id = ANY($1::int[])
+  AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= $2::date)))
+GROUP BY b.variant_id, l.site_id
+ORDER BY b.variant_id, l.site_id
+`
+
+type UsableBySiteParams struct {
+	VariantIds []int32
+	Today      pgtype.Date
+}
+
+type UsableBySiteRow struct {
+	VariantID int32
+	SiteID    int64
+	OnHand    string
+}
+
+// UsableBySite is each variant's usable on hand per site (manufacturing phase
+// 2 M63): the balances with no lot, and those of lots with no active hold that
+// are not expired on today. A site where nothing is usable is absent.
+func (q *Queries) UsableBySite(ctx context.Context, arg UsableBySiteParams) ([]UsableBySiteRow, error) {
+	rows, err := q.db.Query(ctx, usableBySite, arg.VariantIds, arg.Today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UsableBySiteRow
+	for rows.Next() {
+		var i UsableBySiteRow
+		if err := rows.Scan(&i.VariantID, &i.SiteID, &i.OnHand); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

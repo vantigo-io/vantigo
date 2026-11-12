@@ -31,8 +31,9 @@ func newVariantHolder(module.Deps) contracts.VariantReferenceHolder { return var
 // transfers (VariantHoldKindInTransit); nil when none. It locks nothing: a
 // posting that would add to the variant holds FOR SHARE on it
 // (ProductCatalog.LockVariants), so it has committed before Products' FOR
-// UPDATE was granted, or waits for Products' transaction. Stock stops both
-// a delete and a change to Service, so purpose changes nothing here.
+// UPDATE was granted, or waits for Products' transaction. Stock stops all
+// three purposes — a delete, a change to Service and a change of the tracking
+// mode (manufacturing phase 2 M51) — so purpose changes nothing here.
 func (variantHolder) VariantHeld(ctx context.Context, tx pgx.Tx, variantID int32, _ contracts.VariantHoldPurpose) (*contracts.VariantHold, error) {
 	q := store.New(tx)
 	row, err := q.VariantHeld(ctx, variantID)

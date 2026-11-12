@@ -70,10 +70,10 @@ func (q *Queries) CountLinePairs(ctx context.Context, countID int64) ([]CountLin
 const countLines = `-- name: CountLines :many
 SELECT cl.id, cl.count_id, cl.variant_id, cl.location_id, cl.expected, cl.counted, cl.entered, cl.added,
        cl.counted_by_user_id, cl.counted_by_display, cl.counted_at, l.full_code,
-       coalesce(b.on_hand, 0)::numeric AS current
+       coalesce((SELECT sum(b.on_hand) FROM inventory.balances b
+                 WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id), 0)::numeric AS current
 FROM inventory.count_lines cl
 JOIN inventory.locations l ON l.id = cl.location_id
-LEFT JOIN inventory.balances b ON b.variant_id = cl.variant_id AND b.location_id = cl.location_id
 WHERE cl.count_id = $1
 ORDER BY l.full_code, cl.variant_id
 `
@@ -132,10 +132,11 @@ func (q *Queries) CountLines(ctx context.Context, countID int64) ([]CountLinesRo
 
 const freezeCountLines = `-- name: FreezeCountLines :execrows
 INSERT INTO inventory.count_lines (count_id, variant_id, location_id, expected)
-SELECT $1, b.variant_id, b.location_id, b.on_hand
+SELECT $1, b.variant_id, b.location_id, sum(b.on_hand)
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE l.id = $2 OR l.ancestors @> ARRAY[$2::bigint]
+GROUP BY b.location_id, b.variant_id
 ORDER BY b.location_id, b.variant_id
 `
 
@@ -144,8 +145,9 @@ type FreezeCountLinesParams struct {
 	ScopeID int64
 }
 
-// FreezeCountLines writes a line per balance in the count's scope, expecting
-// what the balance holds at this moment (I17).
+// FreezeCountLines writes a line per variant and location in the count's
+// scope, expecting what it holds at this moment, summed over its lots (I17;
+// counts per lot are manufacturing phase 2 L2's M69).
 func (q *Queries) FreezeCountLines(ctx context.Context, arg FreezeCountLinesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, freezeCountLines, arg.CountID, arg.ScopeID)
 	if err != nil {
@@ -219,8 +221,9 @@ SELECT c.id, c.site_id, c.scope_location_id, c.status, c.note, c.opened_by_user_
        (SELECT count(*) FROM inventory.count_lines cl WHERE cl.count_id = c.id AND cl.counted IS NOT NULL)::int AS counted_lines,
        (CASE WHEN c.status = 'counting' THEN (
             SELECT count(*) FROM inventory.count_lines cl
-            LEFT JOIN inventory.balances b ON b.variant_id = cl.variant_id AND b.location_id = cl.location_id
-            WHERE cl.count_id = c.id AND coalesce(b.on_hand, 0) <> cl.expected)
+            WHERE cl.count_id = c.id
+              AND coalesce((SELECT sum(b.on_hand) FROM inventory.balances b
+                            WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id), 0) <> cl.expected)
         ELSE 0 END)::int AS moved_lines
 FROM inventory.counts c
 WHERE ($1::text IS NULL OR c.status = $1::text)

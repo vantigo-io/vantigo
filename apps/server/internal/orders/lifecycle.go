@@ -67,7 +67,7 @@ func customerConfirmable(p *contracts.CustomerBillingProfile) error {
 // order's change log at the confirmed version (O33). The warnings are read
 // without a lock, so the check is best effort against a concurrent change.
 func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
-	by actor, customer *contracts.CustomerBillingProfile, reserve bool) (store.OrdersOrder, error) {
+	by actor, customer *contracts.CustomerBillingProfile, reserve bool, today time.Time) (store.OrdersOrder, error) {
 	if order.Status != orderDraft {
 		return order, conflict(codeOrderNotDraft, "The order is not a draft",
 			fmt.Sprintf("Order %d is %s; only a draft is confirmed.", order.Number, order.Status))
@@ -105,7 +105,7 @@ func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, or
 		if reserve {
 			// Every goods line's open quantity, at the site (O46): the first
 			// shortfall refuses the confirm, naming every short line.
-			if _, err := s.reserveOpen(ctx, tx, row, lines, invalidConfirmTitle); err != nil {
+			if _, err := s.reserveOpen(ctx, tx, row, lines, today, invalidConfirmTitle); err != nil {
 				return row, err
 			}
 		} else {
@@ -179,6 +179,11 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 	if err != nil {
 		return nil, err
 	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.todayOf(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var confirmed store.OrdersOrder
 	var printed []byte
 	var out gen.OrdersOrder
@@ -197,7 +202,7 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		if err != nil {
 			return err
 		}
-		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer, req.Body.Reserve == nil || *req.Body.Reserve); err != nil {
+		if confirmed, err = confirmTx(ctx, s, tx, txq, o, locked, override, by, customer, req.Body.Reserve == nil || *req.Body.Reserve, today); err != nil {
 			return err
 		}
 		if printed, err = p.confirmation(confirmed, locked, s.deps.Clock()); err != nil {

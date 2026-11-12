@@ -155,7 +155,7 @@ func (s *server) postCount(ctx context.Context, tx pgx.Tx, txq *store.Queries, w
 	check := func(_ []engineLine, variants map[int32]contracts.VariantEntry, balances map[balanceKey]*big.Rat) error {
 		var moved []lineFailure
 		for _, p := range postings {
-			now, expected := balances[balanceKey{p.row.VariantID, p.row.LocationID}], ratFromNumeric(p.row.Expected)
+			now, expected := balances[balanceKey{p.row.VariantID, p.row.LocationID, 0}], ratFromNumeric(p.row.Expected)
 			if now.Cmp(expected) == 0 {
 				continue
 			}

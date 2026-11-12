@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -131,9 +132,11 @@ func (s *server) createOrder(ctx context.Context, _ pgx.Tx, txq *store.Queries, 
 // insufficient_available), publishes orders.sales_order.confirmed.v1 on tx,
 // and answers the order as it now is.
 // It makes no call out of the module: the customer's billing profile was read
-// before the transaction and rides in as customer. lifecycle.go sets it.
+// before the transaction and rides in as customer, and today — the day the
+// ledger judges a lot's expiry on (manufacturing phase 2 M63) — as today.
+// lifecycle.go sets it.
 var confirmOrderTx func(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, order store.OrdersOrder, lines []store.OrdersLine, o warningOverride,
-	by actor, customer *contracts.CustomerBillingProfile, reserve bool) (store.OrdersOrder, error)
+	by actor, customer *contracts.CustomerBillingProfile, reserve bool, today time.Time) (store.OrdersOrder, error)
 
 // afterOrderConfirmed is what follows a confirmation's commit, outside any
 // transaction: storing the confirmation's PDF (O24), printed as body inside

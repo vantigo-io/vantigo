@@ -141,7 +141,7 @@ func (s *server) recordCounted(ctx context.Context, tx pgx.Tx, txq *store.Querie
 	}
 	existing := make(map[balanceKey]bool, len(pairs))
 	for _, p := range pairs {
-		existing[balanceKey{p.VariantID, p.LocationID}] = true
+		existing[balanceKey{p.VariantID, p.LocationID, 0}] = true
 	}
 
 	var failures []lineFailure
@@ -159,7 +159,7 @@ func (s *server) recordCounted(ctx context.Context, tx pgx.Tx, txq *store.Querie
 			fail(l, l.failCode, l.failText)
 			continue
 		}
-		key := balanceKey{l.variantID, l.locationID}
+		key := balanceKey{l.variantID, l.locationID, 0}
 		loc, ok := locations[l.locationID]
 		if !ok || (loc.ID != scope.ID && !slices.Contains(loc.Ancestors, scope.ID)) {
 			fail(l, codeLocationNotFound, fmt.Sprintf("No location %d lies in the count's scope %s.", l.locationID, scope.FullCode))

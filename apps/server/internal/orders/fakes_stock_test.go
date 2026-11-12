@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -224,7 +225,20 @@ func (f *fakeStock) SiteLocations(context.Context, int64) ([]contracts.StockSite
 	return nil, errors.New("fake stock: orders never lists a site's locations")
 }
 
-func (f *fakeStock) Reserve(ctx context.Context, _ pgx.Tx, src contracts.StockSource, site int64, lines []contracts.StockLine) error {
+// Lots is layer O's read; Orders names no lot in this layer.
+func (f *fakeStock) Lots(context.Context, []int32, int64) ([]contracts.StockLot, error) {
+	return nil, errors.New("fake stock: orders reads no lots yet")
+}
+
+// errNoToday is a ledger call without today: Orders reads the business day
+// on the pool before its transaction (manufacturing phase 2 M62, rule 24),
+// so every reserve and issue a test makes proves it did.
+var errNoToday = errors.New("fake stock: a stock call without today")
+
+func (f *fakeStock) Reserve(ctx context.Context, _ pgx.Tx, src contracts.StockSource, site int64, today time.Time, lines []contracts.StockLine) error {
+	if today.IsZero() {
+		return errNoToday
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var s *contracts.StockSite
@@ -298,7 +312,15 @@ func (f *fakeStock) Release(ctx context.Context, _ pgx.Tx, src contracts.StockSo
 	return nil
 }
 
-func (f *fakeStock) Issue(ctx context.Context, _ pgx.Tx, src contracts.StockSource, issue contracts.StockIssue) (int64, error) {
+func (f *fakeStock) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource, issue contracts.StockIssue) (contracts.StockPosted, error) {
+	movement, err := f.issue(ctx, tx, src, issue)
+	return contracts.StockPosted{MovementID: movement}, err
+}
+
+func (f *fakeStock) issue(ctx context.Context, _ pgx.Tx, src contracts.StockSource, issue contracts.StockIssue) (int64, error) {
+	if issue.Today.IsZero() {
+		return 0, errNoToday
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	doc := issue.Document
@@ -361,12 +383,24 @@ func (f *fakeStock) ReservationsFor(ctx context.Context, _ pgx.Tx, src contracts
 
 // ReserveForProduction and Produce are Manufacturing's; Orders never calls
 // them, so the fake refuses to be called.
-func (f *fakeStock) ReserveForProduction(context.Context, pgx.Tx, contracts.StockSource, int64, []contracts.StockLine) error {
+func (f *fakeStock) ReserveForProduction(context.Context, pgx.Tx, contracts.StockSource, int64, time.Time, []contracts.StockLine) error {
 	return errors.New("fake stock: orders never reserves for production")
 }
 
-func (f *fakeStock) Produce(context.Context, pgx.Tx, contracts.StockSource, contracts.StockProduction) (int64, error) {
-	return 0, errors.New("fake stock: orders never produces")
+func (f *fakeStock) Produce(context.Context, pgx.Tx, contracts.StockSource, contracts.StockProduction) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, errors.New("fake stock: orders never produces")
+}
+
+func (f *fakeStock) EnsureLots(context.Context, pgx.Tx, contracts.StockSource, time.Time, []contracts.NewLot) ([]int64, error) {
+	return nil, errors.New("fake stock: orders makes no lots")
+}
+
+func (f *fakeStock) HoldLots(context.Context, pgx.Tx, contracts.StockSource, []contracts.LotHold) error {
+	return errors.New("fake stock: orders holds no lots")
+}
+
+func (f *fakeStock) ReleaseLotHolds(context.Context, pgx.Tx, contracts.StockSource, []int64, contracts.LotActor) error {
+	return errors.New("fake stock: orders holds no lots")
 }
 
 // variantHeld is the variant the document's line holds reserved, 0 when it
@@ -380,4 +414,18 @@ func (f *fakeStock) variantHeld(src contracts.StockSource, line int64) int32 {
 		}
 	}
 	return 0
+}
+
+// testToday is the business day a test hands the fake ledger directly.
+var testToday = time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)
+
+// lastIssue is the last issue posted, with the today and override its
+// caller read before its transaction.
+func (f *fakeStock) lastIssue() (contracts.StockIssue, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.issues) == 0 {
+		return contracts.StockIssue{}, false
+	}
+	return f.issues[len(f.issues)-1], true
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -98,11 +99,17 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	// billing profile read before the transaction.
 	var customer *contracts.CustomerBillingProfile
 	var p printer
+	var today time.Time
 	if confirm {
 		if customer, err = s.billingProfile(ctx, quote.CustomerID); err != nil {
 			return answer(err, resp)
 		}
 		if p, err = s.readPrinter(ctx); err != nil {
+			return nil, err
+		}
+		// The day the ledger judges a lot's expiry on, read on the pool
+		// (rule 24).
+		if today, err = s.todayOf(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -132,7 +139,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 			return err
 		}
 		if confirm {
-			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer, true); err != nil {
+			if order, err = confirmOrderTx(ctx, s, tx, txq, order, orderLines, override, by, customer, true, today); err != nil {
 				return err
 			}
 			if printed, err = p.confirmation(order, orderLines, s.deps.Clock()); err != nil {

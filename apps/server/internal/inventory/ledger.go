@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -36,8 +37,12 @@ import (
 //
 // The lock order inside a ledger call, after the caller's own: Products'
 // variants (LockVariants, again, on the caller's transaction — the caller
-// already holds them, so this waits for nothing), then the balances in
-// (variant, location) order, then the reservations. A reserve locks the
+// already holds them, so this waits for nothing), then the lots (posting.go's
+// steps 3–5; EnsureLots and the holds in lots.go), then the balances in
+// (variant, location, lot) order with no lot first, then the reservations.
+// No ledger call makes a contract call of its own: today and the expired
+// override come from the caller, read on the pool (manufacturing phase 2
+// M62). A reserve locks the
 // variants' balances at the site, so two reserves of one variant at one site
 // — two orders confirmed for the last unit — serialise there, and the second
 // reads what the first reserved. An issue posts through the engine
@@ -47,11 +52,12 @@ import (
 
 // The movement kinds the ledger posts (design §12: the kinds are an open set
 // of application constants, not a database enum): an issue for another
-// module's delivery, and a production for its producing document
-// (manufacturing design M1).
+// module's delivery, a production for its producing document (manufacturing
+// design M1), and an unbuild that reverses one (manufacturing phase 2 M123).
 const (
 	movementKindIssue      = "issue"
 	movementKindProduction = "production"
+	movementKindUnbuild    = "unbuild"
 )
 
 // issueKeySpace is the UUID namespace an issue's client request id is made
@@ -85,10 +91,33 @@ func (st stock) OnHand(ctx context.Context, variantIDs []int32, siteID *int64) (
 	return st.read(ctx, variantIDs, siteID, false)
 }
 
-// Available answers each variant's on hand less what is reserved, in total
-// and per site where it lies or is reserved.
+// Available answers each variant's usable on hand less what is reserved, in
+// total and per site where it lies or is reserved (manufacturing phase 2
+// M63).
 func (st stock) Available(ctx context.Context, variantIDs []int32, siteID *int64) ([]contracts.StockQuantity, error) {
 	return st.read(ctx, variantIDs, siteID, true)
+}
+
+// Lots answers, per variant, every lot holding more than 0 at an active
+// location of the site, with its location, in FEFO order (manufacturing
+// phase 2 M65, M67).
+func (st stock) Lots(ctx context.Context, variantIDs []int32, siteID int64) ([]contracts.StockLot, error) {
+	if err := contracts.ValidateStockVariants(variantIDs); err != nil {
+		return nil, err
+	}
+	rows, err := store.New(st.s.deps.Pool).StockLotsAt(ctx, store.StockLotsAtParams{VariantIds: variantIDs, SiteID: siteID})
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the lots at site %d: %w", siteID, err)
+	}
+	out := make([]contracts.StockLot, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, contracts.StockLot{
+			VariantID: r.VariantID, LotID: r.LotID, Number: r.Number, Serial: r.Serial, Expiry: dateOrNil(r.Expiry),
+			BestBefore: dateOrNil(r.BestBefore), ReceivedAt: r.ReceivedAt, LocationID: r.LocationID, FullCode: r.FullCode,
+			Quantity: decimalText(ratFromText(r.OnHand)), Status: r.Status,
+		})
+	}
+	return out, nil
 }
 
 // Sites answers every site that is not archived, by code.
@@ -163,6 +192,16 @@ func (st stock) read(ctx context.Context, variantIDs []int32, siteID *int64, ava
 	}
 	onHand := map[siteKey]*big.Rat{}
 	reserved := map[siteKey]*big.Rat{}
+	usable := map[siteKey]*big.Rat{}
+	// Available is judged on usable on hand, on today in the workspace zone
+	// (M63), read before the snapshot.
+	var today time.Time
+	if available {
+		var err error
+		if today, err = st.s.today(ctx); err != nil {
+			return nil, err
+		}
+	}
 	err := st.s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		rows, err := q.OnHandBySite(ctx, variantIDs)
 		if err != nil {
@@ -173,6 +212,13 @@ func (st stock) read(ctx context.Context, variantIDs []int32, siteID *int64, ava
 		}
 		if !available {
 			return nil
+		}
+		use, err := q.UsableBySite(ctx, store.UsableBySiteParams{VariantIds: variantIDs, Today: pgtype.Date{Time: today, Valid: true}})
+		if err != nil {
+			return fmt.Errorf("inventory: read usable on hand by site: %w", err)
+		}
+		for _, r := range use {
+			usable[siteKey{r.VariantID, r.SiteID}] = ratFromText(r.OnHand)
 		}
 		res, err := q.ReservedOfVariants(ctx, variantIDs)
 		if err != nil {
@@ -202,7 +248,11 @@ func (st stock) read(ctx context.Context, variantIDs []int32, siteID *int64, ava
 		for _, site := range ids {
 			k := siteKey{id, site}
 			v := new(big.Rat)
-			if r := onHand[k]; r != nil {
+			figure := onHand
+			if available {
+				figure = usable
+			}
+			if r := figure[k]; r != nil {
 				v.Add(v, r)
 			}
 			if r := reserved[k]; r != nil {
@@ -292,10 +342,10 @@ func (l ledger) stockedVariants(ctx context.Context, tx pgx.Tx, ids []int32, lin
 		v, ok := variants[variantID]
 		switch {
 		case !ok:
-			failures = append(failures, contracts.StockLineRefusal{Code: contracts.StockVariantNotStocked, VariantID: variantID, LineID: lineID,
+			failures = append(failures, contracts.StockLineRefusal{Code: contracts.StockVariantNotStocked, VariantID: variantID, LineID: lineID, Index: i,
 				Detail: fmt.Sprintf("No variant has the id %d.", variantID)})
 		case v.ProductType != productTypeGoods:
-			failures = append(failures, contracts.StockLineRefusal{Code: contracts.StockVariantNotStocked, VariantID: variantID, LineID: lineID,
+			failures = append(failures, contracts.StockLineRefusal{Code: contracts.StockVariantNotStocked, VariantID: variantID, LineID: lineID, Index: i,
 				Detail: fmt.Sprintf("%s is a service; only goods are kept in stock.", v.SKU)})
 		}
 	}
@@ -303,22 +353,25 @@ func (l ledger) stockedVariants(ctx context.Context, tx pgx.Tx, ids []int32, lin
 }
 
 // Reserve adds each line's quantity to its reservation at the site, when the
-// site's available covers it.
-func (l ledger) Reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, lines []contracts.StockLine) error {
-	return l.reserve(ctx, tx, src, siteID, lines, true)
+// site's available — usable on hand on today less reserved (M63) — covers it.
+func (l ledger) Reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, today time.Time, lines []contracts.StockLine) error {
+	return l.reserve(ctx, tx, src, siteID, today, lines, true)
 }
 
 // ReserveForProduction is Reserve at a site that need not fulfil orders
 // (manufacturing design M3).
-func (l ledger) ReserveForProduction(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, lines []contracts.StockLine) error {
-	return l.reserve(ctx, tx, src, siteID, lines, false)
+func (l ledger) ReserveForProduction(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, today time.Time, lines []contracts.StockLine) error {
+	return l.reserve(ctx, tx, src, siteID, today, lines, false)
 }
 
 // reserve is Reserve and ReserveForProduction: fulfils is whether the site
 // must fulfil orders.
-func (l ledger) reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, lines []contracts.StockLine, fulfils bool) error {
+func (l ledger) reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, today time.Time, lines []contracts.StockLine, fulfils bool) error {
 	if err := src.Validate(); err != nil {
 		return err
+	}
+	if today.IsZero() {
+		return errors.New("contracts: a stock call without today")
 	}
 	if len(lines) == 0 {
 		return nil
@@ -359,7 +412,7 @@ func (l ledger) reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 	}
 	// Read after the lock, in a statement of its own, so a reserve that held
 	// the balances before this one is seen with what it reserved.
-	figures, err := txq.SiteStockOf(ctx, store.SiteStockOfParams{VariantIds: sorted, SiteID: siteID})
+	figures, err := txq.SiteStockOf(ctx, store.SiteStockOfParams{VariantIds: sorted, SiteID: siteID, Today: pgtype.Date{Time: today, Valid: true}})
 	if err != nil {
 		return fmt.Errorf("inventory: read the stock of site %d: %w", siteID, err)
 	}
@@ -371,7 +424,7 @@ func (l ledger) reserve(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 	for i, line := range lines {
 		avail := left[line.VariantID]
 		if avail.Cmp(quantities[i]) < 0 {
-			failures = append(failures, contracts.StockLineRefusal{Code: contracts.StockInsufficientAvailable, VariantID: line.VariantID, LineID: line.LineID,
+			failures = append(failures, contracts.StockLineRefusal{Code: contracts.StockInsufficientAvailable, VariantID: line.VariantID, LineID: line.LineID, Index: i,
 				Detail: fmt.Sprintf("%s at %s: %s available, the line reserves %s.", variants[line.VariantID].SKU, site.Code,
 					decimalText(maxRat(avail, new(big.Rat))), decimalText(quantities[i]))})
 			continue
@@ -549,28 +602,33 @@ func (l ledger) ReservationsFor(ctx context.Context, tx pgx.Tx, src contracts.St
 }
 
 // issueBody is what an issue's request hash is taken over: the site and the
-// lines, as given.
+// lines, as given — their lots, AutoLot and AllowExpired included — and the
+// override the call carried.
 type issueBody struct {
-	Source contracts.StockSource
-	SiteID int64
-	Lines  []contracts.IssueLine
+	Source          contracts.StockSource
+	SiteID          int64
+	Lines           []contracts.IssueLine
+	ExpiredOverride bool
 }
 
 // Issue posts the issue as one movement through the engine and consumes the
 // reservations of the lines it issued.
-func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource, issue contracts.StockIssue) (int64, error) {
+func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource, issue contracts.StockIssue) (contracts.StockPosted, error) {
 	if err := src.Validate(); err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
+	}
+	if issue.Today.IsZero() {
+		return contracts.StockPosted{}, errors.New("contracts: a stock call without today")
 	}
 	doc := issue.Document
 	if doc.IsZero() {
 		doc = src
 	}
 	if err := doc.Validate(); err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
 	if len(issue.Lines) == 0 {
-		return 0, errors.New("inventory: an issue has no lines")
+		return contracts.StockPosted{}, errors.New("inventory: an issue has no lines")
 	}
 	lines := make([]engineLine, len(issue.Lines))
 	// What is issued per line and variant.
@@ -578,18 +636,21 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 	for i, line := range issue.Lines {
 		q, err := ledgerQuantity(line.Quantity)
 		if err != nil {
-			return 0, err
+			return contracts.StockPosted{}, err
 		}
 		if line.LineID <= 0 {
-			return 0, fmt.Errorf("inventory: an issue names line id %d", line.LineID)
+			return contracts.StockPosted{}, fmt.Errorf("inventory: an issue names line id %d", line.LineID)
+		}
+		if line.AutoLot && line.LotID != 0 {
+			return contracts.StockPosted{}, fmt.Errorf("inventory: an issue line names lot %d and AutoLot", line.LotID)
 		}
 		from := line.FromLocationID
-		lines[i] = engineLine{index: i, variantID: line.VariantID, from: &from, quantity: q}
+		lines[i] = engineLine{index: i, variantID: line.VariantID, from: &from, quantity: q, lotID: line.LotID, autoLot: line.AutoLot, allowExpired: line.AllowExpired}
 		takenOf(issued, line.LineID, line.VariantID, q)
 	}
-	hash, err := requestHash(movementKindIssue, issueBody{Source: doc, SiteID: issue.SiteID, Lines: issue.Lines})
+	hash, err := requestHash(movementKindIssue, issueBody{Source: doc, SiteID: issue.SiteID, Lines: issue.Lines, ExpiredOverride: issue.ExpiredOverride})
 	if err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
 	display := issue.PostedByDisplay
 	if utf8.RuneCountInString(display) > 200 {
@@ -602,38 +663,79 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 		source: &movementSource{module: doc.Module, kind: doc.Kind, id: strconv.FormatInt(doc.ID, 10)},
 	}
 	txq := store.New(tx)
+	lineOf := issueLineOf(issue.Lines)
 	// A replay first, before the site or the variants are judged again (I14).
 	if res, done, err := replayOf(ctx, txq, header); done || err != nil {
 		if err != nil {
-			return 0, issueError(err, issueLineOf(issue.Lines), len(issue.Lines))
+			return contracts.StockPosted{}, issueError(err, lineOf, len(issue.Lines))
 		}
-		return res.movementID, nil
+		return l.replayed(ctx, txq, res.movementID, lines)
 	}
 	if _, err := fulfillingSite(ctx, txq, issue.SiteID, true); err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
 	ids := make([]int32, 0, len(issue.Lines))
 	for _, line := range issue.Lines {
 		ids = append(ids, line.VariantID)
 	}
-	_, failures, err := l.stockedVariants(ctx, tx, ids, func(i int) (int32, int64) { return issue.Lines[i].VariantID, issue.Lines[i].LineID }, len(issue.Lines))
+	_, failures, err := l.stockedVariants(ctx, tx, ids, lineOf, len(issue.Lines))
 	if err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
 	if len(failures) > 0 {
-		return 0, refusalOf(failures)
+		return contracts.StockPosted{}, refusalOf(failures)
 	}
-	res, err := l.s.post(ctx, tx, txq, header, lines, postOptions{})
+	res, err := l.s.post(ctx, tx, txq, header, lines, postOptions{today: issue.Today, takes: true, expiredOverride: issue.ExpiredOverride})
 	if err != nil {
-		return 0, issueError(err, issueLineOf(issue.Lines), len(issue.Lines))
+		return contracts.StockPosted{}, issueError(err, lineOf, len(issue.Lines))
 	}
 	if res.replay {
-		return res.movementID, nil
+		return l.replayed(ctx, txq, res.movementID, lines)
 	}
 	if err := l.consumeReservations(ctx, txq, src, issue.SiteID, issued); err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
-	return res.movementID, nil
+	return contracts.StockPosted{MovementID: res.movementID, Picks: res.picks}, nil
+}
+
+// replayed is a replayed issue's or production's answer: the first
+// movement, with the lots its AutoLot lines took read back from its lines.
+// The engine wrote the lines in the order given, an AutoLot line as one line
+// per lot it took, so they are walked in step: a line that is not AutoLot is
+// one movement line, an AutoLot line the movement lines of its variant and
+// location that sum to its quantity.
+func (l ledger) replayed(ctx context.Context, txq *store.Queries, movementID int64, lines []engineLine) (contracts.StockPosted, error) {
+	out := contracts.StockPosted{MovementID: movementID}
+	auto := false
+	for _, line := range lines {
+		auto = auto || line.autoLot
+	}
+	if !auto {
+		return out, nil
+	}
+	posted, err := txq.MovementLines(ctx, movementID)
+	if err != nil {
+		return out, fmt.Errorf("inventory: read the lines of movement %d: %w", movementID, err)
+	}
+	next := 0
+	for _, line := range lines {
+		if !line.autoLot {
+			next++
+			continue
+		}
+		left := new(big.Rat).Set(line.quantity)
+		for left.Sign() > 0 && next < len(posted) {
+			p := posted[next]
+			if p.VariantID != line.variantID || p.FromLocationID == nil || *p.FromLocationID != *line.from || p.LotID == nil {
+				break
+			}
+			q := ratFromNumeric(p.Quantity)
+			out.Picks = append(out.Picks, contracts.StockPick{Index: line.index, LotID: *p.LotID, LocationID: *p.FromLocationID, Quantity: decimalText(q)})
+			left.Sub(left, q)
+			next++
+		}
+	}
+	return out, nil
 }
 
 // takenKey is a line of the reserving document and the variant taken for
@@ -681,32 +783,38 @@ func (l ledger) consumeReservations(ctx context.Context, txq *store.Queries, src
 }
 
 // productionBody is what a production's request hash is taken over: the
-// document and the reserving source, the site and the lines, as given.
+// document and the reserving source, the site and the lines, as given — lots
+// included — the override and whether it is an unbuild.
 type productionBody struct {
-	Source    contracts.StockSource
-	Reserving contracts.StockSource
-	SiteID    int64
-	Consume   []contracts.ConsumeLine
-	Produce   []contracts.ProduceLine
+	Source          contracts.StockSource
+	Reserving       contracts.StockSource
+	SiteID          int64
+	Consume         []contracts.ConsumeLine
+	Produce         []contracts.ProduceLine
+	ExpiredOverride bool
+	Unbuild         bool
 }
 
 // Produce posts the production as one movement through the engine — the
 // consume lines, from-only, then the produce lines, to-only — and consumes
 // the reservations of the lines it consumed (manufacturing design M1–M2).
-func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (int64, error) {
+func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (contracts.StockPosted, error) {
 	if err := src.Validate(); err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
+	}
+	if p.Today.IsZero() {
+		return contracts.StockPosted{}, errors.New("contracts: a stock call without today")
 	}
 	doc := p.Document
 	if doc.IsZero() {
 		doc = src
 	}
 	if err := doc.Validate(); err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
 	n := len(p.Consume) + len(p.Produce)
 	if n == 0 {
-		return 0, siteRefusal(contracts.StockNothingToPost, "A production names no line; nothing was posted.")
+		return contracts.StockPosted{}, siteRefusal(contracts.StockNothingToPost, "A production names no line; nothing was posted.")
 	}
 	// The engine's lines are the consume lines, then the produce lines;
 	// lineOf names the contract's line behind the engine's index.
@@ -730,37 +838,46 @@ func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 		q, err := ledgerQuantity(text)
 		if err != nil {
 			variantID, lineID := lineOf(i)
-			bad = append(bad, contracts.StockLineRefusal{Code: contracts.StockQuantityInvalid, VariantID: variantID, LineID: lineID,
+			bad = append(bad, contracts.StockLineRefusal{Code: contracts.StockQuantityInvalid, VariantID: variantID, LineID: lineID, Index: i,
 				Detail: fmt.Sprintf("The quantity %q is not more than 0 with at most three decimals.", text)})
 			continue
 		}
 		quantities[i] = q
 	}
 	if len(bad) > 0 {
-		return 0, refusalOf(bad)
+		return contracts.StockPosted{}, refusalOf(bad)
 	}
 	lines := make([]engineLine, 0, n)
 	consumed := map[takenKey]*big.Rat{}
 	for i, line := range p.Consume {
 		q := quantities[i]
 		if line.LineID <= 0 {
-			return 0, fmt.Errorf("inventory: a production consumes for line id %d", line.LineID)
+			return contracts.StockPosted{}, fmt.Errorf("inventory: a production consumes for line id %d", line.LineID)
+		}
+		if line.AutoLot && line.LotID != 0 {
+			return contracts.StockPosted{}, fmt.Errorf("inventory: a consume line names lot %d and AutoLot", line.LotID)
 		}
 		from := line.FromLocationID
-		lines = append(lines, engineLine{index: i, variantID: line.VariantID, from: &from, quantity: q})
+		lines = append(lines, engineLine{index: i, variantID: line.VariantID, from: &from, quantity: q, lotID: line.LotID, autoLot: line.AutoLot,
+			allowExpired: line.AllowExpired})
 		takenOf(consumed, line.LineID, line.VariantID, q)
 	}
 	for i, line := range p.Produce {
 		q := quantities[len(p.Consume)+i]
 		if line.LineID <= 0 {
-			return 0, fmt.Errorf("inventory: a production produces for line id %d", line.LineID)
+			return contracts.StockPosted{}, fmt.Errorf("inventory: a production produces for line id %d", line.LineID)
 		}
 		to := line.ToLocationID
-		lines = append(lines, engineLine{index: len(p.Consume) + i, variantID: line.VariantID, to: &to, quantity: q})
+		lines = append(lines, engineLine{index: len(p.Consume) + i, variantID: line.VariantID, to: &to, quantity: q, lotID: line.LotID})
 	}
-	hash, err := requestHash(movementKindProduction, productionBody{Source: doc, Reserving: src, SiteID: p.SiteID, Consume: p.Consume, Produce: p.Produce})
+	kind := movementKindProduction
+	if p.Unbuild {
+		kind = movementKindUnbuild
+	}
+	hash, err := requestHash(kind, productionBody{Source: doc, Reserving: src, SiteID: p.SiteID, Consume: p.Consume, Produce: p.Produce,
+		ExpiredOverride: p.ExpiredOverride, Unbuild: p.Unbuild})
 	if err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
 	display := p.PostedByDisplay
 	if utf8.RuneCountInString(display) > 200 {
@@ -768,7 +885,7 @@ func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 	}
 	header := movementHeader{
 		clientRequestID: uuid.NewSHA1(productionKeySpace, []byte(fmt.Sprintf("%s\x00%s\x00%d", doc.Module, doc.Kind, doc.ID))),
-		requestHash:     hash, siteID: p.SiteID, kind: movementKindProduction,
+		requestHash:     hash, siteID: p.SiteID, kind: kind,
 		poster: actor{UserID: p.PostedByUserID, Display: display},
 		// The source line is the reserving document's id — the order the
 		// record produces for — so the movement links to it (M5).
@@ -778,13 +895,13 @@ func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 	// A replay first, before the site or the variants are judged again (I14).
 	if res, done, err := replayOf(ctx, txq, header); done || err != nil {
 		if err != nil {
-			return 0, issueError(err, lineOf, n)
+			return contracts.StockPosted{}, issueError(err, lineOf, n)
 		}
-		return res.movementID, nil
+		return l.replayed(ctx, txq, res.movementID, lines)
 	}
 	// A plant need not fulfil orders; it need only be active (M3).
 	if _, err := fulfillingSite(ctx, txq, p.SiteID, false); err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
 	ids := make([]int32, 0, n)
 	for i := range n {
@@ -795,24 +912,25 @@ func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 	// Discontinued variant is still produced and consumed (M1).
 	_, failures, err := l.stockedVariants(ctx, tx, ids, lineOf, n)
 	if err != nil {
-		return 0, err
+		return contracts.StockPosted{}, err
 	}
 	if len(failures) > 0 {
-		return 0, refusalOf(failures)
+		return contracts.StockPosted{}, refusalOf(failures)
 	}
-	res, err := l.s.post(ctx, tx, txq, header, lines, postOptions{})
+	// An unbuild's consume lines may take held and expired lots (M123).
+	res, err := l.s.post(ctx, tx, txq, header, lines, postOptions{today: p.Today, takes: !p.Unbuild, expiredOverride: p.ExpiredOverride})
 	if err != nil {
-		return 0, issueError(err, lineOf, n)
+		return contracts.StockPosted{}, issueError(err, lineOf, n)
 	}
 	if res.replay {
-		return res.movementID, nil
+		return l.replayed(ctx, txq, res.movementID, lines)
 	}
 	if len(consumed) > 0 {
 		if err := l.consumeReservations(ctx, txq, src, p.SiteID, consumed); err != nil {
-			return 0, err
+			return contracts.StockPosted{}, err
 		}
 	}
-	return res.movementID, nil
+	return contracts.StockPosted{MovementID: res.movementID, Picks: res.picks}, nil
 }
 
 // issueLineOf is an issue's lineOf for issueError: line i's variant and line
@@ -855,10 +973,13 @@ func issueError(err error, lineOf func(i int) (int32, int64), n int) error {
 			code = contracts.StockVariantNotStocked
 		case codeQuantityInvalid:
 			code = contracts.StockQuantityInvalid
+		case codeLotRequired, codeLotNotAllowed, codeLotUnknown, codeSerialQuantity, codeLotExpired, codeLotBlocked, codeLotDatesDiffer:
+			code = f.Code
 		default:
 			return err
 		}
-		out = append(out, contracts.StockLineRefusal{Code: code, VariantID: variantID, LineID: lineID, Detail: f.Detail})
+		out = append(out, contracts.StockLineRefusal{Code: code, VariantID: variantID, LineID: lineID, Detail: f.Detail, Index: int(f.Index),
+			LotID: r.lots[int(f.Index)].lot, LocationID: r.lots[int(f.Index)].location})
 	}
 	return refusalOf(out)
 }

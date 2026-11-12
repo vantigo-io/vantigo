@@ -63,6 +63,7 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 		site      store.InventorySite
 		locations = map[int64]store.InventoryLocation{}
 		transfer  *gen.InventoryTransferRef
+		lots      = map[int32]gen.InventoryLotRef{}
 	)
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -101,6 +102,13 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 			return err
 		}
 		transfer = refs[id]
+		lotRows, err := q.LotsOfMovementLines(ctx, id)
+		if err != nil {
+			return fmt.Errorf("inventory: read the lots of movement %d: %w", id, err)
+		}
+		for _, r := range lotRows {
+			lots[r.LineNo] = gen.InventoryLotRef{Id: r.ID, Number: r.Number, Expiry: dateOf(r.Expiry)}
+		}
 		return nil
 	})
 	if err != nil {
@@ -135,6 +143,12 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 		}
 		if l.ToLocationID != nil {
 			line.To = ptr(locationRefOf(locations[*l.ToLocationID]))
+		}
+		if lot, ok := lots[l.LineNo]; ok {
+			line.Lot = &lot
+		}
+		if l.ExpiredOverride {
+			line.ExpiredOverride = ptr(true)
 		}
 		out.Lines = append(out.Lines, line)
 	}

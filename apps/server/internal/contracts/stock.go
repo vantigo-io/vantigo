@@ -1,10 +1,14 @@
 package contracts
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -26,15 +30,19 @@ const MaxStockVariants = 1000
 //     stock and no reservation at 0 with no sites.
 //   - Quantities are exact decimal text, in the variant's own unit, with no
 //     trailing zeros ("12", "2.5"). Available may be negative: Inventory's own
-//     corrections may take on hand below what is reserved.
+//     corrections may take on hand below what is reserved, and a hold put on
+//     reserved stock lowers it (manufacturing phase 2 M63).
+//   - Available is judged on usable on hand (M63): the balances with no lot,
+//     plus those of lots with no active hold and not expired today in the
+//     workspace's zone. OnHand is everything that lies there.
 //   - It refuses more than MaxStockVariants variants, or a variant named
 //     twice (ValidateStockVariants), as a failure.
 type Stock interface {
 	// OnHand is each variant's on hand: with siteID nil, across every site
 	// and per site holding it; with siteID set, at that site only.
 	OnHand(ctx context.Context, variantIDs []int32, siteID *int64) ([]StockQuantity, error)
-	// Available is each variant's on hand less what is reserved, the same
-	// way: Sites lists every site where the variant lies or is reserved.
+	// Available is each variant's usable on hand less what is reserved, the
+	// same way: Sites lists every site where the variant lies or is reserved.
 	Available(ctx context.Context, variantIDs []int32, siteID *int64) ([]StockQuantity, error)
 	// Sites is every site that is not archived, by code: what a caller
 	// offers as the site an order is fulfilled from, and checks one against
@@ -49,6 +57,114 @@ type Stock interface {
 	// full code: what a caller offers as the location a document takes stock
 	// from or puts it on (manufacturing design M2). An unknown site has none.
 	SiteLocations(ctx context.Context, siteID int64) ([]StockSiteLocation, error)
+	// Lots is, per variant, every lot holding more than 0 at an active location of
+	// the site, with its location, in FEFO order (manufacturing phase 2 M65). A
+	// variant with none has no row.
+	Lots(ctx context.Context, variantIDs []int32, siteID int64) ([]StockLot, error)
+}
+
+// StockLot is one lot of a variant on one location of a site, as Stock.Lots
+// answers it (manufacturing phase 2 M67).
+type StockLot struct {
+	VariantID  int32
+	LotID      int64
+	Number     string
+	Serial     bool
+	Expiry     *time.Time // a date, nil when none
+	BestBefore *time.Time
+	ReceivedAt time.Time
+	LocationID int64
+	FullCode   string
+	Quantity   string // exact decimal text, > 0
+	Status     string // "available" | "quarantine" | "blocked", derived (M64)
+}
+
+// The statuses of a lot (manufacturing phase 2 M64), derived from its active
+// holds: blocked while any is a block, quarantine while any is a quarantine.
+const (
+	LotAvailable  = "available"
+	LotQuarantine = "quarantine"
+	LotBlocked    = "blocked"
+)
+
+// LotPick is one lot a FEFO proposal takes from (manufacturing phase 2 M65).
+type LotPick struct {
+	LotID      int64
+	LocationID int64
+	Quantity   string
+}
+
+// ProposeLots is the FEFO proposal (manufacturing phase 2 M65): it takes
+// quantity from rows in their order, skipping rows not available or expired on
+// today, and answers the picks and what it could not cover. rows are one
+// variant's at one site, as Stock.Lots answers them. The order is expiry
+// (none last), then received, then lot id: FIFO when no lot expires. A serial
+// row is taken whole or not at all, and "" short means all was covered.
+func ProposeLots(rows []StockLot, quantity string, today time.Time) (picks []LotPick, short string, err error) {
+	left, ok := new(big.Rat).SetString(quantity)
+	if !ok || left.Sign() <= 0 {
+		return nil, "", fmt.Errorf("contracts: propose lots for the quantity %q", quantity)
+	}
+	ordered := slices.Clone(rows)
+	slices.SortStableFunc(ordered, func(a, b StockLot) int {
+		switch {
+		case a.Expiry == nil && b.Expiry != nil:
+			return 1
+		case a.Expiry != nil && b.Expiry == nil:
+			return -1
+		case a.Expiry != nil && b.Expiry != nil:
+			if c := a.Expiry.Compare(*b.Expiry); c != 0 {
+				return c
+			}
+		}
+		return cmp.Or(a.ReceivedAt.Compare(b.ReceivedAt), cmp.Compare(a.LotID, b.LotID), cmp.Compare(a.LocationID, b.LocationID))
+	})
+	for _, r := range ordered {
+		if left.Sign() == 0 {
+			break
+		}
+		if r.Status != LotAvailable || LotExpired(r.Expiry, today) {
+			continue
+		}
+		q, ok := new(big.Rat).SetString(r.Quantity)
+		if !ok || q.Sign() <= 0 {
+			return nil, "", fmt.Errorf("contracts: lot %d has the quantity %q", r.LotID, r.Quantity)
+		}
+		if r.Serial && q.Cmp(left) > 0 {
+			continue
+		}
+		take := q
+		if q.Cmp(left) > 0 {
+			take = new(big.Rat).Set(left)
+		}
+		left.Sub(left, take)
+		picks = append(picks, LotPick{LotID: r.LotID, LocationID: r.LocationID, Quantity: decimalString(take)})
+	}
+	if left.Sign() > 0 {
+		short = decimalString(left)
+	}
+	return picks, short, nil
+}
+
+// LotExpired reports whether a lot of this expiry is expired on today (both
+// dates): its expiry lies before today (manufacturing phase 2 M62). A lot
+// with no expiry never expires.
+func LotExpired(expiry *time.Time, today time.Time) bool {
+	if expiry == nil {
+		return false
+	}
+	e, t := expiry.UTC(), today.UTC()
+	return time.Date(e.Year(), e.Month(), e.Day(), 0, 0, 0, 0, time.UTC).Before(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC))
+}
+
+// decimalString is r as the shortest exact decimal text with at most three
+// decimals: "12", "2.5".
+func decimalString(r *big.Rat) string {
+	s := r.FloatString(3)
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	}
+	return s
 }
 
 // StockSite is a site as Stock answers it: its id, code and name, whether it
@@ -133,12 +249,20 @@ func ValidateStockVariants(ids []int32) error {
 //   - It never begins, commits or rolls back a transaction, and never touches
 //     a pool: tx is the caller's. Its SQL is its own, on its own schema.
 //   - It reads no directory and calls no contract but
-//     ProductCatalog.LockVariants, on tx.
+//     ProductCatalog.LockVariants, on tx. What it needs from outside
+//     Inventory — today's date in the workspace zone, whether the principal
+//     may use an expired lot — the caller reads on the pool before its
+//     transaction and passes as data (manufacturing phase 2 M62).
 //   - The lock order is the caller's: ProductCatalog.LockVariants first, then
-//     the caller's own rows, then — inside these calls — Inventory's
-//     balances, in (variant, location) order, and its reservations. A caller
-//     never locks Inventory's rows another way and never calls the ledger
-//     before it has locked the variants.
+//     the caller's own rows, then — inside these calls — Inventory's: the lot
+//     counter (only to generate a number), new lots in (variant, number)
+//     order, every lot named in id order (FOR SHARE, FOR NO KEY UPDATE for a
+//     serial lot increased, or for a hold), the movement's header, the
+//     locations FOR SHARE, the balances in (variant, location, lot) order
+//     with no lot first, and the reservations (manufacturing phase 2 M58).
+//     A caller never locks Inventory's rows another way and never calls the
+//     ledger before it has locked the variants; EnsureLots runs before the
+//     Produce that uses its lots.
 //   - It refuses only through *StockRefusal, naming every failing line.
 //     Reserve, ReserveForProduction and Release write nothing when they
 //     refuse. After a refusal from Issue or Produce the caller must roll back
@@ -150,9 +274,11 @@ func ValidateStockVariants(ids []int32) error {
 type StockLedger interface {
 	// Reserve adds each line's quantity to the line's reservation at the
 	// site, after checking that the variant is goods and the site exists, is
-	// active and fulfils orders, and that the site's available — on hand
-	// summed over its locations, less every reservation there — covers it.
-	Reserve(ctx context.Context, tx pgx.Tx, src StockSource, siteID int64, lines []StockLine) error
+	// active and fulfils orders, and that the site's available — usable on
+	// hand summed over its locations (no held or expired lot, judged on
+	// today, a date in the workspace zone the caller read on the pool), less
+	// every reservation there — covers it.
+	Reserve(ctx context.Context, tx pgx.Tx, src StockSource, siteID int64, today time.Time, lines []StockLine) error
 	// Release gives back reservations of the document: with no releases,
 	// every reservation it holds; otherwise, per release, the line's whole
 	// reservation (Quantity "") or that quantity of it, at every site the
@@ -168,8 +294,12 @@ type StockLedger interface {
 	// the first movement and consumes nothing again; one with another body is
 	// refused (StockDocumentReused). Stock the location does not hold
 	// is refused (StockInsufficientStock); reservations of other documents
-	// never stop an issue.
-	Issue(ctx context.Context, tx pgx.Tx, src StockSource, issue StockIssue) (movementID int64, err error)
+	// never stop an issue. A line of a tracked variant names its lot, or
+	// AutoLot lets Inventory take the lots FEFO at its location under its own
+	// locks; a lot on hold is refused (StockLotBlocked), an expired one too
+	// unless the line AllowExpired and the call's ExpiredOverride
+	// (StockLotExpired). It answers the movement and the lots AutoLot took.
+	Issue(ctx context.Context, tx pgx.Tx, src StockSource, issue StockIssue) (StockPosted, error)
 	// ReservationsFor is every reservation the document holds, by line id
 	// then site id.
 	ReservationsFor(ctx context.Context, tx pgx.Tx, src StockSource) ([]Reservation, error)
@@ -179,7 +309,7 @@ type StockLedger interface {
 	// goods, the site exists and is active (an archived one is
 	// StockSiteArchived), and its available covers the line — and Release
 	// and ReservationsFor treat the reservation as any other.
-	ReserveForProduction(ctx context.Context, tx pgx.Tx, src StockSource, siteID int64, lines []StockLine) error
+	ReserveForProduction(ctx context.Context, tx pgx.Tx, src StockSource, siteID int64, today time.Time, lines []StockLine) error
 	// Produce posts one movement of kind "production" at the site
 	// (manufacturing design M2): each consume line takes its quantity off its
 	// from-location, each produce line puts its quantity on its to-location,
@@ -200,8 +330,66 @@ type StockLedger interface {
 	// bad quantity (StockQuantityInvalid); a variant that is unknown or not
 	// goods (StockVariantNotStocked) — a Discontinued one is still produced;
 	// and stock a location does not hold (StockInsufficientStock).
-	// Reservations of other documents never stop a production.
-	Produce(ctx context.Context, tx pgx.Tx, src StockSource, p StockProduction) (movementID int64, err error)
+	// Reservations of other documents never stop a production. Consume
+	// lines keep Issue's lot rules (an unbuild's may take held and expired
+	// lots); a produce line of a tracked variant names a lot EnsureLots made.
+	Produce(ctx context.Context, tx pgx.Tx, src StockSource, p StockProduction) (StockPosted, error)
+	// EnsureLots finds or creates each lot, inside tx, after the caller's rows and
+	// before Produce, and answers the lot ids in the order given. A lot that exists
+	// for the variant is answered as is: only the dates the NewLot states are
+	// compared (StockLotDatesDiffer); nil dates are ignored for it. A new serial
+	// whose number holds stock is StockSerialQuantity. After a refusal the caller
+	// rolls back, as after Produce.
+	EnsureLots(ctx context.Context, tx pgx.Tx, src StockSource, today time.Time, lots []NewLot) ([]int64, error)
+	// HoldLots puts one hold per entry for src's document (Q's deviation), inside
+	// tx, taking the lots FOR NO KEY UPDATE in id order. A lot that already holds
+	// an active hold of src with the same kind is left as is.
+	HoldLots(ctx context.Context, tx pgx.Tx, src StockSource, holds []LotHold) error
+	// ReleaseLotHolds releases every active hold src's document put on the lots
+	// named (on every lot when lotIDs is nil). Holds of any other source stay.
+	ReleaseLotHolds(ctx context.Context, tx pgx.Tx, src StockSource, lotIDs []int64, by LotActor) error
+}
+
+// StockPosted is what Issue and Produce posted (manufacturing phase 2 M67):
+// the movement, and the lots each AutoLot line took.
+type StockPosted struct {
+	MovementID int64
+	Picks      []StockPick // one per lot an AutoLot line took, by line index
+}
+
+// StockPick is one lot an AutoLot line took: the line's index in Lines or
+// Consume, the lot, its location and the quantity.
+type StockPick struct {
+	Index      int // the line's index in Lines or Consume
+	LotID      int64
+	LocationID int64
+	Quantity   string
+}
+
+// NewLot is a lot EnsureLots finds by number or creates (manufacturing phase
+// 2 M57, M80).
+type NewLot struct {
+	VariantID      int32
+	Number         string // "" to generate L<n>
+	SupplierLot    string
+	ProductionDate time.Time  // required: today for a production, unless the person gave one
+	BestBefore     *time.Time // nil: production date + BestBeforeDays, on creation only
+	Expiry         *time.Time // nil: production date + ExpiryDays, on creation only
+}
+
+// LotHold is one hold HoldLots puts (manufacturing phase 2 M64).
+type LotHold struct {
+	LotID       int64
+	Kind, Cause string // "quarantine" | "block"; M64's causes
+	Note        string
+	By          LotActor
+}
+
+// LotActor is who puts or releases a hold, as the hold keeps it; both may be
+// empty for a system change.
+type LotActor struct {
+	UserID  *uuid.UUID
+	Display string
 }
 
 // StockSource names a document of another module: "orders", "order", the
@@ -249,6 +437,14 @@ type StockIssue struct {
 	// keeps it; both may be empty for a system posting.
 	PostedByUserID  *uuid.UUID
 	PostedByDisplay string
+	// Today is the workspace zone's date, read by the caller on the pool
+	// before its transaction (manufacturing phase 2 M62); zero is a
+	// programming error.
+	Today time.Time
+	// ExpiredOverride is whether the principal holds
+	// inventory:expired-override, read by the caller on the pool; a worker
+	// with no request passes false.
+	ExpiredOverride bool
 }
 
 // IssueLine is one line of an issue: the variant, the reserving document's
@@ -259,6 +455,9 @@ type IssueLine struct {
 	LineID         int64
 	FromLocationID int64
 	Quantity       string
+	LotID          int64 // 0 for none; required for a tracked variant unless AutoLot
+	AutoLot        bool  // M65a: Inventory picks the lots FEFO at FromLocationID under its locks
+	AllowExpired   bool  // M62: honoured only when the call's ExpiredOverride is true
 }
 
 // StockProduction is a movement of stock within a site for a producing
@@ -274,6 +473,12 @@ type StockProduction struct {
 	// keeps it; both may be empty for a system posting.
 	PostedByUserID  *uuid.UUID
 	PostedByDisplay string
+	// Today and ExpiredOverride are StockIssue's (manufacturing phase 2 M62).
+	Today           time.Time
+	ExpiredOverride bool
+	// Unbuild is a movement of kind "unbuild" (M123), whose consume lines may
+	// take held and expired lots.
+	Unbuild bool
 }
 
 // ConsumeLine is one component a production uses up: the variant, the
@@ -285,16 +490,22 @@ type ConsumeLine struct {
 	LineID         int64
 	FromLocationID int64
 	Quantity       string
+	LotID          int64 // 0 for none; required for a tracked variant unless AutoLot
+	AutoLot        bool  // M65a: Inventory picks the lots FEFO at FromLocationID under its locks
+	AllowExpired   bool  // M62: honoured only when the call's ExpiredOverride is true
 }
 
 // ProduceLine is one item a production puts in stock: the variant, the
 // producing document's line id, the location it is put on, and a quantity
-// more than 0 (exact decimal text, at most three decimals).
+// more than 0 (exact decimal text, at most three decimals). A production's
+// produce lines are keyed by (VariantID, LineID): a by-product's LineID is its
+// order_outputs id, which may equal a component's (M121).
 type ProduceLine struct {
 	VariantID    int32
 	LineID       int64
 	ToLocationID int64
 	Quantity     string
+	LotID        int64 // 0 for none; a lot made by EnsureLots, required for a tracked variant
 }
 
 // Reservation is what one line of a document holds at one site.
@@ -336,6 +547,14 @@ const (
 	// posted with another body (other lines, order or quantities); the first
 	// posting stands.
 	StockDocumentReused = "document_reused"
+	// The lot rules (manufacturing phase 2 M56, M57).
+	StockLotRequired    = "lot_required"
+	StockLotUnknown     = "lot_unknown"
+	StockLotNotAllowed  = "lot_not_allowed"
+	StockSerialQuantity = "serial_quantity"
+	StockLotExpired     = "lot_expired"
+	StockLotBlocked     = "lot_blocked"
+	StockLotDatesDiffer = "lot_dates_differ"
 )
 
 // StockRefusal is the one error a StockLedger write answers for what it will
@@ -350,12 +569,20 @@ type StockRefusal struct {
 	Lines     []StockLineRefusal
 }
 
-// StockLineRefusal is one failing line of a StockRefusal.
+// StockLineRefusal is one failing line of a StockRefusal. Index is the
+// line's index in the call's lines (Issue's Lines; Produce's Consume, then
+// Produce after them; EnsureLots' lots; Reserve's lines), and LotID and
+// LocationID the lot and location it failed at, 0 when none — so a caller maps
+// a refusal to the exact row when one document line became several ledger
+// lines (manufacturing phase 2 M67).
 type StockLineRefusal struct {
-	Code      string
-	VariantID int32
-	LineID    int64
-	Detail    string
+	Code       string
+	VariantID  int32
+	LineID     int64
+	Detail     string
+	Index      int
+	LotID      int64
+	LocationID int64
 }
 
 func (r *StockRefusal) Error() string {

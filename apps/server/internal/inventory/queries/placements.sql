@@ -83,8 +83,9 @@ RETURNING p.variant_id, p.site_id, prev.primary_location_id::bigint AS primary_l
 
 -- name: LowStock :many
 -- LowStock is the low-stock list (I56, I58): every placement with a reorder
--- point at an active site whose available (on hand over the site's
--- locations less reserved at the site) plus incoming (in transit to the
+-- point at an active site whose available (usable on hand over the site's
+-- locations — no lot held or expired on today, manufacturing phase 2 M63 —
+-- less reserved at the site) plus incoming (in transit to the
 -- site) is at or below it — optionally one site, q a part of the SKU or
 -- name snapshot, ignoring case — by site code, SKU snapshot and variant id,
 -- after the cursor's. Quantities as text, for the rule's arithmetic in
@@ -98,7 +99,9 @@ CROSS JOIN LATERAL (
     SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
     FROM inventory.balances b
     JOIN inventory.locations l ON l.id = b.location_id
-    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id) oh
+    LEFT JOIN inventory.lots t ON t.id = b.lot_id
+    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id
+      AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= @today::date)))) oh
 CROSS JOIN LATERAL (
     SELECT coalesce(sum(r.quantity), 0)::numeric AS reserved
     FROM inventory.reservations r
@@ -131,7 +134,9 @@ CROSS JOIN LATERAL (
     SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
     FROM inventory.balances b
     JOIN inventory.locations l ON l.id = b.location_id
-    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id) oh
+    LEFT JOIN inventory.lots t ON t.id = b.lot_id
+    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id
+      AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= @today::date)))) oh
 CROSS JOIN LATERAL (
     SELECT coalesce(sum(r.quantity), 0)::numeric AS reserved
     FROM inventory.reservations r
@@ -157,7 +162,9 @@ WITH oh AS (
     SELECT b.variant_id, l.site_id, sum(b.on_hand) AS on_hand
     FROM inventory.balances b
     JOIN inventory.locations l ON l.id = b.location_id
+    LEFT JOIN inventory.lots t ON t.id = b.lot_id
     WHERE b.variant_id = ANY(@variant_ids::int[])
+      AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= @today::date)))
     GROUP BY b.variant_id, l.site_id
 ), rs AS (
     SELECT r.variant_id, r.site_id, sum(r.quantity) AS reserved

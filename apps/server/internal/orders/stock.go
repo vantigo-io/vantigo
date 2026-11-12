@@ -43,6 +43,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -228,10 +229,17 @@ func trimZeros(s string) string {
 	return s
 }
 
+// permInventoryExpiredOverride is Inventory's key that lets a person take an
+// expired lot (manufacturing phase 2 M62, M68): Orders reads it on the pool
+// before a delivery's transaction and passes it to the ledger as data.
+const permInventoryExpiredOverride = "inventory:expired-override"
+
 // reserveLines reserves want of each line at the order's site, on tx: lines
 // with nothing wanted are skipped, and a refusal names the order's lines by
-// their index in lines (stockRefused).
-func (s *server) reserveLines(ctx context.Context, tx pgx.Tx, o store.OrdersOrder, lines []store.OrdersLine, want map[int64]*big.Rat, title string) error {
+// their index in lines (stockRefused). today is the business day, read on
+// the pool before the transaction: the day the ledger judges a lot's expiry
+// on (manufacturing phase 2 M63), never read inside it (rule 24).
+func (s *server) reserveLines(ctx context.Context, tx pgx.Tx, o store.OrdersOrder, lines []store.OrdersLine, want map[int64]*big.Rat, today time.Time, title string) error {
 	if !s.atSite(o.SiteID) || s.deps.StockLedger == nil {
 		return nil
 	}
@@ -246,7 +254,7 @@ func (s *server) reserveLines(ctx context.Context, tx pgx.Tx, o store.OrdersOrde
 	if len(reserve) == 0 {
 		return nil
 	}
-	if err := s.deps.StockLedger.Reserve(ctx, tx, orderStock(o.ID), *o.SiteID, reserve); err != nil {
+	if err := s.deps.StockLedger.Reserve(ctx, tx, orderStock(o.ID), *o.SiteID, today, reserve); err != nil {
 		return stockRefused(err, lines, title)
 	}
 	return nil
@@ -320,7 +328,7 @@ func stockRefused(err error, lines []store.OrdersLine, title string) error {
 
 // reserveOpen reserves what of each goods line's open quantity is not held
 // yet: confirm's reservation and Reserve now's.
-func (s *server) reserveOpen(ctx context.Context, tx pgx.Tx, o store.OrdersOrder, lines []store.OrdersLine, title string) (bool, error) {
+func (s *server) reserveOpen(ctx context.Context, tx pgx.Tx, o store.OrdersOrder, lines []store.OrdersLine, today time.Time, title string) (bool, error) {
 	reserved, err := s.reservedByLine(ctx, tx, o.ID)
 	if err != nil {
 		return false, err
@@ -341,7 +349,7 @@ func (s *server) reserveOpen(ctx context.Context, tx pgx.Tx, o store.OrdersOrder
 	if len(want) == 0 {
 		return false, nil
 	}
-	return true, s.reserveLines(ctx, tx, o, lines, want, title)
+	return true, s.reserveLines(ctx, tx, o, lines, want, today, title)
 }
 
 // adjustReservations follows a confirmed order's edit (O26, O46) on tx:
@@ -353,7 +361,7 @@ func (s *server) reserveOpen(ctx context.Context, tx pgx.Tx, o store.OrdersOrder
 // line its whole open quantity. With Inventory off a kept line keeps how it
 // is delivered (saveConfirmedOrder), so it releases only what it no longer
 // has open, never because Inventory is off.
-func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.OrdersOrder, before, after []store.OrdersLine, title string) error {
+func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.OrdersOrder, before, after []store.OrdersLine, today time.Time, title string) error {
 	reserved, err := s.reservedByLine(ctx, tx, o.ID)
 	if err != nil {
 		return err
@@ -410,7 +418,7 @@ func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.Orde
 			want[l.ID] = grew
 		}
 	}
-	return s.reserveLines(ctx, tx, o, after, want, title)
+	return s.reserveLines(ctx, tx, o, after, want, today, title)
 }
 
 // releaseBeyondOpen releases what each line holds reserved beyond its open

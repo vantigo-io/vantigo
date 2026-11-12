@@ -22,13 +22,15 @@ VALUES (@site_id, @scope_location_id, 'counting', sqlc.narg(note), sqlc.narg(ope
 RETURNING id;
 
 -- name: FreezeCountLines :execrows
--- FreezeCountLines writes a line per balance in the count's scope, expecting
--- what the balance holds at this moment (I17).
+-- FreezeCountLines writes a line per variant and location in the count's
+-- scope, expecting what it holds at this moment, summed over its lots (I17;
+-- counts per lot are manufacturing phase 2 L2's M69).
 INSERT INTO inventory.count_lines (count_id, variant_id, location_id, expected)
-SELECT @count_id, b.variant_id, b.location_id, b.on_hand
+SELECT @count_id, b.variant_id, b.location_id, sum(b.on_hand)
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE l.id = @scope_id OR l.ancestors @> ARRAY[@scope_id::bigint]
+GROUP BY b.location_id, b.variant_id
 ORDER BY b.location_id, b.variant_id;
 
 -- name: GetCount :one
@@ -44,10 +46,10 @@ SELECT * FROM inventory.counts WHERE id = @id FOR UPDATE;
 -- balance they stand on now (0 when there is none).
 SELECT cl.id, cl.count_id, cl.variant_id, cl.location_id, cl.expected, cl.counted, cl.entered, cl.added,
        cl.counted_by_user_id, cl.counted_by_display, cl.counted_at, l.full_code,
-       coalesce(b.on_hand, 0)::numeric AS current
+       coalesce((SELECT sum(b.on_hand) FROM inventory.balances b
+                 WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id), 0)::numeric AS current
 FROM inventory.count_lines cl
 JOIN inventory.locations l ON l.id = cl.location_id
-LEFT JOIN inventory.balances b ON b.variant_id = cl.variant_id AND b.location_id = cl.location_id
 WHERE cl.count_id = @count_id
 ORDER BY l.full_code, cl.variant_id;
 
@@ -96,8 +98,9 @@ SELECT c.*,
        (SELECT count(*) FROM inventory.count_lines cl WHERE cl.count_id = c.id AND cl.counted IS NOT NULL)::int AS counted_lines,
        (CASE WHEN c.status = 'counting' THEN (
             SELECT count(*) FROM inventory.count_lines cl
-            LEFT JOIN inventory.balances b ON b.variant_id = cl.variant_id AND b.location_id = cl.location_id
-            WHERE cl.count_id = c.id AND coalesce(b.on_hand, 0) <> cl.expected)
+            WHERE cl.count_id = c.id
+              AND coalesce((SELECT sum(b.on_hand) FROM inventory.balances b
+                            WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id), 0) <> cl.expected)
         ELSE 0 END)::int AS moved_lines
 FROM inventory.counts c
 WHERE (sqlc.narg(status)::text IS NULL OR c.status = sqlc.narg(status)::text)

@@ -26,8 +26,8 @@ func produce(t *testing.T, h *harness, src contracts.StockSource, p contracts.St
 	t.Helper()
 	var id int64
 	err := inTx(t, h, func(tx pgx.Tx) error {
-		var err error
-		id, err = ledgerOf(h).Produce(t.Context(), tx, src, p)
+		posted, err := ledgerOf(h).Produce(t.Context(), tx, src, p)
+		id = posted.MovementID
 		return err
 	})
 	return id, err
@@ -42,7 +42,7 @@ func TestStockLedger_ProduceConsumesAndProduces(t *testing.T) {
 	l := ledgerOf(h)
 	site := s.site.Id
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.ReserveForProduction(t.Context(), tx, mo, site, []contracts.StockLine{
+		return l.ReserveForProduction(t.Context(), tx, mo, site, testToday, []contracts.StockLine{
 			{VariantID: varBolt, LineID: 1, Quantity: "6"}, {VariantID: varNut, LineID: 2, Quantity: "1"},
 		})
 	}); err != nil {
@@ -52,7 +52,7 @@ func TestStockLedger_ProduceConsumesAndProduces(t *testing.T) {
 	// Line 1 had 6 reserved and consumes 4; line 2 had 1 and consumes 2
 	// (floored at 0). The output is a Discontinued variant: still produced.
 	record := contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 9}
-	p := contracts.StockProduction{Document: record, SiteID: site, PostedByUserID: &user, PostedByDisplay: "Operator",
+	p := contracts.StockProduction{Today: testToday, Document: record, SiteID: site, PostedByUserID: &user, PostedByDisplay: "Operator",
 		Consume: []contracts.ConsumeLine{
 			{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "4"},
 			{VariantID: varNut, LineID: 2, FromLocationID: s.shelf1.Id, Quantity: "2"},
@@ -99,7 +99,7 @@ func TestStockLedger_ProduceConsumesAndProduces(t *testing.T) {
 
 	// A scrap: consume lines only.
 	scrap := contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 10}
-	if _, err := produce(t, h, mo, contracts.StockProduction{Document: scrap, SiteID: site, Consume: []contracts.ConsumeLine{
+	if _, err := produce(t, h, mo, contracts.StockProduction{Today: testToday, Document: scrap, SiteID: site, Consume: []contracts.ConsumeLine{
 		{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "1"},
 	}}); err != nil {
 		t.Fatalf("Produce a scrap: %v", err)
@@ -110,10 +110,10 @@ func TestStockLedger_ProduceConsumesAndProduces(t *testing.T) {
 
 	// No lines, and bad quantities — every such line named — are refusals.
 	none := contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 11}
-	if _, err := produce(t, h, mo, contracts.StockProduction{Document: none, SiteID: site}); refusalCode(err) != contracts.StockNothingToPost {
+	if _, err := produce(t, h, mo, contracts.StockProduction{Today: testToday, Document: none, SiteID: site}); refusalCode(err) != contracts.StockNothingToPost {
 		t.Errorf("Produce of nothing = %v, want nothing_to_post", err)
 	}
-	_, err = produce(t, h, mo, contracts.StockProduction{Document: none, SiteID: site,
+	_, err = produce(t, h, mo, contracts.StockProduction{Today: testToday, Document: none, SiteID: site,
 		Consume: []contracts.ConsumeLine{
 			{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "0"},
 			{VariantID: varBolt, LineID: 2, FromLocationID: s.shelf1.Id, Quantity: "1"},
@@ -138,7 +138,7 @@ func TestStockLedger_ProduceRefusesAndWritesNothing(t *testing.T) {
 	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 3), receiptLine(varNut, 1))
 	site := s.site.Id
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		return ledgerOf(h).ReserveForProduction(t.Context(), tx, mo, site, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "2"}})
+		return ledgerOf(h).ReserveForProduction(t.Context(), tx, mo, site, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "2"}})
 	}); err != nil {
 		t.Fatalf("ReserveForProduction: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestStockLedger_ProduceRefusesAndWritesNothing(t *testing.T) {
 	record := contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 20}
 
 	// Two consume lines beyond on hand, the good one between them left alone.
-	_, err := produce(t, h, mo, contracts.StockProduction{Document: record, SiteID: site,
+	_, err := produce(t, h, mo, contracts.StockProduction{Today: testToday, Document: record, SiteID: site,
 		Consume: []contracts.ConsumeLine{
 			{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "4"},
 			{VariantID: varNut, LineID: 2, FromLocationID: s.shelf1.Id, Quantity: "1"},
@@ -173,16 +173,16 @@ func TestStockLedger_ProduceRefusesAndWritesNothing(t *testing.T) {
 		p    contracts.StockProduction
 		want string
 	}{
-		{"consumed at another site", contracts.StockProduction{Consume: []contracts.ConsumeLine{
+		{"consumed at another site", contracts.StockProduction{Today: testToday, Consume: []contracts.ConsumeLine{
 			{VariantID: varBolt, LineID: 1, FromLocationID: s.elsewhre.RootLocationId, Quantity: "1"},
 		}}, contracts.StockLocationUnknown},
-		{"produced at another site", contracts.StockProduction{Produce: []contracts.ProduceLine{
+		{"produced at another site", contracts.StockProduction{Today: testToday, Produce: []contracts.ProduceLine{
 			{VariantID: varWasher, LineID: 1, ToLocationID: s.elsewhre.RootLocationId, Quantity: "1"},
 		}}, contracts.StockLocationUnknown},
-		{"a service produced", contracts.StockProduction{Produce: []contracts.ProduceLine{
+		{"a service produced", contracts.StockProduction{Today: testToday, Produce: []contracts.ProduceLine{
 			{VariantID: varService, LineID: 1, ToLocationID: s.shelf1.Id, Quantity: "1"},
 		}}, contracts.StockVariantNotStocked},
-		{"an unknown site", contracts.StockProduction{SiteID: 999999, Produce: []contracts.ProduceLine{
+		{"an unknown site", contracts.StockProduction{Today: testToday, SiteID: 999999, Produce: []contracts.ProduceLine{
 			{VariantID: varWasher, LineID: 1, ToLocationID: s.shelf1.Id, Quantity: "1"},
 		}}, contracts.StockSiteUnknown},
 	} {
@@ -220,13 +220,13 @@ func TestStockLedger_ReserveForProductionAtAPlant(t *testing.T) {
 	l := ledgerOf(h)
 
 	err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.Reserve(t.Context(), tx, order, plant.Id, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}})
+		return l.Reserve(t.Context(), tx, order, plant.Id, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}})
 	})
 	if refusalCode(err) != contracts.StockSiteNotFulfilling {
 		t.Errorf("Reserve at the plant = %v, want site_not_fulfilling", err)
 	}
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.ReserveForProduction(t.Context(), tx, mo, plant.Id, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "4"}})
+		return l.ReserveForProduction(t.Context(), tx, mo, plant.Id, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "4"}})
 	}); err != nil {
 		t.Fatalf("ReserveForProduction at the plant: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestStockLedger_ReserveForProductionAtAPlant(t *testing.T) {
 		{"a service", contracts.StockLine{VariantID: varService, LineID: 3, Quantity: "1"}, contracts.StockVariantNotStocked},
 	} {
 		err := inTx(t, h, func(tx pgx.Tx) error {
-			return l.ReserveForProduction(t.Context(), tx, mo, plant.Id, []contracts.StockLine{tc.line})
+			return l.ReserveForProduction(t.Context(), tx, mo, plant.Id, testToday, []contracts.StockLine{tc.line})
 		})
 		if refusalCode(err) != tc.want {
 			t.Errorf("ReserveForProduction %s = %v, want %s", tc.name, err, tc.want)
@@ -255,7 +255,7 @@ func TestStockLedger_ReserveForProductionAtAPlant(t *testing.T) {
 	}
 
 	// The plant posts its production, though it fulfils no orders.
-	if _, err := produce(t, h, mo, contracts.StockProduction{SiteID: plant.Id, Consume: []contracts.ConsumeLine{
+	if _, err := produce(t, h, mo, contracts.StockProduction{Today: testToday, SiteID: plant.Id, Consume: []contracts.ConsumeLine{
 		{VariantID: varBolt, LineID: 1, FromLocationID: plant.RootLocationId, Quantity: "4"},
 	}, Produce: []contracts.ProduceLine{{VariantID: varWasher, LineID: 1, ToLocationID: plant.RootLocationId, Quantity: "2"}}}); err != nil {
 		t.Fatalf("Produce at the plant: %v", err)
@@ -267,7 +267,7 @@ func TestStockLedger_ReserveForProductionAtAPlant(t *testing.T) {
 	// Release treats the reservation as any other; an archived site is
 	// refused.
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.ReserveForProduction(t.Context(), tx, mo, plant.Id, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}})
+		return l.ReserveForProduction(t.Context(), tx, mo, plant.Id, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}})
 	}); err != nil {
 		t.Fatalf("ReserveForProduction again: %v", err)
 	}
@@ -279,13 +279,13 @@ func TestStockLedger_ReserveForProductionAtAPlant(t *testing.T) {
 	}
 	h.Exec(t, `UPDATE inventory.sites SET status = 'archived' WHERE id = $1`, plant.Id)
 	err = inTx(t, h, func(tx pgx.Tx) error {
-		return l.ReserveForProduction(t.Context(), tx, mo, plant.Id, []contracts.StockLine{{VariantID: varWasher, LineID: 1, Quantity: "1"}})
+		return l.ReserveForProduction(t.Context(), tx, mo, plant.Id, testToday, []contracts.StockLine{{VariantID: varWasher, LineID: 1, Quantity: "1"}})
 	})
 	if refusalCode(err) != contracts.StockSiteArchived {
 		t.Errorf("ReserveForProduction at an archived site = %v, want site_archived", err)
 	}
 	archived := contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 31}
-	_, err = produce(t, h, mo, contracts.StockProduction{Document: archived, SiteID: plant.Id, Consume: []contracts.ConsumeLine{
+	_, err = produce(t, h, mo, contracts.StockProduction{Today: testToday, Document: archived, SiteID: plant.Id, Consume: []contracts.ConsumeLine{
 		{VariantID: varWasher, LineID: 1, FromLocationID: plant.RootLocationId, Quantity: "1"},
 	}})
 	if refusalCode(err) != contracts.StockSiteArchived {
@@ -305,7 +305,7 @@ func TestStockLedger_ProduceBodyAndBounds(t *testing.T) {
 	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 10))
 	site := s.site.Id
 	record := contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 30}
-	p := contracts.StockProduction{Document: record, SiteID: site,
+	p := contracts.StockProduction{Today: testToday, Document: record, SiteID: site,
 		Consume: []contracts.ConsumeLine{{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "2"}},
 		Produce: []contracts.ProduceLine{{VariantID: varOld, LineID: 1, ToLocationID: s.shelf2.Id, Quantity: "3"}},
 	}
@@ -325,7 +325,7 @@ func TestStockLedger_ProduceBodyAndBounds(t *testing.T) {
 		t.Errorf("the same body again = %d, %v; want %d", again, err, first)
 	}
 	issueDoc := contracts.StockSource{Module: "orders", Kind: "delivery", ID: 31}
-	issue := contracts.StockIssue{Document: issueDoc, SiteID: site, Lines: []contracts.IssueLine{{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "1"}}}
+	issue := contracts.StockIssue{Today: testToday, Document: issueDoc, SiteID: site, Lines: []contracts.IssueLine{{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "1"}}}
 	if err := inTx(t, h, func(tx pgx.Tx) error { _, err := ledgerOf(h).Issue(t.Context(), tx, order, issue); return err }); err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestStockLedger_ProduceBodyAndBounds(t *testing.T) {
 
 	// The Discontinued output is now on hand, and consumed in a later
 	// production.
-	if _, err := produce(t, h, mo, contracts.StockProduction{Document: contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 32}, SiteID: site,
+	if _, err := produce(t, h, mo, contracts.StockProduction{Today: testToday, Document: contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 32}, SiteID: site,
 		Consume: []contracts.ConsumeLine{{VariantID: varOld, LineID: 2, FromLocationID: s.shelf2.Id, Quantity: "1"}},
 	}); err != nil {
 		t.Fatalf("Produce consuming a Discontinued variant: %v", err)
@@ -348,7 +348,7 @@ func TestStockLedger_ProduceBodyAndBounds(t *testing.T) {
 
 	// A produce line beyond the largest balance is a bad quantity, and
 	// the caller rolls back.
-	_, err = produce(t, h, mo, contracts.StockProduction{Document: contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 33}, SiteID: site,
+	_, err = produce(t, h, mo, contracts.StockProduction{Today: testToday, Document: contracts.StockSource{Module: "manufacturing", Kind: "production", ID: 33}, SiteID: site,
 		Produce: []contracts.ProduceLine{{VariantID: varOld, LineID: 3, ToLocationID: s.shelf2.Id, Quantity: "99999999999.999"}},
 	})
 	if refusalCode(err) != contracts.StockQuantityInvalid {
@@ -373,10 +373,10 @@ func TestStockLedger_RefusedReservesWriteNothing(t *testing.T) {
 	site := s.site.Id
 	for name, reserve := range map[string]func(tx pgx.Tx) error{
 		"Reserve": func(tx pgx.Tx) error {
-			return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}, {VariantID: varBolt, LineID: 2, Quantity: "5"}})
+			return l.Reserve(t.Context(), tx, order, site, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}, {VariantID: varBolt, LineID: 2, Quantity: "5"}})
 		},
 		"ReserveForProduction": func(tx pgx.Tx) error {
-			return l.ReserveForProduction(t.Context(), tx, mo, site, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}, {VariantID: varBolt, LineID: 2, Quantity: "5"}})
+			return l.ReserveForProduction(t.Context(), tx, mo, site, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}, {VariantID: varBolt, LineID: 2, Quantity: "5"}})
 		},
 	} {
 		// The refusal is swallowed and the transaction committed.

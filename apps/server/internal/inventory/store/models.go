@@ -16,6 +16,7 @@ type InventoryBalance struct {
 	LocationID int64
 	OnHand     pgtype.Numeric
 	UpdatedAt  time.Time
+	LotID      *int64
 }
 
 type InventoryCount struct {
@@ -87,6 +88,48 @@ type InventoryLocation struct {
 	UpdatedAt time.Time
 }
 
+type InventoryLot struct {
+	ID               int64
+	VariantID        int32
+	Number           string
+	Serial           bool
+	SupplierLot      *string
+	ProductionDate   pgtype.Date
+	BestBefore       pgtype.Date
+	Expiry           pgtype.Date
+	ReceivedAt       time.Time
+	OriginModule     *string
+	OriginKind       *string
+	OriginID         *string
+	Status           string
+	Note             *string
+	Sku              string
+	ProductName      string
+	Revision         int32
+	CreatedByUserID  *uuid.UUID
+	CreatedByDisplay *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type InventoryLotHold struct {
+	ID                int64
+	LotID             int64
+	Kind              string
+	Cause             string
+	Note              *string
+	SourceModule      string
+	SourceKind        string
+	SourceID          string
+	CreatedByUserID   *uuid.UUID
+	CreatedByDisplay  *string
+	CreatedAt         time.Time
+	ReleasedAt        *time.Time
+	ReleasedByUserID  *uuid.UUID
+	ReleasedByDisplay *string
+	ReleaseNote       *string
+}
+
 type InventoryMovement struct {
 	ID                int64
 	ClientRequestID   uuid.UUID
@@ -108,17 +151,19 @@ type InventoryMovement struct {
 }
 
 type InventoryMovementLine struct {
-	ID             int64
-	MovementID     int64
-	LineNo         int32
-	VariantID      int32
-	Sku            string
-	ProductName    string
-	Unit           string
-	FromLocationID *int64
-	ToLocationID   *int64
-	Quantity       pgtype.Numeric
-	Entered        []byte
+	ID              int64
+	MovementID      int64
+	LineNo          int32
+	VariantID       int32
+	Sku             string
+	ProductName     string
+	Unit            string
+	FromLocationID  *int64
+	ToLocationID    *int64
+	Quantity        pgtype.Numeric
+	Entered         []byte
+	LotID           *int64
+	ExpiredOverride bool
 }
 
 type InventoryPlacement struct {

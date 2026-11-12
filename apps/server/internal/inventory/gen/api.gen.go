@@ -213,6 +213,7 @@ const (
 	Receipt     InventoryMovementKind = "receipt"
 	TransferIn  InventoryMovementKind = "transfer_in"
 	TransferOut InventoryMovementKind = "transfer_out"
+	Unbuild     InventoryMovementKind = "unbuild"
 )
 
 // Valid indicates whether the value is a known member of the InventoryMovementKind enum.
@@ -233,6 +234,8 @@ func (e InventoryMovementKind) Valid() bool {
 	case TransferIn:
 		return true
 	case TransferOut:
+		return true
+	case Unbuild:
 		return true
 	default:
 		return false
@@ -509,9 +512,15 @@ type InventoryAdjustmentLine struct {
 	Decrease *bool `json:"decrease,omitempty"`
 
 	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
-	Entered    *InventoryEntered           `json:"entered,omitempty"`
-	LocationId int64                       `json:"locationId"`
-	Mode       InventoryAdjustmentLineMode `json:"mode"`
+	Entered    *InventoryEntered `json:"entered,omitempty"`
+	LocationId int64             `json:"locationId"`
+
+	// Lot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays.
+	Lot *InventoryNewLot `json:"lot,omitempty"`
+
+	// LotId The lot the line takes or puts (manufacturing phase 2 M59): required for a tracked variant, refused for an untracked one (lot_not_allowed).
+	LotId *int64                      `json:"lotId,omitempty"`
+	Mode  InventoryAdjustmentLineMode `json:"mode"`
 
 	// Quantity Signed under change, at most three decimals.
 	Quantity  *float64 `json:"quantity,omitempty"`
@@ -869,6 +878,13 @@ type InventoryLookupResult struct {
 	Matches []InventoryLookupMatch `json:"matches"`
 }
 
+// InventoryLotRef A lot as a movement line names it (manufacturing phase 2 M52).
+type InventoryLotRef struct {
+	Expiry *openapi_types.Date `json:"expiry,omitempty"`
+	Id     int64               `json:"id"`
+	Number string              `json:"number"`
+}
+
 // InventoryLowStockElsewhere What another active site has available of the variant.
 type InventoryLowStockElsewhere struct {
 	Available float64 `json:"available"`
@@ -940,6 +956,9 @@ type InventoryMeta struct {
 	// CanManageLocations inventory:locations-manage — sites and locations.
 	CanManageLocations bool `json:"canManageLocations"`
 
+	// CanOverrideExpired inventory:expired-override — issuing or consuming an expired lot the person chose (manufacturing phase 2 M62).
+	CanOverrideExpired bool `json:"canOverrideExpired"`
+
 	// CanReceive inventory:receipts-manage — goods receipts.
 	CanReceive bool `json:"canReceive"`
 
@@ -951,6 +970,9 @@ type InventoryMeta struct {
 
 	// CanViewStock inventory:stock-view — quantities and movements.
 	CanViewStock bool `json:"canViewStock"`
+
+	// Today Today in the workspace's business time zone, the day a lot's expiry is judged against (manufacturing phase 2 M62).
+	Today openapi_types.Date `json:"today"`
 }
 
 // InventoryMoveInput A move (I15): at most 500 lines, every location in the site.
@@ -968,6 +990,9 @@ type InventoryMoveLine struct {
 	Entered        *InventoryEntered `json:"entered,omitempty"`
 	FromLocationId int64             `json:"fromLocationId"`
 
+	// LotId The lot the line takes or puts (manufacturing phase 2 M59): required for a tracked variant, refused for an untracked one (lot_not_allowed).
+	LotId *int64 `json:"lotId,omitempty"`
+
 	// Quantity A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11). More decimals are refused with quantity_invalid, never rounded.
 	Quantity     *float64 `json:"quantity,omitempty"`
 	ToLocationId int64    `json:"toLocationId"`
@@ -982,7 +1007,7 @@ type InventoryMovement struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1).
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
 	Kind     InventoryMovementKind   `json:"kind"`
 	Lines    []InventoryMovementLine `json:"lines"`
 	Note     *string                 `json:"note,omitempty"`
@@ -1004,7 +1029,7 @@ type InventoryMovement struct {
 	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
 }
 
-// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1).
+// InventoryMovementKind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
 type InventoryMovementKind string
 
 // InventoryMovementLine A quantity of a variant from a location, to one, or both (I9).
@@ -1012,9 +1037,15 @@ type InventoryMovementLine struct {
 	// Entered What a line was entered as, as it was at posting: each packaging's name, count and content then, and the loose rest (I25).
 	Entered *InventoryEnteredSnapshot `json:"entered,omitempty"`
 
+	// ExpiredOverride The line took an expired lot on the poster's inventory:expired-override (manufacturing phase 2 M62).
+	ExpiredOverride *bool `json:"expiredOverride,omitempty"`
+
 	// From A location as other answers name it.
 	From   *InventoryLocationRef `json:"from,omitempty"`
 	LineNo int32                 `json:"lineNo"`
+
+	// Lot A lot as a movement line names it (manufacturing phase 2 M52).
+	Lot *InventoryLotRef `json:"lot,omitempty"`
 
 	// Quantity More than 0, in the variant's unit as it was at posting.
 	Quantity float64 `json:"quantity"`
@@ -1040,7 +1071,7 @@ type InventoryMovementSummary struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
-	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1).
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
 	Kind      InventoryMovementKind `json:"kind"`
 	LineCount int32                 `json:"lineCount"`
 	Note      *string               `json:"note,omitempty"`
@@ -1057,6 +1088,18 @@ type InventoryMovementSummary struct {
 
 	// Transfer A transfer as other answers name it.
 	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
+}
+
+// InventoryNewLot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays.
+type InventoryNewLot struct {
+	BestBefore *openapi_types.Date `json:"bestBefore,omitempty"`
+	Expiry     *openapi_types.Date `json:"expiry,omitempty"`
+	Note       *string             `json:"note,omitempty"`
+
+	// Number 1–20 characters A–Z, a–z, 0–9 and . _ / -, unique per variant ignoring case.
+	Number         *string             `json:"number,omitempty"`
+	ProductionDate *openapi_types.Date `json:"productionDate,omitempty"`
+	SupplierLot    *string             `json:"supplierLot,omitempty"`
 }
 
 // InventoryPackaging A packaging of the variant as the catalog answers it (I24): what it holds in the variant's unit. The app breaks quantities down in them (I26).
@@ -1129,7 +1172,7 @@ type InventoryPlacementInput struct {
 	ReorderPoint      *float64 `json:"reorderPoint"`
 }
 
-// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type InventoryProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1185,9 +1228,25 @@ type InventoryReceiptLine struct {
 	// LocationId Overrides the receipt's toLocationId for this line.
 	LocationId *int64 `json:"locationId,omitempty"`
 
+	// Lot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays.
+	Lot *InventoryNewLot `json:"lot,omitempty"`
+
+	// LotId The lot the line takes or puts (manufacturing phase 2 M59): required for a tracked variant, refused for an untracked one (lot_not_allowed).
+	LotId *int64 `json:"lotId,omitempty"`
+
 	// Quantity A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11). More decimals are refused with quantity_invalid, never rounded.
-	Quantity  *float64 `json:"quantity,omitempty"`
-	VariantId int32    `json:"variantId"`
+	Quantity *float64 `json:"quantity,omitempty"`
+
+	// Serials The serial numbers of a receipt line of a serial variant (manufacturing phase 2 M57): count numbers from first, incrementing its trailing digits and keeping their width (SN0099, SN0100), or the numbers listed. The line becomes one line of 1 per serial, counted against the 500-line cap; the line's quantity, when given, must equal their number. The line's lot, when given, gives every serial its dates and supplier lot and names no number.
+	Serials   *InventorySerials `json:"serials,omitempty"`
+	VariantId int32             `json:"variantId"`
+}
+
+// InventorySerials The serial numbers of a receipt line of a serial variant (manufacturing phase 2 M57): count numbers from first, incrementing its trailing digits and keeping their width (SN0099, SN0100), or the numbers listed. The line becomes one line of 1 per serial, counted against the 500-line cap; the line's quantity, when given, must equal their number. The line's lot, when given, gives every serial its dates and supplier lot and names no number.
+type InventorySerials struct {
+	Count   *int      `json:"count,omitempty"`
+	First   *string   `json:"first,omitempty"`
+	Numbers *[]string `json:"numbers,omitempty"`
 }
 
 // InventorySite A warehouse or a store, the root of a location tree (I1).

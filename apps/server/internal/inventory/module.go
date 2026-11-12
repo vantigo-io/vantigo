@@ -17,8 +17,8 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
-// The seven permission keys (§5; the phase 2 design's I63 adds
-// transfers-manage). None is sensitive and all are delegable.
+// The eight permission keys (§5; the phase 2 design's I63 adds
+// transfers-manage, manufacturing phase 2's M68 expired-override). None is sensitive and all are delegable.
 // Every stock read and every write also needs both views, because they show
 // location codes and their forms pick locations; so a stock role is
 // locations-view + stock-view (+ the write keys), and locations-view alone
@@ -31,6 +31,10 @@ const (
 	permReceiptsManage  = "inventory:receipts-manage"
 	permCountsManage    = "inventory:counts-manage"
 	permTransfersManage = "inventory:transfers-manage"
+	// permExpiredOverride is manufacturing phase 2's M68: issuing or
+	// consuming an expired lot the person chose. Inventory never checks it
+	// inside a ledger call; the caller reads it on the pool (M62).
+	permExpiredOverride = "inventory:expired-override"
 )
 
 var permissions = []contracts.Permission{
@@ -67,6 +71,11 @@ var permissions = []contracts.Permission{
 	{
 		Key: permTransfersManage, Display: "Transfer stock",
 		Description: "Create, send, receive and cancel transfers of stock between sites, and close a transfer's difference.",
+		Category:    "Inventory", Sensitive: false, Delegable: true,
+	},
+	{
+		Key: permExpiredOverride, Display: "Use expired lots",
+		Description: "Issue or consume a lot past its expiry date, when the lot is chosen by hand on a delivery or a production.",
 		Category:    "Inventory", Sensitive: false, Delegable: true,
 	},
 }

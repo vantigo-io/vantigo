@@ -120,7 +120,7 @@ func syncReserved(ctx context.Context, ledger contracts.StockLedger, tx pgx.Tx, 
 // with insufficient_available, again without the lines it named, until the
 // rest goes through. Any other refusal is Inventory's 409. It answers the
 // lines left short.
-func (s *server) reserve(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, only map[int64]bool) ([]shortLine, error) {
+func (s *server) reserve(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, today time.Time, only map[int64]bool) ([]shortLine, error) {
 	ledger, err := s.ledger()
 	if err != nil {
 		return nil, err
@@ -151,7 +151,7 @@ func (s *server) reserve(ctx context.Context, tx pgx.Tx, txq *store.Queries, o s
 	}
 	refused := map[int64]bool{}
 	for len(pending) > 0 {
-		err := ledger.ReserveForProduction(ctx, tx, orderSource(o.ID), o.SiteID, pending)
+		err := ledger.ReserveForProduction(ctx, tx, orderSource(o.ID), o.SiteID, today, pending)
 		if err == nil {
 			break
 		}
@@ -262,7 +262,7 @@ func snapshotCost(e contracts.VariantEntry) pgtype.Numeric {
 // the timeline: the confirm itself and the reserve's outcome. The snapshot
 // also creates the work orders (M27), whose work centers' queues are noted
 // on notes; the reserve, the ledger, comes after them (M26a).
-func (s *server) confirmOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, locked map[int32]contracts.VariantEntry, who actor, notes *notices) ([]shortLine, error) {
+func (s *server) confirmOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, locked map[int32]contracts.VariantEntry, who actor, today time.Time, notes *notices) ([]shortLine, error) {
 	n, err := snapshot(ctx, txq, o, locked)
 	if err != nil {
 		return nil, err
@@ -295,7 +295,7 @@ func (s *server) confirmOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries
 	if err := event(ctx, txq, o.ID, gen.ManufacturingOrderEventKindConfirmed, who, at, map[string]any{"lines": n, "workOrders": len(workOrders)}); err != nil {
 		return nil, err
 	}
-	short, err := s.reserve(ctx, tx, txq, o, nil)
+	short, err := s.reserve(ctx, tx, txq, o, today, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -351,6 +351,11 @@ func (s *server) ConfirmManufacturingOrder(ctx context.Context, req gen.ConfirmM
 	if err != nil {
 		return nil, err
 	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.stockDay(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var short []shortLine
 	err = s.withOrder(ctx, req.Id, nil, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, lo *lockedOrder) error {
 		o := lo.order
@@ -368,7 +373,7 @@ func (s *server) ConfirmManufacturingOrder(ctx context.Context, req gen.ConfirmM
 			return notActive()
 		}
 		notes := newNotices()
-		if short, err = s.confirmOrder(ctx, tx, txq, o, lo.locked, who, notes); err != nil {
+		if short, err = s.confirmOrder(ctx, tx, txq, o, lo.locked, who, today, notes); err != nil {
 			return err
 		}
 		notes.orders[o.ID] = true
@@ -404,6 +409,11 @@ func (s *server) ReserveManufacturingOrder(ctx context.Context, req gen.ReserveM
 	if err != nil {
 		return nil, err
 	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.stockDay(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var short []shortLine
 	err = s.withOrder(ctx, req.Id, nil, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, lo *lockedOrder) error {
 		o := lo.order
@@ -413,7 +423,7 @@ func (s *server) ReserveManufacturingOrder(ctx context.Context, req gen.ReserveM
 		if !isOpen(o.Status) {
 			return orderNotOpen(o.Status)
 		}
-		if short, err = s.reserve(ctx, tx, txq, o, nil); err != nil {
+		if short, err = s.reserve(ctx, tx, txq, o, today, nil); err != nil {
 			return err
 		}
 		if _, err := txq.TouchOrder(ctx, store.TouchOrderParams{ID: o.ID, Now: s.deps.Clock()}); err != nil {
@@ -479,6 +489,11 @@ func (s *server) AddManufacturingOrderComponent(ctx context.Context, req gen.Add
 	if err != nil {
 		return nil, err
 	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.stockDay(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var short []shortLine
 	err = s.withOrder(ctx, req.Id, func(context.Context, *store.Queries, store.ManufacturingOrder) ([]int32, error) {
 		return []int32{in.VariantId}, nil
@@ -518,7 +533,7 @@ func (s *server) AddManufacturingOrderComponent(ctx context.Context, req gen.Add
 		if err != nil {
 			return err
 		}
-		if short, err = s.reserve(ctx, tx, txq, o, map[int64]bool{c.ID: true}); err != nil {
+		if short, err = s.reserve(ctx, tx, txq, o, today, map[int64]bool{c.ID: true}); err != nil {
 			return err
 		}
 		at := s.deps.Clock()
@@ -577,6 +592,11 @@ func (s *server) UpdateManufacturingOrderComponent(ctx context.Context, req gen.
 	if err != nil {
 		return nil, err
 	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.stockDay(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var short []shortLine
 	err = s.withOrder(ctx, req.Id, nil, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, lo *lockedOrder) error {
 		o := lo.order
@@ -625,7 +645,7 @@ func (s *server) UpdateManufacturingOrderComponent(ctx context.Context, req gen.
 				return err
 			}
 		}
-		if short, err = s.reserve(ctx, tx, txq, o, map[int64]bool{c.ID: true}); err != nil {
+		if short, err = s.reserve(ctx, tx, txq, o, today, map[int64]bool{c.ID: true}); err != nil {
 			return err
 		}
 		at := s.deps.Clock()
@@ -673,6 +693,11 @@ func closeAnswers() answers[gen.CloseManufacturingOrderResponseObject] {
 func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManufacturingOrderRequestObject) (gen.CloseManufacturingOrderResponseObject, error) {
 	in := req.Body
 	who, err := s.actorOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.stockDay(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -730,7 +755,7 @@ func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManuf
 				return err
 			}
 			backorderID = b.ID
-			if short, err = s.confirmOrder(ctx, tx, txq, b, lo.locked, who, notes); err != nil {
+			if short, err = s.confirmOrder(ctx, tx, txq, b, lo.locked, who, today, notes); err != nil {
 				return err
 			}
 			notes.orders[b.ID] = true

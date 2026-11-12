@@ -11,6 +11,7 @@ sql:
       - ../db/migrations/00125_inventory_reservations.sql
       - ../db/migrations/00152_inventory_transfers.sql
       - ../db/migrations/00155_inventory_placements.sql
+      - ../db/migrations/00163_inventory_lots.sql
     queries: queries
     gen:
       go:

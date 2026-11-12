@@ -99,7 +99,7 @@ func TestStockLedger_ReserveRefuseRelease(t *testing.T) {
 
 	// Two lines; the second asked again adds to its reservation.
 	err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{
+		return l.Reserve(t.Context(), tx, order, site, testToday, []contracts.StockLine{
 			{VariantID: varBolt, LineID: 11, Quantity: "12"}, {VariantID: varNut, LineID: 12, Quantity: "1.5"},
 		})
 	})
@@ -107,7 +107,7 @@ func TestStockLedger_ReserveRefuseRelease(t *testing.T) {
 		t.Fatalf("Reserve: %v", err)
 	}
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{{VariantID: varNut, LineID: 12, Quantity: "1"}})
+		return l.Reserve(t.Context(), tx, order, site, testToday, []contracts.StockLine{{VariantID: varNut, LineID: 12, Quantity: "1"}})
 	}); err != nil {
 		t.Fatalf("Reserve again: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestStockLedger_ReserveRefuseRelease(t *testing.T) {
 	// named, and nothing is written.
 	other := contracts.StockSource{Module: "orders", Kind: "order", ID: 8}
 	err = inTx(t, h, func(tx pgx.Tx) error {
-		return l.Reserve(t.Context(), tx, other, site, []contracts.StockLine{
+		return l.Reserve(t.Context(), tx, other, site, testToday, []contracts.StockLine{
 			{VariantID: varBolt, LineID: 21, Quantity: "2"}, {VariantID: varBolt, LineID: 22, Quantity: "2"},
 			{VariantID: varNut, LineID: 23, Quantity: "0.001"},
 		})
@@ -205,14 +205,14 @@ func TestStockLedger_RefusesSitesAndVariants(t *testing.T) {
 		{"a service", s.site.Id, []contracts.StockLine{{VariantID: varService, LineID: 1, Quantity: "1"}}, contracts.StockVariantNotStocked},
 		{"an unknown variant", s.site.Id, []contracts.StockLine{{VariantID: 999, LineID: 1, Quantity: "1"}}, contracts.StockVariantNotStocked},
 	} {
-		err := inTx(t, h, func(tx pgx.Tx) error { return l.Reserve(t.Context(), tx, order, tc.site, tc.line) })
+		err := inTx(t, h, func(tx pgx.Tx) error { return l.Reserve(t.Context(), tx, order, tc.site, testToday, tc.line) })
 		if refusalCode(err) != tc.want {
 			t.Errorf("Reserve at %s = %v, want %s", tc.name, err, tc.want)
 		}
 	}
 	// A bad quantity is the caller's bug: a failure, not a refusal.
 	err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.Reserve(t.Context(), tx, order, s.site.Id, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "0.0001"}})
+		return l.Reserve(t.Context(), tx, order, s.site.Id, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "0.0001"}})
 	})
 	if err == nil || refusalCode(err) != "" {
 		t.Errorf("Reserve 0.0001 = %v, want a failure", err)
@@ -261,7 +261,7 @@ func TestStockLedger_ConcurrentReservesForTheLastUnit(t *testing.T) {
 				src := contracts.StockSource{Module: "orders", Kind: "order", ID: int64(100*round + i + 1)}
 				<-start
 				errs[i] = inTx(t, h, func(tx pgx.Tx) error {
-					return l.Reserve(t.Context(), tx, src, s.site.Id, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}})
+					return l.Reserve(t.Context(), tx, src, s.site.Id, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "1"}})
 				})
 			})
 		}
@@ -289,20 +289,20 @@ func TestStockLedger_IssueConsumesReservations(t *testing.T) {
 	l := ledgerOf(h)
 	site := s.site.Id
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{{VariantID: varBolt, LineID: 11, Quantity: "5"}, {VariantID: varBolt, LineID: 12, Quantity: "1"}})
+		return l.Reserve(t.Context(), tx, order, site, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 11, Quantity: "5"}, {VariantID: varBolt, LineID: 12, Quantity: "1"}})
 	}); err != nil {
 		t.Fatalf("Reserve: %v", err)
 	}
 	delivery := contracts.StockSource{Module: "orders", Kind: "delivery", ID: 3}
-	issue := contracts.StockIssue{Document: delivery, SiteID: site, PostedByUserID: &user, PostedByDisplay: "Picker", Lines: []contracts.IssueLine{
+	issue := contracts.StockIssue{Today: testToday, Document: delivery, SiteID: site, PostedByUserID: &user, PostedByDisplay: "Picker", Lines: []contracts.IssueLine{
 		{VariantID: varBolt, LineID: 11, FromLocationID: s.shelf1.Id, Quantity: "2"},
 		{VariantID: varBolt, LineID: 11, FromLocationID: s.shelf2.Id, Quantity: "1"},
 		{VariantID: varBolt, LineID: 12, FromLocationID: s.shelf1.Id, Quantity: "3"},
 	}}
 	var movementID int64
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		var err error
-		movementID, err = l.Issue(t.Context(), tx, order, issue)
+		posted, err := l.Issue(t.Context(), tx, order, issue)
+		movementID = posted.MovementID
 		return err
 	}); err != nil {
 		t.Fatalf("Issue: %v", err)
@@ -328,8 +328,8 @@ func TestStockLedger_IssueConsumesReservations(t *testing.T) {
 	// The same document again: the first movement, nothing consumed again.
 	if err := inTx(t, h, func(tx pgx.Tx) error {
 		again, err := l.Issue(t.Context(), tx, order, issue)
-		if err == nil && again != movementID {
-			t.Errorf("a second issue of the delivery = movement %d, want %d", again, movementID)
+		if err == nil && again.MovementID != movementID {
+			t.Errorf("a second issue of the delivery = movement %d, want %d", again.MovementID, movementID)
 		}
 		return err
 	}); err != nil {
@@ -351,7 +351,7 @@ func TestStockLedger_IssueConsumesReservations(t *testing.T) {
 	} {
 		doc := contracts.StockSource{Module: "orders", Kind: "delivery", ID: int64(10 + i)}
 		err := inTx(t, h, func(tx pgx.Tx) error {
-			_, err := l.Issue(t.Context(), tx, order, contracts.StockIssue{Document: doc, SiteID: site, Lines: []contracts.IssueLine{tc.line}})
+			_, err := l.Issue(t.Context(), tx, order, contracts.StockIssue{Today: testToday, Document: doc, SiteID: site, Lines: []contracts.IssueLine{tc.line}})
 			return err
 		})
 		var r *contracts.StockRefusal
@@ -372,7 +372,7 @@ func TestStockLedger_CorrectionsIgnoreReservations(t *testing.T) {
 	s := newLedgerSite(t, h, c)
 	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 10))
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		return ledgerOf(h).Reserve(t.Context(), tx, order, s.site.Id, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "8"}})
+		return ledgerOf(h).Reserve(t.Context(), tx, order, s.site.Id, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "8"}})
 	}); err != nil {
 		t.Fatalf("Reserve: %v", err)
 	}
@@ -423,10 +423,10 @@ func TestStockLedger_PoolOfOne(t *testing.T) {
 	defer one.Close()
 	l := inventory.Module().StockLedger(h.DepsOn(one))
 	err = db.WithTx(ctx, one, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		if err := l.Reserve(ctx, tx, order, s.site.Id, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "3"}}); err != nil {
+		if err := l.Reserve(ctx, tx, order, s.site.Id, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 1, Quantity: "3"}}); err != nil {
 			return err
 		}
-		if _, err := l.Issue(ctx, tx, order, contracts.StockIssue{SiteID: s.site.Id, Lines: []contracts.IssueLine{
+		if _, err := l.Issue(ctx, tx, order, contracts.StockIssue{Today: testToday, SiteID: s.site.Id, Lines: []contracts.IssueLine{
 			{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "1"},
 		}}); err != nil {
 			return err
@@ -525,14 +525,14 @@ func TestStockLedger_ALineHoldsOneVariant(t *testing.T) {
 	l := ledgerOf(h)
 	site := s.site.Id
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{{VariantID: varBolt, LineID: 31, Quantity: "4"}})
+		return l.Reserve(t.Context(), tx, order, site, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: 31, Quantity: "4"}})
 	}); err != nil {
 		t.Fatalf("Reserve: %v", err)
 	}
 	want := []string{"31:" + strconv.FormatInt(site, 10) + ":4"}
 
 	err := inTx(t, h, func(tx pgx.Tx) error {
-		return l.Reserve(t.Context(), tx, order, site, []contracts.StockLine{{VariantID: varNut, LineID: 31, Quantity: "2"}})
+		return l.Reserve(t.Context(), tx, order, site, testToday, []contracts.StockLine{{VariantID: varNut, LineID: 31, Quantity: "2"}})
 	})
 	if err == nil || refusalCode(err) != "" {
 		t.Errorf("Reserve of another variant on the line = %v, want a failure", err)
@@ -547,7 +547,7 @@ func TestStockLedger_ALineHoldsOneVariant(t *testing.T) {
 	// An issue of the nut on line 31 leaves the bolt's reservation as it is.
 	delivery := contracts.StockSource{Module: "orders", Kind: "delivery", ID: 31}
 	if err := inTx(t, h, func(tx pgx.Tx) error {
-		_, err := l.Issue(t.Context(), tx, order, contracts.StockIssue{Document: delivery, SiteID: site, Lines: []contracts.IssueLine{
+		_, err := l.Issue(t.Context(), tx, order, contracts.StockIssue{Today: testToday, Document: delivery, SiteID: site, Lines: []contracts.IssueLine{
 			{VariantID: varNut, LineID: 31, FromLocationID: s.shelf1.Id, Quantity: "3"},
 		}})
 		return err

@@ -2,7 +2,9 @@ package inventory
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 )
@@ -26,7 +28,10 @@ func (s *server) PostInventoryMove(ctx context.Context, req gen.PostInventoryMov
 	lines := make([]engineLine, 0, len(in.Lines))
 	for i, l := range in.Lines {
 		from, to := l.FromLocationId, l.ToLocationId
-		line := engineLine{index: i, variantID: l.VariantId, from: &from, to: &to}
+		// The lot leaves from and lands on to unchanged (manufacturing phase 2
+		// M59); a move ignores holds and expiry, so held stock can go to a
+		// hold shelf.
+		line := engineLine{index: i, variantID: l.VariantId, from: &from, to: &to, lotID: lotIDOf(&f, fmt.Sprintf("lines[%d].lotId", i), l.LotId)}
 		line.quantity, line.entry, line.failCode, line.failText = readEntered(l.Quantity, l.Entered, positiveQuantity)
 		if from == to {
 			line.failCode, line.failText = codeSameLocation, "A move goes from one location to another."
@@ -47,7 +52,7 @@ func (s *server) PostInventoryMove(ctx context.Context, req gen.PostInventoryMov
 	res, err := s.postMovement(ctx, movementHeader{
 		clientRequestID: in.ClientRequestId, requestHash: hash, siteID: in.SiteId, kind: string(gen.Move),
 		note: note, poster: who,
-	}, lines, false)
+	}, lines, false, time.Time{})
 	if status, p, ok := answerOf(err); ok {
 		switch status {
 		case http.StatusBadRequest:

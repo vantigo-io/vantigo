@@ -433,6 +433,11 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 	if err != nil {
 		return gen.OrdersOrder{}, err
 	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.todayOf(ctx)
+	if err != nil {
+		return gen.OrdersOrder{}, err
+	}
 	// The variants of the lines kept, added and removed, all locked first;
 	// only a new line's, or a line's whose item changed, must still exist.
 	locking := slices.Clone(priced)
@@ -563,11 +568,11 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 				return fmt.Errorf("orders: set order %d's site: %w", o.ID, err)
 			}
 			if holdsReservations(reserved) {
-				if _, err := s.reserveOpen(ctx, tx, o, lines, invalidOrderTitle); err != nil {
+				if _, err := s.reserveOpen(ctx, tx, o, lines, today, invalidOrderTitle); err != nil {
 					return err
 				}
 			}
-		} else if err := s.adjustReservations(ctx, tx, o, current, lines, invalidOrderTitle); err != nil {
+		} else if err := s.adjustReservations(ctx, tx, o, current, lines, today, invalidOrderTitle); err != nil {
 			return err
 		}
 		row, err := s.bumpProgress(ctx, tx, txq, o, lines, o.Version+1)

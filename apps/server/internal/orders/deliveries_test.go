@@ -497,7 +497,7 @@ func TestInventoryOff_ReleasesButNeverReserves(t *testing.T) {
 		http.StatusServiceUnavailable, "dependency_unavailable", "reserve now with Inventory off")
 	// A reservation left from when Inventory was on.
 	h.stock.put(varBolt, locA1, "5")
-	if err := h.stock.Reserve(context.Background(), nil, orderSource(o.Id), siteOslo, []contracts.StockLine{{VariantID: varBolt, LineID: o.Lines[0].Id, Quantity: "2"}}); err != nil {
+	if err := h.stock.Reserve(context.Background(), nil, orderSource(o.Id), siteOslo, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: o.Lines[0].Id, Quantity: "2"}}); err != nil {
 		t.Fatal(err)
 	}
 	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "cancel"), gen.OrdersVersionInput{ExpectedUpdatedAt: orderAt(t, c, o.Id), Version: o.Version}),

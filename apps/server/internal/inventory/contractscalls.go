@@ -148,3 +148,14 @@ func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
 	}
 	return zone, nil
 }
+
+// today is the workspace's business day of now, as a date at midnight UTC
+// (manufacturing phase 2 M62), read before any transaction: the day a lot's
+// expiry is judged against and a new lot's dates default from.
+func (s *server) today(ctx context.Context) (time.Time, error) {
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return businessToday(s.deps.Clock(), zone), nil
+}

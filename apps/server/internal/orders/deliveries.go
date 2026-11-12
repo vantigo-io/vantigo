@@ -724,6 +724,15 @@ func (s *server) PostDelivery(ctx context.Context, req gen.PostDeliveryRequestOb
 	if err != nil {
 		return nil, err
 	}
+	// The day a lot's expiry is judged on, and whether the poster may take
+	// an expired lot, are read here on the pool: the ledger makes no call of
+	// its own inside the transaction (manufacturing phase 2 M62, rule 24).
+	// Delivery lines name no lot until layer O.
+	today, err := s.todayOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	expiredOverride := s.has(ctx, permInventoryExpiredOverride)
 	variants := withDeliveryVariants(goodsVariantsOf(cur.lines), cur.dlines)
 	var posted store.OrdersDelivery
 	var printed []byte
@@ -771,7 +780,8 @@ func (s *server) PostDelivery(ctx context.Context, req gen.PostDeliveryRequestOb
 			at[l.ID] = i
 		}
 		var failures []lineFailure
-		issue := contracts.StockIssue{Document: deliveryStock(d.ID), SiteID: d.SiteID, PostedByUserID: by.id, PostedByDisplay: deref(by.display)}
+		issue := contracts.StockIssue{Document: deliveryStock(d.ID), SiteID: d.SiteID, PostedByUserID: by.id, PostedByDisplay: deref(by.display),
+			Today: today, ExpiredOverride: expiredOverride}
 		var actions []changeAction
 		for i, dl := range dlines {
 			idx, ok := at[dl.OrderLineID]
@@ -804,10 +814,11 @@ func (s *server) PostDelivery(ctx context.Context, req gen.PostDeliveryRequestOb
 		if len(failures) > 0 {
 			return refuseLines(invalidDeliveryTitle, failures)
 		}
-		movement, err := s.deps.StockLedger.Issue(ctx, tx, orderStock(o.ID), issue)
+		issued, err := s.deps.StockLedger.Issue(ctx, tx, orderStock(o.ID), issue)
 		if err != nil {
 			return issueRefused(err, dlines)
 		}
+		movement := issued.MovementID
 		for _, l := range lines {
 			if err := txq.SetLineBuckets(ctx, store.SetLineBucketsParams{
 				ID: l.ID, QtyCancelled: l.QtyCancelled, QtyDelivered: l.QtyDelivered, QtyInvoiced: l.QtyInvoiced,
@@ -1044,6 +1055,11 @@ func (s *server) ReserveSalesOrder(ctx context.Context, req gen.ReserveSalesOrde
 	if !s.stockKept() || s.deps.StockLedger == nil {
 		return answer(errDependencyUnavailable, resp)
 	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.todayOf(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, true,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
 			if err := judgeConfirmed(o); err != nil {
@@ -1053,7 +1069,7 @@ func (s *server) ReserveSalesOrder(ctx context.Context, req gen.ReserveSalesOrde
 				return o, nil, conflict(codeOrderHasNoSite, "The order has no site",
 					fmt.Sprintf("Order %d names no site to reserve at.", o.Number))
 			}
-			reserved, err := s.reserveOpen(ctx, tx, o, lines, invalidOrderTitle)
+			reserved, err := s.reserveOpen(ctx, tx, o, lines, today, invalidOrderTitle)
 			if err != nil || !reserved {
 				return o, nil, err
 			}
