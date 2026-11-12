@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/boombuler/barcode/code128"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/code"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
@@ -107,6 +108,7 @@ type label struct {
 	name     string
 	extra    string
 	readable string
+	gs1      bool // a GS1-128 label: its barcode spans the label (barGeometry)
 }
 
 // labelOf is a location's label.
@@ -116,6 +118,40 @@ func labelOf(l store.InventoryLocation) label {
 		out.name = *l.Name
 	}
 	return out
+}
+
+// The GS1-128 barcode's geometry (manufacturing phase 2 M93, the review's
+// L3): the bars span the label's width but for a quiet zone of ten modules on
+// each side, so the module — the X dimension a scanner resolves — is as wide
+// as the label allows, and the bars stand gs1BarHeight tall where the label
+// leaves room for the lines under them.
+const (
+	gs1QuietModules = 10
+	gs1BarHeight    = 15.0 // mm
+	ptToMM          = 0.3528
+)
+
+// barGeometry is where a label's barcode stands in its cell, in millimetres:
+// its left edge, its width and its height. A location's or a lot's own label
+// keeps the sheet's barcodePercent at a 5:1 proportion; a GS1-128 label spans
+// the label, its height what the label leaves — at most gs1BarHeight.
+func barGeometry(l label, sheet labelSheet) (left, width, height float64) {
+	width = sheet.width * sheet.barcodePercent / 100
+	left, height = (sheet.width-width)/2, width/5
+	if !l.gs1 {
+		return left, width, height
+	}
+	code, err := code128.Encode(l.token)
+	if err != nil {
+		return left, width, height
+	}
+	modules := float64(code.Bounds().Dx())
+	x := sheet.width / (modules + 2*gs1QuietModules)
+	width, left = modules*x, gs1QuietModules*x
+	// Under the bars, as layoutLabels sets them: the readable line, the
+	// number, and up to two lines, with half a millimetre to spare.
+	below := 4 + sheet.codeSize*ptToMM + 1 + readableSize*ptToMM + 1 + 2*sheet.nameSize*ptToMM + 1.5 + 0.5
+	return left, width, min(gs1BarHeight, sheet.height-3-below)
 }
 
 // tenths is millimetres as maroto's grid units, which are tenths of a
@@ -143,7 +179,6 @@ func layoutLabels(labels []label, sheet labelSheet, title string) (core.Maroto, 
 		WithTitle(title, true).
 		Build()
 	doc := maroto.New(cfg)
-	barcodeWidth := sheet.width * sheet.barcodePercent / 100
 	for start := 0; start < len(labels); start += sheet.perSheet() {
 		onSheet := labels[start:min(start+sheet.perSheet(), len(labels))]
 		rows := make([]core.Row, 0, sheet.rows)
@@ -159,24 +194,25 @@ func layoutLabels(labels []label, sheet labelSheet, title string) (core.Maroto, 
 					// A readable line under the barcode moves the rest down.
 					shift := 0.0
 					if l.readable != "" {
-						shift = readableSize*0.3528 + 1
+						shift = readableSize*ptToMM + 1
 					}
+					barLeft, barWidth, barHeight := barGeometry(l, sheet)
 					cell.Add(
 						code.NewBar(l.token, props.Barcode{
-							Left: (sheet.width - barcodeWidth) / 2, Top: 3, Percent: sheet.barcodePercent,
-							Proportion: props.Proportion{Width: 5, Height: 1},
+							Left: barLeft, Top: 3, Percent: barWidth / sheet.width * 100,
+							Proportion: props.Proportion{Width: barWidth, Height: barHeight},
 						}),
 						text.New(l.fullCode, props.Text{
-							Top: 3 + barcodeWidth/5 + 2 + shift, Size: sheet.codeSize, Style: fontstyle.Bold, Align: align.Center,
+							Top: 3 + barHeight + 2 + shift, Size: sheet.codeSize, Style: fontstyle.Bold, Align: align.Center,
 							Left: 2, Right: 2,
 						}),
 					)
 					if l.readable != "" {
 						cell.Add(text.New(oneLine(l.readable, readableSize, sheet.width-4), props.Text{
-							Top: 3 + barcodeWidth/5 + 0.5, Size: readableSize, Align: align.Center, Left: 2, Right: 2,
+							Top: 3 + barHeight + 0.5, Size: readableSize, Align: align.Center, Left: 2, Right: 2,
 						}))
 					}
-					nameTop := 3 + barcodeWidth/5 + 4 + sheet.codeSize*0.3528 + 1 + shift
+					nameTop := 3 + barHeight + 4 + sheet.codeSize*ptToMM + 1 + shift
 					if l.name != "" {
 						name := l.name
 						if l.extra != "" {
@@ -190,7 +226,7 @@ func layoutLabels(labels []label, sheet labelSheet, title string) (core.Maroto, 
 					}
 					if l.extra != "" {
 						cell.Add(text.New(l.extra, props.Text{
-							Top: nameTop + sheet.nameSize*0.3528 + 1.5, Size: sheet.nameSize, Style: fontstyle.Bold, Align: align.Center,
+							Top: nameTop + sheet.nameSize*ptToMM + 1.5, Size: sheet.nameSize, Style: fontstyle.Bold, Align: align.Center,
 							Left: 2, Right: 2,
 						}))
 					}

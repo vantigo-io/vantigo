@@ -104,5 +104,6 @@ func gs1LabelOf(l store.InventoryLot, barcode *string) label {
 		return out
 	}
 	out.token, out.readable = gs1Strings(gtin, l)
+	out.gs1 = true
 	return out
 }

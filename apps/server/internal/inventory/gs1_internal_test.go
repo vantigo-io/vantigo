@@ -2,6 +2,7 @@ package inventory
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -210,5 +211,49 @@ func TestGS1_Labels(t *testing.T) {
 	}
 	if _, err := renderLabels(labels, labelSheets[gen.L7160], "GS1-128 lot labels"); err != nil {
 		t.Errorf("render: %v", err)
+	}
+}
+
+// TestGS1_BarSpansTheLabel is the GS1-128 barcode's geometry (the review's
+// L3): the bars span the label but for ten modules of quiet zone each side,
+// up to 15 mm tall as the label leaves room — about 14.7 on an L7160, 13 on
+// an L7163 with its larger type; on an L7163 a lot with two dates and a
+// short number gets a module of at least 0.25 mm, and on either sheet a
+// wider one than the internal label's 80 or 60 percent would give. The
+// internal label keeps its geometry.
+func TestGS1_BarSpansTheLabel(t *testing.T) {
+	t.Parallel()
+	gtin := "4006381333931"
+	lot := store.InventoryLot{ID: 1001, Number: "B1", Sku: "BREAD-1", ProductName: "Bread", ProductionDate: day(2026, 9, 1), Expiry: day(2026, 12, 31)}
+	l := gs1LabelOf(lot, &gtin)
+	modules := float64(len(barsOf(t, l.token)))
+	for _, tc := range []struct {
+		layout          gen.InventoryLabelLayout
+		minimum, height float64
+	}{{gen.L7163, 0.25, 12.5}, {gen.L7160, 0.2, 14.5}} {
+		sheet := labelSheets[tc.layout]
+		left, width, height := barGeometry(l, sheet)
+		x := width / modules
+		if math.Abs(left-10*x) > 1e-9 || math.Abs(2*left+width-sheet.width) > 1e-9 {
+			t.Errorf("%s: left %.3f, width %.3f — want a quiet zone of 10 modules (%.3f) each side of the label's %.1f mm", tc.layout, left, width, 10*x, sheet.width)
+		}
+		if height < tc.height || height > gs1BarHeight {
+			t.Errorf("%s: the bars stand %.2f mm, want %.0f to %.0f", tc.layout, height, tc.height, gs1BarHeight)
+		}
+		if x < tc.minimum {
+			t.Errorf("%s: the module is %.3f mm, want at least %.2f", tc.layout, x, tc.minimum)
+		}
+		if internal := sheet.width * sheet.barcodePercent / 100 / modules; x <= internal {
+			t.Errorf("%s: the module is %.3f mm, no wider than the internal geometry's %.3f", tc.layout, x, internal)
+		}
+		// The lines under the bars still fit on the label.
+		below := 3 + height + 4 + sheet.codeSize*ptToMM + 1 + readableSize*ptToMM + 1 + 2*sheet.nameSize*ptToMM + 1.5
+		if below > sheet.height {
+			t.Errorf("%s: the label's lines end at %.2f mm, past its %.1f", tc.layout, below, sheet.height)
+		}
+	}
+	internal := lotLabelOf(lot)
+	if left, width, height := barGeometry(internal, labelSheets[gen.L7160]); math.Abs(width-63.5*0.8) > 1e-9 || math.Abs(height-width/5) > 1e-9 || math.Abs(left-(63.5-width)/2) > 1e-9 {
+		t.Errorf("the internal label's bars = %.2f, %.2f, %.2f", left, width, height)
 	}
 }
