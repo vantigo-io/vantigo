@@ -1023,6 +1023,12 @@ What the design deferred, each waiting for what is named:
 
 - **Lots and serials, the trace screens** — Products' tracking mode, Inventory's lots and
   the balance key (the rules above).
+  The phase is designed (`docs/superpowers/specs/2026-11-12-manufacturing-phase2-design.md`)
+  and lands as a stack; **L1a — the lot-aware ledger (built)**: the tracking mode behind a
+  guard until production records lots, lots and their holds, the balance per (variant,
+  location, lot), expiry, FEFO and AutoLot, usable on hand and the lot-aware stock
+  contracts ([Inventory](docs/src/content/docs/en/reference/inventory.md#lots),
+  [Products](docs/src/content/docs/en/reference/products.md#tracking)).
 - **Quality checks on operations.**
 - **Operation dependencies (parallel operations).**
 - **Alternative work centers, a drag to another center, overlap.**
