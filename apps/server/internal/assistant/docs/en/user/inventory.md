@@ -1,6 +1,6 @@
 ---
 title: Inventory
-description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, lots and serial numbers — on receipts, moves and adjustments, the Lots list, a lot's page, putting a lot on hold and releasing it, a lot's files, the lots expiring soon, lot labels — counting stock, lots included, importing opening balances with or without lots, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
+description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, lots and serial numbers — on receipts, moves and adjustments, the Lots list, a lot's page, putting a lot on hold and releasing it, a lot's files, the lots expiring soon, lot labels, tracing a lot both ways and exporting the trace, blocking a lot with the lots made from it for a recall, GS1-128 labels — counting stock, lots included, importing opening balances with or without lots, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
 sidebar:
   order: 65
 sources:
@@ -351,8 +351,9 @@ a blocked lot.
 its expiry — and **On hand**. **Search** finds a lot number, a supplier lot or an SKU;
 **Site** counts what lies at that site only; **Status** and **Hold cause** narrow it to
 the lots on hold, and why. **With stock only** is on unless you want lots that hold
-nothing any more. **Load more** fetches the next page. The search in the top bar offers
-**Find a lot**, which opens this list.
+nothing any more. **Load more** fetches the next page. **Trace** at the end of a row opens
+the lot's [trace](#trace-a-lot). The search in the top bar offers **Find a lot**, which
+opens this list, and **Trace a lot**, which opens the trace and asks for the lot.
 
 ### A lot's page
 
@@ -362,7 +363,8 @@ lot, when it was first received, its three dates, the movement that made it, and
 note. **Holds** lists every hold, the active ones first; **Where it lies** lists the
 sites and locations holding it; **Movements** its movement lines, newest first, each
 linked — the latest 200; when there are more the page says so, and the older ones are in
-**Movements** in the sidebar; **Files** its files. With **Manage lots**, **Edit** changes the supplier lot, the
+**Movements** in the sidebar; **Files** its files. **Trace** at the top opens the lot's
+[trace](#trace-a-lot). With **Manage lots**, **Edit** changes the supplier lot, the
 three dates and the note; the number and the item never change, and a new expiry date
 counts from the next posting. The dates must be in order — no expiry date before the
 production date, no best-before date after the expiry date.
@@ -372,11 +374,12 @@ puts it on hold or adds a file.
 
 ### Put a lot on hold and release it
 
-With **Manage lots**, **Quarantine** or **Block** on a lot's page puts a hold of the lot
-page: choose the **Cause** — **Inspection**, **Deviation**, **Complaint**, **Recall** or
-**Other** — add a **Note**, and press **Put on hold**. **Release** on one of the page's
-own holds asks *Why it is released* and ends it; the lot is available again once no hold
-is left. The page puts one quarantine and one block at most: while its own quarantine is
+With **Manage lots**, **Quarantine** on a lot's page puts a hold of the lot page: choose
+the **Cause** — **Inspection**, **Deviation**, **Complaint**, **Recall** or **Other** — add
+a **Note**, and press **Put on hold**. **Block** blocks the lot, and the lots made from it
+with it: see [Block a lot and the lots made from it](#block-a-lot-and-the-lots-made-from-it).
+**Release** on one of the page's own holds asks *Why it is released* and ends it; the lot
+is available again once no hold is left. The page puts one quarantine and one block at most: while its own quarantine is
 active, **Quarantine** is greyed out and the page says *This page has the lot in
 quarantine already*, and likewise **Block** — release that hold to put a new one. A hold
 put by another module's document — a manufacturing deviation, say — shows *Put by
@@ -418,8 +421,73 @@ number in Inventory, which never changes —, the lot number large, the SKU and 
 product's name, shortened to one line so it never runs into the date, and the expiry date
 (*EXP 2026-12-31*), or the best-before date (*BB …*) when the lot has no expiry. A serial number is a lot of its own, so serials get a label
 each. Scanning a label in **Find location or item**, or on a count, finds the lot. At
-most 1000 labels at a time. These are labels for your own shelves; labels with GS1
-barcodes for customers come later.
+most 1000 labels at a time.
+
+**Label** chooses what the labels carry. **Internal** is the label above, for your own
+shelves. **GS1-128** prints a label your customers' scanners read: its barcode holds the
+item's GTIN — the item's barcode in [Products](/en/user/products/), when it is a valid
+GTIN-8, -12, -13 or -14 —, the production date, the expiry date (or the best-before date
+when there is none) and the lot number, or the serial number, and the same is printed in
+brackets under it: *(01)04006381333931(17)261231(10)B1*. An item without a valid GTIN
+cannot have a GS1 label: its lots get the internal label, marked *No GTIN — not a GS1
+label*.
+
+### Trace a lot
+
+**Trace** on a lot's page, on the **Lots** list, beside a lot found in the lookup, on a
+manufacturing order's **Lots** tab and on an order's delivery opens the lot's trace: the
+productions it went through and where they lead, as a tree.
+
+- **Where it went** follows the lot forward: the lots made from it, and the lots made from
+  those, each with what of the lot it used and what it made; and where each path ends — a
+  **delivery**, with its delivery and order numbers and the customer, an adjustment or a
+  count down, a transfer to another site, or a production that made no lot.
+- **Where it came from** follows it back: the lots it was made from, down to their
+  **receipts**, with the supplier and the supplier's reference. **Show the components
+  without a lot** also lists the items that a production used but that are not kept in
+  lots.
+
+Each lot shows its status and what it holds now, and links to its page; each production
+links to its manufacturing order. A lot reached twice — the same flour in the dough and
+in the bread — is shown in full once; later it says *Already shown above*, which jumps
+there. The arrow beside a lot folds what lies under it. Taking a finished item apart
+(an unbuild) ends the path: the finished lot shows *Unbuilt by unbuild …*, the parts it
+gave back *Returned by unbuild …*, and the trace does not go from one into the other.
+
+The trace follows ten productions deep and shows at most 2,000 rows; a larger one is
+refused — *The trace has more than 2,000 rows* — so trace a lot further down the tree.
+
+Who received the lot comes from Orders: you see the delivery, its order and the
+customer's number only if you may use Orders, and the customer's name only if you may
+also see customers. Otherwise the trace says *You cannot see the orders, so a delivery
+shows as its movement alone*.
+
+**Export CSV** downloads the trace as a spreadsheet, one row per line of the tree — the
+lot, the item, the quantity, the date, the document and the supplier or customer — and
+**Download PDF** as a document stating when it was made, by whom and in which direction:
+what a food authority asks for when it wants the answer within hours.
+
+### Block a lot and the lots made from it
+
+When a lot must not leave — a supplier's recall, a customer's complaint — **Block** on the
+lot's page, with **Manage lots**, first shows what the lot has reached: the **lots made
+from it, still in stock**, and who it was **delivered to**. Choose the **Cause** —
+**Recall**, **Complaint** or **Other** —, add a **Note**, and leave **Also block the lots
+made from it** ticked to block those too, then press **Block**.
+
+The block is put on the lot and on every lot made from it that still holds stock, at the
+moment it is put: a lot produced since the dialog opened is caught too, and the answer
+lists every lot blocked — *Blocked 4 lots* — marking such a lot *New*. Lots that hold
+nothing any more are not blocked; the trace and the deliveries say where they went.
+A block can be asked again to catch lots made since. A trace too large to walk blocks
+nothing.
+
+**Release** on the lot's block offers **Also release the blocks it put on the lots made
+from it**, ticked: it lifts them all at once. A lot's block can also be released on its
+own page. A hold that something else put — a deviation's quarantine, say — stays.
+
+Calling the customers and taking goods back is still done by hand, from the delivery list
+the trace gives.
 
 ## Transfer stock between sites
 
@@ -1075,8 +1143,9 @@ and *2 lots in stock have expired* when there are any; press either to open
 | **Transfers**, a transfer's page and its history, **Print transfer note**, transfers in the lookup, **Incoming** and **Outgoing** on a site, **Transfer differences** on an item | ✓ | ✓ | – | – | – | – | – | – |
 | **New transfer**, **Edit**, **Save draft**, **Send…**, **Send and receive…**, **Delete draft**, **Receive…**, closing a difference, **Cancel transfer**; the dashboard's **A transfer is past its expected arrival**; **Create transfer** on the low-stock list | ✓ | ✓ | – | – | – | – | ✓ | – |
 | **Lots**, a lot's page with its holds, where it lies, its movements and its files; lots in the lookup and **Find a lot** | ✓ | ✓ | – | – | – | – | – | – |
+| **Trace**, **Trace a lot**, its **Export CSV** and **Download PDF** — a delivery's order and customer also need Orders, the customer's name Customers | ✓ | ✓ | – | – | – | – | – | – |
 | **Expiring**, its **Export CSV**, **Print labels** on lots; the dashboard's lots expiring and expired | ✓ | ✓ | – | – | – | – | – | – |
-| **Edit** on a lot, **Quarantine**, **Block**, **Release**, **Add file**, **Remove** | ✓ | ✓ | – | – | – | – | – | ✓ |
+| **Edit** on a lot, **Quarantine**, **Block** with the lots made from it, **Release**, **Add file**, **Remove** | ✓ | ✓ | – | – | – | – | – | ✓ |
 
 Every other row needs every permission it ticks: the posting and counting buttons
 appear only to someone who holds both views **and** the write permission. Printing

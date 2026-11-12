@@ -106,7 +106,7 @@ orders](/en/user/invoices/#invoicing-orders)).
 The search box in the top bar (or the keyboard shortcut shown in it) opens a spotlight
 that jumps to any screen you have access to, so you rarely need the switcher for a
 screen you know the name of. It also offers a few quick actions, such as Orders' **New quote**
-for those who may make quotes, Inventory's **Find a lot** for those who see stock, **New manufacturing order** in Manufacturing for those who may create orders, **Open the shop floor** for those who work there, and **Open the production schedule** and **Manufacturing reports** for everyone who uses Manufacturing.
+for those who may make quotes, Inventory's **Find a lot** and **Trace a lot** for those who see stock, **New manufacturing order** in Manufacturing for those who may create orders, **Open the shop floor** for those who work there, and **Open the production schedule** and **Manufacturing reports** for everyone who uses Manufacturing.
 
 ## Your account
 
