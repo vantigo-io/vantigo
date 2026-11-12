@@ -196,19 +196,19 @@ func (e OrdersDeliveryStatus) Valid() bool {
 
 // Defines values for OrdersDeliveryLotChoiceStatus.
 const (
-	Available  OrdersDeliveryLotChoiceStatus = "available"
-	Blocked    OrdersDeliveryLotChoiceStatus = "blocked"
-	Quarantine OrdersDeliveryLotChoiceStatus = "quarantine"
+	OrdersLotAvailable  OrdersDeliveryLotChoiceStatus = "available"
+	OrdersLotBlocked    OrdersDeliveryLotChoiceStatus = "blocked"
+	OrdersLotQuarantine OrdersDeliveryLotChoiceStatus = "quarantine"
 )
 
 // Valid indicates whether the value is a known member of the OrdersDeliveryLotChoiceStatus enum.
 func (e OrdersDeliveryLotChoiceStatus) Valid() bool {
 	switch e {
-	case Available:
+	case OrdersLotAvailable:
 		return true
-	case Blocked:
+	case OrdersLotBlocked:
 		return true
-	case Quarantine:
+	case OrdersLotQuarantine:
 		return true
 	default:
 		return false
@@ -2038,11 +2038,14 @@ type OrdersDeliveryLine struct {
 	VariantId int32  `json:"variantId"`
 }
 
-// OrdersDeliveryLineInput A draft delivery's line as the editor saves it. lots are a tracked line's picks as the person chose them (manufacturing phase 2 M77); left out, the line keeps its picks while they still add up to its quantity, and is proposed again (FEFO) otherwise.
+// OrdersDeliveryLineInput A draft delivery's line as the editor saves it. lots are a tracked line's picks as the person chose them (manufacturing phase 2 M77); left out, the line keeps its picks when a person chose them or while they still add up to its quantity, and is proposed again (FEFO) otherwise. proposeAgain proposes the line's lots again (FEFO) whatever they were, and is sent without lots.
 type OrdersDeliveryLineInput struct {
 	FromLocationId *int64                    `json:"fromLocationId,omitempty"`
 	Lots           *[]OrdersDeliveryLotInput `json:"lots,omitempty"`
 	OrderLineId    int64                     `json:"orderLineId"`
+
+	// ProposeAgain A tracked line's Propose again: its lots are proposed again from the site's lots (FEFO) and are no longer chosen.
+	ProposeAgain *bool `json:"proposeAgain,omitempty"`
 
 	// Quantity Greater than 0, at most three decimals, never beyond what is open (over_delivery).
 	Quantity float64 `json:"quantity"`
@@ -2066,14 +2069,17 @@ type OrdersDeliveryLotChoice struct {
 	BestBefore *openapi_types.Date `json:"bestBefore"`
 
 	// Expired Whether the lot's expiry lies before today in the workspace's zone.
-	Expired    bool                          `json:"expired"`
-	Expiry     *openapi_types.Date           `json:"expiry"`
-	FullCode   string                        `json:"fullCode"`
-	LocationId int64                         `json:"locationId"`
-	LotId      int64                         `json:"lotId"`
-	LotNumber  string                        `json:"lotNumber"`
-	Quantity   float64                       `json:"quantity"`
-	Status     OrdersDeliveryLotChoiceStatus `json:"status"`
+	Expired    bool                `json:"expired"`
+	Expiry     *openapi_types.Date `json:"expiry"`
+	FullCode   string              `json:"fullCode"`
+	LocationId int64               `json:"locationId"`
+	LotId      int64               `json:"lotId"`
+	LotNumber  string              `json:"lotNumber"`
+	Quantity   float64             `json:"quantity"`
+
+	// Serial Whether the lot is a serial number's: a pick of it takes exactly 1 (serial_quantity otherwise).
+	Serial bool                          `json:"serial"`
+	Status OrdersDeliveryLotChoiceStatus `json:"status"`
 }
 
 // OrdersDeliveryLotChoiceStatus defines model for OrdersDeliveryLotChoice.Status.
@@ -2081,7 +2087,7 @@ type OrdersDeliveryLotChoiceStatus string
 
 // OrdersDeliveryLotInput One lot a tracked line takes, as the person chose it: a lot of the site holding the variant at the location (lot_unknown otherwise).
 type OrdersDeliveryLotInput struct {
-	// AllowExpired Use the lot although it is expired (Use expired lot); the post honours it only for a poster holding inventory:expired-override.
+	// AllowExpired Use the lot although it is expired (Use expired lot): set on a new or changed lot only by a holder of inventory:expired-override (expired_override_required otherwise), and the post honours it only for a poster holding it.
 	AllowExpired *bool `json:"allowExpired,omitempty"`
 	LocationId   int64 `json:"locationId"`
 	LotId        int64 `json:"lotId"`
@@ -2103,7 +2109,7 @@ type OrdersDeliverySummary struct {
 	Id           int64  `json:"id"`
 	Lines        int32  `json:"lines"`
 
-	// Lots The lot numbers the delivery takes, once each, in line order (manufacturing phase 2 M79).
+	// Lots The lot numbers the delivery takes, once each, in line order (manufacturing phase 2 M79): a posted delivery's, and a draft's as proposed or chosen so far; none for a cancelled delivery.
 	Lots        []string                    `json:"lots"`
 	Number      int64                       `json:"number"`
 	OrderId     int64                       `json:"orderId"`

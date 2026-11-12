@@ -42,6 +42,8 @@ type fakeStock struct {
 	tracked map[int32]bool
 	// lotReads counts Stock.Lots calls.
 	lotReads int
+	// afterLots, when set, runs once after the next Stock.Lots read.
+	afterLots func()
 }
 
 // fakeLot is a lot of a tracked variant.
@@ -311,7 +313,14 @@ func (f *fakeStock) SiteLocations(context.Context, int64) ([]contracts.StockSite
 // the site, in FEFO order (manufacturing phase 2 M65).
 func (f *fakeStock) Lots(_ context.Context, ids []int32, site int64) ([]contracts.StockLot, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
+	defer func() {
+		after := f.afterLots
+		f.afterLots = nil
+		f.mu.Unlock()
+		if after != nil {
+			after()
+		}
+	}()
 	f.lotReads++
 	var out []contracts.StockLot
 	for k, q := range f.lotHeld {
@@ -564,6 +573,13 @@ func (f *fakeStock) lastIssue() (contracts.StockIssue, bool) {
 		return contracts.StockIssue{}, false
 	}
 	return f.issues[len(f.issues)-1], true
+}
+
+// onNextLots runs fn once after the next Stock.Lots read.
+func (f *fakeStock) onNextLots(fn func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.afterLots = fn
 }
 
 // lotReadCount is how many times Stock.Lots was read.
