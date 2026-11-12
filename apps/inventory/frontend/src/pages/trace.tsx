@@ -39,7 +39,7 @@ import {
 import type { TraceSearch } from "../lib/search";
 
 /** Whether a node lies under a collapsed node: its key starts with the collapsed key and a dot. */
-export const hiddenBy = (node: Pick<InventoryTraceNode, "key">, collapsed: ReadonlySet<string>) => {
+const hiddenBy = (node: Pick<InventoryTraceNode, "key">, collapsed: ReadonlySet<string>) => {
   for (const key of collapsed) if (node.key.startsWith(`${key}.`)) return true;
   return false;
 };
