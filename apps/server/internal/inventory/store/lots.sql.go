@@ -50,6 +50,41 @@ func (q *Queries) DeleteLots(ctx context.Context, ids []int64) error {
 	return err
 }
 
+const getLot = `-- name: GetLot :one
+
+SELECT id, variant_id, number, serial, supplier_lot, production_date, best_before, expiry, received_at, origin_module, origin_kind, origin_id, status, note, sku, product_name, revision, created_by_user_id, created_by_display, created_at, updated_at FROM inventory.lots WHERE id = $1
+`
+
+// The lot screens (manufacturing phase 2 L1b: M60, M61, M63, M66).
+func (q *Queries) GetLot(ctx context.Context, id int64) (InventoryLot, error) {
+	row := q.db.QueryRow(ctx, getLot, id)
+	var i InventoryLot
+	err := row.Scan(
+		&i.ID,
+		&i.VariantID,
+		&i.Number,
+		&i.Serial,
+		&i.SupplierLot,
+		&i.ProductionDate,
+		&i.BestBefore,
+		&i.Expiry,
+		&i.ReceivedAt,
+		&i.OriginModule,
+		&i.OriginKind,
+		&i.OriginID,
+		&i.Status,
+		&i.Note,
+		&i.Sku,
+		&i.ProductName,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedByDisplay,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertLot = `-- name: InsertLot :one
 INSERT INTO inventory.lots (variant_id, number, serial, supplier_lot, production_date, best_before, expiry, received_at,
                             origin_module, origin_kind, origin_id, note, sku, product_name,
@@ -107,6 +142,132 @@ func (q *Queries) InsertLot(ctx context.Context, arg InsertLotParams) (int64, er
 	return id, err
 }
 
+const listLots = `-- name: ListLots :many
+SELECT t.id, t.variant_id, t.number, t.serial, t.supplier_lot, t.production_date, t.best_before, t.expiry, t.received_at, t.origin_module, t.origin_kind, t.origin_id, t.status, t.note, t.sku, t.product_name, t.revision, t.created_by_user_id, t.created_by_display, t.created_at, t.updated_at, coalesce(s.on_hand, 0)::text AS on_hand
+FROM inventory.lots t
+LEFT JOIN LATERAL (
+    SELECT sum(b.on_hand) AS on_hand
+    FROM inventory.balances b
+    JOIN inventory.locations l ON l.id = b.location_id
+    WHERE b.lot_id = t.id AND ($1::bigint IS NULL OR l.site_id = $1::bigint)
+) s ON true
+WHERE ($2::int IS NULL OR t.variant_id = $2::int)
+  AND ($3::text IS NULL OR t.status = $3::text)
+  AND ($4::text IS NULL
+       OR position(lower($4::text) IN lower(t.number)) > 0
+       OR position(lower($4::text) IN lower(coalesce(t.supplier_lot, ''))) > 0
+       OR position(lower($4::text) IN lower(t.sku)) > 0)
+  AND ($5::text IS NULL OR EXISTS (
+       SELECT 1 FROM inventory.lot_holds h
+       WHERE h.lot_id = t.id AND h.released_at IS NULL AND h.cause = $5::text))
+  AND ($6::date IS NULL OR t.expiry < $6::date)
+  AND (NOT $7::boolean OR coalesce(s.on_hand, 0) > 0)
+  AND ($8::int IS NULL
+       OR (t.variant_id, lower(t.number), t.id) > ($8::int, $9::text, $10::bigint))
+ORDER BY t.variant_id, lower(t.number), t.id
+LIMIT $11
+`
+
+type ListLotsParams struct {
+	SiteID        *int64
+	VariantID     *int32
+	Status        *string
+	Q             *string
+	HoldCause     *string
+	ExpiresBefore pgtype.Date
+	WithStock     bool
+	AfterVariant  *int32
+	AfterNumber   *string
+	AfterID       *int64
+	RowLimit      int32
+}
+
+type ListLotsRow struct {
+	ID               int64
+	VariantID        int32
+	Number           string
+	Serial           bool
+	SupplierLot      *string
+	ProductionDate   pgtype.Date
+	BestBefore       pgtype.Date
+	Expiry           pgtype.Date
+	ReceivedAt       time.Time
+	OriginModule     *string
+	OriginKind       *string
+	OriginID         *string
+	Status           string
+	Note             *string
+	Sku              string
+	ProductName      string
+	Revision         int32
+	CreatedByUserID  *uuid.UUID
+	CreatedByDisplay *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	OnHand           string
+}
+
+// ListLots is the lots list (M60): by (variant, lower(number), id) after the
+// cursor, with what lies of each — at the site when one is named, else over
+// every location. q matches the number, the supplier lot or the SKU,
+// ignoring case; holdCause a lot with an active hold of that cause;
+// expiresBefore an expiry before that day; withStock only lots holding more
+// than 0 (at the site, when one is named).
+func (q *Queries) ListLots(ctx context.Context, arg ListLotsParams) ([]ListLotsRow, error) {
+	rows, err := q.db.Query(ctx, listLots,
+		arg.SiteID,
+		arg.VariantID,
+		arg.Status,
+		arg.Q,
+		arg.HoldCause,
+		arg.ExpiresBefore,
+		arg.WithStock,
+		arg.AfterVariant,
+		arg.AfterNumber,
+		arg.AfterID,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLotsRow
+	for rows.Next() {
+		var i ListLotsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.VariantID,
+			&i.Number,
+			&i.Serial,
+			&i.SupplierLot,
+			&i.ProductionDate,
+			&i.BestBefore,
+			&i.Expiry,
+			&i.ReceivedAt,
+			&i.OriginModule,
+			&i.OriginKind,
+			&i.OriginID,
+			&i.Status,
+			&i.Note,
+			&i.Sku,
+			&i.ProductName,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedByDisplay,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OnHand,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockLots = `-- name: LockLots :many
 SELECT id, variant_id, number, serial, supplier_lot, production_date, best_before, expiry, received_at, origin_module, origin_kind, origin_id, status, note, sku, product_name, revision, created_by_user_id, created_by_display, created_at, updated_at FROM inventory.lots WHERE id = ANY($1::bigint[]) ORDER BY id FOR NO KEY UPDATE
 `
@@ -145,6 +306,36 @@ func (q *Queries) LockLots(ctx context.Context, ids []int64) ([]InventoryLot, er
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lotBalances = `-- name: LotBalances :many
+SELECT location_id, on_hand FROM inventory.balances WHERE lot_id = $1 ORDER BY location_id
+`
+
+type LotBalancesRow struct {
+	LocationID int64
+	OnHand     pgtype.Numeric
+}
+
+// LotBalances is where a lot lies: its balances, per location.
+func (q *Queries) LotBalances(ctx context.Context, lotID *int64) ([]LotBalancesRow, error) {
+	rows, err := q.db.Query(ctx, lotBalances, lotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LotBalancesRow
+	for rows.Next() {
+		var i LotBalancesRow
+		if err := rows.Scan(&i.LocationID, &i.OnHand); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -250,6 +441,110 @@ func (q *Queries) LotCandidates(ctx context.Context, arg LotCandidatesParams) ([
 	return items, nil
 }
 
+const lotMovementLines = `-- name: LotMovementLines :many
+SELECT m.id AS movement_id, m.kind, m.posted_at, ml.line_no, ml.from_location_id, ml.to_location_id, ml.quantity
+FROM inventory.movement_lines ml
+JOIN inventory.movements m ON m.id = ml.movement_id
+WHERE ml.lot_id = $1
+ORDER BY m.posted_at DESC, m.id DESC, ml.line_no
+LIMIT $2
+`
+
+type LotMovementLinesParams struct {
+	LotID    *int64
+	RowLimit int32
+}
+
+type LotMovementLinesRow struct {
+	MovementID     int64
+	Kind           string
+	PostedAt       time.Time
+	LineNo         int32
+	FromLocationID *int64
+	ToLocationID   *int64
+	Quantity       pgtype.Numeric
+}
+
+// LotMovementLines is every movement line of a lot, newest first (M61), at
+// most row_limit of them.
+func (q *Queries) LotMovementLines(ctx context.Context, arg LotMovementLinesParams) ([]LotMovementLinesRow, error) {
+	rows, err := q.db.Query(ctx, lotMovementLines, arg.LotID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LotMovementLinesRow
+	for rows.Next() {
+		var i LotMovementLinesRow
+		if err := rows.Scan(
+			&i.MovementID,
+			&i.Kind,
+			&i.PostedAt,
+			&i.LineNo,
+			&i.FromLocationID,
+			&i.ToLocationID,
+			&i.Quantity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lotStockOfVariants = `-- name: LotStockOfVariants :many
+SELECT b.variant_id, b.location_id, b.on_hand, t.id AS lot_id, t.number, t.expiry, t.best_before, t.status
+FROM inventory.balances b
+JOIN inventory.lots t ON t.id = b.lot_id
+WHERE b.variant_id = ANY($1::int[]) AND b.on_hand <> 0
+ORDER BY b.variant_id, t.expiry NULLS LAST, t.received_at, t.id, b.location_id
+`
+
+type LotStockOfVariantsRow struct {
+	VariantID  int32
+	LocationID int64
+	OnHand     pgtype.Numeric
+	LotID      int64
+	Number     string
+	Expiry     pgtype.Date
+	BestBefore pgtype.Date
+	Status     string
+}
+
+// LotStockOfVariants is every balance of the variants that is in a lot, with
+// the lot, in FEFO order (M63, M65): the stock reads' lot rows.
+func (q *Queries) LotStockOfVariants(ctx context.Context, variantIds []int32) ([]LotStockOfVariantsRow, error) {
+	rows, err := q.db.Query(ctx, lotStockOfVariants, variantIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LotStockOfVariantsRow
+	for rows.Next() {
+		var i LotStockOfVariantsRow
+		if err := rows.Scan(
+			&i.VariantID,
+			&i.LocationID,
+			&i.OnHand,
+			&i.LotID,
+			&i.Number,
+			&i.Expiry,
+			&i.BestBefore,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lotTotals = `-- name: LotTotals :many
 SELECT lot_id::bigint AS lot_id, sum(on_hand)::text AS on_hand
 FROM inventory.balances WHERE lot_id = ANY($1::bigint[])
@@ -290,6 +585,54 @@ SELECT id, variant_id, number, serial, supplier_lot, production_date, best_befor
 // LotsByIDs is a plain read of lots.
 func (q *Queries) LotsByIDs(ctx context.Context, ids []int64) ([]InventoryLot, error) {
 	rows, err := q.db.Query(ctx, lotsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InventoryLot
+	for rows.Next() {
+		var i InventoryLot
+		if err := rows.Scan(
+			&i.ID,
+			&i.VariantID,
+			&i.Number,
+			&i.Serial,
+			&i.SupplierLot,
+			&i.ProductionDate,
+			&i.BestBefore,
+			&i.Expiry,
+			&i.ReceivedAt,
+			&i.OriginModule,
+			&i.OriginKind,
+			&i.OriginID,
+			&i.Status,
+			&i.Note,
+			&i.Sku,
+			&i.ProductName,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedByDisplay,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lotsByNumber = `-- name: LotsByNumber :many
+SELECT id, variant_id, number, serial, supplier_lot, production_date, best_before, expiry, received_at, origin_module, origin_kind, origin_id, status, note, sku, product_name, revision, created_by_user_id, created_by_display, created_at, updated_at FROM inventory.lots WHERE lower(number) = lower($1::text) ORDER BY variant_id, id LIMIT 20
+`
+
+// LotsByNumber is every variant's lot whose number is the text, ignoring
+// case: the lookup's lot match (M66).
+func (q *Queries) LotsByNumber(ctx context.Context, number string) ([]InventoryLot, error) {
+	rows, err := q.db.Query(ctx, lotsByNumber, number)
 	if err != nil {
 		return nil, err
 	}
@@ -441,4 +784,78 @@ func (q *Queries) ShareLots(ctx context.Context, ids []int64) ([]InventoryLot, e
 		return nil, err
 	}
 	return items, nil
+}
+
+const touchLot = `-- name: TouchLot :exec
+UPDATE inventory.lots SET revision = revision + 1, updated_at = $1::timestamptz WHERE id = $2
+`
+
+type TouchLotParams struct {
+	Now time.Time
+	ID  int64
+}
+
+// TouchLot moves a lot's revision on after a change of its files.
+func (q *Queries) TouchLot(ctx context.Context, arg TouchLotParams) error {
+	_, err := q.db.Exec(ctx, touchLot, arg.Now, arg.ID)
+	return err
+}
+
+const updateLot = `-- name: UpdateLot :one
+UPDATE inventory.lots SET
+    supplier_lot = $1, production_date = $2,
+    best_before = $3, expiry = $4, note = $5,
+    revision = revision + 1, updated_at = $6::timestamptz
+WHERE id = $7
+RETURNING id, variant_id, number, serial, supplier_lot, production_date, best_before, expiry, received_at, origin_module, origin_kind, origin_id, status, note, sku, product_name, revision, created_by_user_id, created_by_display, created_at, updated_at
+`
+
+type UpdateLotParams struct {
+	SupplierLot    *string
+	ProductionDate pgtype.Date
+	BestBefore     pgtype.Date
+	Expiry         pgtype.Date
+	Note           *string
+	Now            time.Time
+	ID             int64
+}
+
+// UpdateLot replaces a lot's editable fields (M61): the supplier lot, the
+// three dates and the note — never its number or variant — under the lot's
+// FOR NO KEY UPDATE, moving the revision on.
+func (q *Queries) UpdateLot(ctx context.Context, arg UpdateLotParams) (InventoryLot, error) {
+	row := q.db.QueryRow(ctx, updateLot,
+		arg.SupplierLot,
+		arg.ProductionDate,
+		arg.BestBefore,
+		arg.Expiry,
+		arg.Note,
+		arg.Now,
+		arg.ID,
+	)
+	var i InventoryLot
+	err := row.Scan(
+		&i.ID,
+		&i.VariantID,
+		&i.Number,
+		&i.Serial,
+		&i.SupplierLot,
+		&i.ProductionDate,
+		&i.BestBefore,
+		&i.Expiry,
+		&i.ReceivedAt,
+		&i.OriginModule,
+		&i.OriginKind,
+		&i.OriginID,
+		&i.Status,
+		&i.Note,
+		&i.Sku,
+		&i.ProductName,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedByDisplay,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

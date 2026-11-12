@@ -333,15 +333,23 @@ func (s *server) PutInventoryPlacement(ctx context.Context, req gen.PutInventory
 	return gen.PutInventoryPlacement200JSONResponse(answer), nil
 }
 
-// placementAnswer is a placement just written, low judged on what is usable
-// at its site as read after the write (M63).
+// placementAnswer is a placement just written, low judged on what lies at
+// its site as read after the write.
 func (s *server) placementAnswer(ctx context.Context, p store.InventoryPlacement) (gen.InventoryPlacement, error) {
 	sn, err := s.balancesOf(ctx, []int32{p.VariantID}, nil)
 	if err != nil {
 		return gen.InventoryPlacement{}, err
 	}
 	k := siteKey{p.VariantID, p.SiteID}
-	return placementOf(p, sn.sites[p.SiteID], orZero(sn.usable[k]), orZero(sn.reserved[k]), orZero(sn.incoming[k])), nil
+	onHand := new(big.Rat)
+	for _, b := range sn.balances {
+		if sn.locations[b.locationID].SiteID == p.SiteID {
+			onHand.Add(onHand, b.onHand)
+		}
+	}
+	// Low is judged on usable on hand (manufacturing phase 2 M63).
+	onHand.Sub(onHand, sn.held(k))
+	return placementOf(p, sn.sites[p.SiteID], onHand, orZero(sn.reserved[k]), orZero(sn.incoming[k])), nil
 }
 
 // DeleteInventoryPlacement Remove a placement

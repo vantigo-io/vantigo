@@ -10,18 +10,28 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
 
 // server implements gen.StrictServerInterface, the module's contract
 // operations. Each area implements its operations in its own file.
 type server struct {
 	deps module.Deps
+	// objects is the module's scoped object store (lot_attachments.go), the
+	// lots' files; objectsErr the error it was built with, which every
+	// accessor answers, so a process that never touches a file starts
+	// without storage and fails only what needs it.
+	objects    storage.ObjectStore
+	objectsErr error
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
 
 // newServer builds the module's operations over d.
-func newServer(d module.Deps) *server { return &server{deps: d} }
+func newServer(d module.Deps) *server {
+	objects, objectsErr := moduleObjectStore(d)
+	return &server{deps: d, objects: objects, objectsErr: objectsErr}
+}
 
 // has reports whether the caller holds one global permission key, evaluated
 // the way the router evaluates an operation's rule. It fails closed.

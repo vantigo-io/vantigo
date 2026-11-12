@@ -46,3 +46,22 @@ FROM (SELECT l.id,
       FROM inventory.lots l WHERE l.id = ANY(@ids::bigint[])) AS d
 WHERE t.id = d.id AND t.status <> d.status
 RETURNING t.id, t.status;
+
+-- name: LotHolds :many
+-- LotHolds is every hold of a lot, the active ones first, newest first
+-- within each (M61).
+SELECT * FROM inventory.lot_holds WHERE lot_id = @lot_id
+ORDER BY (released_at IS NULL) DESC, created_at DESC, id DESC;
+
+-- name: GetLotHold :one
+-- GetLotHold is one hold of a lot; another lot's is no row.
+SELECT * FROM inventory.lot_holds WHERE id = @id AND lot_id = @lot_id;
+
+-- name: ReleaseLotHold :one
+-- ReleaseLotHold releases one active hold, with the releaser's note (M64:
+-- the lot page's Release); a released one is no row.
+UPDATE inventory.lot_holds
+SET released_at = @now::timestamptz, released_by_user_id = sqlc.narg(released_by_user_id),
+    released_by_display = sqlc.narg(released_by_display), release_note = sqlc.narg(release_note)
+WHERE id = @id AND lot_id = @lot_id AND released_at IS NULL
+RETURNING *;

@@ -17,8 +17,9 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
-// The eight permission keys (§5; the phase 2 design's I63 adds
-// transfers-manage, manufacturing phase 2's M68 expired-override). None is sensitive and all are delegable.
+// The nine permission keys (§5; the phase 2 design's I63 adds
+// transfers-manage, manufacturing phase 2's M68 expired-override and
+// lots-manage). None is sensitive and all are delegable.
 // Every stock read and every write also needs both views, because they show
 // location codes and their forms pick locations; so a stock role is
 // locations-view + stock-view (+ the write keys), and locations-view alone
@@ -35,6 +36,9 @@ const (
 	// consuming an expired lot the person chose. Inventory never checks it
 	// inside a ledger call; the caller reads it on the pool (M62).
 	permExpiredOverride = "inventory:expired-override"
+	// permLotsManage is manufacturing phase 2's M68: editing a lot, its
+	// files, and putting and releasing Inventory's own holds on it.
+	permLotsManage = "inventory:lots-manage"
 )
 
 var permissions = []contracts.Permission{
@@ -78,6 +82,11 @@ var permissions = []contracts.Permission{
 		Description: "Issue or consume a lot past its expiry date, when the lot is chosen by hand on a delivery or a production.",
 		Category:    "Inventory", Sensitive: false, Delegable: true,
 	},
+	{
+		Key: permLotsManage, Display: "Manage lots",
+		Description: "Change a lot's dates, supplier lot and note, add and remove its files, and put and release its holds on the lot page.",
+		Category:    "Inventory", Sensitive: false, Delegable: true,
+	},
 }
 
 // limits are the module's rate limits; none beyond the platform's.
@@ -92,6 +101,11 @@ func Module() module.Module {
 		VariantReferences: newVariantHolder,
 		Stock:             newStock,
 		StockLedger:       newLedger,
+		// LiveTopics is the lots list's and a lot's page (manufacturing phase
+		// 2 §17, live.go); Workers the deletion ledger of the lots' files
+		// (M54, lot_attachments.go).
+		LiveTopics: liveTopics,
+		Workers:    workers,
 	}
 }
 
@@ -107,7 +121,10 @@ func mount(d module.Deps) (http.Handler, error) {
 	}
 	router := module.NewRouter(module.RouterOptions{
 		Doc: d.Doc, Access: d.Access, Limiter: d.Limiter, Limits: limits, Catalog: d.Catalog,
-		BodyLimits: map[string]int64{"importInventoryOpeningBalances": maxImportRequestBytes, "importInventoryPlacements": maxImportRequestBytes},
+		BodyLimits: map[string]int64{
+			"importInventoryOpeningBalances": maxImportRequestBytes, "importInventoryPlacements": maxImportRequestBytes,
+			"postInventoryLotAttachment": maxLotAttachmentRequestBytes,
+		},
 	})
 	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),

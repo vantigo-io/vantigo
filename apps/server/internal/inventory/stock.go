@@ -8,8 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-
-	"github.com/jackc/pgx/v5/pgtype"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
@@ -32,11 +31,7 @@ type balance struct {
 // variants per site (orders design O45) and what is on its way to each site
 // on open transfers (phase 2 design I46).
 type stockSnapshot struct {
-	balances []balance
-	// usable is the variants' usable on hand per site (manufacturing phase 2
-	// M63): what available and low are judged on, as Stock.Available and the
-	// low-stock list judge them.
-	usable    map[siteKey]*big.Rat
+	balances  []balance
 	reserved  map[siteKey]*big.Rat
 	incoming  map[siteKey]*big.Rat
 	locations map[int64]store.InventoryLocation
@@ -44,6 +39,55 @@ type stockSnapshot struct {
 	// placements are the variants' placements per site (I54), for a
 	// variant's or a product's stock and I53's batch.
 	placements map[siteKey]store.InventoryPlacement
+	// lots are the balances in lots, in FEFO order (manufacturing phase 2
+	// M63), and today the day their expiry is judged on.
+	lots  []lotBalance
+	today time.Time
+}
+
+// lotBalance is one balance in a lot as the reads carry it.
+type lotBalance struct {
+	variantID  int32
+	locationID int64
+	onHand     *big.Rat
+	lot        store.LotStockOfVariantsRow
+}
+
+// unusable reports whether a lot's stock is not usable on today: on hold, or
+// expired (M63).
+func (b lotBalance) unusable(today time.Time) bool {
+	return b.lot.Status != string(gen.InventoryLotStatusAvailable) || contracts.LotExpired(dateOrNil(b.lot.Expiry), today)
+}
+
+// held is what lies of the variant at the site in lots on hold or expired
+// (M63): on hand less held is usable on hand, what can be promised.
+func (sn *stockSnapshot) held(k siteKey) *big.Rat {
+	out := new(big.Rat)
+	for _, b := range sn.lots {
+		if b.variantID == k.variantID && sn.locations[b.locationID].SiteID == k.siteID && b.unusable(sn.today) {
+			out.Add(out, b.onHand)
+		}
+	}
+	return out
+}
+
+// lotsAt is the variant's lots on the location, in FEFO order; nil when none.
+func (sn *stockSnapshot) lotsAt(variantID int32, locationID int64) *[]gen.InventoryBalanceLot {
+	var out []gen.InventoryBalanceLot
+	for _, b := range sn.lots {
+		if b.variantID != variantID || b.locationID != locationID {
+			continue
+		}
+		out = append(out, gen.InventoryBalanceLot{
+			LotId: b.lot.LotID, Number: b.lot.Number, Status: gen.InventoryLotStatus(b.lot.Status),
+			Expired: contracts.LotExpired(dateOrNil(b.lot.Expiry), sn.today), Expiry: wireDate(dateOrNil(b.lot.Expiry)),
+			BestBefore: wireDate(dateOrNil(b.lot.BestBefore)), OnHand: wireQuantity(b.onHand),
+		})
+	}
+	if out == nil {
+		return nil
+	}
+	return &out
 }
 
 // siteKey names a variant at a site: where a reservation is held.
@@ -95,14 +139,15 @@ func (sn *stockSnapshot) row(b balance, ref gen.InventoryVariantRef) gen.Invento
 }
 
 // variantStock is one variant's stock by site, sites by code and rows by full
-// code, with the totals summed exactly: on hand, reserved, and available —
-// usable on hand (no lot held or expired, M63) less reserved, negative when a
-// correction or a hold took it below what is reserved (orders design O45) — and incoming per site, in transit to it
-// (I46). A site holding only a reservation, only incoming, or only a
+// code, with the totals summed exactly: on hand, reserved, held — in lots on
+// hold or expired (manufacturing phase 2 M63) — and available: usable on hand
+// (on hand less held) less reserved, negative when a correction or a hold
+// took it below what is reserved (orders design O45); and incoming per site,
+// in transit to it (I46). Each row carries the variant's lots on it. A site holding only a reservation, only incoming, or only a
 // placement at an active site is listed with no rows. A site's placement rides on its row, and
 // its primary location's row comes first, marked (I55).
 func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.InventoryVariantStock {
-	total, totalReserved, totalUsable := new(big.Rat), new(big.Rat), new(big.Rat)
+	total, totalReserved, totalHeld := new(big.Rat), new(big.Rat), new(big.Rat)
 	bySite := map[int64]*big.Rat{}
 	rows := map[int64][]gen.InventoryBalanceRow{}
 	for _, b := range sn.balances {
@@ -115,7 +160,9 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 		}
 		bySite[siteID].Add(bySite[siteID], b.onHand)
 		total.Add(total, b.onHand)
-		rows[siteID] = append(rows[siteID], sn.row(b, ref))
+		row := sn.row(b, ref)
+		row.Lots = sn.lotsAt(b.variantID, b.locationID)
+		rows[siteID] = append(rows[siteID], row)
 	}
 	for k, q := range sn.reserved {
 		if k.variantID != ref.Id {
@@ -125,11 +172,6 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 			bySite[k.siteID] = new(big.Rat)
 		}
 		totalReserved.Add(totalReserved, q)
-	}
-	for k, q := range sn.usable {
-		if k.variantID == ref.Id {
-			totalUsable.Add(totalUsable, q)
-		}
 	}
 	for k := range sn.incoming {
 		if k.variantID == ref.Id && bySite[k.siteID] == nil {
@@ -141,9 +183,13 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 			bySite[k.siteID] = new(big.Rat)
 		}
 	}
+	for siteID := range bySite {
+		totalHeld.Add(totalHeld, sn.held(siteKey{ref.Id, siteID}))
+	}
+	usable := new(big.Rat).Sub(total, totalHeld)
 	out := gen.InventoryVariantStock{
 		Variant: ref, TotalOnHand: wireQuantity(total), TotalReserved: wireQuantity(totalReserved),
-		TotalAvailable: wireQuantity(new(big.Rat).Sub(totalUsable, totalReserved)), Sites: make([]gen.InventorySiteStock, 0, len(bySite)),
+		TotalAvailable: wireQuantity(new(big.Rat).Sub(usable, totalReserved)), Sites: make([]gen.InventorySiteStock, 0, len(bySite)),
 	}
 	for siteID, onHand := range bySite {
 		r := rows[siteID]
@@ -158,10 +204,11 @@ func (sn *stockSnapshot) variantStock(ref gen.InventoryVariantRef) gen.Inventory
 		slices.SortFunc(r, func(a, b gen.InventoryBalanceRow) int {
 			return cmp.Or(-cmpBool(*a.Primary, *b.Primary), strings.Compare(a.Location.FullCode, b.Location.FullCode))
 		})
-		reserved, incoming, usable := orZero(sn.reserved[k]), orZero(sn.incoming[k]), orZero(sn.usable[k])
+		reserved, incoming, held := orZero(sn.reserved[k]), orZero(sn.incoming[k]), sn.held(k)
+		usable := new(big.Rat).Sub(onHand, held)
 		row := gen.InventorySiteStock{
 			Site: siteRefOf(sn.sites[siteID]), OnHand: wireQuantity(onHand), Reserved: wireQuantity(reserved),
-			Available: wireQuantity(new(big.Rat).Sub(usable, reserved)), Rows: r,
+			Available: wireQuantity(new(big.Rat).Sub(usable, reserved)), Held: wireQuantity(held), Rows: r,
 			Incoming: wireQuantity(incoming),
 		}
 		if placed {
@@ -181,15 +228,16 @@ func orZero(q *big.Rat) *big.Rat {
 	return q
 }
 
-// balancesOf reads the variants' balances, what is usable on today (in the
-// workspace zone, read before the snapshot), reserved and incoming of them,
-// and their places in one snapshot.
+// balancesOf reads the variants' balances, what is reserved and incoming of
+// them, their lots, and their places in one snapshot, with today read on the
+// pool before it.
 func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx context.Context, q *store.Queries) error) (stockSnapshot, error) {
 	var sn stockSnapshot
 	today, err := s.today(ctx)
 	if err != nil {
 		return sn, err
 	}
+	sn.today = today
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		rows, err := q.BalancesOfVariants(ctx, ids)
 		if err != nil {
@@ -197,14 +245,6 @@ func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx cont
 		}
 		for _, r := range rows {
 			sn.balances = append(sn.balances, balance{r.VariantID, r.LocationID, ratFromNumeric(r.OnHand)})
-		}
-		use, err := q.UsableBySite(ctx, store.UsableBySiteParams{VariantIds: ids, Today: pgtype.Date{Time: today, Valid: true}})
-		if err != nil {
-			return fmt.Errorf("inventory: read usable on hand by site: %w", err)
-		}
-		sn.usable = make(map[siteKey]*big.Rat, len(use))
-		for _, r := range use {
-			sn.usable[siteKey{r.VariantID, r.SiteID}] = ratFromText(r.OnHand)
 		}
 		reserved, err := q.ReservedOfVariants(ctx, ids)
 		if err != nil {
@@ -221,6 +261,13 @@ func (s *server) balancesOf(ctx context.Context, ids []int32, then func(ctx cont
 		sn.incoming = make(map[siteKey]*big.Rat, len(incoming))
 		for _, r := range incoming {
 			sn.incoming[siteKey{r.VariantID, r.SiteID}] = ratFromText(r.Incoming)
+		}
+		lots, err := q.LotStockOfVariants(ctx, ids)
+		if err != nil {
+			return fmt.Errorf("inventory: read the lots' stock: %w", err)
+		}
+		for _, r := range lots {
+			sn.lots = append(sn.lots, lotBalance{r.VariantID, r.LocationID, ratFromNumeric(r.OnHand), r})
 		}
 		placements, err := q.PlacementsOfVariants(ctx, ids)
 		if err != nil {

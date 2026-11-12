@@ -101,7 +101,10 @@ func (sn *stockSnapshot) atSites(variantIDs []int32, siteIDs []int64) gen.Invent
 					Primary: placed && placement.PrimaryLocationID != nil && *placement.PrimaryLocationID == b.locationID,
 				})
 			}
-			incoming, usable := orZero(sn.incoming[k]), orZero(sn.usable[k])
+			incoming := orZero(sn.incoming[k])
+			// Available is usable on hand less reserved (manufacturing phase 2
+			// M63): the lots on hold or expired are left out.
+			usable := new(big.Rat).Sub(here, sn.held(k))
 			row := gen.InventoryStockAtSite{
 				VariantId: v, SiteId: site, OnHand: wireQuantity(here), Reserved: wireQuantity(reserved),
 				Available: wireQuantity(new(big.Rat).Sub(usable, reserved)), Incoming: wireQuantity(incoming),

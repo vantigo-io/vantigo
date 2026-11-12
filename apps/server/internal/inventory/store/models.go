@@ -112,6 +112,18 @@ type InventoryLot struct {
 	UpdatedAt        time.Time
 }
 
+type InventoryLotAttachment struct {
+	ID                int64
+	LotID             int64
+	ObjectKey         string
+	FileName          string
+	ContentType       string
+	SizeBytes         int64
+	UploadedByUserID  *uuid.UUID
+	UploadedByDisplay *string
+	CreatedAt         time.Time
+}
+
 type InventoryLotHold struct {
 	ID                int64
 	LotID             int64
@@ -164,6 +176,16 @@ type InventoryMovementLine struct {
 	Entered         []byte
 	LotID           *int64
 	ExpiredOverride bool
+}
+
+type InventoryObjectDeletion struct {
+	ID            int64
+	ObjectKey     string
+	Attempts      int32
+	NextAttemptAt time.Time
+	ClaimedUntil  *time.Time
+	LastError     *string
+	CreatedAt     time.Time
 }
 
 type InventoryPlacement struct {
