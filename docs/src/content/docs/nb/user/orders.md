@@ -1,6 +1,6 @@
 ---
 title: Ordre
-description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; reserver varer på et lagersted, lag, plukk og bokfør leveranser med plukkliste og pakkseddel, og følg restordrene; send en leveranse med Bring — kolli, priser, bestilling, etiketter, fraktbrev, sporing og kansellering — og legg til en fraktlinje med transportørens estimat; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; lag et abonnement, aktiver, endre, pause, gjenoppta, avslutt og kanseller det, aksepter et tilbud som abonnement og se periodene; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
+description: Ordre-appen — lag et tilbud, fra appen, kundesiden eller en mal; legg til produkt-, fritekst-, seksjons- og merknadslinjer, valgfrie linjer og rabatter; send det eller marker det som sendt, revider, aksepter, avslå, kanseller og kopier det; lag en ordre, bekreft den, endre den etter bekreftelse, sett den på vent, lås den, kanseller den eller resten, registrer hva som er levert, send ordrebekreftelsen og skriv ut en proforma; reserver varer på et lagersted, lag, plukk og bokfør leveranser med plukkliste og pakkseddel, plukk varer som holdes i partier eller serienumre og bytt parti, og følg restordrene; send en leveranse med Bring — kolli, priser, bestilling, etiketter, fraktbrev, sporing og kansellering — og legg til en fraktlinje med transportørens estimat; fakturer den, se fakturaene dens og frigjør det fakturautkast holder; lag et abonnement, aktiver, endre, pause, gjenoppta, avslutt og kanseller det, aksepter et tilbud som abonnement og se periodene; endringsloggen; linjer i forpakninger og fra variantrutenettet; kunde- og produktadvarsler og overstyring av en sperre; salgsanalysen; kundens Ordre-fane; og hva en avvisning betyr.
 sidebar:
   order: 55
 sources:
@@ -362,6 +362,39 @@ En bokført leveranse endres ikke. En feil rettes med en lagerkorreksjon i Lager
 levert** på ordrelinjen. Et leveranseutkast kan kanselleres; antallene står da åpne på ordren
 igjen.
 
+### Lever varer som holdes i partier
+
+Et produkt som holdes i [partier eller serienumre](/nb/user/inventory/#partier-og-serienumre)
+plukkes per parti i stedet for per lokasjon: linjen sier **Plukkes per parti**, og partiene
+den tas fra, står under den med partiets **Utløper**, **Lokasjon** og **Antall**.
+
+1. Når leveransen lages, velges partiene for deg: det som utløper først, så det eldste,
+   uten partier som er sperret eller utløpt; et serienummer tas helt. En linje kan ta flere
+   partier, på ulike lokasjoner.
+2. Når partiene ikke har nok, beholder linjen antallet sitt og sier **Mangler** det som
+   mangler. **Bokfør leveranse** venter til partiene går opp i linjens antall: sett ned
+   antallet, eller velg flere.
+3. For å ta et annet parti velger du det i **Bytt parti**: lagerstedets partier av
+   produktet, det som utløper først øverst, hvert med utløpsdato, lokasjon og hvor mye som
+   ligger der. På en linje som mangler noe, dekker partiet det som mangler; ellers erstatter
+   det partiene. Endre et partis antall i raden, eller fjern det med søppelbøtta. Et parti
+   i karantene eller blokkert kan ikke velges.
+4. Et utløpt parti kan bare leveres av noen med rettigheten **Bruke utgåtte partier**
+   (`inventory:expired-override`): kryss av for **Bruk utløpt parti** under linjen, og velg
+   det så i **Bytt parti**; det merkes **Utløpt**. Uten rettigheten vises det, men kan ikke
+   velges, og en leveranse som tar et, avvises.
+5. **Lagre**. Endrer du bare linjens antall, velges partiene for deg på nytt.
+
+**Plukkliste** har en rad per parti, under lokasjonen, med partinummer og utløpsdato i
+kolonnen **Parti**. **Pakkseddel** viser partiene — og serienumrene — under hver linje, med
+utløpsdato: den er kundens oversikt over hvilke partier de fikk. Kortet **Leveranser** på
+ordren viser partiene til hver leveranse.
+
+Når du bokfører, kan noen andre ha tatt et parti i mellomtiden, eller sperret det. Har du
+ikke endret partiene selv, velges de på nytt fra det som ligger der nå, og leveransen
+bokføres med dem; leveransen viser partiene den tok. Valgte du partiene selv, eller er det
+ingenting å velge fra, avvises bokføringen og partiet nevnes i raden sin.
+
 ### Restordre
 
 Det som ikke er levert, står igjen på ordren som restordre; det lages ikke noe eget dokument.
@@ -631,6 +664,11 @@ eller kansellert ([tidslinjen](/nb/user/customers/#tidslinjen)).
 | Det er ikke nok disponibelt på lagerstedet. | Bekreft uten å reservere og reserver senere, sett ned antallet, eller lever fra et annet lagersted. |
 | Lokasjonen har ikke så mye. | Noen har tatt varer i mellomtiden: velg en annen lokasjon, sett ned antallet, eller korriger beholdningen i Lager. |
 | Velg lokasjonen hver linje tas fra. | Velg **Fra lokasjon** for hver linje, og bokfør så. |
+| Partiene går ikke opp i linjens antall. | Velg flere partier i **Bytt parti**, endre et partis antall, eller sett ned linjens antall. |
+| Velg partiene linjen tas fra. | Velg minst ett parti i **Bytt parti**, og lagre og bokfør så. |
+| Partiet er utløpt. | Velg et annet parti, eller be noen med **Bruke utgåtte partier** bokføre leveransen med **Bruk utløpt parti**. |
+| Partiet er sperret. | Partiet er i karantene eller blokkert i Lager: velg et annet parti. |
+| Det partiet har ikke varen på den lokasjonen. | Noen har tatt partiet i mellomtiden: last inn på nytt og velg et annet. |
 | Ingenting av ordren er åpent og disponibelt på lagerstedet. | Vent på varene, reserver dem, eller gjør ferdig leveranseutkastet som alt holder dem. |
 | Ordren har leveranser; lagerstedet kan ikke lenger endres. | La lagerstedet være som det er. |
 | En bokført leveranse kan ikke endres. | Korriger beholdningen i Lager og bruk **Angre levert** på ordren. |
