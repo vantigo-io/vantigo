@@ -46,8 +46,8 @@ export interface VariantResponse {
   effectivePrices: PriceRow[];
   /** By sort order then id. Always sent; optional only as the contract declares it. */
   packagings?: PackagingResponse[];
-  /** How the variant's stock is tracked; only none can be written until production records lots. */
-  tracking: VariantTracking;
+  /** How the variant's stock is tracked; always sent, optional only as the contract declares it. */
+  tracking?: VariantTracking;
   /** The days a new lot's expiry and best-before lie after its production or receipt. */
   expiryDays?: number | null;
   bestBeforeDays?: number | null;

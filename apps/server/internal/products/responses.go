@@ -83,6 +83,7 @@ func variantResponse(v store.ProductsProductVariant, prices []store.ProductsProd
 		packagingResponses = append(packagingResponses, packagingResponse(p))
 	}
 
+	tracking := gen.VariantTracking(v.Tracking)
 	return gen.ProductVariantResponse{
 		Id:              v.ID,
 		Sku:             v.Sku,
@@ -96,7 +97,7 @@ func variantResponse(v store.ProductsProductVariant, prices []store.ProductsProd
 		OptionValues:    camelizeOptionValueKeys(unmarshalOptionValues(v.OptionValues)),
 		EffectivePrices: effectiveResponses,
 		Packagings:      &packagingResponses,
-		Tracking:        gen.VariantTracking(v.Tracking),
+		Tracking:        &tracking,
 		ExpiryDays:      v.ExpiryDays,
 		BestBeforeDays:  v.BestBeforeDays,
 		CreatedAt:       v.CreatedAt,

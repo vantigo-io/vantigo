@@ -630,7 +630,8 @@ export interface components {
             sku: string;
             /** Format: double */
             standardCost?: number | null;
-            tracking: components["schemas"]["VariantTracking"];
+            /** @description Always sent; optional only because the recorded exchanges of the port predate it. */
+            tracking?: components["schemas"]["VariantTracking"];
             /**
              * Format: int32
              * @description The days a new lot's expiry lies after its production or receipt date (manufacturing phase 2 M49); null when unset.
