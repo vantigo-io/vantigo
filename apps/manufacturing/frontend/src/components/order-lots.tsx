@@ -1,16 +1,18 @@
 import { Alert, Anchor, Badge, Stack, Table, Text, Title } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import { type ManufacturingOrder, orderLotsQueryOptions } from "../api/orders";
 import { refusalMessage, useManufacturingFormat } from "../lib/format";
 
-/** Inventory's page of a lot. */
-const lotHref = (lotId: number) => `/inventory/lots/${lotId}`;
-
-/** A lot's number linked to its page in Inventory; its id when no number was kept. */
+/**
+ * A lot's number linked to its page in Inventory, through the host's router
+ * (no reload, under the deployment's base path); its id when no number was
+ * kept.
+ */
 const LotLink = ({ lotId, number }: { lotId: number; number: string }) => (
-  <Anchor size="sm" href={lotHref(lotId)}>
+  <Anchor size="sm" renderRoot={(props) => <Link to={`/inventory/lots/${lotId}` as never} {...props} />}>
     {number || `#${lotId}`}
   </Anchor>
 );

@@ -128,6 +128,7 @@ export const refusalCodes = [
   "lot_expired",
   "lot_blocked",
   "lot_dates_differ",
+  "lot_exists",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 

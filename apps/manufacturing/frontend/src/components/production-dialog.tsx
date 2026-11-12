@@ -30,7 +30,7 @@ import {
 import { type Deviation, refusalCode, refusedDeviations } from "../api/request";
 import { addDecimal, compareDecimal, isDecimal, normalizeDecimal } from "../lib/decimal";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
-import { type LotRowValues, lotRowsBody, sumLotRows } from "../lib/lots";
+import { type LotRowValues, lotRowProblems, lotRowsBody, proposeAt, sumLotRows } from "../lib/lots";
 import { LocationSelect } from "./location-select";
 
 const PREFILL_DEBOUNCE_MS = 300;
@@ -178,7 +178,8 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
     return (
       sum === undefined ||
       compareDecimal(sum, totalOf(values)) !== 0 ||
-      rows.some((row) => row.lotId === null || row.locationId === null)
+      rows.some((row) => row.lotId === null || row.locationId === null) ||
+      lotRowProblems(rows, isDecimal).some((problem) => problem.twice || problem.zero)
     );
   };
 
@@ -418,6 +419,7 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
                           line={line}
                           rows={lotEdits[line.componentId]}
                           total={totalOf(values)}
+                          fromLocationId={values.fromLocationId}
                           onChange={(rows) => setLots(line.componentId, rows)}
                         />
                       </Table.Td>
@@ -511,21 +513,30 @@ interface LineLotsProps {
   rows: LotRowValues[] | undefined;
   /** What the line consumes and scraps together. */
   total: string;
+  /** Where the line is taken from, when the person chose; null, the order's component location. */
+  fromLocationId: number | null;
   onChange: (rows: LotRowValues[] | undefined) => void;
 }
 
 /**
  * A tracked component's lots (M82, M83): the draft's proposal with Change
- * lot, or the lots chosen, each from the site's lots the draft lists.
+ * lot, or the lots chosen, each from the site's lots the draft lists. With a
+ * location chosen for the line, the proposal is made again there, as
+ * Inventory will take them (AutoLot at that location), not the draft's at the
+ * order's component location.
  */
-const LineLots = ({ line, rows, total, onChange }: LineLotsProps) => {
+const LineLots = ({ line, rows, total, fromLocationId, onChange }: LineLotsProps) => {
   const { t, decimal, day } = useManufacturingFormat();
   const lotLabel = useLotLabel();
   const sku = line.variant.sku;
   const keyOf = (lotId: number, locationId: number) => `${lotId}:${locationId}`;
   const choiceOf = new Map(line.lotChoices.map((choice) => [keyOf(choice.lotId, choice.locationId), choice]));
+  const proposed =
+    fromLocationId === null || compareDecimal(total, "0") <= 0
+      ? { lots: line.lots, short: line.short }
+      : proposeAt(line.lotChoices, total, fromLocationId);
   if (rows === undefined) {
-    const proposal = line.lots
+    const proposal = proposed.lots
       .map((lot) =>
         lot.expiry
           ? `${lot.lotNumber} (${day(lot.expiry)}) ${decimal(lot.quantity)}`
@@ -539,11 +550,11 @@ const LineLots = ({ line, rows, total, onChange }: LineLotsProps) => {
             {t("lotsOf", { sku })}
           </Text>
           <Text size="xs" c="dimmed">
-            {line.lots.length > 0 ? t("lotsProposed", { lots: proposal }) : t("lotsNone")}
+            {proposed.lots.length > 0 ? t("lotsProposed", { lots: proposal }) : t("lotsNone")}
           </Text>
-          {compareDecimal(line.short, "0") > 0 && (
+          {compareDecimal(proposed.short, "0") > 0 && (
             <Text size="xs" c="orange">
-              {t("lotsShortBy", { short: decimal(line.short) })}
+              {t("lotsShortBy", { short: decimal(proposed.short) })}
             </Text>
           )}
         </Stack>
@@ -553,8 +564,8 @@ const LineLots = ({ line, rows, total, onChange }: LineLotsProps) => {
           disabled={line.lotChoices.length === 0}
           onClick={() =>
             onChange(
-              line.lots.length > 0
-                ? line.lots.map((lot) => ({
+              proposed.lots.length > 0
+                ? proposed.lots.map((lot) => ({
                     lotId: lot.lotId,
                     locationId: lot.locationId,
                     quantity: lot.quantity,
@@ -570,6 +581,7 @@ const LineLots = ({ line, rows, total, onChange }: LineLotsProps) => {
     );
   }
   const sum = sumLotRows(rows, isDecimal);
+  const problems = lotRowProblems(rows, isDecimal);
   const setRow = (index: number, patch: Partial<LotRowValues>) =>
     onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   return (
@@ -596,6 +608,7 @@ const LineLots = ({ line, rows, total, onChange }: LineLotsProps) => {
                 label: lotLabel(choice),
               }))}
               value={row.lotId !== null && row.locationId !== null ? keyOf(row.lotId, row.locationId) : null}
+              error={problems[index]?.twice ? t("lotChosenTwice") : undefined}
               onChange={(value) => {
                 const choice = value ? choiceOf.get(value) : undefined;
                 setRow(index, {
@@ -612,7 +625,7 @@ const LineLots = ({ line, rows, total, onChange }: LineLotsProps) => {
               aria-label={t("lotQuantityOf", { index: index + 1, sku })}
               value={row.quantity}
               onChange={(event) => setRow(index, { quantity: event.currentTarget.value })}
-              error={row.quantity.trim() !== "" && !isDecimal(row.quantity)}
+              error={problems[index]?.zero ? t("lotRowZero") : row.quantity.trim() !== "" && !isDecimal(row.quantity)}
             />
             {chosen?.expired && (
               <Checkbox

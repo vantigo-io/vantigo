@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isDecimal } from "./decimal";
-import { LOT_NUMBER, lotRowsBody, renderLotPattern, sumLotRows } from "./lots";
+import { LOT_NUMBER, lotRowsBody, renderLotPattern, sampleLotNumber, sumLotRows } from "./lots";
 
 describe("renderLotPattern", () => {
   const day = new Date(2026, 10, 12);
@@ -13,6 +13,12 @@ describe("renderLotPattern", () => {
   it("tells a lot number from one that is none", () => {
     expect(LOT_NUMBER.test(renderLotPattern("{MO}", "", day))).toBe(true);
     expect(LOT_NUMBER.test(renderLotPattern("{MO} {N}", "", day))).toBe(false);
+  });
+  it("judges the widest sample, as the server does", () => {
+    expect(sampleLotNumber("LOTSX-{MO}-{N}", "")).toBe("LOTSX-MO-99999-9-9999");
+    expect(LOT_NUMBER.test(renderLotPattern("LOTSX-{MO}-{N}", "", day))).toBe(true);
+    expect(LOT_NUMBER.test(sampleLotNumber("LOTSX-{MO}-{N}", ""))).toBe(false);
+    expect(sampleLotNumber("L{YYMMDD}", "")).toBe("L261231");
   });
 });
 

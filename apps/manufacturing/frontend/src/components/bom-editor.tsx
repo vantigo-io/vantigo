@@ -39,7 +39,7 @@ import {
 } from "../lib/bom-body";
 import { canManageBoms } from "../lib/capabilities";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
-import { LOT_NUMBER, renderLotPattern } from "../lib/lots";
+import { LOT_NUMBER, renderLotPattern, sampleLotNumber } from "../lib/lots";
 import { BOMS_ROUTE_PATH, bomLinkOptions } from "../lib/routes";
 import { VariantPicker } from "./variant-picker";
 
@@ -552,22 +552,25 @@ interface LotPatternInputProps {
 
 /**
  * The lot number pattern (manufacturing phase 2 M80) with a preview of the
- * number it gives today, and whether that is a lot number at all: the server
- * judges a sample render the same way (lot_pattern_invalid).
+ * number it gives today, and whether it is a lot number at all — judged, as
+ * the server judges it (lot_pattern_invalid), on the widest sample: a long
+ * order number and counter, not the preview's.
  */
 const LotPatternInput = ({ value, sku, disabled, error, onChange }: LotPatternInputProps) => {
   const { t } = useManufacturingFormat();
-  const sample = renderLotPattern(value.trim() === "" ? "{MO}" : value.trim(), sku);
-  const valid = LOT_NUMBER.test(sample);
+  const pattern = value.trim() === "" ? "{MO}" : value.trim();
+  const preview = renderLotPattern(pattern, sku);
+  const widest = sampleLotNumber(pattern, sku);
+  const valid = LOT_NUMBER.test(widest);
   return (
     <TextInput
       label={t("lotPattern")}
-      description={`${t("lotPatternHint")} ${valid ? t("lotPatternPreview", { sample }) : ""}`.trim()}
+      description={`${t("lotPatternHint")} ${valid ? t("lotPatternPreview", { sample: preview }) : ""}`.trim()}
       maxLength={40}
       disabled={disabled}
       value={value}
       onChange={(event) => onChange(event.currentTarget.value)}
-      error={error ?? (valid ? undefined : t("lotPatternInvalid", { sample }))}
+      error={error ?? (valid ? undefined : t("lotPatternInvalid", { sample: widest }))}
     />
   );
 };
