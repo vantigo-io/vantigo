@@ -324,16 +324,19 @@ For an item kept in lots, the [line editor](#the-line-editor) shows a **Lot** co
   adds to that lot. The calendar button beside it opens the lot's **Production date**,
   **Best before** and **Expiry date**: left empty they follow from the item's days; for a
   lot that exists, a date you give must match its own — *The lot exists with another
-  date. Leave the date out to add to it.*
+  date. Leave the date out to add to it.* The dates you give must be in order: an expiry
+  date before the production date, or a best-before date after the expiry date, is
+  refused — *The dates are out of order*.
 - For an item kept in **serial numbers**, a receipt line takes the **First serial number**
   and **How many**: the trailing digits count up, keeping their width — `SN0099`,
   `SN0100`, `SN0101` — and the line's quantity is how many. A serial number already in
   stock is refused.
-- On a **move**, pick the lot from those the item has at the site, each with its expiry
-  date and what lies of it; the form proposes the first lot that can be used, the one
-  expiring first.
-- On an **adjustment**, pick one of the item's lots, or type a new number to put stock
-  under a new lot.
+- On a **move**, choose the **From** location first: the lot column then offers the lots
+  that lie there, each with its expiry date and what lies of it, and proposes the first
+  that can be used — the one expiring first, and of two expiring the same day the one
+  received first. Choosing another **From** location proposes that location's lot.
+- On an **adjustment**, pick one of the lots on the line's location — proposed the same
+  way — or type a new number to put stock under a new lot.
 
 A line of a tracked item without a lot is held back — *Pick the line's lot* — and the
 server refuses a lot of another item, a serial line of more than one, and a receipt into
@@ -356,9 +359,11 @@ or in the lookup — to open its page: the item, what lies of it in total, the s
 lot, when it was first received, its three dates, the movement that made it, and its
 note. **Holds** lists every hold, the active ones first; **Where it lies** lists the
 sites and locations holding it; **Movements** its movement lines, newest first, each
-linked; **Files** its files. With **Manage lots**, **Edit** changes the supplier lot, the
+linked — the latest 200; when there are more the page says so, and the older ones are in
+**Movements** in the sidebar; **Files** its files. With **Manage lots**, **Edit** changes the supplier lot, the
 three dates and the note; the number and the item never change, and a new expiry date
-counts from the next posting.
+counts from the next posting. The dates must be in order — no expiry date before the
+production date, no best-before date after the expiry date.
 
 The page and the list update by themselves when somebody else posts stock of the lot,
 puts it on hold or adds a file.
@@ -369,14 +374,19 @@ With **Manage lots**, **Quarantine** or **Block** on a lot's page puts a hold of
 page: choose the **Cause** — **Inspection**, **Deviation**, **Complaint**, **Recall** or
 **Other** — add a **Note**, and press **Put on hold**. **Release** on one of the page's
 own holds asks *Why it is released* and ends it; the lot is available again once no hold
-is left. A hold put by another module's document — a manufacturing deviation, say — shows
-*Put by manufacturing, released there*: it is released on that document, not here.
+is left. The page puts one quarantine and one block at most: while its own quarantine is
+active, **Quarantine** is greyed out and the page says *This page has the lot in
+quarantine already*, and likewise **Block** — release that hold to put a new one. A hold
+put by another module's document — a manufacturing deviation, say — shows *Put by
+Manufacturing, released there*: it is released on that document, not here, and it does
+not stop the page putting its own.
 
 ### A lot's files
 
 With **Manage lots**, **Add file** on a lot's page adds a certificate, an analysis or a
 photo: a PDF, JPEG or PNG of at most 20 MB, and at most 20 files a lot. Press a file's
-name to open it, the download button to save it, and **Remove** to take it off the lot.
+name or its download button to save it — the browser downloads it rather than opening it
+— and **Remove** to take it off the lot.
 Files need the installation's [object storage](/en/admin/object-storage/); without it,
 *File storage is not set up in this installation.*
 
