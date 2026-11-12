@@ -204,7 +204,7 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     []ProduceLine{VariantID, LineID, ToLocationID, Quantity, LotID}, PostedByUserID,
     PostedByDisplay, Today, ExpiredOverride, Unbuild}) (StockPosted, error)`;
   - `EnsureLots(ctx, tx, src, today, lots []NewLot{VariantID, Number, SupplierLot,
-    ProductionDate, BestBefore, Expiry}) ([]lotID, error)`;
+    ProductionDate, BestBefore, Expiry, MustCreate}) ([]lotID, error)`;
   - `HoldLots(ctx, tx, src, holds []LotHold{LotID, Kind, Cause, Note, By})`;
   - `ReleaseLotHolds(ctx, tx, src, lotIDs, by LotActor)`.
 
@@ -224,7 +224,8 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
   `variant_not_stocked`, `site_unknown`, `location_unknown`, `document_reused`, for
   a production `site_archived`, `quantity_invalid` and `nothing_to_post`, and the [lot
   rules](#the-lot-rules)' `lot_required`, `lot_not_allowed`, `lot_unknown`,
-  `serial_quantity`, `lot_expired`, `lot_blocked` and `lot_dates_differ`. A zero
+  `serial_quantity`, `lot_expired`, `lot_blocked` and `lot_dates_differ`, and
+  `EnsureLots`' `lot_exists`. A zero
   `today` or `Today` is a programming error, answered as a failure. A production
   line that would take a balance beyond 99,999,999,999.999 is `quantity_invalid`.
 
@@ -878,10 +879,15 @@ pool.
 caller's transaction, after its rows and before the `Produce` that uses them, and
 answers the lot ids in the order given; the lots made name `src` as their origin. A lot
 that exists for the variant is answered as is: only the dates the `NewLot` states are
-compared (`lot_dates_differ`), its production date never; a new serial whose number
-holds stock is `serial_quantity`; an untracked variant is `lot_not_allowed`. A
+compared (`lot_dates_differ`), its production date never — unless the `NewLot` sets
+**`MustCreate`**, when a number the variant has already, or one an earlier `NewLot` of
+the call names, is `lot_exists` instead: a production's counted lot number and its
+serials name a new lot or none, never join one. A new serial whose number holds stock
+is `serial_quantity`; an untracked variant is `lot_not_allowed`. Each refusal's line
+`Index` is the `NewLot`'s. A
 `ProduceLine` of a tracked variant names such a lot by `LotID`. The production's lines
-are keyed by (variant, line id). After any refusal the caller rolls back. **It takes
+are keyed by (variant, line id). After any refusal the caller rolls back, the whole
+transaction or to a savepoint it took before the call. **It takes
 every lot it answers `FOR NO KEY UPDATE`**, not only a serial's: a production's
 `HoldLots` on its output in the same transaction (design M86, step 7b) then holds the
 lock it needs already, where upgrading a `FOR SHARE` would deadlock two productions of
