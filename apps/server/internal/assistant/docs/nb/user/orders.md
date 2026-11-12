@@ -382,13 +382,21 @@ den tas fra, står under den med partiets **Utløper**, **Lokasjon** og **Antall
 4. Et utløpt parti kan bare leveres av noen med rettigheten **Bruke utgåtte partier**
    (`inventory:expired-override`): kryss av for **Bruk utløpt parti** under linjen, og velg
    det så i **Bytt parti**; det merkes **Utløpt**. Uten rettigheten vises det, men kan ikke
-   velges, og en leveranse som tar et, avvises.
-5. **Lagre**. Endrer du bare linjens antall, velges partiene for deg på nytt.
+   velges, og en leveranse som tar et, avvises. Den som ikke har rettigheten, kan likevel
+   lagre leveransen med partiet slik det ble valgt, men ikke endre antallet.
+5. Et serienummer leveres ett om gangen: antallet er 1.
+6. **Lagre**. Endrer du bare linjens antall, blir partiene du valgte stående: linjen sier
+   **Mangler** eller at partiene tar mer enn antallet, til du får dem til å gå opp.
+   Partier som ble valgt for deg, velges på nytt for det nye antallet.
+7. **Foreslå på nytt** under en linje velger partiene for deg på nytt — det som utløper
+   først, fra det som ligger der nå — og lagrer leveransen.
 
 **Plukkliste** har en rad per parti, under lokasjonen, med partinummer og utløpsdato i
 kolonnen **Parti**. **Pakkseddel** viser partiene — og serienumrene — under hver linje, med
-utløpsdato: den er kundens oversikt over hvilke partier de fikk. Kortet **Leveranser** på
-ordren viser partiene til hver leveranse.
+utløpsdato, hvert parti én gang med hvor mye linjen tar av det: den er kundens oversikt
+over hvilke partier de fikk. Kortet **Leveranser** på ordren viser partiene til hver
+bokførte leveranse og til hvert utkast slik de er valgt så langt; en kansellert leveranse
+viser ingen.
 
 Når du bokfører, kan noen andre ha tatt et parti i mellomtiden, eller sperret det. Har du
 ikke endret partiene selv, velges de på nytt fra det som ligger der nå, og leveransen
@@ -669,6 +677,7 @@ eller kansellert ([tidslinjen](/nb/user/customers/#tidslinjen)).
 | Partiet er utløpt. | Velg et annet parti, eller be noen med **Bruke utgåtte partier** bokføre leveransen med **Bruk utløpt parti**. |
 | Partiet er sperret. | Partiet er i karantene eller blokkert i Lager: velg et annet parti. |
 | Det partiet har ikke varen på den lokasjonen. | Noen har tatt partiet i mellomtiden: last inn på nytt og velg et annet. |
+| Bare den som har lov til å bruke utløpte partier, kan velge et utløpt parti. | Velg et annet parti, eller be noen med **Bruke utgåtte partier** velge det. |
 | Ingenting av ordren er åpent og disponibelt på lagerstedet. | Vent på varene, reserver dem, eller gjør ferdig leveranseutkastet som alt holder dem. |
 | Ordren har leveranser; lagerstedet kan ikke lenger endres. | La lagerstedet være som det er. |
 | En bokført leveranse kan ikke endres. | Korriger beholdningen i Lager og bruk **Angre levert** på ordren. |
