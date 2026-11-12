@@ -436,10 +436,12 @@ da den ble bekreftet:
   *MO-12*, uansett dag.
 - `{YYMMDD}`, eller `{YYYY}`, `{YY}`, `{MM}`, `{DD}` — produksjonsdatoen: `L{YYMMDD}-{N}`
   lager et nytt parti for hver produksjon, *L261112-1*, *L261112-2*.
-- `{SKU}` — produktets SKU; `{N}` — et løpenummer, talt for hvert prefiks.
+- `{SKU}` — produktets SKU; `{N}` — et løpenummer, talt for hvert prefiks. Et nummer det
+  teller, lager alltid et nytt parti: har noen skrevet det nummeret allerede, tas det neste.
 - Alt annet skrives som det står. Et partinummer har 1–20 bokstaver, sifre og `. _ / -`;
-  stykklisteredigeringen viser et eksempel og nekter et mønster som ikke gir et
-  (**Mønsteret for partinummer gir ikke et partinummer**).
+  stykklisteredigeringen viser et eksempel og nekter et mønster som ikke gir et, vurdert
+  med et langt ordrenummer og løpenummer, så et mønster som bare passer dagens korte også
+  fanges opp (**Kan gi … på en senere ordre**).
 
 Behold nummeret eller skriv et annet; et nummer produktet allerede har, legger til i det
 partiet. **Produksjonsdato** er i dag med mindre du endrer den. **Utløpsdato** og **Best
@@ -449,8 +451,10 @@ datoer**).
 
 For et produkt som spores med **serienumre** må godkjent antall være helt, og hver enhet
 får sitt eget nummer: **Første serienummer** telles opp, ett per enhet — som standard
-ordrens nummer og fire sifre, *MO-12-0001*, videre fra serienumrene ordren laget før.
-Kasserte ferdigvarer nummereres aldri.
+ordrens nummer og fire sifre, *MO-12-0001*, videre etter det høyeste slike nummeret ordren
+laget før. Hver enhet får et nytt serienummer: et som er brukt fra før, selv av en enhet
+som ble levert for lenge siden, nektes (**Det serie- eller partinummeret er tatt fra
+før**). Kasserte ferdigvarer nummereres aldri.
 
 **Partiene den forbruker.** Under hver sporet komponent viser skjemaet partiene den ville
 ta, det som går ut først først — *Tas etter først utløpt, først ut når du bokfører: B-1 (1.
@@ -461,12 +465,16 @@ er et parti på en lokasjon, valgt blant lagerstedets partier med utløpsdato og
 ligger der (sperrede og utløpte partier er merket), og antallet som tas fra det. **Legg
 til parti** legger til en rad, krysset fjerner en, og **Ta etter først utløpt, først ut**
 går tilbake til forslaget. Radene må summere til det linjen forbruker og kasserer;
-skjemaet sier fra når de ikke gjør det. Et utløpt parti kan bare brukes av den som har lov
+skjemaet sier fra når de ikke gjør det, og merker en rad på 0 (**Mer enn 0**) og et parti
+valgt i to rader (**Valgt i en annen rad**). Når du velger hvor en komponent tas fra (**Ta
+… fra**), foreslås partiene som vises på nytt fra den lokasjonen, slik Lager vil ta dem
+der. Et utløpt parti kan bare brukes av den som har lov
 til å bruke utløpte partier, og som krysser av for **utløpt** på raden; et sperret eller
 blokkert parti nektes (**Et parti er sperret eller blokkert og kan ikke brukes**).
 
 Når partier du ikke endret, er tatt av noen andre i mellomtiden, foreslår produksjonen dem
-på nytt én gang ut fra det som er på lager, og bokfører.
+på nytt én gang ut fra det som er på lager, og bokfører. Dekker det som er igjen ikke
+lenger linjen, bokføres ingenting, og skjemaet sier hvorfor.
 
 **Ordrens partier.** Fanen **Partier** på ordresiden viser **Partier laget**, med det
 produksjonene la i hvert og hvor mange produksjoner, og **Partier forbrukt** per komponent
