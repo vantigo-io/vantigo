@@ -94,6 +94,20 @@ export const refusalCodes = [
   "maximum_below_reorder_point",
   "placement_empty",
   "placement_location_invalid",
+  // Manufacturing phase 2, L1a and L1b: lots, holds and a lot's files.
+  "lot_required",
+  "lot_not_allowed",
+  "lot_unknown",
+  "serial_quantity",
+  "serial_first_invalid",
+  "lot_dates_differ",
+  "lot_expired",
+  "lot_blocked",
+  "hold_not_inventorys",
+  "attachment_too_large",
+  "too_many_attachments",
+  "attachment_type",
+  "storage_not_configured",
 ] as const;
 
 export interface MovementsFilter {

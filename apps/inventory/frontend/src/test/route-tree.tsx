@@ -18,6 +18,8 @@ import {
   INVENTORY_HOME_ROUTE_PATH,
   LOCATION_ROUTE_PATH,
   LOOKUP_ROUTE_PATH,
+  LOT_ROUTE_PATH,
+  LOTS_ROUTE_PATH,
   LOW_STOCK_ROUTE_PATH,
   MOVEMENT_ROUTE_PATH,
   MOVEMENTS_ROUTE_PATH,
@@ -34,6 +36,7 @@ import {
 import {
   validateCountsSearch,
   validateLookupSearch,
+  validateLotsSearch,
   validateLowStockSearch,
   validateMovementsSearch,
   validateNewMovementSearch,
@@ -46,6 +49,8 @@ import { InventoryHomePage } from "../pages/home";
 import { ImportPage } from "../pages/import";
 import { LocationPage } from "../pages/location";
 import { LookupPage } from "../pages/lookup";
+import { LotPage } from "../pages/lot";
+import { LotsPage } from "../pages/lots";
 import { LowStockPage } from "../pages/low-stock";
 import { MovementPage } from "../pages/movement";
 import { MovementsPage } from "../pages/movements";
@@ -96,6 +101,8 @@ export const makeRouteTree = () => {
     route(TRANSFER_ROUTE_PATH, TransferPage),
     route(RECEIVE_TRANSFER_ROUTE_PATH, ReceiveTransferPage),
     route(LOW_STOCK_ROUTE_PATH, LowStockPage, validateLowStockSearch),
+    route(LOTS_ROUTE_PATH, LotsPage, validateLotsSearch),
+    route(LOT_ROUTE_PATH, LotPage),
     route(PRODUCT_TEST_PATH, ProductSlot),
   ]);
 };

@@ -14,6 +14,62 @@ describe("the product's Stock card", () => {
     expect(screen.queryByRole("link", { name: "Adjust" })).not.toBeInTheDocument();
   });
 
+  it("shows a tracked variant's lots under each location, with what is on hold or expired", async () => {
+    const milk = { id: 601, productId: 6, sku: "MILK-1", productName: "Milk", unit: "l", tracking: "lot" as const };
+    const site = { id: 1, code: "OSL", name: "Oslo lager", kind: "warehouse" as const, status: "active" as const };
+    const location = { id: 12, siteId: 1, fullCode: "OSL-A-01", kind: "rack" as const, status: "active" as const };
+    stubInventoryApi({
+      productStock: {
+        6: {
+          productId: 6,
+          variants: [
+            {
+              variant: milk,
+              totalOnHand: 8,
+              totalReserved: 0,
+              totalAvailable: 3,
+              sites: [
+                {
+                  site,
+                  onHand: 8,
+                  reserved: 0,
+                  available: 3,
+                  held: 5,
+                  incoming: 0,
+                  rows: [
+                    {
+                      variant: milk,
+                      location,
+                      onHand: 8,
+                      lots: [
+                        {
+                          lotId: 1001,
+                          number: "E1",
+                          expiry: "2026-09-01",
+                          expired: true,
+                          status: "available",
+                          onHand: 5,
+                        },
+                        { lotId: 1002, number: "E2", status: "available", expired: false, onHand: 3 },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    renderRoute("/products/6");
+    const oslo = await screen.findByRole("button", { name: /OSL · Oslo lager/ });
+    expect(oslo).toHaveTextContent("of which 5 l on hold or expired");
+    await userEvent.click(oslo);
+    expect(await screen.findByRole("link", { name: "E1" })).toHaveAttribute("href", "/inventory/lots/1001");
+    expect(screen.getByText("Expired")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "E2" })).toHaveAttribute("href", "/inventory/lots/1002");
+  });
+
   it("totals the stock in several sites, each expanding to its locations by full code", async () => {
     stubInventoryApi({
       balances: [

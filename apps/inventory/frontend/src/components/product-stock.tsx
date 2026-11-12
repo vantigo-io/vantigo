@@ -13,6 +13,7 @@ import {
 import { canPost } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
 import { newMovementLinkOptions, variantStockLinkOptions } from "../lib/routes";
+import { LotLines } from "./lot-status";
 import { Quantity } from "./quantity";
 
 /** The product page's Stock card (I27), composed by the host. */
@@ -55,6 +56,20 @@ export const ReservedAvailable = ({
   );
 };
 
+/**
+ * Of on hand, what lies in lots on hold or expired (manufacturing phase 2
+ * M63), drawn only when there is some: it is left out of available.
+ */
+export const HeldQuantity = ({ held, unit }: { held: number; unit: string }) => {
+  const { t, quantity } = useInventoryFormat();
+  if (held === 0) return null;
+  return (
+    <Text size="xs" c="orange" component="div">
+      {t("ofWhichHeld", { quantity: quantity(held, unit) })}
+    </Text>
+  );
+};
+
 /** What is on its way to the product's sites, per unit (I46): the sites' incoming, summed. */
 const inTransitByUnit = (variants: readonly InventoryVariantStock[]) => {
   const totals = new Map<string, number>();
@@ -64,7 +79,7 @@ const inTransitByUnit = (variants: readonly InventoryVariantStock[]) => {
   return [...totals];
 };
 
-/** A site's line, expanding to its locations by full code and name, sorted by full code. */
+/** A site's line, expanding to its locations by full code and name, sorted by full code, a tracked variant's lots under each. */
 const SiteStock = ({
   stock,
   unit,
@@ -95,6 +110,7 @@ const SiteStock = ({
               </Text>
             )}
             <ReservedAvailable reserved={stock.reserved} available={stock.available} unit={unit} />
+            <HeldQuantity held={stock.held} unit={unit} />
             {reorderPoint !== null && reorderPoint !== undefined && (
               <Text size="xs" c={stock.placement?.low ? "red" : "dimmed"}>
                 {t("reorderAt", { quantity: quantity(reorderPoint, unit) })}
@@ -127,6 +143,7 @@ const SiteStock = ({
                 </Table.Td>
                 <Table.Td ta="right">
                   <Quantity value={row.onHand} unit={unit} packagings={packagings} />
+                  {row.lots && row.lots.length > 0 && <LotLines lots={row.lots} unit={unit} packagings={packagings} />}
                 </Table.Td>
               </Table.Tr>
             ))}

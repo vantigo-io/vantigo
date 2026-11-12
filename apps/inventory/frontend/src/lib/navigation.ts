@@ -2,6 +2,7 @@ import {
   COUNTS_ROUTE_PATH,
   IMPORT_ROUTE_PATH,
   INVENTORY_HOME_ROUTE_PATH,
+  LOTS_ROUTE_PATH,
   LOW_STOCK_ROUTE_PATH,
   MOVEMENTS_ROUTE_PATH,
   TRANSFERS_ROUTE_PATH,
@@ -9,7 +10,7 @@ import {
 
 /** One sidebar destination of the app; the host owns its label and icon. */
 export interface InventoryNavItem {
-  key: "overview" | "transfers" | "movements" | "receipts" | "counts" | "lowStock" | "import";
+  key: "overview" | "lots" | "transfers" | "movements" | "receipts" | "counts" | "lowStock" | "import";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -29,6 +30,14 @@ export const inventoryNavItems: readonly InventoryNavItem[] = [
     label: "navOverview",
     to: INVENTORY_HOME_ROUTE_PATH,
     requiredPermissions: ["inventory:locations-view", "inventory:stock-view"],
+  },
+  {
+    // The lots (manufacturing phase 2 M60) are a stock read: both views alone; changing one needs lots-manage.
+    key: "lots",
+    label: "navLots",
+    to: LOTS_ROUTE_PATH,
+    requiredPermissions: ["inventory:stock-view"],
+    requiredAllPermissions: stockViews,
   },
   {
     // Seeing transfers needs both views alone (phase 2 design I63); writing them needs transfers-manage.

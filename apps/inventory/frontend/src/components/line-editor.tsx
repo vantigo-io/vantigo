@@ -1,7 +1,7 @@
 import { ActionIcon, Button, Group, NumberInput, SegmentedControl, Stack, Table, Text, TextInput } from "@mantine/core";
 import { IconPlus, IconScan, IconTrash } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { type Dispatch, type ReactNode, type SetStateAction, useRef, useState } from "react";
+import { type Dispatch, type ReactNode, type SetStateAction, useCallback, useRef, useState } from "react";
 import { lookupQueryOptions } from "../api/lookup";
 import type { InventoryAdjustmentMode } from "../api/movements";
 import type { InventoryVariantRef } from "../api/stock";
@@ -11,12 +11,15 @@ import {
   type EditorKind,
   type EditorLine,
   isPacked,
+  isTracked,
   lineQuantity,
   newEditorLine,
   roundQuantity,
+  takesSerials,
   usesDecrease,
 } from "../lib/lines";
 import { LocationPicker } from "./location-picker";
+import { LotField } from "./lot-field";
 import { PackagingSteppers } from "./packaging-steppers";
 import { VariantPicker } from "./variant-picker";
 
@@ -71,10 +74,15 @@ export const LineEditor = ({
   const scanRef = useRef<HTMLInputElement>(null);
 
   // Editing a line drops the low-stock list's suggestion it was drafted with (I57).
-  const update = (key: string, change: Partial<EditorLine>) =>
-    onChange((current) =>
-      current.map((line) => (line.key === key ? { ...line, ...change, suggestion: undefined } : line)),
-    );
+  const update = useCallback(
+    (key: string, change: Partial<EditorLine>) =>
+      onChange((current) =>
+        current.map((line) => (line.key === key ? { ...line, ...change, suggestion: undefined } : line)),
+      ),
+    [onChange],
+  );
+  // A tracked variant's rows name a lot (manufacturing phase 2 M59): the column shows when any row has one.
+  const showLots = kind !== "transfer" && lines.some((line) => isTracked(line.variant));
 
   // A receipt line goes to the variant's primary location at the site by default (I55): a picked
   // variant carries it from the search, a scanned one is read from its stock at the site.
@@ -89,7 +97,17 @@ export const LineEditor = ({
   };
   // Picking another variant on a receipt line moves it to that variant's primary location, unless the person chose one.
   const picked = (line: EditorLine, variant: InventoryVariantRef | undefined) => {
-    const change: Partial<EditorLine> = { variant, packs: {}, decrease: false };
+    // Another variant has other lots: the row's lot starts again.
+    const change: Partial<EditorLine> = {
+      variant,
+      packs: {},
+      decrease: false,
+      lotNumber: "",
+      lotId: undefined,
+      lotDates: { productionDate: "", bestBefore: "", expiry: "" },
+      serialFirst: "",
+      serialCount: "",
+    };
     if (kind === "receipt" && (line.locationId === null || line.locationId === line.variant?.primaryLocationId))
       change.locationId = variant?.primaryLocationId ?? null;
     update(line.key, change);
@@ -183,6 +201,7 @@ export const LineEditor = ({
                   </Table.Th>
                 )}
                 {kind === "move" && <Table.Th>{t("columnTo")}</Table.Th>}
+                {showLots && <Table.Th>{t("columnLot")}</Table.Th>}
                 <Table.Th>{t("columnQuantity")}</Table.Th>
                 {extraColumns.map((column) => (
                   <Table.Th key={column.key}>{column.header}</Table.Th>
@@ -268,6 +287,24 @@ export const LineEditor = ({
                         />
                       </Table.Td>
                     )}
+                    {showLots && (
+                      <Table.Td miw={200}>
+                        {isTracked(line.variant) ? (
+                          <LotField
+                            key={line.variant?.id}
+                            kind={kind}
+                            n={n}
+                            line={line}
+                            siteId={siteId}
+                            onChange={(change) => update(line.key, change)}
+                          />
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            —
+                          </Text>
+                        )}
+                      </Table.Td>
+                    )}
                     <Table.Td w={packagings.length > 0 ? 200 : 150}>
                       <Stack gap={4}>
                         {decreasing && (
@@ -308,6 +345,8 @@ export const LineEditor = ({
                           }
                           rightSectionWidth={line.variant ? 48 : undefined}
                           value={line.quantity}
+                          // A receipt's serials count the line: one of each (M57).
+                          disabled={takesSerials(kind, line.variant)}
                           onChange={(value) =>
                             update(line.key, { quantity: value === "" ? "" : roundQuantity(Number(value)) })
                           }

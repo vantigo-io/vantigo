@@ -268,6 +268,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/lots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List lots
+         * @description The lots (manufacturing phase 2 M60), by variant then number, by cursor. q matches the lot number, the supplier lot or the SKU, ignoring case; holdCause a lot with an active hold of that cause; expiresBefore an expiry before that day. withStock (default true) lists only lots holding more than 0 — at siteId when it is given, where onHand is counted too.
+         */
+        get: operations["listInventoryLots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/lots/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a lot
+         * @description A lot's page (M61) — its header, holds, where it lies, its latest movement lines and its files.
+         */
+        get: operations["getInventoryLot"];
+        /**
+         * Change a lot
+         * @description Replaces a lot's supplier lot, production, best-before and expiry dates and note (M61). The number and the variant never change. A changed expiry is judged from the next posting on.
+         */
+        put: operations["putInventoryLot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/lots/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a file to a lot
+         * @description Attaches one file to a lot (M54): a PDF, JPEG or PNG of at most 20 MB in the multipart field file, whose own bytes decide its type and must agree with the type and extension it is sent under; at most 20 a lot. The object is written before the row and removed again by whatever refuses after it.
+         */
+        post: operations["postInventoryLotAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/lots/{id}/attachments/{attachmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a lot's file
+         * @description Streams a lot's file with the type it was sniffed as on upload, named as uploaded, never cached and never sniffed, under a sandboxing content-security-policy (M54). A file of another lot is the 404 an unknown id is.
+         */
+        get: operations["getInventoryLotAttachment"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a file from a lot
+         * @description Removes a lot's file (M54); its object is queued for removal in the same transaction and removed once that has committed, retried by the inventory.object-deletions worker until the store confirms.
+         */
+        delete: operations["deleteInventoryLotAttachment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/lots/{id}/holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put a lot on hold
+         * @description Puts a hold of the lot page on the lot (M64), source inventory/lot/<id>; the status is derived again. An active hold of the lot page of the same kind is left as is.
+         */
+        post: operations["postInventoryLotHold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/lots/{id}/holds/{holdId}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release a lot's hold
+         * @description Releases one of Inventory's own holds on the lot (M64) — the lot page's, or a receipt's inspection — with a note; the status is derived again. A hold another module's document put is released there (409 hold_not_inventorys). A hold already released answers the lot as it is.
+         */
+        post: operations["releaseInventoryLotHold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/low-stock": {
         parameters: {
             query?: never;
@@ -844,9 +972,26 @@ export interface components {
         };
         /** @enum {string} */
         InventoryAdjustmentReason: "correction" | "damaged" | "lost" | "found" | "opening_balance" | "other";
+        /** @description What lies of one lot on one location (manufacturing phase 2 M63): a stock row's lots, in FEFO order — expiry first, none last, then received. */
+        InventoryBalanceLot: {
+            /** Format: date */
+            bestBefore?: string | null;
+            /** @description The expiry is before today in the workspace zone (M62). */
+            expired: boolean;
+            /** Format: date */
+            expiry?: string | null;
+            /** Format: int64 */
+            lotId: number;
+            number: string;
+            /** Format: double */
+            onHand: number;
+            status: components["schemas"]["InventoryLotStatus"];
+        };
         /** @description What lies of one variant on one location. */
         InventoryBalanceRow: {
             location: components["schemas"]["InventoryLocationRef"];
+            /** @description A tracked variant's lots on the location, in FEFO order (manufacturing phase 2 M63); set on a site's stock rows, absent elsewhere and for an untracked variant. */
+            lots?: components["schemas"]["InventoryBalanceLot"][];
             /** Format: double */
             onHand: number;
             /** @description The variant's primary location at the site (I55); set on a site's stock rows, absent elsewhere. */
@@ -1060,6 +1205,124 @@ export interface components {
             /** @description Also every active location below each one. */
             subtree?: boolean;
         };
+        /** @description A lot's page (manufacturing phase 2 M61): its header, its holds, where it lies, its movement lines and its files. */
+        InventoryLot: {
+            /** @description The lot's files, newest first (M54). */
+            attachments: components["schemas"]["InventoryLotAttachment"][];
+            /** Format: date */
+            bestBefore?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            createdBy?: components["schemas"]["InventoryActor"];
+            /** @description The expiry is before today in the workspace zone (M62). */
+            expired: boolean;
+            /** Format: date */
+            expiry?: string | null;
+            /** @description Every hold, the active ones first, newest first within each (M64). */
+            holds: components["schemas"]["InventoryLotHold"][];
+            /** Format: int64 */
+            id: number;
+            /** @description Where it lies, per location, by site code then full code. */
+            locations: components["schemas"]["InventoryLotLocation"][];
+            /** @description The lot's movement lines, newest first; the latest 200. */
+            movements: components["schemas"]["InventoryLotMovementLine"][];
+            note?: string | null;
+            number: string;
+            /**
+             * Format: double
+             * @description On hand over every location.
+             */
+            onHand: number;
+            origin?: components["schemas"]["InventorySourceRef"];
+            /** Format: date */
+            productionDate?: string | null;
+            /**
+             * Format: date-time
+             * @description When stock first entered under the lot, the FIFO key (M52).
+             */
+            receivedAt: string;
+            /**
+             * Format: int32
+             * @description Sent back as If-Match on a change.
+             */
+            revision: number;
+            /** @description The variant's tracking was serial when the lot was made; a serial holds at most 1. */
+            serial: boolean;
+            status: components["schemas"]["InventoryLotStatus"];
+            supplierLot?: string | null;
+            variant: components["schemas"]["InventoryVariantRef"];
+        };
+        /** @description A file of a lot (M54), such as an EN 10204 3.1 certificate. Its bytes are read through GET /lots/{id}/attachments/{attachmentId}; no path is ever returned. */
+        InventoryLotAttachment: {
+            contentType: string;
+            fileName: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: date-time */
+            uploadedAt: string;
+            uploadedBy?: components["schemas"]["InventoryActor"];
+        };
+        /** @description One hold on a lot (M64), owned by the document that put it: the lot page's own (inventory/lot/<id>), a receipt's inspection (inventory/movement/<id>), or another module's document, released only there. */
+        InventoryLotHold: {
+            /** @enum {string} */
+            cause: "inspection" | "deviation" | "complaint" | "recall" | "other";
+            /** Format: date-time */
+            createdAt: string;
+            createdBy?: components["schemas"]["InventoryActor"];
+            /** Format: int64 */
+            id: number;
+            /** @description The hold's source is Inventory's, so the lot page may release it; another module's is released on its document (hold_not_inventorys). */
+            inventorys: boolean;
+            /** @enum {string} */
+            kind: "quarantine" | "block";
+            note?: string | null;
+            releaseNote?: string | null;
+            /** Format: date-time */
+            releasedAt?: string | null;
+            releasedBy?: components["schemas"]["InventoryActor"];
+            source: components["schemas"]["InventorySourceRef"];
+        };
+        /** @description A hold the lot page puts (M64). A lot that already holds an active hold of the lot page of the same kind is left as is. */
+        InventoryLotHoldInput: {
+            /** @enum {string} */
+            cause: "inspection" | "deviation" | "complaint" | "recall" | "other";
+            /** @enum {string} */
+            kind: "quarantine" | "block";
+            note?: string;
+        };
+        /** @description The release of one of Inventory's own holds (M64), with why. */
+        InventoryLotHoldRelease: {
+            note?: string;
+        };
+        /** @description What lies of a lot on one location. */
+        InventoryLotLocation: {
+            location: components["schemas"]["InventoryLocationRef"];
+            /** Format: double */
+            onHand: number;
+            site: components["schemas"]["InventorySiteRef"];
+        };
+        /** @description One movement line of a lot. */
+        InventoryLotMovementLine: {
+            from?: components["schemas"]["InventoryLocationRef"];
+            kind: components["schemas"]["InventoryMovementKind"];
+            /** Format: int32 */
+            lineNo: number;
+            /** Format: int64 */
+            movementId: number;
+            /** Format: date-time */
+            postedAt: string;
+            /** Format: double */
+            quantity: number;
+            to?: components["schemas"]["InventoryLocationRef"];
+        };
+        /** @description A page of the lots list (M60). */
+        InventoryLotPage: {
+            lots: components["schemas"]["InventoryLotSummary"][];
+            /** @description Absent on the last page. */
+            nextCursor?: string;
+        };
         /** @description A lot as a movement line names it (manufacturing phase 2 M52). */
         InventoryLotRef: {
             /** Format: date */
@@ -1067,6 +1330,43 @@ export interface components {
             /** Format: int64 */
             id: number;
             number: string;
+        };
+        /**
+         * @description A lot's status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.
+         * @enum {string}
+         */
+        InventoryLotStatus: "available" | "quarantine" | "blocked";
+        /** @description One row of the lots list (M60). */
+        InventoryLotSummary: {
+            /** Format: date */
+            bestBefore?: string | null;
+            /** @description The expiry is before today in the workspace zone (M62). */
+            expired: boolean;
+            /** Format: date */
+            expiry?: string | null;
+            /** Format: int64 */
+            id: number;
+            number: string;
+            /**
+             * Format: double
+             * @description On hand at the siteId asked for, else over every location.
+             */
+            onHand: number;
+            serial: boolean;
+            status: components["schemas"]["InventoryLotStatus"];
+            supplierLot?: string | null;
+            variant: components["schemas"]["InventoryVariantRef"];
+        };
+        /** @description A lot's editable fields (M61), replaced whole: a field left out is cleared. The number and the variant never change. */
+        InventoryLotUpdate: {
+            /** Format: date */
+            bestBefore?: string;
+            /** Format: date */
+            expiry?: string;
+            note?: string;
+            /** Format: date */
+            productionDate?: string;
+            supplierLot?: string;
         };
         /** @description A node of a site's tree (I2). */
         InventoryLocation: {
@@ -1164,11 +1464,12 @@ export interface components {
             sortOrder: number;
             status: components["schemas"]["InventoryStatus"];
         };
-        /** @description One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, or a transfer by its TRF token to a caller holding both views (I52). */
+        /** @description One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, a transfer by its TRF token, or a lot by its LOT token or its number (manufacturing phase 2 M66) — the last two to a caller holding both views (I52). A lot match names its lot and its variant. */
         InventoryLookupMatch: {
             /** @enum {string} */
-            kind: "location" | "variant" | "transfer";
+            kind: "location" | "variant" | "transfer" | "lot";
             location?: components["schemas"]["InventoryLocationRef"];
+            lot?: components["schemas"]["InventoryLotRef"];
             transfer?: components["schemas"]["InventoryTransferRef"];
             variant?: components["schemas"]["InventoryVariantRef"];
         };
@@ -1259,6 +1560,8 @@ export interface components {
             today: string;
             /** @description inventory:counts-manage — counts. */
             canCount: boolean;
+            /** @description inventory:lots-manage — editing a lot, its files, putting and releasing Inventory's own holds (manufacturing phase 2 M68). */
+            canManageLots: boolean;
             /** @description inventory:locations-manage — sites and locations. */
             canManageLocations: boolean;
             /** @description inventory:receipts-manage — goods receipts. */
@@ -1469,7 +1772,7 @@ export interface components {
             /** Format: double */
             reorderPoint: number | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module's document put, which is released there), attachment_too_large and too_many_attachments (400: a lot's file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         InventoryProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1635,9 +1938,14 @@ export interface components {
         InventorySiteStock: {
             /**
              * Format: double
-             * @description On hand less reserved; negative when a correction took on hand below what is reserved.
+             * @description Usable on hand less reserved (manufacturing phase 2 M63) — on hand without the lots on hold or expired; negative when a correction or a hold took it below what is reserved.
              */
             available: number;
+            /**
+             * Format: double
+             * @description Of on hand, what lies in lots on hold or expired (M63); 0 for an untracked variant.
+             */
+            held: number;
             /**
              * Format: double
              * @description In transit to the site on open transfers (I46).
@@ -2063,6 +2371,11 @@ export interface components {
             productId?: number;
             productName: string;
             sku: string;
+            /**
+             * @description How the variant's stock is kept (manufacturing phase 2 M49): none, in lots, or in serials; absent on a deleted variant.
+             * @enum {string}
+             */
+            tracking?: "none" | "lot" | "serial";
             unit: string;
         };
         /** @description One variant's stock by site (I27). */
@@ -2071,7 +2384,7 @@ export interface components {
             sites: components["schemas"]["InventorySiteStock"][];
             /**
              * Format: double
-             * @description Total on hand less total reserved.
+             * @description Total usable on hand — on hand without the lots on hold or expired — less total reserved.
              */
             totalAvailable: number;
             /** Format: double */
@@ -3089,6 +3402,546 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    listInventoryLots: {
+        parameters: {
+            query?: {
+                /** @description Part of a lot number, a supplier lot or an SKU. */
+                q?: string;
+                variantId?: number;
+                /** @description On hand is counted at this site, and withStock means stock here. */
+                siteId?: number;
+                status?: components["schemas"]["InventoryLotStatus"];
+                /** @description Only lots with an active hold of this cause (M64). */
+                holdCause?: "inspection" | "deviation" | "complaint" | "recall" | "other";
+                /** @description Only lots whose expiry is before this day. */
+                expiresBefore?: string;
+                withStock?: boolean;
+                /** @description The previous page's nextCursor. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLotPage"];
+                };
+            };
+            /** @description Bad Request — a filter or cursor that does not parse. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    getInventoryLot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLot"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    putInventoryLot: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The revision the lot was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict. */
+                "If-Match": string;
+            };
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryLotUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLot"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    postInventoryLotAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLotAttachment"];
+                };
+            };
+            /** @description Bad Request — attachment_too_large (over 20 MB), too_many_attachments (the lot carries 20), or a field error on file (missing, empty or sent twice). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unsupported Media Type — attachment_type: not a PDF, JPEG or PNG, or its bytes disagree with its declared type or extension. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_not_configured, or the object store could not be written; nothing was recorded. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    getInventoryLotAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                attachmentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot, or no such file of it. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — storage_not_configured, or the object store could not be read. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    deleteInventoryLotAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                attachmentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot, or no such file of it. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postInventoryLotHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryLotHoldInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLot"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    releaseInventoryLotHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                holdId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InventoryLotHoldRelease"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLot"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such lot, or no such hold of it. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — hold_not_inventorys: the hold's source is another module's document, where it is released. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. */
             503: {
                 headers: {
                     [name: string]: unknown;
