@@ -254,6 +254,8 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     canReceive: true,
     canCount: true,
     canTransfer: true,
+    canOverrideExpired: false,
+    today: "2026-09-12",
     ...server.meta,
   };
   const siteRef = (site: InventorySite): InventorySiteRef => ({

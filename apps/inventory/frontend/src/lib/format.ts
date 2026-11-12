@@ -69,6 +69,7 @@ export const movementKindColor = {
   transfer_out: "cyan",
   transfer_in: "lime",
   production: "violet",
+  unbuild: "pink",
 } as const;
 
 /** A count status's badge colour. */
