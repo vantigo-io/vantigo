@@ -438,7 +438,12 @@ varens strekkode i [Produkter](/nb/user/products/), når den er en gyldig GTIN-8
 eller -14 —, produksjonsdatoen, utløpsdatoen (eller best før-datoen når det ikke er noen)
 og partinummeret, eller serienummeret, og det samme står i parentes under den:
 *(01)04006381333931(17)261231(10)B1*. En vare uten gyldig GTIN kan ikke få en GS1-etikett:
-partiene får den interne etiketten, merket *No GTIN — not a GS1 label*.
+partiene får den interne etiketten, merket *No GTIN — not a GS1 label*. Strekkoden går over
+hele etiketten, så strekene blir så brede som etiketten tillater; likevel blir de smalere jo
+lengre partinummeret er. Velg **Avery L7163** for etiketter kundene skal skanne: på **Avery
+L7160** er strekene for de fleste partier smalere enn GS1s vanlige minimum, og en kundes
+skanner leser dem kanskje ikke. Prøv en etikett på skanneren som skal lese den før du
+skriver ut en hel bunke.
 
 ### Spor et parti
 
@@ -449,20 +454,26 @@ partiet: produksjonene det gikk gjennom og hvor de fører, som et tre.
 - **Hvor det gikk** følger partiet framover: partiene laget av det, og partiene laget av
   dem, hver med hva den brukte av partiet og hva den laget; og hvor hver vei ender — en
   **leveranse**, med leveranse- og ordrenummer og kunden, en justering eller telling ned,
-  en overføring til et annet lagersted, eller en produksjon som ikke laget noe parti.
+  en overføring til et annet lagersted — *Sendt til* og lagerstedet —, eller en produksjon
+  som ikke laget noe parti. Et parti sendt til et annet lagersted og levert derfra viser
+  både overføringen og leveransen.
 - **Hvor det kom fra** følger det bakover: partiene det ble laget av, ned til
   **varemottakene**, med leverandøren og leverandørens referanse. **Vis komponentene uten
   parti** viser også varene en produksjon brukte som ikke holdes i partier.
 
 Hvert parti viser status og hva det har nå, og lenker til siden sin; hver produksjon
 lenker til produksjonsordren. Et parti som nås to ganger — det samme melet i deigen og i
-brødet — vises helt én gang; senere står det *Vist ovenfor*, som hopper dit. Pilen ved et
+brødet — vises helt én gang; senere står det *Vist ovenfor*, som hopper dit og åpner en
+skjult gren på veien. Pilen ved et
 parti skjuler det som ligger under. Å ta en ferdigvare fra hverandre (en demontering)
 avslutter veien: ferdigpartiet viser *Demontert av demontering …*, delene det ga tilbake
 *Tilbakeført av demontering …*, og sporingen går ikke fra det ene inn i det andre.
 
-Sporingen følger ti produksjoner dypt og viser høyst 2 000 rader; en større avvises —
-*Sporingen har mer enn 2 000 rader* — så spor et parti lenger ned i treet.
+Sporingen følger ti produksjoner dypt; et parti på det tiende nivået sier *Ikke sporet
+videre: dybdegrensen* når mer ble laget av det. Den viser høyst 2 000 partier og 20 000
+leveranser, mottak og andre rader, så et parti levert tusenvis av ganger kan likevel
+spores; en større avvises — *Sporingen har mer enn 2 000 partier …* — så spor et parti
+lenger ned i treet.
 
 Hvem som fikk partiet, kommer fra Ordre: du ser leveransen, ordren og kundens nummer bare
 om du kan bruke Ordre, og kundens navn bare om du også kan se kunder. Ellers sier
@@ -487,7 +498,10 @@ beholdning, i det øyeblikket den settes: et parti produsert etter at dialogen b
 fanges også, og svaret lister hvert parti som ble blokkert — *Blokkerte 4 partier* — og
 merker et slikt parti *Ny*. Partier som ikke har noe igjen, blokkeres ikke; sporingen og
 leveransene sier hvor de gikk. En blokkering kan settes igjen for å fange partier laget
-siden. En sporing som er for stor, blokkerer ingenting.
+siden. Blokkeringen følger hver produksjon, uansett hvor dypt — ikke bare de ti nivåene
+sporingen viser. Mer enn 2 000 partier blokkerer ingenting. Blir det stadig laget partier
+av partiet mens det blokkeres, blokkeres ingenting, og dialogen sier *Det ble laget partier
+av dette partiet mens det ble blokkert*: trykk **Blokker** igjen.
 
 **Frigi** på partiets blokkering tilbyr **Frigi også blokkeringene den satte på partiene
 laget av det**, krysset av: den løfter dem alle på en gang. Blokkeringen av et parti kan

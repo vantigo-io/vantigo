@@ -479,7 +479,9 @@ productions put in each and how many productions, and the **Lots consumed** per 
 with their expiry, consumed and scrap. Each lot links to its page in
 [Inventory](/en/user/inventory/), and **Trace** beside it opens its
 [trace](/en/user/inventory/#trace-a-lot) there: the lots made from it and who received
-them. A work order's page on the shop floor shows the same under **Lots**.
+them. The links are there when you may see Inventory's locations and stock; otherwise
+the lot numbers are shown without them. A work order's page on the shop floor shows the
+same under **Lots**.
 
 ### Close an order
 
