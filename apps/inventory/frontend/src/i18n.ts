@@ -1464,7 +1464,7 @@ export const inventoryCatalog = {
     placementOutcome_maximum_below_reorder_point: "Maksbeholdningen er lavere enn bestillingspunktet",
     // Partier (produksjon fase 2 L1b: M54, M59–M66)
     navLots: "Partier",
-    notAllowed_viewLots: "Du kan ikke se partier. Be en administrator om tillatelsene Se lokasjoner og Se beholdning.",
+    notAllowed_viewLots: "Du kan ikke se partier. Be en administrator om tillatelsene Se lagersteder og Se beholdning.",
     lotsTitle: "Partier",
     lotsDescription: "Partiene av sporede varer: datoene, statusen og hva som ligger av hvert.",
     searchLots: "Søk",
