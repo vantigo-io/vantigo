@@ -330,16 +330,19 @@ For en vare som holdes i partier, viser [linjeredigeringen](#linjeredigeringen) 
   allerede har, legges til i det partiet. Kalenderknappen ved siden av åpner partiets
   **Produksjonsdato**, **Best før** og **Utløpsdato**: står de tomme, følger de av varens
   dager; for et parti som finnes, må en dato du oppgir stemme med partiets egen — *Partiet
-  finnes med en annen dato. Utelat datoen for å legge til i det.*
+  finnes med en annen dato. Utelat datoen for å legge til i det.* Datoene du oppgir, må stå
+  i rekkefølge: en utløpsdato før produksjonsdatoen, eller en best før-dato etter
+  utløpsdatoen, avvises — *Datoene er i feil rekkefølge*.
 - For en vare som holdes i **serienumre**, tar en linje på varemottaket **Første
   serienummer** og **Antall**: sifrene på slutten telles opp med samme bredde — `SN0099`,
   `SN0100`, `SN0101` — og linjens antall er antallet serienumre. Et serienummer som
   allerede er på lager, avvises.
-- På en **flytting** velger du partiet blant dem varen har på lagerstedet, hvert med
-  utløpsdato og hva som ligger av det; skjemaet foreslår det første partiet som kan
-  brukes, det som går ut først.
-- På en **justering** velger du et av varens partier, eller skriver et nytt nummer for å
-  legge beholdning under et nytt parti.
+- På en **flytting** velger du først lokasjonen **Fra**: partikolonnen tilbyr da partiene
+  som ligger der, hvert med utløpsdato og hva som ligger av det, og foreslår det første som
+  kan brukes — det som går ut først, og av to som går ut samme dag det som ble mottatt
+  først. Velger du en annen **Fra**-lokasjon, foreslås partiet der.
+- På en **justering** velger du et av partiene på linjens lokasjon — foreslått på samme
+  måte — eller skriver et nytt nummer for å legge beholdning under et nytt parti.
 
 En linje for en sporet vare uten parti holdes tilbake — *Velg partiet på linjen* — og
 serveren avviser et parti av en annen vare, en serienummerlinje på mer enn én og et
@@ -362,9 +365,11 @@ eller i oppslaget — for å åpne siden: varen, hva som ligger av det i alt,
 leverandørpartiet, når det først ble mottatt, de tre datoene, bevegelsen som opprettet
 det, og merknaden. **Sperringer** lister alle sperringer, de aktive først; **Hvor det
 ligger** lister lagerstedene og lokasjonene som har det; **Bevegelser** bevegelseslinjene,
-nyeste først, hver med lenke; **Filer** filene. Med **Administrere partier** endrer
+nyeste først, hver med lenke — de siste 200; er det flere, sier siden fra, og de eldre
+finnes under **Bevegelser** i sidemenyen; **Filer** filene. Med **Administrere partier** endrer
 **Rediger** leverandørpartiet, de tre datoene og merknaden; nummeret og varen endres
-aldri, og en ny utløpsdato gjelder fra neste bokføring.
+aldri, og en ny utløpsdato gjelder fra neste bokføring. Datoene må stå i rekkefølge —
+ingen utløpsdato før produksjonsdatoen, ingen best før-dato etter utløpsdatoen.
 
 Siden og listen oppdateres av seg selv når noen andre bokfører beholdning av partiet,
 sperrer det eller legger til en fil.
@@ -375,16 +380,19 @@ Med **Administrere partier** setter **Karantene** eller **Blokker** på siden fo
 sperring fra partisiden: velg **Årsak** — **Kontroll**, **Avvik**, **Reklamasjon**,
 **Tilbakekalling** eller **Annet** — skriv en **Merknad** og trykk **Sperr**. **Frigi** på en
 av sidens egne sperringer spør *Hvorfor den frigis* og avslutter den; partiet er
-tilgjengelig igjen når ingen sperring er igjen. En sperring som et dokument i en annen
-modul har satt — et avvik i Produksjon, for eksempel — viser *Satt av manufacturing,
-frigis der*: den frigis på det dokumentet, ikke her.
+tilgjengelig igjen når ingen sperring er igjen. Siden setter høyst én karantene og én
+blokkering: mens dens egen karantene er aktiv, er **Karantene** nedtonet og siden sier
+*Denne siden har allerede satt partiet i karantene*, og tilsvarende for **Blokker** — frigi
+den sperringen for å sette en ny. En sperring som et dokument i en annen modul har satt —
+et avvik i Produksjon, for eksempel — viser *Satt av Produksjon, frigis der*: den frigis på
+det dokumentet, ikke her, og den hindrer ikke siden i å sette sin egen.
 
 ### Filene til et parti
 
 Med **Administrere partier** legger **Legg til fil** på siden for et parti til et
 sertifikat, en analyse eller et bilde: en PDF, JPEG eller PNG på høyst 20 MB, og høyst 20
-filer per parti. Trykk filnavnet for å åpne filen, nedlastingsknappen for å lagre den, og
-**Fjern** for å ta den av partiet. Filer krever installasjonens
+filer per parti. Trykk filnavnet eller nedlastingsknappen for å lagre filen — nettleseren
+laster den ned i stedet for å åpne den — og **Fjern** for å ta den av partiet. Filer krever installasjonens
 [objektlagring](/nb/admin/object-storage/); uten den står det *Fillagring er ikke satt opp i
 denne installasjonen.*
 
