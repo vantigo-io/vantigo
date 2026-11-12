@@ -68,6 +68,7 @@ import { Route as InventoryExpiringRouteImport } from './routes/inventory/expiri
 import { Route as InventoryImportRouteImport } from './routes/inventory/import'
 import { Route as InventoryLookupRouteImport } from './routes/inventory/lookup'
 import { Route as InventoryLowStockRouteImport } from './routes/inventory/low-stock'
+import { Route as InventoryTraceRouteImport } from './routes/inventory/trace'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
 import { Route as InvoicesIndexRouteImport } from './routes/invoices/index'
 import { Route as InvoicesInvoiceIdRouteImport } from './routes/invoices/$invoiceId'
@@ -512,6 +513,11 @@ const InventoryLookupRoute = InventoryLookupRouteImport.update({
 const InventoryLowStockRoute = InventoryLowStockRouteImport.update({
   id: '/low-stock',
   path: '/low-stock',
+  getParentRoute: () => InventoryRoute,
+} as any)
+const InventoryTraceRoute = InventoryTraceRouteImport.update({
+  id: '/trace',
+  path: '/trace',
   getParentRoute: () => InventoryRoute,
 } as any)
 const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
@@ -1357,6 +1363,7 @@ export interface FileRoutesByFullPath {
   '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/inventory/low-stock': typeof InventoryLowStockRoute
+  '/inventory/trace': typeof InventoryTraceRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
@@ -1545,6 +1552,7 @@ export interface FileRoutesByTo {
   '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/inventory/low-stock': typeof InventoryLowStockRoute
+  '/inventory/trace': typeof InventoryTraceRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
@@ -1753,6 +1761,7 @@ export interface FileRoutesById {
   '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/inventory/low-stock': typeof InventoryLowStockRoute
+  '/inventory/trace': typeof InventoryTraceRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/invoices/$invoiceId': typeof InvoicesInvoiceIdRoute
   '/invoices/journal': typeof InvoicesJournalRoute
@@ -1965,6 +1974,7 @@ export interface FileRouteTypes {
     | '/inventory/import'
     | '/inventory/lookup'
     | '/inventory/low-stock'
+    | '/inventory/trace'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
     | '/invoices/journal'
@@ -2153,6 +2163,7 @@ export interface FileRouteTypes {
     | '/inventory/import'
     | '/inventory/lookup'
     | '/inventory/low-stock'
+    | '/inventory/trace'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
     | '/invoices/journal'
@@ -2360,6 +2371,7 @@ export interface FileRouteTypes {
     | '/inventory/import'
     | '/inventory/lookup'
     | '/inventory/low-stock'
+    | '/inventory/trace'
     | '/invitations/accept'
     | '/invoices/$invoiceId'
     | '/invoices/journal'
@@ -2970,6 +2982,13 @@ declare module '@tanstack/react-router' {
       path: '/low-stock'
       fullPath: '/inventory/low-stock'
       preLoaderRoute: typeof InventoryLowStockRouteImport
+      parentRoute: typeof InventoryRoute
+    }
+    '/inventory/trace': {
+      id: '/inventory/trace'
+      path: '/trace'
+      fullPath: '/inventory/trace'
+      preLoaderRoute: typeof InventoryTraceRouteImport
       parentRoute: typeof InventoryRoute
     }
     '/invitations/accept': {
@@ -4200,6 +4219,7 @@ interface InventoryRouteChildren {
   InventoryImportRoute: typeof InventoryImportRoute
   InventoryLookupRoute: typeof InventoryLookupRoute
   InventoryLowStockRoute: typeof InventoryLowStockRoute
+  InventoryTraceRoute: typeof InventoryTraceRoute
   InventoryIndexRoute: typeof InventoryIndexRoute
   InventoryCountsCountIdRoute: typeof InventoryCountsCountIdRoute
   InventoryLocationsLocationIdRoute: typeof InventoryLocationsLocationIdRoute
@@ -4224,6 +4244,7 @@ const InventoryRouteChildren: InventoryRouteChildren = {
   InventoryImportRoute: InventoryImportRoute,
   InventoryLookupRoute: InventoryLookupRoute,
   InventoryLowStockRoute: InventoryLowStockRoute,
+  InventoryTraceRoute: InventoryTraceRoute,
   InventoryIndexRoute: InventoryIndexRoute,
   InventoryCountsCountIdRoute: InventoryCountsCountIdRoute,
   InventoryLocationsLocationIdRoute: InventoryLocationsLocationIdRoute,
