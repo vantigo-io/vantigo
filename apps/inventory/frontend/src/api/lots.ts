@@ -61,18 +61,6 @@ export const lotsInfiniteQueryOptions = (filter: LotsFilter = {}, live = false, 
     refetchInterval: live ? false : LOTS_POLL_MS,
   });
 
-/** A variant's lots holding stock at a site, by number: what a form's lot picker offers. */
-export const variantLotsQueryOptions = (variantId: number, siteId: number | undefined) =>
-  queryOptions({
-    queryKey: [INVENTORY_QUERY_KEY, "lots", "picker", variantId, siteId],
-    queryFn: ({ signal }) =>
-      request<Schemas["InventoryLotPage"]>(
-        `/api/v1/inventory/lots${queryString({ variantId, siteId, withStock: true, limit: 500 })}`,
-        { signal },
-      ).then((page) => page.lots),
-    staleTime: 10_000,
-  });
-
 /** One lot's page (M61); polled while not live. */
 export const lotQueryOptions = (lotId: number, live = false) =>
   queryOptions({
@@ -133,12 +121,25 @@ export function useLotsLive(lotId?: number): boolean {
   });
 }
 
-/** A variant's lots in FEFO order (manufacturing phase 2 M65): expiry first, none last, then number. */
-export const fefoOrder = (lots: readonly InventoryLotSummary[]) =>
+/** What FEFO orders a lot by (M65): its expiry, when it was first received, and its id. */
+interface FefoKeys {
+  expiry?: string | null;
+  receivedAt: string;
+}
+
+/**
+ * Lots in FEFO order (manufacturing phase 2 M65), as the server's own
+ * proposal takes them: expiry first, none last, then first received, then
+ * the id — a list row's `id`, a stock row's `lotId`.
+ */
+export const fefoOrder = <T extends FefoKeys>(lots: readonly T[], idOf: (lot: T) => number) =>
   [...lots].sort(
     (a, b) =>
-      (a.expiry ?? "9999-12-31").localeCompare(b.expiry ?? "9999-12-31") || a.number.localeCompare(b.number, "en"),
+      (a.expiry ?? "9999-12-31").localeCompare(b.expiry ?? "9999-12-31") ||
+      Date.parse(a.receivedAt) - Date.parse(b.receivedAt) ||
+      idOf(a) - idOf(b),
   );
 
 /** Whether a lot's stock can be taken: no hold and not expired (M63). */
-export const usableLot = (lot: InventoryLotSummary) => lot.status === "available" && !lot.expired;
+export const usableLot = (lot: Pick<InventoryLotSummary, "status" | "expired">) =>
+  lot.status === "available" && !lot.expired;

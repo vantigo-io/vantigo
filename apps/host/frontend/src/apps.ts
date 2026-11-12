@@ -862,6 +862,14 @@ export const areaForKey = (key: AppKey | AreaKey): AppDefinition | AreaDefinitio
   return area;
 };
 
+/**
+ * The label key of the app another module's name names — a lot's hold put by
+ * `manufacturing` reads as the sidebar's Manufacturing — undefined for a name
+ * no app has, which a screen then shows as it is.
+ */
+export const moduleLabelKey = (module: string): string | undefined =>
+  apps.find((candidate) => candidate.key === module)?.label;
+
 export const isArea = (value: AppDefinition | AreaDefinition): value is AreaDefinition =>
   !("module" in value) && value.key !== "home";
 

@@ -104,6 +104,8 @@ export const refusalCodes = [
   "lot_expired",
   "lot_blocked",
   "hold_not_inventorys",
+  "hold_exists",
+  "lot_dates_invalid",
   "attachment_too_large",
   "too_many_attachments",
   "attachment_type",

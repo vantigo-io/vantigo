@@ -33,6 +33,7 @@ import {
   areaForKey,
   areas,
   isAppEnabled,
+  moduleLabelKey,
   spotlightNavSections,
   switcherTiles,
 } from "./apps";
@@ -891,6 +892,13 @@ describe("the administration areas", () => {
     expect(areaForKey("workspace")).toBe(areas[1]);
     expect(areaForKey("customers")).toBe(appForKey("customers"));
     expect(() => areaForKey("billing" as never)).toThrow(/billing/);
+  });
+
+  it("labels another module's name as its app, and leaves a name no app has", () => {
+    expect(moduleLabelKey("manufacturing")).toBe(appForKey("manufacturing").label);
+    expect(moduleLabelKey("orders")).toBe("navigation.orders");
+    expect(moduleLabelKey("workspace")).toBeUndefined();
+    expect(moduleLabelKey("billing")).toBeUndefined();
   });
 
   it("is always enabled: an area has no module to turn off", () => {

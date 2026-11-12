@@ -102,7 +102,7 @@ export const makeRouteTree = () => {
     route(RECEIVE_TRANSFER_ROUTE_PATH, ReceiveTransferPage),
     route(LOW_STOCK_ROUTE_PATH, LowStockPage, validateLowStockSearch),
     route(LOTS_ROUTE_PATH, LotsPage, validateLotsSearch),
-    route(LOT_ROUTE_PATH, LotPage),
+    route(LOT_ROUTE_PATH, () => <LotPage />),
     route(PRODUCT_TEST_PATH, ProductSlot),
   ]);
 };
