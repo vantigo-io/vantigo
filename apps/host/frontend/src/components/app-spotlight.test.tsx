@@ -472,6 +472,20 @@ describe("AppSpotlight navigation authorization", () => {
     spotlight.close();
   });
 
+  // Trace a lot (manufacturing phase 2 M87) opens the trace, which asks for the lot; it needs both views.
+  it("opens the trace from Trace a lot for both views, and hides it with either alone", async () => {
+    renderSpotlight(["inventory:locations-view", "inventory:stock-view"], false, false, vi.fn());
+    fireEvent.click(await waitFor(() => screen.getByText("Trace a lot", { exact: true })));
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/inventory/trace" }));
+    cleanup();
+    spotlight.close();
+
+    renderSpotlight(["inventory:stock-view"], false, false);
+    await waitFor(() => expect(screen.queryByText("Trace a lot", { exact: true })).not.toBeInTheDocument());
+    cleanup();
+    spotlight.close();
+  });
+
   // Start count (inventory design §7, B) opens the counts with the start form
   // open; it needs counts-manage beside both views.
   it("opens the counts with the start form from Start count for counts-manage and both views", async () => {

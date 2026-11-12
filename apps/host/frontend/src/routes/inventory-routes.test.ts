@@ -17,6 +17,8 @@ import {
   NEW_MOVE_ROUTE_PATH,
   NEW_RECEIPT_ROUTE_PATH,
   SITE_ROUTE_PATH,
+  TRACE_ROUTE_PATH,
+  traceHref,
   VARIANT_STOCK_ROUTE_PATH,
   validateLookupSearch,
   validateMovementsSearch,
@@ -83,6 +85,9 @@ describe("the inventory routes", () => {
     expect(matchedRouteIds(IMPORT_ROUTE_PATH)).toContain(IMPORT_ROUTE_PATH);
     expect(matchedRouteIds("/inventory/lots/1001")).toContain(LOT_ROUTE_PATH);
     expect(matchedRouteIds(EXPIRING_ROUTE_PATH)).toContain(EXPIRING_ROUTE_PATH);
+    expect(matchedRouteIds(TRACE_ROUTE_PATH)).toContain(TRACE_ROUTE_PATH);
+    expect(matchedRouteIds(TRACE_ROUTE_PATH)).toContain("/inventory");
+    expect(traceHref(1001)).toBe(`${TRACE_ROUTE_PATH}?lotId=1001`);
     for (const item of inventoryNavItems) expect(matchedRouteIds(item.to)).toContain(item.to);
   });
 
