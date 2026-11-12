@@ -644,6 +644,19 @@ It runs `SELECT pg_notify('vantigo_live', …)` on `q`, with the payload `{"t":t
 - **Validation.** `Notify` refuses a topic outside the grammar, a kind that is not
   `[a-z][a-z.-]*`, and a payload over 7 KiB, since `NOTIFY` itself refuses one over 8000
   bytes and an id is free text.
+- **Several aggregates at once: `NotifyAll`.**
+
+  ```go
+  live.NotifyAll(ctx, q live.Execer, events []live.Event) error // Event{Topic, Kind, ID}
+  ```
+
+  A write that changes many aggregates of one kind together — a posting's lots, one page
+  each — sends them in **one** statement, `SELECT pg_notify('vantigo_live', p) FROM
+  unnest($2::text[]) AS p`: one round trip however many events, each judged by `Notify`'s
+  rules and the whole batch refused for one that fails them; none sends nothing. A list
+  topic in the batch goes once, without an id. It is still one notification per event at
+  commit, so it is for a bounded set — a posting's 500 lines at most — never for a sweep
+  of a table, which sends one event without an id.
 - **Any process may notify.** A `worker`-only process builds no hub but calls `Notify`
   like any other. That is why the fan-out goes through Postgres and not through memory:
   inbound mail and Messenger messages are written by workers, which may run in another
