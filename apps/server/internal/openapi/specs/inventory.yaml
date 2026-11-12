@@ -4546,7 +4546,6 @@ paths:
             tags:
                 - Inventory
             x-vantigo-access: permission:inventory:locations-view+inventory:lots-manage+inventory:stock-view
-            x-vantigo-assistant: confirm
     /api/v1/inventory/lots/{id}/holds:
         post:
             description: Puts a hold of the lot page on the lot (M64), source inventory/lot/<id>; the status is derived again. The lot page holds a lot at most once per kind — a second quarantine or block while one is active is 409 hold_exists; another module's holds do not count.

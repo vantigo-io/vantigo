@@ -438,6 +438,8 @@ var filesOrRedirects = []string{
 	"exportInventoryLowStock",
 	"exportInventoryExpiringLots",
 	"printInventoryLotLabels",
+	"exportInventoryTrace",
+	"printInventoryTrace",
 	"importInventoryPlacements",
 	"getInventoryLotAttachment",
 	"getQuotePdf",
