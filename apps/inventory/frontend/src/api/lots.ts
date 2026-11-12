@@ -79,11 +79,14 @@ export const putLot = (lotId: number, input: InventoryLotUpdate, revision: numbe
 export const postLotHold = (lotId: number, input: InventoryLotHoldInput) =>
   send<InventoryLot>(`/api/v1/inventory/lots/${lotId}/holds`, json("POST", input));
 
-/** `POST /lots/{id}/holds/{holdId}/release`: one of Inventory's own holds, with why. */
-export const releaseLotHold = (lotId: number, holdId: number, note: string) =>
+/**
+ * `POST /lots/{id}/holds/{holdId}/release`: one of Inventory's own holds, with why; with `downstream`, the lot
+ * page's block also releases the blocks it put on the lots made from the lot (manufacturing phase 2 M92).
+ */
+export const releaseLotHold = (lotId: number, holdId: number, note: string, downstream = false) =>
   send<InventoryLot>(
     `/api/v1/inventory/lots/${lotId}/holds/${holdId}/release`,
-    json("POST", note.trim() ? { note: note.trim() } : {}),
+    json("POST", { ...(note.trim() ? { note: note.trim() } : {}), ...(downstream ? { downstream } : {}) }),
   );
 
 /** `POST /lots/{id}/attachments`: one file, as the part named `file`. */
@@ -175,13 +178,24 @@ export const exportExpiringLots = async (filter: ExpiringFilter): Promise<Blob> 
   return response.blob();
 };
 
+/** A lot label's format: the internal LOT token (M73), or GS1-128 (M93). */
+export type InventoryLabelFormat = Schemas["InventoryLabelFormat"];
+
 /**
  * A PDF of lot labels (M73), in the order of the ids: each the lot's LOT token as a Code 128 barcode, its
- * number, its item and its expiry. Copies of each, at most 1000 labels in all.
+ * number, its item and its expiry — or, as `gs1`, a GS1-128 label with the variant's GTIN, the dates and the
+ * lot (M93). Copies of each, at most 1000 labels in all.
  */
-export const printLotLabels = async (ids: readonly number[], layout: "l7160" | "l7163", copies = 1): Promise<Blob> => {
+export const printLotLabels = async (
+  ids: readonly number[],
+  layout: "l7160" | "l7163",
+  copies = 1,
+  format: InventoryLabelFormat = "internal",
+): Promise<Blob> => {
   const response = await fetch(
-    appUrl(`/api/v1/inventory/lots/labels.pdf${queryString({ ids: ids.join(","), layout, copies })}`),
+    appUrl(
+      `/api/v1/inventory/lots/labels.pdf${queryString({ ids: ids.join(","), layout, copies, format: format === "gs1" ? format : undefined })}`,
+    ),
     { credentials: "include" },
   );
   if (response.status === 401) await handleUnauthorized();

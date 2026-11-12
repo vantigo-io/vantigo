@@ -175,6 +175,11 @@
     "description": "The button on a site's page that downloads a PDF of location labels, for every location in the site or the ones chosen, on an Avery L7160 or L7163 sheet."
   },
   {
+    "key": "inventory.trace.tree",
+    "route": "/inventory/trace",
+    "description": "The Trace page of a lot: Where it went shows the lots made from it and the deliveries that received it; Where it came from shows its receipts and the lots it was made of. Export CSV and Download PDF hand the trace over."
+  },
+  {
     "key": "inventory.transfer-receive.scan",
     "route": "/inventory/transfers/{transferId}/receive",
     "description": "The field at the top of a transfer's receive page: each scan of a SKU or barcode counts one more on its line; the transfer note's barcode opens its transfer."

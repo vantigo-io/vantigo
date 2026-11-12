@@ -23,7 +23,13 @@ import { LotStatusBadges } from "../components/lot-status";
 import { PrintLotLabelsDialog } from "../components/print-lot-labels-dialog";
 import { canViewLots } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
-import { INVENTORY_HOME_ROUTE_PATH, LOTS_ROUTE_PATH, lotLinkOptions, variantStockLinkOptions } from "../lib/routes";
+import {
+  INVENTORY_HOME_ROUTE_PATH,
+  LOTS_ROUTE_PATH,
+  lotLinkOptions,
+  traceLinkOptions,
+  variantStockLinkOptions,
+} from "../lib/routes";
 import type { LotsSearch } from "../lib/search";
 
 /**
@@ -150,7 +156,7 @@ export const LotsPage = () => {
             ) : rows.length === 0 ? (
               <EmptyState size="sm" icon={IconBarcode} title={t("noLots")} description={t("noLotsHint")} />
             ) : (
-              <Table.ScrollContainer minWidth={720}>
+              <Table.ScrollContainer minWidth={780}>
                 <Table striped verticalSpacing="xs">
                   <Table.Thead>
                     <Table.Tr>
@@ -162,6 +168,7 @@ export const LotsPage = () => {
                       <Table.Th>{t("columnBestBefore")}</Table.Th>
                       <Table.Th>{t("columnStatus")}</Table.Th>
                       <Table.Th ta="right">{t("columnOnHand")}</Table.Th>
+                      <Table.Th />
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -204,6 +211,11 @@ export const LotsPage = () => {
                           </Group>
                         </Table.Td>
                         <Table.Td ta="right">{quantity(lot.onHand, lot.variant.unit)}</Table.Td>
+                        <Table.Td ta="right">
+                          <Anchor size="sm" renderRoot={(props) => <Link {...traceLinkOptions(lot.id)} {...props} />}>
+                            {t("traceLot")}
+                          </Anchor>
+                        </Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>

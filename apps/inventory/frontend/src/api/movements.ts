@@ -112,6 +112,8 @@ export const refusalCodes = [
   "storage_not_configured",
   // Manufacturing phase 2, L2: a count line's new lot.
   "lot_invalid",
+  // Manufacturing phase 2, T: a trace, or a block's downstream walk, beyond 2,000 nodes.
+  "trace_too_large",
 ] as const;
 
 export interface MovementsFilter {
