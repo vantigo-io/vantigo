@@ -1963,6 +1963,22 @@ func (q *Queries) ProductStatusCountsBefore(ctx context.Context, before time.Tim
 	return items, nil
 }
 
+const shareProductType = `-- name: ShareProductType :one
+SELECT type FROM products.products WHERE id = $1 FOR SHARE
+`
+
+// ShareProductType is a new variant's read of its product's type FOR SHARE,
+// in its transaction: a change to Service updates the product, so it has
+// committed or waits, and a tracked variant never lands on a Service
+// (manufacturing phase 2 M49). The new variant locks no variant row, so it
+// makes no cycle with the change, which locks the variants first.
+func (q *Queries) ShareProductType(ctx context.Context, id int32) (string, error) {
+	row := q.db.QueryRow(ctx, shareProductType, id)
+	var type_ string
+	err := row.Scan(&type_)
+	return type_, err
+}
+
 const taxCategoryHasProducts = `-- name: TaxCategoryHasProducts :one
 SELECT EXISTS(SELECT 1 FROM products.products WHERE tax_category_id = $1)
 `

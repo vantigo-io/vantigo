@@ -139,6 +139,51 @@ func TestVariantTracking_TypeJudgedUnderTheLock(t *testing.T) {
 	}
 }
 
+// TestVariantTracking_NewVariantTypeUnderTheLock is the same for a new
+// variant (the review of M, MEDIUM-3): a change to Service holds the product
+// when the add reads Goods before its transaction, commits, and the add —
+// waiting on the product's FOR SHARE — then reads Service and refuses
+// tracking_requires_goods; no variant is added.
+func TestVariantTracking_NewVariantTypeUnderTheLock(t *testing.T) {
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	created := createProduct(t, c, newProductBody(taxCategoryID, "Kefir", sku(t, "kefir")))
+
+	ctx := context.Background()
+	change, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = change.Rollback(ctx) })
+	if _, err := change.Exec(ctx, `UPDATE products.products SET type = 'Service' WHERE id = $1`, created.Id); err != nil {
+		t.Fatal(err)
+	}
+	added := sku(t, "kefir-lot")
+	answered := make(chan *modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		answered <- c.Do(http.MethodPost, fmt.Sprintf("/api/v1/products/%d/variants", created.Id),
+			map[string]any{"sku": added, "unit": "pcs", "tracking": "lot"})
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 1, finished)
+	if err := change.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-answered:
+		if r.Status != http.StatusBadRequest || !jsonHas(r.Body, "tracking") {
+			t.Errorf("the add after the change to Service = %d %s, want 400 on tracking", r.Status, r.Body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the add never answered")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM products.product_variants WHERE sku = $1`, added); n != 0 {
+		t.Errorf("%d variants added to a Service", n)
+	}
+}
+
 // jsonHas reports whether a validation problem names field.
 func jsonHas(body []byte, field string) bool {
 	var p struct {
