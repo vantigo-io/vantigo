@@ -1,6 +1,6 @@
 ---
 title: Inventory
-description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, counting stock, importing opening balances, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
+description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, lots and serial numbers — on receipts, moves and adjustments, the Lots list, a lot's page, putting a lot on hold and releasing it, a lot's files — counting stock, importing opening balances, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
 sidebar:
   order: 65
 sources:
@@ -35,6 +35,7 @@ The **Inventory** tile, after Products in the app switcher, is shown to everyone
 | Area in the sidebar | Who sees it |
 | --- | --- |
 | **Overview** — the lookup and the sites | `inventory:locations-view` or `inventory:stock-view` |
+| **Lots** — the lots of the items kept in lots or serial numbers | `inventory:locations-view` and `inventory:stock-view` |
 | **Transfers** — stock sent between sites | `inventory:locations-view` and `inventory:stock-view` |
 | **Movements** | `inventory:locations-view` and `inventory:stock-view` |
 | **Receipts** — the movements list showing receipts only | `inventory:locations-view` and `inventory:stock-view` |
@@ -46,7 +47,8 @@ Anything your permissions do not allow is not shown at all: a button you do not 
 permission you do not have. The buttons that post — receipts, adjustments and moves —
 need both views as well as **Receive goods** or **Adjust stock**; counting needs both
 views and **Count stock**; creating, sending, receiving and cancelling transfers needs both
-views and **Transfer stock**. Quantities need both views, because every place stock lies
+views and **Transfer stock**; changing a lot, its holds and its files needs both views
+and **Manage lots**. Quantities need both views, because every place stock lies
 is a location; **View locations** alone shows the sites and their locations without any
 quantity.
 
@@ -60,12 +62,15 @@ scan one of these and press Enter:
 - an item's **SKU** or **barcode**, or the barcode of one of its packagings — a box or
   a pallet opens the item;
 - a transfer's token, `TRF` and its number, as printed under the barcode of its
-  [transfer note](#print-the-transfer-note) — it opens the transfer.
+  [transfer note](#print-the-transfer-note) — it opens the transfer;
+- a [lot](#lots-and-serial-numbers)'s number or serial number, in capitals or not, or
+  its label code, `LOT` and a number — it opens the lot's page. A serial number that is
+  also an item's SKU shows both.
 
 One match opens it straight away: a location opens its page, an item its stock page.
-Several matches are listed, each marked **Location** or **Item**, for you to choose. No
+Several matches are listed, each marked **Location**, **Item**, **Transfer** or **Lot**, for you to choose. No
 match says *Nothing matches “…”.* and keeps what you typed, so you can correct it.
-Transfers, like items, show only to those who hold both views.
+Transfers and lots, like items, show only to those who hold both views.
 
 A **handheld scanner** works in this field as it is: a scanner types the code it reads
 and presses Enter, which is just what the lookup waits for. Items show only to those
@@ -287,6 +292,93 @@ the loose field.
 screen — a quantity of an item with packagings is also shown broken down, the largest
 packaging first: 1,830 pcs with a pallet of 600 and a box of 15 reads *3 Euro pallet,
 2 Box*, under the quantity itself.
+
+## Lots and serial numbers
+
+An item can be kept in **lots** — a batch with its own number, such as a supplier's lot
+of steel or a day's production of milk — or in **serial numbers**, where each piece is a
+lot of its own and holds exactly one. Every quantity of such an item lies under its lot,
+so you can tell which lot is on which shelf, when it expires, and where it went. Lot
+tracking is switched on per item in Products once deliveries and productions record lots;
+until then the forms show no lot.
+
+A lot has its **number** (1–20 letters, digits and `. _ / -`, one per item), the
+supplier's **supplier lot** — the heat number of a 3.1 certificate, for example — a
+**production date**, a **best-before** date and an **expiry date**. An item can give a
+new lot its dates on its own: so many days after the production date, or after the day
+it is received. A lot is **expired** from the day after its expiry date, in your
+organisation's time zone; best-before alone never stops anything, it is shown.
+
+A lot is **Available**, in **Quarantine** or **Blocked**, from its **holds**: a lot with
+any block is blocked, with any quarantine it is in quarantine. Stock in a lot on hold or
+past its expiry date stays on hand but cannot be delivered or used, and is left out of
+[available](#reserved-and-available). It can still be moved — to a hold shelf, say —
+counted, written off with an adjustment and sent back.
+
+### Lots on a receipt, a move and an adjustment
+
+For an item kept in lots, the [line editor](#the-line-editor) shows a **Lot** column:
+
+- On a **receipt**, type the lot's number or pick one the item already has at the site;
+  left empty, a number is made for it (`L1001`, `L1002` …). A number the item already has
+  adds to that lot. The calendar button beside it opens the lot's **Production date**,
+  **Best before** and **Expiry date**: left empty they follow from the item's days; for a
+  lot that exists, a date you give must match its own — *The lot exists with another
+  date. Leave the date out to add to it.*
+- For an item kept in **serial numbers**, a receipt line takes the **First serial number**
+  and **How many**: the trailing digits count up, keeping their width — `SN0099`,
+  `SN0100`, `SN0101` — and the line's quantity is how many. A serial number already in
+  stock is refused.
+- On a **move**, pick the lot from those the item has at the site, each with its expiry
+  date and what lies of it; the form proposes the first lot that can be used, the one
+  expiring first.
+- On an **adjustment**, pick one of the item's lots, or type a new number to put stock
+  under a new lot.
+
+A line of a tracked item without a lot is held back — *Pick the line's lot* — and the
+server refuses a lot of another item, a serial line of more than one, and a receipt into
+a blocked lot.
+
+### The Lots list
+
+**Lots** in the sidebar lists the lots by item and number: **Lot**, **SKU**, **Product**,
+**Supplier lot**, **Expiry**, **Best before**, **Status** — *Expired* in red when past
+its expiry — and **On hand**. **Search** finds a lot number, a supplier lot or an SKU;
+**Site** counts what lies at that site only; **Status** and **Hold cause** narrow it to
+the lots on hold, and why. **With stock only** is on unless you want lots that hold
+nothing any more. **Load more** fetches the next page. The search in the top bar offers
+**Find a lot**, which opens this list.
+
+### A lot's page
+
+Press a lot's number — on the list, under a location in an item's stock, on a movement
+or in the lookup — to open its page: the item, what lies of it in total, the supplier
+lot, when it was first received, its three dates, the movement that made it, and its
+note. **Holds** lists every hold, the active ones first; **Where it lies** lists the
+sites and locations holding it; **Movements** its movement lines, newest first, each
+linked; **Files** its files. With **Manage lots**, **Edit** changes the supplier lot, the
+three dates and the note; the number and the item never change, and a new expiry date
+counts from the next posting.
+
+The page and the list update by themselves when somebody else posts stock of the lot,
+puts it on hold or adds a file.
+
+### Put a lot on hold and release it
+
+With **Manage lots**, **Quarantine** or **Block** on a lot's page puts a hold of the lot
+page: choose the **Cause** — **Inspection**, **Deviation**, **Complaint**, **Recall** or
+**Other** — add a **Note**, and press **Put on hold**. **Release** on one of the page's
+own holds asks *Why it is released* and ends it; the lot is available again once no hold
+is left. A hold put by another module's document — a manufacturing deviation, say — shows
+*Put by manufacturing, released there*: it is released on that document, not here.
+
+### A lot's files
+
+With **Manage lots**, **Add file** on a lot's page adds a certificate, an analysis or a
+photo: a PDF, JPEG or PNG of at most 20 MB, and at most 20 files a lot. Press a file's
+name to open it, the download button to save it, and **Remove** to take it off the lot.
+Files need the installation's [object storage](/en/admin/object-storage/); without it,
+*File storage is not set up in this installation.*
 
 ## Transfer stock between sites
 
@@ -759,7 +851,10 @@ much is on its way there; a site with stock on its way and nothing on hand yet h
 too. The item's [primary location](#set-an-items-primary-location-and-reorder-point) at
 a site comes first among its locations, marked *primary*, and each site shows its
 **Reorder point** and **Maximum**, **Low** while it is low there and, with **Adjust
-stock**, **Edit placement**. **Receive** and
+stock**, **Edit placement**. For an item kept in lots, each location lists its
+lots under it — number, expiry date and *Quarantine*, *Blocked* or *Expired* where one is —
+and a site with stock on hold or expired says *of which … on hold or expired* under its
+quantity. **Receive** and
 **Adjust** are offered as your permissions allow. An item deleted
 from the catalog still shows its history, marked *Deleted from the catalog*.
 
@@ -789,8 +884,9 @@ A movement's page shows its kind, its site, when and by whom it was posted, the 
 or the supplier and the supplier's reference, the note, the count it posted or the
 **Transfer** it belongs to, the **Source** another module posted it for — a
 production's links to its manufacturing order when Manufacturing is on — and its
-lines: **SKU**, **Product**, **From**, **To** and **Quantity**, with **Entered as** for a
-line entered in packagings. A movement is never edited or deleted.
+lines: **SKU**, **Product**, **From**, **To**, the **Lot** for an item kept in lots — linked to
+its page, with *Expired* where an expired lot was taken on purpose — and **Quantity**, with
+**Entered as** for a line entered in packagings. A movement is never edited or deleted.
 
 ## The Stock card on the product page
 
@@ -802,7 +898,9 @@ to its stock page. Stock on its way between sites in a transfer shows as *In tra
 beside the total, and *+… incoming* under the site it is going to; it is not part of the
 total on hand, which is what lies on shelves. Under a site where the item has a
 [reorder point](#set-an-items-primary-location-and-reorder-point), *reorder ≤ 10 pcs*
-says what it is, in red while the item is low there. With nothing in stock and nothing on its
+says what it is, in red while the item is low there. For an item kept in lots, each
+location lists its lots — number, expiry date and status — linked to the lot's page, and
+*of which … on hold or expired* under the site says how much of it cannot be used. With nothing in stock and nothing on its
 way it says **No stock** and offers **Receive** or **Adjust** as you may. A service has no Stock card. See
 [the product page](/en/user/products/#the-product-page).
 
@@ -864,18 +962,20 @@ With both views, **Needs attention** shows, for each active site with anything l
 
 ## Who sees what
 
-| What | View locations | View stock | Manage locations | Adjust stock | Receive goods | Count stock | Transfer stock |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| The tile and **Overview** with the lookup — either view is enough | ✓ | ✓ | – | – | – | – | – |
-| The sites, their locations and a location's page; locations in the lookup and **Find location or item**; **Print labels** | ✓ | – | – | – | – | – | – |
-| Quantities: **Contents**, an item's stock page, **Movements** and **Receipts**, the product page's **Stock** card, the **On hand** column of the product list, the dashboard figures, items in the lookup | ✓ | ✓ | – | – | – | – | – |
-| **New site**, **New location**, **Bulk add**, **Edit**, **Archive**, **Reactivate**, **Delete** | ✓ | – | ✓ | – | – | – | – |
-| **Low stock**, **Export CSV**; the dashboard's low-stock item | ✓ | ✓ | – | – | – | – | – |
-| **New adjustment**, **Adjust**, **New move**, **Move from here** — on Overview, a location, an item, the movements and the product's Stock card; **Edit placement**; **Import opening balances**, both kinds | ✓ | ✓ | – | ✓ | – | – | – |
-| **New receipt**, **Receive here**, **Receive** — wherever they appear | ✓ | ✓ | – | – | ✓ | – | – |
-| **Counts**, **Open count**, **Count**, **Start count**, counting, posting and cancelling; the dashboard's **A count has been open for a long time** | ✓ | ✓ | – | – | – | ✓ | – |
-| **Transfers**, a transfer's page and its history, **Print transfer note**, transfers in the lookup, **Incoming** and **Outgoing** on a site, **Transfer differences** on an item | ✓ | ✓ | – | – | – | – | – |
-| **New transfer**, **Edit**, **Save draft**, **Send…**, **Send and receive…**, **Delete draft**, **Receive…**, closing a difference, **Cancel transfer**; the dashboard's **A transfer is past its expected arrival**; **Create transfer** on the low-stock list | ✓ | ✓ | – | – | – | – | ✓ |
+| What | View locations | View stock | Manage locations | Adjust stock | Receive goods | Count stock | Transfer stock | Manage lots |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| The tile and **Overview** with the lookup — either view is enough | ✓ | ✓ | – | – | – | – | – | – |
+| The sites, their locations and a location's page; locations in the lookup and **Find location or item**; **Print labels** | ✓ | – | – | – | – | – | – | – |
+| Quantities: **Contents**, an item's stock page, **Movements** and **Receipts**, the product page's **Stock** card, the **On hand** column of the product list, the dashboard figures, items in the lookup | ✓ | ✓ | – | – | – | – | – | – |
+| **New site**, **New location**, **Bulk add**, **Edit**, **Archive**, **Reactivate**, **Delete** | ✓ | – | ✓ | – | – | – | – | – |
+| **Low stock**, **Export CSV**; the dashboard's low-stock item | ✓ | ✓ | – | – | – | – | – | – |
+| **New adjustment**, **Adjust**, **New move**, **Move from here** — on Overview, a location, an item, the movements and the product's Stock card; **Edit placement**; **Import opening balances**, both kinds | ✓ | ✓ | – | ✓ | – | – | – | – |
+| **New receipt**, **Receive here**, **Receive** — wherever they appear | ✓ | ✓ | – | – | ✓ | – | – | – |
+| **Counts**, **Open count**, **Count**, **Start count**, counting, posting and cancelling; the dashboard's **A count has been open for a long time** | ✓ | ✓ | – | – | – | ✓ | – | – |
+| **Transfers**, a transfer's page and its history, **Print transfer note**, transfers in the lookup, **Incoming** and **Outgoing** on a site, **Transfer differences** on an item | ✓ | ✓ | – | – | – | – | – | – |
+| **New transfer**, **Edit**, **Save draft**, **Send…**, **Send and receive…**, **Delete draft**, **Receive…**, closing a difference, **Cancel transfer**; the dashboard's **A transfer is past its expected arrival**; **Create transfer** on the low-stock list | ✓ | ✓ | – | – | – | – | ✓ | – |
+| **Lots**, a lot's page with its holds, where it lies, its movements and its files; lots in the lookup and **Find a lot** | ✓ | ✓ | – | – | – | – | – | – |
+| **Edit** on a lot, **Quarantine**, **Block**, **Release**, **Add file**, **Remove** | ✓ | ✓ | – | – | – | – | – | ✓ |
 
 Every other row needs every permission it ticks: the posting and counting buttons
 appear only to someone who holds both views **and** the write permission. Printing
@@ -883,5 +983,6 @@ labels needs only **View locations**: a label shows nothing a location's page do
 Receiving a transfer needs **Transfer stock**, not **Receive goods**: it moves your own
 stock between your sites, and is not a receipt from a supplier. Setting a placement needs
 **Adjust stock**: it is a setting of the stock, never stock itself.
-None of the seven permissions is sensitive. The full table is under
+Changing a lot needs **Manage lots**: a hold stops a lot being delivered or used. None of
+the nine permissions is sensitive. The full table is under
 [Permissions](/en/reference/inventory/#permissions) in the reference.

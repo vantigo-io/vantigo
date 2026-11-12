@@ -138,7 +138,10 @@ attachment's row to the surviving customer and the store has no rename
 `products-images`: a product image's relative key is `<productId>/<uuid>` and its
 thumbnail's `<productId>/<uuid>-thumb`, so the physical keys are
 `products-images/<productId>/<uuid>` and `products-images/<productId>/<uuid>-thumb`
-([Products](/en/reference/products/#images)). A scoped store refuses a
+([Products](/en/reference/products/#images)). Inventory uses the scope `inventory-lots`: a
+lot's file has the relative key `lots/<uuid>`, so its physical key is
+`inventory-lots/lots/<uuid>` — a key that names no lot and is never made from the file's name
+([Inventory](/en/reference/inventory/#a-lots-files)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 
@@ -186,6 +189,19 @@ the worker's log; with `CUSTOMERS_ANONYMISATION_ENABLED=0` they wait, as schedul
 anonymisations do. See [Customers](/en/reference/customers/#attachments) for the upload
 rules and the rate limit.
 
+**Inventory's lot files, specifically.** A lot's certificates, analyses and photos — each a
+PDF, JPEG or PNG of at most 20 MiB, at most 20 a lot. A file is read with both of
+Inventory's views and written with `inventory:lots-manage`, always through Inventory's own
+download endpoint. The object is written before its row and removed again if the row is
+refused. A delete removes the row and records the object in Inventory's ledger of objects to
+remove (`inventory.object_deletions`) in one transaction; the object is then removed, and a
+removal the store refuses stays in the ledger for the `inventory.object-deletions` worker,
+which runs every five minutes in worker mode and retries each object — two seconds after the
+first failure, doubling, at most an hour apart — until the store confirms. The ledger rows a
+store outage leaves are what to watch: they are the objects Inventory still owes a removal,
+named in the worker's log. Without object storage configured, an upload or a download
+answers 503 `storage_not_configured` and nothing is recorded.
+
 ## Downloads
 
 Downloads always stream through an authorized application endpoint.
@@ -211,3 +227,7 @@ Customers' `GET /customers/{id}/attachments/{attachmentId}` does the same throug
 `customers`-scoped store, under the timeline's read permission, with the same headers and
 the same 503 for an object that cannot be read. See
 [Customers](/en/reference/customers/#attachments).
+
+Inventory's `GET /lots/{id}/attachments/{attachmentId}` does the same through its
+`inventory-lots`-scoped store, under both of Inventory's views, with the same headers. See
+[Inventory](/en/reference/inventory/#a-lots-files).

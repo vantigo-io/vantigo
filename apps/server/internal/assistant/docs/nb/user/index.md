@@ -87,7 +87,7 @@ kortere enn din:
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Virtuelle ansatte](/nb/user/agents/) | Agenter (Persona, Roller, Tillatelser, Bruk, Aktivitet), Innstillinger |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
-| [Lager](/nb/user/inventory/) | Oversikt, Overføringer, Bevegelser, Varemottak, Varetellinger, Lav beholdning, Importer inngående beholdning (og påfylling) |
+| [Lager](/nb/user/inventory/) | Oversikt, Partier, Overføringer, Bevegelser, Varemottak, Varetellinger, Lav beholdning, Importer inngående beholdning (og påfylling) |
 | [Ordre](/nb/user/orders/) | Tilbud, Ordre, Leveranser, Abonnement, Tilbudsmaler, Salgsanalyse, Ordreinnstillinger |
 | [Produksjon](/nb/user/manufacturing/) | Oversikt, Produksjonsordrer, Verksted, Produksjonsplan, Stykklister, Arbeidsstasjoner |
 | [Kunnskap](/nb/user/knowledge/) | Artikler, Papirkurv |
@@ -110,7 +110,7 @@ ordre](/nb/user/invoices/#fakturere-ordre)).
 Søkefeltet i toppfeltet (eller hurtigtasten som vises i det) åpner et søk som hopper
 rett til et hvilket som helst skjermbilde du har tilgang til, så du trenger sjelden
 app-velgeren for et skjermbilde du vet navnet på. Det tilbyr også noen hurtighandlinger, som **Nytt tilbud**
-i Ordre for dem som kan lage tilbud, **Ny produksjonsordre** i Produksjon for dem som kan opprette ordrer, **Åpne verkstedet** for dem som arbeider der, og **Åpne produksjonsplanen** og **Produksjonsrapporter** for alle som bruker Produksjon.
+i Ordre for dem som kan lage tilbud, **Finn et parti** i Lager for dem som ser beholdning, **Ny produksjonsordre** i Produksjon for dem som kan opprette ordrer, **Åpne verkstedet** for dem som arbeider der, og **Åpne produksjonsplanen** og **Produksjonsrapporter** for alle som bruker Produksjon.
 
 ## Kontoen din
 
