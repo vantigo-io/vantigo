@@ -27,47 +27,56 @@ SELECT * FROM inventory.locations WHERE id = ANY(@ids::bigint[]) ORDER BY id FOR
 
 -- name: LockBalances :many
 -- LockBalances creates a posting's missing balances at zero and locks every
--- one of them, existing or new, in (variant, location) order, in one
--- statement (step 5, I10). ON CONFLICT DO UPDATE locks the row it meets as
+-- one of them, existing or new, in (variant, location, lot) order — no lot
+-- first — in one statement (step 8, I10, manufacturing phase 2 M55). A lot of
+-- 0 is none; the conflict target is ux_balances_key, NULLS NOT DISTINCT, so a
+-- (variant, location) with no lot is one key. ON CONFLICT DO UPDATE locks the row it meets as
 -- FOR UPDATE would, waits for a concurrent insert of the same key to settle,
 -- inserts again when a concurrent posting deleted the row at zero, and
 -- answers the row's latest committed on_hand. No lock is held across a
 -- second attempt, so two postings to a new pair serialise on the row rather
 -- than collide on its key, and none waits for another's insert while holding
 -- a lock that one needs.
-INSERT INTO inventory.balances (variant_id, location_id, on_hand, updated_at)
-SELECT u.variant_id, u.location_id, 0, @now::timestamptz
-FROM (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id) AS u
-ORDER BY u.variant_id, u.location_id
-ON CONFLICT (variant_id, location_id) DO UPDATE SET updated_at = inventory.balances.updated_at
-RETURNING variant_id, location_id, on_hand;
+INSERT INTO inventory.balances (variant_id, location_id, lot_id, on_hand, updated_at)
+SELECT u.variant_id, u.location_id, nullif(u.lot_id, 0), 0, @now::timestamptz
+FROM (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id,
+             unnest(@lot_ids::bigint[]) AS lot_id) AS u
+ORDER BY u.variant_id, u.location_id, u.lot_id
+ON CONFLICT (variant_id, location_id, lot_id) DO UPDATE SET updated_at = inventory.balances.updated_at
+RETURNING variant_id, location_id, coalesce(lot_id, 0)::bigint AS lot_id, on_hand;
 
 -- name: SetBalances :exec
 -- SetBalances writes the balances a posting computed.
 UPDATE inventory.balances b
 SET on_hand = u.on_hand, updated_at = @now::timestamptz
 FROM (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id,
-             unnest(@on_hands::numeric[]) AS on_hand) AS u
-WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id;
+             unnest(@lot_ids::bigint[]) AS lot_id, unnest(@on_hands::numeric[]) AS on_hand) AS u
+WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id IS NOT DISTINCT FROM nullif(u.lot_id, 0);
 
 -- name: DeleteZeroBalances :exec
 -- DeleteZeroBalances removes the balances a posting left at zero, so "where
 -- does it lie" lists only places with stock (I10).
 DELETE FROM inventory.balances b
-USING (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id) AS u
-WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.on_hand = 0;
+USING (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id,
+             unnest(@lot_ids::bigint[]) AS lot_id) AS u
+WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id IS NOT DISTINCT FROM nullif(u.lot_id, 0)
+  AND b.on_hand = 0;
 
 -- name: InsertMovementLines :exec
 -- InsertMovementLines writes a movement's lines with the variant snapshots
 -- (I9) and, for a line entered in packagings, the entry as it was at posting
--- (I25). A from or to of 0 is none; an entry of '' is none.
-INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered)
+-- (I25), with its lot and whether an expired lot was taken on the override
+-- (manufacturing phase 2 M55, M62). A from, to or lot of 0 is none; an entry
+-- of '' is none.
+INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered,
+                                      lot_id, expired_override)
 SELECT @movement_id, u.line_no, u.variant_id, u.sku, u.product_name, u.unit, nullif(u.from_id, 0), nullif(u.to_id, 0), u.quantity,
-       nullif(u.entered, '')::jsonb
+       nullif(u.entered, '')::jsonb, nullif(u.lot_id, 0), u.expired_override
 FROM (SELECT unnest(@line_nos::int[]) AS line_no, unnest(@variant_ids::int[]) AS variant_id, unnest(@skus::text[]) AS sku,
              unnest(@product_names::text[]) AS product_name, unnest(@units::text[]) AS unit,
              unnest(@from_ids::bigint[]) AS from_id, unnest(@to_ids::bigint[]) AS to_id,
-             unnest(@quantities::numeric[]) AS quantity, unnest(@entereds::text[]) AS entered) AS u;
+             unnest(@quantities::numeric[]) AS quantity, unnest(@entereds::text[]) AS entered,
+             unnest(@lot_ids::bigint[]) AS lot_id, unnest(@expired_overrides::boolean[]) AS expired_override) AS u;
 
 -- name: VariantHeld :one
 -- VariantHeld is what a variant holds across every location (I23), on the

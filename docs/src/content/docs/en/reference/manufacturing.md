@@ -508,7 +508,12 @@ work orders the same way.
 
 An order's components are reserved at its site through Inventory's
 `StockLedger.ReserveForProduction` (M3, M20), with the order as the document —
-`manufacturing/order/<id>` — and the component line's id as the line. The reserve runs in
+`manufacturing/order/<id>` — and the component line's id as the line. Every write that
+reserves — a confirm, *Reserve now*, a component line added or changed, a close's
+backorder, the sub-assembly orders and the make-to-order worker — reads the business day
+on the pool before its transaction and passes it as `today`, the day Inventory judges a
+lot's expiry on: no ledger call makes a contract call inside the order's transaction
+(manufacturing phase 2 M62). The reserve runs in
 **two passes** (M20a):
 
 1. every line that needs a reservation in **one** call, which is all-or-nothing;
@@ -635,7 +640,11 @@ Posting, in one transaction:
    `manufacturing/production/<id>` — and the order as the reserving document: one
    movement of kind **Production** that takes the components off their locations and
    puts `quantity` on the to-location. Inventory's movement page links it to the order.
-   `outputScrap` never goes into stock;
+   `outputScrap` never goes into stock. The call carries `Today` and `ExpiredOverride`
+   — the business day and whether the poster holds `inventory:expired-override` — read
+   on the pool when the request was judged, before the transaction (manufacturing phase
+   2 M62); its lines name no lot (`LotID` 0) until phase 2's layer M records lots, and
+   the production keeps the answer's `MovementID`;
 3. consumes from the order's reservations, as `Produce` does, and lowers the stored
    copies;
 4. adds to each line's `consumed` and `scrapped`, and to the order's `produced` (good

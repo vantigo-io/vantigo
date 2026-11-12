@@ -18,7 +18,9 @@ WITH oh AS (
     SELECT b.variant_id, l.site_id, sum(b.on_hand) AS on_hand
     FROM inventory.balances b
     JOIN inventory.locations l ON l.id = b.location_id
+    LEFT JOIN inventory.lots t ON t.id = b.lot_id
     WHERE b.variant_id = ANY($1::int[])
+      AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= $2::date)))
     GROUP BY b.variant_id, l.site_id
 ), rs AS (
     SELECT r.variant_id, r.site_id, sum(r.quantity) AS reserved
@@ -35,6 +37,11 @@ WHERE s.status = 'active'
 ORDER BY 1, s.code
 `
 
+type AvailableAtActiveSitesParams struct {
+	VariantIds []int32
+	Today      pgtype.Date
+}
+
 type AvailableAtActiveSitesRow struct {
 	VariantID int32
 	SiteID    int64
@@ -47,8 +54,8 @@ type AvailableAtActiveSitesRow struct {
 // reserved) at every active site where it lies or is reserved, by site code:
 // the low-stock rows' elsewhere (I58), the row's own site left out by the
 // caller. A site without a placement is answered too.
-func (q *Queries) AvailableAtActiveSites(ctx context.Context, variantIds []int32) ([]AvailableAtActiveSitesRow, error) {
-	rows, err := q.db.Query(ctx, availableAtActiveSites, variantIds)
+func (q *Queries) AvailableAtActiveSites(ctx context.Context, arg AvailableAtActiveSitesParams) ([]AvailableAtActiveSitesRow, error) {
+	rows, err := q.db.Query(ctx, availableAtActiveSites, arg.VariantIds, arg.Today)
 	if err != nil {
 		return nil, err
 	}
@@ -402,7 +409,9 @@ CROSS JOIN LATERAL (
     SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
     FROM inventory.balances b
     JOIN inventory.locations l ON l.id = b.location_id
-    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id) oh
+    LEFT JOIN inventory.lots t ON t.id = b.lot_id
+    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id
+      AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= $1::date)))) oh
 CROSS JOIN LATERAL (
     SELECT coalesce(sum(r.quantity), 0)::numeric AS reserved
     FROM inventory.reservations r
@@ -415,18 +424,19 @@ CROSS JOIN LATERAL (
       AND tl.sent > tl.received + tl.missing + tl.returned) it
 WHERE p.reorder_point IS NOT NULL
   AND s.status = 'active'
-  AND ($1::bigint IS NULL OR p.site_id = $1::bigint)
-  AND ($2::text IS NULL
-       OR strpos(lower(p.sku), lower($2::text)) > 0
-       OR strpos(lower(p.product_name), lower($2::text)) > 0)
-  AND oh.on_hand - rs.reserved + it.incoming <= p.reorder_point
+  AND ($2::bigint IS NULL OR p.site_id = $2::bigint)
   AND ($3::text IS NULL
-       OR (s.code, p.sku, p.variant_id) > ($3::text, $4::text, $5::int))
+       OR strpos(lower(p.sku), lower($3::text)) > 0
+       OR strpos(lower(p.product_name), lower($3::text)) > 0)
+  AND oh.on_hand - rs.reserved + it.incoming <= p.reorder_point
+  AND ($4::text IS NULL
+       OR (s.code, p.sku, p.variant_id) > ($4::text, $5::text, $6::int))
 ORDER BY s.code, p.sku, p.variant_id
-LIMIT $6::int
+LIMIT $7::int
 `
 
 type LowStockParams struct {
+	Today           pgtype.Date
 	SiteID          *int64
 	Q               *string
 	CursorSiteCode  *string
@@ -449,14 +459,16 @@ type LowStockRow struct {
 }
 
 // LowStock is the low-stock list (I56, I58): every placement with a reorder
-// point at an active site whose available (on hand over the site's
-// locations less reserved at the site) plus incoming (in transit to the
+// point at an active site whose available (usable on hand over the site's
+// locations — no lot held or expired on today, manufacturing phase 2 M63 —
+// less reserved at the site) plus incoming (in transit to the
 // site) is at or below it — optionally one site, q a part of the SKU or
 // name snapshot, ignoring case — by site code, SKU snapshot and variant id,
 // after the cursor's. Quantities as text, for the rule's arithmetic in
 // decimals.
 func (q *Queries) LowStock(ctx context.Context, arg LowStockParams) ([]LowStockRow, error) {
 	rows, err := q.db.Query(ctx, lowStock,
+		arg.Today,
 		arg.SiteID,
 		arg.Q,
 		arg.CursorSiteCode,
@@ -501,7 +513,9 @@ CROSS JOIN LATERAL (
     SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
     FROM inventory.balances b
     JOIN inventory.locations l ON l.id = b.location_id
-    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id) oh
+    LEFT JOIN inventory.lots t ON t.id = b.lot_id
+    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id
+      AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= $1::date)))) oh
 CROSS JOIN LATERAL (
     SELECT coalesce(sum(r.quantity), 0)::numeric AS reserved
     FROM inventory.reservations r
@@ -528,8 +542,8 @@ type LowStockCountsRow struct {
 
 // LowStockCounts is LowStock's rule counted per active site, for the
 // dashboard's lowStock items (I62): only sites with at least one.
-func (q *Queries) LowStockCounts(ctx context.Context) ([]LowStockCountsRow, error) {
-	rows, err := q.db.Query(ctx, lowStockCounts)
+func (q *Queries) LowStockCounts(ctx context.Context, today pgtype.Date) ([]LowStockCountsRow, error) {
+	rows, err := q.db.Query(ctx, lowStockCounts, today)
 	if err != nil {
 		return nil, err
 	}

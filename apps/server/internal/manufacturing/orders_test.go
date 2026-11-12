@@ -338,6 +338,13 @@ func TestProduction_PrefillDeviationAndReplay(t *testing.T) {
 	if ps := h.stock.productions(); len(ps) != 1 || ps[0].Document != (contracts.StockSource{Module: "manufacturing", Kind: "production", ID: first.Id}) {
 		t.Errorf("posted = %+v", ps)
 	}
+	// The business day and the override travel as data, read on the pool
+	// before the transaction (manufacturing phase 2 M62, rule 24); the
+	// lines name no lot before layer M.
+	if ps := h.stock.productions(); len(ps) == 1 && (ps[0].Today.Format(time.DateOnly) != h.Now().Format(time.DateOnly) || ps[0].ExpiredOverride ||
+		ps[0].Consume[0].LotID != 0 || ps[0].Produce[0].LotID != 0) {
+		t.Errorf("posted today %s override %v, want %s and false", ps[0].Today, ps[0].ExpiredOverride, h.Now().Format(time.DateOnly))
+	}
 
 	// The same request again is a replay: 200 with the first production,
 	// nothing posted twice, whatever its spelling or acceptDeviation.

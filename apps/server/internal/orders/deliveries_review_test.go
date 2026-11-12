@@ -159,7 +159,7 @@ func TestInventoryOff_EditKeepsReservations(t *testing.T) {
 	h.Exec(t, `UPDATE orders.orders SET site_id = $2 WHERE id = $1`, o.Id, siteOslo)
 	h.Exec(t, `UPDATE orders.lines SET delivery_method = 'delivery', invoice_policy = 'delivery' WHERE id = $1`, id)
 	h.stock.put(varBolt, locA1, "10")
-	if err := h.stock.Reserve(context.Background(), nil, src, siteOslo, []contracts.StockLine{{VariantID: varBolt, LineID: id, Quantity: "5"}}); err != nil {
+	if err := h.stock.Reserve(context.Background(), nil, src, siteOslo, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: id, Quantity: "5"}}); err != nil {
 		t.Fatal(err)
 	}
 	at := func(qty float64) gen.OrdersOrder {
@@ -200,7 +200,7 @@ func TestCreateDelivery_SecondDraftTakesNoReservationTwice(t *testing.T) {
 	o := createOrder(t, c, custBusiness, productLine(varBolt, 10))
 	mustStatus(t, confirmWith(t, c, o, false), http.StatusOK, "confirm without reserving")
 	id := getOrder(t, c, o.Id).Lines[0].Id
-	if err := h.stock.Reserve(context.Background(), nil, orderSource(o.Id), siteOslo, []contracts.StockLine{{VariantID: varBolt, LineID: id, Quantity: "6"}}); err != nil {
+	if err := h.stock.Reserve(context.Background(), nil, orderSource(o.Id), siteOslo, testToday, []contracts.StockLine{{VariantID: varBolt, LineID: id, Quantity: "6"}}); err != nil {
 		t.Fatal(err)
 	}
 	res := c.Do(http.MethodPost, deliveriesPath, gen.OrdersDeliveryInput{OrderId: o.Id})

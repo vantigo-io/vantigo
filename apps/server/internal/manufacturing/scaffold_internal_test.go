@@ -216,6 +216,10 @@ func (r *recordingStock) SiteLocations(context.Context, int64) ([]contracts.Stoc
 	return []contracts.StockSiteLocation{{ID: 1, Root: true, Active: true}}, nil
 }
 
+func (r *recordingStock) Lots(context.Context, []int32, int64) ([]contracts.StockLot, error) {
+	return nil, nil
+}
+
 func TestStockAvailable_DeduplicatesAndBatches(t *testing.T) {
 	stock := &recordingStock{}
 	s := &server{deps: module.Deps{Stock: stock}}

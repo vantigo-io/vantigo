@@ -65,6 +65,17 @@ func signIn(t *testing.T, h *harness, permissions ...string) (*modtest.Client, u
 	return h.SignInUser(t, permissions...)
 }
 
+// callerTxKey marks a context as inside another module's transaction: a
+// ledger call made with it must make no contract call (rule 24,
+// manufacturing phase 2 M62), and the hook records one as it would one made
+// inside this module's own.
+type callerTxKey struct{}
+
+// inCallerTx is ctx marked as inside a caller's transaction.
+func inCallerTx(ctx context.Context) context.Context {
+	return context.WithValue(ctx, callerTxKey{}, true)
+}
+
 // lockedContractCalls is every call out of the module made from inside one of
 // its transactions, but LockVariants, reported by contractscalls.go's hook
 // (TestMain) and by the fakes themselves.
@@ -76,7 +87,7 @@ type lockedCalls struct {
 }
 
 func (l *lockedCalls) note(ctx context.Context, method string) {
-	if !inventory.InOpenTx(ctx) || method == inventory.LockVariantsCall {
+	if (!inventory.InOpenTx(ctx) && ctx.Value(callerTxKey{}) == nil) || method == inventory.LockVariantsCall {
 		return
 	}
 	l.mu.Lock()

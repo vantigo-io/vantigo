@@ -797,6 +797,16 @@ a read of sites, on hand, available and the locations holding a variant, nil whe
 is off; and `contracts.StockLedger`, which reserves, releases and issues on Orders' own
 transaction (module-boundaries rule 24) and is composed whatever `MODULES` says.
 
+**Today and the override travel as data** (manufacturing phase 2 M62, M63). The ledger
+makes no contract call inside Orders' transaction, so every write that reserves — a
+confirm, an accept and confirm, *Reserve now*, a confirmed order's save — reads the
+business day on the pool before its transaction and passes it to `Reserve` as `today`,
+the day a lot's expiry is judged on; a delivery's post reads the day and whether the
+poster holds `inventory:expired-override` the same way and passes them as the issue's
+`Today` and `ExpiredOverride`. Delivery lines name no lot yet (`LotID` 0): picking lots
+is manufacturing phase 2's layer O, and until then Products keeps every variant
+untracked. `Issue` answers a `StockPosted`, whose `MovementID` the delivery keeps.
+
 ### The site and the line's delivery method
 
 An order carries `site_id`, Inventory's site, opaque here. A new order — the API's create,

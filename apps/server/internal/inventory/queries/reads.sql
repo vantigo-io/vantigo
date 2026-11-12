@@ -1,18 +1,22 @@
 -- The reads (design I27, I29, I30): what lies where, and the movements.
 
 -- name: BalancesAt :many
--- BalancesAt is what lies on the location and, with subtree, below it.
-SELECT b.variant_id, b.location_id, b.on_hand
+-- BalancesAt is what lies on the location and, with subtree, below it, per
+-- variant and location, summed over the lots (manufacturing phase 2 M55).
+SELECT b.variant_id, b.location_id, sum(b.on_hand)::numeric AS on_hand
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE l.id = @id OR (@subtree::boolean AND l.ancestors @> ARRAY[@id::bigint])
+GROUP BY b.variant_id, b.location_id, l.full_code
 ORDER BY l.full_code, b.variant_id;
 
 -- name: BalancesOfVariants :many
--- BalancesOfVariants is every balance of the variants.
-SELECT b.variant_id, b.location_id, b.on_hand
+-- BalancesOfVariants is every balance of the variants, per location, summed
+-- over the lots (manufacturing phase 2 M55).
+SELECT b.variant_id, b.location_id, sum(b.on_hand)::numeric AS on_hand
 FROM inventory.balances b
 WHERE b.variant_id = ANY(@variant_ids::int[])
+GROUP BY b.variant_id, b.location_id
 ORDER BY b.variant_id, b.location_id;
 
 -- name: LastLineSnapshots :many
@@ -79,5 +83,18 @@ SELECT b.variant_id, l.site_id, sum(b.on_hand)::text AS on_hand
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE b.variant_id = ANY(@variant_ids::int[])
+GROUP BY b.variant_id, l.site_id
+ORDER BY b.variant_id, l.site_id;
+
+-- name: UsableBySite :many
+-- UsableBySite is each variant's usable on hand per site (manufacturing phase
+-- 2 M63): the balances with no lot, and those of lots with no active hold that
+-- are not expired on today. A site where nothing is usable is absent.
+SELECT b.variant_id, l.site_id, sum(b.on_hand)::text AS on_hand
+FROM inventory.balances b
+JOIN inventory.locations l ON l.id = b.location_id
+LEFT JOIN inventory.lots t ON t.id = b.lot_id
+WHERE b.variant_id = ANY(@variant_ids::int[])
+  AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= @today::date)))
 GROUP BY b.variant_id, l.site_id
 ORDER BY b.variant_id, l.site_id;

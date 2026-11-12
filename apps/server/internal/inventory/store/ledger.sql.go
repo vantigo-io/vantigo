@@ -72,48 +72,57 @@ func (q *Queries) ClaimMovement(ctx context.Context, arg ClaimMovementParams) (i
 
 const deleteZeroBalances = `-- name: DeleteZeroBalances :exec
 DELETE FROM inventory.balances b
-USING (SELECT unnest($1::int[]) AS variant_id, unnest($2::bigint[]) AS location_id) AS u
-WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.on_hand = 0
+USING (SELECT unnest($1::int[]) AS variant_id, unnest($2::bigint[]) AS location_id,
+             unnest($3::bigint[]) AS lot_id) AS u
+WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id IS NOT DISTINCT FROM nullif(u.lot_id, 0)
+  AND b.on_hand = 0
 `
 
 type DeleteZeroBalancesParams struct {
 	VariantIds  []int32
 	LocationIds []int64
+	LotIds      []int64
 }
 
 // DeleteZeroBalances removes the balances a posting left at zero, so "where
 // does it lie" lists only places with stock (I10).
 func (q *Queries) DeleteZeroBalances(ctx context.Context, arg DeleteZeroBalancesParams) error {
-	_, err := q.db.Exec(ctx, deleteZeroBalances, arg.VariantIds, arg.LocationIds)
+	_, err := q.db.Exec(ctx, deleteZeroBalances, arg.VariantIds, arg.LocationIds, arg.LotIds)
 	return err
 }
 
 const insertMovementLines = `-- name: InsertMovementLines :exec
-INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered)
+INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, entered,
+                                      lot_id, expired_override)
 SELECT $1, u.line_no, u.variant_id, u.sku, u.product_name, u.unit, nullif(u.from_id, 0), nullif(u.to_id, 0), u.quantity,
-       nullif(u.entered, '')::jsonb
+       nullif(u.entered, '')::jsonb, nullif(u.lot_id, 0), u.expired_override
 FROM (SELECT unnest($2::int[]) AS line_no, unnest($3::int[]) AS variant_id, unnest($4::text[]) AS sku,
              unnest($5::text[]) AS product_name, unnest($6::text[]) AS unit,
              unnest($7::bigint[]) AS from_id, unnest($8::bigint[]) AS to_id,
-             unnest($9::numeric[]) AS quantity, unnest($10::text[]) AS entered) AS u
+             unnest($9::numeric[]) AS quantity, unnest($10::text[]) AS entered,
+             unnest($11::bigint[]) AS lot_id, unnest($12::boolean[]) AS expired_override) AS u
 `
 
 type InsertMovementLinesParams struct {
-	MovementID   int64
-	LineNos      []int32
-	VariantIds   []int32
-	Skus         []string
-	ProductNames []string
-	Units        []string
-	FromIds      []int64
-	ToIds        []int64
-	Quantities   []pgtype.Numeric
-	Entereds     []string
+	MovementID       int64
+	LineNos          []int32
+	VariantIds       []int32
+	Skus             []string
+	ProductNames     []string
+	Units            []string
+	FromIds          []int64
+	ToIds            []int64
+	Quantities       []pgtype.Numeric
+	Entereds         []string
+	LotIds           []int64
+	ExpiredOverrides []bool
 }
 
 // InsertMovementLines writes a movement's lines with the variant snapshots
 // (I9) and, for a line entered in packagings, the entry as it was at posting
-// (I25). A from or to of 0 is none; an entry of ” is none.
+// (I25), with its lot and whether an expired lot was taken on the override
+// (manufacturing phase 2 M55, M62). A from, to or lot of 0 is none; an entry
+// of ” is none.
 func (q *Queries) InsertMovementLines(ctx context.Context, arg InsertMovementLinesParams) error {
 	_, err := q.db.Exec(ctx, insertMovementLines,
 		arg.MovementID,
@@ -126,34 +135,41 @@ func (q *Queries) InsertMovementLines(ctx context.Context, arg InsertMovementLin
 		arg.ToIds,
 		arg.Quantities,
 		arg.Entereds,
+		arg.LotIds,
+		arg.ExpiredOverrides,
 	)
 	return err
 }
 
 const lockBalances = `-- name: LockBalances :many
-INSERT INTO inventory.balances (variant_id, location_id, on_hand, updated_at)
-SELECT u.variant_id, u.location_id, 0, $1::timestamptz
-FROM (SELECT unnest($2::int[]) AS variant_id, unnest($3::bigint[]) AS location_id) AS u
-ORDER BY u.variant_id, u.location_id
-ON CONFLICT (variant_id, location_id) DO UPDATE SET updated_at = inventory.balances.updated_at
-RETURNING variant_id, location_id, on_hand
+INSERT INTO inventory.balances (variant_id, location_id, lot_id, on_hand, updated_at)
+SELECT u.variant_id, u.location_id, nullif(u.lot_id, 0), 0, $1::timestamptz
+FROM (SELECT unnest($2::int[]) AS variant_id, unnest($3::bigint[]) AS location_id,
+             unnest($4::bigint[]) AS lot_id) AS u
+ORDER BY u.variant_id, u.location_id, u.lot_id
+ON CONFLICT (variant_id, location_id, lot_id) DO UPDATE SET updated_at = inventory.balances.updated_at
+RETURNING variant_id, location_id, coalesce(lot_id, 0)::bigint AS lot_id, on_hand
 `
 
 type LockBalancesParams struct {
 	Now         time.Time
 	VariantIds  []int32
 	LocationIds []int64
+	LotIds      []int64
 }
 
 type LockBalancesRow struct {
 	VariantID  int32
 	LocationID int64
+	LotID      int64
 	OnHand     pgtype.Numeric
 }
 
 // LockBalances creates a posting's missing balances at zero and locks every
-// one of them, existing or new, in (variant, location) order, in one
-// statement (step 5, I10). ON CONFLICT DO UPDATE locks the row it meets as
+// one of them, existing or new, in (variant, location, lot) order — no lot
+// first — in one statement (step 8, I10, manufacturing phase 2 M55). A lot of
+// 0 is none; the conflict target is ux_balances_key, NULLS NOT DISTINCT, so a
+// (variant, location) with no lot is one key. ON CONFLICT DO UPDATE locks the row it meets as
 // FOR UPDATE would, waits for a concurrent insert of the same key to settle,
 // inserts again when a concurrent posting deleted the row at zero, and
 // answers the row's latest committed on_hand. No lock is held across a
@@ -161,7 +177,12 @@ type LockBalancesRow struct {
 // than collide on its key, and none waits for another's insert while holding
 // a lock that one needs.
 func (q *Queries) LockBalances(ctx context.Context, arg LockBalancesParams) ([]LockBalancesRow, error) {
-	rows, err := q.db.Query(ctx, lockBalances, arg.Now, arg.VariantIds, arg.LocationIds)
+	rows, err := q.db.Query(ctx, lockBalances,
+		arg.Now,
+		arg.VariantIds,
+		arg.LocationIds,
+		arg.LotIds,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +190,12 @@ func (q *Queries) LockBalances(ctx context.Context, arg LockBalancesParams) ([]L
 	var items []LockBalancesRow
 	for rows.Next() {
 		var i LockBalancesRow
-		if err := rows.Scan(&i.VariantID, &i.LocationID, &i.OnHand); err != nil {
+		if err := rows.Scan(
+			&i.VariantID,
+			&i.LocationID,
+			&i.LotID,
+			&i.OnHand,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -206,14 +232,15 @@ const setBalances = `-- name: SetBalances :exec
 UPDATE inventory.balances b
 SET on_hand = u.on_hand, updated_at = $1::timestamptz
 FROM (SELECT unnest($2::int[]) AS variant_id, unnest($3::bigint[]) AS location_id,
-             unnest($4::numeric[]) AS on_hand) AS u
-WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id
+             unnest($4::bigint[]) AS lot_id, unnest($5::numeric[]) AS on_hand) AS u
+WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id IS NOT DISTINCT FROM nullif(u.lot_id, 0)
 `
 
 type SetBalancesParams struct {
 	Now         time.Time
 	VariantIds  []int32
 	LocationIds []int64
+	LotIds      []int64
 	OnHands     []pgtype.Numeric
 }
 
@@ -223,6 +250,7 @@ func (q *Queries) SetBalances(ctx context.Context, arg SetBalancesParams) error 
 		arg.Now,
 		arg.VariantIds,
 		arg.LocationIds,
+		arg.LotIds,
 		arg.OnHands,
 	)
 	return err

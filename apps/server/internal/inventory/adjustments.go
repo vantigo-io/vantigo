@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 )
@@ -32,8 +33,17 @@ func (s *server) PostInventoryAdjustment(ctx context.Context, req gen.PostInvent
 	}
 	note := optionalText(&f, "note", in.Note, maxNoteLength)
 	lines := make([]engineLine, 0, len(in.Lines))
+	namesLots := false
 	for i, l := range in.Lines {
-		line := engineLine{index: i, variantID: l.VariantId}
+		field := fmt.Sprintf("lines[%d]", i)
+		// A line names its lot by id, or — for an increase — by number, to
+		// be found or made (manufacturing phase 2 M57, M59); set mode sets
+		// one (location, lot). An adjustment ignores holds and expiry.
+		line := engineLine{index: i, variantID: l.VariantId, lotID: lotIDOf(&f, field+".lotId", l.LotId), newLot: readNewLot(&f, field+".lot", l.Lot)}
+		namesLots = namesLots || line.newLot != nil
+		if line.lotID != 0 && line.newLot != nil {
+			f.add(field, "A line names a lotId or a lot, not both")
+		}
 		location := l.LocationId
 		decrease := l.Decrease != nil && *l.Decrease
 		switch l.Mode {
@@ -62,10 +72,22 @@ func (s *server) PostInventoryAdjustment(ctx context.Context, req gen.PostInvent
 		default:
 			f.add(fmt.Sprintf("lines[%d].mode", i), "The mode must be change or set")
 		}
+		if line.newLot != nil && line.from != nil {
+			f.add(field+".lot", "A lot by number is named only by an increase; a decrease names its lotId")
+		}
 		lines = append(lines, line)
 	}
 	if f.failed() {
 		return gen.PostInventoryAdjustment400ApplicationProblemPlusJSONResponse(invalid(invalidPostingTitle, f)), nil
+	}
+	// The day a new lot's dates default from (M62), read before the
+	// transaction; an adjustment naming no new lot needs none.
+	var today time.Time
+	if namesLots {
+		var err error
+		if today, err = s.today(ctx); err != nil {
+			return nil, err
+		}
 	}
 	hash, err := requestHash(string(gen.Adjustment), in)
 	if err != nil {
@@ -79,7 +101,7 @@ func (s *server) PostInventoryAdjustment(ctx context.Context, req gen.PostInvent
 	res, err := s.postMovement(ctx, movementHeader{
 		clientRequestID: in.ClientRequestId, requestHash: hash, siteID: in.SiteId, kind: string(gen.Adjustment),
 		reason: &reason, note: note, poster: who,
-	}, lines, false)
+	}, lines, false, today)
 	if status, p, ok := answerOf(err); ok {
 		switch status {
 		case http.StatusBadRequest:

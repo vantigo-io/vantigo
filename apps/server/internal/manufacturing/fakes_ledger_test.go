@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -231,19 +232,41 @@ func (s *fakeStock) site(id int64) (contracts.StockSite, bool) {
 
 var errNotManufacturing = errors.New("fake ledger: manufacturing never calls this")
 
-func (s *fakeStock) Reserve(context.Context, pgx.Tx, contracts.StockSource, int64, []contracts.StockLine) error {
+func (s *fakeStock) Reserve(context.Context, pgx.Tx, contracts.StockSource, int64, time.Time, []contracts.StockLine) error {
 	return errNotManufacturing
 }
 
-func (s *fakeStock) Issue(context.Context, pgx.Tx, contracts.StockSource, contracts.StockIssue) (int64, error) {
-	return 0, errNotManufacturing
+func (s *fakeStock) Issue(context.Context, pgx.Tx, contracts.StockSource, contracts.StockIssue) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, errNotManufacturing
 }
+
+// EnsureLots, HoldLots and ReleaseLotHolds are layer M's and Q's; nothing
+// in this layer calls them.
+func (s *fakeStock) EnsureLots(context.Context, pgx.Tx, contracts.StockSource, time.Time, []contracts.NewLot) ([]int64, error) {
+	return nil, errNotManufacturing
+}
+
+func (s *fakeStock) HoldLots(context.Context, pgx.Tx, contracts.StockSource, []contracts.LotHold) error {
+	return errNotManufacturing
+}
+
+func (s *fakeStock) ReleaseLotHolds(context.Context, pgx.Tx, contracts.StockSource, []int64, contracts.LotActor) error {
+	return errNotManufacturing
+}
+
+// errNoToday is a ledger call without today: the caller must read the
+// business day on the pool before its transaction (manufacturing phase 2
+// M62, rule 24), so every reserve and production a test makes proves it did.
+var errNoToday = errors.New("fake ledger: a stock call without today")
 
 // ReserveForProduction reserves all the lines or none: a variant whose lines
 // together want more than the site's free is refused, naming each of them.
-func (s *fakeStock) ReserveForProduction(_ context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, lines []contracts.StockLine) error {
+func (s *fakeStock) ReserveForProduction(_ context.Context, tx pgx.Tx, src contracts.StockSource, siteID int64, today time.Time, lines []contracts.StockLine) error {
 	if tx == nil {
 		panic("ReserveForProduction without a transaction")
+	}
+	if today.IsZero() {
+		return errNoToday
 	}
 	s.mu.Lock()
 	hook := s.reserveHook
@@ -337,9 +360,17 @@ func (s *fakeStock) ReservationsFor(_ context.Context, _ pgx.Tx, src contracts.S
 // when the location does not hold it, naming every failing line), consuming
 // the line's reservation, each produce line onto its location; idempotent by
 // the document.
-func (s *fakeStock) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (int64, error) {
+func (s *fakeStock) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (contracts.StockPosted, error) {
+	movement, err := s.produce(ctx, tx, src, p)
+	return contracts.StockPosted{MovementID: movement}, err
+}
+
+func (s *fakeStock) produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (int64, error) {
 	if tx == nil {
 		panic("Produce without a transaction")
+	}
+	if p.Today.IsZero() {
+		return 0, errNoToday
 	}
 	s.mu.Lock()
 	hook := s.produceHook

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -33,9 +34,11 @@ func (fakeStock) SiteLocations(context.Context, int64) ([]contracts.StockSiteLoc
 	return nil, nil
 }
 
+func (fakeStock) Lots(context.Context, []int32, int64) ([]contracts.StockLot, error) { return nil, nil }
+
 type fakeStockLedger struct{}
 
-func (fakeStockLedger) Reserve(context.Context, pgx.Tx, contracts.StockSource, int64, []contracts.StockLine) error {
+func (fakeStockLedger) Reserve(context.Context, pgx.Tx, contracts.StockSource, int64, time.Time, []contracts.StockLine) error {
 	return nil
 }
 
@@ -43,20 +46,32 @@ func (fakeStockLedger) Release(context.Context, pgx.Tx, contracts.StockSource, [
 	return nil
 }
 
-func (fakeStockLedger) Issue(context.Context, pgx.Tx, contracts.StockSource, contracts.StockIssue) (int64, error) {
-	return 0, nil
+func (fakeStockLedger) Issue(context.Context, pgx.Tx, contracts.StockSource, contracts.StockIssue) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, nil
 }
 
 func (fakeStockLedger) ReservationsFor(context.Context, pgx.Tx, contracts.StockSource) ([]contracts.Reservation, error) {
 	return nil, nil
 }
 
-func (fakeStockLedger) ReserveForProduction(context.Context, pgx.Tx, contracts.StockSource, int64, []contracts.StockLine) error {
+func (fakeStockLedger) ReserveForProduction(context.Context, pgx.Tx, contracts.StockSource, int64, time.Time, []contracts.StockLine) error {
 	return nil
 }
 
-func (fakeStockLedger) Produce(context.Context, pgx.Tx, contracts.StockSource, contracts.StockProduction) (int64, error) {
-	return 0, nil
+func (fakeStockLedger) Produce(context.Context, pgx.Tx, contracts.StockSource, contracts.StockProduction) (contracts.StockPosted, error) {
+	return contracts.StockPosted{}, nil
+}
+
+func (fakeStockLedger) EnsureLots(context.Context, pgx.Tx, contracts.StockSource, time.Time, []contracts.NewLot) ([]int64, error) {
+	return nil, nil
+}
+
+func (fakeStockLedger) HoldLots(context.Context, pgx.Tx, contracts.StockSource, []contracts.LotHold) error {
+	return nil
+}
+
+func (fakeStockLedger) ReleaseLotHolds(context.Context, pgx.Tx, contracts.StockSource, []int64, contracts.LotActor) error {
+	return nil
 }
 
 // stockModule is a module providing both stock slots, as Inventory does.

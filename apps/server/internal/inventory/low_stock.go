@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/store"
@@ -169,6 +171,12 @@ func (s *server) ListInventoryLowStock(ctx context.Context, req gen.ListInventor
 	if f.failed() {
 		return gen.ListInventoryLowStock400ApplicationProblemPlusJSONResponse(invalid(invalidQueryTitle, f)), nil
 	}
+	// Available is usable on hand on today (manufacturing phase 2 M63).
+	today, err := s.today(ctx)
+	if err != nil {
+		return nil, err
+	}
+	params.Today = pgtype.Date{Time: today, Valid: true}
 	stale := staleSnapshots{}
 	rows, last, err := s.lowStockRows(ctx, params, lowStockPage, stale)
 	if status, p, ok := answerOf(err); ok && status == http.StatusServiceUnavailable {
@@ -210,7 +218,7 @@ func (s *server) ListInventoryLowStock(ctx context.Context, req gen.ListInventor
 	for _, site := range sites {
 		siteByID[site.ID] = site
 	}
-	available, err := q.AvailableAtActiveSites(ctx, distinct(variantIDs))
+	available, err := q.AvailableAtActiveSites(ctx, store.AvailableAtActiveSitesParams{VariantIds: distinct(variantIDs), Today: params.Today})
 	if err != nil {
 		return nil, fmt.Errorf("inventory: read what other sites have available: %w", err)
 	}
@@ -333,6 +341,7 @@ func (s *server) ExportInventoryLowStock(ctx context.Context, req gen.ExportInve
 	if err != nil {
 		return nil, err
 	}
+	params.Today = pgtype.Date{Time: businessToday(s.deps.Clock(), zone), Valid: true}
 	var b bytes.Buffer
 	b.WriteString(csvByteOrderMark)
 	writeCSVRow(&b, lowStockColumns, nil)
@@ -383,7 +392,11 @@ func (s *server) ExportInventoryLowStock(ctx context.Context, req gen.ExportInve
 // with any, the count I58's statement's, occurredAt the read's own time — a
 // placement does not record when it went low.
 func (s *server) lowStockItems(ctx context.Context, q *store.Queries, now time.Time) ([]gen.InventoryStatsAttentionItem, error) {
-	rows, err := q.LowStockCounts(ctx)
+	zone, err := s.businessZone(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.LowStockCounts(ctx, pgtype.Date{Time: businessToday(now, zone), Valid: true})
 	if err != nil {
 		return nil, fmt.Errorf("inventory: count the low placements: %w", err)
 	}

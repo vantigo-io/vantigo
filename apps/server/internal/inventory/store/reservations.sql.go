@@ -74,7 +74,7 @@ SELECT b.variant_id, b.location_id
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE b.variant_id = ANY($1::int[]) AND l.site_id = $2
-ORDER BY b.variant_id, b.location_id
+ORDER BY b.variant_id, b.location_id, b.lot_id NULLS FIRST
 FOR UPDATE OF b
 `
 
@@ -94,8 +94,9 @@ type LockSiteBalancesRow struct {
 // locks the site's balances of its variants first, in (variant, location)
 // order, then the reservations.
 // LockSiteBalances takes FOR UPDATE on the variants' balances at the site's
-// locations, in (variant, location) order: two reserves of one variant at
-// one site serialise here, as a posting and a reserve do.
+// locations, in (variant, location, lot) order with no lot first, as a
+// posting takes them (manufacturing phase 2 M58): two reserves of one variant
+// at one site serialise here, as a posting and a reserve do.
 func (q *Queries) LockSiteBalances(ctx context.Context, arg LockSiteBalancesParams) ([]LockSiteBalancesRow, error) {
 	rows, err := q.db.Query(ctx, lockSiteBalances, arg.VariantIds, arg.SiteID)
 	if err != nil {
@@ -184,15 +185,18 @@ func (q *Queries) SetReservations(ctx context.Context, arg SetReservationsParams
 const siteStockOf = `-- name: SiteStockOf :many
 SELECT u.variant_id::int AS variant_id,
        coalesce((SELECT sum(b.on_hand) FROM inventory.balances b JOIN inventory.locations l ON l.id = b.location_id
-                 WHERE b.variant_id = u.variant_id AND l.site_id = $1), 0)::text AS on_hand,
+                 LEFT JOIN inventory.lots t ON t.id = b.lot_id
+                 WHERE b.variant_id = u.variant_id AND l.site_id = $1
+                   AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= $2::date)))), 0)::text AS on_hand,
        coalesce((SELECT sum(r.quantity) FROM inventory.reservations r
                  WHERE r.variant_id = u.variant_id AND r.site_id = $1), 0)::text AS reserved
-FROM (SELECT unnest($2::int[]) AS variant_id) AS u
+FROM (SELECT unnest($3::int[]) AS variant_id) AS u
 ORDER BY 1
 `
 
 type SiteStockOfParams struct {
 	SiteID     int64
+	Today      pgtype.Date
 	VariantIds []int32
 }
 
@@ -202,10 +206,12 @@ type SiteStockOfRow struct {
 	Reserved  string
 }
 
-// SiteStockOf is, per variant, its on hand at the site's locations and what
-// is reserved of it at the site, read after the balances are locked.
+// SiteStockOf is, per variant, its usable on hand at the site's locations —
+// no lot, or a lot with no active hold that is not expired on today
+// (manufacturing phase 2 M63) — and what is reserved of it at the site, read
+// after the balances are locked.
 func (q *Queries) SiteStockOf(ctx context.Context, arg SiteStockOfParams) ([]SiteStockOfRow, error) {
-	rows, err := q.db.Query(ctx, siteStockOf, arg.SiteID, arg.VariantIds)
+	rows, err := q.db.Query(ctx, siteStockOf, arg.SiteID, arg.Today, arg.VariantIds)
 	if err != nil {
 		return nil, err
 	}
@@ -269,10 +275,11 @@ func (q *Queries) SourceReservations(ctx context.Context, arg SourceReservations
 }
 
 const stockLocationsAt = `-- name: StockLocationsAt :many
-SELECT b.variant_id, b.location_id, l.full_code, b.on_hand::text AS on_hand
+SELECT b.variant_id, b.location_id, l.full_code, sum(b.on_hand)::text AS on_hand
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE b.variant_id = ANY($1::int[]) AND l.site_id = $2 AND l.status = 'active' AND b.on_hand > 0
+GROUP BY b.variant_id, b.location_id, l.full_code
 ORDER BY b.variant_id, l.full_code, b.location_id
 `
 
@@ -289,7 +296,8 @@ type StockLocationsAtRow struct {
 }
 
 // StockLocationsAt is, per variant, every active location of the site holding
-// more than 0 of it, by full code (contracts.Stock's Locations).
+// more than 0 of it, by full code, summed over its lots (contracts.Stock's
+// Locations).
 func (q *Queries) StockLocationsAt(ctx context.Context, arg StockLocationsAtParams) ([]StockLocationsAtRow, error) {
 	rows, err := q.db.Query(ctx, stockLocationsAt, arg.VariantIds, arg.SiteID)
 	if err != nil {
@@ -301,6 +309,71 @@ func (q *Queries) StockLocationsAt(ctx context.Context, arg StockLocationsAtPara
 		var i StockLocationsAtRow
 		if err := rows.Scan(
 			&i.VariantID,
+			&i.LocationID,
+			&i.FullCode,
+			&i.OnHand,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const stockLotsAt = `-- name: StockLotsAt :many
+SELECT b.variant_id, t.id AS lot_id, t.number, t.serial, t.expiry, t.best_before, t.received_at, t.status,
+       b.location_id, l.full_code, b.on_hand::text AS on_hand
+FROM inventory.balances b
+JOIN inventory.lots t ON t.id = b.lot_id
+JOIN inventory.locations l ON l.id = b.location_id
+WHERE b.variant_id = ANY($1::int[]) AND l.site_id = $2 AND l.status = 'active' AND b.on_hand > 0
+ORDER BY b.variant_id, t.expiry NULLS LAST, t.received_at, t.id, l.full_code, b.location_id
+`
+
+type StockLotsAtParams struct {
+	VariantIds []int32
+	SiteID     int64
+}
+
+type StockLotsAtRow struct {
+	VariantID  int32
+	LotID      int64
+	Number     string
+	Serial     bool
+	Expiry     pgtype.Date
+	BestBefore pgtype.Date
+	ReceivedAt time.Time
+	Status     string
+	LocationID int64
+	FullCode   string
+	OnHand     string
+}
+
+// StockLotsAt is, per variant, every lot holding more than 0 at an active
+// location of the site, with its location, in FEFO order: expiry (none last),
+// received, lot id, then the location's full code (contracts.Stock's Lots,
+// manufacturing phase 2 M65).
+func (q *Queries) StockLotsAt(ctx context.Context, arg StockLotsAtParams) ([]StockLotsAtRow, error) {
+	rows, err := q.db.Query(ctx, stockLotsAt, arg.VariantIds, arg.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StockLotsAtRow
+	for rows.Next() {
+		var i StockLotsAtRow
+		if err := rows.Scan(
+			&i.VariantID,
+			&i.LotID,
+			&i.Number,
+			&i.Serial,
+			&i.Expiry,
+			&i.BestBefore,
+			&i.ReceivedAt,
+			&i.Status,
 			&i.LocationID,
 			&i.FullCode,
 			&i.OnHand,

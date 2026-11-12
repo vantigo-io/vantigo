@@ -160,26 +160,32 @@ type lineFailure struct {
 	Index  int
 	Code   string
 	Detail string
+	// LotID and LocationID are the lot and location the line failed at, 0
+	// when none: what the contract's refusal names (manufacturing phase 2
+	// M67), not part of the API's problem.
+	LotID, LocationID int64
 }
 
+// conflictCodes are the line codes about the state of things: a posting
+// refused for one of them answers 409 (I10; manufacturing phase 2 M56).
+var conflictCodes = map[string]bool{codeInsufficientStock: true, codeLotExpired: true, codeLotBlocked: true}
+
 // linesProblem is a posting's refusal naming every failing line: 409 when
-// any line is insufficient_stock — the state of things — and 400 otherwise.
-// The problem's own code is the first line's.
+// any line is about the state of things — insufficient_stock, lot_expired,
+// lot_blocked — and 400 otherwise. The problem's own code is the first such
+// line's, else the first line's.
 func linesProblem(failures []lineFailure) (int, gen.InventoryProblem) {
 	status := http.StatusBadRequest
+	code := ""
 	lines := make([]gen.InventoryProblemLine, 0, len(failures))
 	for _, l := range failures {
-		if l.Code == codeInsufficientStock {
-			status = http.StatusConflict
+		if conflictCodes[l.Code] && status != http.StatusConflict {
+			status, code = http.StatusConflict, l.Code
 		}
 		lines = append(lines, gen.InventoryProblemLine{Index: int32(l.Index), Code: l.Code, Detail: l.Detail})
 	}
-	code := ""
-	if len(failures) > 0 {
+	if code == "" && len(failures) > 0 {
 		code = failures[0].Code
-		if status == http.StatusConflict {
-			code = codeInsufficientStock
-		}
 	}
 	p := problem(status, code, "The movement was not posted", fmt.Sprintf("%d line(s) failed; none was posted.", len(failures)))
 	p.Lines = &lines
@@ -205,7 +211,13 @@ func dependencyUnavailable() gen.InventoryProblem {
 type refusal struct {
 	status  int
 	problem gen.InventoryProblem
+	// lots is, for a posting's refusal, the lot and location each failing
+	// line failed at, by its index: what the contract's refusal names.
+	lots map[int]failedAt
 }
+
+// failedAt is the lot and location a line failed at, 0 when none.
+type failedAt struct{ lot, location int64 }
 
 func (r *refusal) Error() string { return fmt.Sprintf("inventory: refused with %d", r.status) }
 
@@ -229,7 +241,11 @@ func refuseInvalid(title string, f fieldErrors) error {
 // refuseLines is a posting's refusal naming every failing line.
 func refuseLines(failures []lineFailure) error {
 	status, p := linesProblem(failures)
-	return &refusal{status: status, problem: p}
+	lots := make(map[int]failedAt, len(failures))
+	for _, f := range failures {
+		lots[f.Index] = failedAt{f.LotID, f.LocationID}
+	}
+	return &refusal{status: status, problem: p, lots: lots}
 }
 
 // answerOf is how a handler reads an error: a refusal's status and body,

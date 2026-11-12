@@ -386,6 +386,12 @@ var errMtoTaken = errors.New("manufacturing: the make-to-order request is no lon
 // shortage never refuses (M20a) — and the request finished. A line Inventory
 // or the catalog refuses is rolled back to its savepoint and recorded.
 func (s *server) makeMto(ctx context.Context, requestID int64, plan []mtoLine, reasons []mtoReason) error {
+	// The day the ledger judges a lot's expiry on, read on the pool before
+	// the transaction (rule 24).
+	today, err := s.stockDay(ctx)
+	if err != nil {
+		return err
+	}
 	for attempt := 1; ; attempt++ {
 		var ids []int32
 		for _, p := range plan {
@@ -423,7 +429,7 @@ func (s *server) makeMto(ctx context.Context, requestID int64, plan []mtoLine, r
 			made := 0
 			out := slices.Clone(reasons)
 			for _, p := range plan {
-				reason, err := s.makeMtoLine(ctx, tx, txq, p, ids, locked, live, notes)
+				reason, err := s.makeMtoLine(ctx, tx, txq, p, ids, locked, live, today, notes)
 				if err != nil {
 					return err
 				}
@@ -457,7 +463,7 @@ func (s *server) makeMto(ctx context.Context, requestID int64, plan []mtoLine, r
 // makeMtoLine makes one line's order on a savepoint of tx, answering why it
 // did not when a rule of this module or Inventory refused it.
 func (s *server) makeMtoLine(ctx context.Context, tx pgx.Tx, txq *store.Queries, p mtoLine, ids []int32,
-	locked map[int32]contracts.VariantEntry, live []int64, notes *notices) (*mtoReason, error) {
+	locked map[int32]contracts.VariantEntry, live []int64, today time.Time, notes *notices) (*mtoReason, error) {
 	l := p.line
 	if slices.Contains(live, l.LineID) {
 		return &mtoReason{l.LineID, reasonHasOrder, "A manufacturing order is already made for the line."}, nil
@@ -498,7 +504,7 @@ func (s *server) makeMtoLine(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		}
 		return nil, err
 	}
-	if _, err := s.confirmOrder(ctx, sp, spq, o, locked, systemActor, notes); err != nil {
+	if _, err := s.confirmOrder(ctx, sp, spq, o, locked, systemActor, today, notes); err != nil {
 		if _, prob, ok := answerOf(err); ok {
 			return &mtoReason{l.LineID, deref(prob.Code), deref(prob.Detail)}, nil
 		}
@@ -834,6 +840,11 @@ func (s *server) CreateManufacturingChildOrders(ctx context.Context, req gen.Cre
 	if err != nil {
 		return nil, err
 	}
+	// The day the ledger judges a lot's expiry on, read on the pool (rule 24).
+	today, err := s.stockDay(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var made []store.ManufacturingOrder
 	err = s.withOrder(ctx, req.Id, func(ctx context.Context, q *store.Queries, _ store.ManufacturingOrder) ([]int32, error) {
 		var ids []int32
@@ -886,7 +897,7 @@ func (s *server) CreateManufacturingChildOrders(ctx context.Context, req gen.Cre
 			if err != nil {
 				return err
 			}
-			if _, err := s.confirmOrder(ctx, tx, txq, child, lo.locked, who, notes); err != nil {
+			if _, err := s.confirmOrder(ctx, tx, txq, child, lo.locked, who, today, notes); err != nil {
 				return err
 			}
 			notes.orders[child.ID] = true

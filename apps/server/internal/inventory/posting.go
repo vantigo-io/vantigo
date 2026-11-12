@@ -7,9 +7,11 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/big"
 	"net/http"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,9 +28,9 @@ import (
 // stock goes through. The API's three handlers open the transaction and call
 // it; the count post (count_post.go) and the opening-balance import
 // (import.go) call it inside theirs, with no line cap. A movement is never edited or deleted, and the balance per
-// (variant, location) is kept by the same transaction that writes it.
+// (variant, location, lot) is kept by the same transaction that writes it.
 //
-// The lock order, in every posting:
+// The lock order, in every posting (manufacturing phase 2 M58):
 //
 //  1. The clientRequestId is read with a plain SELECT. A hit answers the
 //     first movement with the same body, or client_request_reused (I14): a
@@ -40,22 +42,38 @@ import (
 //     a transfer's at its send, receive and cancel, with its two sites FOR
 //     SHARE after it (phase 2 design I38, transfer_actions.go). There is no
 //     cycle: Products never waits on a count, a transfer or a site.
-//  3. The key is claimed by writing the movement's header, INSERT … ON
+//  3. The lot counter — the inventory.counters row "lot", taken by its
+//     upsert — only when a lot number is to be generated (L<n>). It
+//     serialises the postings that generate one for the rest of their
+//     transaction, and no writer takes it after a lot.
+//  4. New lots, inserted in (variant id, lower(number)) order with INSERT …
+//     ON CONFLICT DO NOTHING, a number the variant has read back (M57): two
+//     postings creating one number serialise on the unique index, and the
+//     second reads the first's lot once it commits.
+//  5. Every lot the posting names — and the lots an AutoLot line may take,
+//     read just before — in id order: FOR SHARE, or FOR NO KEY UPDATE for a
+//     lot a line increases whose variant is serial (M53). A hold change
+//     takes the lot FOR NO KEY UPDATE (lots.go), so it waits for the posting
+//     or is waited for. The lot rules (M56) are judged on the locked lots.
+//  6. The key is claimed by writing the movement's header, INSERT … ON
 //     CONFLICT DO NOTHING RETURNING. A conflict means a concurrent first
 //     attempt committed; it is read back and answered as in step 1.
-//  4. The locations FOR SHARE, in id order. A posting writes nothing to a
+//  7. The locations FOR SHARE, in id order. A posting writes nothing to a
 //     location, so two postings never wait for each other there.
-//  5. Every balance created at zero where missing and locked, in (variant,
-//     location) order, by one INSERT … ON CONFLICT DO UPDATE … RETURNING
-//     (I10): two postings to a new pair serialise on the row rather than
+//  8. Every balance created at zero where missing and locked, in (variant,
+//     location, lot) order with no lot first, by one INSERT … ON CONFLICT DO
+//     UPDATE … RETURNING (I10): two postings to a new key — no lot included,
+//     the key being NULLS NOT DISTINCT — serialise on the row rather than
 //     collide on its key, and a balance deleted at zero under the statement
 //     is inserted again by it, so no lock is held across a second attempt.
 //
-// Then the lines are applied in order, the balance checked after each (so
-// -5 then +5 against 0 fails at the first), the movement's lines written,
-// and the balances left at zero deleted. Every failing line is answered at
-// once: the shape and the catalog's and the locations' refusals together,
-// then — only when those pass — the balances'.
+// Then the AutoLot lines take their lots FEFO under those locks (M65a), the
+// lines are applied in order, the balance checked after each (so -5 then +5
+// against 0 fails at the first), a serial lot that is increased summed over
+// every location under its lock (M53), the movement's lines written, and the
+// balances left at zero deleted. Every failing line is answered at once: the
+// shape, the catalog's, the lots' and the locations' refusals together, then
+// — only when those pass — the balances'.
 //
 // An API posting that loses a race anyway — a deadlock or a serialization
 // failure — runs again from step 1 in a new transaction (postMovement), a
@@ -68,7 +86,8 @@ type postOptions struct {
 	// maxLines caps the lines: 500 for the API (I15), 0 — none — for an
 	// internal caller.
 	maxLines int
-	// receipt refuses a Discontinued product's variant (I12).
+	// receipt refuses a Discontinued product's variant (I12), and a line
+	// into a blocked lot (M56).
 	receipt bool
 	// check, when set, judges the posting once its variants and balances are
 	// locked, its entries resolved to units, and before any line is applied:
@@ -77,6 +96,17 @@ type postOptions struct {
 	// refusal it answers rolls the posting back. lines are the posting's own,
 	// resolved; the check reads them and changes nothing.
 	check func(lines []engineLine, variants map[int32]contracts.VariantEntry, balances map[balanceKey]*big.Rat) error
+	// today is the workspace zone's date (manufacturing phase 2 M62), read
+	// by the caller on the pool before its transaction: what an expiry is
+	// judged against and a new lot's dates default from. A posting that
+	// needs it and has none fails.
+	today time.Time
+	// takes marks the from-only lines as issue or consume lines (M56): a lot
+	// on hold is refused them, and an expired one unless the line allows it
+	// and expiredOverride holds. Moves, adjustments, counts and transfers
+	// ignore holds and expiry, as does an unbuild.
+	takes           bool
+	expiredOverride bool
 }
 
 // maxAPILines is the most lines a movement posted through the API has.
@@ -126,13 +156,25 @@ type engineLine struct {
 	entered   []byte
 	failCode  string
 	failText  string
+	// lotID is the line's lot, 0 for none; newLot names one by number to be
+	// found or made instead (a receipt's, an adjustment up's, M57).
+	lotID  int64
+	newLot *lotRequest
+	// autoLot lets the engine take the lots FEFO at from, under its locks
+	// (M65a); allowExpired lets an issue or consume line take an expired lot
+	// on the call's override (M62), and expiredOverride records that it did.
+	autoLot         bool
+	allowExpired    bool
+	expiredOverride bool
 }
 
-// postResult is a posting's outcome: the movement, and whether it was posted
-// before under the same key and body (a replay, answered 200).
+// postResult is a posting's outcome: the movement, whether it was posted
+// before under the same key and body (a replay, answered 200), and the lots
+// its AutoLot lines took.
 type postResult struct {
 	movementID int64
 	replay     bool
+	picks      []contracts.StockPick
 }
 
 // requestHash is the SHA-256 of a posting's canonical body: its kind and the
@@ -148,12 +190,12 @@ func requestHash(kind string, body any) ([]byte, error) {
 	return sum[:], nil
 }
 
-// balanceKey names one balance row: a variant on a location. It names a row
-// of the ledger's table, never the whole key of a balance (design §12: a lot
-// joins it later).
+// balanceKey names one balance row: a variant on a location in a lot, 0 for
+// none — the whole key of a balance (manufacturing phase 2 M55).
 type balanceKey struct {
 	variantID  int32
 	locationID int64
+	lotID      int64
 }
 
 // post is the engine: it posts the movement and its lines inside tx, in the
@@ -185,11 +227,12 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	}
 
 	failures := map[int]lineFailure{}
-	fail := func(l engineLine, code, detail string) {
+	failAt := func(l engineLine, code, detail string, lotID, locationID int64) {
 		if _, ok := failures[l.index]; !ok {
-			failures[l.index] = lineFailure{Index: l.index, Code: code, Detail: detail}
+			failures[l.index] = lineFailure{Index: l.index, Code: code, Detail: detail, LotID: lotID, LocationID: locationID}
 		}
 	}
+	fail := func(l engineLine, code, detail string) { failAt(l, code, detail, l.lotID, 0) }
 	for _, l := range lines {
 		if l.failCode != "" {
 			fail(l, l.failCode, l.failText)
@@ -209,6 +252,9 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	}
 	variants := make(map[int32]contracts.VariantEntry, len(entries))
 	for _, e := range entries {
+		if e.Tracking == "" {
+			return postResult{}, fmt.Errorf("inventory: the catalog answered variant %d with no tracking", e.ID)
+		}
 		variants[e.ID] = e
 	}
 	for _, l := range lines {
@@ -243,7 +289,104 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 		}
 	}
 
-	// 3. The key, claimed.
+	// The lot's shape, judged as the variant is now (M56): a line of a
+	// tracked variant names a lot, one of an untracked variant none, a serial
+	// line moves exactly 1.
+	for i := range lines {
+		l := &lines[i]
+		v, ok := variants[l.variantID]
+		if !ok {
+			continue
+		}
+		names := l.lotID != 0 || l.newLot != nil
+		switch {
+		case !tracked(v) && l.autoLot && !names:
+			// Nothing to pick: an untracked variant's line posts without a lot.
+			l.autoLot = false
+		case !tracked(v) && names:
+			fail(*l, codeLotNotAllowed, fmt.Sprintf("%s is not tracked in lots; the line names none.", v.SKU))
+		case tracked(v) && !names && (!l.autoLot || l.from == nil || l.to != nil):
+			fail(*l, codeLotRequired, fmt.Sprintf("%s is tracked in lots; the line must name one.", v.SKU))
+		case v.Tracking == contracts.TrackingSerial && names && l.setAt == nil && l.quantity != nil && l.quantity.Cmp(big.NewRat(1, 1)) != 0:
+			fail(*l, codeSerialQuantity, fmt.Sprintf("%s is tracked in serials; a line moves exactly 1 of a serial.", v.SKU))
+		case v.Tracking == contracts.TrackingSerial && names && l.setAt != nil && l.setTo != nil && l.setTo.Cmp(big.NewRat(1, 1)) > 0:
+			fail(*l, codeSerialQuantity, fmt.Sprintf("%s is tracked in serials; a serial holds at most 1.", v.SKU))
+		}
+	}
+
+	// 3 and 4. The lot counter and the new lots.
+	var reqs []lotRequest
+	var reqLines []int
+	for i, l := range lines {
+		if l.newLot == nil {
+			continue
+		}
+		if _, failed := failures[l.index]; failed {
+			continue
+		}
+		r := *l.newLot
+		r.variantID = l.variantID
+		reqs = append(reqs, r)
+		reqLines = append(reqLines, i)
+	}
+	var created []int64
+	if len(reqs) > 0 {
+		outcomes, err := s.ensureLots(ctx, txq, reqs, variants, opts.today, nil, m.poster)
+		if err != nil {
+			return postResult{}, err
+		}
+		for j, o := range outcomes {
+			l := &lines[reqLines[j]]
+			l.lotID = o.lot.ID
+			if o.created {
+				created = append(created, o.lot.ID)
+			}
+			if o.failCode != "" {
+				fail(*l, o.failCode, o.failText)
+			}
+		}
+	}
+
+	// The lots an AutoLot line may take: those holding its variant at its
+	// location now. A lot that appears after this read is not used.
+	candidates := map[int][]int64{}
+	if err := s.lotCandidates(ctx, txq, lines, candidates); err != nil {
+		return postResult{}, err
+	}
+
+	// 5. Every lot named, in id order.
+	var lotIDs []int64
+	update := map[int64]bool{}
+	for i, l := range lines {
+		ids := candidates[i]
+		if l.lotID != 0 {
+			ids = append(ids, l.lotID)
+		}
+		lotIDs = append(lotIDs, ids...)
+		if v, ok := variants[l.variantID]; ok && v.Tracking == contracts.TrackingSerial && (l.to != nil || l.setAt != nil) {
+			for _, id := range ids {
+				update[id] = true
+			}
+		}
+	}
+	lots, err := lockLots(ctx, txq, lotIDs, update)
+	if err != nil {
+		return postResult{}, err
+	}
+	for i := range lines {
+		l := &lines[i]
+		if l.lotID == 0 {
+			continue
+		}
+		lot, ok := lots[l.lotID]
+		if !ok || lot.VariantID != l.variantID {
+			fail(*l, codeLotUnknown, fmt.Sprintf("The variant has no lot with the id %d.", l.lotID))
+			continue
+		}
+		s.judgeLot(l, lot, opts, fail)
+	}
+
+	// 6. The key, claimed.
 	claim := store.ClaimMovementParams{
 		ClientRequestID: m.clientRequestID, RequestHash: m.requestHash, SiteID: m.siteID, Kind: m.kind,
 		Reason: m.reason, Note: m.note, SupplierName: m.supplierName, SupplierReference: m.supplierReference,
@@ -254,6 +397,13 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	}
 	id, err := txq.ClaimMovement(ctx, claim)
 	if noRows(err) {
+		// A concurrent first attempt committed meanwhile; the lots this one
+		// made are its own and named by nothing.
+		if len(created) > 0 {
+			if err := txq.DeleteLots(ctx, created); err != nil {
+				return postResult{}, fmt.Errorf("inventory: remove the lots of a replay: %w", err)
+			}
+		}
 		res, _, err := replayOf(ctx, txq, m)
 		return res, err
 	}
@@ -265,8 +415,14 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	if err != nil {
 		return postResult{}, fmt.Errorf("inventory: claim movement %s: %w", m.clientRequestID, err)
 	}
+	if len(created) > 0 {
+		movement := strconv.FormatInt(id, 10)
+		if err := txq.SetLotOrigin(ctx, store.SetLotOriginParams{OriginModule: ptr(lotOriginModule), OriginKind: ptr(lotOriginMovement), OriginID: &movement, Ids: created}); err != nil {
+			return postResult{}, fmt.Errorf("inventory: name the lots' movement: %w", err)
+		}
+	}
 
-	// 4. The locations, shared in id order.
+	// 7. The locations, shared in id order.
 	locationIDs := make([]int64, 0, 2*len(lines))
 	for _, l := range lines {
 		for _, p := range []*int64{l.from, l.to, l.setAt} {
@@ -293,11 +449,11 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 			loc, ok := locations[*p]
 			switch {
 			case !ok:
-				fail(l, codeLocationNotFound, fmt.Sprintf("No location has the id %d.", *p))
+				failAt(l, codeLocationNotFound, fmt.Sprintf("No location has the id %d.", *p), l.lotID, *p)
 			case loc.SiteID != m.siteID:
-				fail(l, codeMoveCrossesSites, fmt.Sprintf("%s is in another site; a movement stays in its site.", loc.FullCode))
+				failAt(l, codeMoveCrossesSites, fmt.Sprintf("%s is in another site; a movement stays in its site.", loc.FullCode), l.lotID, *p)
 			case loc.Status != string(gen.Active):
-				fail(l, codeLocationArchived, fmt.Sprintf("%s is archived and takes no stock.", loc.FullCode))
+				failAt(l, codeLocationArchived, fmt.Sprintf("%s is archived and takes no stock.", loc.FullCode), l.lotID, *p)
 			}
 		}
 	}
@@ -305,11 +461,22 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 		return postResult{}, refuseLines(sortedFailures(failures))
 	}
 
-	// 5. The balances, created at zero where missing, then locked.
-	keys := balanceKeys(lines)
+	// 8. The balances, created at zero where missing, then locked.
+	keys := balanceKeys(lines, candidates)
 	balances, err := lockBalances(ctx, txq, keys, s.deps.Clock())
 	if err != nil {
 		return postResult{}, err
+	}
+	before := make(map[balanceKey]*big.Rat, len(balances))
+	for k, v := range balances {
+		before[k] = new(big.Rat).Set(v)
+	}
+
+	// The AutoLot lines take their lots FEFO under the locks (M65a).
+	var picks []contracts.StockPick
+	lines, picks = s.pickLots(lines, candidates, lots, balances, opts.today, variants, locations, failAt)
+	if len(failures) > 0 {
+		return postResult{}, refuseLines(sortedFailures(failures))
 	}
 	if opts.check != nil {
 		if err := opts.check(lines, variants, balances); err != nil {
@@ -322,7 +489,7 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	for _, l := range lines {
 		v, loc := variants[l.variantID], locations
 		if l.setAt != nil {
-			key := balanceKey{l.variantID, *l.setAt}
+			key := balanceKey{l.variantID, *l.setAt, l.lotID}
 			diff := new(big.Rat).Sub(l.setTo, balances[key])
 			switch diff.Sign() {
 			case 0:
@@ -338,20 +505,20 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 			}
 		}
 		if l.from != nil {
-			key := balanceKey{l.variantID, *l.from}
+			key := balanceKey{l.variantID, *l.from, l.lotID}
 			left := new(big.Rat).Sub(balances[key], l.quantity)
 			if left.Sign() < 0 {
-				fail(l, codeInsufficientStock, fmt.Sprintf("%s at %s: %s on hand, the line takes %s.",
-					v.SKU, loc[*l.from].FullCode, decimalText(balances[key]), decimalText(l.quantity)))
+				failAt(l, codeInsufficientStock, fmt.Sprintf("%s at %s%s: %s on hand, the line takes %s.",
+					v.SKU, loc[*l.from].FullCode, lotWords(lots, l.lotID), decimalText(balances[key]), decimalText(l.quantity)), l.lotID, *l.from)
 				continue
 			}
 			balances[key] = left
 		}
 		if l.to != nil {
-			key := balanceKey{l.variantID, *l.to}
+			key := balanceKey{l.variantID, *l.to, l.lotID}
 			after := new(big.Rat).Add(balances[key], l.quantity)
 			if after.Cmp(maxQuantity) > 0 {
-				fail(l, codeQuantityInvalid, fmt.Sprintf("%s at %s would hold more than 99,999,999,999.999.", v.SKU, loc[*l.to].FullCode))
+				failAt(l, codeQuantityInvalid, fmt.Sprintf("%s at %s would hold more than 99,999,999,999.999.", v.SKU, loc[*l.to].FullCode), l.lotID, *l.to)
 				continue
 			}
 			balances[key] = after
@@ -364,6 +531,14 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	if len(posted) == 0 {
 		return postResult{}, nothingToPost()
 	}
+	// A serial holds at most 1 over every location (M53), summed under the
+	// lot's lock: a posting increasing it elsewhere has committed, or waits.
+	if err := serialRule(ctx, txq, posted, variants, lots, keys, before, balances, failAt); err != nil {
+		return postResult{}, err
+	}
+	if len(failures) > 0 {
+		return postResult{}, refuseLines(sortedFailures(failures))
+	}
 
 	// The movement's lines, the balances, and the zeros gone.
 	if err := writeLines(ctx, txq, id, posted, variants); err != nil {
@@ -372,7 +547,183 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	if err := writeBalances(ctx, txq, keys, balances, s.deps.Clock()); err != nil {
 		return postResult{}, err
 	}
-	return postResult{movementID: id}, nil
+	return postResult{movementID: id, picks: picks}, nil
+}
+
+// judgeLot is the lot rules of a line naming a locked lot (M56, M62): an
+// issue or consume line refuses a lot on hold and an expired one without the
+// override; a receipt refuses a blocked lot.
+func (s *server) judgeLot(l *engineLine, lot store.InventoryLot, opts postOptions, fail func(engineLine, string, string)) {
+	takes := opts.takes && l.from != nil && l.to == nil
+	switch {
+	case takes && lot.Status != contracts.LotAvailable:
+		fail(*l, codeLotBlocked, fmt.Sprintf("The lot %s is on hold (%s) and cannot be taken.", lot.Number, lot.Status))
+	case takes && lotExpired(lot, opts.today):
+		if l.allowExpired && opts.expiredOverride {
+			l.expiredOverride = true
+			return
+		}
+		fail(*l, codeLotExpired, fmt.Sprintf("The lot %s expired on %s.", lot.Number, lot.Expiry.Time.Format(time.DateOnly)))
+	case opts.receipt && l.to != nil && lot.Status == contracts.LotBlocked:
+		fail(*l, codeLotBlocked, fmt.Sprintf("The lot %s is blocked; goods do not join a blocked lot.", lot.Number))
+	}
+}
+
+// lotCandidates reads, for every AutoLot line, the lots holding its variant
+// at its location, on the posting's transaction, before the lots are locked.
+func (s *server) lotCandidates(ctx context.Context, txq *store.Queries, lines []engineLine, out map[int][]int64) error {
+	var variants []int32
+	var locations []int64
+	for _, l := range lines {
+		if l.autoLot && l.from != nil {
+			variants = append(variants, l.variantID)
+			locations = append(locations, *l.from)
+		}
+	}
+	if len(variants) == 0 {
+		return nil
+	}
+	rows, err := txq.LotCandidates(ctx, store.LotCandidatesParams{VariantIds: variants, LocationIds: locations})
+	if err != nil {
+		return fmt.Errorf("inventory: read the lots an auto line may take: %w", err)
+	}
+	type pair struct {
+		variant  int32
+		location int64
+	}
+	byPair := map[pair][]int64{}
+	for _, r := range rows {
+		byPair[pair{r.VariantID, r.LocationID}] = append(byPair[pair{r.VariantID, r.LocationID}], r.LotID)
+	}
+	for i, l := range lines {
+		if l.autoLot && l.from != nil {
+			out[i] = byPair[pair{l.variantID, *l.from}]
+		}
+	}
+	return nil
+}
+
+// pickLots replaces every AutoLot line by one line per lot it takes, FEFO —
+// expiry (none last), received, lot id — skipping lots on hold, expired lots
+// (even on the override) and serials that would split, under the locks the
+// posting holds (M65a). A line its lots do not cover is insufficient_stock.
+// It answers the lines and the picks, by the line's index.
+func (s *server) pickLots(lines []engineLine, candidates map[int][]int64, lots map[int64]store.InventoryLot, balances map[balanceKey]*big.Rat,
+	today time.Time, variants map[int32]contracts.VariantEntry, locations map[int64]store.InventoryLocation,
+	failAt func(engineLine, string, string, int64, int64),
+) ([]engineLine, []contracts.StockPick) {
+	out := make([]engineLine, 0, len(lines))
+	var picks []contracts.StockPick
+	taken := map[balanceKey]*big.Rat{}
+	for i, l := range lines {
+		if !l.autoLot || l.from == nil {
+			out = append(out, l)
+			continue
+		}
+		ids := slices.Clone(candidates[i])
+		slices.SortFunc(ids, func(a, b int64) int {
+			x, y := lots[a], lots[b]
+			switch {
+			case !x.Expiry.Valid && y.Expiry.Valid:
+				return 1
+			case x.Expiry.Valid && !y.Expiry.Valid:
+				return -1
+			case x.Expiry.Valid && y.Expiry.Valid:
+				if c := x.Expiry.Time.Compare(y.Expiry.Time); c != 0 {
+					return c
+				}
+			}
+			return cmp.Or(x.ReceivedAt.Compare(y.ReceivedAt), cmp.Compare(a, b))
+		})
+		left := new(big.Rat).Set(l.quantity)
+		for _, id := range ids {
+			if left.Sign() == 0 {
+				break
+			}
+			lot, ok := lots[id]
+			if !ok || lot.Status != contracts.LotAvailable || lotExpired(lot, today) {
+				continue
+			}
+			key := balanceKey{l.variantID, *l.from, id}
+			have := new(big.Rat).Set(balances[key])
+			if t := taken[key]; t != nil {
+				have.Sub(have, t)
+			}
+			if have.Sign() <= 0 || (lot.Serial && have.Cmp(left) > 0) {
+				continue
+			}
+			take := minRat(have, left)
+			left.Sub(left, take)
+			if taken[key] == nil {
+				taken[key] = new(big.Rat)
+			}
+			taken[key].Add(taken[key], take)
+			pick := l
+			pick.autoLot, pick.lotID, pick.quantity = false, id, take
+			out = append(out, pick)
+			picks = append(picks, contracts.StockPick{Index: l.index, LotID: id, LocationID: *l.from, Quantity: decimalText(take)})
+		}
+		if left.Sign() > 0 {
+			failAt(l, codeInsufficientStock, fmt.Sprintf("%s at %s: the lots that may be taken do not cover %s; %s short.",
+				variants[l.variantID].SKU, locations[*l.from].FullCode, decimalText(l.quantity), decimalText(left)), 0, *l.from)
+		}
+	}
+	return out, picks
+}
+
+// serialRule refuses a posting that would leave a serial lot it increases
+// holding more than 1 over every location (M53). The posting holds the lot
+// FOR NO KEY UPDATE and its own balances locked; the lot's total is read
+// after them, and this posting's change added to it.
+func serialRule(ctx context.Context, txq *store.Queries, posted []engineLine, variants map[int32]contracts.VariantEntry, lots map[int64]store.InventoryLot,
+	keys []balanceKey, before, after map[balanceKey]*big.Rat, failAt func(engineLine, string, string, int64, int64),
+) error {
+	increased := map[int64]engineLine{}
+	for _, l := range posted {
+		if l.lotID != 0 && l.to != nil && variants[l.variantID].Tracking == contracts.TrackingSerial {
+			if _, ok := increased[l.lotID]; !ok {
+				increased[l.lotID] = l
+			}
+		}
+	}
+	if len(increased) == 0 {
+		return nil
+	}
+	ids := slices.Sorted(maps.Keys(increased))
+	rows, err := txq.LotTotals(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("inventory: read the serials' stock: %w", err)
+	}
+	total := map[int64]*big.Rat{}
+	for _, r := range rows {
+		total[r.LotID] = ratFromText(r.OnHand)
+	}
+	for _, k := range keys {
+		if _, ok := increased[k.lotID]; !ok {
+			continue
+		}
+		if total[k.lotID] == nil {
+			total[k.lotID] = new(big.Rat)
+		}
+		total[k.lotID].Add(total[k.lotID], new(big.Rat).Sub(after[k], before[k]))
+	}
+	for _, id := range ids {
+		if total[id] != nil && total[id].Cmp(big.NewRat(1, 1)) > 0 {
+			l := increased[id]
+			failAt(l, codeSerialQuantity, fmt.Sprintf("The serial %s would be in stock %s times; a serial holds at most 1.",
+				lots[id].Number, decimalText(total[id])), id, *l.to)
+		}
+	}
+	return nil
+}
+
+// lotWords names a lot inside a refusal's detail: " in lot L1001", "" for
+// none.
+func lotWords(lots map[int64]store.InventoryLot, id int64) string {
+	if lot, ok := lots[id]; ok {
+		return " in lot " + lot.Number
+	}
+	return ""
 }
 
 // The catalog's words the engine reads (contracts.VariantEntry).
@@ -422,55 +773,67 @@ func sortedFailures(failures map[int]lineFailure) []lineFailure {
 	return out
 }
 
-// balanceKeys is every balance the lines touch, in (variant, location) order.
-func balanceKeys(lines []engineLine) []balanceKey {
+// balanceKeys is every balance the lines touch — and every one an AutoLot
+// line may take from — in (variant, location, lot) order, no lot first.
+func balanceKeys(lines []engineLine, candidates map[int][]int64) []balanceKey {
 	var keys []balanceKey
-	for _, l := range lines {
+	for i, l := range lines {
 		for _, p := range []*int64{l.from, l.to, l.setAt} {
-			if p != nil {
-				keys = append(keys, balanceKey{l.variantID, *p})
+			if p == nil {
+				continue
 			}
+			if l.autoLot {
+				for _, lot := range candidates[i] {
+					keys = append(keys, balanceKey{l.variantID, *p, lot})
+				}
+				continue
+			}
+			keys = append(keys, balanceKey{l.variantID, *p, l.lotID})
 		}
 	}
 	slices.SortFunc(keys, func(a, b balanceKey) int {
-		return cmp.Or(cmp.Compare(a.variantID, b.variantID), cmp.Compare(a.locationID, b.locationID))
+		return cmp.Or(cmp.Compare(a.variantID, b.variantID), cmp.Compare(a.locationID, b.locationID), cmp.Compare(a.lotID, b.lotID))
 	})
 	return slices.Compact(keys)
 }
 
-// keyColumns is keys as the two arrays the queries unnest side by side.
-func keyColumns(keys []balanceKey) ([]int32, []int64) {
-	variants, locations := make([]int32, len(keys)), make([]int64, len(keys))
+// keyColumns is keys as the three arrays the queries unnest side by side, a
+// lot of 0 for none.
+func keyColumns(keys []balanceKey) ([]int32, []int64, []int64) {
+	variants, locations, lots := make([]int32, len(keys)), make([]int64, len(keys)), make([]int64, len(keys))
 	for i, k := range keys {
-		variants[i], locations[i] = k.variantID, k.locationID
+		variants[i], locations[i], lots[i] = k.variantID, k.locationID, k.lotID
 	}
-	return variants, locations
+	return variants, locations, lots
 }
 
 // lockBalances creates the missing balances at zero and locks them all, in
-// (variant, location) order, in one statement (step 5), and answers what each
-// holds. A balance a concurrent posting deleted at zero is inserted again by
-// the same statement, so no lock is held while another posting's insert is
-// waited for.
+// (variant, location, lot) order, in one statement (step 8), and answers what
+// each holds. A balance a concurrent posting deleted at zero is inserted
+// again by the same statement, so no lock is held while another posting's
+// insert is waited for.
 func lockBalances(ctx context.Context, txq *store.Queries, keys []balanceKey, now time.Time) (map[balanceKey]*big.Rat, error) {
-	variants, locations := keyColumns(keys)
-	rows, err := txq.LockBalances(ctx, store.LockBalancesParams{VariantIds: variants, LocationIds: locations, Now: now})
+	out := make(map[balanceKey]*big.Rat, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
+	variants, locations, lots := keyColumns(keys)
+	rows, err := txq.LockBalances(ctx, store.LockBalancesParams{VariantIds: variants, LocationIds: locations, LotIds: lots, Now: now})
 	if err != nil {
 		return nil, fmt.Errorf("inventory: lock balances: %w", err)
 	}
 	if len(rows) != len(keys) {
 		return nil, fmt.Errorf("inventory: locked %d of a posting's %d balances", len(rows), len(keys))
 	}
-	out := make(map[balanceKey]*big.Rat, len(rows))
 	for _, r := range rows {
-		out[balanceKey{r.VariantID, r.LocationID}] = ratFromNumeric(r.OnHand)
+		out[balanceKey{r.VariantID, r.LocationID, r.LotID}] = ratFromNumeric(r.OnHand)
 	}
 	return out, nil
 }
 
 // writeLines writes the posted lines, numbered from 1, with the variants'
-// snapshots as LockVariants answered them (I9) and each entry as it was
-// resolved (I25).
+// snapshots as LockVariants answered them (I9), each entry as it was
+// resolved (I25), and the lot and override of each (M55, M62).
 func writeLines(ctx context.Context, txq *store.Queries, movementID int64, lines []engineLine, variants map[int32]contracts.VariantEntry) error {
 	p := store.InsertMovementLinesParams{MovementID: movementID}
 	for i, l := range lines {
@@ -488,6 +851,8 @@ func writeLines(ctx context.Context, txq *store.Queries, movementID int64, lines
 		p.ToIds = append(p.ToIds, idOrZero(l.to))
 		p.Quantities = append(p.Quantities, q)
 		p.Entereds = append(p.Entereds, string(l.entered))
+		p.LotIds = append(p.LotIds, l.lotID)
+		p.ExpiredOverrides = append(p.ExpiredOverrides, l.expiredOverride)
 	}
 	if err := txq.InsertMovementLines(ctx, p); err != nil {
 		return fmt.Errorf("inventory: write the lines of movement %d: %w", movementID, err)
@@ -498,7 +863,7 @@ func writeLines(ctx context.Context, txq *store.Queries, movementID int64, lines
 // writeBalances writes the balances the lines left, then deletes those at
 // zero, so "where does it lie" lists only places with stock (I10).
 func writeBalances(ctx context.Context, txq *store.Queries, keys []balanceKey, balances map[balanceKey]*big.Rat, now time.Time) error {
-	variants, locations := keyColumns(keys)
+	variants, locations, lots := keyColumns(keys)
 	onHands := make([]pgtype.Numeric, len(keys))
 	for i, k := range keys {
 		n, err := numericFromRat(balances[k])
@@ -507,10 +872,10 @@ func writeBalances(ctx context.Context, txq *store.Queries, keys []balanceKey, b
 		}
 		onHands[i] = n
 	}
-	if err := txq.SetBalances(ctx, store.SetBalancesParams{VariantIds: variants, LocationIds: locations, OnHands: onHands, Now: now}); err != nil {
+	if err := txq.SetBalances(ctx, store.SetBalancesParams{VariantIds: variants, LocationIds: locations, LotIds: lots, OnHands: onHands, Now: now}); err != nil {
 		return fmt.Errorf("inventory: write balances: %w", err)
 	}
-	if err := txq.DeleteZeroBalances(ctx, store.DeleteZeroBalancesParams{VariantIds: variants, LocationIds: locations}); err != nil {
+	if err := txq.DeleteZeroBalances(ctx, store.DeleteZeroBalancesParams{VariantIds: variants, LocationIds: locations, LotIds: lots}); err != nil {
 		return fmt.Errorf("inventory: delete zero balances: %w", err)
 	}
 	return nil
@@ -531,12 +896,12 @@ const postAttempts = 5
 // postMovement runs the engine for one of the API's postings in its own
 // transaction, with the API's line cap, and runs it again in a new one when
 // it loses a race (see the lock order above).
-func (s *server) postMovement(ctx context.Context, m movementHeader, lines []engineLine, receipt bool) (postResult, error) {
+func (s *server) postMovement(ctx context.Context, m movementHeader, lines []engineLine, receipt bool, today time.Time) (postResult, error) {
 	var res postResult
 	err := db.RetrySerializable(ctx, postAttempts, func() error {
 		return s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 			var err error
-			res, err = s.post(ctx, tx, txq, m, lines, postOptions{maxLines: maxAPILines, receipt: receipt})
+			res, err = s.post(ctx, tx, txq, m, lines, postOptions{maxLines: maxAPILines, receipt: receipt, today: today})
 			return err
 		})
 	})

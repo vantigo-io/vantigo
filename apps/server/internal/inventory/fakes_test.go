@@ -39,6 +39,11 @@ func (c *fakeCatalog) seed(entries ...contracts.VariantEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, e := range entries {
+		// Products answers every variant with its tracking; a seed that
+		// names none is untracked (manufacturing phase 2 M50).
+		if e.Tracking == "" {
+			e.Tracking = contracts.TrackingNone
+		}
 		c.variants[e.ID] = e
 	}
 }

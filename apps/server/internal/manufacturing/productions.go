@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -279,6 +280,12 @@ type preparedProduction struct {
 	siteID   int64
 	variants []int32
 	replay   *store.ManufacturingProduction
+	// today and expiredOverride are what the ledger judges a lot's expiry
+	// by, read on the pool before the transaction (manufacturing phase 2
+	// M62, rule 24): the business day, and whether the poster holds
+	// inventory:expired-override.
+	today           time.Time
+	expiredOverride bool
 }
 
 // prepareProduction judges a production request for order orderID before
@@ -332,7 +339,12 @@ func (s *server) prepareProduction(ctx context.Context, orderID int64, in gen.Ma
 	if err != nil {
 		return nil, err
 	}
-	prep := &preparedProduction{in: in, v: v, siteID: pre.SiteID, variants: make([]int32, 0, len(components))}
+	today, err := s.stockDay(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prep := &preparedProduction{in: in, v: v, siteID: pre.SiteID, variants: make([]int32, 0, len(components)),
+		today: today, expiredOverride: s.has(ctx, permInventoryExpiredOverride)}
 	for _, c := range components {
 		prep.variants = append(prep.variants, c.VariantID)
 	}
@@ -371,7 +383,7 @@ func (s *server) runProduction(ctx context.Context, orderID int64, idsOf func(co
 			if prep == nil {
 				return nil
 			}
-			id, err := s.postProduction(ctx, tx, txq, orders[orderID].order, prep.in, prep.v, held, who, attempt == maxSplitAttempts)
+			id, err := s.postProduction(ctx, tx, txq, orders[orderID].order, prep, held, who, attempt == maxSplitAttempts)
 			productionID = id
 			return err
 		})
@@ -447,8 +459,9 @@ func (s *server) productionResponse(ctx context.Context, id int64, replayed bool
 // consumption warning, the production row, the split, Produce, and the
 // totals. Unless last, Inventory's insufficient_stock on a split line is
 // errResplit.
-func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, in gen.ManufacturingProductionInput,
-	v productionValues, held map[int32][]contracts.StockLocation, who actor, last bool) (int64, error) {
+func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.ManufacturingOrder, prep *preparedProduction,
+	held map[int32][]contracts.StockLocation, who actor, last bool) (int64, error) {
+	in, v := prep.in, prep.v
 	if !isOpen(o.Status) {
 		return 0, orderNotOpen(o.Status)
 	}
@@ -495,8 +508,10 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 	if err != nil {
 		return 0, err
 	}
+	// The lines name no lot until layer M; today and the override are the
+	// pool's, read before the transaction (manufacturing phase 2 M62).
 	production := contracts.StockProduction{Document: productionSource(p.ID), SiteID: o.SiteID, Consume: consume,
-		PostedByUserID: who.id, PostedByDisplay: who.display}
+		PostedByUserID: who.id, PostedByDisplay: who.display, Today: prep.today, ExpiredOverride: prep.expiredOverride}
 	if v.quantity.Sign() > 0 {
 		production.Produce = []contracts.ProduceLine{{VariantID: o.VariantID, LineID: o.ID, ToLocationID: to, Quantity: v.quantity.FloatString(quantityPlaces)}}
 	}
@@ -505,7 +520,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 		return 0, err
 	}
 	if len(production.Consume) > 0 || len(production.Produce) > 0 {
-		movement, err := ledger.Produce(ctx, tx, orderSource(o.ID), production)
+		posted, err := ledger.Produce(ctx, tx, orderSource(o.ID), production)
 		if err != nil {
 			// The engine may have claimed the movement: the whole
 			// transaction rolls back, the production row with it (M2a).
@@ -518,7 +533,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 			}
 			return 0, fmt.Errorf("manufacturing: post production %d: %w", p.ID, err)
 		}
-		if err := txq.SetProductionMovement(ctx, store.SetProductionMovementParams{ID: p.ID, MovementID: &movement}); err != nil {
+		if err := txq.SetProductionMovement(ctx, store.SetProductionMovementParams{ID: p.ID, MovementID: &posted.MovementID}); err != nil {
 			return 0, err
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -165,14 +166,15 @@ func assertLedgerConsistent(t *testing.T, h *harness) {
 	t.Helper()
 	const sums = `
 WITH flows AS (
-    SELECT variant_id, to_location_id AS location_id, quantity AS q FROM inventory.movement_lines WHERE to_location_id IS NOT NULL
+    SELECT variant_id, to_location_id AS location_id, lot_id, quantity AS q FROM inventory.movement_lines WHERE to_location_id IS NOT NULL
     UNION ALL
-    SELECT variant_id, from_location_id, -quantity FROM inventory.movement_lines WHERE from_location_id IS NOT NULL
+    SELECT variant_id, from_location_id, lot_id, -quantity FROM inventory.movement_lines WHERE from_location_id IS NOT NULL
 ), sums AS (
-    SELECT variant_id, location_id, sum(q) AS q FROM flows GROUP BY variant_id, location_id HAVING sum(q) <> 0
+    SELECT variant_id, location_id, lot_id, sum(q) AS q FROM flows GROUP BY variant_id, location_id, lot_id HAVING sum(q) <> 0
 )`
 	if n := h.Count(t, sums+`
-SELECT count(*) FROM sums s FULL JOIN inventory.balances b ON b.variant_id = s.variant_id AND b.location_id = s.location_id
+SELECT count(*) FROM sums s FULL JOIN inventory.balances b
+  ON b.variant_id = s.variant_id AND b.location_id = s.location_id AND b.lot_id IS NOT DISTINCT FROM s.lot_id
 WHERE s.q IS DISTINCT FROM b.on_hand`); n != 0 {
 		t.Errorf("%d balance(s) differ from the sum of the movement lines", n)
 	}
@@ -237,3 +239,7 @@ func ptr[T any](v T) *T { return &v }
 // qty is a line's quantity as the generated request types take it: optional,
 // since a line may be entered in packagings instead (I25).
 func qty(v float64) *float64 { return &v }
+
+// testToday is the business day a test hands the ledger, as a caller reads it
+// on the pool before its transaction (manufacturing phase 2 M62).
+var testToday = time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC)

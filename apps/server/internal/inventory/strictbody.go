@@ -152,6 +152,8 @@ const (
 	moveLineSchema        = "InventoryMoveLine"
 	receiptInputSchema    = "InventoryReceiptInput"
 	receiptLineSchema     = "InventoryReceiptLine"
+	newLotSchema          = "InventoryNewLot"
+	serialsSchema         = "InventorySerials"
 
 	enteredSchema          = "InventoryEntered"
 	enteredPackagingSchema = "InventoryEnteredPackaging"
@@ -182,6 +184,7 @@ const (
 var closedSchemas = []string{
 	siteInputSchema, siteUpdateSchema, locationInputSchema, locationUpdateSchema, bulkInputSchema, bulkLevelSchema,
 	adjustmentInputSchema, adjustmentLineSchema, moveInputSchema, moveLineSchema, receiptInputSchema, receiptLineSchema,
+	newLotSchema, serialsSchema,
 	enteredSchema, enteredPackagingSchema, countInputSchema, countLinesInputSchema, countLineInputSchema, countPostInputSchema,
 	labelsInputSchema,
 	transferInputSchema, transferLineInputSchema, transferSuggestionSchema, transferSendInputSchema, transferSendLineSchema,
@@ -211,9 +214,9 @@ var closedItems = map[string]map[string]string{
 // schemas of their own: a line's entry (I25), a transfer line's suggestion
 // (I57), a send's receive (I43) and a receive's close (I42).
 var closedObjects = map[string]map[string]string{
-	adjustmentLineSchema: {"entered": enteredSchema},
+	adjustmentLineSchema: {"entered": enteredSchema, "lot": newLotSchema},
 	moveLineSchema:       {"entered": enteredSchema},
-	receiptLineSchema:    {"entered": enteredSchema},
+	receiptLineSchema:    {"entered": enteredSchema, "lot": newLotSchema, "serials": serialsSchema},
 	countLineInputSchema: {"entered": enteredSchema},
 
 	transferLineInputSchema:    {"entered": enteredSchema, "suggestion": transferSuggestionSchema},

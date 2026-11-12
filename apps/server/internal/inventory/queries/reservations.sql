@@ -6,21 +6,26 @@
 
 -- name: LockSiteBalances :many
 -- LockSiteBalances takes FOR UPDATE on the variants' balances at the site's
--- locations, in (variant, location) order: two reserves of one variant at
--- one site serialise here, as a posting and a reserve do.
+-- locations, in (variant, location, lot) order with no lot first, as a
+-- posting takes them (manufacturing phase 2 M58): two reserves of one variant
+-- at one site serialise here, as a posting and a reserve do.
 SELECT b.variant_id, b.location_id
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE b.variant_id = ANY(@variant_ids::int[]) AND l.site_id = @site_id
-ORDER BY b.variant_id, b.location_id
+ORDER BY b.variant_id, b.location_id, b.lot_id NULLS FIRST
 FOR UPDATE OF b;
 
 -- name: SiteStockOf :many
--- SiteStockOf is, per variant, its on hand at the site's locations and what
--- is reserved of it at the site, read after the balances are locked.
+-- SiteStockOf is, per variant, its usable on hand at the site's locations —
+-- no lot, or a lot with no active hold that is not expired on today
+-- (manufacturing phase 2 M63) — and what is reserved of it at the site, read
+-- after the balances are locked.
 SELECT u.variant_id::int AS variant_id,
        coalesce((SELECT sum(b.on_hand) FROM inventory.balances b JOIN inventory.locations l ON l.id = b.location_id
-                 WHERE b.variant_id = u.variant_id AND l.site_id = @site_id), 0)::text AS on_hand,
+                 LEFT JOIN inventory.lots t ON t.id = b.lot_id
+                 WHERE b.variant_id = u.variant_id AND l.site_id = @site_id
+                   AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= @today::date)))), 0)::text AS on_hand,
        coalesce((SELECT sum(r.quantity) FROM inventory.reservations r
                  WHERE r.variant_id = u.variant_id AND r.site_id = @site_id), 0)::text AS reserved
 FROM (SELECT unnest(@variant_ids::int[]) AS variant_id) AS u
@@ -86,9 +91,24 @@ ORDER BY full_code;
 
 -- name: StockLocationsAt :many
 -- StockLocationsAt is, per variant, every active location of the site holding
--- more than 0 of it, by full code (contracts.Stock's Locations).
-SELECT b.variant_id, b.location_id, l.full_code, b.on_hand::text AS on_hand
+-- more than 0 of it, by full code, summed over its lots (contracts.Stock's
+-- Locations).
+SELECT b.variant_id, b.location_id, l.full_code, sum(b.on_hand)::text AS on_hand
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE b.variant_id = ANY(@variant_ids::int[]) AND l.site_id = @site_id AND l.status = 'active' AND b.on_hand > 0
+GROUP BY b.variant_id, b.location_id, l.full_code
 ORDER BY b.variant_id, l.full_code, b.location_id;
+
+-- name: StockLotsAt :many
+-- StockLotsAt is, per variant, every lot holding more than 0 at an active
+-- location of the site, with its location, in FEFO order: expiry (none last),
+-- received, lot id, then the location's full code (contracts.Stock's Lots,
+-- manufacturing phase 2 M65).
+SELECT b.variant_id, t.id AS lot_id, t.number, t.serial, t.expiry, t.best_before, t.received_at, t.status,
+       b.location_id, l.full_code, b.on_hand::text AS on_hand
+FROM inventory.balances b
+JOIN inventory.lots t ON t.id = b.lot_id
+JOIN inventory.locations l ON l.id = b.location_id
+WHERE b.variant_id = ANY(@variant_ids::int[]) AND l.site_id = @site_id AND l.status = 'active' AND b.on_hand > 0
+ORDER BY b.variant_id, t.expiry NULLS LAST, t.received_at, t.id, l.full_code, b.location_id;

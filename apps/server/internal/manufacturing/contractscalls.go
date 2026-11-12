@@ -267,6 +267,20 @@ func (s *server) today(ctx context.Context) (time.Time, time.Time, error) {
 	return day, time.Date(local.Year(), local.Month(), local.Day()+1, 0, 0, 0, 0, zone), nil
 }
 
+// permInventoryExpiredOverride is Inventory's key that lets a person consume
+// an expired lot (manufacturing phase 2 M62, M68), read on the pool before a
+// production's transaction and passed to the ledger as data.
+const permInventoryExpiredOverride = "inventory:expired-override"
+
+// stockDay is today in the business zone, before any transaction: the day
+// Inventory's ledger judges a lot's expiry on (manufacturing phase 2 M62,
+// M63), passed to it as data since no ledger call makes a contract call of
+// its own.
+func (s *server) stockDay(ctx context.Context) (time.Time, error) {
+	day, _, err := s.today(ctx)
+	return day, err
+}
+
 // businessZone is the business time zone, before any transaction: UTC when
 // no calendar is composed. The schedule's days are worked out in it (§11).
 func (s *server) businessZone(ctx context.Context) (*time.Location, error) {
