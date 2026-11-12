@@ -753,8 +753,8 @@ and sends lots a person chose.
 **The order's lots** (M83). `GET /orders/{id}/lots` (`access`) answers, from
 Manufacturing's own rows, the `outputs` — each lot made with its quantity over the
 productions and how many put output in it — and per component line the lots consumed with
-their expiry, consumed and scrapped. The order page's **Lots** tab shows them, each linked
-to Inventory's lot page.
+their expiry, consumed and scrapped. The order page's **Lots** tab and the work order's
+page on the shop floor show them, each linked to Inventory's lot page.
 
 **The event** (M85). `production_posted` carries `outputLots`, the lot ids made, and
 `lotRows`, the count of consumed lot rows.
