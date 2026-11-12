@@ -471,7 +471,8 @@ på nytt én gang ut fra det som er på lager, og bokfører.
 **Ordrens partier.** Fanen **Partier** på ordresiden viser **Partier laget**, med det
 produksjonene la i hvert og hvor mange produksjoner, og **Partier forbrukt** per komponent
 med utløpsdato, forbrukt og svinn. Hvert parti lenker til siden sin i
-[Lager](/nb/user/inventory/).
+[Lager](/nb/user/inventory/). Siden for en arbeidsordre i verkstedet viser det samme under
+**Partier**.
 
 ### Lukk en ordre
 
