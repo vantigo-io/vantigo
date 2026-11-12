@@ -28,6 +28,7 @@ import {
   workOrderQueryOptions,
 } from "../api/shop-floor";
 import { Markdown } from "../components/markdown";
+import { OrderLots } from "../components/order-lots";
 import { ProductionDialog } from "../components/production-dialog";
 import { ScrapDialog } from "../components/scrap-dialog";
 import { canWorkOnShopFloor } from "../lib/capabilities";
@@ -431,6 +432,9 @@ export const WorkOrderPage = () => {
             </Table>
           </Table.ScrollContainer>
         )}
+      </PageSection>
+      <PageSection title={t("lotsTab")}>
+        <OrderLots order={order} />
       </PageSection>
       <ProductionDialog
         order={{ id: order.id, number: order.number, siteId: workOrder.workCenter.siteId }}

@@ -183,6 +183,24 @@ describe("the order's Lots tab", () => {
   });
 });
 
+describe("the work order's lots", () => {
+  it("shows the order's lots on the shop floor's work order", async () => {
+    stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      orderLots: {
+        5: {
+          outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "6", productions: 1 }],
+          components: [],
+        },
+      },
+    });
+    renderRoute("/manufacturing/shop-floor/work-orders/40");
+    expect(await screen.findByText("Lots made")).toBeInTheDocument();
+    const hrefs = screen.getAllByRole("link", { name: "MO-12" }).map((link) => link.getAttribute("href"));
+    expect(hrefs).toContain("/inventory/lots/900");
+  });
+});
+
 describe("the BoM's lot number pattern", () => {
   it("previews the pattern, refuses one that gives no lot number and saves it", async () => {
     const fetchMock = stubManufacturingApi();
