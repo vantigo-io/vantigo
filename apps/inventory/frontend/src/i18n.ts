@@ -860,6 +860,7 @@ export const inventoryCatalog = {
     traceDepthLimit: "Not traced further: the depth limit",
     traceComponent: "No lot",
     traceSupplier: "From {{name}}",
+    traceSentTo: "Sent to {{site}}",
     traceDelivery: "Delivery {{delivery}}, order {{order}}",
     traceCustomerId: "Customer {{id}}",
     traceDeliveryMovementOnly: "A delivery of Orders",
@@ -872,7 +873,9 @@ export const inventoryCatalog = {
     traceDeliveries_hidden: "You cannot see the orders, so a delivery shows as its movement alone.",
     traceDeliveries_unavailable: "Orders is not in use here, so a delivery shows as its movement alone.",
     "refusal.trace_too_large":
-      "The trace has more than 2,000 rows. Trace a lot further down the tree, or one direction at a time.",
+      "The trace has more than 2,000 lots or more than 20,000 deliveries, receipts and other rows. Trace a lot further down the tree, or one direction at a time.",
+    "refusal.trace_changed":
+      "Lots were being made from this lot while it was blocked, so nothing was blocked. Try again.",
     blockHint:
       "A blocked lot cannot be delivered or used. It can still be moved, counted and written off. This is what the lot has reached so far:",
     blockMadeFromIt: "Lots made from it, still in stock",
@@ -1741,6 +1744,7 @@ export const inventoryCatalog = {
     traceDepthLimit: "Ikke sporet videre: dybdegrensen",
     traceComponent: "Uten parti",
     traceSupplier: "Fra {{name}}",
+    traceSentTo: "Sendt til {{site}}",
     traceDelivery: "Leveranse {{delivery}}, ordre {{order}}",
     traceCustomerId: "Kunde {{id}}",
     traceDeliveryMovementOnly: "En leveranse fra Ordre",
@@ -1753,7 +1757,9 @@ export const inventoryCatalog = {
     traceDeliveries_hidden: "Du kan ikke se ordrene, så en leveranse vises bare som bevegelsen sin.",
     traceDeliveries_unavailable: "Ordre er ikke i bruk her, så en leveranse vises bare som bevegelsen sin.",
     "refusal.trace_too_large":
-      "Sporingen har mer enn 2 000 rader. Spor et parti lenger ned i treet, eller én retning om gangen.",
+      "Sporingen har mer enn 2 000 partier eller mer enn 20 000 leveranser, mottak og andre rader. Spor et parti lenger ned i treet, eller én retning om gangen.",
+    "refusal.trace_changed":
+      "Det ble laget partier av dette partiet mens det ble blokkert, så ingenting ble blokkert. Prøv igjen.",
     blockHint:
       "Et blokkert parti kan ikke leveres eller brukes. Det kan fortsatt flyttes, telles og avskrives. Dette har partiet nådd så langt:",
     blockMadeFromIt: "Partier laget av det, fortsatt på lager",

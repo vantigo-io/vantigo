@@ -15,8 +15,9 @@ import {
 import { IconAlertCircle, IconChevronDown, IconChevronRight, IconDownload, IconRoute } from "@tabler/icons-react";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { downloadBlob } from "../api/labels";
 import { lotsInfiniteQueryOptions } from "../api/lots";
 import {
@@ -50,6 +51,14 @@ const parentsOf = (trace: InventoryTrace) => new Set(trace.nodes.flatMap((node) 
 /** The id of a node's row, which an *Already shown above* link jumps to. */
 const rowId = (key: string) => `trace-node-${key}`;
 
+/** A row's height before it is measured, and how many rows are drawn beyond the window. */
+const ROW_HEIGHT_ESTIMATE = 56;
+const ROWS_OVERSCAN = 12;
+
+/** The collapsed keys without those above `key`: what is folded once the path to `key` is opened. */
+const openPathTo = (collapsed: ReadonlySet<string>, key: string) =>
+  new Set([...collapsed].filter((folded) => !key.startsWith(`${folded}.`)));
+
 /** One node of the tree: a lot with its production, an untracked component, or the movement that ends a path. */
 const TraceRow = ({
   node,
@@ -57,12 +66,15 @@ const TraceRow = ({
   open,
   hasChildren,
   onToggle,
+  onJump,
 }: {
   node: InventoryTraceNode;
   trace: InventoryTrace;
   open: boolean;
   hasChildren: boolean;
   onToggle: () => void;
+  /** Opens the path to a node and scrolls to it: where a lot traced already was first shown. */
+  onJump: (key: string) => void;
 }) => {
   const { t, quantity, stamp } = useInventoryFormat();
   const unit = node.variant.unit;
@@ -110,7 +122,14 @@ const TraceRow = ({
         {production}
         {node.seenAt && (
           <Text size="xs" c="dimmed">
-            <Anchor size="xs" href={`#${rowId(node.seenAt)}`}>
+            <Anchor
+              size="xs"
+              href={`#${rowId(node.seenAt)}`}
+              onClick={(event) => {
+                event.preventDefault();
+                if (node.seenAt) onJump(node.seenAt);
+              }}
+            >
               {t("traceAlreadyShown")}
             </Anchor>
           </Text>
@@ -140,7 +159,9 @@ const TraceRow = ({
     const label =
       node.kind === "unbuild"
         ? t(usage ? "traceUnbuilt" : "traceReturnedByUnbuild", { id: movement?.source?.id ?? movement?.id })
-        : t(`kind_${node.kind}`);
+        : node.kind === "transfer_out" && movement?.toSiteName
+          ? t("traceSentTo", { site: movement.toSiteName })
+          : t(`kind_${node.kind}`);
     body = (
       <Stack gap={2}>
         <Group gap={6} wrap="wrap">
@@ -282,6 +303,34 @@ export const TracePage = () => {
       return next;
     });
 
+  // The rows shown, drawn as the window reaches them: a trace may have thousands.
+  const shown = data ? data.nodes.filter((node) => !hiddenBy(node, collapsed)) : [];
+  const [tree, setTree] = useState<HTMLDivElement | null>(null);
+  const virtualizer = useWindowVirtualizer({
+    count: shown.length,
+    estimateSize: () => ROW_HEIGHT_ESTIMATE,
+    overscan: ROWS_OVERSCAN,
+    scrollMargin: tree ? tree.getBoundingClientRect().top + window.scrollY : 0,
+    getItemKey: (index) => shown[index]?.key ?? index,
+    measureElement: (element) => element.getBoundingClientRect().height || ROW_HEIGHT_ESTIMATE,
+  });
+  const drawn = virtualizer.getVirtualItems();
+  const margin = virtualizer.options.scrollMargin;
+  const spaceAbove = drawn.length > 0 ? drawn[0].start - margin : 0;
+  const spaceBelow = drawn.length > 0 ? virtualizer.getTotalSize() - (drawn[drawn.length - 1].end - margin) : 0;
+  // *Already shown above*: open the path to the row, then scroll to it once it is among the rows shown.
+  const [jumpTo, setJumpTo] = useState<string>();
+  const jump = (key: string) => {
+    setCollapsed((current) => openPathTo(current, key));
+    setJumpTo(key);
+  };
+  const jumpIndex = jumpTo === undefined ? -1 : shown.findIndex((node) => node.key === jumpTo);
+  useEffect(() => {
+    if (jumpIndex < 0) return;
+    virtualizer.scrollToIndex(jumpIndex, { align: "start" });
+    setJumpTo(undefined);
+  }, [jumpIndex, virtualizer]);
+
   return (
     <Stack gap="lg">
       <PageHeader
@@ -358,19 +407,25 @@ export const TracePage = () => {
           ) : !data ? (
             <ContentSkeleton rows={5} />
           ) : (
-            <Stack gap={0} data-testid="trace-tree">
-              {data.nodes
-                .filter((node) => !hiddenBy(node, collapsed))
-                .map((node) => (
-                  <TraceRow
-                    key={node.key}
-                    node={node}
-                    trace={data}
-                    hasChildren={parents.has(node.key)}
-                    open={!collapsed.has(node.key)}
-                    onToggle={() => toggle(node.key)}
-                  />
-                ))}
+            <Stack gap={0} data-testid="trace-tree" ref={setTree}>
+              {spaceAbove > 0 && <div style={{ height: spaceAbove }} aria-hidden />}
+              {drawn.map((row) => {
+                const node = shown[row.index];
+                if (!node) return null;
+                return (
+                  <div key={row.key} data-index={row.index} ref={virtualizer.measureElement}>
+                    <TraceRow
+                      node={node}
+                      trace={data}
+                      hasChildren={parents.has(node.key)}
+                      open={!collapsed.has(node.key)}
+                      onToggle={() => toggle(node.key)}
+                      onJump={jump}
+                    />
+                  </div>
+                );
+              })}
+              {spaceBelow > 0 && <div style={{ height: spaceBelow }} aria-hidden />}
               {data.nodes.length === 1 && (
                 <Text size="sm" c="dimmed" mt="sm">
                   {t(data.direction === "usage" ? "traceNothingUsage" : "traceNothingOrigin")}

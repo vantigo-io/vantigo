@@ -123,6 +123,49 @@ describe("the trace (M87–M91)", () => {
     expect(keysShown()).toEqual(["0", "0.0", "0.0.0", "0.0.0.0", "0.1"]);
   });
 
+  it("opens the path to a lot traced already before it jumps there", async () => {
+    stubInventoryApi({ variants: [...variants(), flour, bread], trace: () => usage });
+    renderRoute("/inventory/trace?lotId=1001");
+    await waitFor(() => expect(keysShown()).toEqual(["0", "0.0", "0.0.0", "0.0.0.0", "0.1"]));
+    await userEvent.click(screen.getByRole("button", { name: "Fold what is under D1" }));
+    expect(keysShown()).toEqual(["0", "0.0", "0.1"]);
+    const scrolled = vi.mocked(window.scrollTo);
+    scrolled.mockClear();
+    await userEvent.click(screen.getByRole("link", { name: "Already shown above" }));
+    await waitFor(() => expect(keysShown()).toEqual(["0", "0.0", "0.0.0", "0.0.0.0", "0.1"]));
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
+  });
+
+  it("names where a transfer sent the lot", async () => {
+    stubInventoryApi({
+      variants: [...variants(), flour],
+      trace: () => ({
+        ...usage,
+        nodes: [
+          usage.nodes[0],
+          {
+            key: "0.0",
+            parentKey: "0",
+            depth: 1,
+            kind: "transfer_out",
+            variant: flour,
+            depthLimit: false,
+            quantity: 4,
+            movement: {
+              id: 6002,
+              kind: "transfer_out",
+              postedAt: "2026-09-12T09:00:00Z",
+              source: { module: "inventory", kind: "transfer", id: "1001" },
+              toSiteName: "Bergen",
+            },
+          },
+        ],
+      }),
+    });
+    renderRoute("/inventory/trace?lotId=1001");
+    expect(await screen.findByText("Sent to Bergen")).toBeInTheDocument();
+  });
+
   it("asks the other direction and the components, says when deliveries are hidden, and exports", async () => {
     const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:file");
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
@@ -153,7 +196,7 @@ describe("the trace (M87–M91)", () => {
       trace: () => jsonResponse(400, { status: 400, title: "The trace is too large", code: "trace_too_large" }),
     });
     renderRoute("/inventory/trace?lotId=1001");
-    expect(await screen.findByText(/more than 2,000 rows/)).toBeInTheDocument();
+    expect(await screen.findByText(/more than 2,000 lots/)).toBeInTheDocument();
   });
 });
 
