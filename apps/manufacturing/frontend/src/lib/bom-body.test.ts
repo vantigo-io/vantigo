@@ -7,6 +7,7 @@ import {
   editorOf,
   editorProblems,
   emptyEditor,
+  newCheck,
   newLine,
   newOperation,
   removeOperation,
@@ -50,6 +51,7 @@ const savedBom = (): ManufacturingBom => ({
       setupMinutes: null,
       minutesPerCycle: "12.5",
       instructions: "",
+      checks: [],
     },
     {
       id: 30,
@@ -62,6 +64,7 @@ const savedBom = (): ManufacturingBom => ({
       setupMinutes: "15",
       minutesPerCycle: "4",
       instructions: "**Measure twice**",
+      checks: [],
     },
   ],
   lines: [
@@ -104,7 +107,15 @@ describe("the BoM editor's client keys", () => {
       ],
     });
     expect(body.operations).toEqual([
-      { key: first.key, sequence: 10, name: "Cut", workCenterId: 1, minutesPerCycle: "4", instructions: "" },
+      {
+        key: first.key,
+        sequence: 10,
+        name: "Cut",
+        workCenterId: 1,
+        minutesPerCycle: "4",
+        instructions: "",
+        checks: [],
+      },
       {
         key: second.key,
         sequence: 20,
@@ -113,9 +124,47 @@ describe("the BoM editor's client keys", () => {
         setupMinutes: "10",
         minutesPerCycle: "2.5",
         instructions: "",
+        checks: [],
       },
     ]);
     expect(body.operations.every((operation) => !("id" in operation))).toBe(true);
+  });
+
+  it("sends a measure's limits, and none for any other kind (manufacturing phase 2 M95)", () => {
+    const state = emptyEditor();
+    const operation = newOperation(state.operations);
+    const measure = { ...newCheck(), kind: "measure" as const, title: " Weight ", min: "98", max: "102,5", unit: "g" };
+    const passFail = { ...newCheck(), title: "Seal", min: "1", quarantineOnFail: true };
+    const body = bomCreateBody({
+      ...state,
+      operations: [{ ...operation, name: "Fill", workCenterId: 1, minutesPerCycle: "1", checks: [measure, passFail] }],
+    });
+    expect(body.operations[0].checks).toEqual([
+      {
+        kind: "measure",
+        title: "Weight",
+        frequency: "each_work_order",
+        quarantineOnFail: false,
+        min: "98",
+        max: "102.5",
+        unit: "g",
+      },
+      { kind: "pass_fail", title: "Seal", frequency: "each_work_order", quarantineOnFail: true },
+    ]);
+    const problems = editorProblems({
+      ...state,
+      header: { ...state.header, variant: { id: 1 } as never },
+      operations: [
+        {
+          ...operation,
+          name: "Fill",
+          workCenterId: 1,
+          minutesPerCycle: "1",
+          checks: [{ ...measure, min: "", max: "" }],
+        },
+      ],
+    });
+    expect(problems["operations[0].checks[0].min"]).toBe("limits");
   });
 
   it("keys a saved operation by its server key and sends its id, in sequence order", () => {

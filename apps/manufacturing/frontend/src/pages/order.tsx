@@ -25,6 +25,7 @@ import {
   IconLock,
   IconPencil,
   IconX,
+  IconZoomExclamation,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
@@ -51,6 +52,7 @@ import { manufacturingSitesQueryOptions } from "../api/sites";
 import { ChildrenDialog } from "../components/children-dialog";
 import { CloseDialog } from "../components/close-dialog";
 import { CostPanel } from "../components/cost-panel";
+import { DeviationDialog } from "../components/deviation-dialog";
 import { OrderComponents } from "../components/order-components";
 import { OrderForm } from "../components/order-form";
 import { OrderLots } from "../components/order-lots";
@@ -220,6 +222,7 @@ export const OrderPage = () => {
   const [producing, setProducing] = useState(false);
   const [closing, setClosing] = useState(false);
   const [makingChildren, setMakingChildren] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const [busy, setBusy] = useState(false);
   const manage = canManageOrders(meta.data);
   const produce = canRegisterProduction(meta.data);
@@ -407,6 +410,17 @@ export const OrderPage = () => {
                   onClick={() => setMakingChildren(true)}
                 >
                   {t("createChildren")}
+                </Button>
+              )}
+              {produce && data.status !== "draft" && (
+                <Button
+                  variant="default"
+                  color="red"
+                  leftSection={<IconZoomExclamation size={16} />}
+                  data-assist="manufacturing.order.report-deviation"
+                  onClick={() => setReporting(true)}
+                >
+                  {t("reportDeviation")}
                 </Button>
               )}
               {manage && isOpenOrder(data) && (
@@ -600,6 +614,7 @@ export const OrderPage = () => {
           <ProductionDialog order={data} opened={producing} onClose={() => setProducing(false)} />
           <CloseDialog order={data} opened={closing} onClose={() => setClosing(false)} />
           <ChildrenDialog order={data} opened={makingChildren} onClose={() => setMakingChildren(false)} />
+          <DeviationDialog opened={reporting} onClose={() => setReporting(false)} orderId={data.id} />
         </>
       )}
     </Stack>

@@ -121,6 +121,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/deviations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List deviations
+         * @description The deviations, newest first (manufacturing phase 2 M99): by status, order, product (the deviation's variant or its order's), lot (the lot it was opened from or one it holds) and the period it was opened in. With format=csv, every match as a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas.
+         */
+        get: operations["listManufacturingDeviations"];
+        put?: never;
+        /**
+         * Report a deviation
+         * @description Reports a deviation by hand (M99), from an order, a work order or a lot. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler. Under the lock order — LockVariants on the order's variants or the lot's, the order FOR UPDATE, the deviation — and with the ledger last, quarantine puts a quarantine hold (cause deviation, source manufacturing/deviation/<id>) on every lot the order made so far and on the lot; while it is open, every lot a production of the order makes or adds to is held too.
+         */
+        post: operations["createManufacturingDeviation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/deviations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a deviation
+         * @description One deviation with the lots it holds (M99).
+         */
+        get: operations["getManufacturingDeviation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/deviations/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a deviation
+         * @description Closes the deviation with its disposition and a closing note (M99). use_as_is and rework release its own holds through ReleaseLotHolds — a hold of another deviation, a recall or the lot page stays; scrap and return keep them, to be released afterwards with release once the lot is written off or returned.
+         */
+        post: operations["closeManufacturingDeviation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/deviations/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release a deviation's holds
+         * @description Releases the holds a closed deviation kept — closed as scrap or return — once what is left of the lot is written off or returned (M99). Only its own holds go.
+         */
+        post: operations["releaseManufacturingDeviationHolds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/meta": {
         parameters: {
             query?: never;
@@ -943,6 +1027,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/work-orders/{id}/checks/{checkId}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a check's result
+         * @description Records a check's result (M97): a measure judged by the server against its limits, an instruction done, a pass or a fail, a photo with its photo. A result recorded again supersedes the one in force, which is kept. Under the lock order — LockVariants on the order's variants, the order, the work order, the check FOR UPDATE — a fail opens a deviation in the same transaction, and when the check says quarantineOnFail the deviation holds the order's output lots through Inventory's ledger, last. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler.
+         */
+        post: operations["recordManufacturingCheckResult"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/work-orders/{id}/finish": {
         parameters: {
             query?: never;
@@ -977,6 +1081,46 @@ export interface paths {
          * @description Ends the caller's open log on the work order, productive or a block's downtime (M29, M29a); with no productive log left open the work order is paused. With no open log of the caller's there it changes nothing and answers 200. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
          */
         post: operations["pauseManufacturingWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a check's photo
+         * @description Uploads a check's photo (M97): a JPEG or PNG of at most 10 MB in the multipart field file, its metadata stripped, kept in the manufacturing-quality storage scope. The answer's id is the photoId a result names. A photo no result names 24 hours after its upload is removed. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler.
+         */
+        post: operations["uploadManufacturingCheckPhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-orders/{id}/photos/{photoId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a check's photo
+         * @description Streams a check's photo (M97), never cached and never sniffed, under a sandboxing content-security-policy. A photo of another work order is the 404 an unknown id is.
+         */
+        get: operations["getManufacturingCheckPhoto"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1180,6 +1324,8 @@ export interface components {
         };
         /** @description An operation of a BoM (M12), run in sequence order. */
         ManufacturingBomOperation: {
+            /** @description Its quality checks, by sequence (manufacturing phase 2 M95). */
+            checks: components["schemas"]["ManufacturingCheckTemplate"][];
             /** Format: int64 */
             id: number;
             /** @description Markdown. */
@@ -1200,6 +1346,8 @@ export interface components {
         };
         /** @description An operation as the editor sends it. */
         ManufacturingBomOperationInput: {
+            /** @description Its quality checks, in order (M95): at most 20; absent or empty for none. They replace the operation's checks. */
+            checks?: components["schemas"]["ManufacturingCheckTemplateInput"][];
             /**
              * Format: int64
              * @description An existing operation of this BoM to keep; absent for a new one.
@@ -1281,6 +1429,97 @@ export interface components {
              * @description The revision the client read (revision_conflict).
              */
             revision: number;
+        };
+        /**
+         * @description When a check is recorded (manufacturing phase 2 M95): each_work_order, once before the work order finishes; first_piece, before any output is registered past the work order, shown first at Start.
+         * @enum {string}
+         */
+        ManufacturingCheckFrequency: "each_work_order" | "first_piece";
+        /**
+         * @description What a check asks (M95): instruction, read and acknowledged (done); pass_fail; measure, a value the server judges against min and max; photo, a picture taken at the station.
+         * @enum {string}
+         */
+        ManufacturingCheckKind: "instruction" | "pass_fail" | "measure" | "photo";
+        /** @description A check's photo, uploaded before the result that names it (M97). One no result names 24 hours after its upload is removed. */
+        ManufacturingCheckPhoto: {
+            contentType: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: date-time */
+            uploadedAt: string;
+            /** Format: int64 */
+            workOrderId: number;
+        };
+        /** @description A check's result in force (M97): the latest recorded; an earlier one is kept, superseded. */
+        ManufacturingCheckResult: {
+            /**
+             * Format: int64
+             * @description The deviation the result opened when it failed (M99).
+             */
+            deviationId: number | null;
+            /** @description DEV-<n>. */
+            deviationNumber: string | null;
+            /** Format: int64 */
+            id: number;
+            note: string | null;
+            /** Format: int64 */
+            photoId: number | null;
+            /** Format: date-time */
+            recordedAt: string;
+            recordedBy: components["schemas"]["ManufacturingDeviationActor"];
+            result: components["schemas"]["ManufacturingCheckResultValue"];
+            /** @description A measure's value, exact decimal with at most four decimals. */
+            value: string | null;
+        };
+        /** @description A check's result as the station sends it (M97): result for an instruction (done) or a pass/fail check (pass, fail); value for a measure, judged by the server; photoId for a photo, optional on the others. A photo check without a photo is photo_required. */
+        ManufacturingCheckResultInput: {
+            note?: string;
+            /**
+             * Format: int64
+             * @description A photo uploaded to this work order.
+             */
+            photoId?: number;
+            result?: components["schemas"]["ManufacturingCheckResultValue"];
+            /** @description A measure's value: exact decimal, at most four decimals. */
+            value?: string;
+        };
+        /** @enum {string} */
+        ManufacturingCheckResultValue: "done" | "pass" | "fail";
+        /** @description A check of a BoM operation (M95), copied onto the work order at confirm (M96). */
+        ManufacturingCheckTemplate: {
+            frequency: components["schemas"]["ManufacturingCheckFrequency"];
+            /** Format: int64 */
+            id: number;
+            /** @description Markdown. */
+            instructions: string;
+            kind: components["schemas"]["ManufacturingCheckKind"];
+            /** @description Exact decimal, at most four decimals; a measure's upper limit. */
+            max: string | null;
+            /** @description Exact decimal, at most four decimals; a measure's lower limit. */
+            min: string | null;
+            /** @description Exact decimal, at most four decimals; a measure's target. */
+            nominal: string | null;
+            /** @description A failed result's deviation puts the order's output in quarantine (M99). */
+            quarantineOnFail: boolean;
+            /** Format: int32 */
+            sequence: number;
+            title: string;
+            unit: string | null;
+        };
+        /** @description A check as the BoM editor sends it (M95). A measure needs min or max, and min ≤ nominal ≤ max where given (check_limits_invalid). At most 20 an operation. */
+        ManufacturingCheckTemplateInput: {
+            frequency: components["schemas"]["ManufacturingCheckFrequency"];
+            /** @description Markdown. */
+            instructions?: string;
+            kind: components["schemas"]["ManufacturingCheckKind"];
+            max?: string | null;
+            min?: string | null;
+            nominal?: string | null;
+            quarantineOnFail?: boolean;
+            title: string;
+            unit?: string | null;
         };
         /** @description Closing an order (M23). */
         ManufacturingCloseInput: {
@@ -1382,6 +1621,29 @@ export interface components {
             expected: string;
             sku: string;
         };
+        /** @description Who did something, as it was recorded; the user id stays after the person is erased (rule 19). */
+        ManufacturingDeviationActor: {
+            displayName: string;
+            /** Format: uuid */
+            userId: string | null;
+        };
+        /** @description Closing a deviation (M99): the disposition and a closing note. use_as_is and rework release its own holds; scrap and return keep them. */
+        ManufacturingDeviationCloseInput: {
+            closingNote: string;
+            disposition: components["schemas"]["ManufacturingDeviationDisposition"];
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @enum {string} */
+        ManufacturingDeviationDisposition: "use_as_is" | "rework" | "scrap" | "return";
+        /** @description A lot the deviation put a quarantine hold on. */
+        ManufacturingDeviationLot: {
+            /** Format: date-time */
+            heldAt: string;
+            /** Format: int64 */
+            lotId: number;
+            lotNumber: string;
+        };
         /** @description Downtime of one reason, in whole minutes (the union of the logs, rounded down). */
         ManufacturingDowntimeMinutes: {
             /** Format: int64 */
@@ -1469,6 +1731,8 @@ export interface components {
             canManageBoms: boolean;
             /** @description Holds manufacturing:orders-manage. */
             canManageOrders: boolean;
+            /** @description Holds manufacturing:quality-manage: closes deviations and releases their holds (manufacturing phase 2 M102). */
+            canManageQuality: boolean;
             /** @description Holds manufacturing:costs-view: cost fields are answered. */
             canSeeCosts: boolean;
             /** @description Whether Inventory keeps stock and the caller holds inventory:locations-view and inventory:stock-view: an order's lots link to their pages and their trace in Inventory (manufacturing phase 2 M94). */
@@ -1477,6 +1741,18 @@ export interface components {
             canWorkShopFloor: boolean;
             /** @description The workspace currency every amount is in: NOK. */
             currency: string;
+        };
+        /** @description A check with no result that stops a production or a finish (checks_incomplete, M98). */
+        ManufacturingMissingCheck: {
+            /** Format: int64 */
+            checkId: number;
+            frequency: components["schemas"]["ManufacturingCheckFrequency"];
+            title: string;
+            /** Format: int64 */
+            workOrderId: number;
+            workOrderName: string;
+            /** Format: int32 */
+            workOrderSequence: number;
         };
         /** @description My work (M31): the caller's open log and the work orders they logged time on today, in the business calendar's day. */
         ManufacturingMyWork: {
@@ -1677,10 +1953,10 @@ export interface components {
             };
         };
         /**
-         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44).
+         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44); check_recorded a check's result at one of its work orders, deviation_opened and deviation_closed a deviation of it (manufacturing phase 2 M97, M99).
          * @enum {string}
          */
-        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added" | "planned" | "unplanned" | "rescheduled" | "children_created" | "origin_cancelled";
+        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added" | "planned" | "unplanned" | "rescheduled" | "children_created" | "origin_cancelled" | "check_recorded" | "deviation_opened" | "deviation_closed";
         /** @description An order's timeline, oldest first. */
         ManufacturingOrderEventList: {
             items: components["schemas"]["ManufacturingOrderEvent"][];
@@ -1999,8 +2275,10 @@ export interface components {
          * @enum {string}
          */
         ManufacturingPriority: "normal" | "urgent";
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; checks names them, M98), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
         ManufacturingProblem: {
+            /** @description checks_incomplete only: every check with no result that stops it (M98). */
+            checks?: components["schemas"]["ManufacturingMissingCheck"][];
             code?: string | null;
             detail?: string | null;
             /** @description consumption_differs only: every deviating line. */
@@ -2257,6 +2535,69 @@ export interface components {
             quantity: string;
             serial: boolean;
         };
+        /** @description A deviation (nb avvik, M99): opened by a failed check or by a person, linked to what it was opened from; quarantine holds the order's output lots and its lot while it is open. */
+        ManufacturingQualityDeviation: {
+            /** Format: int64 */
+            checkResultId: number | null;
+            /** Format: date-time */
+            closedAt: string | null;
+            closedBy: components["schemas"]["ManufacturingDeviationActor"] | null;
+            closingNote: string | null;
+            /** @description Markdown. */
+            description: string;
+            disposition: components["schemas"]["ManufacturingDeviationDisposition"] | null;
+            /** @description Its holds were released, at close (use_as_is, rework) or afterwards. */
+            holdsReleased: boolean;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The lot it was opened from.
+             */
+            lotId: number | null;
+            lotNumber: string | null;
+            /** @description The lots it put a quarantine hold on, by number. */
+            lots: components["schemas"]["ManufacturingDeviationLot"][];
+            /** @description DEV-<n>. */
+            number: string;
+            /** Format: date-time */
+            openedAt: string;
+            openedBy: components["schemas"]["ManufacturingDeviationActor"];
+            order: components["schemas"]["ManufacturingOrderLink"] | null;
+            /** @description It holds the order's output, and its lot, in quarantine. */
+            quarantine: boolean;
+            /** Format: int32 */
+            revision: number;
+            status: components["schemas"]["ManufacturingQualityDeviationStatus"];
+            title: string;
+            variant: components["schemas"]["ManufacturingVariantRef"] | null;
+            /** Format: int64 */
+            workOrderId: number | null;
+            workOrderName: string | null;
+        };
+        /** @description A deviation reported by a person (M99), from an order, a work order (its order is taken) or a lot. quarantine holds the order's output lots so far and those it makes while the deviation is open, and the lot. */
+        ManufacturingQualityDeviationInput: {
+            description?: string;
+            /**
+             * Format: int64
+             * @description An Inventory lot.
+             */
+            lotId?: number;
+            /** Format: int64 */
+            orderId?: number;
+            quarantine?: boolean;
+            title: string;
+            /** Format: int64 */
+            workOrderId?: number;
+        };
+        /** @description A page of deviations, newest first, with the total. */
+        ManufacturingQualityDeviationList: {
+            items: components["schemas"]["ManufacturingQualityDeviation"][];
+            /** Format: int32 */
+            total: number;
+        };
+        /** @enum {string} */
+        ManufacturingQualityDeviationStatus: "open" | "closed";
         /** @description A drag on the board (M36): the work order is planned to start at start (now when start is past), in the first free time from there. */
         ManufacturingRescheduleInput: {
             /**
@@ -2880,6 +3221,8 @@ export interface components {
              * @description The work center's capacity at confirm (M27a).
              */
             capacity: number;
+            /** @description Its quality checks, by sequence, each with its result in force (manufacturing phase 2 M96, M97). */
+            checks?: components["schemas"]["ManufacturingWorkOrderCheck"][];
             /** @description Exact decimal, as at confirm. */
             cleanupMinutes: string;
             /**
@@ -2932,6 +3275,25 @@ export interface components {
              */
             timeEfficiency: number;
             workCenter: components["schemas"]["ManufacturingWorkCenterRef"];
+        };
+        /** @description A check of a work order as it was copied at confirm (M96), with its result in force. */
+        ManufacturingWorkOrderCheck: {
+            frequency: components["schemas"]["ManufacturingCheckFrequency"];
+            /** Format: int64 */
+            id: number;
+            instructions: string;
+            kind: components["schemas"]["ManufacturingCheckKind"];
+            max: string | null;
+            min: string | null;
+            nominal: string | null;
+            quarantineOnFail: boolean;
+            result: components["schemas"]["ManufacturingCheckResult"] | null;
+            /** Format: int32 */
+            sequence: number;
+            title: string;
+            unit: string | null;
+            /** Format: int64 */
+            workOrderId: number;
         };
         /** @description Work orders, by sequence. */
         ManufacturingWorkOrderList: {
@@ -3540,6 +3902,358 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — revision_conflict. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    listManufacturingDeviations: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ManufacturingQualityDeviationStatus"];
+                orderId?: number;
+                variantId?: number;
+                lotId?: number;
+                /** @description The first day it was opened on, in the business time zone. */
+                from?: string;
+                /** @description The last day, included. */
+                to?: string;
+                limit?: number;
+                offset?: number;
+                /** @description json (the default) or csv. */
+                format?: "json" | "csv";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — with format=csv, one row per deviation, served as an attachment, manufacturing-deviations.csv. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingQualityDeviationList"];
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — from is after to. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    createManufacturingDeviation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingQualityDeviationInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingQualityDeviation"];
+                };
+            };
+            /** @description Bad Request — field errors (title; orderId, workOrderId or lotId naming nothing). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Conflict — revision_conflict, or Inventory's refusal of a hold. Nothing was changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    getManufacturingDeviation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingQualityDeviation"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such deviation. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    closeManufacturingDeviation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingDeviationCloseInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingQualityDeviation"];
+                };
+            };
+            /** @description Bad Request — field errors (disposition, closingNote). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such deviation. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — deviation_closed, revision_conflict. Nothing was changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    releaseManufacturingDeviationHolds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingQualityDeviation"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such deviation. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — deviation_closed (the deviation is still open), revision_conflict. Nothing was changed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4630,7 +5344,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — order_not_open, consumption_differs (deviations), client_request_reused; Inventory's insufficient_stock, site_archived, variant_not_stocked, document_reused (lines name the component lines). Nothing was posted. */
+            /** @description Conflict — order_not_open, checks_incomplete (a check before the output work order, or a first-piece check of it, has no result; checks names them), consumption_differs (deviations), client_request_reused; Inventory's insufficient_stock, site_archived, variant_not_stocked, document_reused (lines name the component lines). Nothing was posted. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6522,6 +7236,86 @@ export interface operations {
             };
         };
     };
+    recordManufacturingCheckResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                checkId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingCheckResultInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkOrderView"];
+                };
+            };
+            /** @description Bad Request — field errors (result, value, note, photoId); photo_required. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work order, or no such check of it. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open, check_not_open (the work order is done or cancelled), revision_conflict; Inventory's refusal of a hold. Nothing was changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
     finishManufacturingWorkOrder: {
         parameters: {
             query?: never;
@@ -6581,7 +7375,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — order_not_open, work_order_closed, work_order_pending, revision_conflict; the production's consumption_differs, client_request_reused and Inventory's refusals. Nothing was changed. */
+            /** @description Conflict — order_not_open, work_order_closed, work_order_pending, checks_incomplete (a check of the work order has no result, or the production's), revision_conflict; the production's consumption_differs, client_request_reused and Inventory's refusals. Nothing was changed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6657,6 +7451,154 @@ export interface operations {
                 };
             };
             /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    uploadManufacturingCheckPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingCheckPhoto"];
+                };
+            };
+            /** @description Bad Request — attachment_too_large (over 10 MB), or a field error on file (missing, empty, sent twice or not a picture that can be read). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — check_not_open: the work order is done or cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unsupported Media Type — attachment_type: not a JPEG or PNG. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_not_configured, or the object store could not be written; nothing was recorded. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    getManufacturingCheckPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                photoId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work order, or no such photo of it. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — storage_not_configured, or the object store could not be read. */
             503: {
                 headers: {
                     [name: string]: unknown;

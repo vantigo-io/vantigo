@@ -658,5 +658,125 @@
       "en": "Downloads the report shown, for the same period and site, as a CSV file.",
       "nb": "Laster ned rapporten som vises, for samme periode og lagersted, som en CSV-fil."
     }
+  },
+  {
+    "key": "manufacturing.bom.checks",
+    "route": "/manufacturing/boms/new",
+    "label": {
+      "en": "Quality checks",
+      "nb": "Kvalitetskontroller"
+    },
+    "description": {
+      "en": "An operation's quality checks: an instruction, pass or fail, a measure with its limits, or a photo, recorded at each work order or on the first piece.",
+      "nb": "En operasjons kvalitetskontroller: en instruks, godkjent eller avvist, en måling med grenser, eller et bilde, registrert på hver arbeidsordre eller på første stykk."
+    }
+  },
+  {
+    "key": "manufacturing.work-order.checks",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "label": {
+      "en": "Checks",
+      "nb": "Kontroller"
+    },
+    "description": {
+      "en": "The work order's checks, first-piece checks first, with large Pass and Fail buttons, a field for a measure and Take photo.",
+      "nb": "Arbeidsordrens kontroller, første stykk først, med store knapper for Godkjent og Avvist, et felt for en måling og Ta bilde."
+    }
+  },
+  {
+    "key": "manufacturing.order.check-results",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Check results",
+      "nb": "Kontrollresultater"
+    },
+    "description": {
+      "en": "Every check of the order's work orders with its result, who recorded it and the deviation a failure opened.",
+      "nb": "Hver kontroll på ordrens arbeidsordrer med resultatet, hvem som registrerte det og avviket en avvisning opprettet."
+    }
+  },
+  {
+    "key": "manufacturing.order.report-deviation",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Report a deviation",
+      "nb": "Meld avvik"
+    },
+    "description": {
+      "en": "The button on a manufacturing order that reports a deviation of it, and can put its output in quarantine.",
+      "nb": "Knappen på en produksjonsordre som melder et avvik på den, og kan sette produksjonen i karantene."
+    }
+  },
+  {
+    "key": "manufacturing.deviation.report",
+    "route": "/manufacturing/deviations",
+    "label": {
+      "en": "Report a deviation form",
+      "nb": "Skjemaet Meld avvik"
+    },
+    "description": {
+      "en": "The form that reports a deviation: its title, its description and Put the output in quarantine.",
+      "nb": "Skjemaet som melder et avvik: tittel, beskrivelse og Sett produksjonen i karantene."
+    }
+  },
+  {
+    "key": "manufacturing.deviations.report",
+    "route": "/manufacturing/deviations",
+    "label": {
+      "en": "Report a deviation",
+      "nb": "Meld avvik"
+    },
+    "description": {
+      "en": "The button on the deviations list that reports a new deviation.",
+      "nb": "Knappen på avvikslisten som melder et nytt avvik."
+    }
+  },
+  {
+    "key": "manufacturing.deviations.filters",
+    "route": "/manufacturing/deviations",
+    "label": {
+      "en": "Filters",
+      "nb": "Filtre"
+    },
+    "description": {
+      "en": "The deviations list's filters: status and the period it was opened in.",
+      "nb": "Avvikslistens filtre: status og perioden det ble opprettet i."
+    }
+  },
+  {
+    "key": "manufacturing.deviations.list",
+    "route": "/manufacturing/deviations",
+    "label": {
+      "en": "Deviations",
+      "nb": "Avvik"
+    },
+    "description": {
+      "en": "Every deviation, newest first, with its order, product, lots and whether it holds them in quarantine.",
+      "nb": "Alle avvik, nyeste først, med ordre, produkt, partier og om de holdes i karantene."
+    }
+  },
+  {
+    "key": "manufacturing.deviation.close",
+    "route": "/manufacturing/deviations/{deviationId}",
+    "label": {
+      "en": "Close the deviation",
+      "nb": "Lukk avviket"
+    },
+    "description": {
+      "en": "The disposition and closing note that close a deviation; use as is and rework release its holds.",
+      "nb": "Disponeringen og avslutningsnotatet som lukker et avvik; bruk som den er og omarbeid opphever sperrene."
+    }
+  },
+  {
+    "key": "manufacturing.deviation.lots",
+    "route": "/manufacturing/deviations/{deviationId}",
+    "label": {
+      "en": "Lots in quarantine",
+      "nb": "Partier i karantene"
+    },
+    "description": {
+      "en": "The lots the deviation holds in quarantine, each linked to its page in Inventory.",
+      "nb": "Partiene avviket holder i karantene, hver lenket til siden i Lager."
+    }
   }
 ]

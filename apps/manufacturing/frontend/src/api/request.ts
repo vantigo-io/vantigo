@@ -129,6 +129,14 @@ export const refusalCodes = [
   "lot_blocked",
   "lot_dates_differ",
   "lot_exists",
+  "check_limits_invalid",
+  "photo_required",
+  "checks_incomplete",
+  "check_not_open",
+  "deviation_closed",
+  "attachment_too_large",
+  "attachment_type",
+  "storage_not_configured",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 
@@ -145,6 +153,16 @@ export interface Deviation {
   sku: string;
   expected: string;
   consumed: string;
+}
+
+/** A check with no result that stops a production or a finish (`checks_incomplete`, manufacturing phase 2 M98). */
+export interface MissingCheck {
+  checkId: number;
+  title: string;
+  frequency: string;
+  workOrderId: number;
+  workOrderName: string;
+  workOrderSequence: number;
 }
 
 /** One variant of a refused cycle's path (`bom_cycle`). */
@@ -170,6 +188,7 @@ export const refusalOf = async (response: Response): Promise<Error> => {
     lines?: RefusedLine[];
     path?: CycleStep[];
     deviations?: Deviation[];
+    checks?: MissingCheck[];
   }>(response).catch(() => null);
   const message = problem?.detail ?? problem?.title ?? "";
   const extra = {
@@ -178,13 +197,14 @@ export const refusalOf = async (response: Response): Promise<Error> => {
     lines: problem?.lines ?? undefined,
     path: problem?.path ?? undefined,
     deviations: problem?.deviations ?? undefined,
+    checks: problem?.checks ?? undefined,
   };
   if (response.status === 404) return Object.assign(new NotFoundError(message), { ...extra, status: 404 as const });
   if (problem?.errors) return Object.assign(new ApiValidationError(message, problem.errors, response.status), extra);
   if (response.status === 409 && problem?.title)
     return Object.assign(
       new ApiConflictError(message, { title: problem.title, detail: problem.detail, code: problem.code, problem }),
-      { lines: extra.lines, path: extra.path, deviations: extra.deviations },
+      { lines: extra.lines, path: extra.path, deviations: extra.deviations, checks: extra.checks },
     );
   return Object.assign(new Error(message), extra);
 };
@@ -228,3 +248,9 @@ export const refusedFields = (error: unknown): Readonly<Record<string, string>> 
 
 /** Whether a replace was refused because the row moved on since it was read. */
 export const isRevisionConflict = (error: unknown): boolean => refusalCode(error) === "revision_conflict";
+
+/** A refused production's or finish's missing checks (`checks_incomplete`); empty for any other refusal. */
+export const refusedChecks = (error: unknown): readonly MissingCheck[] => {
+  const checks = (error as { checks?: unknown } | null)?.checks;
+  return Array.isArray(checks) ? (checks as MissingCheck[]) : [];
+};

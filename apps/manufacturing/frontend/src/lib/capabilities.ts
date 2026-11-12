@@ -23,3 +23,9 @@ export const canRegisterProduction = (meta: ManufacturingMeta | undefined): bool
  * `manufacturing:orders-manage` (M33, shop_floor_required).
  */
 export const canWorkOnShopFloor = (meta: ManufacturingMeta | undefined): boolean => canRegisterProduction(meta);
+
+/** Whether the caller may record a check's result and report a deviation: as for the shop floor (M97, M99). */
+export const canRecordQuality = (meta: ManufacturingMeta | undefined): boolean => canRegisterProduction(meta);
+
+/** Whether the caller may close a deviation and release its holds: `manufacturing:quality-manage` (M102). */
+export const canManageQuality = (meta: ManufacturingMeta | undefined): boolean => meta?.canManageQuality === true;

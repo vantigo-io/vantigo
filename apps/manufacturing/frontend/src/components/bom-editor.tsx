@@ -41,6 +41,7 @@ import { canManageBoms } from "../lib/capabilities";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
 import { LOT_NUMBER, renderLotPattern, sampleLotNumber } from "../lib/lots";
 import { BOMS_ROUTE_PATH, bomLinkOptions } from "../lib/routes";
+import { CheckTemplates } from "./check-templates";
 import { VariantPicker } from "./variant-picker";
 
 /** Which header field a refusal code belongs to, when it is one field's. */
@@ -370,6 +371,19 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
                               setOperation(operation.key, { instructions: event.currentTarget.value })
                             }
                             error={errors[`${at}.instructions`]}
+                          />
+                        </Table.Td>
+                      </Table.Tr>,
+                      <Table.Tr key={`${operation.key}-checks`}>
+                        <Table.Td />
+                        <Table.Td colSpan={readOnly ? 4 : 5}>
+                          <CheckTemplates
+                            row={row}
+                            at={at}
+                            checks={operation.checks}
+                            readOnly={readOnly}
+                            errors={errors}
+                            onChange={(checks) => setOperation(operation.key, { checks })}
                           />
                         </Table.Td>
                       </Table.Tr>,

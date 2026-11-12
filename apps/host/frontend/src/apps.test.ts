@@ -17,6 +17,7 @@ import {
   IconTrendingDown,
   IconTruckDelivery,
   IconUsersGroup,
+  IconZoomExclamation,
 } from "@tabler/icons-react";
 import { inventoryNavItems } from "@vantigo/inventory-ui";
 import { manufacturingNavItems } from "@vantigo/manufacturing-ui";
@@ -169,6 +170,7 @@ describe("the app registry", () => {
       "/manufacturing/orders",
       "/manufacturing/shop-floor",
       "/manufacturing/schedule",
+      "/manufacturing/deviations",
       "/manufacturing/boms",
       "/manufacturing/work-centers",
       "/energy/metering-points",
@@ -795,7 +797,7 @@ describe("the app registry", () => {
   // M7): Overview, Manufacturing orders, Shop floor, Production schedule,
   // Bills of materials and Work centers, each offered by manufacturing:access;
   // the labels and icons are the host's.
-  it("registers Manufacturing with the package's six destinations, all manufacturing:access's", () => {
+  it("registers Manufacturing with the package's seven destinations, all manufacturing:access's", () => {
     const manufacturing = appForKey("manufacturing");
     expect(manufacturing).toMatchObject({
       module: "manufacturing",
@@ -810,6 +812,7 @@ describe("the app registry", () => {
       ["navigation.manufacturingOrders", "/manufacturing/orders", ["manufacturing:access"]],
       ["navigation.manufacturingShopFloor", "/manufacturing/shop-floor", ["manufacturing:access"]],
       ["navigation.manufacturingSchedule", "/manufacturing/schedule", ["manufacturing:access"]],
+      ["navigation.manufacturingDeviations", "/manufacturing/deviations", ["manufacturing:access"]],
       ["navigation.manufacturingBoms", "/manufacturing/boms", ["manufacturing:access"]],
       ["navigation.manufacturingWorkCenters", "/manufacturing/work-centers", ["manufacturing:access"]],
     ]);
@@ -818,6 +821,7 @@ describe("the app registry", () => {
       IconClipboardList,
       IconHammer,
       IconCalendarTime,
+      IconZoomExclamation,
       IconListDetails,
       IconTool,
     ]);

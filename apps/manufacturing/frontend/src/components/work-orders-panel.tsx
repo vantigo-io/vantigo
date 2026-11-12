@@ -12,7 +12,7 @@ import {
   orderWorkOrdersQueryOptions,
 } from "../api/shop-floor";
 import { useManufacturingFormat, workOrderStatusColor } from "../lib/format";
-import { workOrderLinkOptions } from "../lib/routes";
+import { deviationLinkOptions, workOrderLinkOptions } from "../lib/routes";
 import { TimeLogDialog } from "./time-log-dialog";
 
 /**
@@ -139,6 +139,73 @@ export const WorkOrdersPanel = ({ order, live, canManage }: WorkOrdersPanelProps
           )}
         </div>
       </PageSection>
+      {(workOrders.data ?? []).some((one) => (one.checks ?? []).length > 0) && (
+        <PageSection title={t("checkResults")}>
+          <Table.ScrollContainer minWidth={760}>
+            <Table data-assist="manufacturing.order.check-results">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("operationName")}</Table.Th>
+                  <Table.Th>{t("checkTitle")}</Table.Th>
+                  <Table.Th>{t("checkResult")}</Table.Th>
+                  <Table.Th>{t("checkRecordedBy")}</Table.Th>
+                  <Table.Th>{t("deviation")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {(workOrders.data ?? []).flatMap((workOrder) =>
+                  (workOrder.checks ?? []).map((check) => (
+                    <Table.Tr key={check.id}>
+                      <Table.Td>{`${workOrder.sequence} · ${workOrder.name}`}</Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{check.title}</Text>
+                        <Text size="xs" c="dimmed">
+                          {t(`checkFrequency_${check.frequency}`)}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        {check.result ? (
+                          <Group gap={6}>
+                            <Badge variant="light" color={check.result.result === "fail" ? "red" : "teal"}>
+                              {t(`checkResult_${check.result.result}`)}
+                            </Badge>
+                            {check.result.value !== null && (
+                              <Text size="sm">{`${decimal(check.result.value)} ${check.unit ?? ""}`}</Text>
+                            )}
+                          </Group>
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            {t("checkNoResult")}
+                          </Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
+                        {check.result
+                          ? `${check.result.recordedBy.displayName}, ${stamp(check.result.recordedAt)}`
+                          : "—"}
+                      </Table.Td>
+                      <Table.Td>
+                        {check.result?.deviationId != null ? (
+                          <Anchor
+                            size="sm"
+                            renderRoot={(props) => (
+                              <Link {...deviationLinkOptions(check.result?.deviationId ?? 0)} {...props} />
+                            )}
+                          >
+                            {check.result.deviationNumber}
+                          </Anchor>
+                        ) : (
+                          "—"
+                        )}
+                      </Table.Td>
+                    </Table.Tr>
+                  )),
+                )}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </PageSection>
+      )}
       <PageSection
         title={t("timeLogs")}
         actions={

@@ -153,3 +153,24 @@ export const validateNewOrderSearch = (search: Record<string, unknown>): NewOrde
   const salesOrderLineId = positiveId(search.salesOrderLineId);
   return salesOrderLineId ? { salesOrderLineId } : {};
 };
+
+/** The deviations list's links in (manufacturing phase 2 M99): an order's, a product's or a lot's, and `new` to report one. */
+export interface DeviationsSearch {
+  orderId?: number;
+  variantId?: number;
+  lotId?: number;
+  new?: 1;
+}
+
+export const validateDeviationsSearch = (search: Record<string, unknown>): DeviationsSearch => {
+  const orderId = positiveId(search.orderId);
+  const variantId = positiveId(search.variantId);
+  const lotId = positiveId(search.lotId);
+  const fresh = search.new === 1 || search.new === "1";
+  return {
+    ...(orderId ? { orderId } : {}),
+    ...(variantId ? { variantId } : {}),
+    ...(lotId ? { lotId } : {}),
+    ...(fresh ? { new: 1 as const } : {}),
+  };
+};
