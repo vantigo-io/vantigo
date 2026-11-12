@@ -61,6 +61,20 @@ type Stock interface {
 	// the site, with its location, in FEFO order (manufacturing phase 2 M65). A
 	// variant with none has no row.
 	Lots(ctx context.Context, variantIDs []int32, siteID int64) ([]StockLot, error)
+	// LotRefs is the lots named, by id, whatever they hold: what a caller
+	// that keeps a lot's id reads of it before its transaction — its
+	// variant, its number and its derived status (manufacturing phase 2 M99,
+	// a deviation opened from a lot). An id that names no lot has no entry.
+	// It refuses more than MaxStockVariants ids, as a failure.
+	LotRefs(ctx context.Context, lotIDs []int64) ([]LotRef, error)
+}
+
+// LotRef is one lot as Stock.LotRefs answers it.
+type LotRef struct {
+	ID        int64
+	VariantID int32
+	Number    string
+	Status    string // "available" | "quarantine" | "blocked"
 }
 
 // StockLot is one lot of a variant on one location of a site, as Stock.Lots

@@ -313,6 +313,15 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 		}
 	}
 
+	// The variants inspected on receipt (manufacturing phase 2 M100), read
+	// under their lock.
+	var inspected map[int32]bool
+	if opts.receipt {
+		if inspected, err = inspectedVariants(ctx, txq, lines, variants); err != nil {
+			return postResult{}, err
+		}
+	}
+
 	// The entries, resolved against the packagings as they are locked (I25).
 	for i := range lines {
 		l := &lines[i]
@@ -415,6 +424,10 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 			for _, id := range ids {
 				update[id] = true
 			}
+		}
+		// A lot an inspected receipt holds is taken as the hold takes it.
+		if inspected[l.variantID] && l.lotID != 0 {
+			update[l.lotID] = true
 		}
 	}
 	lots, err := lockLots(ctx, txq, lotIDs, update)
@@ -602,6 +615,12 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 	}
 	if err := writeBalances(ctx, txq, keys, balances, s.deps.Clock()); err != nil {
 		return postResult{}, err
+	}
+	// The inspection holds of a receipt (M100), last.
+	if len(inspected) > 0 {
+		if err := s.holdForInspection(ctx, tx, txq, id, posted, inspected, m.poster); err != nil {
+			return postResult{}, err
+		}
 	}
 	// The lots' screens hear of their stock on the posting's own transaction
 	// (manufacturing phase 2 §17), whichever module's it is.

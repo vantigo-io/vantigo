@@ -220,6 +220,10 @@ func (r *recordingStock) Lots(context.Context, []int32, int64) ([]contracts.Stoc
 	return nil, nil
 }
 
+func (r *recordingStock) LotRefs(context.Context, []int64) ([]contracts.LotRef, error) {
+	return nil, nil
+}
+
 func TestStockAvailable_DeduplicatesAndBatches(t *testing.T) {
 	stock := &recordingStock{}
 	s := &server{deps: module.Deps{Stock: stock}}
