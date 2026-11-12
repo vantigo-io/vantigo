@@ -272,6 +272,14 @@ func (s *server) today(ctx context.Context) (time.Time, time.Time, error) {
 // production's transaction and passed to the ledger as data.
 const permInventoryExpiredOverride = "inventory:expired-override"
 
+// permInventoryLocationsView and permInventoryStockView are Inventory's two
+// views, which its lot page and trace need (manufacturing phase 2 M94): an
+// order's lots link there only for a caller holding both.
+const (
+	permInventoryLocationsView = "inventory:locations-view"
+	permInventoryStockView     = "inventory:stock-view"
+)
+
 // stockDay is today in the business zone, before any transaction: the day
 // Inventory's ledger judges a lot's expiry on (manufacturing phase 2 M62,
 // M63), passed to it as data since no ledger call makes a contract call of

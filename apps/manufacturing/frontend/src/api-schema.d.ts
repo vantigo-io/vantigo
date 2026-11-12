@@ -1471,6 +1471,8 @@ export interface components {
             canManageOrders: boolean;
             /** @description Holds manufacturing:costs-view: cost fields are answered. */
             canSeeCosts: boolean;
+            /** @description Whether Inventory keeps stock and the caller holds inventory:locations-view and inventory:stock-view: an order's lots link to their pages and their trace in Inventory (manufacturing phase 2 M94). */
+            canTraceLots: boolean;
             /** @description Holds manufacturing:shop-floor. */
             canWorkShopFloor: boolean;
             /** @description The workspace currency every amount is in: NOK. */

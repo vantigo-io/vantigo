@@ -3,16 +3,20 @@ import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
+import { manufacturingMetaQueryOptions } from "../api/meta";
 import { type ManufacturingOrder, orderLotsQueryOptions } from "../api/orders";
 import { refusalMessage, useManufacturingFormat } from "../lib/format";
 
 /**
  * A lot's number linked to its page in Inventory — its id when no number was kept — and *Trace*, which opens
  * where the lot went: who received the lot made, and what else the lot consumed went into. Both go through the
- * host's router (no reload, under the deployment's base path).
+ * host's router (no reload, under the deployment's base path), and only for a caller who may open them there
+ * (the meta's `canTraceLots`: Inventory keeps stock and the caller holds both of its views); otherwise the
+ * number alone.
  */
-const LotLink = ({ lotId, number }: { lotId: number; number: string }) => {
+const LotLink = ({ lotId, number, canTrace }: { lotId: number; number: string; canTrace: boolean }) => {
   const { t } = useManufacturingFormat();
+  if (!canTrace) return <Text size="sm">{number || `#${lotId}`}</Text>;
   return (
     <Group gap="xs" wrap="nowrap" component="span">
       <Anchor size="sm" renderRoot={(props) => <Link to={`/inventory/lots/${lotId}` as never} {...props} />}>
@@ -34,11 +38,12 @@ const LotLink = ({ lotId, number }: { lotId: number; number: string }) => {
  * The order's lots (manufacturing phase 2 M83), on the order page's Lots tab
  * and the work order's page: the lots its productions put the output in, and
  * per component line the lots they took, each linked to its page in
- * Inventory and to its trace there (M94).
+ * Inventory and to its trace there (M94) when the caller may open them.
  */
 export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id"> & { variant: { unit: string } } }) => {
   const { t, quantity, day } = useManufacturingFormat();
   const lots = useQuery(orderLotsQueryOptions(order.id));
+  const canTrace = useQuery(manufacturingMetaQueryOptions()).data?.canTraceLots ?? false;
   if (lots.isPending) return <ContentSkeleton />;
   if (lots.error)
     return (
@@ -66,7 +71,7 @@ export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id"> & {
                 {outputs.map((lot) => (
                   <Table.Tr key={lot.lotId}>
                     <Table.Td>
-                      <LotLink lotId={lot.lotId} number={lot.lotNumber} />
+                      <LotLink lotId={lot.lotId} number={lot.lotNumber} canTrace={canTrace} />
                       {lot.serial && (
                         <Badge ml="xs" size="xs" variant="light">
                           {t("serialBadge")}
@@ -102,7 +107,7 @@ export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id"> & {
                     <Table.Tr key={`${line.componentId}-${lot.lotId}`}>
                       <Table.Td>{index === 0 ? line.variant.sku : ""}</Table.Td>
                       <Table.Td>
-                        <LotLink lotId={lot.lotId} number={lot.lotNumber} />
+                        <LotLink lotId={lot.lotId} number={lot.lotNumber} canTrace={canTrace} />
                       </Table.Td>
                       <Table.Td>{lot.expiry ? day(lot.expiry) : ""}</Table.Td>
                       <Table.Td>{quantity(lot.consumed, line.variant.unit)}</Table.Td>

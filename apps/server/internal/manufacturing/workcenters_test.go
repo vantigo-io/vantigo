@@ -32,6 +32,20 @@ func TestMeta_StatsSitesAndVariantSearch(t *testing.T) {
 	if meta.CanManageBoms || meta.CanSeeCosts || meta.CanManageOrders || meta.CanWorkShopFloor {
 		t.Errorf("meta of a reader = %+v, want nothing but access", meta)
 	}
+	// The lots link to Inventory only for a caller holding both its views.
+	for _, tc := range []struct {
+		keys []string
+		want bool
+	}{
+		{append(slices.Clone(reader), "inventory:stock-view"), false},
+		{append(slices.Clone(reader), "inventory:stock-view", "inventory:locations-view"), true},
+	} {
+		var m gen.ManufacturingMeta
+		h.SignIn(t, tc.keys...).Do(http.MethodGet, base+"/meta", nil).JSON(&m)
+		if m.CanTraceLots != tc.want {
+			t.Errorf("canTraceLots of %v = %v, want %v", tc.keys, m.CanTraceLots, tc.want)
+		}
+	}
 
 	var sites gen.ManufacturingSiteList
 	res = read.Do(http.MethodGet, base+"/sites", nil)

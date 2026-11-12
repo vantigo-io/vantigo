@@ -825,6 +825,9 @@ components:
                 canSeeCosts:
                     description: 'Holds manufacturing:costs-view: cost fields are answered.'
                     type: boolean
+                canTraceLots:
+                    description: "Whether Inventory keeps stock and the caller holds inventory:locations-view and inventory:stock-view: an order's lots link to their pages and their trace in Inventory (manufacturing phase 2 M94)."
+                    type: boolean
                 canWorkShopFloor:
                     description: Holds manufacturing:shop-floor.
                     type: boolean
@@ -836,6 +839,7 @@ components:
                 - canSeeCosts
                 - canManageOrders
                 - canWorkShopFloor
+                - canTraceLots
                 - currency
             type: object
         ManufacturingMyWork:
