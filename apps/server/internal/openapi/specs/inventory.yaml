@@ -2490,6 +2490,9 @@ components:
                     type: string
                 supplierReference:
                     type: string
+                toSiteName:
+                    description: A transfer out's destination, the site the transfer was sent to.
+                    type: string
             required:
                 - id
                 - kind
@@ -2505,7 +2508,7 @@ components:
                     format: int32
                     type: integer
                 depthLimit:
-                    description: True on a lot at maxDepth, which is not expanded.
+                    description: True on a lot at maxDepth that went into (usage) or came from (origin) a production the trace does not expand. A lot at maxDepth still shows its ends.
                     type: boolean
                 edge:
                     $ref: '#/components/schemas/InventoryTraceEdge'
@@ -4494,7 +4497,7 @@ paths:
             x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
     /api/v1/inventory/lots/{id}/block:
         post:
-            description: 'Blocks the lot with the downstream list (manufacturing phase 2 M92): a block hold of the lot page, source inventory/lot/<id>, on the lot and, with downstream, on every lot made from it that still holds stock — the usage walk run again inside the block''s transaction, after the lot''s lock, so a lot produced since the dialog''s summary is caught. Each lot is taken FOR NO KEY UPDATE in id order, with its own event naming the lot blocked. A walk beyond 2000 nodes is trace_too_large, and nothing is blocked.'
+            description: 'Blocks the lot with the downstream list (manufacturing phase 2 M92): a block hold of the lot page, source inventory/lot/<id>, on the lot and, with downstream, on every lot made from it that still holds stock — the usage walk, with no depth limit, read again inside the block''s transaction so a lot produced since the dialog''s summary is caught: every lot it finds is taken FOR NO KEY UPDATE in id order and the walk read again under those locks; a lot made meanwhile is locked too, a bounded number of times, after which the block is 409 trace_changed. Each lot blocked has its own event naming the lot blocked. A walk beyond 2000 lots is trace_too_large, and nothing is blocked.'
             operationId: blockInventoryLot
             parameters:
                 - in: path
@@ -4536,6 +4539,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found — no such lot. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Conflict — trace_changed: lots kept being made from the lot while the block locked them; nothing was blocked, and the block may be tried again.'
                 "503":
                     content:
                         application/problem+json:
@@ -5601,7 +5610,7 @@ paths:
             x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
     /api/v1/inventory/trace:
         get:
-            description: 'A lot''s trace (manufacturing phase 2 M87–M90), read on the pool from Inventory''s own movement lines: in a production movement every lot consumed is a parent of every lot produced; an unbuild is a reverse edge, shown as an end and never expanded. usage walks where the lot went, origin where it came from, up to maxDepth productions and at most 2000 nodes. An issue for an Orders delivery carries the delivery, its order and its customer when the caller holds orders:access (contracts.DeliveryTrace), and the customer''s name when the caller also holds customers:view.'
+            description: 'A lot''s trace (manufacturing phase 2 M87–M90), read on the pool from Inventory''s own movement lines: in a production movement every lot consumed is a parent of every lot produced; an unbuild is a reverse edge, shown as an end and never expanded. usage walks where the lot went, origin where it came from, up to maxDepth productions, at most 2000 lots and at most 20000 other nodes (the ends and the components). An issue for an Orders delivery carries the delivery, its order and its customer when the caller holds orders:access (contracts.DeliveryTrace), and the customer''s name when the caller also holds customers:view.'
             operationId: getInventoryTrace
             parameters:
                 - description: The lot traced.
@@ -5643,7 +5652,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/InventoryProblem'
-                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes.'
+                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 lots or more than 20000 other nodes.'
                 "401":
                     content:
                         application/json:
@@ -5707,7 +5716,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/InventoryProblem'
-                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes.'
+                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 lots or more than 20000 other nodes.'
                 "401":
                     content:
                         application/json:
@@ -5771,7 +5780,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/InventoryProblem'
-                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes.'
+                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 lots or more than 20000 other nodes.'
                 "401":
                     content:
                         application/json:

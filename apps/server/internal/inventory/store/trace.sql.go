@@ -75,9 +75,13 @@ const traceLotLines = `-- name: TraceLotLines :many
 SELECT ml.lot_id::bigint AS lot_id, ml.movement_id, ml.line_no, ml.variant_id, ml.sku, ml.product_name, ml.unit, ml.quantity,
        (ml.from_location_id IS NOT NULL)::boolean AS outgoing,
        m.kind, m.reason, m.posted_at, m.supplier_name, m.supplier_reference,
-       m.source_module, m.source_kind, m.source_id, m.source_line_id
+       m.source_module, m.source_kind, m.source_id, m.source_line_id,
+       ts.name AS to_site_name
 FROM inventory.movement_lines ml
 JOIN inventory.movements m ON m.id = ml.movement_id
+LEFT JOIN inventory.transfers t
+  ON t.id = (CASE WHEN m.kind = 'transfer_out' AND m.source_module = 'inventory' AND m.source_kind = 'transfer' THEN m.source_id::bigint END)
+LEFT JOIN inventory.sites ts ON ts.id = t.to_site_id
 WHERE ml.lot_id = ANY($1::bigint[]) AND (ml.from_location_id IS NULL OR ml.to_location_id IS NULL)
 ORDER BY m.posted_at, m.id, ml.line_no
 `
@@ -101,6 +105,7 @@ type TraceLotLinesRow struct {
 	SourceKind        *string
 	SourceID          *string
 	SourceLineID      *string
+	ToSiteName        *string
 }
 
 // The trace (manufacturing phase 2 M88, M89): the graph of lots is read from
@@ -109,7 +114,8 @@ type TraceLotLinesRow struct {
 // (ux_movement_lines_movement_line), one per level of the walk.
 // TraceLotLines is every line of the lots that enters or leaves stock —
 // a line with only a from or only a to; a move, which has both, changes
-// nothing of a lot's path — with its movement, oldest first.
+// nothing of a lot's path — with its movement, oldest first, and a transfer
+// out's destination site.
 func (q *Queries) TraceLotLines(ctx context.Context, lotIds []int64) ([]TraceLotLinesRow, error) {
 	rows, err := q.db.Query(ctx, traceLotLines, lotIds)
 	if err != nil {
@@ -138,6 +144,7 @@ func (q *Queries) TraceLotLines(ctx context.Context, lotIds []int64) ([]TraceLot
 			&i.SourceKind,
 			&i.SourceID,
 			&i.SourceLineID,
+			&i.ToSiteName,
 		); err != nil {
 			return nil, err
 		}

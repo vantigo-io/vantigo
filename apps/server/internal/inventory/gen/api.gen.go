@@ -2124,6 +2124,9 @@ type InventoryTraceMovement struct {
 	Source            *InventorySourceRef `json:"source,omitempty"`
 	SupplierName      *string             `json:"supplierName,omitempty"`
 	SupplierReference *string             `json:"supplierReference,omitempty"`
+
+	// ToSiteName A transfer out's destination, the site the transfer was sent to.
+	ToSiteName *string `json:"toSiteName,omitempty"`
 }
 
 // InventoryTraceNode One node of a trace. kind lot is a lot (the root at depth 0, or one reached through a production, with its edge); component is an untracked component a production consumed (origin, components=all); every other kind is the movement that ends a path, named by its kind, with the lot's quantity on it.
@@ -2132,7 +2135,7 @@ type InventoryTraceNode struct {
 	Delivery *InventoryTraceDelivery `json:"delivery,omitempty"`
 	Depth    int32                   `json:"depth"`
 
-	// DepthLimit True on a lot at maxDepth, which is not expanded.
+	// DepthLimit True on a lot at maxDepth that went into (usage) or came from (origin) a production the trace does not expand. A lot at maxDepth still shows its ends.
 	DepthLimit bool `json:"depthLimit"`
 
 	// Edge The production that links a node to its parent — the parent lot's consumed quantity and the made lot's produced quantity in that movement.
@@ -7911,6 +7914,20 @@ type BlockInventoryLot404Response struct {
 func (response BlockInventoryLot404Response) VisitBlockInventoryLotResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type BlockInventoryLot409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response BlockInventoryLot409ApplicationProblemPlusJSONResponse) VisitBlockInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type BlockInventoryLot503ApplicationProblemPlusJSONResponse InventoryProblem

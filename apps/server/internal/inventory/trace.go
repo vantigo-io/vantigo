@@ -25,13 +25,18 @@ import (
 // The walk reads level by level — one read of the lots' lines
 // (ix_movement_lines_lot) and one of the productions they cross
 // (ux_movement_lines_movement_line) per level — up to maxDepth productions
-// deep and at most maxTraceNodes nodes (trace_too_large). The tree is then
+// deep and at most maxTraceLots lots (trace_too_large). The tree is then
 // laid out depth first: a lot reached twice is expanded where it is first
 // laid out, and every later reference carries seenAt, the first one's key.
+// A lot at the depth limit shows its ends; it is marked depthLimit only when
+// a production on the walk's side was left unexpanded. The layout holds at
+// most maxTraceLots lot nodes and maxTraceEnds other nodes — the ends and the
+// components — so a lot delivered thousands of times still traces (M88).
 
-// The trace's bounds (M89: D1 M15a's bound).
+// The trace's bounds (M89: D1 M15a's bound, on the lots).
 const (
-	maxTraceNodes     = 2000
+	maxTraceLots      = 2000
+	maxTraceEnds      = 20000
 	maxTraceDepth     = 10
 	codeTraceTooLarge = "trace_too_large"
 )
@@ -43,10 +48,11 @@ const (
 	traceComponent = "component"
 )
 
-// errTraceTooLarge is the 400 of a trace beyond maxTraceNodes nodes.
+// errTraceTooLarge is the 400 of a trace beyond maxTraceLots lots or
+// maxTraceEnds ends.
 func errTraceTooLarge() error {
 	return refuse(problem(http.StatusBadRequest, codeTraceTooLarge, "The trace is too large",
-		fmt.Sprintf("A trace has at most %d nodes; this one would have more. Trace a lot further down the tree, or fewer levels.", maxTraceNodes)))
+		fmt.Sprintf("A trace has at most %d lots and %d deliveries, receipts and other ends; this one would have more. Trace a lot further down the tree, or fewer levels.", maxTraceLots, maxTraceEnds)))
 }
 
 // traceVariant is a node's variant as the lines snapshotted it.
@@ -70,6 +76,7 @@ type traceMovement struct {
 	kind                          string
 	postedAt                      time.Time
 	reason, supplier, supplierRef *string
+	toSite                        *string // a transfer out's destination site
 	source                        *movementSource
 }
 
@@ -111,9 +118,89 @@ type lotMovement struct {
 	in, out *big.Rat
 }
 
-// walkTrace walks the graph from opts.root on q — the pool's snapshot for a
-// trace, the block's own transaction for its cascade — and lays the tree
-// out. An unknown root is the 404 refusal.
+// lotWalk is the walk's reading of the graph: each lot found with the level
+// it was first found at, every lot's lines, and the lines of every
+// production the walk crossed.
+type lotWalk struct {
+	depthOf  map[int64]int
+	lotLines map[int64][]store.TraceLotLinesRow
+	movLines map[int64][]store.TraceMovementLinesRow
+}
+
+// ids is the walk's lots in id order.
+func (w lotWalk) ids() []int64 {
+	ids := make([]int64, 0, len(w.depthOf))
+	for id := range w.depthOf {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+// walkLots walks the graph from root on q, level by level, through the
+// productions on the walk's side — up to maxDepth levels, none when maxDepth
+// is 0 (the block's walk, M92) — finding at most maxTraceLots lots. It reads
+// lines only; it lays nothing out.
+func walkLots(ctx context.Context, q *store.Queries, root int64, usage bool, maxDepth int) (lotWalk, error) {
+	w := lotWalk{depthOf: map[int64]int{root: 0}, lotLines: map[int64][]store.TraceLotLinesRow{}, movLines: map[int64][]store.TraceMovementLinesRow{}}
+	frontier := []int64{root}
+	for level := 0; len(frontier) > 0; level++ {
+		rows, err := q.TraceLotLines(ctx, frontier)
+		if err != nil {
+			return lotWalk{}, fmt.Errorf("inventory: read the lines of the traced lots: %w", err)
+		}
+		for _, r := range rows {
+			w.lotLines[r.LotID] = append(w.lotLines[r.LotID], r)
+		}
+		if maxDepth > 0 && level >= maxDepth {
+			break // the last level's lots are shown, not expanded
+		}
+		// The productions this level crosses: those that consumed a lot of
+		// it (usage) or produced one (origin).
+		var need []int64
+		for _, r := range rows {
+			if r.Kind == movementKindProduction && r.Outgoing == usage {
+				if _, ok := w.movLines[r.MovementID]; !ok {
+					w.movLines[r.MovementID] = nil
+					need = append(need, r.MovementID)
+				}
+			}
+		}
+		if len(need) > 0 {
+			lines, err := q.TraceMovementLines(ctx, need)
+			if err != nil {
+				return lotWalk{}, fmt.Errorf("inventory: read the productions of the traced lots: %w", err)
+			}
+			for _, l := range lines {
+				w.movLines[l.MovementID] = append(w.movLines[l.MovementID], l)
+			}
+		}
+		var next []int64
+		for _, r := range rows {
+			if r.Kind != movementKindProduction || r.Outgoing != usage {
+				continue
+			}
+			for _, l := range w.movLines[r.MovementID] {
+				// usage follows the produce lines, origin the consume lines.
+				if l.LotID == nil || l.Outgoing == usage {
+					continue
+				}
+				if _, seen := w.depthOf[*l.LotID]; !seen {
+					w.depthOf[*l.LotID] = level + 1
+					next = append(next, *l.LotID)
+				}
+			}
+		}
+		if len(w.depthOf) > maxTraceLots {
+			return lotWalk{}, errTraceTooLarge()
+		}
+		frontier = next
+	}
+	return w, nil
+}
+
+// walkTrace walks the graph from opts.root on the pool's snapshot and lays
+// the tree out. An unknown root is the 404 refusal.
 func walkTrace(ctx context.Context, q *store.Queries, opts traceOptions) (traceGraph, error) {
 	roots, err := q.LotsByIDs(ctx, []int64{opts.root})
 	if err != nil {
@@ -122,67 +209,12 @@ func walkTrace(ctx context.Context, q *store.Queries, opts traceOptions) (traceG
 	if len(roots) == 0 {
 		return traceGraph{}, notFound()
 	}
-	lotLines := map[int64][]store.TraceLotLinesRow{}
-	movLines := map[int64][]store.TraceMovementLinesRow{}
-	depthOf := map[int64]int{opts.root: 0}
-	frontier := []int64{opts.root}
-	for level := 0; len(frontier) > 0; level++ {
-		rows, err := q.TraceLotLines(ctx, frontier)
-		if err != nil {
-			return traceGraph{}, fmt.Errorf("inventory: read the lines of the traced lots: %w", err)
-		}
-		for _, r := range rows {
-			lotLines[r.LotID] = append(lotLines[r.LotID], r)
-		}
-		if level >= opts.maxDepth {
-			break // the last level's lots are shown, not expanded
-		}
-		// The productions this level crosses: those that consumed a lot of
-		// it (usage) or produced one (origin).
-		var need []int64
-		for _, r := range rows {
-			if r.Kind == movementKindProduction && r.Outgoing == opts.usage {
-				if _, ok := movLines[r.MovementID]; !ok {
-					movLines[r.MovementID] = nil
-					need = append(need, r.MovementID)
-				}
-			}
-		}
-		if len(need) > 0 {
-			lines, err := q.TraceMovementLines(ctx, need)
-			if err != nil {
-				return traceGraph{}, fmt.Errorf("inventory: read the productions of the traced lots: %w", err)
-			}
-			for _, l := range lines {
-				movLines[l.MovementID] = append(movLines[l.MovementID], l)
-			}
-		}
-		var next []int64
-		for _, r := range rows {
-			if r.Kind != movementKindProduction || r.Outgoing != opts.usage {
-				continue
-			}
-			for _, l := range movLines[r.MovementID] {
-				// usage follows the produce lines, origin the consume lines.
-				if l.LotID == nil || l.Outgoing == opts.usage {
-					continue
-				}
-				if _, seen := depthOf[*l.LotID]; !seen {
-					depthOf[*l.LotID] = level + 1
-					next = append(next, *l.LotID)
-				}
-			}
-		}
-		if len(depthOf) > maxTraceNodes {
-			return traceGraph{}, errTraceTooLarge()
-		}
-		frontier = next
+	w, err := walkLots(ctx, q, opts.root, opts.usage, opts.maxDepth)
+	if err != nil {
+		return traceGraph{}, err
 	}
-	ids := make([]int64, 0, len(depthOf))
-	for id := range depthOf {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
+	lotLines, movLines := w.lotLines, w.movLines
+	ids := w.ids()
 	lots, err := q.LotsByIDs(ctx, ids)
 	if err != nil {
 		return traceGraph{}, fmt.Errorf("inventory: read the traced lots: %w", err)
@@ -234,12 +266,22 @@ type traceBuilder struct {
 	movLines map[int64][]store.TraceMovementLinesRow
 	expanded map[int64]string // a lot's key where it is expanded
 	children map[string]int   // how many children each key has so far
+	lotNodes int              // the lot nodes laid out, against maxTraceLots
+	endNodes int              // the other nodes, against maxTraceEnds
 }
 
 // add lays one node out under parent, keyed by its place there.
 func (b *traceBuilder) add(n traceNode) (int, error) {
-	if len(b.g.nodes) >= maxTraceNodes {
-		return 0, errTraceTooLarge()
+	if n.kind == traceLot {
+		if b.lotNodes >= maxTraceLots {
+			return 0, errTraceTooLarge()
+		}
+		b.lotNodes++
+	} else {
+		if b.endNodes >= maxTraceEnds {
+			return 0, errTraceTooLarge()
+		}
+		b.endNodes++
 	}
 	if n.parent == "" && len(b.g.nodes) == 0 {
 		n.key = "0"
@@ -257,8 +299,9 @@ func (b *traceBuilder) lotVariant(id int64) traceVariant {
 	return traceVariant{id: l.VariantID, sku: l.Sku, name: l.ProductName, unit: b.g.units[id]}
 }
 
-// lot lays a lot out, and — once, unless it is at the depth limit — its
-// movements: the ends of its paths and the lots it leads to.
+// lot lays a lot out, and — once — its movements: the ends of its paths and
+// the lots it leads to. At the depth limit only its ends are laid out, and it
+// is marked depthLimit when a production on the walk's side is left (L1).
 func (b *traceBuilder) lot(id int64, parent string, depth int, edge *traceEdge) error {
 	i, err := b.add(traceNode{parent: parent, depth: depth, kind: traceLot, lotID: id, variant: b.lotVariant(id), edge: edge})
 	if err != nil {
@@ -270,7 +313,15 @@ func (b *traceBuilder) lot(id int64, parent string, depth int, edge *traceEdge) 
 		return nil
 	}
 	if depth >= b.opts.maxDepth {
-		b.g.nodes[i].depthLimit = true
+		for _, m := range groupLotMovements(b.lotLines[id]) {
+			if m.first.Kind == movementKindProduction && b.onWalkSide(m) {
+				b.g.nodes[i].depthLimit = true
+				continue
+			}
+			if err := b.movement(id, key, depth, m); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	b.expanded[id] = key
@@ -280,6 +331,15 @@ func (b *traceBuilder) lot(id int64, parent string, depth int, edge *traceEdge) 
 		}
 	}
 	return nil
+}
+
+// onWalkSide reports whether a lot's movement is on the walk's side of it:
+// taken from the lot (usage) or put into it (origin).
+func (b *traceBuilder) onWalkSide(m *lotMovement) bool {
+	if b.opts.usage {
+		return m.out.Sign() != 0
+	}
+	return m.in.Sign() != 0
 }
 
 // groupLotMovements is a lot's lines summed per movement, in the order the
@@ -353,7 +413,7 @@ func (b *traceBuilder) end(id int64, parent string, depth int, m *lotMovement, q
 	r := m.first
 	_, err := b.add(traceNode{parent: parent, depth: depth + 1, kind: r.Kind, lotID: id,
 		variant:  traceVariant{id: r.VariantID, sku: r.Sku, name: r.ProductName, unit: r.Unit},
-		movement: &traceMovement{id: r.MovementID, kind: r.Kind, postedAt: r.PostedAt, reason: r.Reason, supplier: r.SupplierName, supplierRef: r.SupplierReference, source: sourceOfRow(r)},
+		movement: &traceMovement{id: r.MovementID, kind: r.Kind, postedAt: r.PostedAt, reason: r.Reason, supplier: r.SupplierName, supplierRef: r.SupplierReference, toSite: r.ToSiteName, source: sourceOfRow(r)},
 		quantity: quantity})
 	return err
 }
@@ -418,15 +478,26 @@ func (b *traceBuilder) movement(id int64, key string, depth int, m *lotMovement)
 	return nil
 }
 
-// downstreamLots is the lots of a usage walk below its root that still hold
-// stock, in id order: what a block with the downstream list blocks (M92).
-func (g traceGraph) downstreamLots(root int64) []int64 {
-	var out []int64
-	for id, lot := range g.lots {
-		if id != root && lot.ID == id && g.onHand[id] != nil && g.onHand[id].Sign() > 0 {
-			out = append(out, id)
+// blockWalk is what a block with the downstream list blocks (M92): the
+// usage walk from root on q with no depth limit — every lot made from it
+// however deep, the bound on the lots still applying — reading only lines,
+// laying nothing out. It answers every lot found, root included, in id
+// order, and those below root that still hold stock.
+func blockWalk(ctx context.Context, q *store.Queries, root int64) (found, downstream []int64, err error) {
+	w, err := walkLots(ctx, q, root, true, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	found = w.ids()
+	held, err := q.TraceLotsOnHand(ctx, found)
+	if err != nil {
+		return nil, nil, fmt.Errorf("inventory: read what the lots made from lot %d hold: %w", root, err)
+	}
+	for _, h := range held {
+		if h.LotID != root && ratFromText(h.OnHand).Sign() > 0 {
+			downstream = append(downstream, h.LotID)
 		}
 	}
-	slices.Sort(out)
-	return out
+	slices.Sort(downstream)
+	return found, downstream, nil
 }
