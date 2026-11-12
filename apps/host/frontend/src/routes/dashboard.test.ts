@@ -1462,6 +1462,28 @@ describe("the dashboard's inventory card", () => {
       ),
     ).toBe(title);
   });
+
+  // The lots expiring within 14 days and those expired (manufacturing phase 2
+  // M72) are one item each with a count, worded here, and open the expiring list.
+  it("links the expiring and expired lots to the expiring list and words them with their count", () => {
+    expect(attentionHref({ module: "inventory", type: "lotsExpiring", entityId: "lots" })).toBe(
+      "/inventory/expiring?days=14",
+    );
+    expect(attentionHref({ module: "inventory", type: "lotsExpired", entityId: "lots" })).toBe("/inventory/expiring");
+    expect(attentionTitleKey({ module: "inventory", type: "lotsExpiring" })).toBe("dashboard.inventoryLotsExpiring");
+    expect(attentionTitleKey({ module: "inventory", type: "lotsExpired" })).toBe("dashboard.inventoryLotsExpired");
+    expect(
+      attentionTitle(
+        { module: "inventory", type: "lotsExpired", entityId: "lots", title: "3 lots in stock have expired", count: 3 },
+        (key, values) => `${key}:${values?.count}`,
+        () => "unused",
+      ),
+    ).toBe("dashboard.inventoryLotsExpired:3");
+    expect(dashboardCatalog.en["dashboard.inventoryLotsExpiring_other"]).toBe(
+      "{{count}} lots in stock expire within 14 days",
+    );
+    expect(dashboardCatalog.nb["dashboard.inventoryLotsExpired_one"]).toBe("{{count}} parti på lager har utløpt");
+  });
 });
 
 /**
