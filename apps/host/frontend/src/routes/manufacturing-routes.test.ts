@@ -4,6 +4,8 @@ import {
   BOM_OVERVIEW_ROUTE_PATH,
   BOM_ROUTE_PATH,
   BOMS_ROUTE_PATH,
+  DEVIATION_ROUTE_PATH,
+  DEVIATIONS_ROUTE_PATH,
   MANUFACTURING_HOME_ROUTE_PATH,
   MY_WORK_ROUTE_PATH,
   manufacturingNavItems,
@@ -24,6 +26,7 @@ import { describe, expect, it } from "vitest";
 import { routeTree } from "../routeTree.gen";
 import { Route as BomRoute } from "./manufacturing/boms.$bomId.index";
 import { Route as BomOverviewRoute } from "./manufacturing/boms.$bomId.overview";
+import { Route as DeviationRoute } from "./manufacturing/deviations.$deviationId";
 import { Route as OrderRoute } from "./manufacturing/orders.$orderId";
 import { Route as ShopFloorWorkCenterRoute } from "./manufacturing/shop-floor.work-centers.$workCenterId";
 import { Route as WorkOrderRoute } from "./manufacturing/shop-floor.work-orders.$workOrderId";
@@ -74,12 +77,15 @@ describe("the Manufacturing routes", () => {
       WORK_ORDER_ROUTE_PATH,
       SCHEDULE_ROUTE_PATH,
       REPORTS_ROUTE_PATH,
+      DEVIATIONS_ROUTE_PATH,
+      DEVIATION_ROUTE_PATH,
     ]) {
       const concrete = path
         .replace("$bomId", "7")
         .replace("$workCenterId", "3")
         .replace("$orderId", "5")
-        .replace("$workOrderId", "40");
+        .replace("$workOrderId", "40")
+        .replace("$deviationId", "9");
       const ids = matchedRouteIds(concrete);
       expect(ids, concrete).toContain("/manufacturing");
       expect(ids.at(-1), concrete).toBe(path);
@@ -99,5 +105,7 @@ describe("the Manufacturing routes", () => {
     expect(runBeforeLoad(WorkOrderRoute, { workOrderId: "40" })).toBeUndefined();
     expect(runBeforeLoad(BomRoute, { bomId: "7" })).toBeUndefined();
     expect(runBeforeLoad(WorkCenterRoute, { workCenterId: "3" })).toBeUndefined();
+    expect(isNotFound(runBeforeLoad(DeviationRoute, { deviationId: "DEV-9" }))).toBe(true);
+    expect(runBeforeLoad(DeviationRoute, { deviationId: "9" })).toBeUndefined();
   });
 });
