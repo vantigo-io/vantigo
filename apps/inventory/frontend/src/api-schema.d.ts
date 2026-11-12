@@ -826,6 +826,12 @@ export interface components {
             entered?: components["schemas"]["InventoryEntered"];
             /** Format: int64 */
             locationId: number;
+            /**
+             * Format: int64
+             * @description The lot the line takes or puts (manufacturing phase 2 M59): required for a tracked variant, refused for an untracked one (lot_not_allowed).
+             */
+            lotId?: number;
+            lot?: components["schemas"]["InventoryNewLot"];
             /** @enum {string} */
             mode: "change" | "set";
             /**
@@ -1054,6 +1060,14 @@ export interface components {
             /** @description Also every active location below each one. */
             subtree?: boolean;
         };
+        /** @description A lot as a movement line names it (manufacturing phase 2 M52). */
+        InventoryLotRef: {
+            /** Format: date */
+            expiry?: string | null;
+            /** Format: int64 */
+            id: number;
+            number: string;
+        };
         /** @description A node of a site's tree (I2). */
         InventoryLocation: {
             /** @description 1–16 characters A–Z and 0–9, unique among its siblings. */
@@ -1236,6 +1250,13 @@ export interface components {
         InventoryMeta: {
             /** @description inventory:stock-adjust — adjustments and moves. */
             canAdjust: boolean;
+            /** @description inventory:expired-override — issuing or consuming an expired lot the person chose (manufacturing phase 2 M62). */
+            canOverrideExpired: boolean;
+            /**
+             * Format: date
+             * @description Today in the workspace's business time zone, the day a lot's expiry is judged against (manufacturing phase 2 M62).
+             */
+            today: string;
             /** @description inventory:counts-manage — counts. */
             canCount: boolean;
             /** @description inventory:locations-manage — sites and locations. */
@@ -1266,6 +1287,11 @@ export interface components {
             entered?: components["schemas"]["InventoryEntered"];
             /** Format: int64 */
             fromLocationId: number;
+            /**
+             * Format: int64
+             * @description The lot the line takes or puts (manufacturing phase 2 M59): required for a tracked variant, refused for an untracked one (lot_not_allowed).
+             */
+            lotId?: number;
             /**
              * Format: double
              * @description A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11). More decimals are refused with quantity_invalid, never rounded.
@@ -1301,16 +1327,19 @@ export interface components {
             transfer?: components["schemas"]["InventoryTransferRef"];
         };
         /**
-         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1).
+         * @description An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
          * @enum {string}
          */
-        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue" | "transfer_out" | "transfer_in" | "production";
+        InventoryMovementKind: "adjustment" | "move" | "receipt" | "count" | "issue" | "transfer_out" | "transfer_in" | "production" | "unbuild";
         /** @description A quantity of a variant from a location, to one, or both (I9). */
         InventoryMovementLine: {
             entered?: components["schemas"]["InventoryEnteredSnapshot"];
             from?: components["schemas"]["InventoryLocationRef"];
             /** Format: int32 */
             lineNo: number;
+            lot?: components["schemas"]["InventoryLotRef"];
+            /** @description The line took an expired lot on the poster's inventory:expired-override (manufacturing phase 2 M62). */
+            expiredOverride?: boolean;
             /**
              * Format: double
              * @description More than 0, in the variant's unit as it was at posting.
@@ -1346,6 +1375,19 @@ export interface components {
             supplierName?: string;
             supplierReference?: string;
             transfer?: components["schemas"]["InventoryTransferRef"];
+        };
+        /** @description A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays. */
+        InventoryNewLot: {
+            /** Format: date */
+            bestBefore?: string;
+            /** Format: date */
+            expiry?: string;
+            note?: string;
+            /** @description 1–20 characters A–Z, a–z, 0–9 and . _ / -, unique per variant ignoring case. */
+            number?: string;
+            /** Format: date */
+            productionDate?: string;
+            supplierLot?: string;
         };
         /** @description A packaging of the variant as the catalog answers it (I24): what it holds in the variant's unit. The app breaks quantities down in them (I26). */
         InventoryPackaging: {
@@ -1427,7 +1469,7 @@ export interface components {
             /** Format: double */
             reorderPoint: number | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither. */
         InventoryProblem: {
             code?: string | null;
             detail?: string | null;
@@ -1489,12 +1531,25 @@ export interface components {
              */
             locationId?: number;
             /**
+             * Format: int64
+             * @description The lot the line takes or puts (manufacturing phase 2 M59): required for a tracked variant, refused for an untracked one (lot_not_allowed).
+             */
+            lotId?: number;
+            lot?: components["schemas"]["InventoryNewLot"];
+            serials?: components["schemas"]["InventorySerials"];
+            /**
              * Format: double
              * @description A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11). More decimals are refused with quantity_invalid, never rounded.
              */
             quantity?: number;
             /** Format: int32 */
             variantId: number;
+        };
+        /** @description The serial numbers of a receipt line of a serial variant (manufacturing phase 2 M57): count numbers from first, incrementing its trailing digits and keeping their width (SN0099, SN0100), or the numbers listed. The line becomes one line of 1 per serial, counted against the 500-line cap; the line's quantity, when given, must equal their number. The line's lot, when given, gives every serial its dates and supplier lot and names no number. */
+        InventorySerials: {
+            count?: number;
+            first?: string;
+            numbers?: string[];
         };
         /** @description A warehouse or a store, the root of a location tree (I1). */
         InventorySite: {

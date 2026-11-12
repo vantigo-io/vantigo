@@ -60,7 +60,7 @@ describe("the inventory catalog", () => {
       // transfer, not from a new-movement form, so only the three posting
       // kinds have the form's words.
       ...movementKinds
-        .filter((value) => !["count", "issue", "transfer_out", "transfer_in", "production"].includes(value))
+        .filter((value) => !["count", "issue", "transfer_out", "transfer_in", "production", "unbuild"].includes(value))
         .flatMap((value) => [
           `new_${value}`,
           `newDescription_${value}`,
