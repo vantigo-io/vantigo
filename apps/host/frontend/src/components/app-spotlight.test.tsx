@@ -456,6 +456,22 @@ describe("AppSpotlight navigation authorization", () => {
     }
   });
 
+  // Find a lot (manufacturing phase 2 M60) opens the lots list; it needs both views.
+  it("opens the lots from Find a lot for both views, and hides it with either alone", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["inventory:locations-view", "inventory:stock-view"], false, false, onNavigate);
+    fireEvent.click(await waitFor(() => screen.getByText("Find a lot", { exact: true })));
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/inventory/lots" }));
+    cleanup();
+    spotlight.close();
+
+    renderSpotlight(["inventory:locations-view"], false, false);
+    await waitFor(() => expect(screen.getByText("Find location or item", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Find a lot", { exact: true })).not.toBeInTheDocument();
+    cleanup();
+    spotlight.close();
+  });
+
   // Start count (inventory design §7, B) opens the counts with the start form
   // open; it needs counts-manage beside both views.
   it("opens the counts with the start form from Start count for counts-manage and both views", async () => {
