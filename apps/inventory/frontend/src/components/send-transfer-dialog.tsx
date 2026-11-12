@@ -282,7 +282,11 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
                         onChange={(next) => {
                           setSources((current) => ({ ...current, [line.id]: next === null ? null : Number(next) }));
                           // Another location proposes its own lot.
-                          setChosenLots(({ [line.id]: _, ...rest }) => rest);
+                          setChosenLots((current) => {
+                            const next = { ...current };
+                            delete next[line.id];
+                            return next;
+                          });
                         }}
                         disabled={stock.isPending}
                       />
