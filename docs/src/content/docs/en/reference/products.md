@@ -1,6 +1,6 @@
 ---
 title: "Products module"
-description: "The catalog of goods and services the company sells, with prices, variants and their packagings; a variant's tracking mode and lot offsets, held by stock and guarded until production records lots; the catalog contract other modules read and lock; the variants that hold stock; the product images; the API, its permissions and the product list's extra columns."
+description: "The catalog of goods and services the company sells, with prices, variants and their packagings; a variant's tracking mode and lot offsets, held by stock; the catalog contract other modules read and lock; the variants that hold stock; the product images; the API, its permissions and the product list's extra columns."
 sources:
   - apps/server/internal/products
   - apps/products/frontend
@@ -197,13 +197,16 @@ Products' titles, since Products' problems carry no code:
   field error on `tracking` (`tracking_requires_goods`). A product's change to Service
   sets every variant's tracking to `none` in the same transaction, after the holders
   have said it holds no stock.
-- **The guard, until production records lots** — any write that names a mode other
-  than `none` — a variant's create or update, a product's create — is refused 409
-  ***Tracking unavailable*** (`tracking_unavailable`), after the field checks. Deliveries
-  and productions cannot pick lots yet (layers O and M of manufacturing phase 2), so a
-  tracked variant would be refused `lot_required` by every document that takes it; the
-  variant form shows no *Tracking* select. Layer M removes the guard and adds the select.
-  A tracked variant exists until then only where a test writes it to the table.
+- **Judged under the variant's lock** — a variant `PUT` reads the product's type before
+  its transaction, for the plain refusal, and again after it has taken the variant
+  `FOR UPDATE`. A change to Service takes every variant `FOR UPDATE` before it updates
+  the product, so the second read is the committed type: a product turned into a service
+  while the update waited never gains a tracked variant (the same 400 on `tracking`).
+- **Every mode is open** — since layer M of manufacturing phase 2, deliveries pick lots
+  and productions name and consume them, so `lot` and `serial` are accepted on every
+  write — a variant's create or update, a product's create — and the variant form shows
+  the *Tracking* select. (Until then an interim guard refused them 409 *Tracking
+  unavailable*; it is gone.)
 - **A change is held** — a variant `PUT` whose `tracking` differs from the stored one
   asks every holder, inside its transaction and after the variant's `FOR UPDATE`, with
   the purpose `tracking_change`; the first hold refuses 409 ***Tracking held***
