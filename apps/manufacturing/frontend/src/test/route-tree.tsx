@@ -15,6 +15,8 @@ import {
   BOM_OVERVIEW_ROUTE_PATH,
   BOM_ROUTE_PATH,
   BOMS_ROUTE_PATH,
+  DEVIATION_ROUTE_PATH,
+  DEVIATIONS_ROUTE_PATH,
   MANUFACTURING_HOME_ROUTE_PATH,
   MY_WORK_ROUTE_PATH,
   NEW_BOM_ROUTE_PATH,
@@ -33,6 +35,7 @@ import {
 import {
   validateBomOverviewSearch,
   validateBomsSearch,
+  validateDeviationsSearch,
   validateNewOrderSearch,
   validateOrdersSearch,
   validateWorkCentersSearch,
@@ -40,6 +43,8 @@ import {
 import { BomPage, NewBomPage } from "../pages/bom";
 import { BomOverviewPage } from "../pages/bom-overview";
 import { BomsPage } from "../pages/boms";
+import { DeviationPage } from "../pages/deviation";
+import { DeviationsPage } from "../pages/deviations";
 import { MyWorkPage } from "../pages/my-work";
 import { NewOrderPage, OrderPage } from "../pages/order";
 import { OrdersPage } from "../pages/orders";
@@ -83,6 +88,8 @@ export const makeRouteTree = () => {
     route(WORK_ORDER_ROUTE_PATH, WorkOrderPage),
     route(SCHEDULE_ROUTE_PATH, SchedulePage),
     route(REPORTS_ROUTE_PATH, ReportsPage),
+    route(DEVIATIONS_ROUTE_PATH, DeviationsPage, validateDeviationsSearch),
+    route(DEVIATION_ROUTE_PATH, DeviationPage),
   ]);
 };
 

@@ -5,6 +5,11 @@ import type {
   ManufacturingBomOperationInput,
   ManufacturingBomUpdate,
 } from "../api/boms";
+import type {
+  ManufacturingCheckFrequency,
+  ManufacturingCheckKind,
+  ManufacturingCheckTemplateInput,
+} from "../api/quality";
 import type { ManufacturingVariantRef } from "../api/variants";
 import { compareDecimal, isDecimal, isPositiveDecimal, normalizeDecimal } from "./decimal";
 
@@ -44,6 +49,22 @@ export interface EditorOperation {
   setupMinutes: string;
   minutesPerCycle: string;
   instructions: string;
+  /** Its quality checks, in order (manufacturing phase 2 M95). */
+  checks: EditorCheck[];
+}
+
+/** One quality check of an operation (M95): a measure's limits are text, empty for none. */
+export interface EditorCheck {
+  rowKey: string;
+  kind: ManufacturingCheckKind;
+  title: string;
+  instructions: string;
+  frequency: ManufacturingCheckFrequency;
+  nominal: string;
+  min: string;
+  max: string;
+  unit: string;
+  quarantineOnFail: boolean;
 }
 
 /** One component line row. */
@@ -87,6 +108,21 @@ export const newOperation = (operations: readonly EditorOperation[]): EditorOper
   setupMinutes: "",
   minutesPerCycle: "",
   instructions: "",
+  checks: [],
+});
+
+/** A new check: pass or fail, recorded once per work order. */
+export const newCheck = (): EditorCheck => ({
+  rowKey: `check-${++nextKey}`,
+  kind: "pass_fail",
+  title: "",
+  instructions: "",
+  frequency: "each_work_order",
+  nominal: "",
+  min: "",
+  max: "",
+  unit: "",
+  quarantineOnFail: false,
 });
 
 /** A new component line, after the others. */
@@ -139,6 +175,20 @@ export const editorOf = (bom: ManufacturingBom): BomEditorState => ({
       setupMinutes: operation.setupMinutes ?? "",
       minutesPerCycle: operation.minutesPerCycle,
       instructions: operation.instructions,
+      checks: [...(operation.checks ?? [])]
+        .sort((a, b) => a.sequence - b.sequence)
+        .map((check) => ({
+          rowKey: `check-${++nextKey}`,
+          kind: check.kind,
+          title: check.title,
+          instructions: check.instructions,
+          frequency: check.frequency,
+          nominal: check.nominal ?? "",
+          min: check.min ?? "",
+          max: check.max ?? "",
+          unit: check.unit ?? "",
+          quarantineOnFail: check.quarantineOnFail,
+        })),
     })),
   lines: [...bom.lines]
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -174,7 +224,33 @@ const operationBody = (operation: EditorOperation, index: number): Manufacturing
   ...(operation.setupMinutes.trim() === "" ? {} : { setupMinutes: normalizeDecimal(operation.setupMinutes) }),
   minutesPerCycle: normalizeDecimal(operation.minutesPerCycle),
   instructions: operation.instructions,
+  checks: operation.checks.map(checkBody),
 });
+
+/** A limit as sent: its own text trimmed, absent when empty. */
+const limit = (value: string) => (value.trim() === "" ? undefined : value.trim().replace(",", "."));
+
+const checkBody = (check: EditorCheck): ManufacturingCheckTemplateInput => {
+  const measure = check.kind === "measure";
+  const body: ManufacturingCheckTemplateInput = {
+    kind: check.kind,
+    title: check.title.trim(),
+    frequency: check.frequency,
+    quarantineOnFail: check.quarantineOnFail,
+  };
+  if (check.instructions.trim() !== "") body.instructions = check.instructions;
+  if (measure) {
+    const [nominal, min, max, unit] = [limit(check.nominal), limit(check.min), limit(check.max), check.unit.trim()];
+    if (nominal !== undefined) body.nominal = nominal;
+    if (min !== undefined) body.min = min;
+    if (max !== undefined) body.max = max;
+    if (unit !== "") body.unit = unit;
+  }
+  return body;
+};
+
+/** Whether text is a measure: a decimal of either sign with at most four decimals. */
+export const isMeasure = (value: string) => /^[-+]?[0-9]+([.,][0-9]{1,4})?$/.test(value.trim());
 
 const lineBody = (line: EditorLine, index: number, operationKeys: ReadonlySet<string>): ManufacturingBomLineInput => ({
   variantId: line.variant?.id ?? 0,
@@ -234,6 +310,14 @@ export const editorProblems = (state: BomEditorState): Record<string, string> =>
       problems[`${at}.minutesPerCycle`] = "minutes";
     if (operation.setupMinutes.trim() !== "" && !isDecimal(operation.setupMinutes, 2))
       problems[`${at}.setupMinutes`] = "setupMinutes";
+    operation.checks.forEach((check, checkIndex) => {
+      const path = `${at}.checks[${checkIndex}]`;
+      if (check.title.trim() === "") problems[`${path}.title`] = "required";
+      if (check.kind !== "measure") return;
+      for (const field of ["nominal", "min", "max"] as const)
+        if (check[field].trim() !== "" && !isMeasure(check[field])) problems[`${path}.${field}`] = "measure";
+      if (check.min.trim() === "" && check.max.trim() === "") problems[`${path}.min`] = "limits";
+    });
   });
   state.lines.forEach((line, index) => {
     const at = `lines[${index}]`;

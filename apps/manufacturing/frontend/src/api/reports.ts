@@ -70,14 +70,15 @@ const fileNameFrom = (disposition: string | null, fallback: string): string => {
  * problem page when the period is refused; reading the answer here lets the
  * refusal be shown in the page's words.
  */
-export const downloadReportCsv = async (kind: ReportKind, filter: ReportFilter): Promise<CsvDownload> => {
-  const response = await fetch(appUrl(reportPath(kind, filter, "csv")), { credentials: "include" });
+export const downloadReportCsv = (kind: ReportKind, filter: ReportFilter): Promise<CsvDownload> =>
+  downloadCsvFrom(reportPath(kind, filter, "csv"), `manufacturing-${kind}.csv`);
+
+/** Any of the module's CSV files at `path`, read as `downloadReportCsv` reads a report's. */
+export const downloadCsvFrom = async (path: string, fallback: string): Promise<CsvDownload> => {
+  const response = await fetch(appUrl(path), { credentials: "include" });
   if (response.status === 401) await handleUnauthorized();
   if (!response.ok) throw await refusalOf(response);
-  return {
-    blob: await response.blob(),
-    fileName: fileNameFrom(response.headers.get("Content-Disposition"), `manufacturing-${kind}.csv`),
-  };
+  return { blob: await response.blob(), fileName: fileNameFrom(response.headers.get("Content-Disposition"), fallback) };
 };
 
 /**

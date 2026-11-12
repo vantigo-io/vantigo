@@ -10,6 +10,7 @@ import type {
   ManufacturingSalesOrderLine,
 } from "../api/orders";
 import type { ManufacturingPerson } from "../api/people";
+import type { ManufacturingDeviation } from "../api/quality";
 import type { ManufacturingSchedule, ManufacturingScheduleBar, ManufacturingScheduleDay } from "../api/schedule";
 import type {
   ManufacturingMyWork,
@@ -123,6 +124,7 @@ export const bomFixture = (patch: Partial<ManufacturingBom> = {}): Manufacturing
         setupMinutes: null,
         minutesPerCycle: "4",
         instructions: "",
+        checks: [],
       },
     ],
     lines: [
@@ -452,6 +454,8 @@ export interface ManufacturingServer {
   draft?: (draft: ManufacturingProductionDraft) => ManufacturingProductionDraft;
   /** The orders' lots (manufacturing phase 2 M83), by order id; none made or consumed when absent. */
   orderLots?: Record<number, ManufacturingOrderLots>;
+  /** The deviations (manufacturing phase 2 M99), newest first. */
+  deviations?: ManufacturingDeviation[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -486,6 +490,7 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
     canSeeCosts: true,
     canManageOrders: false,
     canWorkShopFloor: false,
+    canManageQuality: false,
     canTraceLots: false,
     currency: "NOK",
     ...server.meta,
@@ -678,6 +683,17 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       return Promise.resolve(
         jsonResponse(200, { items: people().filter((one) => one.displayName.toLowerCase().includes(q)) }),
       );
+    }
+    if (path === "/deviations") {
+      const items = (server.deviations ?? []).filter(
+        (one) => !url.searchParams.get("status") || one.status === url.searchParams.get("status"),
+      );
+      return Promise.resolve(jsonResponse(200, { items, total: items.length }));
+    }
+    const deviation = /^\/deviations\/(\d+)$/.exec(path);
+    if (deviation) {
+      const found = server.deviations?.find((one) => one.id === Number(deviation[1]));
+      return Promise.resolve(found ? jsonResponse(200, found) : manufacturingProblem(404, undefined));
     }
     if (/^\/boms\/\d+\/overview$/.test(path) && server.overview)
       return Promise.resolve(jsonResponse(200, server.overview));

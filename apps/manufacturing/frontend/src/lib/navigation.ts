@@ -1,5 +1,6 @@
 import {
   BOMS_ROUTE_PATH,
+  DEVIATIONS_ROUTE_PATH,
   MANUFACTURING_HOME_ROUTE_PATH,
   ORDERS_ROUTE_PATH,
   SCHEDULE_ROUTE_PATH,
@@ -9,7 +10,7 @@ import {
 
 /** One sidebar destination of the app (manufacturing design M7); the host owns its label and icon. */
 export interface ManufacturingNavItem {
-  key: "overview" | "orders" | "shopFloor" | "schedule" | "boms" | "workCenters";
+  key: "overview" | "orders" | "shopFloor" | "schedule" | "deviations" | "boms" | "workCenters";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -21,7 +22,7 @@ export interface ManufacturingNavItem {
 const access = ["manufacturing:access"] as const;
 
 /**
- * The sidebar in M7's order, all six destinations. The shop floor and the
+ * The sidebar in M7's order, with the deviations after the schedule. The shop floor and the
  * schedule are read with the app's key; what may be done there is the
  * meta's (M33, M36). The reports have no entry of their own: they live under
  * the overview, whose entry the longest-prefix highlight keeps lit on
@@ -32,6 +33,8 @@ export const manufacturingNavItems: readonly ManufacturingNavItem[] = [
   { key: "orders", label: "navOrders", to: ORDERS_ROUTE_PATH, requiredPermissions: access },
   { key: "shopFloor", label: "navShopFloor", to: SHOP_FLOOR_ROUTE_PATH, requiredPermissions: access },
   { key: "schedule", label: "navSchedule", to: SCHEDULE_ROUTE_PATH, requiredPermissions: access },
+  // The deviations (manufacturing phase 2 M99), read with the app's key; closing one is quality-manage's.
+  { key: "deviations", label: "navDeviations", to: DEVIATIONS_ROUTE_PATH, requiredPermissions: access },
   { key: "boms", label: "navBoms", to: BOMS_ROUTE_PATH, requiredPermissions: access },
   { key: "workCenters", label: "navWorkCenters", to: WORK_CENTERS_ROUTE_PATH, requiredPermissions: access },
 ];

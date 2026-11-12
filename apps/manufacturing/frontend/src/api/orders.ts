@@ -72,6 +72,9 @@ export const orderEventKinds: readonly ManufacturingOrderEventKind[] = [
   "rescheduled",
   "children_created",
   "origin_cancelled",
+  "check_recorded",
+  "deviation_opened",
+  "deviation_closed",
 ];
 
 /** A page of the order list. */

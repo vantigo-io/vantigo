@@ -4,12 +4,13 @@ import { manufacturingNavItems, visibleManufacturingNavItems } from "./navigatio
 const keys = (permissions: string[] | undefined) => visibleManufacturingNavItems(permissions).map((item) => item.key);
 
 describe("the sidebar entries", () => {
-  it("are M7's six, in its order", () => {
+  it("are M7's six and the deviations (phase 2 M99), in order", () => {
     expect(manufacturingNavItems.map((item) => [item.key, item.to])).toEqual([
       ["overview", "/manufacturing"],
       ["orders", "/manufacturing/orders"],
       ["shopFloor", "/manufacturing/shop-floor"],
       ["schedule", "/manufacturing/schedule"],
+      ["deviations", "/manufacturing/deviations"],
       ["boms", "/manufacturing/boms"],
       ["workCenters", "/manufacturing/work-centers"],
     ]);
@@ -21,10 +22,11 @@ describe("the sidebar entries", () => {
       "orders",
       "shopFloor",
       "schedule",
+      "deviations",
       "boms",
       "workCenters",
     ]);
-    expect(keys(["*"])).toEqual(["overview", "orders", "shopFloor", "schedule", "boms", "workCenters"]);
+    expect(keys(["*"])).toEqual(["overview", "orders", "shopFloor", "schedule", "deviations", "boms", "workCenters"]);
     expect(keys(["manufacturing:boms-manage"])).toEqual([]);
     expect(keys(["manufacturing:costs-view"])).toEqual([]);
     expect(keys(undefined)).toEqual([]);

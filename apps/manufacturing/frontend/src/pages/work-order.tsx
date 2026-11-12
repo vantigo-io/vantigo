@@ -9,6 +9,7 @@ import {
   IconPlayerPause,
   IconPlayerPlay,
   IconTrash,
+  IconZoomExclamation,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -27,6 +28,8 @@ import {
   useWorkOrderOrderLive,
   workOrderQueryOptions,
 } from "../api/shop-floor";
+import { ChecksPanel } from "../components/checks-panel";
+import { DeviationDialog } from "../components/deviation-dialog";
 import { Markdown } from "../components/markdown";
 import { OrderLots } from "../components/order-lots";
 import { ProductionDialog } from "../components/production-dialog";
@@ -103,6 +106,7 @@ export const WorkOrderPage = () => {
   const [askForce, setAskForce] = useState(false);
   const [producing, setProducing] = useState(false);
   const [scrapping, setScrapping] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const work = canWorkOnShopFloor(meta.data);
   const data = view.data;
 
@@ -296,6 +300,16 @@ export const WorkOrderPage = () => {
               >
                 {t("reportScrap")}
               </Button>
+              <Button
+                h={ACTION_HEIGHT}
+                size="xl"
+                variant="default"
+                color="red"
+                leftSection={<IconZoomExclamation size={28} />}
+                onClick={() => setReporting(true)}
+              >
+                {t("reportDeviation")}
+              </Button>
             </SimpleGrid>
           ) : (
             !work &&
@@ -311,6 +325,9 @@ export const WorkOrderPage = () => {
             </Alert>
           )}
         </Stack>
+      </PageSection>
+      <PageSection title={t("checksTitle")}>
+        <ChecksPanel workOrderId={workOrder.id} checks={workOrder.checks ?? []} canRecord={work && !closed} />
       </PageSection>
       <PageSection title={t("onThisWorkOrder")}>
         <Stack gap="md" data-assist="manufacturing.work-order.people">
@@ -441,6 +458,12 @@ export const WorkOrderPage = () => {
         opened={producing}
         onClose={() => setProducing(false)}
         finish={(production) => finishWorkOrder(id, { production }).then((answer) => answer.production)}
+      />
+      <DeviationDialog
+        opened={reporting}
+        onClose={() => setReporting(false)}
+        orderId={order.id}
+        workOrderId={workOrder.id}
       />
       <ScrapDialog
         workOrderId={id}

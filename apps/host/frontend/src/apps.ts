@@ -69,6 +69,7 @@ import {
   IconUserSearch,
   IconUsers,
   IconUsersGroup,
+  IconZoomExclamation,
 } from "@tabler/icons-react";
 import { type AgentsNavItem, agentsNavItems } from "@vantigo/agents-ui";
 import { type InventoryNavItem, inventoryNavItems } from "@vantigo/inventory-ui";
@@ -270,6 +271,7 @@ const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<Nav
   orders: { label: "navigation.manufacturingOrders", icon: IconClipboardList },
   shopFloor: { label: "navigation.manufacturingShopFloor", icon: IconHammer },
   schedule: { label: "navigation.manufacturingSchedule", icon: IconCalendarTime },
+  deviations: { label: "navigation.manufacturingDeviations", icon: IconZoomExclamation },
   boms: { label: "navigation.manufacturingBoms", icon: IconListDetails },
   workCenters: { label: "navigation.manufacturingWorkCenters", icon: IconTool },
 };
