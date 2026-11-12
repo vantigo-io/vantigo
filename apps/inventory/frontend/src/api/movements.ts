@@ -110,6 +110,8 @@ export const refusalCodes = [
   "too_many_attachments",
   "attachment_type",
   "storage_not_configured",
+  // Manufacturing phase 2, L2: a count line's new lot.
+  "lot_invalid",
 ] as const;
 
 export interface MovementsFilter {

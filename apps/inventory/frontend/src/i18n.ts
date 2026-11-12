@@ -794,6 +794,7 @@ export const inventoryCatalog = {
     "refusal.too_many_attachments": "The lot has 20 files. Remove one first.",
     "refusal.attachment_type": "A lot keeps PDF, JPEG and PNG files, and the contents must match the file's type.",
     "refusal.storage_not_configured": "File storage is not set up in this installation.",
+    "refusal.lot_invalid": "The lot number does not read: 1–20 characters A–Z, a–z, 0–9 and . _ / -.",
     // Manufacturing phase 2, L2: counts, transfers and the import with lots; the expiring list; lot labels.
     countLotNumber: "Lot number",
     countLotNumberOf: "Lot number of {{line}}",
@@ -803,7 +804,7 @@ export const inventoryCatalog = {
     importOutcome_lot_required: "The item is tracked in lots: give its lot",
     importOutcome_lot_not_allowed: "The item is not tracked in lots",
     importOutcome_lot_invalid: "The lot or its dates do not read",
-    importOutcome_serial_quantity: "A serial number's row is of quantity 1",
+    importOutcome_serial_quantity: "A serial number is one row, of quantity 1",
     originImport: "Opening-balance import, movement {{id}}",
     navExpiring: "Expiring",
     expiringTitle: "Expiring",
@@ -823,6 +824,21 @@ export const inventoryCatalog = {
     printLotLabelsHint_other:
       "A label for each of the {{count}} lots: its LOT code as a barcode, which a scan reads back, its number, its item and its expiry.",
     labelCopies: "Labels per lot",
+    // The review of L2.
+    countLotDatesOf: "Lot dates of {{line}}",
+    countLotDatesHint:
+      "The new lot gets only the dates filled in here: a lot found in a count takes none from the item's days.",
+    lotNumberInvalid: "1–20 characters: A–Z, a–z, 0–9 and . _ / -",
+    countPickLotTitle: "Which lot of {{sku}}?",
+    countPickLotHint:
+      "{{sku}} has more than one lot at {{location}}. Pick the one you are counting, or start a new lot.",
+    countPickItemTitle: "Which item?",
+    countPickItemHint: "The lot number {{number}} is used by more than one item. Pick the one you are counting.",
+    countNewLot: "New lot…",
+    printLotLabelsShown_one: "Only the lot shown is printed. Scroll down the list to load more first.",
+    printLotLabelsShown_other: "Only the {{count}} lots shown are printed. Scroll down the list to load more first.",
+    sendMoreThanLot:
+      "The lot holds only {{onHand}} here: split the line on the draft to send the rest from another lot.",
   },
   nb: {
     inventory: "Lager",
@@ -1610,6 +1626,7 @@ export const inventoryCatalog = {
     "refusal.too_many_attachments": "Partiet har 20 filer. Fjern én først.",
     "refusal.attachment_type": "Et parti tar PDF-, JPEG- og PNG-filer, og innholdet må stemme med filtypen.",
     "refusal.storage_not_configured": "Fillagring er ikke satt opp i denne installasjonen.",
+    "refusal.lot_invalid": "Partinummeret kan ikke leses: 1–20 tegn A–Z, a–z, 0–9 og . _ / -.",
     // Manufacturing phase 2, L2: counts, transfers and the import with lots; the expiring list; lot labels.
     countLotNumber: "Partinummer",
     countLotNumberOf: "Partinummer for {{line}}",
@@ -1619,7 +1636,7 @@ export const inventoryCatalog = {
     importOutcome_lot_required: "Varen spores i partier: oppgi partiet",
     importOutcome_lot_not_allowed: "Varen spores ikke i partier",
     importOutcome_lot_invalid: "Partiet eller datoene kan ikke leses",
-    importOutcome_serial_quantity: "En rad med et serienummer har antall 1",
+    importOutcome_serial_quantity: "Et serienummer står på én rad, med antall 1",
     originImport: "Import av inngående beholdning, bevegelse {{id}}",
     navExpiring: "Utløper snart",
     expiringTitle: "Utløper snart",
@@ -1639,6 +1656,20 @@ export const inventoryCatalog = {
     printLotLabelsHint_other:
       "En etikett for hvert av de {{count}} partiene: LOT-koden som strekkode, som en skanning leser tilbake, nummeret, varen og utløpsdatoen.",
     labelCopies: "Etiketter per parti",
+    // Gjennomgangen av L2.
+    countLotDatesOf: "Partidatoer for {{line}}",
+    countLotDatesHint:
+      "Det nye partiet får bare datoene som fylles inn her: et parti funnet i en telling får ingen fra varens dager.",
+    lotNumberInvalid: "1–20 tegn: A–Z, a–z, 0–9 og . _ / -",
+    countPickLotTitle: "Hvilket parti av {{sku}}?",
+    countPickLotHint: "{{sku}} har mer enn ett parti på {{location}}. Velg det du teller, eller start et nytt parti.",
+    countPickItemTitle: "Hvilken vare?",
+    countPickItemHint: "Partinummeret {{number}} brukes av mer enn én vare. Velg den du teller.",
+    countNewLot: "Nytt parti …",
+    printLotLabelsShown_one: "Bare partiet som vises, skrives ut. Bla ned i listen for å hente flere først.",
+    printLotLabelsShown_other:
+      "Bare de {{count}} partiene som vises, skrives ut. Bla ned i listen for å hente flere først.",
+    sendMoreThanLot: "Partiet har bare {{onHand}} her: del linjen i utkastet for å sende resten fra et annet parti.",
   },
 } satisfies CatalogResources;
 
