@@ -382,6 +382,8 @@ export const manufacturingCatalog = {
     addLot: "Add lot",
     removeLot: "Remove lot",
     lotsAddUp: "The lots take {{sum}}; the line consumes and scraps {{total}}.",
+    lotChosenTwice: "Chosen in another row",
+    lotRowZero: "More than 0",
     lotChoice: "{{number}} · {{location}} · {{quantity}}",
     lotChoiceExpiry: "{{number}} · {{location}} · {{quantity}} · expires {{expiry}}",
     lotStatus_quarantine: "on hold",
@@ -398,7 +400,8 @@ export const manufacturingCatalog = {
     lotPatternHint:
       "{MO} the order's number, {YYMMDD} or {YYYY} {MM} {DD} the production date, {SKU} the product's SKU, {N} a running number. The default {MO} puts every production of an order in one lot.",
     lotPatternPreview: "For example {{sample}}",
-    lotPatternInvalid: "Renders {{sample}}: a lot number has 1–20 letters, digits and . _ / - only.",
+    lotPatternInvalid:
+      "Can render {{sample}} on a later order: a lot number has 1–20 letters, digits and . _ / - only.",
     closeOrder: "Close",
     closeOrderTitle: "Close {{number}}?",
     closeOrderBody:
@@ -614,6 +617,8 @@ export const manufacturingCatalog = {
     "refusal.lot_expired": "A lot is expired. Only someone allowed to use expired lots can choose it.",
     "refusal.lot_blocked": "A lot is on hold or blocked and cannot be used.",
     "refusal.lot_dates_differ": "The lot exists with other dates. Leave the dates empty or use the lot's own.",
+    "refusal.lot_exists":
+      "That serial or lot number is taken already: every unit made, and every counted lot, gets a new one. Choose another number.",
     event_time_log_corrected: "Time log corrected",
     event_time_log_added: "Time log added",
     event_planned: "Planned",
@@ -1119,6 +1124,8 @@ export const manufacturingCatalog = {
     addLot: "Legg til parti",
     removeLot: "Fjern parti",
     lotsAddUp: "Partiene tar {{sum}}; linjen forbruker og kasserer {{total}}.",
+    lotChosenTwice: "Valgt i en annen rad",
+    lotRowZero: "Mer enn 0",
     lotChoice: "{{number}} · {{location}} · {{quantity}}",
     lotChoiceExpiry: "{{number}} · {{location}} · {{quantity}} · utløper {{expiry}}",
     lotStatus_quarantine: "sperret",
@@ -1135,7 +1142,8 @@ export const manufacturingCatalog = {
     lotPatternHint:
       "{MO} ordrens nummer, {YYMMDD} eller {YYYY} {MM} {DD} produksjonsdatoen, {SKU} produktets SKU, {N} et løpenummer. Standarden {MO} legger alle produksjoner på en ordre i ett parti.",
     lotPatternPreview: "For eksempel {{sample}}",
-    lotPatternInvalid: "Gir {{sample}}: et partinummer har 1–20 bokstaver, sifre og bare . _ / -.",
+    lotPatternInvalid:
+      "Kan gi {{sample}} på en senere ordre: et partinummer har 1–20 bokstaver, sifre og bare . _ / -.",
     closeOrder: "Avslutt",
     closeOrderTitle: "Avslutte {{number}}?",
     closeOrderBody:
@@ -1351,6 +1359,8 @@ export const manufacturingCatalog = {
     "refusal.lot_expired": "Et parti er utløpt. Bare den som har lov til å bruke utløpte partier, kan velge det.",
     "refusal.lot_blocked": "Et parti er sperret eller blokkert og kan ikke brukes.",
     "refusal.lot_dates_differ": "Partiet finnes med andre datoer. La datoene stå tomme eller bruk partiets egne.",
+    "refusal.lot_exists":
+      "Det serie- eller partinummeret er tatt fra før: hver enhet som lages, og hvert tellet parti, får et nytt. Velg et annet nummer.",
     event_time_log_corrected: "Tidsregistrering korrigert",
     event_time_log_added: "Tidsregistrering lagt til",
     event_planned: "Planlagt",

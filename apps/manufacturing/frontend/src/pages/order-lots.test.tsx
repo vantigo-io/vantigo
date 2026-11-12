@@ -135,6 +135,66 @@ describe("the production dialog's lots", () => {
     });
   });
 
+  it("proposes the lots again at the location a person chose for the line", async () => {
+    const fetchMock = stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      draft: (draft) => {
+        const tracked = trackedDraft(draft);
+        return {
+          ...tracked,
+          lines: tracked.lines.map((line) => ({
+            ...line,
+            lotChoices: [
+              ...line.lotChoices,
+              {
+                lotId: 504,
+                lotNumber: "B-SITE",
+                expiry: "2027-03-01",
+                bestBefore: null,
+                locationId: 10,
+                fullCode: "OSL",
+                quantity: "100",
+                status: "available" as const,
+                expired: false,
+                serial: false,
+              },
+            ],
+          })),
+        };
+      },
+      write: (method, path) =>
+        method === "POST" && path === "/orders/5/productions" ? jsonResponse(201, PRODUCTION) : undefined,
+    });
+    const dialog = await openDialog();
+    expect(await within(dialog).findByText(/Taken first-expiry-first when you post: B-OLD/)).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByLabelText("Consumed of BOARD")).toHaveValue("40.000"));
+    await userEvent.click(within(dialog).getByLabelText("Take BOARD from", { selector: "input" }));
+    await userEvent.click(await screen.findByRole("option", { name: "OSL" }));
+    expect(await within(dialog).findByText(/Taken first-expiry-first when you post: B-SITE/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/B-OLD/)).not.toBeInTheDocument();
+    // Change lot starts from the proposal shown.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Change lot" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Post" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/orders\/5\/productions$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/orders\/5\/productions$/)[0].body).toMatchObject({
+      lines: [{ componentId: 60, fromLocationId: 10, lots: [{ lotId: 504, locationId: 10, consumed: "40" }] }],
+    });
+  });
+
+  it("refuses a lot row of 0 and a lot chosen twice before posting", async () => {
+    stubManufacturingApi({ meta: { canWorkShopFloor: true }, draft: trackedDraft });
+    const dialog = await openDialog();
+    await waitFor(() => expect(within(dialog).getByLabelText("Consumed of BOARD")).toHaveValue("40.000"));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Change lot" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add lot" }));
+    await userEvent.type(within(dialog).getByLabelText("Quantity of lot 3 of BOARD"), "0");
+    expect(await within(dialog).findByText("More than 0")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByLabelText("Lot 3 of BOARD", { selector: "input" }));
+    await userEvent.click(await screen.findByRole("option", { name: /^B-OLD/ }));
+    expect(await within(dialog).findByText("Chosen in another row")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Post" })).toBeDisabled();
+  });
+
   it("asks a serial product's first serial number", async () => {
     stubManufacturingApi({
       meta: { canWorkShopFloor: true },
@@ -168,11 +228,14 @@ describe("the order's Lots tab", () => {
         },
       },
     });
-    renderRoute("/manufacturing/orders/5");
+    const { router } = renderRoute("/manufacturing/orders/5");
     await userEvent.click(await screen.findByRole("tab", { name: "Lots" }));
     expect(await screen.findByRole("link", { name: "MO-12" })).toHaveAttribute("href", "/inventory/lots/900");
     expect(screen.getByRole("link", { name: "B-OLD" })).toHaveAttribute("href", "/inventory/lots/501");
     expect(screen.getByText("Lots made")).toBeInTheDocument();
+    // The link goes through the router, not a reload.
+    await userEvent.click(screen.getByRole("link", { name: "B-OLD" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/inventory/lots/501"));
   });
 
   it("says when no lot was made or consumed", async () => {
@@ -212,6 +275,10 @@ describe("the BoM's lot number pattern", () => {
     await userEvent.clear(pattern);
     await userEvent.type(pattern, "L{{N} X");
     expect(await screen.findByText(/a lot number has 1–20 letters/)).toBeInTheDocument();
+    // A pattern whose preview fits, but a busy shop's order numbers outgrow.
+    await userEvent.clear(pattern);
+    await userEvent.type(pattern, "LOTSX-{{MO}-{{N}");
+    expect(await screen.findByText(/Can render LOTSX-MO-99999-9-9999/)).toBeInTheDocument();
     await userEvent.clear(pattern);
     await userEvent.type(pattern, "L-{{N}");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
