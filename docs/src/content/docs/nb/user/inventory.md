@@ -1,6 +1,6 @@
 ---
 title: Lager
-description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, partier og serienumre — på varemottak, flyttinger og justeringer, listen Partier, siden for et parti, å sperre et parti og frigi det, filene til et parti, partiene som utløper snart, partietiketter, å spore et parti begge veier og eksportere sporingen, å blokkere et parti med partiene laget av det ved en tilbakekalling, GS1-128-etiketter — varetelling, partier medregnet, import av inngående beholdning med eller uten partier, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
+description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, partier og serienumre — på varemottak, flyttinger og justeringer, listen Partier, siden for et parti, å sperre et parti og frigi det, kontroll ved mottak og partiene som venter på den, å melde avvik på et parti, filene til et parti, partiene som utløper snart, partietiketter, å spore et parti begge veier og eksportere sporingen, å blokkere et parti med partiene laget av det ved en tilbakekalling, GS1-128-etiketter — varetelling, partier medregnet, import av inngående beholdning med eller uten partier, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
 sidebar:
   order: 65
 sources:
@@ -393,6 +393,31 @@ blokkering: mens dens egen karantene er aktiv, er **Karantene** nedtonet og side
 den sperringen for å sette en ny. En sperring som et dokument i en annen modul har satt —
 et avvik i Produksjon, for eksempel — viser *Satt av Produksjon, frigis der*: den frigis på
 det dokumentet, ikke her, og den hindrer ikke siden i å sette sin egen.
+
+### Kontroller ved mottak
+
+På siden til en vare som spores med partier eller serienumre, setter **Kontroller ved
+mottak** det som kommer inn i karantene til noen har kontrollert det. Å slå det av og på
+krever **Justere beholdning** (`inventory:stock-adjust`); en vare som ikke spores, tilbyr
+det ikke.
+
+Fra da av setter hvert varemottak av varen hvert parti det lager, eller legger til, under en
+karantenesperre med årsaken **Kontroll**, navngitt med mottakets bevegelse. Mottaket sier
+fra når det bokføres: *2 partier holdt for kontroll*. Mottatt i et parti som allerede har
+beholdning, er hele partiet i karantene — også det som lå der fra før — fordi et parti er
+én mengde: frigi det når de nye varene er kontrollert.
+
+Partiene som venter på kontroll, er kontrollkøen: forsiden lenker til dem som *Partier
+venter på kontroll*, og de er listen **Partier** filtrert på **Karantene** med årsaken
+**Kontroll**. På siden til et parti avslutter **Frigi** på mottakets sperring — med
+**Administrere partier** — den som alle sidens egne sperringer.
+
+### Meld avvik på et parti
+
+Når Produksjon er i bruk, åpner **Meld avvik** på siden til et parti et nytt avvik på
+partiet i Produksjon, som kan sette partiet i karantene. Sperringen vises på siden med
+avviksnummeret, lenket til avviket, og oppheves ved å lukke avviket: se
+[Avvik](/nb/user/manufacturing/#avvik).
 
 ### Filene til et parti
 

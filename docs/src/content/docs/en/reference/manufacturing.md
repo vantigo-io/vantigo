@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
   - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
   - apps/server/internal/db/migrations/00167_manufacturing_lots.sql
+  - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
   - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/events_manufacturing.go
   - apps/host/frontend/src/routes/manufacturing
@@ -103,6 +104,7 @@ status, not its availability, which only the order page computes
 | `manufacturing:orders-manage` | Manage manufacturing orders / Administrere produksjonsordrer | Create, update, confirm, reserve, close and cancel manufacturing orders; add and change their component lines; register a production; every shop-floor action; correct a time log and add a missing one; plan, plan all, unplan and reschedule, and set an order's requested start | no | yes |
 | `manufacturing:shop-floor` | Work on the shop floor / Arbeide i verkstedet | Register a production; start, pause and finish a work order, report scrap, block and unblock a work center | no | yes |
 | `manufacturing:costs-view` | See manufacturing costs / Se produksjonskostnader | Every cost field in a response — an order's `cost` among them — writing a work center's rates, and the production-cost report | **yes** | **no** |
+| `manufacturing:quality-manage` | Manage quality / Administrere kvalitet | Close a deviation, which releases its own holds unless it is closed as scrap or return, and release the holds of one closed so (M102) | no | yes |
 
 Every read is checked against `manufacturing:access`; every write of a work center or a
 BoM against `manufacturing:access` **and** `manufacturing:boms-manage`, and every write
@@ -121,7 +123,11 @@ route names only `manufacturing:access` and the Assistant's gate cannot see the 
 either-or — and an agent does not clock in (§10). The stock figures are Manufacturing's own reads of `contracts.Stock` and need no
 Inventory key (§8); the variant search is Manufacturing's own (`GET /variants`) and needs
 no Products key. `GET /meta` answers the caller's `canManageBoms`, `canSeeCosts`,
-`canManageOrders` and `canWorkShopFloor`, and the currency, `NOK`.
+`canManageOrders`, `canWorkShopFloor` and `canManageQuality`, and the currency, `NOK`.
+Recording a check's result, uploading its photo and reporting a deviation follow the
+shop floor's rule — `access`, then `shop-floor` or `orders-manage` in the handler — and
+the first two are `x-vantigo-assistant: never`; closing a deviation and releasing its
+holds are checked against `access` **and** `quality-manage`.
 
 ### Cost shaping
 
@@ -878,8 +884,12 @@ own transaction:
    overlap check, so two supervisors adding the same person's time on different orders at
    once cannot both pass it;
 7. the ledger — `ReserveForProduction`, `Release`, `Produce`; a production of tracked
-   goods calls `EnsureLots` first (7a) and `Produce` last (7c), and is retried once on a
-   deadlock ([lots on productions](#lots-on-productions)).
+   goods calls `EnsureLots` first (7a), then `HoldLots` for each open quarantining
+   [deviation](#deviations) of the order on the lots it answered (7b), and `Produce` last
+   (7c), and is retried once on a deadlock ([lots on productions](#lots-on-productions)).
+   Before it, a production with good output is [gated](#what-the-checks-gate) on the
+   checks, read under the order's lock; a result takes the work order's check
+   `FOR UPDATE` at step 4.
 
 A shop-floor action that starts from a work order first reads that work order's order id,
 then follows the order above. A **start** that ends the caller's open log on another
@@ -897,7 +907,7 @@ productions at once on one order therefore run one after the other.
 
 ### Live
 
-Five live topics (M25, M32, M36), declared through `Module.LiveTopics`:
+Six live topics (M25, M32, M36, phase 2 §17), declared through `Module.LiveTopics`:
 
 - **`manufacturing.orders`**, keyless: the list;
 - **`manufacturing.order:<id>`**: one order;
@@ -909,7 +919,9 @@ Five live topics (M25, M32, M36), declared through `Module.LiveTopics`:
 - **`manufacturing.schedule:<siteId>`**: one site's [board](#the-board), event
   **`schedule.changed`**, told by plan, plan all, unplan and reschedule, and by what the
   board draws of a work center: block and unblock, a closure added or removed, and a work
-  center's update (its pattern among it) — both sites when it moves.
+  center's update (its pattern among it) — both sites when it moves;
+- **`manufacturing.deviations`**, keyless: the [deviations](#deviations), event
+  **`deviation.changed`**.
 
 Every order write notifies the list's topic and the order's own with the event
 **`order.changed`** carrying the order's id; a work-order or time-log write notifies its
@@ -1579,6 +1591,143 @@ Migration `00160_manufacturing_mto.sql` adds:
 
 The sales order and its line are Orders' ids, opaque here (rule 4).
 
+## Quality
+
+Checks on a BoM's operations, recorded at the station; and deviations, which can hold
+lots in quarantine through Inventory's ledger (manufacturing phase 2 M95–M104).
+
+### Check templates
+
+`manufacturing.bom_operation_checks`: an operation's checks, edited in the BoM's one
+request as `operations[i].checks` — at most 20 an operation, replaced as a whole on every
+save, under `boms-manage`. Each has a `kind`:
+
+| Kind | Recorded as |
+| --- | --- |
+| `instruction` | `done` |
+| `pass_fail` | `pass` or `fail`, as sent |
+| `measure` | a `value`, judged by the server: `pass` within `[min, max]`, `fail` outside |
+| `photo` | `done`, with its `photoId` (`photo_required` without one) |
+
+a `title` (1–200), `instructions` (Markdown, ≤ 5,000), a `frequency` —
+`each_work_order` (recorded once before the work order finishes) or `first_piece`
+(recorded before any output is registered past the work order) — and
+`quarantineOnFail`. A measure has `min`, `max` or both, and `nominal` when given lies
+between them (`check_limits_invalid`, 400); limits are exact decimals with at most four
+places, of either sign, and are dropped from a check of any other kind. A measure is
+judged against its limits unrounded.
+
+### The snapshot
+
+Confirm copies each operation's checks onto its work order
+(`manufacturing.work_order_checks`, with `template_id`), as it copies the operation. A
+later BoM edit never reaches an open order. Every work order answer carries `checks`, by
+sequence, each with its `result` in force or `null`; the shop floor sorts the first-piece
+checks without a result first (M101).
+
+### Results
+
+`POST /work-orders/{id}/checks/{checkId}/result` with `result`, `value`, `note` (≤ 1,000)
+and `photoId`, as the kind asks. A result is refused `check_not_open` (409) on a work
+order that is done or cancelled, and `order_not_open` on an order that is not open.
+Recording again supersedes the result in force: it is kept, its `superseded_by` naming
+its successor; `ux_check_results_current` keeps one result in force per check. A result
+keeps its recorder's user id and display name (rule 19). It answers the work order view.
+
+The lock order (M97, §15): `LockVariants` on the order's variants; the order `FOR
+UPDATE`; the work order; **the check `FOR UPDATE`** — two results recorded at once for
+one check serialise, and the second supersedes the first —; the photo `FOR SHARE`; the
+result; the deviation a `fail` opens; the ledger last.
+
+### Photos
+
+`POST /work-orders/{id}/photos` (multipart, field `file`): a JPEG or PNG by its own
+bytes (`attachment_type`, 415), at most 10 MB (`attachment_too_large`, 400), its
+metadata stripped with `srv/imagemeta`, kept in the object store's scope
+`manufacturing-quality` under `checks/<uuid>` before its row
+(`manufacturing.check_photos`) is written — a store that cannot write is 503
+(`storage_not_configured` when none is configured), and a row that is refused removes
+the object again. It answers the `photoId` a result names; refused `check_not_open` on a
+work order done or cancelled. `GET /work-orders/{id}/photos/{photoId}` streams it, never
+cached or sniffed, under `default-src 'none'; sandbox`; a photo of another work order is
+404.
+
+A photo is a quality record: it stays when its result is superseded, and nothing deletes
+one a result names. One no result names 24 hours after its upload is deleted, its object
+queued on `manufacturing.object_deletions` in the same transaction, by the worker
+**`manufacturing.object-deletions`** (every five minutes, built through `module.Workers`):
+it sweeps those photos `FOR UPDATE SKIP LOCKED` — a result being recorded with one holds
+it `FOR SHARE`, so the sweep skips it — then gives each due ledger row one attempt,
+claimed by a conditional update with a five-minute window, retried with a backoff from
+two seconds to an hour. No statement holds a connection while the store is asked: it
+runs on a pool of one.
+
+### What the checks gate
+
+Productions are posted per order, so the gate is stated against its work orders (M98).
+The **output work order** is the last that is not cancelled.
+
+- A production with good output (`quantity` more than 0) is refused
+  **`checks_incomplete`** (409, `checks` naming each check) while any check, of either
+  frequency, of a work order before the output work order has no result, or any
+  `first_piece` check of the output work order has none. A scrap-only production is not
+  gated. *Before* is by sequence.
+- **Finish** of a work order is refused `checks_incomplete` while any of its own checks
+  has no result.
+- Starting is never gated, and a `fail` does not block: it has opened a deviation.
+
+The gate reads the checks under the order's lock, which every result takes too.
+
+### Deviations
+
+`manufacturing.deviations`, numbered **DEV-<n>** from the counter `deviation`: a
+`title`, a `description` (Markdown, ≤ 5,000), what it links to — `order_id`,
+`work_order_id`, `check_result_id`, `lot_id` with its number and variant — a `status`
+`open` or `closed`, a `disposition` (`use_as_is`, `rework`, `scrap`, `return`) and a
+closing note once closed, `quarantine`, `holds_released`, who opened and closed it with
+their display names, and a `revision`.
+
+- **A failed check opens one** in the result's transaction, linking the order, the work
+  order and the result, its description the measured value against the limits and the
+  note; `quarantine` is the check's `quarantineOnFail`.
+- **A person reports one** with `POST /deviations` (`shop-floor` or `orders-manage`):
+  from an order (not a draft), a work order (its order taken), or a lot — read on the pool
+  before the transaction through `contracts.Stock.LotRefs`, which answers its variant and
+  number — with `quarantine` as ticked.
+- **Quarantine.** A quarantining deviation calls `StockLedger.HoldLots` — kind
+  `quarantine`, cause `deviation`, source `manufacturing/deviation/<id>` — on the same
+  transaction, after its own rows (rule 24), for every lot the order has made so far
+  (`production_outputs`) and for its lot. **While it is open, every lot a production of
+  its order makes or adds to is held too**, in the production's transaction: step 7b of
+  [the order lock order](#the-order-lock-order), after `EnsureLots` and before `Produce`.
+  Each lot held is recorded in `manufacturing.deviation_lots`; `HoldLots` leaves a lot it
+  holds already as it is.
+- **Close** (`POST /deviations/{id}/close`, `quality-manage`) needs a disposition and a
+  closing note (1–2,000) under the revision read; a closed one is `deviation_closed`
+  (409). `use_as_is` and `rework` call `ReleaseLotHolds` for the deviation's own source:
+  only its holds go, and a lot another deviation, the lot page or a recall holds stays
+  held (M64). `scrap` and `return` keep them; **release**
+  (`POST /deviations/{id}/release`, `quality-manage`) lets them go later, once the lot is
+  written off or returned — refused `deviation_closed` on an open deviation, and
+  answering a released one as it is.
+- **The lock order** (M99): `LockVariants` on the order's variants, with the lot's
+  variant (or the lot's alone, for a deviation of a lot); the order `FOR UPDATE`; the
+  deviation `FOR UPDATE`; the ledger last, which takes the lots `FOR NO KEY UPDATE` in id
+  order.
+- **Reads.** `GET /deviations` lists them newest first, by `status`, `orderId`,
+  `variantId` (the deviation's lot's, else its order's product), `lotId` (the one it was
+  opened from or one it holds) and the days it was opened in the business time zone,
+  with `limit` (≤ 200) and `offset`; `format=csv` gives every match (up to 10,000) as
+  `manufacturing-deviations.csv`. `GET /deviations/{id}` answers one, with the lots it
+  holds.
+- **Live.** The keyless topic **`manufacturing.deviations`**, event
+  **`deviation.changed`** with the id, on every write of one; one of an order also tells
+  the order's topics. The order's history records `check_recorded`,
+  `deviation_opened` and `deviation_closed`.
+
+A deviation's free text is not personal data by intent; its opener's and closer's user
+ids stay with their display names (M104).
+
 ## The variant holder
 
 The module fills the many-provider slot **`Module.VariantReferences`** with a
@@ -1601,7 +1750,11 @@ BoMs and the orders together. A done or cancelled order holds nothing.
 
 ## Personal data
 
-Work centers, closures, BoMs and work orders hold no personal data. A manufacturing order
+Work centers, closures, BoMs and work orders hold no personal data. A check's result
+keeps its recorder (`user_id`, `user_display`), a photo its uploader, and a deviation its
+opener and closer, each with the display name as it was — records, kept after the person
+is erased like the others below. A result's note and a deviation's text are about the
+work, not personal data by intent, and stay (M104). A manufacturing order
 names its `responsibleUserId`; a production its poster (`posted_by_user_id`,
 `posted_by_display`), an event its actor (`actor_user_id`, `actor_display`), and a time
 log its operator (`user_id`, `user_display`), the supervisor who corrected it
@@ -1613,7 +1766,7 @@ as records after identity erases the person, as Inventory's ledger keeps its pos
 A time log's free-text `note` is its writer's own words and does not stay. The writer is
 not the operator: it is the supervisor who corrected or added the log, or the person who
 blocked the work center, kept as the log's `note_by` (`note_by_display`). No module is
-told of an erasure, so the module asks (rule 19): its one background worker,
+told of an erasure, so the module asks (rule 19): its background worker
 `manufacturing-erasure`, once a day pages through the writers of the notes, 200 user ids
 at a time, asks `contracts.UserDirectory.Users` which still exist, and blanks every note
 written by those that do not. It takes the logs in id order and skips any another
@@ -1687,6 +1840,14 @@ bodies are strict: an unknown property is a 400.
 | `lot_dates_differ` | 400 | A date sent for the output lot that differs from the existing lot's, on `outputLot` (M57, M80) |
 | `lot_required`, `lot_unknown`, `lot_expired`, `lot_blocked` | 409 | Inventory's lot refusals of a production, passed through with `lines[].lotId` (M56, M57, M62) |
 | `insufficient_stock`, `insufficient_available`, `site_archived`, `variant_not_stocked`, `document_reused` | 409 | Inventory's refusal of a production or a reserve, passed through under its own code, `lines` naming the component lines; nothing is posted. A reserve's `insufficient_available` is not answered: it starts the second pass |
+| `check_limits_invalid` | 400 | A measure check with neither `min` nor `max`, a `max` below its `min`, or a `nominal` outside them (M95) |
+| `photo_required` | 400 | A photo check recorded without its `photoId` (M97) |
+| `checks_incomplete` | 409 | A production with good output while a check before the output work order, or a first-piece check of it, has no result; a finish while one of the work order's own has none; `checks` names them (M98) |
+| `check_not_open` | 409 | A result or a photo on a work order that is done or cancelled (M103) |
+| `deviation_closed` | 409 | Closing a closed deviation; releasing the holds of an open one (M103) |
+| `attachment_too_large` | 400 | A photo over 10 MB |
+| `attachment_type` | 415 | A photo that is not a JPEG or PNG by its own bytes |
+| `storage_not_configured` | 503 | A photo with no object store configured |
 | `dependency_unavailable` | 503 | The catalog or the stock contract is missing at run time; nothing is changed |
 
 ## Enabling and disabling
@@ -1746,7 +1907,7 @@ every order write may answer 503 `dependency_unavailable`.
 | `POST /orders/{id}/components` (`addManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `variant_not_found`, `variant_not_goods`, `quantity_invalid`; 404; 409 `order_not_open` |
 | `PUT /orders/{id}/components/{componentId}` (`updateManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `required_below_used`, `quantity_invalid`; 404; 409 `order_not_open` |
 | `GET /orders/{id}/production-draft` (`getManufacturingProductionDraft`) | access | 200 [the prefill](#productions) with the lots proposed and offered and the output's lot ([lots on productions](#lots-on-productions)); 400 `quantity_invalid`; 404; 409 `order_not_open` |
-| `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`, `lot_pattern_invalid`, `picks_mismatch`, `serial_quantity`, `lot_not_allowed`, `lot_dates_differ`, `lot_exists`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `consumption_differs`, `client_request_reused`, `revision_conflict` (two deadlocks, or lots that kept moving), Inventory's refusals |
+| `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`, `lot_pattern_invalid`, `picks_mismatch`, `serial_quantity`, `lot_not_allowed`, `lot_dates_differ`, `lot_exists`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `checks_incomplete`, `consumption_differs`, `client_request_reused`, `revision_conflict` (two deadlocks, or lots that kept moving), Inventory's refusals |
 | `GET /orders/{id}/lots` (`getManufacturingOrderLots`) | access | 200 [the lots made and consumed](#lots-on-productions); 404 |
 | `POST /orders/{id}/close` (`closeManufacturingOrder`) | orders-manage | 200 `{order, backorder, shortLines}`; 404; 409 `order_not_open`, `quantity_short` |
 | `POST /orders/{id}/cancel` (`cancelManufacturingOrder`) | orders-manage | 200; 404; 409 `order_not_open`, `order_has_production` |
@@ -1760,7 +1921,7 @@ every order write may answer 503 `dependency_unavailable`.
 | `GET /work-orders/{id}` (`getManufacturingWorkOrder`) | access | 200 the work order view; 404 |
 | `POST /work-orders/{id}/start` (`startManufacturingWorkOrder`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `work_order_closed`, `work_order_pending`, `work_center_blocked`, `log_conflict`, `revision_conflict` |
 | `POST /work-orders/{id}/pause` (`pauseManufacturingWorkOrder`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `revision_conflict` |
-| `POST /work-orders/{id}/finish` (`finishManufacturingWorkOrder`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 400 fields, `quantity_invalid`, `location_unknown`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `work_order_closed`, `work_order_pending`, `revision_conflict`, the production's `consumption_differs`, `client_request_reused` and Inventory's refusals |
+| `POST /work-orders/{id}/finish` (`finishManufacturingWorkOrder`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 400 fields, `quantity_invalid`, `location_unknown`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `work_order_closed`, `work_order_pending`, `checks_incomplete`, `revision_conflict`, the production's `consumption_differs`, `client_request_reused` and Inventory's refusals |
 | `POST /work-orders/{id}/scrap` (`reportManufacturingWorkOrderScrap`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `client_request_reused`, Inventory's refusals |
 | `GET /work-orders/{id}/time-logs` (`listManufacturingWorkOrderTimeLogs`) | access | 200 the work order's time logs, by start; 404 |
 | `POST /work-orders/{id}/time-logs` (`addManufacturingTimeLog`) | orders-manage | 201 the log; 400 fields, `log_overlaps`; 404; 409 `order_closed`, `log_locked`, `revision_conflict` |
@@ -1774,6 +1935,14 @@ every order write may answer 503 `dependency_unavailable`.
 | `GET /reports/production-cost` (`getManufacturingProductionCostReport`) | access and costs-view | 200 JSON or CSV; 400 the period, `period_too_long` |
 | `GET /reports/utilisation` (`getManufacturingUtilisationReport`) | access | 200 JSON or CSV; 400 the period, `period_too_long` |
 | `GET /reports/time-deviation` (`getManufacturingTimeDeviationReport`) | access | 200 JSON or CSV; 400 the period, `period_too_long` |
+| `POST /work-orders/{id}/checks/{checkId}/result` (`recordManufacturingCheckResult`) | shop-floor or orders-manage; never the Assistant | 200 the work order view; 400 fields, `photo_required`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `check_not_open`, `revision_conflict`, Inventory's refusal of a hold |
+| `POST /work-orders/{id}/photos` (`uploadManufacturingCheckPhoto`) | shop-floor or orders-manage; never the Assistant | 201 the photo; 400 `attachment_too_large`, `file`; 403 `shop_floor_required`; 404; 409 `check_not_open`; 415 `attachment_type`; 503 `storage_not_configured` |
+| `GET /work-orders/{id}/photos/{photoId}` (`getManufacturingCheckPhoto`) | access | 200 the picture; 404; 503 |
+| `GET /deviations` (`listManufacturingDeviations`) | access | 200 JSON or CSV; 400 `from` after `to` |
+| `POST /deviations` (`createManufacturingDeviation`) | shop-floor or orders-manage | 201 the deviation; 400 fields; 403 `shop_floor_required`; 409 `revision_conflict`, Inventory's refusal of a hold |
+| `GET /deviations/{id}` (`getManufacturingDeviation`) | access | 200; 404 |
+| `POST /deviations/{id}/close` (`closeManufacturingDeviation`) | quality-manage | 200; 400 fields; 404; 409 `deviation_closed`, `revision_conflict` |
+| `POST /deviations/{id}/release` (`releaseManufacturingDeviationHolds`) | quality-manage | 200; 404; 409 `deviation_closed`, `revision_conflict` |
 
 The full contract, with every schema, is `openapi/manufacturing.yaml`, published in the
 generated API reference (`/en/reference/api/manufacturing/`).

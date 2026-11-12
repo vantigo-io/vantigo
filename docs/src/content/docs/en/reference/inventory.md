@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; and their screens (L1b) — the lots list, a lot's page and its edit, the lot page's holds, a lot's files in the inventory-lots storage scope and their deletion worker, stock per lot and held, the lookup's LOT token and lot numbers, and Inventory's live topics; and the rest of Inventory with lots (L2) — counts per lot, a lot on each transfer line, the import's lot columns, the expiring list and its CSV, the lots' attention items and lot labels; and traceability (T) — the trace of a lot both ways over its movement lines, unbuilds as reverse edges, who received it through Orders' contracts.DeliveryTrace, its CSV and PDF, the block with its downstream list walked again inside the block, and GS1-128 lot labels; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the nine permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; and their screens (L1b) — the lots list, a lot's page and its edit, the lot page's holds, a lot's files in the inventory-lots storage scope and their deletion worker, stock per lot and held, the lookup's LOT token and lot numbers, and Inventory's live topics; and the rest of Inventory with lots (L2) — counts per lot, a lot on each transfer line, the import's lot columns, the expiring list and its CSV, the lots' attention items and lot labels; and traceability (T) — the trace of a lot both ways over its movement lines, unbuilds as reverse edges, who received it through Orders' contracts.DeliveryTrace, its CSV and PDF, the block with its downstream list walked again inside the block, and GS1-128 lot labels; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; inspection on receipt — a variant's rules and the receipt's inspection hold; the nine permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -14,6 +14,7 @@ sources:
   - apps/server/internal/db/migrations/00163_inventory_lots.sql
   - apps/server/internal/db/migrations/00164_inventory_lot_attachments.sql
   - apps/server/internal/db/migrations/00165_inventory_lot_counts_transfers.sql
+  - apps/server/internal/db/migrations/00169_inventory_variant_rules.sql
   - apps/server/internal/contracts/stock.go
   - apps/host/frontend/src/routes/inventory
 ---
@@ -190,6 +191,10 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     (manufacturing phase 2 M65, M67). A variant with none has no row. The pure
     `contracts.ProposeLots(rows, quantity, today)` proposes from them as Inventory's
     AutoLot does, so Orders and Manufacturing propose the same lots.
+  - `LotRefs(ctx, lotIDs)` — the lots named, by id, whatever they hold: `ID`,
+    `VariantID`, `Number`, `Status` (manufacturing phase 2 M99) — what Manufacturing
+    reads on the pool before it opens a deviation of a lot, so it can lock the lot's
+    variant first. An unknown id has no entry; more than 1000 ids is a failure.
 
   `OnHand` and `Available` read on the pool in one snapshot, answer every variant asked
   in the order asked (one with nothing at `"0"` and no sites), as exact decimal text,
@@ -407,6 +412,9 @@ stock.
   **`movement_lines.expired_override`** (`boolean`, false) — an expired lot taken on the
   poster's [override](#expiry-and-today).
 - The **`counters`** row `lot`, from 1001, for generated numbers.
+- **`variant_rules`** (`00169`, Q) — `variant_id` (primary key), `inspect_on_receipt`,
+  `updated_by_user_id` and its display, `updated_at`, `revision`: a variant's rules in
+  Inventory. A variant with no row has none.
 
 Its down restores the old key and fails while any balance or line has a lot.
 
@@ -968,6 +976,29 @@ releases every active block of the same source — `inventory/lot/<id>`, which i
 from the lot — every lot taken `FOR NO KEY UPDATE` in id order, each hold with the note
 and its own `lot_released`. Holds of any other source stay; on any other hold
 `downstream` is ignored.
+
+### Inspection on receipt
+
+A variant's rules (manufacturing phase 2 M100): **`GET /variants/{variantId}/rules`**
+(both views) answers `inspectOnReceipt` and the `revision`, `0` while there is no row;
+**`PUT`** `{inspectOnReceipt, revision}` (both views and `stock-adjust`) locks the variant
+through `LockVariants` first — so its tracking is judged as it is, and a tracking change
+waits — and refuses `inspection_requires_tracking` (400) for a variant that is not
+tracked; a stale revision is `revision_conflict`, and a variant the catalog does not know
+is the 404.
+
+A **receipt** reads, under the variants' lock, which of its tracked variants are
+inspected. Their lots are locked `FOR NO KEY UPDATE` at step 5, as a hold takes them,
+and after the balances every lot a posted line received into gets a hold through the
+same work as `HoldLots`: kind `quarantine`, cause `inspection`, source
+**`inventory/receipt/<movement id>`**, its `lot_held` event, the status derived again.
+Received into a lot that exists, the hold is a new one, from this receipt: the whole lot
+is in quarantine until it is released, an earlier receipt's accepted quantity with it — a
+lot is one quantity. The movement answers **`inspectionLots`**, the lots its receipt put
+on hold, and the screen says so. Moves, adjustments, counts, transfers and imports are not
+receipts and put none. The hold is Inventory's, so the lot page releases it
+(`lots-manage`). The lots list's `status=quarantine&holdCause=inspection` is the
+inspection queue, and `GET /stats` counts it as `lotsAwaitingInspection`.
 
 ### A lot's files
 
@@ -2238,7 +2269,8 @@ text, or one longer than the limit, is a 400 on `q`.
 locations below the roots, the **stock lines** (one per variant and location holding
 stock, its lots counted once, the *Stock lines*), and **`receiptsThisWeek`**, the receipts posted since
 **Monday 00:00** of the business week in the workspace's zone, and **`openCounts`**,
-the counts still counting.
+the counts still counting; to a caller with `stock-view`, **`lotsAwaitingInspection`**, the
+lots with an active inspection hold ([inspection on receipt](#inspection-on-receipt)).
 
 `GET /stats/attention` is the session's. Each item type is **gated on its own**, so a
 caller sees only the items they could act on, at most 20 in all, the counts first. It
@@ -2348,6 +2380,7 @@ placements import *Invalid import*, as the opening-balance import does.
 | `lot_expired`, `lot_blocked` | 409 (line) | An issue or consume line taking an expired lot without the override, or a lot on hold; a receipt into a blocked lot. The problem's code is the first such line's. |
 | `hold_not_inventorys` | 409 | The lot page releasing a hold another module's document put; it is released there. |
 | `hold_exists` | 409 | The lot page putting a quarantine or a block while its own of that kind is active on the lot. |
+| `inspection_requires_tracking` | 400 | Inspect on receipt for a variant that is not tracked in lots or serials (manufacturing phase 2 M100; a field error on `inspectOnReceipt` with the code). |
 | `trace_too_large` | 400 | A trace beyond 2,000 lots or 20,000 other nodes, or a block's downstream walk beyond 2,000 lots; the block then blocks nothing. |
 | `trace_changed` | 409 | Lots kept being made from the lot while its block locked them; nothing was blocked, and the block may be tried again. |
 | `lot_dates_invalid` | 400 | A lot's dates out of order — an expiry before the production date, or a best-before date after the expiry — on `PUT /lots/{id}` or a receipt or adjustment line's new lot (a field error with the code). |
@@ -2532,6 +2565,8 @@ requires, all of them.
 | `GET /variants` | `locations-view` + `stock-view` | Goods variants by SKU, name or barcode; with `siteId`, each with its primary location there. |
 | `GET /stock` | `locations-view` + `stock-view` | On hand of up to 100 variants across every location, or of one lot (`lotId`). |
 | `GET /variants/{variantId}/stock` | `locations-view` + `stock-view` | One variant's stock, a deleted one by its snapshot. |
+| `GET /variants/{variantId}/rules` | `locations-view` + `stock-view` | The variant's [rules](#inspection-on-receipt), off at revision 0 when it has none. |
+| `PUT /variants/{variantId}/rules` | `locations-view` + `stock-adjust` + `stock-view` | Sets inspect on receipt; 400 `inspection_requires_tracking`; 404; 409 `revision_conflict`. |
 | `GET /lots` | `locations-view` + `stock-view` | The lots, filtered, by variant then number. |
 | `GET /lots/expiring` | `locations-view` + `stock-view` | The lots with stock expiring within `days` (30) or expired, by expiry, at most 1000. |
 | `GET /lots/expiring.csv` | `locations-view` + `stock-view` | The expiring list as CSV, with its filter. |
