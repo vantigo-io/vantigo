@@ -58,7 +58,12 @@ CREATE INDEX ix_lot_holds_source ON inventory.lot_holds (source_module, source_k
 
 -- The balance key gains the lot (M55): (variant, location, lot), a missing lot
 -- one key of its own (NULLS NOT DISTINCT), so two postings to a new
--- (variant, location, no lot) still serialise on one row.
+-- (variant, location, no lot) still serialise on one row. The table has no
+-- primary key from here on: a primary key's columns are NOT NULL, and the lot
+-- is NULL for untracked stock. The unique index is the key every writer uses;
+-- nor can it be the replica identity, which also needs NOT NULL columns. Were
+-- the table ever published for logical replication, it would need a surrogate
+-- id as its primary key, or REPLICA IDENTITY FULL.
 ALTER TABLE inventory.balances DROP CONSTRAINT balances_pkey;
 ALTER TABLE inventory.balances ADD COLUMN lot_id bigint REFERENCES inventory.lots (id);
 CREATE UNIQUE INDEX ux_balances_key ON inventory.balances (variant_id, location_id, lot_id) NULLS NOT DISTINCT;

@@ -70,8 +70,8 @@ type StockLot struct {
 	LotID      int64
 	Number     string
 	Serial     bool
-	Expiry     *time.Time // a date, nil when none
-	BestBefore *time.Time
+	Expiry     *time.Time // a calendar date at midnight UTC, nil when none
+	BestBefore *time.Time // the same
 	ReceivedAt time.Time
 	LocationID int64
 	FullCode   string
@@ -148,12 +148,14 @@ func ProposeLots(rows []StockLot, quantity string, today time.Time) (picks []Lot
 
 // LotExpired reports whether a lot of this expiry is expired on today (both
 // dates): its expiry lies before today (manufacturing phase 2 M62). A lot
-// with no expiry never expires.
+// with no expiry never expires. Each date is its own year, month and day as
+// given, in whatever zone it carries — never moved to UTC first, so a today
+// built in the workspace zone is the day it names.
 func LotExpired(expiry *time.Time, today time.Time) bool {
 	if expiry == nil {
 		return false
 	}
-	e, t := expiry.UTC(), today.UTC()
+	e, t := *expiry, today
 	return time.Date(e.Year(), e.Month(), e.Day(), 0, 0, 0, 0, time.UTC).Before(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC))
 }
 
@@ -367,7 +369,8 @@ type StockPick struct {
 }
 
 // NewLot is a lot EnsureLots finds by number or creates (manufacturing phase
-// 2 M57, M80).
+// 2 M57, M80). Its dates are calendar dates: their year, month and day are
+// read as given, by convention at midnight UTC.
 type NewLot struct {
 	VariantID      int32
 	Number         string // "" to generate L<n>
@@ -439,7 +442,8 @@ type StockIssue struct {
 	PostedByDisplay string
 	// Today is the workspace zone's date, read by the caller on the pool
 	// before its transaction (manufacturing phase 2 M62); zero is a
-	// programming error.
+	// programming error. By convention it is that date at midnight UTC; its
+	// year, month and day are read as given, in whatever zone it carries.
 	Today time.Time
 	// ExpiredOverride is whether the principal holds
 	// inventory:expired-override, read by the caller on the pool; a worker

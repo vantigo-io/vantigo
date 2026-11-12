@@ -46,12 +46,15 @@ ON CONFLICT (variant_id, location_id, lot_id) DO UPDATE SET updated_at = invento
 RETURNING variant_id, location_id, coalesce(lot_id, 0)::bigint AS lot_id, on_hand;
 
 -- name: SetBalances :exec
--- SetBalances writes the balances a posting computed.
+-- SetBalances writes the balances a posting computed. The lot is matched as
+-- an equality or both none, not IS NOT DISTINCT FROM, so the balance key's
+-- index serves it.
 UPDATE inventory.balances b
 SET on_hand = u.on_hand, updated_at = @now::timestamptz
 FROM (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id,
              unnest(@lot_ids::bigint[]) AS lot_id, unnest(@on_hands::numeric[]) AS on_hand) AS u
-WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id IS NOT DISTINCT FROM nullif(u.lot_id, 0);
+WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id
+  AND (b.lot_id = nullif(u.lot_id, 0) OR (b.lot_id IS NULL AND u.lot_id = 0));
 
 -- name: DeleteZeroBalances :exec
 -- DeleteZeroBalances removes the balances a posting left at zero, so "where
@@ -59,7 +62,8 @@ WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id
 DELETE FROM inventory.balances b
 USING (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id,
              unnest(@lot_ids::bigint[]) AS lot_id) AS u
-WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id IS NOT DISTINCT FROM nullif(u.lot_id, 0)
+WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id
+  AND (b.lot_id = nullif(u.lot_id, 0) OR (b.lot_id IS NULL AND u.lot_id = 0))
   AND b.on_hand = 0;
 
 -- name: InsertMovementLines :exec
@@ -80,8 +84,9 @@ FROM (SELECT unnest(@line_nos::int[]) AS line_no, unnest(@variant_ids::int[]) AS
 
 -- name: VariantHeld :one
 -- VariantHeld is what a variant holds across every location (I23), on the
--- caller's transaction.
-SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(*)::int AS locations
+-- caller's transaction, and at how many locations — a location holding it in
+-- several lots counted once.
+SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(DISTINCT location_id)::int AS locations
 FROM inventory.balances WHERE variant_id = @variant_id AND on_hand <> 0;
 
 -- name: VariantReserved :one

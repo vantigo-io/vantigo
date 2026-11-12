@@ -703,7 +703,8 @@ func (l ledger) Issue(ctx context.Context, tx pgx.Tx, src contracts.StockSource,
 // The engine wrote the lines in the order given, an AutoLot line as one line
 // per lot it took, so they are walked in step: a line that is not AutoLot is
 // one movement line, an AutoLot line the movement lines of its variant and
-// location that sum to its quantity.
+// location that sum to its quantity — or, for an untracked variant, the one
+// movement line with no lot it posted as.
 func (l ledger) replayed(ctx context.Context, txq *store.Queries, movementID int64, lines []engineLine) (contracts.StockPosted, error) {
 	out := contracts.StockPosted{MovementID: movementID}
 	auto := false
@@ -722,6 +723,15 @@ func (l ledger) replayed(ctx context.Context, txq *store.Queries, movementID int
 		if !line.autoLot {
 			next++
 			continue
+		}
+		// An AutoLot line of an untracked variant posted as one line with no
+		// lot: it picked nothing.
+		if next < len(posted) {
+			p := posted[next]
+			if p.LotID == nil && p.VariantID == line.variantID && p.FromLocationID != nil && *p.FromLocationID == *line.from {
+				next++
+				continue
+			}
 		}
 		left := new(big.Rat).Set(line.quantity)
 		for left.Sign() > 0 && next < len(posted) {

@@ -74,7 +74,8 @@ const deleteZeroBalances = `-- name: DeleteZeroBalances :exec
 DELETE FROM inventory.balances b
 USING (SELECT unnest($1::int[]) AS variant_id, unnest($2::bigint[]) AS location_id,
              unnest($3::bigint[]) AS lot_id) AS u
-WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id IS NOT DISTINCT FROM nullif(u.lot_id, 0)
+WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id
+  AND (b.lot_id = nullif(u.lot_id, 0) OR (b.lot_id IS NULL AND u.lot_id = 0))
   AND b.on_hand = 0
 `
 
@@ -233,7 +234,8 @@ UPDATE inventory.balances b
 SET on_hand = u.on_hand, updated_at = $1::timestamptz
 FROM (SELECT unnest($2::int[]) AS variant_id, unnest($3::bigint[]) AS location_id,
              unnest($4::bigint[]) AS lot_id, unnest($5::numeric[]) AS on_hand) AS u
-WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id AND b.lot_id IS NOT DISTINCT FROM nullif(u.lot_id, 0)
+WHERE b.variant_id = u.variant_id AND b.location_id = u.location_id
+  AND (b.lot_id = nullif(u.lot_id, 0) OR (b.lot_id IS NULL AND u.lot_id = 0))
 `
 
 type SetBalancesParams struct {
@@ -244,7 +246,9 @@ type SetBalancesParams struct {
 	OnHands     []pgtype.Numeric
 }
 
-// SetBalances writes the balances a posting computed.
+// SetBalances writes the balances a posting computed. The lot is matched as
+// an equality or both none, not IS NOT DISTINCT FROM, so the balance key's
+// index serves it.
 func (q *Queries) SetBalances(ctx context.Context, arg SetBalancesParams) error {
 	_, err := q.db.Exec(ctx, setBalances,
 		arg.Now,
@@ -298,7 +302,7 @@ func (q *Queries) ShareLocations(ctx context.Context, ids []int64) ([]InventoryL
 }
 
 const variantHeld = `-- name: VariantHeld :one
-SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(*)::int AS locations
+SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(DISTINCT location_id)::int AS locations
 FROM inventory.balances WHERE variant_id = $1 AND on_hand <> 0
 `
 
@@ -308,7 +312,8 @@ type VariantHeldRow struct {
 }
 
 // VariantHeld is what a variant holds across every location (I23), on the
-// caller's transaction.
+// caller's transaction, and at how many locations — a location holding it in
+// several lots counted once.
 func (q *Queries) VariantHeld(ctx context.Context, variantID int32) (VariantHeldRow, error) {
 	row := q.db.QueryRow(ctx, variantHeld, variantID)
 	var i VariantHeldRow

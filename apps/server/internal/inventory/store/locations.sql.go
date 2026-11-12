@@ -701,7 +701,7 @@ func (q *Queries) SiteLocationsByFullCodes(ctx context.Context, arg SiteLocation
 }
 
 const stockIn = `-- name: StockIn :one
-SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(*)::int AS lines
+SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(DISTINCT (variant_id, location_id))::int AS lines
 FROM inventory.balances WHERE location_id = ANY($1::bigint[])
 `
 
@@ -711,7 +711,8 @@ type StockInRow struct {
 }
 
 // StockIn is what lies on the locations — a subtree, or a site's — summed over
-// every variant, and on how many balances (I6's location_has_stock).
+// every variant, and in how many stock lines: a variant on a location, its
+// lots counted once (I6's location_has_stock).
 func (q *Queries) StockIn(ctx context.Context, ids []int64) (StockInRow, error) {
 	row := q.db.QueryRow(ctx, stockIn, ids)
 	var i StockInRow

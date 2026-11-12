@@ -1491,7 +1491,7 @@ components:
                 status:
                     $ref: '#/components/schemas/InventoryStatus'
                 stockLines:
-                    description: Balances in the site; present to a caller holding inventory:stock-view.
+                    description: Stock lines in the site — a variant on a location, its lots counted once; present to a caller holding inventory:stock-view.
                     format: int32
                     type: integer
                 updatedAt:
@@ -1674,7 +1674,7 @@ components:
                     format: int32
                     type: integer
                 stockLines:
-                    description: 'Balances: one per variant and location holding stock.'
+                    description: 'Stock lines: one per variant and location holding stock, its lots counted once.'
                     format: int32
                     type: integer
             required:

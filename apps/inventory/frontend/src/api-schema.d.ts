@@ -1597,7 +1597,7 @@ export interface components {
             status: components["schemas"]["InventoryStatus"];
             /**
              * Format: int32
-             * @description Balances in the site; present to a caller holding inventory:stock-view.
+             * @description Stock lines in the site — a variant on a location, its lots counted once; present to a caller holding inventory:stock-view.
              */
             stockLines?: number;
             /** Format: date-time */
@@ -1697,7 +1697,7 @@ export interface components {
             sites: number;
             /**
              * Format: int32
-             * @description Balances: one per variant and location holding stock.
+             * @description Stock lines: one per variant and location holding stock, its lots counted once.
              */
             stockLines: number;
         };

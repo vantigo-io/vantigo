@@ -202,7 +202,11 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 	}
 
 	// The tracking mode (manufacturing phase 2 M49): goods only, and — until
-	// layer M — none, whenever the request names a mode.
+	// layer M — none, whenever the request names a mode. The product type is
+	// read here, before the transaction; while the guard below refuses every
+	// tracked mode, a product turned into a service meanwhile cannot gain a
+	// tracked variant. Layer M, removing the guard, must judge the product
+	// type again under the variant's FOR UPDATE inside the transaction.
 	productType, err := q.GetProductType(ctx, req.Id)
 	if err != nil {
 		return nil, fmt.Errorf("products: get product type: %w", err)
