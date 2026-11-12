@@ -747,6 +747,7 @@ failures:
 | a serial line's quantity is not 1, a serial set above 1, or a serial that would hold more than 1 over every location | `serial_quantity` (400) |
 | a receipt's first serial ending in no digits | `serial_first_invalid` (400) |
 | a stated date differs from the existing lot's | `lot_dates_differ` (400) |
+| a new lot's dates stated out of order: an expiry before the production date, or a best-before date after the expiry | `lot_dates_invalid` (400, a field error on `lines[i].lot.expiry` or `.bestBefore`) |
 | an issue or consume line takes an expired lot without the override | `lot_expired` (409) |
 | an issue or consume line takes a lot on hold; a receipt into a blocked lot | `lot_blocked` (409) |
 
@@ -785,7 +786,9 @@ case — the posting takes the next number, under the counter row's lock, until 
 free, and a lot of its own is made. A number the line types names that lot: receiving more under a supplier's lot adds to it and **its dates are not changed**.
 Only a date the line **states** is compared — a stated date that differs is
 `lot_dates_differ`, so a typo is seen — and a date left out is not, so an ordinary repeat
-receipt never trips it. **Defaults apply only when the lot is made**: `expiry` is the
+receipt never trips it. Dates the line states must be **in order** — an expiry not before
+the production date, a best-before not after the expiry — or the request is refused
+`lot_dates_invalid`; a date left out is not compared. **Defaults apply only when the lot is made**: `expiry` is the
 production date when given, else the receipt's day in the workspace zone, plus the
 variant's `expiryDays`; `bestBefore` likewise with `bestBeforeDays`; each only when the
 variant has the offset and the line gives no date. A lot made by a receipt or an
@@ -892,8 +895,8 @@ stock read; changing one needs **`inventory:lots-manage`** beside them (M68).
   `withStock`, **true by default**: only lots holding more than 0 — at the site when one
   is named. Each row carries the variant, the number, `serial`, the supplier lot, the
   expiry and best-before dates, the status, **`expired`** — the expiry before today in
-  the workspace zone, read on the pool first — and `onHand`. A filter or cursor that does
-  not parse is a 400.
+  the workspace zone, read on the pool first — `onHand`, and **`receivedAt`**, FEFO's
+  second key after the expiry. A filter or cursor that does not parse is a 400.
 - **`GET /lots/{id}`** — a lot's page, in one snapshot: the header (number, variant,
   supplier lot, the three dates, `receivedAt`, the status, `expired`, the origin as a
   source reference — `inventory/movement/<id>` for a receipt's or an adjustment's lot —
@@ -901,22 +904,28 @@ stock read; changing one needs **`inventory:lots-manage`** beside them (M68).
   first, newest first within each, each with its source and **`inventorys`** — whether
   its source module is Inventory, so the page may release it; **`locations`**, what lies
   of it per location, by site code then full code, and `onHand` over them; **`movements`**,
-  its movement lines, newest first, the latest 200; and **`attachments`**, its files,
+  its movement lines, newest first, the latest 200 — the page says so when 200 come back,
+  and the older ones are on the movements list; and **`attachments`**, its files,
   newest first. An unknown lot is the 404.
 - **`PUT /lots/{id}`** with **`If-Match`** replaces the supplier lot (≤ 40), the
   production, best-before and expiry dates and the note (≤ 2000), **whole**: a field left
   out is cleared. The number and the variant never change, and no other property is
   taken. It takes the lot `FOR NO KEY UPDATE`, answers `revision_conflict` (409) on a
   stale revision, moves the revision on and records `lot_updated` with the fields that
-  changed. A changed expiry is judged from the next posting on; nothing already posted is
-  undone.
+  changed. The dates must be in order — an expiry before the production date, or a
+  best-before date after the expiry, is **`lot_dates_invalid`** (400, a field error on
+  `expiry` or `bestBefore`); a date left out is not compared. A changed expiry is judged
+  from the next posting on; nothing already posted is undone.
 
 ### The lot page's holds
 
 **`POST /lots/{id}/holds`** `{kind, cause, note?}` puts a hold whose source is the lot
 itself, **`inventory/lot/<id>`**, through the same code as `HoldLots`: the lot
-`FOR NO KEY UPDATE`, the hold — left as is when the lot page already holds an active one
-of the same kind — the `lot_held` event and the status derived again. **`POST
+`FOR NO KEY UPDATE`, the hold, the `lot_held` event and the status derived again. The lot
+page holds a lot **at most once per kind**: a second quarantine, or a second block, while
+the page's own is active is **`hold_exists`** (409) and nothing is written — another
+module's holds do not count — and the page disables that kind's button, saying why, until
+the hold is released. (`HoldLots` itself leaves a repeat of its own source as is.) **`POST
 /lots/{id}/holds/{holdId}/release`** `{note?}` releases **one** hold, with its
 `release_note`, under the lot's lock, records `lot_released` and derives the status
 again. It releases only a hold whose source module is Inventory — the lot page's, or a
@@ -943,8 +952,9 @@ another.
   and records `lot_attachment_added`. It answers 201 with the file. The assistant never
   calls it (`x-vantigo-assistant: never`).
 - **`GET /lots/{id}/attachments/{attachmentId}`** reads the row on the pool and streams
-  the object with its stored type, inline, named as uploaded (RFC 5987), never cached,
-  never sniffed, under `default-src 'none'; sandbox`. A file of another lot is the 404 an
+  the object with its stored type, as an **attachment** named as uploaded (RFC 5987) —
+  saved, never shown in place, since a browser's PDF viewer does not run under the
+  policy — never cached, never sniffed, under `default-src 'none'; sandbox`. A file of another lot is the 404 an
   unknown id is. No path is ever returned.
 - **`DELETE /lots/{id}/attachments/{attachmentId}`** removes the row and queues its
   object in **`inventory.object_deletions`** in one transaction under the lot's lock,
@@ -973,8 +983,11 @@ The stock reads carry the lots (M63). On **`GET /products/{productId}/stock`** a
 **`GET /variants/{variantId}/stock`**, each site's row has **`held`** — what lies there in
 lots on hold or expired today — and **`available`** is **usable** on hand less reserved,
 `totalAvailable` likewise; each location row of a tracked variant carries **`lots`**,
-`{lotId, number, expiry, bestBefore, status, expired, onHand}` per lot on it, in FEFO
-order. **`GET /stock/sites`** answers `available` as usable less reserved too, and a
+`{lotId, number, expiry, bestBefore, status, expired, onHand, receivedAt}` per lot on it,
+in FEFO order. These rows are what a form's lot column offers: a receipt the variant's lots
+at the site, a move the lots on its *from* location, an adjustment those on its location,
+every one of them; a move or an adjustment proposes the first usable lot there in FEFO
+order — expiry, none last, then `receivedAt`, then the id — once its location is chosen. **`GET /stock/sites`** answers `available` as usable less reserved too, and a
 placement's **`low`** everywhere it is judged on usable on hand. `onHand` stays everything
 that lies there. Today is read on the pool before the snapshot.
 
@@ -986,8 +999,10 @@ The variant reference every answer names a variant with carries its **`tracking`
 Inventory's first live topics (§17; [live updates](/en/contributing/platform-packages/#live-updates)):
 **`inventory.lots`**, keyless, and **`inventory.lot:<id>`**, both authorised by both views,
 a key that is not an id refused alike whether the lot exists or not. Each carries
-`lot.changed` with the lot's id. **Every posting** tells both for each lot its lines
-touch, on the posting's own transaction — whichever module's it is, since a notification
+`lot.changed`: the list's **once per transaction, without an id**, and each lot's page's
+with the lot's id. **Every posting** tells the list once and each lot its lines touch, in
+**one statement** (`live.NotifyAll`) — a receipt of 500 serials is one round trip and 501
+events, not a thousand — on the posting's own transaction — whichever module's it is, since a notification
 is a statement on that transaction and not a call out — and so does every hold or release
 (the lot page's and `HoldLots`/`ReleaseLotHolds`), an edit and a file added or removed.
 The list and a lot's page refetch on them and poll every 30 seconds while the socket is
@@ -2043,6 +2058,8 @@ placements import *Invalid import*, as the opening-balance import does.
 | `lot_required`, `lot_not_allowed`, `lot_unknown`, `serial_quantity`, `serial_first_invalid`, `lot_dates_differ` | 400 (line) | The [lot rules](#the-lot-rules) (manufacturing phase 2 M56, M57). |
 | `lot_expired`, `lot_blocked` | 409 (line) | An issue or consume line taking an expired lot without the override, or a lot on hold; a receipt into a blocked lot. The problem's code is the first such line's. |
 | `hold_not_inventorys` | 409 | The lot page releasing a hold another module's document put; it is released there. |
+| `hold_exists` | 409 | The lot page putting a quarantine or a block while its own of that kind is active on the lot. |
+| `lot_dates_invalid` | 400 | A lot's dates out of order — an expiry before the production date, or a best-before date after the expiry — on `PUT /lots/{id}` or a receipt or adjustment line's new lot (a field error with the code). |
 | `attachment_too_large`, `too_many_attachments` | 400 | A lot's file over 20 MiB, or a 21st. |
 | `attachment_type` | 415 | A lot's file that is not a PDF, JPEG or PNG, or whose bytes disagree with the type or extension it is sent under. |
 | `storage_not_configured` | 503 | A lot's file uploaded or downloaded with no object store configured. |
