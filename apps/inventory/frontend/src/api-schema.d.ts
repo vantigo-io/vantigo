@@ -427,7 +427,7 @@ export interface paths {
         put?: never;
         /**
          * Block a lot and the lots made from it
-         * @description Blocks the lot with the downstream list (manufacturing phase 2 M92): a block hold of the lot page, source inventory/lot/<id>, on the lot and, with downstream, on every lot made from it that still holds stock — the usage walk run again inside the block's transaction, after the lot's lock, so a lot produced since the dialog's summary is caught. Each lot is taken FOR NO KEY UPDATE in id order, with its own event naming the lot blocked. A walk beyond 2000 nodes is trace_too_large, and nothing is blocked.
+         * @description Blocks the lot with the downstream list (manufacturing phase 2 M92): a block hold of the lot page, source inventory/lot/<id>, on the lot and, with downstream, on every lot made from it that still holds stock — the usage walk, with no depth limit, read again inside the block's transaction so a lot produced since the dialog's summary is caught: every lot it finds is taken FOR NO KEY UPDATE in id order and the walk read again under those locks; a lot made meanwhile is locked too, a bounded number of times, after which the block is 409 trace_changed. Each lot blocked has its own event naming the lot blocked. A walk beyond 2000 lots is trace_too_large, and nothing is blocked.
          */
         post: operations["blockInventoryLot"];
         delete?: never;
@@ -808,7 +808,7 @@ export interface paths {
         };
         /**
          * Trace a lot
-         * @description A lot's trace (manufacturing phase 2 M87–M90), read on the pool from Inventory's own movement lines: in a production movement every lot consumed is a parent of every lot produced; an unbuild is a reverse edge, shown as an end and never expanded. usage walks where the lot went, origin where it came from, up to maxDepth productions and at most 2000 nodes. An issue for an Orders delivery carries the delivery, its order and its customer when the caller holds orders:access (contracts.DeliveryTrace), and the customer's name when the caller also holds customers:view.
+         * @description A lot's trace (manufacturing phase 2 M87–M90), read on the pool from Inventory's own movement lines: in a production movement every lot consumed is a parent of every lot produced; an unbuild is a reverse edge, shown as an end and never expanded. usage walks where the lot went, origin where it came from, up to maxDepth productions, at most 2000 lots and at most 20000 other nodes (the ends and the components). An issue for an Orders delivery carries the delivery, its order and its customer when the caller holds orders:access (contracts.DeliveryTrace), and the customer's name when the caller also holds customers:view.
          */
         get: operations["getInventoryTrace"];
         put?: never;
@@ -2377,13 +2377,15 @@ export interface components {
             source?: components["schemas"]["InventorySourceRef"];
             supplierName?: string;
             supplierReference?: string;
+            /** @description A transfer out's destination, the site the transfer was sent to. */
+            toSiteName?: string;
         };
         /** @description One node of a trace. kind lot is a lot (the root at depth 0, or one reached through a production, with its edge); component is an untracked component a production consumed (origin, components=all); every other kind is the movement that ends a path, named by its kind, with the lot's quantity on it. */
         InventoryTraceNode: {
             delivery?: components["schemas"]["InventoryTraceDelivery"];
             /** Format: int32 */
             depth: number;
-            /** @description True on a lot at maxDepth, which is not expanded. */
+            /** @description True on a lot at maxDepth that went into (usage) or came from (origin) a production the trace does not expand. A lot at maxDepth still shows its ends. */
             depthLimit: boolean;
             edge?: components["schemas"]["InventoryTraceEdge"];
             /** @description The node's path from the root, its indexes joined by dots ("0", "0.2", "0.2.1"). */
@@ -4374,6 +4376,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Conflict — trace_changed: lots kept being made from the lot while the block locked them; nothing was blocked, and the block may be tried again. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
             /** @description Service Unavailable — dependency_unavailable: Products is not composed. */
             503: {
                 headers: {
@@ -5655,7 +5666,7 @@ export interface operations {
                     "application/json": components["schemas"]["InventoryTrace"];
                 };
             };
-            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes. */
+            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 lots or more than 20000 other nodes. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5716,7 +5727,7 @@ export interface operations {
                     "text/csv": string;
                 };
             };
-            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes. */
+            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 lots or more than 20000 other nodes. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5777,7 +5788,7 @@ export interface operations {
                     "application/pdf": string;
                 };
             };
-            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes. */
+            /** @description Bad Request — field errors, or trace_too_large: the trace would have more than 2000 lots or more than 20000 other nodes. */
             400: {
                 headers: {
                     [name: string]: unknown;

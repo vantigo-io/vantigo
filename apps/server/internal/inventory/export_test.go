@@ -55,3 +55,19 @@ func SetTracePDFHook(hook func(header []string, rows [][]string)) {
 	}
 	traceRowsBuilt.Store(&hook)
 }
+
+// SetBlockWalkedHook installs the hook a block with the downstream list
+// calls after each of its walks, with the round; nil removes it.
+func SetBlockWalkedHook(hook func(round int)) {
+	if hook == nil {
+		blockWalked.Store(nil)
+		return
+	}
+	blockWalked.Store(&hook)
+}
+
+// SetBlockRelocks sets how many times a block locks again the lots made
+// while it locked, answering the number it had.
+func SetBlockRelocks(n int) int {
+	return int(blockRelocks.Swap(int32(n)))
+}

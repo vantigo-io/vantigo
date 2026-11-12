@@ -25,6 +25,7 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/props"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/store"
 )
@@ -193,7 +194,7 @@ func (r traceRead) wire() gen.InventoryTrace {
 		}
 		if m := n.movement; m != nil {
 			w.Movement = &gen.InventoryTraceMovement{Id: m.id, Kind: gen.InventoryMovementKind(m.kind), PostedAt: m.postedAt,
-				Reason: m.reason, SupplierName: m.supplier, SupplierReference: m.supplierRef, Source: wireSource(m.source)}
+				Reason: m.reason, SupplierName: m.supplier, SupplierReference: m.supplierRef, ToSiteName: m.toSite, Source: wireSource(m.source)}
 			if d, ok := r.deliveries[deliveryOf(m)]; ok {
 				w.Delivery = &gen.InventoryTraceDelivery{DeliveryId: d.DeliveryID, DeliveryNumber: d.DeliveryNumber, OrderId: d.OrderID,
 					OrderNumber: d.OrderNumber, CustomerId: d.CustomerID, PostedAt: d.PostedAt}
@@ -305,7 +306,8 @@ func productionText(src *movementSource, movementID int64) string {
 
 // endText is an end's document and party as the exports print them: the
 // delivery and its customer — by name only under customers:view, else by
-// id — or the receipt and its supplier.
+// id — the receipt and its supplier, or the transfer out and the site it
+// was sent to.
 func (r traceRead) endText(m *traceMovement) (document, party string) {
 	switch m.kind {
 	case movementKindIssue:
@@ -341,10 +343,13 @@ func (r traceRead) endText(m *traceMovement) (document, party string) {
 	case string(gen.Count):
 		return fmt.Sprintf("Count, movement %d", m.id), ""
 	case string(gen.TransferOut):
-		if m.source != nil {
-			return fmt.Sprintf("Transfer %s, movement %d", m.source.id, m.id), ""
+		if m.toSite != nil {
+			party = "Sent to " + *m.toSite
 		}
-		return fmt.Sprintf("Transfer out, movement %d", m.id), ""
+		if m.source != nil {
+			return fmt.Sprintf("Transfer %s, movement %d", m.source.id, m.id), party
+		}
+		return fmt.Sprintf("Transfer out, movement %d", m.id), party
 	}
 	return fmt.Sprintf("Movement %d", m.id), ""
 }
@@ -551,14 +556,46 @@ func (s *server) PrintInventoryTrace(ctx context.Context, req gen.PrintInventory
 // The causes a block of the lot page takes (M92).
 var blockCauses = []string{"recall", "complaint", "other"}
 
+// The block's own refusal and bounds (M92).
+const (
+	codeTraceChanged = "trace_changed"
+	// blockAttempts is how many times a block runs when it loses a race to a
+	// deadlock: once more.
+	blockAttempts = 2
+)
+
+// blockRelocks is how many times a block locks the lots its walk found
+// again, when lots were made from them while it locked them; past it the
+// block is 409 trace_changed. A variable for the tests.
+var blockRelocks atomic.Int32
+
+func init() { blockRelocks.Store(3) }
+
+// blockWalked is the tests' window on a block between its walks: called
+// with the round after each walk — 0 for the first, read before any lock.
+var blockWalked atomic.Pointer[func(round int)]
+
+// errTraceChanged is the 409 of a block whose lots kept being made from
+// while it locked them.
+func errTraceChanged() error {
+	return refuse(problem(http.StatusConflict, codeTraceChanged, "The trace changed",
+		"Lots were being made from this lot while it was blocked, so nothing was blocked. Try again."))
+}
+
 // BlockInventoryLot Block a lot and the lots made from it
 // (POST /api/v1/inventory/lots/{id}/block)
 //
-// The lot FOR NO KEY UPDATE first; then, with downstream, the usage walk
-// again on this transaction — the dialog's summary was read on the pool and
-// may be stale — and one block hold of the lot page on the lot and on every
-// lot made from it that still holds stock, each locked in id order with its
-// own event naming the lot blocked. A walk beyond the bound blocks nothing.
+// Without downstream, the lot FOR NO KEY UPDATE. With it (M92, M1/M3 of the
+// review): the usage walk, with no depth limit, read before any lock — the
+// dialog's summary was read on the pool and may be stale — then every lot
+// it found, the root among them, FOR NO KEY UPDATE in id order, the lock
+// every production that consumes or makes one of them takes; then the walk
+// again under those locks. A lot made since — by a production that held its
+// locks first — is locked too and the walk read once more, a bounded number
+// of times (blockRelocks); past it 409 trace_changed. One block hold of the
+// lot page on the lot and on every lot made from it that still holds stock,
+// each with its own event naming the lot blocked. A walk beyond the bound
+// blocks nothing; a deadlock runs the block once more.
 func (s *server) BlockInventoryLot(ctx context.Context, req gen.BlockInventoryLotRequestObject) (gen.BlockInventoryLotResponseObject, error) {
 	if req.Body == nil {
 		return gen.BlockInventoryLot400ApplicationProblemPlusJSONResponse(problem(http.StatusBadRequest, "", invalidLotTitle, "The request has no body.")), nil
@@ -578,30 +615,35 @@ func (s *server) BlockInventoryLot(ctx context.Context, req gen.BlockInventoryLo
 		return nil, err
 	}
 	var blocked []gen.InventoryLotBlocked
-	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		root, err := lockLotForChange(ctx, txq, req.Id)
-		if err != nil {
-			return err
-		}
-		ids := []int64{req.Id}
-		blocked = []gen.InventoryLotBlocked{{Id: root.ID, Number: root.Number, Sku: root.Sku, ProductName: root.ProductName, Root: true}}
-		if downstream {
-			g, err := walkTrace(ctx, txq, traceOptions{root: req.Id, usage: true, maxDepth: maxTraceDepth})
-			if err != nil {
-				return err
+	err = db.RetrySerializable(ctx, blockAttempts, func() error {
+		return s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+			var ids []int64
+			blocked = nil
+			if !downstream {
+				root, err := lockLotForChange(ctx, txq, req.Id)
+				if err != nil {
+					return err
+				}
+				ids = []int64{root.ID}
+				blocked = []gen.InventoryLotBlocked{{Id: root.ID, Number: root.Number, Sku: root.Sku, ProductName: root.ProductName, Root: true}}
+			} else {
+				lots, below, err := s.lockBlockWalk(ctx, txq, req.Id)
+				if err != nil {
+					return err
+				}
+				ids = append([]int64{req.Id}, below...)
+				for _, id := range ids {
+					l := lots[id]
+					blocked = append(blocked, gen.InventoryLotBlocked{Id: l.ID, Number: l.Number, Sku: l.Sku, ProductName: l.ProductName, Root: id == req.Id})
+				}
 			}
-			for _, id := range g.downstreamLots(req.Id) {
-				l := g.lots[id]
-				ids = append(ids, id)
-				blocked = append(blocked, gen.InventoryLotBlocked{Id: l.ID, Number: l.Number, Sku: l.Sku, ProductName: l.ProductName})
+			holds := make([]contracts.LotHold, 0, len(ids))
+			for _, id := range ids {
+				holds = append(holds, contracts.LotHold{LotID: id, Kind: "block", Cause: string(in.Cause), Note: deref(note),
+					By: contracts.LotActor{UserID: who.UserID, Display: who.Display}})
 			}
-		}
-		holds := make([]contracts.LotHold, 0, len(ids))
-		for _, id := range ids {
-			holds = append(holds, contracts.LotHold{LotID: id, Kind: "block", Cause: string(in.Cause), Note: deref(note),
-				By: contracts.LotActor{UserID: who.UserID, Display: who.Display}})
-		}
-		return s.holdLots(ctx, tx, txq, lotPageSource(req.Id), holds, ids)
+			return s.holdLots(ctx, tx, txq, lotPageSource(req.Id), holds, ids)
+		})
 	})
 	if status, p, ok := answerOf(err); ok {
 		switch status {
@@ -609,6 +651,8 @@ func (s *server) BlockInventoryLot(ctx context.Context, req gen.BlockInventoryLo
 			return gen.BlockInventoryLot404Response{}, nil
 		case http.StatusBadRequest:
 			return gen.BlockInventoryLot400ApplicationProblemPlusJSONResponse(p), nil
+		case http.StatusConflict:
+			return gen.BlockInventoryLot409ApplicationProblemPlusJSONResponse(p), nil
 		}
 	}
 	if err != nil {
@@ -622,4 +666,60 @@ func (s *server) BlockInventoryLot(ctx context.Context, req gen.BlockInventoryLo
 		return nil, err
 	}
 	return gen.BlockInventoryLot200JSONResponse(gen.InventoryLotBlock{Lot: out, Blocked: blocked}), nil
+}
+
+// lockBlockWalk is the block's walk and its locks (see BlockInventoryLot):
+// the lots locked, by id, and those below root that still hold stock. An
+// unknown root is the 404 refusal.
+func (s *server) lockBlockWalk(ctx context.Context, txq *store.Queries, root int64) (map[int64]store.InventoryLot, []int64, error) {
+	found, below, err := blockWalk(ctx, txq, root)
+	if err != nil {
+		return nil, nil, err
+	}
+	walked := func(round int) {
+		if hook := blockWalked.Load(); hook != nil {
+			(*hook)(round)
+		}
+	}
+	walked(0)
+	all := func(ids []int64) map[int64]bool {
+		m := make(map[int64]bool, len(ids))
+		for _, id := range ids {
+			m[id] = true
+		}
+		return m
+	}
+	lots, err := lockLots(ctx, txq, found, all(found))
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, ok := lots[root]; !ok {
+		return nil, nil, notFound()
+	}
+	for round := 1; ; round++ {
+		found, below, err = blockWalk(ctx, txq, root)
+		if err != nil {
+			return nil, nil, err
+		}
+		walked(round)
+		var fresh []int64
+		for _, id := range found {
+			if _, ok := lots[id]; !ok {
+				fresh = append(fresh, id)
+			}
+		}
+		if len(fresh) == 0 {
+			return lots, below, nil
+		}
+		if round > int(blockRelocks.Load()) {
+			return nil, nil, errTraceChanged()
+		}
+		more, err := lockLots(ctx, txq, fresh, all(fresh))
+		if err != nil {
+			return nil, nil, err
+		}
+		for id, l := range more {
+			lots[id] = l
+		}
+	}
 }

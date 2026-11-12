@@ -291,10 +291,14 @@ func TestTrace_BothWays(t *testing.T) {
 	)
 
 	// One level: the dough is shown and not expanded.
+	// One level: the dough is shown and not expanded — it went into
+	// productions beyond the limit; the bread at the limit shows its
+	// delivery and is not marked, for nothing was made from it.
 	expectShape(t, "usage at depth 1", getTrace(t, viewer, "lotId="+strconv.FormatInt(lots.flour, 10)+"&maxDepth=1"),
 		"0 lot F1",
 		"0.0 lot D1 4→4 limit",
-		"0.1 lot B1 1→3 limit",
+		"0.1 lot B1 1→3",
+		"0.1.0 issue 2 delivery 3001 Bakeriet AS",
 	)
 	res := viewer.Do(http.MethodGet, tracePath+"?lotId="+strconv.FormatInt(lots.flour, 10)+"&maxDepth=11", nil)
 	mustStatus(t, res, http.StatusBadRequest, "a depth of 11")
@@ -566,6 +570,195 @@ func TestTrace_GS1Labels(t *testing.T) {
 		t.Errorf("GS1 labels: %q", res.Header("Content-Disposition"))
 	}
 	mustStatus(t, c.Do(http.MethodGet, lotsPath+"/labels.pdf?format=zpl&ids="+strconv.FormatInt(lots.bread, 10), nil), http.StatusBadRequest, "an unknown format")
+}
+
+// makeLot makes a lot of variant numbered number, as a manufacturing order
+// does before its production.
+func makeLot(t *testing.T, h *harness, variant int32, number string) int64 {
+	t.Helper()
+	var ids []int64
+	if err := inTx(t, h, func(tx pgx.Tx) error {
+		var err error
+		ids, err = ledgerOf(h).EnsureLots(inCallerTx(t.Context()), tx, contracts.StockSource{Module: "manufacturing", Kind: "order", ID: 8}, testToday,
+			[]contracts.NewLot{{VariantID: variant, Number: number, ProductionDate: testToday}})
+		return err
+	}); err != nil {
+		t.Fatalf("EnsureLots %s: %v", number, err)
+	}
+	return ids[0]
+}
+
+// produceFrom posts production id at site: 1 of from taken from fromLoc,
+// made into 2 of made (variant) on toLoc.
+func produceFrom(t *testing.T, h *harness, site int64, id int64, fromVariant int32, from, fromLoc int64, madeVariant int32, made, toLoc int64) error {
+	return inTx(t, h, func(tx pgx.Tx) error {
+		_, err := ledgerOf(h).Produce(inCallerTx(t.Context()), tx, contracts.StockSource{Module: "manufacturing", Kind: "order", ID: 8}, contracts.StockProduction{
+			Document: contracts.StockSource{Module: "manufacturing", Kind: "production", ID: id}, SiteID: site, Today: testToday,
+			Consume: []contracts.ConsumeLine{{VariantID: fromVariant, LineID: 1, FromLocationID: fromLoc, Quantity: "1", LotID: from}},
+			Produce: []contracts.ProduceLine{{VariantID: madeVariant, LineID: 1, ToLocationID: toLoc, Quantity: "2", LotID: made}}})
+		return err
+	})
+}
+
+// blockedNumbers is a block's answer as its lots' numbers, the root first.
+func blockedNumbers(t *testing.T, res *modtest.Response) []string {
+	t.Helper()
+	mustStatus(t, res, http.StatusOK, "the block")
+	var out gen.InventoryLotBlock
+	res.JSON(&out)
+	var numbers []string
+	for _, b := range out.Blocked {
+		numbers = append(numbers, b.Number)
+	}
+	return numbers
+}
+
+// TestTrace_ManyDeliveries is the bound on the lots (M88), not on the
+// nodes: a bread delivered 2,100 times still traces, every delivery an end,
+// and its flour still blocks with the lots made from it.
+func TestTrace_ManyDeliveries(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, append(slices.Clone(everything), "inventory:lots-manage")...)
+	lots := seedTrace(t, h, c)
+	h.Exec(t, `
+		WITH mov AS (
+			INSERT INTO inventory.movements (client_request_id, request_hash, site_id, kind, posted_at)
+			SELECT gen_random_uuid(), '\x00', $1, 'issue', now() FROM generate_series(1, 2100) RETURNING id
+		)
+		INSERT INTO inventory.movement_lines (movement_id, line_no, variant_id, sku, product_name, unit, from_location_id, to_location_id, quantity, lot_id)
+		SELECT mov.id, 1, $2::integer, 'BREAD-1', 'Bread', 'kg', $3::bigint, NULL::bigint, 0.001, $4::bigint FROM mov`,
+		lots.site.site.Id, varBread, lots.site.shelf2.Id, lots.bread)
+	tr := getTrace(t, c, "lotId="+strconv.FormatInt(lots.flour, 10))
+	if len(tr.Nodes) != 7+2100 {
+		t.Errorf("the trace has %d nodes, want %d", len(tr.Nodes), 7+2100)
+	}
+	got := blockedNumbers(t, c.Do(http.MethodPost, lotPath(lots.flour)+"/block", gen.InventoryLotBlockInput{Cause: gen.InventoryLotBlockInputCauseRecall}))
+	if want := []string{"F1", "D1", "B1"}; !slices.Equal(got, want) {
+		t.Errorf("blocked = %v, want %v", got, want)
+	}
+}
+
+// TestTrace_BlockBeyondTheDepth is M92 without the trace's depth: a chain
+// of twelve productions below the flour is blocked whole, while the trace
+// stops at ten levels and marks the lot there, which went on into a
+// production, and not the last lot of a shorter trace, which did not.
+func TestTrace_BlockBeyondTheDepth(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, append(slices.Clone(everything), "inventory:lots-manage")...)
+	lots := seedTrace(t, h, c)
+	from, fromVariant, fromLoc := lots.flour, varFlour, lots.site.shelf1.Id
+	chain := make([]int64, 0, 12)
+	for i := 1; i <= 12; i++ {
+		made := makeLot(t, h, varDough, "C"+strconv.Itoa(i))
+		if err := produceFrom(t, h, lots.site.site.Id, int64(100+i), fromVariant, from, fromLoc, varDough, made, lots.site.shelf2.Id); err != nil {
+			t.Fatalf("production %d: %v", i, err)
+		}
+		chain = append(chain, made)
+		from, fromVariant, fromLoc = made, varDough, lots.site.shelf2.Id
+	}
+	tr := getTrace(t, c, "lotId="+strconv.FormatInt(lots.flour, 10))
+	var limited []string
+	for _, n := range tr.Nodes {
+		if n.DepthLimit {
+			limited = append(limited, n.Lot.Number)
+		}
+	}
+	if want := []string{"C10"}; !slices.Equal(limited, want) {
+		t.Errorf("marked at the depth limit = %v, want %v", limited, want)
+	}
+	short := getTrace(t, c, "lotId="+strconv.FormatInt(chain[2], 10)+"&maxDepth=9")
+	if last := short.Nodes[len(short.Nodes)-1]; last.Lot == nil || last.Lot.Number != "C12" || last.DepthLimit {
+		t.Errorf("the last lot of C3's trace = %+v, want C12 unmarked", last)
+	}
+	got := blockedNumbers(t, c.Do(http.MethodPost, lotPath(lots.flour)+"/block", gen.InventoryLotBlockInput{Cause: gen.InventoryLotBlockInputCauseRecall}))
+	want := []string{"F1", "D1", "B1"}
+	for i := 1; i <= 12; i++ {
+		want = append(want, "C"+strconv.Itoa(i))
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("blocked = %v, want %v", got, want)
+	}
+}
+
+// TestTrace_BlockRacesAProduction is the block's locks (M92): a production
+// that makes D2 of the dough commits after the block's first walk and
+// before its locks; the walk read again under the locks finds D2 and blocks
+// it. With no relock allowed, the same race is 409 trace_changed and blocks
+// nothing. Not parallel: the hooks are the package's.
+func TestTrace_BlockRacesAProduction(t *testing.T) {
+	t.Cleanup(func() { inventory.SetBlockWalkedHook(nil) })
+	// race is the hook: in the block's first round, before its locks, a
+	// production makes made of the dough.
+	race := func(h *harness, lots tracedLots, production, made int64) func(round int) {
+		return func(round int) {
+			if round != 0 {
+				return
+			}
+			if err := produceFrom(t, h, lots.site.site.Id, production, varDough, lots.dough, lots.site.shelf2.Id, varDough, made, lots.site.shelf2.Id); err != nil {
+				t.Errorf("the racing production: %v", err)
+			}
+		}
+	}
+
+	h := newHarness(t)
+	c, _ := signIn(t, h, append(slices.Clone(everything), "inventory:lots-manage")...)
+	lots := seedTrace(t, h, c)
+	inventory.SetBlockWalkedHook(race(h, lots, 201, makeLot(t, h, varDough, "D2")))
+	got := blockedNumbers(t, c.Do(http.MethodPost, lotPath(lots.flour)+"/block", gen.InventoryLotBlockInput{Cause: gen.InventoryLotBlockInputCauseRecall}))
+	// The race took the dough's last kilo: it holds nothing and is not
+	// blocked; D2, made of it, is.
+	if want := []string{"F1", "B1", "D2"}; !slices.Equal(got, want) {
+		t.Errorf("blocked = %v, want %v", got, want)
+	}
+
+	h2 := newHarness(t)
+	c2, _ := signIn(t, h2, append(slices.Clone(everything), "inventory:lots-manage")...)
+	lots2 := seedTrace(t, h2, c2)
+	inventory.SetBlockWalkedHook(race(h2, lots2, 202, makeLot(t, h2, varDough, "D3")))
+	before := inventory.SetBlockRelocks(0)
+	t.Cleanup(func() { inventory.SetBlockRelocks(before) })
+	expectRefusal(t, c2.Do(http.MethodPost, lotPath(lots2.flour)+"/block", gen.InventoryLotBlockInput{Cause: gen.InventoryLotBlockInputCauseRecall}),
+		http.StatusConflict, "trace_changed", "a block whose lots kept being made from")
+	if n := h2.Count(t, `SELECT count(*) FROM inventory.lot_holds`); n != 0 {
+		t.Errorf("a refused block left %d holds", n)
+	}
+}
+
+// TestTrace_Transfer is a lot received at one site, sent to another and
+// delivered there: its origin is the receipt; its usage is the transfer,
+// sent to the other site, and the delivery from there.
+func TestTrace_Transfer(t *testing.T) {
+	t.Parallel()
+	h, _ := newTraceHarness(t)
+	c, _ := signIn(t, h, append(slices.Clone(allKeys), "orders:access")...)
+	s := newTransferSites(t, h, c)
+	v := goods(varFlour, 71, "FLOUR-1", "Flour", "kg")
+	v.Tracking = contracts.TrackingLot
+	h.catalog.seed(v)
+	receive(t, c, s.osl.Id, s.shelf1.Id, lotLine(varFlour, 10, gen.InventoryNewLot{Number: ptr("F1")}))
+	flour := lotID(t, h, varFlour, "F1")
+	tr := createTransfer(t, c, s, gen.InventoryTransferLineInput{VariantId: varFlour, Quantity: qty(4), LotId: ptr(flour)})
+	tr = mustSend(t, c, tr, s.shelf1.Id)
+	mustStatus(t, receiveTransfer(c, tr.Id, nil, arrived(tr.Lines[0].Id, 4, s.bgoShelf.Id)), http.StatusOK, "the receive")
+	if _, err := issueOf(t, h, traceDelivery, contracts.StockIssue{SiteID: s.bgo.Id, Today: testToday,
+		Lines: []contracts.IssueLine{{VariantID: varFlour, LineID: 1, FromLocationID: s.bgoShelf.Id, Quantity: "3", LotID: flour}}}); err != nil {
+		t.Fatalf("the delivery at BGO: %v", err)
+	}
+	usage := getTrace(t, c, "lotId="+strconv.FormatInt(flour, 10))
+	expectShape(t, "usage of the transferred flour", usage,
+		"0 lot F1",
+		"0.0 transfer_out 4",
+		"0.1 issue 3 delivery 3001",
+	)
+	if m := usage.Nodes[1].Movement; m == nil || m.ToSiteName == nil || *m.ToSiteName != s.bgo.Name {
+		t.Errorf("the transfer = %+v, want sent to %s", m, s.bgo.Name)
+	}
+	expectShape(t, "origin of the transferred flour", getTrace(t, c, "lotId="+strconv.FormatInt(flour, 10)+"&direction=origin"),
+		"0 lot F1",
+		"0.0 receipt 10",
+	)
 }
 
 // permCustomersView is Customers' read, which names the customers on a
