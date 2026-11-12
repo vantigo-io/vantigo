@@ -28,7 +28,7 @@ func TestRefusalCodesAreInTheContract(t *testing.T) {
 		codeTransferNotCancellable, codeTransferOverReceived, codeFromLocationRequired,
 		codeTransferLineUnknown, codeNothingToClose, codeReceiveIncomplete, codeSiteHasOpenTransfers,
 		codeLocationInTransit, codeSiteHasTransfers, codeMaximumBelowReorderPoint, codePlacementEmpty,
-		codePlacementLocationInvalid, codeHoldNotInventory, codeHoldExists, codeLotDatesInvalid,
+		codePlacementLocationInvalid, codeHoldNotInventory, codeHoldExists, codeLotDatesInvalid, codeLotInvalid,
 	} {
 		if !strings.Contains(string(contract), code) {
 			t.Errorf("the contract does not name the refusal code %s", code)

@@ -94,6 +94,11 @@ func TestLotCount_TwoLots(t *testing.T) {
 	if got := modtest.One[string](t, h.Harness, `SELECT origin_kind || '/' || origin_id FROM inventory.lots WHERE id = $1`, a3); got != "count/"+strconv.FormatInt(count.Id, 10) {
 		t.Errorf("A-3's origin = %s, want the count", got)
 	}
+	// A lot a count makes takes no day-offset defaults (M57 is a receipt's):
+	// the variant's best-before and expiry offsets left it without dates.
+	if got := modtest.One[string](t, h.Harness, `SELECT concat_ws('|', production_date, best_before, expiry) FROM inventory.lots WHERE id = $1`, a3); got != "" {
+		t.Errorf("A-3's dates = %q, want none", got)
+	}
 
 	count = countAnswer(t, postCount(c, count.Id, gen.Keep, false), http.StatusOK, "post")
 	if lotOnHand(t, h, a1, s.shelf1.Id) != "8.000" || lotOnHand(t, h, a2, s.shelf1.Id) != "5.000" || lotOnHand(t, h, a3, s.shelf1.Id) != "2.000" {
@@ -125,12 +130,49 @@ func TestLotCount_Serial(t *testing.T) {
 	count := mustOpenCount(t, c, s.site.Id, 0)
 	res := putCounted(c, count.Id, countedLot(varSerial, s.shelf1.Id, sn1, 2))
 	expectRefusal(t, res, http.StatusBadRequest, "serial_quantity", "a serial counted 2")
+	// 0 or 1 exactly: a fraction of a serial is refused too, counted or set.
+	expectRefusal(t, putCounted(c, count.Id, countedLot(varSerial, s.shelf1.Id, sn1, 0.5)), http.StatusBadRequest, "serial_quantity", "a serial counted 0.5")
+	expectRefusal(t, adjust(c, s.site.Id, gen.InventoryAdjustmentLine{VariantId: varSerial, LocationId: s.shelf1.Id, Mode: gen.Set, Quantity: qty(0.5), LotId: &sn1}),
+		http.StatusBadRequest, "serial_quantity", "a serial set to 0.5")
 	countAnswer(t, putCounted(c, count.Id, countedLot(varSerial, s.shelf1.Id, sn1, 1), countedLot(varSerial, s.shelf1.Id, sn2, 0)), http.StatusOK, "count the serials")
 	countAnswer(t, postCount(c, count.Id, gen.Keep, false), http.StatusOK, "post")
 	if lotOnHand(t, h, sn1, s.shelf1.Id) != "1.000" || lotOnHand(t, h, sn2, s.shelf1.Id) != "" {
 		t.Errorf("SN01 %q, SN02 %q", lotOnHand(t, h, sn1, s.shelf1.Id), lotOnHand(t, h, sn2, s.shelf1.Id))
 	}
 	assertLedgerConsistent(t, h)
+}
+
+// TestLotCount_NewLotOnItsLine is a count line's new lot judged on its line
+// (H2): a number that does not read is lot_invalid and dates out of order
+// lot_dates_invalid, each line named, the rest of the request unrefused by
+// field; a new lot's stated dates are kept, and none is defaulted.
+func TestLotCount_NewLotOnItsLine(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, c)
+	receive(t, c, s.site.Id, s.shelf1.Id, lotLine(varLot, 10, gen.InventoryNewLot{Number: ptr("A-1")}))
+	a1 := lotID(t, h, varLot, "A-1")
+	count := mustOpenCount(t, c, s.site.Id, s.shelf1.Id)
+
+	res := putCounted(c, count.Id, countedLot(varLot, s.shelf1.Id, a1, 9),
+		gen.InventoryCountLineInput{VariantId: varLot, LocationId: s.shelf1.Id, Counted: qty(1), Lot: &gen.InventoryNewLot{Number: ptr("A 9!")}},
+		gen.InventoryCountLineInput{VariantId: varLot, LocationId: s.shelf1.Id, Counted: qty(1), Lot: &gen.InventoryNewLot{
+			Number: ptr("A-8"), ProductionDate: date(2026, 9, 1), Expiry: date(2026, 8, 1),
+		}})
+	p := expectRefusal(t, res, http.StatusBadRequest, "lot_invalid", "a bad new lot")
+	if codes := lineCodes(p); !slices.Equal(codes, []string{"1:lot_invalid", "2:lot_dates_invalid"}) {
+		t.Errorf("lines = %v", codes)
+	}
+	if n := modtest.One[int](t, h.Harness, `SELECT count(*)::int FROM inventory.lots WHERE variant_id = $1`, varLot); n != 1 {
+		t.Errorf("%d lots, want only A-1: a refused line makes none", n)
+	}
+
+	countAnswer(t, putCounted(c, count.Id, gen.InventoryCountLineInput{VariantId: varLot, LocationId: s.shelf1.Id, Counted: qty(1),
+		Lot: &gen.InventoryNewLot{Number: ptr("A-9"), Expiry: date(2027, 1, 31)}}), http.StatusOK, "a new lot with its expiry")
+	if got := modtest.One[string](t, h.Harness, `SELECT concat_ws('|', production_date, best_before, expiry) FROM inventory.lots WHERE id = $1`, lotID(t, h, varLot, "A-9")); got != "2027-01-31" {
+		t.Errorf("A-9's dates = %q, want only the expiry stated", got)
+	}
 }
 
 // TestLotCount_TrackedAfterOpening is M69's stale count: lines of a variant
@@ -347,9 +389,11 @@ func TestLotImport_Columns(t *testing.T) {
 		"OSL-1;MILK-1;2;I-3;;2026-09-01;;2026-08-01\n" +
 		"OSL-1;PUMP-1;2;SN-9;;;;\n" +
 		"OSL-2;PUMP-1;1;SN-9;;;;\n" +
-		"OSL-2;BOLT-M8;4;;;;;\n"
+		"OSL-2;BOLT-M8;4;;;;;\n" +
+		"OSL-1;PUMP-1;1;sn-9;;;;\n"
 	r := importResult(t, importCSV(c, s.site.Id, false, bad), http.StatusOK, "dry run")
-	want := []string{"2:ok", "3:lot_required", "4:lot_not_allowed", "5:lot_invalid", "6:lot_invalid", "7:serial_quantity", "8:ok", "9:ok"}
+	// Row 10 names row 8's serial again: the dry run refuses it as the commit would.
+	want := []string{"2:ok", "3:lot_required", "4:lot_not_allowed", "5:lot_invalid", "6:lot_invalid", "7:serial_quantity", "8:ok", "9:ok", "10:serial_quantity"}
 	if got := outcomes(r); !slices.Equal(got, want) {
 		t.Errorf("outcomes = %v, want %v", got, want)
 	}
@@ -376,6 +420,37 @@ func TestLotImport_Columns(t *testing.T) {
 	// A header naming a column the import does not know is refused.
 	mustStatus(t, importCSV(c, s.site.Id, false, "location;sku;quantity;colour\nOSL-1;MILK-1;1;red\n"), http.StatusBadRequest, "an unknown column")
 	assertLedgerConsistent(t, h)
+}
+
+// TestLotStockTotals_ByLot is M74's lotId on GET /stock: only that lot's
+// on hand, nothing reserved (a reservation names no lot); without it, the
+// variant's.
+func TestLotStockTotals_ByLot(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, c)
+	receive(t, c, s.site.Id, s.shelf1.Id, lotLine(varLot, 10, gen.InventoryNewLot{Number: ptr("A-1")}))
+	receive(t, c, s.site.Id, s.shelf2.Id, lotLine(varLot, 5, gen.InventoryNewLot{Number: ptr("A-2")}), lotLine(varLot, 2, gen.InventoryNewLot{Number: ptr("A-1")}))
+	a1 := lotID(t, h, varLot, "A-1")
+	totals := func(query string) []gen.InventoryStockTotal {
+		t.Helper()
+		res := c.Do(http.MethodGet, stockPath+query, nil)
+		mustStatus(t, res, http.StatusOK, "GET /stock"+query)
+		var out gen.InventoryStockTotals
+		res.JSON(&out)
+		return out.Totals
+	}
+	if got := totals("?variantIds=" + strconv.Itoa(int(varLot))); len(got) != 1 || got[0].OnHand != 17 {
+		t.Errorf("the variant's totals = %+v, want 17", got)
+	}
+	if got := totals("?variantIds=" + strconv.Itoa(int(varLot)) + "&lotId=" + strconv.FormatInt(a1, 10)); len(got) != 1 || got[0].OnHand != 12 || got[0].Reserved != 0 || got[0].Available != 12 {
+		t.Errorf("A-1's totals = %+v, want 12 on hand and available", got)
+	}
+	if got := totals("?variantIds=" + strconv.Itoa(int(varBolt)) + "&lotId=" + strconv.FormatInt(a1, 10)); len(got) != 0 {
+		t.Errorf("another variant's totals in A-1 = %+v, want none", got)
+	}
+	mustStatus(t, c.Do(http.MethodGet, stockPath+"?variantIds=1&lotId=0", nil), http.StatusBadRequest, "lotId 0")
 }
 
 // TestLotExpiring_List is M72: the lots with stock expiring within the days

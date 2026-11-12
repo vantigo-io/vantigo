@@ -226,9 +226,15 @@ const inTransitOfVariants = `-- name: InTransitOfVariants :many
 SELECT variant_id, sum(sent - received - missing - returned)::text AS in_transit
 FROM inventory.transfer_lines
 WHERE variant_id = ANY($1::int[]) AND sent > received + missing + returned
+  AND ($2::bigint IS NULL OR lot_id = $2::bigint)
 GROUP BY variant_id
 ORDER BY variant_id
 `
+
+type InTransitOfVariantsParams struct {
+	VariantIds []int32
+	LotID      *int64
+}
 
 type InTransitOfVariantsRow struct {
 	VariantID int32
@@ -236,9 +242,9 @@ type InTransitOfVariantsRow struct {
 }
 
 // InTransitOfVariants is each variant's in transit across every transfer,
-// for the stock totals (I46).
-func (q *Queries) InTransitOfVariants(ctx context.Context, variantIds []int32) ([]InTransitOfVariantsRow, error) {
-	rows, err := q.db.Query(ctx, inTransitOfVariants, variantIds)
+// for the stock totals (I46); with a lot, that lot's only (M74).
+func (q *Queries) InTransitOfVariants(ctx context.Context, arg InTransitOfVariantsParams) ([]InTransitOfVariantsRow, error) {
+	rows, err := q.db.Query(ctx, inTransitOfVariants, arg.VariantIds, arg.LotID)
 	if err != nil {
 		return nil, err
 	}

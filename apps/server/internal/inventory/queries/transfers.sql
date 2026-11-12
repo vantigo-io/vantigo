@@ -213,10 +213,11 @@ ORDER BY l.variant_id, t.to_site_id;
 
 -- name: InTransitOfVariants :many
 -- InTransitOfVariants is each variant's in transit across every transfer,
--- for the stock totals (I46).
+-- for the stock totals (I46); with a lot, that lot's only (M74).
 SELECT variant_id, sum(sent - received - missing - returned)::text AS in_transit
 FROM inventory.transfer_lines
 WHERE variant_id = ANY(@variant_ids::int[]) AND sent > received + missing + returned
+  AND (sqlc.narg(lot_id)::bigint IS NULL OR lot_id = sqlc.narg(lot_id)::bigint)
 GROUP BY variant_id
 ORDER BY variant_id;
 

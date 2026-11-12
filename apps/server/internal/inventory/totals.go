@@ -21,7 +21,9 @@ const maxTotalVariants = 100
 // reserved of it across every site, and available, the difference, for the
 // product list's column (I33), and what of it is on its way between sites
 // (inTransit, phase 2 design I46: not part of onHand); a variant with no
-// stock, no reservation and nothing in transit is absent. Products
+// stock, no reservation and nothing in transit is absent. With lotId, only
+// that lot's on hand and in transit (manufacturing phase 2 M74); a
+// reservation names no lot, so a lot's reserved is 0. Products
 // reads nothing of Inventory: the host composes the column from this.
 func (s *server) ListInventoryStockTotals(ctx context.Context, req gen.ListInventoryStockTotalsRequestObject) (gen.ListInventoryStockTotalsResponseObject, error) {
 	ids := distinct(req.Params.VariantIds)
@@ -32,6 +34,9 @@ func (s *server) ListInventoryStockTotals(ctx context.Context, req gen.ListInven
 	case len(ids) > maxTotalVariants:
 		f.add("variantIds", fmt.Sprintf("Name at most %d variants", maxTotalVariants))
 	}
+	if req.Params.LotId != nil && *req.Params.LotId < 1 {
+		f.add("lotId", "A lot id is 1 or more")
+	}
 	if f.failed() {
 		return gen.ListInventoryStockTotals400ApplicationProblemPlusJSONResponse(invalid(invalidQueryTitle, f)), nil
 	}
@@ -41,10 +46,10 @@ func (s *server) ListInventoryStockTotals(ctx context.Context, req gen.ListInven
 	)
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
-		if rows, err = q.StockTotals(ctx, ids); err != nil {
+		if rows, err = q.StockTotals(ctx, store.StockTotalsParams{VariantIds: ids, LotID: req.Params.LotId}); err != nil {
 			return fmt.Errorf("inventory: read stock totals: %w", err)
 		}
-		if transit, err = q.InTransitOfVariants(ctx, ids); err != nil {
+		if transit, err = q.InTransitOfVariants(ctx, store.InTransitOfVariantsParams{VariantIds: ids, LotID: req.Params.LotId}); err != nil {
 			return fmt.Errorf("inventory: read what is in transit: %w", err)
 		}
 		return nil

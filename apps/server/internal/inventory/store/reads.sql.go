@@ -377,11 +377,18 @@ const stockTotals = `-- name: StockTotals :many
 SELECT coalesce(b.variant_id, r.variant_id)::int AS variant_id, coalesce(b.on_hand, 0)::text AS on_hand,
        coalesce(r.reserved, 0)::text AS reserved
 FROM (SELECT variant_id, sum(on_hand) AS on_hand FROM inventory.balances
-      WHERE variant_id = ANY($1::int[]) GROUP BY variant_id) b
+      WHERE variant_id = ANY($1::int[]) AND ($2::bigint IS NULL OR lot_id = $2::bigint)
+      GROUP BY variant_id) b
 FULL JOIN (SELECT variant_id, sum(quantity) AS reserved FROM inventory.reservations
-           WHERE variant_id = ANY($1::int[]) GROUP BY variant_id) r ON r.variant_id = b.variant_id
+           WHERE variant_id = ANY($1::int[]) AND $2::bigint IS NULL
+           GROUP BY variant_id) r ON r.variant_id = b.variant_id
 ORDER BY 1
 `
+
+type StockTotalsParams struct {
+	VariantIds []int32
+	LotID      *int64
+}
 
 type StockTotalsRow struct {
 	VariantID int32
@@ -391,9 +398,10 @@ type StockTotalsRow struct {
 
 // StockTotals is each of the variants' on hand across every location and
 // what is reserved of it across every site (I33); a variant with neither is
-// absent.
-func (q *Queries) StockTotals(ctx context.Context, variantIds []int32) ([]StockTotalsRow, error) {
-	rows, err := q.db.Query(ctx, stockTotals, variantIds)
+// absent. With a lot, only that lot's on hand (M74); a reservation names no
+// lot, so none counts.
+func (q *Queries) StockTotals(ctx context.Context, arg StockTotalsParams) ([]StockTotalsRow, error) {
+	rows, err := q.db.Query(ctx, stockTotals, arg.VariantIds, arg.LotID)
 	if err != nil {
 		return nil, err
 	}

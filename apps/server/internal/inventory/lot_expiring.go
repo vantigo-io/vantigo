@@ -169,7 +169,10 @@ func (s *server) ExportInventoryExpiringLots(ctx context.Context, req gen.Export
 func (s *server) expiringItems(ctx context.Context, q *store.Queries, now time.Time) ([]gen.InventoryStatsAttentionItem, error) {
 	today, err := s.today(ctx)
 	if err != nil {
-		return nil, err
+		// The lot items need the business day; without the calendar they are
+		// left out and the rest of the list still answers.
+		s.logger().WarnContext(ctx, "inventory: the expiring lots left out of the attention list", "error", err)
+		return nil, nil
 	}
 	counts, err := q.ExpiringLotCounts(ctx, store.ExpiringLotCountsParams{
 		Today: pgtype.Date{Time: today, Valid: true}, Until: pgtype.Date{Time: today.AddDate(0, 0, expiringAttentionDays), Valid: true},

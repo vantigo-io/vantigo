@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"math/big"
@@ -34,7 +35,10 @@ import (
 // one by number as a receipt does — and an untracked one's none
 // (lot_required, lot_not_allowed, lot_unknown); a line the count froze
 // without a lot is still counted as it is, and the post judges it. A serial
-// is counted 0 or 1 (serial_quantity).
+// is counted 0 or 1 (serial_quantity). A new lot that does not read refuses
+// its line (lot_invalid, lot_dates_invalid); a lot a count makes takes only
+// the dates the line states — the variant's day offsets are a receipt's, and
+// a counted lot was made on a day nobody knows.
 //
 // The lock order is the count post's: the count row FOR UPDATE, then the
 // variants (LockVariants), then the lot counter and the new lots, made with
@@ -56,6 +60,11 @@ type countLine struct {
 
 // lotOriginCount is the origin kind of a lot a count line made (M69).
 const lotOriginCount = "count"
+
+// codeLotInvalid is a count line's new lot that does not read: a number not
+// 1–20 characters A–Z, a–z, 0–9 and . _ / -, or a supplier lot or note too
+// long. The import's row outcome of the same name is its own.
+const codeLotInvalid = "lot_invalid"
 
 // PutInventoryCountLines Record counted quantities
 // (PUT /api/v1/inventory/counts/{id}/lines)
@@ -81,7 +90,16 @@ func (s *server) PutInventoryCountLines(ctx context.Context, req gen.PutInventor
 		line := countLine{index: i, variantID: l.VariantId, locationID: l.LocationId}
 		line.counted, line.entry, line.failCode, line.failText = readEntered(l.Counted, l.Entered, nonNegativeQuantity)
 		line.lotID = lotIDOf(&f, fmt.Sprintf("lines[%d].lotId", i), l.LotId)
-		line.newLot = readNewLot(&f, fmt.Sprintf("lines[%d].lot", i), l.Lot)
+		// A new lot that does not read refuses its line, not the request
+		// (lot_invalid, or lot_dates_invalid), so a screen can mark the row.
+		var lf fieldErrors
+		line.newLot = readNewLot(&lf, fmt.Sprintf("lines[%d].lot", i), l.Lot)
+		if lf.failed() {
+			line.newLot = nil
+			if line.failCode == "" {
+				line.failCode, line.failText = cmp.Or(lf.code, codeLotInvalid), lf.text()
+			}
+		}
 		if l.LotId != nil && l.Lot != nil {
 			f.add(fmt.Sprintf("lines[%d].lot", i), "Name the lot by lotId or by lot, not both")
 		}
@@ -177,7 +195,7 @@ func (s *server) recordCounted(ctx context.Context, tx pgx.Tx, txq *store.Querie
 			continue // refused below
 		}
 		r := *l.newLot
-		r.variantID = l.variantID
+		r.variantID, r.noDefaults = l.variantID, true
 		reqs, reqLines = append(reqs, r), append(reqLines, i)
 	}
 	if len(reqs) > 0 {
@@ -279,7 +297,7 @@ func (s *server) recordCounted(ctx context.Context, tx pgx.Tx, txq *store.Querie
 			}
 			value = counted{quantity: q, entered: snap}
 		}
-		if v.Tracking == contracts.TrackingSerial && l.lotID != 0 && value.quantity.Cmp(big.NewRat(1, 1)) > 0 {
+		if v.Tracking == contracts.TrackingSerial && l.lotID != 0 && value.quantity.Sign() != 0 && value.quantity.Cmp(big.NewRat(1, 1)) != 0 {
 			fail(l, codeSerialQuantity, fmt.Sprintf("%s is tracked in serials; a serial is counted 0 or 1.", v.SKU))
 			continue
 		}

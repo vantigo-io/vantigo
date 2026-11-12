@@ -3,7 +3,10 @@ package inventory
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 )
@@ -129,6 +132,15 @@ func (f *fieldErrors) merge(o fieldErrors) {
 	if f.code == "" {
 		f.code = o.code
 	}
+}
+
+// text is every message recorded, by field in order, joined as one detail.
+func (f *fieldErrors) text() string {
+	var out []string
+	for _, field := range slices.Sorted(maps.Keys(f.errs)) {
+		out = append(out, f.errs[field]...)
+	}
+	return strings.Join(out, ". ") + "."
 }
 
 // failed reports whether any rule failed.
