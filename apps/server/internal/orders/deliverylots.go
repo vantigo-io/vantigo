@@ -28,10 +28,12 @@ import (
 // The deliveries' lot codes: Orders' own, and Inventory's it answers on a
 // line before the ledger is called.
 const (
-	codePicksMismatch = "picks_mismatch"
-	codeLotRequired   = contracts.StockLotRequired
-	codeLotUnknown    = contracts.StockLotUnknown
-	codeLotNotAllowed = contracts.StockLotNotAllowed
+	codePicksMismatch           = "picks_mismatch"
+	codeExpiredOverrideRequired = "expired_override_required"
+	codeLotRequired             = contracts.StockLotRequired
+	codeLotUnknown              = contracts.StockLotUnknown
+	codeLotNotAllowed           = contracts.StockLotNotAllowed
+	codeSerialQuantity          = contracts.StockSerialQuantity
 )
 
 // isTracked reports whether a variant is tracked by lot or serial number.
@@ -48,6 +50,34 @@ func trackedLocked(ctx context.Context, variantID int32) bool {
 	}
 	e, ok := rec.byID[variantID]
 	return ok && isTracked(e)
+}
+
+// serialLocked reports whether a variant locked on this transaction is
+// tracked by serial number.
+func serialLocked(ctx context.Context, variantID int32) bool {
+	rec := lockedVariantsOf(ctx)
+	if rec == nil {
+		return false
+	}
+	e, ok := rec.byID[variantID]
+	return ok && e.Tracking == contracts.TrackingSerial
+}
+
+// serialsOf is, per variant, whether it is tracked by serial number, read
+// from the catalog before any transaction; empty when Products is off.
+func (s *server) serialsOf(ctx context.Context, dlines []store.OrdersDeliveryLine) (map[int32]bool, error) {
+	out := map[int32]bool{}
+	if s.deps.Products == nil || len(dlines) == 0 {
+		return out, nil
+	}
+	entries, err := s.catalogVariants(ctx, withDeliveryVariants(nil, dlines))
+	if err != nil {
+		return nil, err
+	}
+	for id, e := range entries {
+		out[id] = e.Tracking == contracts.TrackingSerial
+	}
+	return out, nil
 }
 
 // trackedOf is, per variant, whether it is tracked, read from the catalog
@@ -114,6 +144,11 @@ func sumPicks(picks []lotPick) *big.Rat {
 		out.Add(out, p.qty)
 	}
 	return out
+}
+
+// anyChosen reports whether a person chose any of the picks.
+func anyChosen(picks []lotPick) bool {
+	return slices.ContainsFunc(picks, func(p lotPick) bool { return p.chosen })
 }
 
 // sumRows is what stored picks take together.
@@ -248,7 +283,7 @@ func (v deliveryLotsView) lotsOut(dl store.OrdersDeliveryLine) (tracked bool, lo
 		choices = append(choices, gen.OrdersDeliveryLotChoice{
 			LotId: c.LotID, LotNumber: c.Number, Expiry: dateOutOf(c.Expiry), BestBefore: dateOutOf(c.BestBefore),
 			LocationId: c.LocationID, FullCode: c.FullCode, Quantity: wire(mustRat(c.Quantity), quantityPlaces),
-			Status: gen.OrdersDeliveryLotChoiceStatus(c.Status), Expired: contracts.LotExpired(c.Expiry, v.today),
+			Status: gen.OrdersDeliveryLotChoiceStatus(c.Status), Expired: contracts.LotExpired(c.Expiry, v.today), Serial: c.Serial,
 		})
 	}
 	if tracked {
@@ -289,10 +324,12 @@ func picksOfOrderLines(ctx context.Context, txq *store.Queries, deliveryID int64
 // at index i of the request: each a lot holding the variant at the location
 // (lot_unknown) — a pick the line already had stands even when the lot no
 // longer shows there — at a quantity more than 0 with at most three
-// decimals, once per lot and location. Picks sent as the line had them keep
-// whether each was chosen; any change marks them all chosen. Nil in is no
-// lots sent.
-func judgePicks(i int, variant int32, in *[]gen.OrdersDeliveryLotInput, old []lotPick, pool *lotPool) ([]lotPick, []lineFailure) {
+// decimals, 1 of a serial variant (serial_quantity), once per lot and
+// location. A new or changed pick that allows its lot expired needs
+// inventory:expired-override (override, expired_override_required); one the
+// line had so stands. Picks sent as the line had them keep whether each was
+// chosen; any change marks them all chosen. Nil in is no lots sent.
+func judgePicks(i int, variant int32, serial, override bool, in *[]gen.OrdersDeliveryLotInput, old []lotPick, pool *lotPool) ([]lotPick, []lineFailure) {
 	if in == nil {
 		return nil, nil
 	}
@@ -312,12 +349,22 @@ func judgePicks(i int, variant int32, in *[]gen.OrdersDeliveryLotInput, old []lo
 			continue
 		}
 		seen[spot] = true
-		var pick *lotPick
+		if serial && qty.Cmp(big.NewRat(1, 1)) != 0 {
+			failures = append(failures, lineFailure{index: i, code: codeSerialQuantity, detail: "A serial number is delivered one at a time.", lot: at})
+			continue
+		}
+		var pick, had *lotPick
 		for _, p := range old {
 			if p.lotID == spot.lot && p.locationID == spot.location {
-				pick = &p
+				pick, had = &p, &p
 				break
 			}
+		}
+		allowExpired := li.AllowExpired != nil && *li.AllowExpired
+		if allowExpired && !override && (had == nil || !had.allowExpired || had.qty.Cmp(qty) != 0) {
+			failures = append(failures, lineFailure{index: i, code: codeExpiredOverrideRequired,
+				detail: "Only a holder of inventory:expired-override chooses an expired lot.", lot: at})
+			continue
 		}
 		if pick == nil {
 			r, ok := pool.find(variant, spot)
@@ -329,7 +376,7 @@ func judgePicks(i int, variant int32, in *[]gen.OrdersDeliveryLotInput, old []lo
 			pick = &lotPick{lotID: r.LotID, locationID: r.LocationID, number: r.Number, code: r.FullCode, expiry: r.Expiry}
 		}
 		p := *pick
-		p.qty, p.allowExpired = qty, li.AllowExpired != nil && *li.AllowExpired
+		p.qty, p.allowExpired = qty, allowExpired
 		picks = append(picks, p)
 	}
 	if len(failures) > 0 {

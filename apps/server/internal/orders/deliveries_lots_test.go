@@ -176,10 +176,11 @@ func TestDeliveryLots_ProposalSplitsAcrossLotsFEFO(t *testing.T) {
 
 // A line the lots cannot cover is short and refused (picks_mismatch); a
 // line saved with no lots is refused (lot_required); a person's lots are
-// judged (lot_unknown, lot_not_allowed) and marked chosen; an expired lot
-// chosen is refused for a poster without inventory:expired-override,
-// naming the line and the lot row, and posted for one with it (M62, M75,
-// M77, M78).
+// judged (lot_unknown, lot_not_allowed) and marked chosen; an expired lot is
+// chosen only by a holder of inventory:expired-override
+// (expired_override_required, naming the lot row), kept when another saves
+// the line unchanged, refused for a poster without the permission, naming
+// the line and the lot row, and posted for one with it (M62, M75, M77, M78).
 func TestDeliveryLots_EditingShortAndExpired(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, harnessOptions{stock: true})
@@ -204,12 +205,16 @@ func TestDeliveryLots_EditingShortAndExpired(t *testing.T) {
 		t.Errorf("refusal lines %+v", p.Lines)
 	}
 
-	save := func(d gen.OrdersDelivery, lots *[]gen.OrdersDeliveryLotInput, boltLots *[]gen.OrdersDeliveryLotInput) *modtest.Response {
+	with := h.SignIn(t, append(slices.Clone(stockKeys), "inventory:expired-override")...)
+	saveAs := func(c *modtest.Client, d gen.OrdersDelivery, lots *[]gen.OrdersDeliveryLotInput, boltLots *[]gen.OrdersDeliveryLotInput) *modtest.Response {
 		return c.Do(http.MethodPut, deliveryPath(d.Id), gen.OrdersDeliveryUpdate{Version: d.Version, ExpectedUpdatedAt: d.UpdatedAt,
 			Lines: []gen.OrdersDeliveryLineInput{
 				{OrderLineId: lot.OrderLineId, Quantity: 4, Lots: lots},
 				{OrderLineId: bolt.OrderLineId, Quantity: 1, FromLocationId: ptrI64(locA1), Lots: boltLots},
 			}})
+	}
+	save := func(d gen.OrdersDelivery, lots *[]gen.OrdersDeliveryLotInput, boltLots *[]gen.OrdersDeliveryLotInput) *modtest.Response {
+		return saveAs(c, d, lots, boltLots)
 	}
 	p = expectRefusal(t, save(d, &[]gen.OrdersDeliveryLotInput{{LotId: 2, LocationId: locA1, Quantity: 2}, {LotId: 99, LocationId: locA1, Quantity: 2}}, nil),
 		http.StatusBadRequest, "lot_unknown", "an unknown lot")
@@ -233,14 +238,27 @@ func TestDeliveryLots_EditingShortAndExpired(t *testing.T) {
 	d = deliveryOf(t, res)
 	expectRefusal(t, postDelivery(c, d), http.StatusBadRequest, "lot_required", "a tracked line with no lot")
 
-	// The expired lot, chosen.
-	res = save(d, &[]gen.OrdersDeliveryLotInput{{LotId: 2, LocationId: locA1, Quantity: 2},
-		{LotId: 1, LocationId: locA1, Quantity: 2, AllowExpired: ptrBool(true)}}, nil)
+	// The expired lot, chosen: only by a holder of the override.
+	expired := &[]gen.OrdersDeliveryLotInput{{LotId: 2, LocationId: locA1, Quantity: 2},
+		{LotId: 1, LocationId: locA1, Quantity: 2, AllowExpired: ptrBool(true)}}
+	p = expectRefusal(t, save(d, expired, nil), http.StatusBadRequest, "expired_override_required", "an expired lot chosen without the override")
+	if l := (*p.Lines)[0]; l.Index != 0 || l.LotIndex == nil || *l.LotIndex != 1 || l.LotId == nil || *l.LotId != 1 {
+		t.Errorf("refusal line %+v, want line 0's lot row 1", l)
+	}
+	res = saveAs(with, d, expired, nil)
 	mustStatus(t, res, http.StatusOK, "choose the expired lot")
 	d = deliveryOf(t, res)
 	if l := d.Lines[0]; len(l.Lots) != 2 || !l.Lots[0].Chosen || !l.Lots[1].AllowExpired || l.Short != 0 {
 		t.Fatalf("chosen lots %+v", l.Lots)
 	}
+	// Saved again unchanged by someone without the override: kept.
+	res = save(d, expired, nil)
+	mustStatus(t, res, http.StatusOK, "the expired lot saved unchanged")
+	d = deliveryOf(t, res)
+	// Its quantity changed by them: refused.
+	expectRefusal(t, save(d, &[]gen.OrdersDeliveryLotInput{{LotId: 2, LocationId: locA1, Quantity: 1},
+		{LotId: 1, LocationId: locA1, Quantity: 3, AllowExpired: ptrBool(true)}}, nil),
+		http.StatusBadRequest, "expired_override_required", "the expired lot changed without the override")
 	reads := h.stock.lotReadCount()
 	p = expectRefusal(t, postDelivery(c, d), http.StatusConflict, contracts.StockLotExpired, "an expired lot without the override")
 	if l := (*p.Lines)[0]; len(*p.Lines) != 1 || l.Index != 0 || l.LotIndex == nil || *l.LotIndex != 1 || l.LotId == nil || *l.LotId != 1 ||
@@ -250,7 +268,6 @@ func TestDeliveryLots_EditingShortAndExpired(t *testing.T) {
 	if h.stock.lotReadCount() != reads {
 		t.Error("a refusal of chosen lots proposed them again")
 	}
-	with := h.SignIn(t, append(slices.Clone(stockKeys), "inventory:expired-override")...)
 	var meta gen.OrdersMeta
 	with.Do(http.MethodGet, "/api/v1/orders/meta", nil).JSON(&meta)
 	if !meta.CanOverrideExpired {
@@ -342,6 +359,17 @@ func TestDeliveryLots_Serials(t *testing.T) {
 	if got := lotsOf(d.Lines[0]); !slices.Equal(got, []string{fmt.Sprintf("11@%d:1", locA1), fmt.Sprintf("12@%d:1", locA1)}) {
 		t.Fatalf("picks %v, want SN-1 and SN-2", got)
 	}
+	if ch := d.Lines[0].LotChoices; len(ch) != 3 || !ch[0].Serial {
+		t.Errorf("serial choices %+v, want each marked serial", ch)
+	}
+	// A serial number's lot takes 1 (serial_quantity).
+	p := expectRefusal(t, c.Do(http.MethodPut, deliveryPath(d.Id), gen.OrdersDeliveryUpdate{Version: d.Version, ExpectedUpdatedAt: d.UpdatedAt,
+		Lines: []gen.OrdersDeliveryLineInput{{OrderLineId: d.Lines[0].OrderLineId, Quantity: 2,
+			Lots: &[]gen.OrdersDeliveryLotInput{{LotId: 13, LocationId: locA1, Quantity: 2}}}}}),
+		http.StatusBadRequest, contracts.StockSerialQuantity, "a serial taking 2")
+	if l := (*p.Lines)[0]; l.LotIndex == nil || *l.LotIndex != 0 || l.LotId == nil || *l.LotId != 13 {
+		t.Errorf("refusal line %+v, want lot row 0", l)
+	}
 	mustStatus(t, postDelivery(c, d), http.StatusOK, "post")
 	if h.stock.lotAt(11, locA1) != "0" || h.stock.lotAt(13, locA1) != "1" {
 		t.Errorf("serials after the post: %s %s", h.stock.lotAt(11, locA1), h.stock.lotAt(13, locA1))
@@ -356,5 +384,149 @@ func TestDeliveryLots_Serials(t *testing.T) {
 	pick, ok := pdfModels.find("Plukkliste", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][1], "PUMP-1") })
 	if !ok || pick.Rows[0][2] != "SN-1" || pick.Rows[1][2] != "SN-2" {
 		t.Errorf("pick list %+v, %v; want a row per serial", pick.Rows, ok)
+	}
+}
+
+// A second post refused on another lot answers the first post's refusal:
+// its lot rows are the picks the delivery still holds, the second's rolled
+// back with it (M65a).
+func TestDeliveryLots_SecondRefusalAnswersTheFirst(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true})
+	seedTracked(h)
+	c := h.SignIn(t, stockKeys...)
+	setDefaultSite(t, c, siteOslo)
+	received := h.Now().AddDate(0, -1, 0)
+	h.stock.putLot(varLot, 1, "S1", locA1, "5", day(h, 10), received)
+	h.stock.putLot(varLot, 2, "S2", locA1, "10", day(h, 20), received)
+	_, d := newDelivery(t, c, productLine(varLot, 5))
+	h.stock.putLot(varLot, 1, "S1", locA1, "2", day(h, 10), received) // stale
+	// S2, which the second proposal draws on, goes on hold before it posts.
+	h.stock.onNextLots(func() { h.stock.setLotStatus(2, contracts.LotBlocked) })
+	p := expectRefusal(t, postDelivery(c, d), http.StatusConflict, contracts.StockInsufficientStock, "the second post refused")
+	if l := (*p.Lines)[0]; len(*p.Lines) != 1 || l.LotIndex == nil || *l.LotIndex != 0 || l.LotId == nil || *l.LotId != 1 || !strings.Contains(l.Detail, "S1") {
+		t.Errorf("refusal lines %+v, want the first post's: S1, lot row 0", *p.Lines)
+	}
+	if got := lotsOf(getDelivery(t, c, d.Id).Lines[0]); !slices.Equal(got, []string{fmt.Sprintf("1@%d:5", locA1)}) {
+		t.Errorf("picks %v after the refusal, want the stored S1 5", got)
+	}
+	if h.stock.lotAt(1, locA1) != "2" || h.stock.lotAt(2, locA1) != "10" {
+		t.Errorf("S1 %s S2 %s, want nothing issued", h.stock.lotAt(1, locA1), h.stock.lotAt(2, locA1))
+	}
+}
+
+// A person's lots stay when only the line's quantity changes — the line is
+// then short — and Propose again proposes them FEFO, no longer chosen; lots
+// and Propose again together are refused (M77, §19).
+func TestDeliveryLots_ChosenKeptAndProposedAgain(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true})
+	seedTracked(h)
+	c := h.SignIn(t, stockKeys...)
+	setDefaultSite(t, c, siteOslo)
+	received := h.Now().AddDate(0, -1, 0)
+	h.stock.putLot(varLot, 1, "S1", locA1, "5", day(h, 10), received)
+	h.stock.putLot(varLot, 2, "S2", locA1, "5", day(h, 20), received)
+	_, d := newDelivery(t, c, productLine(varLot, 6))
+	line := d.Lines[0].OrderLineId
+	save := func(d gen.OrdersDelivery, in gen.OrdersDeliveryLineInput) *modtest.Response {
+		in.OrderLineId = line
+		return c.Do(http.MethodPut, deliveryPath(d.Id), gen.OrdersDeliveryUpdate{Version: d.Version, ExpectedUpdatedAt: d.UpdatedAt,
+			Lines: []gen.OrdersDeliveryLineInput{in}})
+	}
+	res := save(d, gen.OrdersDeliveryLineInput{Quantity: 4, Lots: &[]gen.OrdersDeliveryLotInput{{LotId: 2, LocationId: locA1, Quantity: 4}}})
+	mustStatus(t, res, http.StatusOK, "choose S2")
+	d = deliveryOf(t, res)
+
+	res = save(d, gen.OrdersDeliveryLineInput{Quantity: 5})
+	mustStatus(t, res, http.StatusOK, "the quantity alone")
+	d = deliveryOf(t, res)
+	if l := d.Lines[0]; !slices.Equal(lotsOf(l), []string{fmt.Sprintf("2@%d:4", locA1)}) || !l.Lots[0].Chosen || l.Short != 1 {
+		t.Errorf("line %+v, want the chosen S2 4 kept, short 1", l)
+	}
+
+	expectRefusal(t, save(d, gen.OrdersDeliveryLineInput{Quantity: 5, ProposeAgain: ptrBool(true),
+		Lots: &[]gen.OrdersDeliveryLotInput{{LotId: 2, LocationId: locA1, Quantity: 5}}}),
+		http.StatusBadRequest, "line_invalid", "lots and propose again")
+
+	res = save(d, gen.OrdersDeliveryLineInput{Quantity: 5, ProposeAgain: ptrBool(true)})
+	mustStatus(t, res, http.StatusOK, "propose again")
+	d = deliveryOf(t, res)
+	if l := d.Lines[0]; !slices.Equal(lotsOf(l), []string{fmt.Sprintf("1@%d:5", locA1)}) || l.Lots[0].Chosen || l.Short != 0 {
+		t.Errorf("line %+v, want S1 5 proposed", l)
+	}
+}
+
+// The packing slip lists a lot once, what it takes summed over its
+// locations, with quantities for a lot-tracked line even when each is 1; a
+// cancelled delivery's lots are not listed on the order (M79).
+func TestDeliveryLots_PackingSlipSumsALotAndCancelledListsNone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true})
+	seedTracked(h)
+	c := h.SignIn(t, stockKeys...)
+	setDefaultSite(t, c, siteOslo)
+	received := h.Now().AddDate(0, -1, 0)
+	h.stock.putLot(varLot, 1, "L1", locA1, "1", day(h, 10), received)
+	h.stock.putLot(varLot, 1, "L1", locA2, "1", day(h, 10), received)
+	h.stock.putLot(varLot, 2, "L2", locA1, "1", day(h, 20), received)
+	o, d := newDelivery(t, c, productLine(varLot, 3))
+	if got := lotsOf(d.Lines[0]); len(got) != 3 {
+		t.Fatalf("picks %v, want L1 at two locations and L2", got)
+	}
+	list := func() []gen.OrdersDeliverySummary {
+		var page gen.OrdersDeliveryPage
+		c.Do(http.MethodGet, deliveriesPath+fmt.Sprintf("?orderId=%d", o.Id), nil).JSON(&page)
+		return page.Items
+	}
+	if items := list(); len(items) != 1 || !slices.Equal(items[0].Lots, []string{"L1", "L2"}) {
+		t.Fatalf("draft listed %+v, want its lots", items)
+	}
+	mustStatus(t, c.Do(http.MethodPost, deliveryPath(d.Id, "cancel"), gen.OrdersVersionInput{Version: d.Version, ExpectedUpdatedAt: d.UpdatedAt}),
+		http.StatusOK, "cancel")
+	if items := list(); len(items) != 1 || len(items[0].Lots) != 0 {
+		t.Errorf("cancelled listed %+v, want no lots", items)
+	}
+
+	res := c.Do(http.MethodPost, deliveriesPath, gen.OrdersDeliveryInput{OrderId: o.Id})
+	mustStatus(t, res, http.StatusCreated, "a second delivery")
+	d = deliveryOf(t, res)
+	mustStatus(t, postDelivery(c, d), http.StatusOK, "post")
+	mustStatus(t, c.Do(http.MethodGet, deliveryPath(d.Id, "packing-slip"), nil), http.StatusOK, "packing slip")
+	subtitle := fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number)
+	slip, ok := pdfModels.find("Pakkseddel", subtitle, func(m orders.PDFModel) bool { return len(m.Rows) == 2 && strings.HasPrefix(m.Rows[0][0], "MILK-1") })
+	expiry := func(days int) string { return day(h, days).Format("02.01.2006") }
+	want := "Partier: L1 (utløper " + expiry(10) + ") – 2, L2 (utløper " + expiry(20) + ") – 1"
+	if !ok || slip.Rows[1][0] != want {
+		t.Errorf("packing slip %+v, %v; want %q", slip.Rows, ok, want)
+	}
+}
+
+// A post that finds, under the order's lock, a variant it had not locked
+// starts again with every variant locked first, never locking one after the
+// order's row (MB rule 21).
+func TestPostDelivery_LocksGrownVariantsFirst(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true})
+	c := h.SignIn(t, stockKeys...)
+	setDefaultSite(t, c, siteOslo)
+	h.stock.put(varBolt, locA1, "8")
+	h.stock.put(varFood, locA1, "8")
+	o := confirmOrder(t, c, createOrder(t, c, custBusiness, productLine(varBolt, 2)))
+	res := c.Do(http.MethodPost, deliveriesPath, gen.OrdersDeliveryInput{OrderId: o.Id})
+	mustStatus(t, res, http.StatusCreated, "a draft")
+	d := deliveryOf(t, res)
+	before := len(h.catalog.lockCalls())
+	// Between the post's variant lock and its order lock, the line comes to
+	// name another variant.
+	h.catalog.onNextLock(func() {
+		h.Exec(t, `UPDATE orders.delivery_lines SET variant_id = $1 WHERE delivery_id = $2`, varFood, d.Id)
+	})
+	mustStatus(t, postDelivery(c, d), http.StatusOK, "post")
+	both := slices.Sorted(slices.Values([]int32{varBolt, varFood}))
+	calls := h.catalog.lockCalls()[before:]
+	if !slices.ContainsFunc(calls, func(ids []int32) bool { return slices.Equal(ids, both) }) ||
+		slices.ContainsFunc(calls, func(ids []int32) bool { return slices.Equal(ids, []int32{varFood}) }) {
+		t.Errorf("the post locked %v, want both variants in one first lock", calls)
 	}
 }

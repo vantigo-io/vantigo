@@ -76,7 +76,10 @@ type deliveryPrintable struct {
 	dlines []store.OrdersDeliveryLine
 	lines  []store.OrdersLine
 	// picks are the tracked lines' lots, by delivery line (M75).
-	picks     map[int64][]store.OrdersDeliveryLineLot
+	picks map[int64][]store.OrdersDeliveryLineLot
+	// serial is, per variant, whether it is tracked by serial number: the
+	// packing slip lists its numbers without quantities.
+	serial    map[int32]bool
 	locations map[int32][]contracts.StockLocation
 	seller    contracts.SellerProfile
 	date      time.Time
@@ -224,18 +227,30 @@ func buildDeliveryModel(p deliveryPrintable) pdfModel {
 			m.rows = append(m.rows, pdfRow{kind: kindProduct, cells: []string{
 				describe(ol), qty(ratOrZero(ol.Quantity)), qty(ratOrZero(dl.Quantity)), qty(left), ol.Unit,
 			}})
-			// The line's lots under it, each once, with what it takes when
-			// the line takes more than one lot and none is a serial.
+			// The line's lots under it, each once — what it takes summed over
+			// its locations — with what it takes when the line takes more
+			// than one lot of a variant not tracked by serial number.
 			if picks := p.picks[dl.ID]; len(picks) > 0 {
-				var seen []string
+				type lotSum struct {
+					row store.OrdersDeliveryLineLot
+					qty *big.Rat
+				}
+				var sums []lotSum
 				for _, r := range picks {
-					text := lotText(r, l, lang)
-					if len(picks) > 1 && ratOrZero(r.Quantity).Cmp(big.NewRat(1, 1)) != 0 {
-						text += " – " + qty(ratOrZero(r.Quantity))
+					at := slices.IndexFunc(sums, func(s lotSum) bool { return s.row.LotID == r.LotID })
+					if at < 0 {
+						sums = append(sums, lotSum{row: r, qty: new(big.Rat)})
+						at = len(sums) - 1
 					}
-					if !slices.Contains(seen, text) {
-						seen = append(seen, text)
+					sums[at].qty.Add(sums[at].qty, ratOrZero(r.Quantity))
+				}
+				seen := make([]string, 0, len(sums))
+				for _, sum := range sums {
+					text := lotText(sum.row, l, lang)
+					if len(sums) > 1 && !p.serial[dl.VariantID] {
+						text += " – " + qty(sum.qty)
 					}
+					seen = append(seen, text)
 				}
 				label := l.lot
 				if len(seen) > 1 {

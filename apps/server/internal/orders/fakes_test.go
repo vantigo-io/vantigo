@@ -26,6 +26,8 @@ type fakeCatalog struct {
 	variants map[int32]contracts.VariantEntry
 	prices   map[string]string // variant/currency → amount
 	locks    [][]int32
+	// afterLock, when set, runs once after the next LockVariants call.
+	afterLock func()
 }
 
 var _ contracts.ProductCatalog = (*fakeCatalog)(nil)
@@ -63,6 +65,13 @@ func (c *fakeCatalog) remove(id int32) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.variants, id)
+}
+
+// onNextLock runs fn once after the next LockVariants call.
+func (c *fakeCatalog) onNextLock(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.afterLock = fn
 }
 
 // lockCalls is every LockVariants call's ids, in order.
@@ -158,7 +167,14 @@ func (c *fakeCatalog) LockVariants(ctx context.Context, tx pgx.Tx, ids []int32) 
 		panic("LockVariants without a transaction")
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	defer func() {
+		after := c.afterLock
+		c.afterLock = nil
+		c.mu.Unlock()
+		if after != nil {
+			after()
+		}
+	}()
 	c.locks = append(c.locks, slices.Clone(ids))
 	var out []contracts.VariantEntry
 	for _, id := range ids {

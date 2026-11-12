@@ -326,10 +326,13 @@ func (s *server) ListDeliveries(ctx context.Context, req gen.ListDeliveriesReque
 		if out.Total, err = q.CountDeliveries(ctx, store.CountDeliveriesParams{Statuses: statuses, OrderID: p.OrderId, CustomerID: p.CustomerId, SiteID: p.SiteId, Q: search}); err != nil {
 			return fmt.Errorf("orders: count deliveries: %w", err)
 		}
-		// Each delivery's lot numbers, once each, in line order (M79).
+		// Each delivery's lot numbers, once each, in line order (M79): a
+		// posted one's and a draft's so far, never a cancelled one's.
 		ids := make([]int64, 0, len(rows))
 		for _, r := range rows {
-			ids = append(ids, r.OrdersDelivery.ID)
+			if r.OrdersDelivery.Status != deliveryCancelled {
+				ids = append(ids, r.OrdersDelivery.ID)
+			}
 		}
 		picks, err := q.DeliveryLineLotsOfDeliveries(ctx, ids)
 		if err != nil {
@@ -594,11 +597,16 @@ func (s *server) CreateDelivery(ctx context.Context, req gen.CreateDeliveryReque
 //
 // A tracked line names its lots instead (manufacturing phase 2 M77), each a
 // lot of the site holding the variant at its location (lot_unknown), once;
-// an untracked line names none (lot_not_allowed). Lots sent unchanged keep
-// whether they were chosen; any change marks them all chosen, so the post
-// no longer proposes them again. A tracked line sent without lots keeps its
-// picks while they add up to its quantity, and is proposed again (FEFO)
-// otherwise.
+// an untracked line names none (lot_not_allowed); a serial variant's lot
+// takes 1 (serial_quantity); a new or changed lot allowed expired needs
+// inventory:expired-override, read on the pool (expired_override_required).
+// Lots sent unchanged keep whether they were chosen; any change marks them
+// all chosen, so the post no longer proposes them again. A tracked line sent
+// without lots keeps its picks when a person chose them — its quantity
+// changed alone, the page shows it short or over — or while they add up to
+// its quantity, and is proposed again (FEFO) otherwise. proposeAgain (§19
+// Propose again) proposes the line again whatever its picks, sent without
+// lots (line_invalid).
 func (s *server) UpdateDelivery(ctx context.Context, req gen.UpdateDeliveryRequestObject) (gen.UpdateDeliveryResponseObject, error) {
 	resp := deliveryAnswers(
 		func(p gen.OrdersProblem) gen.UpdateDeliveryResponseObject {
@@ -646,6 +654,7 @@ func (s *server) UpdateDelivery(ctx context.Context, req gen.UpdateDeliveryReque
 	if err != nil {
 		return nil, err
 	}
+	override := s.has(ctx, permInventoryExpiredOverride)
 	var out gen.OrdersDelivery
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		if _, err := s.lockVariants(ctx, tx, variants); err != nil {
@@ -714,15 +723,23 @@ func (s *server) UpdateDelivery(ctx context.Context, req gen.UpdateDeliveryReque
 			w := written{line: l, qty: qty}
 			if trackedLocked(ctx, *l.VariantID) {
 				w.tracked = true
-				picks, lineFailures := judgePicks(i, *l.VariantID, in.Lots, old[l.ID], pool)
+				again := in.ProposeAgain != nil && *in.ProposeAgain
+				if again && in.Lots != nil {
+					failures = append(failures, lineFailure{index: i, code: codeLineInvalid,
+						detail: fmt.Sprintf("Line %d names its lots and asks to propose them again; send one.", l.Position)})
+					continue
+				}
+				picks, lineFailures := judgePicks(i, *l.VariantID, serialLocked(ctx, *l.VariantID), override, in.Lots, old[l.ID], pool)
 				if len(lineFailures) > 0 {
 					failures = append(failures, lineFailures...)
 					continue
 				}
 				switch {
+				case again:
+					w.propose = true
 				case in.Lots != nil:
 					w.picks = picks
-				case len(old[l.ID]) > 0 && sumPicks(old[l.ID]).Cmp(qty) == 0:
+				case len(old[l.ID]) > 0 && (anyChosen(old[l.ID]) || sumPicks(old[l.ID]).Cmp(qty) == 0):
 					w.picks = old[l.ID]
 				default:
 					w.propose = true
@@ -862,8 +879,9 @@ func (s *server) CancelDelivery(ctx context.Context, req gen.CancelDeliveryReque
 // lot_blocked, insufficient_stock — name the line and the pick. A refusal of
 // insufficient_stock or lot_blocked that falls only on lines whose picks
 // were all proposed proposes those lines again from the lots as they are now
-// and posts once more (M65a); the delivery keeps the new picks. A second
-// refusal is answered.
+// and posts once more (M65a); the delivery keeps the new picks. A refusal of
+// the second post answers the first, which names the picks the delivery
+// still holds.
 func (s *server) PostDelivery(ctx context.Context, req gen.PostDeliveryRequestObject) (gen.PostDeliveryResponseObject, error) {
 	resp := deliveryAnswers(
 		func(p gen.OrdersProblem) gen.PostDeliveryResponseObject {
@@ -917,12 +935,15 @@ func (s *server) PostDelivery(ctx context.Context, req gen.PostDeliveryRequestOb
 	var stale *staleLots
 	if errors.As(err, &stale) {
 		// Outside the first transaction: the lots as they are now, on the
-		// pool, and the refused lines proposed again from them, once.
+		// pool, and the refused lines proposed again from them, once. The
+		// second post's picks roll back with its refusal, so the first
+		// refusal is answered: its lot rows are the ones still stored.
+		first := stale.refusal
 		if post.repropose, err = s.reproposeLots(ctx, cur.d.SiteID, today, stale); err == nil {
 			posted, printed, err = s.postDeliveryOnce(ctx, post)
 		}
 		if errors.As(err, &stale) {
-			err = stale.refusal
+			err = first
 		}
 	}
 	if err != nil {
@@ -974,9 +995,37 @@ type issueRef struct {
 	pick lotPick
 }
 
-// postDeliveryOnce posts the delivery on one transaction.
+// variantsGrew is a post that found, under the order's and the delivery's
+// locks, a variant it had not locked: the transaction is rolled back and
+// tried again with every variant locked first (MB rule 21's order).
+type variantsGrew struct{ all []int32 }
+
+func (e *variantsGrew) Error() string {
+	return "orders: the delivery's variants changed under the lock"
+}
+
+// postDeliveryOnce posts the delivery: on one transaction, tried again — at
+// most twice — when its variants grew between the read and the locks.
 func (s *server) postDeliveryOnce(ctx context.Context, in deliveryPost) (store.OrdersDelivery, []byte, error) {
 	variants := withDeliveryVariants(goodsVariantsOf(in.cur.lines), in.cur.dlines)
+	for range 2 {
+		posted, printed, err := s.postDeliveryTx(ctx, in, variants)
+		var grew *variantsGrew
+		if !errors.As(err, &grew) {
+			return posted, printed, err
+		}
+		variants = grew.all
+	}
+	posted, printed, err := s.postDeliveryTx(ctx, in, variants)
+	if errors.As(err, new(*variantsGrew)) {
+		return posted, printed, conflict(codeVersionConflict, "The delivery changed",
+			fmt.Sprintf("Delivery %d's lines kept changing while it was being posted. Try again.", in.cur.d.Number))
+	}
+	return posted, printed, err
+}
+
+// postDeliveryTx is one transaction of a post, variants locked first.
+func (s *server) postDeliveryTx(ctx context.Context, in deliveryPost, variants []int32) (store.OrdersDelivery, []byte, error) {
 	var posted store.OrdersDelivery
 	var printed []byte
 	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
@@ -1006,17 +1055,18 @@ func (s *server) postDeliveryOnce(ctx context.Context, in deliveryPost) (store.O
 			return fmt.Errorf("orders: read delivery %d's lines: %w", d.ID, err)
 		}
 		// The variants as they are under the lock: an edit or a save between
-		// the read and the lock may have named one not locked yet.
-		var more []int32
+		// the read and the lock may have named one not locked yet. It is
+		// never locked after the order's row: the post is tried again with
+		// every variant locked first.
+		all := slices.Clone(variants)
 		for _, id := range withDeliveryVariants(goodsVariantsOf(lines), dlines) {
-			if !slices.Contains(variants, id) {
-				more = append(more, id)
+			if !slices.Contains(all, id) {
+				all = append(all, id)
 			}
 		}
-		if len(more) > 0 {
-			if _, err := s.lockVariants(ctx, tx, more); err != nil {
-				return err
-			}
+		if len(all) > len(variants) {
+			slices.Sort(all)
+			return &variantsGrew{all: all}
 		}
 		rows, err := txq.DeliveryLineLotsOf(ctx, d.ID)
 		if err != nil {
@@ -1104,7 +1154,15 @@ func (s *server) postDeliveryOnce(ctx context.Context, in deliveryPost) (store.O
 		issued, err := s.deps.StockLedger.Issue(ctx, tx, orderStock(o.ID), issue)
 		if err != nil {
 			stale, refused := issueRefused(err, refs)
-			if len(stale) > 0 && in.repropose == nil {
+			if in.repropose != nil {
+				// The second post's refusal names picks that roll back with
+				// it: PostDelivery answers the first one's instead.
+				if errors.As(err, new(*contracts.StockRefusal)) {
+					return &staleLots{refusal: refused}
+				}
+				return refused
+			}
+			if len(stale) > 0 {
 				st := &staleLots{refusal: refused, picks: picks, dlines: dlines}
 				for _, i := range stale {
 					st.refused = append(st.refused, dlines[i])
@@ -1139,8 +1197,12 @@ func (s *server) postDeliveryOnce(ctx context.Context, in deliveryPost) (store.O
 		}, now); err != nil {
 			return err
 		}
+		serial := map[int32]bool{}
+		for _, dl := range dlines {
+			serial[dl.VariantID] = serialLocked(ctx, dl.VariantID)
+		}
 		printed, err = renderDeliveryDoc(deliveryPrintable{
-			kind: docPackingSlip, d: posted, o: row, dlines: dlines, lines: lines, picks: stored, seller: in.printer.seller,
+			kind: docPackingSlip, d: posted, o: row, dlines: dlines, lines: lines, picks: stored, serial: serial, seller: in.printer.seller,
 			date: dayOf(now, in.printer.zone),
 		})
 		return err
@@ -1382,8 +1444,12 @@ func (s *server) GetDeliveryPackingSlip(ctx context.Context, req gen.GetDelivery
 		if r.d.PostedAt != nil {
 			date = dayOf(*r.d.PostedAt, p.zone)
 		}
+		serial, err := s.serialsOf(ctx, r.dlines)
+		if err != nil {
+			return nil, err
+		}
 		if body, err = renderDeliveryDoc(deliveryPrintable{
-			kind: docPackingSlip, d: r.d, o: r.o, dlines: r.dlines, lines: r.lines, picks: r.picks, seller: p.seller, date: date, shipments: shipped,
+			kind: docPackingSlip, d: r.d, o: r.o, dlines: r.dlines, lines: r.lines, picks: r.picks, serial: serial, seller: p.seller, date: date, shipments: shipped,
 		}); err != nil {
 			return nil, err
 		}
