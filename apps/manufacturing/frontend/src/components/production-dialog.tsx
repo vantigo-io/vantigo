@@ -1,19 +1,36 @@
-import { Alert, Button, Checkbox, Group, List, Modal, SimpleGrid, Stack, Table, Text, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Checkbox,
+  Group,
+  List,
+  Modal,
+  Select,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertCircle, IconAlertTriangle, IconPlus, IconX } from "@tabler/icons-react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import {
+  type ManufacturingLotChoice,
   type ManufacturingOrder,
   type ManufacturingProduction,
+  type ManufacturingProductionDraftLine,
   type ManufacturingProductionInput,
   postProduction,
   productionDraftQueryOptions,
 } from "../api/orders";
 import { type Deviation, refusalCode, refusedDeviations } from "../api/request";
-import { isDecimal, normalizeDecimal } from "../lib/decimal";
+import { addDecimal, compareDecimal, isDecimal, normalizeDecimal } from "../lib/decimal";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
+import { type LotRowValues, lotRowsBody, sumLotRows } from "../lib/lots";
 import { LocationSelect } from "./location-select";
 
 const PREFILL_DEBOUNCE_MS = 300;
@@ -23,6 +40,15 @@ interface LineValues {
   consumed: string;
   scrap: string;
   fromLocationId: number | null;
+}
+
+/** The output lot's fields as typed; undefined is untouched, the server's default. */
+interface OutputValues {
+  number?: string;
+  productionDate?: string;
+  expiry?: string;
+  bestBefore?: string;
+  serialFirst?: string;
 }
 
 /** A field's text when it is a decimal of 0 or more with at most three decimals, else undefined. */
@@ -53,6 +79,14 @@ export interface ProductionDialogProps {
  * from `production-draft` whenever either changes — and editable with its
  * scrap and the location it is taken from, and where the output goes.
  *
+ * A tracked component (manufacturing phase 2 M82, M83) shows the lots the
+ * draft proposes, first-expiry-first, which Inventory takes under its own
+ * locks when the line is sent without lots; *Change lot* edits them from the
+ * site's lots the draft lists, and they are then sent as the person chose
+ * them, consumed first, then scrapped. A tracked product shows its lot number
+ * from the order's pattern, its production date and dates, or the first
+ * serial number of a serial product.
+ *
  * One `clientRequestId` per opening makes the post idempotent: a retry and
  * the consumption warning's *Post anyway* resend the same body under it, the
  * latter with `acceptDeviation`. `finish` offers to send it with the work
@@ -81,6 +115,9 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
   const [posting, setPosting] = useState(false);
   const [sentBody, setSentBody] = useState<ManufacturingProductionInput>();
   const [finishing, setFinishing] = useState(false);
+  // A tracked component's lots as the person chose them; absent, the draft's proposal, taken by Inventory (AutoLot).
+  const [lotEdits, setLotEdits] = useState<Record<number, LotRowValues[]>>({});
+  const [output, setOutput] = useState<OutputValues>({});
 
   // The prefill follows the quantities once they are decimals; the first read takes the server's defaults.
   const wantedQuantity = quantity === undefined ? undefined : decimalOrUndefined(quantity);
@@ -122,31 +159,79 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
     );
   };
 
+  const setLots = (componentId: number, rows: LotRowValues[] | undefined) => {
+    setDeviations([]);
+    setLotEdits((current) => {
+      const next = { ...current };
+      if (rows === undefined) delete next[componentId];
+      else next[componentId] = rows;
+      return next;
+    });
+  };
+  // What a line takes off the shelf: its consumed and its scrap together.
+  const totalOf = (values: LineValues) =>
+    addDecimal(decimalOrUndefined(values.consumed) ?? "0", decimalOrUndefined(values.scrap) ?? "0");
+  const lotsMismatch = (componentId: number, values: LineValues) => {
+    const rows = lotEdits[componentId];
+    if (rows === undefined) return false;
+    const sum = sumLotRows(rows, isDecimal);
+    return (
+      sum === undefined ||
+      compareDecimal(sum, totalOf(values)) !== 0 ||
+      rows.some((row) => row.lotId === null || row.locationId === null)
+    );
+  };
+
   const invalid =
     decimalOrUndefined(shownQuantity) === undefined ||
     wantedScrap === undefined ||
     lines.some(
-      ({ values }) =>
+      ({ line, values }) =>
         (values.consumed.trim() !== "" && !isDecimal(values.consumed)) ||
-        (values.scrap.trim() !== "" && !isDecimal(values.scrap)),
+        (values.scrap.trim() !== "" && !isDecimal(values.scrap)) ||
+        lotsMismatch(line.componentId, values),
     );
+
+  const draftOutput = draft.data?.output;
+  const outputBody = (): Pick<ManufacturingProductionInput, "outputLot" | "outputSerials"> => {
+    if (!draftOutput || draftOutput.tracking === "none") return {};
+    const dates = {
+      ...(output.productionDate ? { productionDate: output.productionDate } : {}),
+      ...(output.expiry ? { expiry: output.expiry } : {}),
+      ...(output.bestBefore ? { bestBefore: output.bestBefore } : {}),
+    };
+    if (draftOutput.tracking === "serial") {
+      const first = output.serialFirst?.trim();
+      return {
+        ...(Object.keys(dates).length > 0 ? { outputLot: dates } : {}),
+        ...(first ? { outputSerials: { first } } : {}),
+      };
+    }
+    const number = output.number?.trim();
+    const lot = { ...dates, ...(number ? { number } : {}) };
+    return Object.keys(lot).length > 0 ? { outputLot: lot } : {};
+  };
 
   const bodyOf = (): ManufacturingProductionInput => ({
     clientRequestId,
     quantity: normalizeDecimal(shownQuantity || "0"),
     outputScrap: normalizeDecimal(outputScrap || "0"),
     toLocationId: shownToLocationId,
+    ...outputBody(),
     lines: lines.flatMap(({ line, values }) => {
       const consumed = decimalOrUndefined(values.consumed);
       const scrap = decimalOrUndefined(values.scrap);
       // A line with neither is omitted: not judged and consuming nothing (M22a).
       if (consumed === undefined && scrap === undefined) return [];
+      const rows = lotEdits[line.componentId];
       return [
         {
           componentId: line.componentId,
           ...(consumed !== undefined ? { consumed } : {}),
           ...(scrap !== undefined ? { scrap } : {}),
           ...(values.fromLocationId !== null ? { fromLocationId: values.fromLocationId } : {}),
+          // Chosen lots go as chosen; otherwise Inventory takes them first-expiry-first under its locks.
+          ...(rows !== undefined ? { lots: lotRowsBody(rows, consumed ?? "0") } : {}),
         },
       ];
     }),
@@ -211,6 +296,63 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
           onChange={setToLocationId}
         />
       </SimpleGrid>
+      {draftOutput && draftOutput.tracking !== "none" && (
+        <SimpleGrid cols={{ base: 1, sm: 4 }}>
+          {draftOutput.tracking === "lot" ? (
+            <TextInput
+              label={t("outputLotNumber")}
+              description={t("outputLotNumberHint", { pattern: draftOutput.lotPattern })}
+              value={output.number ?? draftOutput.lotNumber ?? ""}
+              maxLength={20}
+              onChange={(event) => {
+                const number = event.currentTarget.value;
+                setOutput((current) => ({ ...current, number }));
+              }}
+            />
+          ) : (
+            <TextInput
+              label={t("firstSerial")}
+              description={t("firstSerialHint")}
+              value={output.serialFirst ?? draftOutput.serialFirst ?? ""}
+              maxLength={20}
+              onChange={(event) => {
+                const serialFirst = event.currentTarget.value;
+                setOutput((current) => ({ ...current, serialFirst }));
+              }}
+            />
+          )}
+          <TextInput
+            type="date"
+            label={t("productionDate")}
+            value={output.productionDate ?? draftOutput.productionDate}
+            onChange={(event) => {
+              const productionDate = event.currentTarget.value;
+              setOutput((current) => ({ ...current, productionDate }));
+            }}
+          />
+          <TextInput
+            type="date"
+            label={t("lotExpiry")}
+            description={t("lotDatesHint")}
+            value={output.expiry ?? ""}
+            placeholder={draftOutput.expiry ?? undefined}
+            onChange={(event) => {
+              const expiry = event.currentTarget.value;
+              setOutput((current) => ({ ...current, expiry }));
+            }}
+          />
+          <TextInput
+            type="date"
+            label={t("lotBestBefore")}
+            value={output.bestBefore ?? ""}
+            placeholder={draftOutput.bestBefore ?? undefined}
+            onChange={(event) => {
+              const bestBefore = event.currentTarget.value;
+              setOutput((current) => ({ ...current, bestBefore }));
+            }}
+          />
+        </SimpleGrid>
+      )}
       {draft.error ? (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotLoad")}>
           {refusalMessage(t, draft.error)}
@@ -229,7 +371,7 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
             </Table.Thead>
             <Table.Tbody>
               {lines.map(({ line, values }) => {
-                return (
+                return [
                   <Table.Tr key={line.componentId}>
                     <Table.Td>
                       <Text size="sm">{line.variant.sku}</Text>
@@ -268,8 +410,20 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
                         onChange={(next) => setLine(line.componentId, { fromLocationId: next })}
                       />
                     </Table.Td>
-                  </Table.Tr>
-                );
+                  </Table.Tr>,
+                  line.tracking !== "none" && (
+                    <Table.Tr key={`${line.componentId}-lots`}>
+                      <Table.Td colSpan={5}>
+                        <LineLots
+                          line={line}
+                          rows={lotEdits[line.componentId]}
+                          total={totalOf(values)}
+                          onChange={(rows) => setLots(line.componentId, rows)}
+                        />
+                      </Table.Td>
+                    </Table.Tr>
+                  ),
+                ];
               })}
             </Table.Tbody>
           </Table>
@@ -325,6 +479,174 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
           <Button loading={posting} disabled={invalid || !settled} onClick={() => void post(bodyOf())}>
             {t("postProduction")}
           </Button>
+        )}
+      </Group>
+    </Stack>
+  );
+};
+
+/** A lot as Change lot offers it: its number, location, what lies there, its expiry and whether it is held or expired. */
+const useLotLabel = () => {
+  const { t, decimal, day } = useManufacturingFormat();
+  return (choice: ManufacturingLotChoice) => {
+    const base = choice.expiry
+      ? t("lotChoiceExpiry", {
+          number: choice.lotNumber,
+          location: choice.fullCode,
+          quantity: decimal(choice.quantity),
+          expiry: day(choice.expiry),
+        })
+      : t("lotChoice", { number: choice.lotNumber, location: choice.fullCode, quantity: decimal(choice.quantity) });
+    const marks = [
+      ...(choice.status !== "available" ? [t(`lotStatus_${choice.status}`)] : []),
+      ...(choice.expired ? [t("lotExpired")] : []),
+    ];
+    return marks.length > 0 ? `${base} (${marks.join(", ")})` : base;
+  };
+};
+
+interface LineLotsProps {
+  line: ManufacturingProductionDraftLine;
+  /** The lots chosen; undefined, the draft's proposal. */
+  rows: LotRowValues[] | undefined;
+  /** What the line consumes and scraps together. */
+  total: string;
+  onChange: (rows: LotRowValues[] | undefined) => void;
+}
+
+/**
+ * A tracked component's lots (M82, M83): the draft's proposal with Change
+ * lot, or the lots chosen, each from the site's lots the draft lists.
+ */
+const LineLots = ({ line, rows, total, onChange }: LineLotsProps) => {
+  const { t, decimal, day } = useManufacturingFormat();
+  const lotLabel = useLotLabel();
+  const sku = line.variant.sku;
+  const keyOf = (lotId: number, locationId: number) => `${lotId}:${locationId}`;
+  const choiceOf = new Map(line.lotChoices.map((choice) => [keyOf(choice.lotId, choice.locationId), choice]));
+  if (rows === undefined) {
+    const proposal = line.lots
+      .map((lot) =>
+        lot.expiry
+          ? `${lot.lotNumber} (${day(lot.expiry)}) ${decimal(lot.quantity)}`
+          : `${lot.lotNumber} ${decimal(lot.quantity)}`,
+      )
+      .join(" · ");
+    return (
+      <Group justify="space-between" wrap="nowrap" gap="xs">
+        <Stack gap={2}>
+          <Text size="xs" fw={500}>
+            {t("lotsOf", { sku })}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {line.lots.length > 0 ? t("lotsProposed", { lots: proposal }) : t("lotsNone")}
+          </Text>
+          {compareDecimal(line.short, "0") > 0 && (
+            <Text size="xs" c="orange">
+              {t("lotsShortBy", { short: decimal(line.short) })}
+            </Text>
+          )}
+        </Stack>
+        <Button
+          size="compact-xs"
+          variant="light"
+          disabled={line.lotChoices.length === 0}
+          onClick={() =>
+            onChange(
+              line.lots.length > 0
+                ? line.lots.map((lot) => ({
+                    lotId: lot.lotId,
+                    locationId: lot.locationId,
+                    quantity: lot.quantity,
+                    allowExpired: false,
+                  }))
+                : [{ lotId: null, locationId: null, quantity: total, allowExpired: false }],
+            )
+          }
+        >
+          {t("changeLots")}
+        </Button>
+      </Group>
+    );
+  }
+  const sum = sumLotRows(rows, isDecimal);
+  const setRow = (index: number, patch: Partial<LotRowValues>) =>
+    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  return (
+    <Stack gap={4}>
+      <Group justify="space-between">
+        <Text size="xs" fw={500}>
+          {t("lotsOf", { sku })}
+        </Text>
+        <Button size="compact-xs" variant="subtle" onClick={() => onChange(undefined)}>
+          {t("useProposedLots")}
+        </Button>
+      </Group>
+      {rows.map((row, index) => {
+        const chosen =
+          row.lotId !== null && row.locationId !== null ? choiceOf.get(keyOf(row.lotId, row.locationId)) : undefined;
+        return (
+          <Group key={index} gap="xs" wrap="nowrap" align="center">
+            <Select
+              size="xs"
+              style={{ flex: 1 }}
+              aria-label={t("lotOf", { index: index + 1, sku })}
+              data={line.lotChoices.map((choice) => ({
+                value: keyOf(choice.lotId, choice.locationId),
+                label: lotLabel(choice),
+              }))}
+              value={row.lotId !== null && row.locationId !== null ? keyOf(row.lotId, row.locationId) : null}
+              onChange={(value) => {
+                const choice = value ? choiceOf.get(value) : undefined;
+                setRow(index, {
+                  lotId: choice?.lotId ?? null,
+                  locationId: choice?.locationId ?? null,
+                  allowExpired: false,
+                });
+              }}
+            />
+            <TextInput
+              size="xs"
+              w={100}
+              inputMode="decimal"
+              aria-label={t("lotQuantityOf", { index: index + 1, sku })}
+              value={row.quantity}
+              onChange={(event) => setRow(index, { quantity: event.currentTarget.value })}
+              error={row.quantity.trim() !== "" && !isDecimal(row.quantity)}
+            />
+            {chosen?.expired && (
+              <Checkbox
+                size="xs"
+                label={t("lotExpired")}
+                aria-label={t("lotExpiredOf", { index: index + 1, sku })}
+                checked={row.allowExpired}
+                onChange={(event) => setRow(index, { allowExpired: event.currentTarget.checked })}
+              />
+            )}
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              aria-label={t("removeLot")}
+              onClick={() => onChange(rows.filter((_, i) => i !== index))}
+            >
+              <IconX size={14} />
+            </ActionIcon>
+          </Group>
+        );
+      })}
+      <Group justify="space-between">
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          leftSection={<IconPlus size={12} />}
+          onClick={() => onChange([...rows, { lotId: null, locationId: null, quantity: "", allowExpired: false }])}
+        >
+          {t("addLot")}
+        </Button>
+        {(sum === undefined || compareDecimal(sum, total) !== 0) && (
+          <Text size="xs" c="red">
+            {t("lotsAddUp", { sum: decimal(sum ?? "0"), total: decimal(total) })}
+          </Text>
         )}
       </Group>
     </Stack>

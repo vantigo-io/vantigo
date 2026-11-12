@@ -31,6 +31,7 @@ const savedBom = (): ManufacturingBom => ({
   isDefault: true,
   makeToOrder: false,
   leadTimeDays: 2,
+  lotPattern: "{MO}",
   note: "",
   status: "active",
   revision: 4,

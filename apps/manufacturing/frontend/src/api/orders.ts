@@ -30,6 +30,10 @@ export type ManufacturingProductionInput = Schemas["ManufacturingProductionInput
 export type ManufacturingProduction = Schemas["ManufacturingProduction"];
 export type ManufacturingSalesOrderLine = Schemas["ManufacturingSalesOrderLine"];
 export type ManufacturingChildrenCreated = Schemas["ManufacturingChildrenCreated"];
+export type ManufacturingProductionDraftLine = Schemas["ManufacturingProductionDraftLine"];
+export type ManufacturingLotChoice = Schemas["ManufacturingLotChoice"];
+export type ManufacturingProductionLotInput = Schemas["ManufacturingProductionLotInput"];
+export type ManufacturingOrderLots = Schemas["ManufacturingOrderLots"];
 
 /** Every state of an order (M19), in the order it goes through them. */
 export const orderStatuses: readonly ManufacturingOrderStatus[] = [
@@ -161,6 +165,14 @@ export const productionDraftQueryOptions = (orderId: number, quantity?: string, 
         `/api/v1/manufacturing/orders/${orderId}/production-draft${queryString({ quantity, outputScrap })}`,
         { signal },
       ),
+  });
+
+/** The lots the order's productions made and consumed (manufacturing phase 2 M83), for the Lots tab. */
+export const orderLotsQueryOptions = (orderId: number) =>
+  queryOptions({
+    queryKey: [MANUFACTURING_QUERY_KEY, "order", orderId, "lots"],
+    queryFn: ({ signal }) =>
+      request<ManufacturingOrderLots>(`/api/v1/manufacturing/orders/${orderId}/lots`, { signal }),
   });
 
 export const productionQueryOptions = (productionId: number) =>

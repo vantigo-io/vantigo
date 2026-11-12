@@ -119,6 +119,15 @@ export const refusalCodes = [
   "variant_not_stocked",
   "document_reused",
   "dependency_unavailable",
+  "lot_pattern_invalid",
+  "picks_mismatch",
+  "serial_quantity",
+  "lot_not_allowed",
+  "lot_required",
+  "lot_unknown",
+  "lot_expired",
+  "lot_blocked",
+  "lot_dates_differ",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 

@@ -27,6 +27,8 @@ export interface BomHeader {
   makeToOrder: boolean;
   leadTimeDays: number | "";
   note: string;
+  /** The number of the lot its productions make (manufacturing phase 2 M80). */
+  lotPattern: string;
 }
 
 /** One operation row. */
@@ -108,6 +110,7 @@ export const emptyEditor = (variant?: ManufacturingVariantRef): BomEditorState =
     makeToOrder: false,
     leadTimeDays: 0,
     note: "",
+    lotPattern: "{MO}",
   },
   operations: [],
   lines: [],
@@ -123,6 +126,7 @@ export const editorOf = (bom: ManufacturingBom): BomEditorState => ({
     makeToOrder: bom.makeToOrder,
     leadTimeDays: bom.leadTimeDays,
     note: bom.note,
+    lotPattern: bom.lotPattern,
   },
   operations: [...bom.operations]
     .sort((a, b) => a.sequence - b.sequence)
@@ -190,6 +194,7 @@ const shared = (state: BomEditorState) => {
     makeToOrder: state.header.makeToOrder,
     leadTimeDays: state.header.leadTimeDays === "" ? 0 : state.header.leadTimeDays,
     note: state.header.note.trim(),
+    lotPattern: state.header.lotPattern.trim() === "" ? "{MO}" : state.header.lotPattern.trim(),
     operations: state.operations.map(operationBody),
     lines: state.lines.map((line, index) => lineBody(line, index, keys)),
   };
