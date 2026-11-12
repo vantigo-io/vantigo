@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"math/big"
@@ -198,10 +199,49 @@ type balanceKey struct {
 	lotID      int64
 }
 
+// errCandidatesShort is a posting whose AutoLot lines locked only the lots
+// that looked, read plainly, to cover them, and found under the locks that
+// they do not: it runs again with every candidate.
+var errCandidatesShort = errors.New("inventory: the auto lots locked do not cover the line")
+
+// lotMargin is how many usable-looking lots beyond those covering its
+// quantity an AutoLot line locks, for a lot held or emptied under the read.
+const lotMargin = 2
+
 // post is the engine: it posts the movement and its lines inside tx, in the
 // lock order above, and answers the movement — or a refusal naming every
-// failing line, after which the caller rolls back.
+// failing line, after which the caller rolls back. A posting with an AutoLot
+// line locks only the candidates that look to cover it, FEFO and with a
+// margin (M65a), on a savepoint; when they fall short under the locks, the
+// savepoint is rolled back — its locks with it — and the posting runs again
+// with every candidate.
 func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m movementHeader, lines []engineLine, opts postOptions) (postResult, error) {
+	if !slices.ContainsFunc(lines, func(l engineLine) bool { return l.autoLot }) {
+		return s.postOnce(ctx, tx, txq, m, lines, opts, false)
+	}
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return postResult{}, fmt.Errorf("inventory: open a posting's savepoint: %w", err)
+	}
+	res, err := s.postOnce(ctx, sp, store.New(sp), m, lines, opts, true)
+	if errors.Is(err, errCandidatesShort) {
+		if err := sp.Rollback(ctx); err != nil {
+			return postResult{}, fmt.Errorf("inventory: roll a posting's savepoint back: %w", err)
+		}
+		return s.postOnce(ctx, tx, txq, m, lines, opts, false)
+	}
+	if err != nil {
+		return res, err
+	}
+	if err := sp.Commit(ctx); err != nil {
+		return postResult{}, fmt.Errorf("inventory: release a posting's savepoint: %w", err)
+	}
+	return res, nil
+}
+
+// postOnce is one run of the engine; limit locks only the AutoLot
+// candidates that look to cover their lines.
+func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m movementHeader, lines []engineLine, opts postOptions, limit bool) (postResult, error) {
 	// 1. The key, before anything else.
 	if res, done, err := replayOf(ctx, txq, m); done || err != nil {
 		return res, err
@@ -330,6 +370,7 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 		reqLines = append(reqLines, i)
 	}
 	var created []int64
+	var createdLots []store.InventoryLot
 	if len(reqs) > 0 {
 		outcomes, err := s.ensureLots(ctx, txq, reqs, variants, opts.today, nil, m.poster)
 		if err != nil {
@@ -340,6 +381,7 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 			l.lotID = o.lot.ID
 			if o.created {
 				created = append(created, o.lot.ID)
+				createdLots = append(createdLots, o.lot)
 			}
 			if o.failCode != "" {
 				fail(*l, o.failCode, o.failText)
@@ -348,9 +390,11 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 	}
 
 	// The lots an AutoLot line may take: those holding its variant at its
-	// location now. A lot that appears after this read is not used.
+	// location now — when limit, only the FEFO run that looks to cover it.
+	// A lot that appears after this read is not used.
 	candidates := map[int][]int64{}
-	if err := s.lotCandidates(ctx, txq, lines, candidates); err != nil {
+	limited, err := s.lotCandidates(ctx, txq, lines, candidates, opts.today, limit)
+	if err != nil {
 		return postResult{}, err
 	}
 
@@ -420,6 +464,9 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 		if err := txq.SetLotOrigin(ctx, store.SetLotOriginParams{OriginModule: ptr(lotOriginModule), OriginKind: ptr(lotOriginMovement), OriginID: &movement, Ids: created}); err != nil {
 			return postResult{}, fmt.Errorf("inventory: name the lots' movement: %w", err)
 		}
+		if err := s.recordLotsCreated(ctx, txq, createdLots, m.poster); err != nil {
+			return postResult{}, err
+		}
 	}
 
 	// 7. The locations, shared in id order.
@@ -474,7 +521,11 @@ func (s *server) post(ctx context.Context, tx pgx.Tx, txq *store.Queries, m move
 
 	// The AutoLot lines take their lots FEFO under the locks (M65a).
 	var picks []contracts.StockPick
-	lines, picks = s.pickLots(lines, candidates, lots, balances, opts.today, variants, locations, failAt)
+	var short bool
+	lines, picks, short = s.pickLots(lines, candidates, limited, lots, balances, opts.today, variants, locations, failAt)
+	if short {
+		return postResult{}, errCandidatesShort
+	}
 	if len(failures) > 0 {
 		return postResult{}, refuseLines(sortedFailures(failures))
 	}
@@ -571,47 +622,90 @@ func (s *server) judgeLot(l *engineLine, lot store.InventoryLot, opts postOption
 
 // lotCandidates reads, for every AutoLot line, the lots holding its variant
 // at its location, on the posting's transaction, before the lots are locked.
-func (s *server) lotCandidates(ctx context.Context, txq *store.Queries, lines []engineLine, out map[int][]int64) error {
-	var variants []int32
-	var locations []int64
-	for _, l := range lines {
-		if l.autoLot && l.from != nil {
-			variants = append(variants, l.variantID)
-			locations = append(locations, *l.from)
-		}
-	}
-	if len(variants) == 0 {
-		return nil
-	}
-	rows, err := txq.LotCandidates(ctx, store.LotCandidatesParams{VariantIds: variants, LocationIds: locations})
-	if err != nil {
-		return fmt.Errorf("inventory: read the lots an auto line may take: %w", err)
-	}
+// When limit, a (variant, location) keeps only its FEFO run of lots that look
+// usable — available and not expired on today, read plainly — until they
+// cover what its AutoLot lines take, and lotMargin more; it answers the lines
+// whose candidates were cut so.
+func (s *server) lotCandidates(ctx context.Context, txq *store.Queries, lines []engineLine, out map[int][]int64, today time.Time, limit bool) (map[int]bool, error) {
 	type pair struct {
 		variant  int32
 		location int64
 	}
-	byPair := map[pair][]int64{}
-	for _, r := range rows {
-		byPair[pair{r.VariantID, r.LocationID}] = append(byPair[pair{r.VariantID, r.LocationID}], r.LotID)
-	}
-	for i, l := range lines {
-		if l.autoLot && l.from != nil {
-			out[i] = byPair[pair{l.variantID, *l.from}]
+	var variants []int32
+	var locations []int64
+	demand := map[pair]*big.Rat{}
+	for _, l := range lines {
+		if !l.autoLot || l.from == nil {
+			continue
+		}
+		variants = append(variants, l.variantID)
+		locations = append(locations, *l.from)
+		k := pair{l.variantID, *l.from}
+		if demand[k] == nil {
+			demand[k] = new(big.Rat)
+		}
+		if l.quantity == nil {
+			limit = false // an entry not resolved: nothing to cover by
+		} else {
+			demand[k].Add(demand[k], l.quantity)
 		}
 	}
-	return nil
+	if len(variants) == 0 {
+		return nil, nil
+	}
+	rows, err := txq.LotCandidates(ctx, store.LotCandidatesParams{VariantIds: variants, LocationIds: locations})
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the lots an auto line may take: %w", err)
+	}
+	byPair := map[pair][]int64{}
+	cut := map[pair]bool{}
+	covered := map[pair]*big.Rat{}
+	beyond := map[pair]int{}
+	for _, r := range rows {
+		k := pair{r.VariantID, r.LocationID}
+		if !limit {
+			byPair[k] = append(byPair[k], r.LotID)
+			continue
+		}
+		if r.Status != contracts.LotAvailable || contracts.LotExpired(dateOrNil(r.Expiry), today) {
+			cut[k] = true
+			continue
+		}
+		if covered[k] == nil {
+			covered[k] = new(big.Rat)
+		}
+		if covered[k].Cmp(demand[k]) >= 0 {
+			if beyond[k] == lotMargin {
+				cut[k] = true
+				continue
+			}
+			beyond[k]++
+		}
+		covered[k].Add(covered[k], ratFromText(r.OnHand))
+		byPair[k] = append(byPair[k], r.LotID)
+	}
+	limited := map[int]bool{}
+	for i, l := range lines {
+		if l.autoLot && l.from != nil {
+			k := pair{l.variantID, *l.from}
+			out[i] = byPair[k]
+			limited[i] = cut[k]
+		}
+	}
+	return limited, nil
 }
 
 // pickLots replaces every AutoLot line by one line per lot it takes, FEFO —
 // expiry (none last), received, lot id — skipping lots on hold, expired lots
 // (even on the override) and serials that would split, under the locks the
-// posting holds (M65a). A line its lots do not cover is insufficient_stock.
-// It answers the lines and the picks, by the line's index.
-func (s *server) pickLots(lines []engineLine, candidates map[int][]int64, lots map[int64]store.InventoryLot, balances map[balanceKey]*big.Rat,
+// posting holds (M65a). A line its lots do not cover is insufficient_stock —
+// or, when its candidates were cut (limited), short: the posting runs again
+// with every candidate. It answers the lines and the picks, by the line's
+// index.
+func (s *server) pickLots(lines []engineLine, candidates map[int][]int64, limited map[int]bool, lots map[int64]store.InventoryLot, balances map[balanceKey]*big.Rat,
 	today time.Time, variants map[int32]contracts.VariantEntry, locations map[int64]store.InventoryLocation,
 	failAt func(engineLine, string, string, int64, int64),
-) ([]engineLine, []contracts.StockPick) {
+) ([]engineLine, []contracts.StockPick, bool) {
 	out := make([]engineLine, 0, len(lines))
 	var picks []contracts.StockPick
 	taken := map[balanceKey]*big.Rat{}
@@ -663,12 +757,15 @@ func (s *server) pickLots(lines []engineLine, candidates map[int][]int64, lots m
 			out = append(out, pick)
 			picks = append(picks, contracts.StockPick{Index: l.index, LotID: id, LocationID: *l.from, Quantity: decimalText(take)})
 		}
+		if left.Sign() > 0 && limited[i] {
+			return nil, nil, true
+		}
 		if left.Sign() > 0 {
 			failAt(l, codeInsufficientStock, fmt.Sprintf("%s at %s: the lots that may be taken do not cover %s; %s short.",
 				variants[l.variantID].SKU, locations[*l.from].FullCode, decimalText(l.quantity), decimalText(left)), 0, *l.from)
 		}
 	}
-	return out, picks
+	return out, picks, false
 }
 
 // serialRule refuses a posting that would leave a serial lot it increases

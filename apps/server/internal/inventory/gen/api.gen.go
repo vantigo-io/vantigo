@@ -1285,7 +1285,7 @@ type InventorySite struct {
 	RootLocationId int64           `json:"rootLocationId"`
 	Status         InventoryStatus `json:"status"`
 
-	// StockLines Balances in the site; present to a caller holding inventory:stock-view.
+	// StockLines Stock lines in the site — a variant on a location, its lots counted once; present to a caller holding inventory:stock-view.
 	StockLines *int32    `json:"stockLines,omitempty"`
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
@@ -1386,7 +1386,7 @@ type InventoryStats struct {
 	// Sites Active sites.
 	Sites int32 `json:"sites"`
 
-	// StockLines Balances: one per variant and location holding stock.
+	// StockLines Stock lines: one per variant and location holding stock, its lots counted once.
 	StockLines int32 `json:"stockLines"`
 }
 

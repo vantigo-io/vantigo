@@ -122,8 +122,9 @@ WHERE id = ANY(@ids::bigint[]) AND status <> @status;
 
 -- name: StockIn :one
 -- StockIn is what lies on the locations — a subtree, or a site's — summed over
--- every variant, and on how many balances (I6's location_has_stock).
-SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(*)::int AS lines
+-- every variant, and in how many stock lines: a variant on a location, its
+-- lots counted once (I6's location_has_stock).
+SELECT coalesce(sum(on_hand), 0)::text AS quantity, count(DISTINCT (variant_id, location_id))::int AS lines
 FROM inventory.balances WHERE location_id = ANY(@ids::bigint[]);
 
 -- name: HistoryIn :one

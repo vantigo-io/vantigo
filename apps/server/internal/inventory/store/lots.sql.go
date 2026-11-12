@@ -195,12 +195,13 @@ func (q *Queries) LotByNumber(ctx context.Context, arg LotByNumberParams) (Inven
 }
 
 const lotCandidates = `-- name: LotCandidates :many
-SELECT DISTINCT b.variant_id, b.location_id, b.lot_id::bigint AS lot_id
+SELECT b.variant_id, b.location_id, b.lot_id::bigint AS lot_id, b.on_hand::text AS on_hand, t.expiry, t.status
 FROM inventory.balances b
-JOIN (SELECT unnest($1::int[]) AS variant_id, unnest($2::bigint[]) AS location_id) AS u
+JOIN (SELECT DISTINCT unnest($1::int[]) AS variant_id, unnest($2::bigint[]) AS location_id) AS u
   ON u.variant_id = b.variant_id AND u.location_id = b.location_id
-WHERE b.lot_id IS NOT NULL AND b.on_hand > 0
-ORDER BY 1, 2, 3
+JOIN inventory.lots t ON t.id = b.lot_id
+WHERE b.on_hand > 0
+ORDER BY b.variant_id, b.location_id, t.expiry NULLS LAST, t.received_at, b.lot_id
 `
 
 type LotCandidatesParams struct {
@@ -212,11 +213,16 @@ type LotCandidatesRow struct {
 	VariantID  int32
 	LocationID int64
 	LotID      int64
+	OnHand     string
+	Expiry     pgtype.Date
+	Status     string
 }
 
 // LotCandidates is every lot holding more than 0 of each (variant, location)
-// given: the lots an AutoLot line may take (M65a), read on the posting's
-// transaction before the lots are locked.
+// given, in FEFO order — expiry (none last), received, lot id — with what it
+// holds, its expiry and its status: the lots an AutoLot line may take (M65a),
+// read plainly on the posting's transaction before the lots are locked, so
+// the posting locks only those that look to cover it.
 func (q *Queries) LotCandidates(ctx context.Context, arg LotCandidatesParams) ([]LotCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, lotCandidates, arg.VariantIds, arg.LocationIds)
 	if err != nil {
@@ -226,7 +232,14 @@ func (q *Queries) LotCandidates(ctx context.Context, arg LotCandidatesParams) ([
 	var items []LotCandidatesRow
 	for rows.Next() {
 		var i LotCandidatesRow
-		if err := rows.Scan(&i.VariantID, &i.LocationID, &i.LotID); err != nil {
+		if err := rows.Scan(
+			&i.VariantID,
+			&i.LocationID,
+			&i.LotID,
+			&i.OnHand,
+			&i.Expiry,
+			&i.Status,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

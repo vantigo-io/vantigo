@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
@@ -404,8 +406,9 @@ func err0[T any](_ T, err error) error { return err }
 
 // TestLots_AutoLot is an AutoLot line taking its lots FEFO under the
 // posting's locks (M65a): skipping a held lot and an expired one, answering
-// its picks, answering them again on a replay, and refusing what the usable
-// lots do not cover.
+// its picks, answering them again on a replay — an AutoLot line of an
+// untracked variant before it, which posts as one line with no lot, kept in
+// step — and refusing what the usable lots do not cover.
 func TestLots_AutoLot(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -414,14 +417,15 @@ func TestLots_AutoLot(t *testing.T) {
 	e1, e2, e3 := receiveLots(t, h, c, s)
 	issue := contracts.StockIssue{SiteID: s.site.Id, Today: testToday, Lines: []contracts.IssueLine{
 		{VariantID: varBolt, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: "1"},
+		{VariantID: varBolt, LineID: 3, FromLocationID: s.shelf1.Id, Quantity: "1", AutoLot: true},
 		{VariantID: varLot, LineID: 2, FromLocationID: s.shelf1.Id, Quantity: "7", AutoLot: true},
 	}}
-	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 1))
+	receive(t, c, s.site.Id, s.shelf1.Id, receiptLine(varBolt, 2))
 	posted, err := issueOf(t, h, 10, issue)
 	if err != nil {
 		t.Fatalf("auto: %v", err)
 	}
-	want := []contracts.StockPick{{Index: 1, LotID: e1, LocationID: s.shelf1.Id, Quantity: "5"}, {Index: 1, LotID: e2, LocationID: s.shelf1.Id, Quantity: "2"}}
+	want := []contracts.StockPick{{Index: 2, LotID: e1, LocationID: s.shelf1.Id, Quantity: "5"}, {Index: 2, LotID: e2, LocationID: s.shelf1.Id, Quantity: "2"}}
 	if !slices.Equal(posted.Picks, want) {
 		t.Errorf("picks = %+v, want %+v", posted.Picks, want)
 	}
@@ -732,6 +736,7 @@ SELECT $1, 'SN' || lpad(g::text, 6, '0'), true, now(), 'PUMP-1', 'Pump', now(), 
 SELECT $1, $2, id, 1, now() FROM inventory.lots WHERE variant_id = $1`, varSerial, s.shelf1.Id)
 	l := ledgerOf(h)
 	var best time.Duration
+	var runs []time.Duration
 	for i := range 3 {
 		start := time.Now()
 		err := inTx(t, h, func(tx pgx.Tx) error {
@@ -742,13 +747,17 @@ SELECT $1, $2, id, 1, now() FROM inventory.lots WHERE variant_id = $1`, varSeria
 		if err != nil {
 			t.Fatalf("reserve: %v", err)
 		}
+		runs = append(runs, took)
 		if best == 0 || took < best {
 			best = took
 		}
 	}
-	t.Logf("a reserve against %d serial balances took %v at best", n, best)
-	// The design's bound is 50 ms on the CI database; a loaded local run is
-	// given room, so only an order of magnitude beyond it fails.
+	// The measured figure, for the reference page's M65b note: CI's log says
+	// what the design's 50 ms is judged against.
+	t.Logf("a reserve against %d serial balances took %v at best (runs %v)", n, best, runs)
+	// The design's bound is 50 ms on the CI database; a loaded run — CI's
+	// race detector, a busy laptop — is given room, so only an order of
+	// magnitude beyond it fails.
 	if best > 500*time.Millisecond {
 		t.Errorf("a reserve against %d serials took %v", n, best)
 	}
@@ -815,4 +824,295 @@ func TestLots_Meta(t *testing.T) {
 	if !m.CanOverrideExpired {
 		t.Errorf("the override's holder: meta = %+v", m)
 	}
+}
+
+// TestLots_GeneratedNumberSkipsATypedOne is a generated number another
+// posting typed already (H1): L1001 typed on a receipt, then a receipt with no
+// number — it makes a lot of its own with the next free number rather than
+// adding to the typed one, in this posting and in an EnsureLots alike.
+func TestLots_GeneratedNumberSkipsATypedOne(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, c)
+	receive(t, c, s.site.Id, s.shelf1.Id, lotLine(varLot, 4, gen.InventoryNewLot{Number: ptr("L1001")}),
+		lotLine(varLot, 1, gen.InventoryNewLot{Number: ptr("l1002")}))
+	typed := lotID(t, h, varLot, "L1001")
+
+	m := receive(t, c, s.site.Id, s.shelf1.Id, lotLine(varLot, 2, gen.InventoryNewLot{}))
+	if n := m.Lines[0].Lot.Number; n != "L1003" || m.Lines[0].Lot.Id == typed {
+		t.Errorf("the generated lot = %s (%d), want a new L1003", n, m.Lines[0].Lot.Id)
+	}
+	if got := lotOnHand(t, h, typed, s.shelf1.Id); got != "4.000" {
+		t.Errorf("the typed L1001 holds %s, want its own 4", got)
+	}
+	// The same number typed and generated in one call: each its own lot.
+	var ids []int64
+	if err := inTx(t, h, func(tx pgx.Tx) error {
+		var err error
+		ids, err = ledgerOf(h).EnsureLots(inCallerTx(t.Context()), tx, contracts.StockSource{Module: "manufacturing", Kind: "order", ID: 1}, testToday,
+			[]contracts.NewLot{{VariantID: varLot, ProductionDate: testToday}, {VariantID: varLot, Number: "L1004", ProductionDate: testToday}})
+		return err
+	}); err != nil {
+		t.Fatalf("EnsureLots: %v", err)
+	}
+	if len(ids) != 2 || ids[0] == ids[1] || ids[1] != lotID(t, h, varLot, "L1004") {
+		t.Errorf("EnsureLots = %v, want a generated lot apart from the typed L1004", ids)
+	}
+	if got := modtest.One[string](t, h.Harness, `SELECT number FROM inventory.lots WHERE id = $1`, ids[0]); got != "L1005" {
+		t.Errorf("the generated lot is %s, want L1005", got)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM inventory.lots WHERE variant_id = $1`, varLot); n != 5 {
+		t.Errorf("%d lots, want 5", n)
+	}
+	assertLedgerConsistent(t, h)
+}
+
+// TestLots_ReplayRemovesItsLotsEvents is a posting that made a lot and lost
+// its key to a concurrent first attempt (L9): the lot it made is removed, and
+// with it its lot_created event — recorded only once the movement is claimed.
+func TestLots_ReplayRemovesItsLotsEvents(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithPoolMaxConns(8))
+	c, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, c)
+	const n = 6
+	key := gen.InventoryReceiptInput{ClientRequestId: uuid.New(), SiteId: s.site.Id, ToLocationId: s.shelf1.Id,
+		Lines: []gen.InventoryReceiptLine{lotLine(varLot, 1, gen.InventoryNewLot{})}}
+	var wg sync.WaitGroup
+	for range n {
+		wg.Go(func() {
+			if st := c.Do(http.MethodPost, receiptsPath, key).Status; st != http.StatusCreated && st != http.StatusOK {
+				t.Errorf("receipt = %d", st)
+			}
+		})
+	}
+	wg.Wait()
+	lots := h.Count(t, `SELECT count(*) FROM inventory.lots WHERE variant_id = $1`, varLot)
+	events := h.Count(t, `SELECT count(*) FROM inventory.events WHERE entity_kind = 'lot' AND kind = 'lot_created'`)
+	if lots != 1 || events != 1 {
+		t.Errorf("%d lots and %d lot_created events after %d attempts of one key, want 1 and 1", lots, events, n)
+	}
+}
+
+// TestLots_StockPagesReadUsable is the stock pages on usable on hand (M3,
+// M63): a held lot lowers a site's available on the variant's stock and on
+// the stock at sites, on hand stays all of it, and the placement's low agrees
+// with the low-stock list.
+func TestLots_StockPagesReadUsable(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, c)
+	_, e2, _ := receiveLots(t, h, c, s)
+	setPlacement(t, c, varLot, s.site.Id, reorderAt(12))
+	if err := inTx(t, h, func(tx pgx.Tx) error {
+		return ledgerOf(h).HoldLots(t.Context(), tx, contracts.StockSource{Module: "inventory", Kind: "lot", ID: e2}, []contracts.LotHold{{LotID: e2, Kind: "block", Cause: "complaint"}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res := c.Do(http.MethodGet, "/api/v1/inventory/variants/"+strconv.Itoa(int(varLot))+"/stock", nil)
+	mustStatus(t, res, http.StatusOK, "the variant's stock")
+	var vs gen.InventoryVariantStock
+	res.JSON(&vs)
+	if len(vs.Sites) != 1 || vs.Sites[0].OnHand != 15 || vs.Sites[0].Available != 10 || vs.TotalOnHand != 15 || vs.TotalAvailable != 10 {
+		t.Fatalf("the variant's stock = %+v, want 15 on hand and 10 available", vs)
+	}
+	if p := vs.Sites[0].Placement; p == nil || !p.Low {
+		t.Errorf("the placement = %+v, want low: 10 usable is at or below 12", p)
+	}
+	res = c.Do(http.MethodGet, "/api/v1/inventory/stock/sites?variantIds="+strconv.Itoa(int(varLot))+"&siteIds="+strconv.FormatInt(s.site.Id, 10), nil)
+	mustStatus(t, res, http.StatusOK, "the stock at sites")
+	var at gen.InventoryStockAtSites
+	res.JSON(&at)
+	if len(at.Stock) != 1 || at.Stock[0].OnHand != 15 || at.Stock[0].Available != 10 || at.Stock[0].Placement == nil || !at.Stock[0].Placement.Low {
+		t.Errorf("the stock at sites = %+v", at.Stock)
+	}
+	if got := lowSKUs(lowStock(t, c, "")); !slices.Equal(got, []string{s.site.Code + ":MILK-1"}) {
+		t.Errorf("the low-stock list = %v, want the placement the stock page calls low", got)
+	}
+	if got := availableAt(t, h, varLot, s.site.Id); got != "10" {
+		t.Errorf("Stock.Available = %s, want the stock page's 10", got)
+	}
+}
+
+// TestLots_EnsureLotsThenHold is a production's EnsureLots and HoldLots on
+// one lot in one transaction (M4, M86): EnsureLots takes the lot FOR NO KEY
+// UPDATE, so the hold needs no lock upgrade — another transaction cannot even
+// share it meanwhile — and two such transactions on one number at once both
+// end without a deadlock.
+func TestLots_EnsureLotsThenHold(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithPoolMaxConns(8))
+	c, _ := signIn(t, h, everything...)
+	seedLots(t, h, c)
+	l := ledgerOf(h)
+	produce := func(doc int64) error {
+		src := contracts.StockSource{Module: "manufacturing", Kind: "order", ID: doc}
+		return inTx(t, h, func(tx pgx.Tx) error {
+			ids, err := l.EnsureLots(t.Context(), tx, src, testToday, []contracts.NewLot{{VariantID: varLot, Number: "OUT-1", ProductionDate: testToday}})
+			if err != nil {
+				return err
+			}
+			return l.HoldLots(t.Context(), tx, src, []contracts.LotHold{{LotID: ids[0], Kind: "quarantine", Cause: "deviation"}})
+		})
+	}
+	if err := produce(1); err != nil {
+		t.Fatalf("the first: %v", err)
+	}
+	lot := lotID(t, h, varLot, "OUT-1")
+	// Inside an EnsureLots' transaction, the lot cannot be shared.
+	if err := inTx(t, h, func(tx pgx.Tx) error {
+		if _, err := l.EnsureLots(t.Context(), tx, contracts.StockSource{Module: "manufacturing", Kind: "order", ID: 2}, testToday,
+			[]contracts.NewLot{{VariantID: varLot, Number: "OUT-1", ProductionDate: testToday}}); err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		other, err := h.Pool().Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = other.Rollback(ctx) }()
+		_, err = other.Exec(ctx, `SELECT 1 FROM inventory.lots WHERE id = $1 FOR SHARE NOWAIT`, lot)
+		if err == nil {
+			t.Error("another transaction shared the lot EnsureLots holds: it was taken FOR SHARE, not FOR NO KEY UPDATE")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := range 4 {
+		wg.Go(func() {
+			if err := produce(int64(10 + i)); err != nil {
+				t.Errorf("EnsureLots then HoldLots: %v", err)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+// TestLots_StockLinesCountLocations is a variant in two lots on one location
+// and a third lot on another (LM6): it lies on two locations, in two stock
+// lines — the holder's count, the site's figure and the dashboard's.
+func TestLots_StockLinesCountLocations(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, c)
+	receive(t, c, s.site.Id, s.shelf1.Id, lotLine(varLot, 1, gen.InventoryNewLot{Number: ptr("A")}), lotLine(varLot, 1, gen.InventoryNewLot{Number: ptr("B")}))
+	receive(t, c, s.site.Id, s.shelf2.Id, lotLine(varLot, 1, gen.InventoryNewLot{Number: ptr("C")}))
+	if err := inTx(t, h, func(tx pgx.Tx) error {
+		held, err := inventory.Module().VariantReferences(h.Deps()).VariantHeld(t.Context(), tx, varLot, contracts.VariantHoldDelete)
+		if err != nil || held == nil || held.Locations != 2 || held.Quantity != "3" {
+			t.Errorf("VariantHeld = %+v, %v; want 3 at 2 locations", held, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res := c.Do(http.MethodGet, sitesPath, nil)
+	mustStatus(t, res, http.StatusOK, "the sites")
+	var sites gen.InventorySiteList
+	res.JSON(&sites)
+	for _, site := range sites.Sites {
+		if site.Id == s.site.Id && (site.StockLines == nil || *site.StockLines != 2) {
+			t.Errorf("the site's stock lines = %d, want 2", ptrValue(site.StockLines))
+		}
+	}
+	res = c.Do(http.MethodGet, statsPath, nil)
+	mustStatus(t, res, http.StatusOK, "the stats")
+	var st gen.InventoryStats
+	res.JSON(&st)
+	if st.StockLines != 2 {
+		t.Errorf("the dashboard's stock lines = %d, want 2", st.StockLines)
+	}
+}
+
+// TestLots_AutoLotLocksWhatCovers is an AutoLot line locking only the lots
+// that look to cover it (L8): eight lots of 5, an issue of 20 locks the first
+// four and two more, so a lot past them held by another transaction does not
+// stop it; and when three of the first are blocked under its read, it runs
+// again with every lot and takes the next ones FEFO.
+func TestLots_AutoLotLocksWhatCovers(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithPoolMaxConns(8))
+	c, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, c)
+	lines := make([]gen.InventoryReceiptLine, 0, 8)
+	for i := range 8 {
+		lines = append(lines, lotLine(varLot, 5, gen.InventoryNewLot{Number: ptr("F" + strconv.Itoa(i+1)), Expiry: date(2026, 11, 1+i)}))
+	}
+	receive(t, c, s.site.Id, s.shelf1.Id, lines...)
+	lot := func(i int) int64 { return lotID(t, h, varLot, "F"+strconv.Itoa(i)) }
+	auto := func(doc int64, q string) (contracts.StockPosted, error) {
+		return issueOf(t, h, doc, contracts.StockIssue{SiteID: s.site.Id, Today: testToday, Lines: []contracts.IssueLine{
+			{VariantID: varLot, LineID: 1, FromLocationID: s.shelf1.Id, Quantity: q, AutoLot: true}}})
+	}
+	// F8 locked by another transaction: an issue of 5 never waits for it.
+	ctx := t.Context()
+	holder, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := holder.Exec(ctx, `SELECT 1 FROM inventory.lots WHERE id = $1 FOR UPDATE`, lot(8)); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := auto(1, "5"); done <- err }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("an issue past a lot locked elsewhere: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("an issue of 5 waited for F8, a lot it does not need")
+	}
+	_ = holder.Rollback(ctx)
+
+	// F2–F4 blocked under the read of the next issue's candidates: it locks
+	// F2–F7, finds F5–F7's 15 short of 20, and runs again with F8 too.
+	blocker, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = blocker.Rollback(ctx) }()
+	if _, err := blocker.Exec(ctx, `UPDATE inventory.lots SET status = 'blocked' WHERE id = ANY($1)`, []int64{lot(2), lot(3), lot(4)}); err != nil {
+		t.Fatal(err)
+	}
+	type outcome struct {
+		posted contracts.StockPosted
+		err    error
+	}
+	got := make(chan outcome, 1)
+	go func() { p, err := auto(2, "20"); got <- outcome{p, err} }()
+	for waited := 0; ; waited++ {
+		if h.Count(t, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`) > 0 {
+			break
+		}
+		if waited == 200 {
+			t.Fatal("the issue never waited for the blocked lots")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err := blocker.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	o := <-got
+	want := []contracts.StockPick{{Index: 0, LotID: lot(5), LocationID: s.shelf1.Id, Quantity: "5"}, {Index: 0, LotID: lot(6), LocationID: s.shelf1.Id, Quantity: "5"},
+		{Index: 0, LotID: lot(7), LocationID: s.shelf1.Id, Quantity: "5"}, {Index: 0, LotID: lot(8), LocationID: s.shelf1.Id, Quantity: "5"}}
+	if o.err != nil || !slices.Equal(o.posted.Picks, want) {
+		t.Errorf("an issue whose first lots were blocked under it = %+v, %v; want %+v", o.posted.Picks, o.err, want)
+	}
+	assertLedgerConsistent(t, h)
+}
+
+// ptrValue is *p, the zero value for nil.
+func ptrValue[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
 }

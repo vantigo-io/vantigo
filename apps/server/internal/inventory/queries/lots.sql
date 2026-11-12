@@ -66,14 +66,17 @@ GROUP BY lot_id;
 
 -- name: LotCandidates :many
 -- LotCandidates is every lot holding more than 0 of each (variant, location)
--- given: the lots an AutoLot line may take (M65a), read on the posting's
--- transaction before the lots are locked.
-SELECT DISTINCT b.variant_id, b.location_id, b.lot_id::bigint AS lot_id
+-- given, in FEFO order — expiry (none last), received, lot id — with what it
+-- holds, its expiry and its status: the lots an AutoLot line may take (M65a),
+-- read plainly on the posting's transaction before the lots are locked, so
+-- the posting locks only those that look to cover it.
+SELECT b.variant_id, b.location_id, b.lot_id::bigint AS lot_id, b.on_hand::text AS on_hand, t.expiry, t.status
 FROM inventory.balances b
-JOIN (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id) AS u
+JOIN (SELECT DISTINCT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id) AS u
   ON u.variant_id = b.variant_id AND u.location_id = b.location_id
-WHERE b.lot_id IS NOT NULL AND b.on_hand > 0
-ORDER BY 1, 2, 3;
+JOIN inventory.lots t ON t.id = b.lot_id
+WHERE b.on_hand > 0
+ORDER BY b.variant_id, b.location_id, t.expiry NULLS LAST, t.received_at, b.lot_id;
 
 -- name: LotsOfMovementLines :many
 -- LotsOfMovementLines is the lot of every line of a movement that has one,

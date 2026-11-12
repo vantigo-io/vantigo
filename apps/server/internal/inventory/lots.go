@@ -106,8 +106,9 @@ type lotKey struct {
 // number) inserted in key order, a number the variant has read back. The
 // stated dates of every request naming an existing lot are compared with it;
 // the defaults apply only to a lot made here. origin names the document that
-// made them (nil: set by the caller once its movement is claimed). It answers
-// one outcome per request, in order.
+// made them (nil: set by the caller once its movement is claimed, and their
+// lot_created events recorded then). It answers one outcome per request, in
+// order.
 func (s *server) ensureLots(ctx context.Context, txq *store.Queries, reqs []lotRequest, variants map[int32]contracts.VariantEntry,
 	today time.Time, origin *movementSource, who actor,
 ) ([]lotOutcome, error) {
@@ -138,13 +139,31 @@ func (s *server) ensureLots(ctx context.Context, txq *store.Queries, reqs []lotR
 		}
 	}
 	// 4. The lots, in (variant, lower(number)) order, one insert per key; the
-	// first request of a key gives a new lot its fields.
+	// first request of a key gives a new lot its fields. A generated number is
+	// a key of its own: one a typed request of this call names already takes
+	// the next number.
 	firstOf := map[lotKey]int{}
+	generated := map[lotKey]bool{}
 	for i, r := range reqs {
 		k := lotKey{r.variantID, strings.ToLower(numbers[i])}
-		if _, ok := firstOf[k]; !ok {
+		if _, ok := firstOf[k]; !ok && r.number != "" {
 			firstOf[k] = i
 		}
+	}
+	for i, r := range reqs {
+		if r.number != "" {
+			continue
+		}
+		k := lotKey{r.variantID, strings.ToLower(numbers[i])}
+		for _, taken := firstOf[k]; taken; _, taken = firstOf[k] {
+			next, err := txq.AllocateLotNumbers(ctx, 1)
+			if err != nil {
+				return nil, fmt.Errorf("inventory: allocate lot numbers: %w", err)
+			}
+			numbers[i] = lotNumberPrefix + strconv.FormatInt(next, 10)
+			k = lotKey{r.variantID, strings.ToLower(numbers[i])}
+		}
+		firstOf[k], generated[k] = i, true
 	}
 	keys := make([]lotKey, 0, len(firstOf))
 	for k := range firstOf {
@@ -182,6 +201,20 @@ func (s *server) ensureLots(ctx context.Context, txq *store.Queries, reqs []lotR
 			p.OriginModule, p.OriginKind, p.OriginID = &origin.module, &origin.kind, &origin.id
 		}
 		id, err := txq.InsertLot(ctx, p)
+		// A generated number another writer typed already: never join its lot
+		// (H1) — under the counter row's lock, the next number, until one is
+		// free.
+		for generated[k] && noRows(err) {
+			next, aerr := txq.AllocateLotNumbers(ctx, 1)
+			if aerr != nil {
+				return nil, fmt.Errorf("inventory: allocate lot numbers: %w", aerr)
+			}
+			p.Number = lotNumberPrefix + strconv.FormatInt(next, 10)
+			if _, typed := firstOf[lotKey{r.variantID, strings.ToLower(p.Number)}]; typed {
+				continue // this call names that number itself
+			}
+			id, err = txq.InsertLot(ctx, p)
+		}
 		created := err == nil
 		if noRows(err) {
 			err = nil
@@ -197,9 +230,10 @@ func (s *server) ensureLots(ctx context.Context, txq *store.Queries, reqs []lotR
 			return nil, fmt.Errorf("inventory: lot %s of variant %d read back as %d, created as %d", p.Number, r.variantID, lot.ID, id)
 		}
 		found[k] = lotOutcome{lot: lot, created: created}
-		if created {
-			if err := s.recordEvent(ctx, txq, eventActor(who), event{EntityKind: entityLot, EntityID: lot.ID, Kind: eventLotCreated,
-				Payload: map[string]any{"number": lot.Number, "variantId": lot.VariantID}}); err != nil {
+		// A posting's lots are recorded once its movement is claimed, so a
+		// replay that removes them leaves no event behind (recordLotsCreated).
+		if created && origin != nil {
+			if err := s.recordLotsCreated(ctx, txq, []store.InventoryLot{lot}, who); err != nil {
 				return nil, err
 			}
 		}
@@ -220,6 +254,18 @@ func (s *server) ensureLots(ctx context.Context, txq *store.Queries, reqs []lotR
 		out[i] = o
 	}
 	return out, nil
+}
+
+// recordLotsCreated records the lot_created event of each lot a posting made,
+// once its movement is claimed.
+func (s *server) recordLotsCreated(ctx context.Context, txq *store.Queries, lots []store.InventoryLot, who actor) error {
+	for _, lot := range lots {
+		if err := s.recordEvent(ctx, txq, eventActor(who), event{EntityKind: entityLot, EntityID: lot.ID, Kind: eventLotCreated,
+			Payload: map[string]any{"number": lot.Number, "variantId": lot.VariantID}}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // differingDate is the first date r states that differs from the lot's, by
@@ -368,14 +414,19 @@ func (l ledger) EnsureLots(ctx context.Context, tx pgx.Tx, src contracts.StockSo
 	if err != nil {
 		return nil, err
 	}
-	// 5. The lots, in id order: a serial variant's FOR NO KEY UPDATE, for the
-	// Produce that increases it; the rest FOR SHARE.
+	// 5. The lots, in id order, every one FOR NO KEY UPDATE: a serial's for
+	// the Produce that increases it, and every lot's so that a HoldLots after
+	// it in the same transaction — a production's quarantine on its output —
+	// holds the lock it needs already rather than upgrading a FOR SHARE, which
+	// two such transactions on one lot would deadlock on (M86).
 	lotIDs := make([]int64, len(outcomes))
 	update := map[int64]bool{}
+	serial := map[int64]bool{}
 	for i, o := range outcomes {
 		lotIDs[i] = o.lot.ID
+		update[o.lot.ID] = true
 		if variants[lots[i].VariantID].Tracking == contracts.TrackingSerial {
-			update[o.lot.ID] = true
+			serial[o.lot.ID] = true
 		}
 	}
 	if _, err := lockLots(ctx, txq, lotIDs, update); err != nil {
@@ -383,7 +434,7 @@ func (l ledger) EnsureLots(ctx context.Context, tx pgx.Tx, src contracts.StockSo
 	}
 	// A new serial whose number already holds stock (M57).
 	var serialIDs []int64
-	for id := range update {
+	for id := range serial {
 		serialIDs = append(serialIDs, id)
 	}
 	held := map[int64]*big.Rat{}
@@ -400,7 +451,7 @@ func (l ledger) EnsureLots(ctx context.Context, tx pgx.Tx, src contracts.StockSo
 		switch {
 		case o.failCode != "":
 			failures = append(failures, contracts.StockLineRefusal{Code: o.failCode, VariantID: lots[i].VariantID, Index: i, LotID: o.lot.ID, Detail: o.failText})
-		case update[o.lot.ID] && held[o.lot.ID] != nil && held[o.lot.ID].Sign() > 0:
+		case serial[o.lot.ID] && held[o.lot.ID] != nil && held[o.lot.ID].Sign() > 0:
 			failures = append(failures, contracts.StockLineRefusal{Code: contracts.StockSerialQuantity, VariantID: lots[i].VariantID, Index: i, LotID: o.lot.ID,
 				Detail: fmt.Sprintf("The serial %s is in stock already.", o.lot.Number)})
 		}

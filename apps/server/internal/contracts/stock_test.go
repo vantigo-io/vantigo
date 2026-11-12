@@ -69,4 +69,10 @@ func TestLotExpired(t *testing.T) {
 	if contracts.LotExpired(nil, today) || contracts.LotExpired(day(2026, 9, 12), today) || !contracts.LotExpired(day(2026, 9, 11), today) {
 		t.Error("the expiry rule")
 	}
+	// A today carrying another zone is the day it names, not its UTC day:
+	// 00:30 on 13 September at +02:00 is 22:30 on the 12th in UTC.
+	oslo := time.FixedZone("CEST", 2*60*60)
+	if !contracts.LotExpired(day(2026, 9, 12), time.Date(2026, 9, 13, 0, 30, 0, 0, oslo)) {
+		t.Error("a today in another zone is judged on its UTC day")
+	}
 }

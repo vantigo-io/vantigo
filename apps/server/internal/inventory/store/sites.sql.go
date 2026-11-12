@@ -239,7 +239,7 @@ func (q *Queries) SiteCodeTaken(ctx context.Context, arg SiteCodeTakenParams) (b
 const siteFigures = `-- name: SiteFigures :many
 SELECT s.id,
        (SELECT count(*) FROM inventory.locations l WHERE l.site_id = s.id AND l.status = 'active' AND l.parent_id IS NOT NULL)::int AS location_count,
-       (SELECT count(*) FROM inventory.balances b JOIN inventory.locations l ON l.id = b.location_id WHERE l.site_id = s.id)::int AS stock_lines,
+       (SELECT count(DISTINCT (b.variant_id, b.location_id)) FROM inventory.balances b JOIN inventory.locations l ON l.id = b.location_id WHERE l.site_id = s.id)::int AS stock_lines,
        r.posted_at AS last_receipt_at
 FROM inventory.sites s
 LEFT JOIN inventory.movements r ON r.id = (
@@ -254,8 +254,9 @@ type SiteFiguresRow struct {
 	LastReceiptAt *time.Time
 }
 
-// SiteFigures is, per site, its active locations below the root, its
-// balances and its latest receipt (the movement's own time), in one statement
+// SiteFigures is, per site, its active locations below the root, its stock
+// lines — a variant on a location, its lots counted once — and its latest
+// receipt (the movement's own time), in one statement
 // for the whole list.
 func (q *Queries) SiteFigures(ctx context.Context, ids []int64) ([]SiteFiguresRow, error) {
 	rows, err := q.db.Query(ctx, siteFigures, ids)
