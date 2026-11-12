@@ -1,6 +1,6 @@
 ---
 title: Orders
-description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; reserve stock at a site, make, pick and post deliveries with their pick list and packing slip, and follow the back orders; ship a delivery with Bring — packages, prices, booking, labels, the waybill, tracking and cancelling — and add a shipping line with the carrier's estimate; invoice it, see its invoices and release what draft invoices hold; make a subscription, activate, change, pause, resume, end and cancel it, accept a quote as one and see its periods; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
+description: The Orders app — make a quote, from the app, a customer's page or a template; add product, free-text, section and note lines, optional lines and discounts; send it or mark it as sent, revise, accept, decline, cancel and copy it; make an order, confirm it, change it after confirming, put it on hold, lock it, cancel it or its rest, register what is delivered, send the order confirmation and print a pro forma; reserve stock at a site, make, pick and post deliveries with their pick list and packing slip, pick goods kept in lots or serial numbers and change a lot, and follow the back orders; ship a delivery with Bring — packages, prices, booking, labels, the waybill, tracking and cancelling — and add a shipping line with the carrier's estimate; invoice it, see its invoices and release what draft invoices hold; make a subscription, activate, change, pause, resume, end and cancel it, accept a quote as one and see its periods; the change log; lines in packagings and from the variant grid; customer and product warnings and overriding a block; the sales analysis; the customer's Orders tab; and what a refusal means.
 sidebar:
   order: 55
 sources:
@@ -365,6 +365,39 @@ A posted delivery does not change. A mistake is corrected with a stock correctio
 Inventory and **Undo delivered** on the order line. A draft delivery can be cancelled; its
 quantities are open on the order again.
 
+### Deliver goods kept in lots
+
+A product kept in [lots or serial numbers](/en/user/inventory/#lots-and-serial-numbers) is
+picked by lot instead of by location: its line says **Picked by lot**, and the lots it is
+taken from are listed under it with each lot's **Expiry**, **Location** and **Quantity**.
+
+1. When the delivery is made, the lots are chosen for you: the one that expires first,
+   then the oldest, skipping a lot on hold and an expired one; a serial number is taken
+   whole. A line may take several lots, at different locations.
+2. When the lots do not hold enough, the line keeps its quantity and says **Short by** what
+   is missing. **Post delivery** waits until the lots add up to the line's quantity: lower
+   the quantity, or choose more.
+3. To take another lot, choose it in **Change lot**: the site's lots of the product, the
+   one that expires first at the top, each with its expiry, location and how much lies
+   there. On a line that is short, the lot covers what is missing; otherwise it replaces
+   the lots. Change a lot's quantity in its row, or remove it with the bin. A lot in
+   quarantine or blocked cannot be chosen.
+4. An expired lot can only be delivered by someone with the permission **Use expired
+   lots** (`inventory:expired-override`): tick **Use expired lot** under the line, then
+   choose it in **Change lot**; it is marked **Expired**. Without the permission it is
+   shown but cannot be chosen, and a delivery that names one is refused.
+5. **Save**. Change only the line's quantity, and its lots are chosen for you again.
+
+The **Pick list** has a row per lot, under its location, with the lot number and expiry in
+the **Lot** column. The **Packing slip** lists the lots — and serial numbers — under each
+line, with their expiry: it is the customer's record of which lots they received. The
+order's **Deliveries** card lists each delivery's lots.
+
+When you post, someone else may have taken a lot meanwhile, or put it on hold. If you did
+not change the lots yourself, they are chosen again from what is there now and the
+delivery is posted with them; the delivery shows the lots it took. If you chose the lots,
+or nothing is left to choose from, the post is refused and the lot is named on its row.
+
 ### Back orders
 
 What is not delivered stays on the order as its back order (*restordre*); there is no
@@ -635,6 +668,11 @@ confirmed or cancelled ([the timeline](/en/user/customers/#the-timeline)).
 | There is not enough available at the site. | Confirm without reserving and reserve later, lower the quantity, or deliver from another site. |
 | The location does not hold that much. | Someone took stock meanwhile: choose another location, lower the quantity, or correct the stock in Inventory. |
 | Choose the location every line is taken from. | Pick a **From location** for every line, then post. |
+| The lots do not add up to the line's quantity. | Choose more lots in **Change lot**, change a lot's quantity, or lower the line's quantity. |
+| Choose the lots the line is taken from. | Choose at least one lot in **Change lot**, then save and post. |
+| The lot is expired. | Choose another lot, or ask someone with **Use expired lots** to post the delivery with **Use expired lot**. |
+| The lot is on hold. | The lot is in quarantine or blocked in Inventory: choose another lot. |
+| That lot does not hold the item at that location. | Someone took the lot meanwhile: reload and choose another. |
 | Nothing of the order is open and available at its site. | Wait for the goods, or reserve them, or finish the draft delivery that already holds them. |
 | The order has deliveries; its site no longer changes. | Leave the site as it is. |
 | A posted delivery no longer changes. | Correct the stock in Inventory and use **Undo delivered** on the order. |
