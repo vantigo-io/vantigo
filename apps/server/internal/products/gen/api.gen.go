@@ -334,12 +334,12 @@ type ProductVariantResponse struct {
 	Sku          string                      `json:"sku"`
 	StandardCost *float64                    `json:"standardCost,omitempty"`
 
-	// Tracking How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
-	Tracking  VariantTracking `json:"tracking"`
-	Unit      string          `json:"unit"`
-	UpdatedAt time.Time       `json:"updatedAt"`
-	WeightKg  *float64        `json:"weightKg,omitempty"`
-	WidthCm   *float64        `json:"widthCm,omitempty"`
+	// Tracking Always sent; optional only because the recorded exchanges of the port predate it.
+	Tracking  *VariantTracking `json:"tracking,omitempty"`
+	Unit      string           `json:"unit"`
+	UpdatedAt time.Time        `json:"updatedAt"`
+	WeightKg  *float64         `json:"weightKg,omitempty"`
+	WidthCm   *float64         `json:"widthCm,omitempty"`
 }
 
 // TaxCategoryRequest defines model for TaxCategoryRequest.

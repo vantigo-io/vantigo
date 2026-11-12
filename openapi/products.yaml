@@ -540,7 +540,9 @@ components:
                     nullable: true
                     type: number
                 tracking:
-                    $ref: '#/components/schemas/VariantTracking'
+                    allOf:
+                        - $ref: '#/components/schemas/VariantTracking'
+                    description: Always sent; optional only because the recorded exchanges of the port predate it.
                 expiryDays:
                     description: The days a new lot's expiry lies after its production or receipt date (manufacturing phase 2 M49); null when unset.
                     format: int32
@@ -570,7 +572,6 @@ components:
                 - unit
                 - optionValues
                 - effectivePrices
-                - tracking
                 - createdAt
                 - updatedAt
             type: object
