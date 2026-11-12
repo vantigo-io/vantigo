@@ -30,6 +30,10 @@ const drifted: EditorLine = {
   locationId: 12,
   toLocationId: 13,
   mode: "change",
+  lotNumber: "",
+  lotDates: { productionDate: "", bestBefore: "", expiry: "" },
+  serialFirst: "",
+  serialCount: "",
 };
 
 describe("quantities", () => {

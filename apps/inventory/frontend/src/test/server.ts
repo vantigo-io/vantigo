@@ -1,6 +1,7 @@
 import type { InventoryCount, InventoryCountLine } from "../api/counts";
 import type { InventoryImportRow } from "../api/imports";
 import type { InventoryLocation, InventoryLocationRef } from "../api/locations";
+import type { InventoryLot, InventoryLotHoldInput } from "../api/lots";
 import type { InventoryMeta } from "../api/meta";
 import type { InventoryMovement, InventoryMovementKind } from "../api/movements";
 import type { InventoryLowStockRow, InventoryPlacement, InventoryPlacementImportRow } from "../api/placements";
@@ -122,6 +123,8 @@ export interface InventoryServer {
   /** Answers `GET /low-stock` from these rows, filtered by site and search, `lowStockPageSize` at a time. */
   lowStock?: InventoryLowStockRow[];
   lowStockPageSize?: number;
+  /** The lots `GET /lots` and `GET /lots/{id}` answer, whose holds the page's writes change (manufacturing phase 2 M60–M64). */
+  lots?: InventoryLot[];
   /** How many locations a site's list answers before it says it was truncated; 10,000 as the server's. */
   locationLimit?: number;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
@@ -137,6 +140,7 @@ export interface InventoryState {
   counts: InventoryCount[];
   transfers: InventoryTransfer[];
   placements: Placement[];
+  lots: InventoryLot[];
 }
 
 /** A transfer line as the fixtures write it: a variant, what was asked, and what has happened to it so far. */
@@ -240,6 +244,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     counts: server.counts ?? [],
     transfers: server.transfers ?? [],
     placements: server.placements ?? [],
+    lots: server.lots ?? [],
   };
   const catalog = server.variants ?? variants();
   let nextId = 900;
@@ -255,6 +260,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     canCount: true,
     canTransfer: true,
     canOverrideExpired: false,
+    canManageLots: true,
     today: "2026-09-12",
     ...server.meta,
   };
@@ -395,6 +401,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
           onHand,
           reserved,
           available: onHand - reserved,
+          held: 0,
           incoming,
           rows: ordered,
           ...(placement ? { placement: placementAnswer(placement, onHand - reserved, incoming) } : {}),
@@ -766,6 +773,76 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         revision: one.revision + 1,
         lines: one.lines.map((line) => ({ ...line, returned: line.sent })),
       });
+    }
+    return undefined;
+  };
+
+  // The lots (manufacturing phase 2 L1b): the list by variant, site and status, a lot's page and its holds.
+  const derive = (one: InventoryLot): InventoryLot => {
+    const active = one.holds.filter((hold) => !hold.releasedAt);
+    const status = active.some((hold) => hold.kind === "block")
+      ? "blocked"
+      : active.length > 0
+        ? "quarantine"
+        : "available";
+    return { ...one, status, revision: one.revision + 1 };
+  };
+  const lotRoutes = (method: string, path: string, query: URLSearchParams, body: unknown): Response | undefined => {
+    if (path === "/lots" && method === "GET") {
+      const variantId = query.get("variantId");
+      const status = query.get("status");
+      const rows = state.lots
+        .filter(
+          (one) =>
+            (variantId === null || one.variant.id === Number(variantId)) && (status === null || one.status === status),
+        )
+        .map((one) => ({
+          id: one.id,
+          number: one.number,
+          serial: one.serial,
+          variant: one.variant,
+          status: one.status,
+          expired: one.expired,
+          expiry: one.expiry,
+          bestBefore: one.bestBefore,
+          supplierLot: one.supplierLot,
+          onHand: one.onHand,
+        }));
+      return jsonResponse(200, { lots: rows });
+    }
+    const page = /^\/lots\/(\d+)(\/holds(?:\/(\d+)\/release)?)?$/.exec(path);
+    if (!page) return undefined;
+    const index = state.lots.findIndex((one) => one.id === Number(page[1]));
+    if (index < 0) return new Response(null, { status: 404 });
+    const one = state.lots[index];
+    if (!page[2] && method === "GET") return jsonResponse(200, one);
+    if (page[2] && !page[3] && method === "POST") {
+      const input = body as InventoryLotHoldInput;
+      const hold = {
+        id: nextId++,
+        kind: input.kind,
+        cause: input.cause,
+        note: input.note,
+        source: { module: "inventory", kind: "lot", id: String(one.id) },
+        inventorys: true,
+        createdAt: STAMP,
+        createdBy: { displayName: "Kari N." },
+      };
+      state.lots[index] = derive({ ...one, holds: [hold, ...one.holds] });
+      return jsonResponse(200, state.lots[index]);
+    }
+    if (page[3] && method === "POST") {
+      const hold = one.holds.find((h) => h.id === Number(page[3]));
+      if (!hold) return new Response(null, { status: 404 });
+      if (!hold.inventorys) return inventoryProblem(409, "hold_not_inventorys");
+      const note = (body as { note?: string } | undefined)?.note;
+      state.lots[index] = derive({
+        ...one,
+        holds: one.holds.map((h) =>
+          h.id === hold.id ? { ...h, releasedAt: STAMP, releasedBy: { displayName: "Kari N." }, releaseNote: note } : h,
+        ),
+      });
+      return jsonResponse(200, state.lots[index]);
     }
     return undefined;
   };
@@ -1290,6 +1367,8 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       );
       return jsonResponse(201, { ok, rows, movementId: state.movements[0].id });
     }
+    const lot = lotRoutes(method, path, query, body);
+    if (lot) return lot;
     const transfer = transferRoutes(method, path, query, body, headers);
     if (transfer) return transfer;
     if (path === "/stats")

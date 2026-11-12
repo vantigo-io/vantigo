@@ -56,10 +56,13 @@ export const LookupPage = () => {
                       <Table.Td>
                         <Group gap="xs">
                           <Anchor size="sm" renderRoot={(props) => <Link {...matchLinkOptions(match)} {...props} />}>
-                            {match.location?.fullCode ?? match.variant?.sku}
+                            {match.location?.fullCode ?? match.lot?.number ?? match.variant?.sku}
                           </Anchor>
                           <Text size="sm" c="dimmed">
-                            {match.location?.name ?? match.variant?.productName}
+                            {match.location?.name ??
+                              (match.lot && match.variant
+                                ? `${match.variant.sku} · ${match.variant.productName}`
+                                : match.variant?.productName)}
                           </Text>
                         </Group>
                       </Table.Td>

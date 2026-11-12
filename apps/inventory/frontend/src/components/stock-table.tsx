@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import type { InventoryBalanceRow } from "../api/locations";
 import { useInventoryFormat } from "../lib/format";
 import { locationLinkOptions, variantStockLinkOptions } from "../lib/routes";
+import { LotLines } from "./lot-status";
 import { Quantity } from "./quantity";
 
 export interface StockTableProps {
@@ -16,7 +17,8 @@ export interface StockTableProps {
 /**
  * Balance rows (I10): the variant, its SKU and product, the location it lies
  * on — marked when it is the variant's primary location there (I55) — and
- * the quantity there, broken down in the variant's packagings (I26).
+ * the quantity there, broken down in the variant's packagings (I26), with a
+ * tracked variant's lots under it (manufacturing phase 2 M63).
  */
 export const StockTable = ({ rows, hideVariant, hideLocation }: StockTableProps) => {
   const { t } = useInventoryFormat();
@@ -69,6 +71,9 @@ export const StockTable = ({ rows, hideVariant, hideLocation }: StockTableProps)
               )}
               <Table.Td ta="right">
                 <Quantity value={row.onHand} unit={row.variant.unit} packagings={row.variant.packagings} />
+                {row.lots && row.lots.length > 0 && (
+                  <LotLines lots={row.lots} unit={row.variant.unit} packagings={row.variant.packagings} />
+                )}
               </Table.Td>
             </Table.Tr>
           ))}

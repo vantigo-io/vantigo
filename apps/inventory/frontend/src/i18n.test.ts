@@ -4,6 +4,7 @@ import { countStatuses, uncountedChoices } from "./api/counts";
 import { importOutcomes } from "./api/imports";
 import { labelLayouts } from "./api/labels";
 import { locationKinds } from "./api/locations";
+import { holdCauses, holdKinds, lotStatuses } from "./api/lots";
 import { adjustmentModes, adjustmentReasons, movementKinds, refusalCodes } from "./api/movements";
 import { placementImportOutcomes } from "./api/placements";
 import { siteKinds, statuses } from "./api/sites";
@@ -70,11 +71,14 @@ describe("the inventory catalog", () => {
         ]),
       ...adjustmentReasons.map((value) => `reason_${value}`),
       ...adjustmentModes.map((value) => `mode_${value}`),
-      ...["location", "variant", "transfer"].map((value) => `matchKind_${value}`),
+      ...["location", "variant", "transfer", "lot"].map((value) => `matchKind_${value}`),
+      ...lotStatuses.map((value) => `lotStatus_${value}`),
+      ...holdCauses.map((value) => `holdCause_${value}`),
+      ...holdKinds.map((value) => `holdKind_${value}`),
       ...transferStatuses.map((value) => `transferStatus_${value}`),
       ...closeReasons.map((value) => `closeReason.${value}`),
       ...["sent", "received", "missing", "returned"].map((value) => `actionLine_${value}`),
-      ...["variant", "quantity", "location"].map((value) => `lineGap_${value}`),
+      ...["variant", "quantity", "location", "lot"].map((value) => `lineGap_${value}`),
       ...refusalCodes.map((value) => `refusal.${value}`),
       ...countStatuses.map((value) => `countStatus_${value}`),
       ...uncountedChoices.map((value) => `uncounted_${value}`),
@@ -99,7 +103,10 @@ describe("the inventory catalog", () => {
     expect([...movementKinds].sort()).toEqual(enumOf("InventoryMovementKind").sort());
     expect([...adjustmentReasons].sort()).toEqual(enumOf("InventoryAdjustmentReason").sort());
     expect([...adjustmentModes].sort()).toEqual(enumOf("InventoryAdjustmentLine", "mode").sort());
-    expect(["location", "transfer", "variant"]).toEqual(enumOf("InventoryLookupMatch", "kind").sort());
+    expect(["location", "lot", "transfer", "variant"]).toEqual(enumOf("InventoryLookupMatch", "kind").sort());
+    expect([...lotStatuses].sort()).toEqual(enumOf("InventoryLotStatus").sort());
+    expect([...holdCauses].sort()).toEqual(enumOf("InventoryLotHoldInput", "cause").sort());
+    expect([...holdKinds].sort()).toEqual(enumOf("InventoryLotHoldInput", "kind").sort());
     expect([...transferStatuses].sort()).toEqual(enumOf("InventoryTransferStatus").sort());
     expect([...closeReasons].sort()).toEqual(enumOf("InventoryTransferCloseReason").sort());
     expect(["missing", "received", "returned", "sent"]).toEqual(enumOf("InventoryTransferActionLineKind").sort());

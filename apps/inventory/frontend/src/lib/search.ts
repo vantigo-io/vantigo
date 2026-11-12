@@ -108,3 +108,24 @@ export const validateLowStockSearch = (search: Record<string, unknown>): LowStoc
   siteId: positive(search.siteId),
   q: typeof search.q === "string" && search.q.trim() !== "" ? search.q.trim().slice(0, 100) : undefined,
 });
+
+/** The lots list's filters (manufacturing phase 2 M60): text, site, status, hold cause and stock, in the URL. */
+export interface LotsSearch {
+  q?: string;
+  siteId?: number;
+  variantId?: number;
+  status?: "available" | "quarantine" | "blocked";
+  holdCause?: "inspection" | "deviation" | "complaint" | "recall" | "other";
+  /** "all" lists lots holding nothing too; absent lists only lots with stock. */
+  stock?: "all";
+}
+const lotStatusValues = ["available", "quarantine", "blocked"] as const;
+const holdCauseValues = ["inspection", "deviation", "complaint", "recall", "other"] as const;
+export const validateLotsSearch = (search: Record<string, unknown>): LotsSearch => ({
+  q: typeof search.q === "string" && search.q !== "" ? search.q : undefined,
+  siteId: positive(search.siteId),
+  variantId: positive(search.variantId),
+  status: lotStatusValues.find((value) => value === search.status),
+  holdCause: holdCauseValues.find((value) => value === search.holdCause),
+  stock: search.stock === "all" ? "all" : undefined,
+});

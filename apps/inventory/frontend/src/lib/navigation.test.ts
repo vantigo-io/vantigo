@@ -9,6 +9,7 @@ describe("the sidebar entries", () => {
     expect(keys(["inventory:stock-view"])).toEqual(["overview"]);
     expect(keys(["inventory:locations-view", "inventory:stock-view"])).toEqual([
       "overview",
+      "lots",
       "transfers",
       "movements",
       "receipts",
@@ -20,6 +21,7 @@ describe("the sidebar entries", () => {
     const views = ["inventory:locations-view", "inventory:stock-view"];
     expect(keys([...views, "inventory:counts-manage"])).toEqual([
       "overview",
+      "lots",
       "transfers",
       "movements",
       "receipts",
@@ -28,6 +30,7 @@ describe("the sidebar entries", () => {
     ]);
     expect(keys([...views, "inventory:stock-adjust"])).toEqual([
       "overview",
+      "lots",
       "transfers",
       "movements",
       "receipts",
@@ -40,7 +43,16 @@ describe("the sidebar entries", () => {
   });
 
   it("offers everything to a holder of every permission, and nothing to nobody", () => {
-    expect(keys(["*"])).toEqual(["overview", "transfers", "movements", "receipts", "counts", "lowStock", "import"]);
+    expect(keys(["*"])).toEqual([
+      "overview",
+      "lots",
+      "transfers",
+      "movements",
+      "receipts",
+      "counts",
+      "lowStock",
+      "import",
+    ]);
     expect(keys(undefined)).toEqual([]);
   });
 });

@@ -26,5 +26,16 @@ export const canTransfer = (meta: InventoryMeta | undefined): boolean =>
 /** Whether the caller may import opening balances: `inventory:stock-adjust` and both views (I32). */
 export const canImport = (meta: InventoryMeta | undefined): boolean => canPost(meta, "adjustment");
 
+/** Whether the caller may see the lots: both views, as every stock read (manufacturing phase 2 M68). */
+export const canViewLots = (meta: InventoryMeta | undefined): boolean =>
+  !!meta && meta.canViewLocations && meta.canViewStock;
+
+/**
+ * Whether the caller may change a lot, its files and Inventory's own holds on
+ * it: `inventory:lots-manage` and both views (manufacturing phase 2 M68).
+ */
+export const canManageLots = (meta: InventoryMeta | undefined): boolean =>
+  !!meta && meta.canViewLocations && meta.canViewStock && meta.canManageLots;
+
 /** Whether the caller may print location labels: `inventory:locations-view` alone (I7). */
 export const canPrintLabels = (meta: InventoryMeta | undefined): boolean => !!meta?.canViewLocations;

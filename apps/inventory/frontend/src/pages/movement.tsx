@@ -12,6 +12,7 @@ import {
   countLinkOptions,
   INVENTORY_HOME_ROUTE_PATH,
   locationLinkOptions,
+  lotLinkOptions,
   MOVEMENTS_ROUTE_PATH,
   siteLinkOptions,
   sourceHref,
@@ -63,7 +64,7 @@ const SourceText = ({ source }: { source: NonNullable<InventoryMovement["source"
  * Movements are never edited; a mistake is put right by a new adjustment.
  */
 export const MovementPage = () => {
-  const { t, quantity, number, stamp } = useInventoryFormat();
+  const { t, quantity, number, stamp, day } = useInventoryFormat();
   const { movementId: rawId } = useParams({ strict: false }) as { movementId: string };
   const movementId = Number(rawId);
   const movement = useQuery(movementQueryOptions(movementId));
@@ -150,6 +151,7 @@ export const MovementPage = () => {
                     <Table.Th>{t("columnProduct")}</Table.Th>
                     <Table.Th>{t("columnFrom")}</Table.Th>
                     <Table.Th>{t("columnTo")}</Table.Th>
+                    {data.lines.some((line) => line.lot) && <Table.Th>{t("columnLot")}</Table.Th>}
                     <Table.Th ta="right">{t("columnQuantity")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -172,6 +174,33 @@ export const MovementPage = () => {
                       <Table.Td>
                         <LocationCell location={line.to} />
                       </Table.Td>
+                      {data.lines.some((one) => one.lot) && (
+                        <Table.Td>
+                          {line.lot ? (
+                            <Group gap={6} wrap="nowrap">
+                              <Anchor
+                                size="sm"
+                                ff="monospace"
+                                renderRoot={(props) => <Link {...lotLinkOptions(line.lot?.id ?? 0)} {...props} />}
+                              >
+                                {line.lot.number}
+                              </Anchor>
+                              {line.lot.expiry && (
+                                <Text size="xs" c="dimmed">
+                                  {day(line.lot.expiry)}
+                                </Text>
+                              )}
+                              {line.expiredOverride && (
+                                <Badge size="xs" variant="light" color="red">
+                                  {t("expired")}
+                                </Badge>
+                              )}
+                            </Group>
+                          ) : (
+                            "—"
+                          )}
+                        </Table.Td>
+                      )}
                       <Table.Td ta="right">
                         {quantity(line.quantity, line.variant.unit)}
                         {line.entered && (

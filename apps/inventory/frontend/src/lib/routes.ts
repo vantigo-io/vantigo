@@ -31,13 +31,15 @@ export const movementLinkOptions = (movementId: number) => ({
 /** The href of a variant's stock page, for a module that may only link (Products' delete dialog, through the host). */
 export const variantStockHref = (variantId: number) => `/inventory/variants/${variantId}`;
 
-/** Where one lookup match leads: the location's page, the transfer's, or the variant's stock. */
+/** Where one lookup match leads: the location's page, the transfer's, the lot's, or the variant's stock. */
 export const matchLinkOptions = (match: InventoryLookupMatch) =>
   match.kind === "location" && match.location
     ? locationLinkOptions(match.location.id)
     : match.kind === "transfer" && match.transfer
       ? transferLinkOptions(match.transfer.id)
-      : variantStockLinkOptions(match.variant?.id ?? 0);
+      : match.kind === "lot" && match.lot
+        ? lotLinkOptions(match.lot.id)
+        : variantStockLinkOptions(match.variant?.id ?? 0);
 
 /** The movements list filtered, as a link: a location's, a variant's or a site's movements. */
 export const movementsLinkOptions = (search: Record<string, string | number>) => ({ to: MOVEMENTS_ROUTE_PATH, search });
@@ -87,6 +89,14 @@ export const LOW_STOCK_ROUTE_PATH = "/inventory/low-stock";
 
 /** The low-stock list, filtered to a site when one is given. */
 export const lowStockLinkOptions = (search: { siteId?: number } = {}) => ({ to: LOW_STOCK_ROUTE_PATH, search });
+
+// Manufacturing phase 2, L1b: the lots list and a lot's page (M60, M61).
+export const LOTS_ROUTE_PATH = "/inventory/lots";
+export const LOT_ROUTE_PATH = "/inventory/lots/$lotId";
+
+export const lotLinkOptions = (lotId: number) => ({ to: LOT_ROUTE_PATH, params: { lotId: String(lotId) } });
+/** The lots list filtered, as a link. */
+export const lotsLinkOptions = (search: Record<string, string | number> = {}) => ({ to: LOTS_ROUTE_PATH, search });
 
 // Manufacturing, delivery 0: a production's source on the movement page (M5).
 

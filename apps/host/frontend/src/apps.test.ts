@@ -1,4 +1,5 @@
 import {
+  IconBarcode,
   IconBuildingFactory2,
   IconBuildingWarehouse,
   IconCalendarEvent,
@@ -154,6 +155,7 @@ describe("the app registry", () => {
       "/products/categories",
       "/products/tax-categories",
       "/inventory",
+      "/inventory/lots",
       "/inventory/transfers",
       "/inventory/movements",
       "/inventory/movements",
@@ -635,7 +637,7 @@ describe("the app registry", () => {
   // carries the search. Transfers needs both views alone (phase 2 design
   // I63). Counts and Import are offered by counts-manage and stock-adjust,
   // each with both views, as every stock read asks (§5).
-  it("gives Inventory the overview, Transfers, Movements, Receipts, Counts and Import, from the package's destinations", () => {
+  it("gives Inventory the overview, Lots, Transfers, Movements, Receipts, Counts and Import, from the package's destinations", () => {
     const inventory = appForKey("inventory");
     expect(inventory).toMatchObject({ module: "inventory", label: "navigation.inventory", home: "/inventory" });
     expect(inventory.icon).toBe(IconBuildingWarehouse);
@@ -657,6 +659,14 @@ describe("the app registry", () => {
         undefined,
         ["inventory:locations-view", "inventory:stock-view"],
         undefined,
+        undefined,
+      ],
+      [
+        "navigation.inventoryLots",
+        "/inventory/lots",
+        undefined,
+        ["inventory:stock-view"],
+        ["inventory:locations-view", "inventory:stock-view"],
         undefined,
       ],
       [
@@ -710,6 +720,7 @@ describe("the app registry", () => {
     ]);
     expect(items.map((item) => item.icon)).toEqual([
       IconBuildingWarehouse,
+      IconBarcode,
       IconTruckDelivery,
       IconTransfer,
       IconPackageImport,
@@ -745,6 +756,7 @@ describe("the app registry", () => {
     expect(paths(["inventory:locations-view"])).toEqual(["navigation.inventoryOverview"]);
     expect(paths(["inventory:locations-view", "inventory:stock-view"])).toEqual([
       "navigation.inventoryOverview",
+      "navigation.inventoryLots",
       "navigation.inventoryTransfers",
       "navigation.inventoryMovements",
       "navigation.inventoryReceipts",
@@ -754,6 +766,7 @@ describe("the app registry", () => {
       paths(["inventory:locations-view", "inventory:stock-view", "inventory:counts-manage", "inventory:stock-adjust"]),
     ).toEqual([
       "navigation.inventoryOverview",
+      "navigation.inventoryLots",
       "navigation.inventoryTransfers",
       "navigation.inventoryMovements",
       "navigation.inventoryReceipts",

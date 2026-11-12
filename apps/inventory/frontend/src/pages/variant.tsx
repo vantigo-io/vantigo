@@ -10,7 +10,7 @@ import { type InventorySiteRef, sitesQueryOptions } from "../api/sites";
 import { type InventoryVariantRef, variantStockQueryOptions } from "../api/stock";
 import { MovementList } from "../components/movement-list";
 import { PlacementDialog } from "../components/placement-dialog";
-import { ReservedAvailable } from "../components/product-stock";
+import { HeldQuantity, ReservedAvailable } from "../components/product-stock";
 import { StockTable } from "../components/stock-table";
 import { TransferList } from "../components/transfer-list";
 import { canPost, canViewTransfers } from "../lib/capabilities";
@@ -182,6 +182,7 @@ export const VariantStockPage = () => {
                         available={site.available}
                         unit={stock.data.variant.unit}
                       />
+                      <HeldQuantity held={site.held} unit={stock.data.variant.unit} />
                     </Stack>
                   </Group>
                   {site.rows.length > 0 && <StockTable rows={site.rows} hideVariant />}
