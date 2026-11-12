@@ -208,6 +208,7 @@ describe("the production dialog's lots", () => {
 describe("the order's Lots tab", () => {
   it("lists the lots made and consumed, each linked to Inventory", async () => {
     stubManufacturingApi({
+      meta: { canTraceLots: true },
       orderLots: {
         5: {
           outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "6", productions: 2 }],
@@ -241,6 +242,24 @@ describe("the order's Lots tab", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/inventory/lots/501"));
   });
 
+  it("shows the lots without links to a caller who may not open them in Inventory", async () => {
+    stubManufacturingApi({
+      meta: { canTraceLots: false },
+      orderLots: {
+        5: {
+          outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "6", productions: 2 }],
+          components: [],
+        },
+      },
+    });
+    renderRoute("/manufacturing/orders/5");
+    await userEvent.click(await screen.findByRole("tab", { name: "Lots" }));
+    expect(await screen.findByText("Lots made")).toBeInTheDocument();
+    expect(screen.getAllByText("MO-12").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "MO-12" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Trace lot MO-12" })).not.toBeInTheDocument();
+  });
+
   it("says when no lot was made or consumed", async () => {
     stubManufacturingApi();
     renderRoute("/manufacturing/orders/5");
@@ -252,7 +271,7 @@ describe("the order's Lots tab", () => {
 describe("the work order's lots", () => {
   it("shows the order's lots on the shop floor's work order", async () => {
     stubManufacturingApi({
-      meta: { canWorkShopFloor: true },
+      meta: { canWorkShopFloor: true, canTraceLots: true },
       orderLots: {
         5: {
           outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "6", productions: 1 }],

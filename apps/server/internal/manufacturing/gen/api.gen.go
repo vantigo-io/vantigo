@@ -936,6 +936,9 @@ type ManufacturingMeta struct {
 	// CanSeeCosts Holds manufacturing:costs-view: cost fields are answered.
 	CanSeeCosts bool `json:"canSeeCosts"`
 
+	// CanTraceLots Whether Inventory keeps stock and the caller holds inventory:locations-view and inventory:stock-view: an order's lots link to their pages and their trace in Inventory (manufacturing phase 2 M94).
+	CanTraceLots bool `json:"canTraceLots"`
+
 	// CanWorkShopFloor Holds manufacturing:shop-floor.
 	CanWorkShopFloor bool `json:"canWorkShopFloor"`
 

@@ -36,6 +36,7 @@ func (s *server) GetManufacturingMeta(ctx context.Context, _ gen.GetManufacturin
 		CanSeeCosts:      s.has(ctx, permCostsView),
 		CanManageOrders:  s.has(ctx, permOrdersManage),
 		CanWorkShopFloor: s.has(ctx, permShopFloor),
+		CanTraceLots:     s.deps.Stock != nil && contracts.HasPermissions(ctx, s.deps.Access, permInventoryLocationsView, permInventoryStockView),
 		Currency:         currency,
 	}, nil
 }

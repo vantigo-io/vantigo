@@ -486,6 +486,7 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
     canSeeCosts: true,
     canManageOrders: false,
     canWorkShopFloor: false,
+    canTraceLots: false,
     currency: "NOK",
     ...server.meta,
   };
