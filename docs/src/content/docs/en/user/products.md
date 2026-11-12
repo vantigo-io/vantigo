@@ -123,6 +123,10 @@ dialogs ask for:
 - **Unit** — how the product is counted, for instance `pcs` or `hour`; this is the
   unit shown on the product and used by other modules.
 - **Unit cost** — what the item costs you, optional.
+- **Tracking** — for **goods** only: **None**, **Lot numbers** or **Serial numbers**.
+  See [Track lots and serial numbers](#track-lots-and-serial-numbers).
+- **Expiry (days)** and **Best before (days)** — optional, 1–3650: how many days after
+  it is produced or received a new lot expires, and is best before.
 
 Click **Save variant**. Vantigo refuses to change a SKU once the product is no longer a
 draft, refuses a SKU or barcode that another variant already uses, and refuses to remove
@@ -146,6 +150,29 @@ is not held: a draft holds nothing, and the draft is refused when it is sent.
 
 The barcode, weight and dimensions on the product page are variant fields too, but the
 app does not edit them; they are set through the API.
+
+### Track lots and serial numbers
+
+Choose **Tracking** on a goods variant to follow its stock by number, from the receipt or
+the production that made it to the delivery that took it:
+
+- **Lot numbers** — the stock lies in numbered lots (a batch, a heat, a production
+  day). Every receipt, move, count, delivery and production names the lot it takes or
+  makes; [Inventory](/en/user/inventory/) proposes the lot that expires first.
+- **Serial numbers** — every unit has its own number: a serial is a lot of at most one.
+- **None** — the default: the stock is one quantity per location.
+
+The two offsets give a new lot its dates: a lot received or [produced in
+Manufacturing](/en/user/manufacturing/) on 1 March with **Expiry (days)** 30 expires on 31
+March unless someone types another date. Changing an offset is always allowed and applies to
+lots made afterwards.
+
+The mode itself changes only while the variant holds nothing: no stock, no reservations
+and nothing in transit. Otherwise saving says **Tracking cannot change** — *The variant
+still has stock, reservations or stock in transit. Deliver, move or adjust it to zero
+before you change its tracking.* — with **See where it lies**. To start tracking an item
+you already hold, bring its stock to zero, change the mode and receive or import the stock
+again with its lots. A service's variant has no **Tracking**.
 
 ## Packagings
 

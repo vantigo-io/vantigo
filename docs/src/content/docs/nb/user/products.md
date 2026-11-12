@@ -123,6 +123,10 @@ dialogene spør etter:
 - **Enhet** — hvordan produktet telles, for eksempel `pcs` eller `time`; dette er
   enheten som vises på produktet og brukes av andre moduler.
 - **Enhetskostnad** — hva varen koster deg, valgfri.
+- **Sporing** — bare for **varer**: **Ingen**, **Partinumre** eller **Serienumre**. Se
+  [Spor partier og serienumre](#spor-partier-og-serienumre).
+- **Utløp (dager)** og **Best før (dager)** — valgfrie, 1–3650: hvor mange dager etter at
+  det er produsert eller mottatt et nytt parti går ut, og er best før.
 
 Klikk **Lagre variant**. Vantigo nekter å endre en SKU når produktet ikke lenger er et
 utkast, nekter en SKU eller strekkode som en annen variant allerede bruker, og nekter å
@@ -147,6 +151,31 @@ når det sendes.
 
 Strekkoden, vekten og dimensjonene på produktsiden er også variantfelter, men appen
 redigerer dem ikke; de settes gjennom API-et.
+
+### Spor partier og serienumre
+
+Velg **Sporing** på en varevariant for å følge beholdningen etter nummer, fra mottaket eller
+produksjonen som laget den til leveransen som tok den:
+
+- **Partinumre** — beholdningen ligger i nummererte partier (en batch, en smelte, en
+  produksjonsdag). Hvert mottak, hver flytting, telling, leveranse og produksjon oppgir
+  partiet den tar eller lager; [Lager](/nb/user/inventory/) foreslår partiet som går ut
+  først.
+- **Serienumre** — hver enhet har sitt eget nummer: et serienummer er et parti på høyst én.
+- **Ingen** — standard: beholdningen er én mengde per lagerplass.
+
+De to forskyvningene gir et nytt parti datoene: et parti som mottas eller [produseres i
+Produksjon](/nb/user/manufacturing/) 1. mars med **Utløp (dager)** 30, går ut 31. mars
+med mindre noen skriver en annen dato. Å endre en forskyvning er alltid tillatt og gjelder
+partier som lages etterpå.
+
+Selve sporingen endres bare mens varianten ikke holder noe: ingen beholdning, ingen
+reservasjoner og ingenting under overføring. Ellers sier lagringen **Sporingen kan ikke
+endres** — *Varianten har fortsatt beholdning, reservasjoner eller varer under overføring.
+Lever, flytt eller juster den til null før du endrer sporingen.* — med **Se hvor den
+ligger**. For å begynne å spore en vare du allerede har, tar du beholdningen ned til null,
+endrer sporingen og mottar eller importerer beholdningen igjen med partiene. En tjenestes
+variant har ingen **Sporing**.
 
 ## Pakninger
 
