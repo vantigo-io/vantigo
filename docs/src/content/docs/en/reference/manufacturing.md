@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the five permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
   - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
+  - apps/server/internal/db/migrations/00167_manufacturing_lots.sql
   - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/events_manufacturing.go
   - apps/host/frontend/src/routes/manufacturing
@@ -29,7 +30,9 @@ the holder — delivery B, [manufacturing orders](#manufacturing-orders), and de
 [the production schedule](#the-production-schedule), [the cost](#cost) and
 [the reports](#reports), and delivery E,
 [make-to-order and sub-assembly orders](#make-to-order-and-sub-assemblies), which completes
-phase 1. Delivery 0, the seams in Inventory and Products this module builds on, is
+phase 1. Of phase 2
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-12-manufacturing-phase2-design.md),
+decisions M49–M146), layer M adds [lots on productions](#lots-on-productions). Delivery 0, the seams in Inventory and Products this module builds on, is
 described in [Inventory](/en/reference/inventory/#production) and
 [Products](/en/reference/products/).
 
@@ -205,6 +208,7 @@ A BoM (M10; nb *stykkliste*) tells how to make one variant.
 | `isDefault` | Exactly one active BoM per variant is the default (M14a); asked for at create only, and the variant's first active BoM is the default whatever it says |
 | `makeToOrder` | False by default; read by delivery E |
 | `leadTimeDays` | An integer of 0 or more, default 0; read by later deliveries |
+| `lotPattern` | The number of the lot its productions make, 1–40 characters, default `{MO}`; a sample render must be a lot number (`lot_pattern_invalid`, 400); an update that leaves it out keeps it ([lots on productions](#lots-on-productions)) |
 | `note` | At most 2,000 characters |
 | `status` | `active` or `archived` |
 | `revision` | The concurrency token (`revision_conflict`, 409) |
@@ -643,8 +647,10 @@ Posting, in one transaction:
    `outputScrap` never goes into stock. The call carries `Today` and `ExpiredOverride`
    — the business day and whether the poster holds `inventory:expired-override` — read
    on the pool when the request was judged, before the transaction (manufacturing phase
-   2 M62); its lines name no lot (`LotID` 0) until phase 2's layer M records lots, and
-   the production keeps the answer's `MovementID`;
+   2 M62); a tracked product's produce line names the lot `EnsureLots` answered, and a
+   tracked component's consume lines name their lots or ask for `AutoLot`
+   ([lots on productions](#lots-on-productions)); the production keeps the answer's
+   `MovementID`;
 3. consumes from the order's reservations, as `Produce` does, and lowers the stored
    copies;
 4. adds to each line's `consumed` and `scrapped`, and to the order's `produced` (good
@@ -665,7 +671,101 @@ refused line names a component line only when both its variant and its line id a
 line's; a refused produce line, whose line id is the order's, names none.
 
 Producing **more** than the order's quantity is allowed; the order answers the overrun in
-`overrun`, and the page shows it. `GET /productions/{id}` reads one production.
+`overrun`, and the page shows it. `GET /productions/{id}` reads one production, with its
+`outputLots` and each line's `lots`.
+
+### Lots on productions
+
+Phase 2's layer M (M80–M86) records lots on a production of a variant whose `tracking`
+is `lot` or `serial` ([Products](/en/reference/products/#tracking)), as the catalog
+answers it under `LockVariants`. Inventory keeps the lots
+([Inventory](/en/reference/inventory/#lots)); Manufacturing chooses them and passes them
+through `StockLedger` on its own transaction (rule 24).
+
+**The lot pattern** (M80). A BoM's `lotPattern` (`boms.lot_pattern`, default `{MO}`) is
+kept on the order at confirm (`orders.lot_pattern`; a draft answers the default). Its
+tokens: `{MO}` the order's display number; `{YYYY}`, `{YY}`, `{MM}`, `{DD}` and `{YYMMDD}`
+the production date; `{SKU}` the product's SKU; `{N}` a counter per **rendered prefix** —
+the pattern rendered with `{N}` left in it — kept in `manufacturing.counters` as
+`lot:<prefix>`, from 1, allocated under the counter row's lock after the order's lock.
+Anything else is literal. A BoM save renders a sample (`MO-99999-9`, 31 December 2026, the
+SKU, `{N}` 9999) and refuses one that is not a lot number — 1–20 characters `A–Z a–z 0–9 .
+_ / -` — `lot_pattern_invalid` (400); a production whose rendered number is none is
+refused the same, on `outputLot.number`, before any counter is taken when the prefix alone
+is too long.
+
+**The output lot.** A production of a lot-tracked product with good output more than 0
+names one lot: `outputLot.number`, else the pattern rendered on the production date.
+`outputLot.productionDate` defaults to `Today` (read on the pool before the transaction,
+M62); `expiry` and `bestBefore`, when not sent, are Inventory's defaults on creation — the
+production date plus the variant's `expiryDays` and `bestBeforeDays` (M84). Manufacturing
+calls `StockLedger.EnsureLots` with source `manufacturing/production/<id>` after the
+order's lock and before `Produce`; a lot that exists — the `{MO}` lot's second production
+— is answered as it is, and only the dates the request **states** are compared
+(`lot_dates_differ`), never the production date, so productions on different days add to
+one lot. `outputSerials` or an output lot for an untracked product is `lot_not_allowed`
+(400). Output scrap never makes a lot.
+
+**Serial output** (M81). A serial product's good quantity must be a whole number of at
+most 500 (`serial_quantity`, 400). Each unit is its own lot and its own produce line of 1:
+`outputSerials.numbers`, one per unit (`serial_quantity` otherwise); or
+`outputSerials.first`, counted up by its trailing digits keeping their width; by default
+`{MO}-0001` upwards, continuing from the serials the order's productions made before. A
+serial that exists and holds stock is Inventory's `serial_quantity` (409).
+
+**Consumed lots** (M82). A line of a tracked component may send `lots: [{lotId,
+locationId, consumed, scrapped, allowExpired}]`, each lot and location once, the rows
+summing to the line's `consumed` and `scrap` (`picks_mismatch`, 400; the line's
+`fromLocationId` is then ignored). Each row is one `ConsumeLine` with its `LotID` and
+`AllowExpired`, which Inventory honours only when the poster holds
+`inventory:expired-override` (`ExpiredOverride`, read on the pool); a lot with an active
+hold is `lot_blocked`, an expired one `lot_expired`, a lot that is not the variant's or
+not at the location `lot_unknown`. A tracked line sent **without** lots is posted with
+**`AutoLot`**: at its location, the order's component location, or split over the
+locations whose **usable** lots — no hold, not expired on `Today` — hold it, Inventory
+takes the lots first-expiry-first under its own locks and answers them in
+`StockPosted.Picks`, which the production writes back, consumed first, then scrapped.
+`production_lines` stays the per-component total; `production_line_lots` keeps the split,
+with each lot's number and expiry as `Stock.Lots` read them before the transaction (a lot
+taken that was not read starts the post again, as a split does). Refusals carry the
+component line and, in `lines[].lotId`, the lot, mapped by the refusal's `Index`.
+
+**Proposed again once** (M65a). A line sent with `lotsProposed: true` — the draft's
+proposal as it was — that Inventory refuses `insufficient_stock` or `lot_blocked` on its
+rows only (every failing line such a row) is proposed again from `Stock.Lots` read then —
+at the line's location, else the order's component location, else the whole site — and
+posted once more, outside the first transaction. A second refusal is answered; chosen lots
+are never proposed again. The request's hash is the request's, so a replay of it still
+matches.
+
+**The draft** (M82). `GET /orders/{id}/production-draft` answers, per line, its
+`tracking`; for a tracked component the `lots` proposed for `proposed` with
+`contracts.ProposeLots` from `Stock.Lots` read on the pool — at the order's component
+location when it has one — what they leave `short`, and `lotChoices`, every lot of the
+variant at the site's active locations, FEFO, with expiry, best-before, `status`,
+`expired` and quantity, so neither the order page nor the shop floor reads Inventory for
+the picker. Its `output` answers the product's `tracking`, the order's `lotPattern`, the
+`lotNumber` it renders today with `{N}` as the next the counter would hand out (nothing is
+taken), the production date, the default `expiry` and `bestBefore`, and a serial
+product's `serialFirst`. The production dialog leaves an unchanged proposal to `AutoLot`
+and sends lots a person chose.
+
+**The order's lots** (M83). `GET /orders/{id}/lots` (`access`) answers, from
+Manufacturing's own rows, the `outputs` — each lot made with its quantity over the
+productions and how many put output in it — and per component line the lots consumed with
+their expiry, consumed and scrapped. The order page's **Lots** tab shows them, each linked
+to Inventory's lot page.
+
+**The event** (M85). `production_posted` carries `outputLots`, the lot ids made, and
+`lotRows`, the count of consumed lot rows.
+
+**Deadlocks** (M86). The lock order is [the order lock order](#the-order-lock-order)'s,
+with the ledger step split: **7a** `EnsureLots` (Inventory's lot counter, new lots, the
+lots), **7b** Q's holds, **7c** `Produce`. Two productions of one order are serialised by
+the order row, so the shared `{MO}` lot is never inserted twice. A production that
+PostgreSQL chooses as a deadlock's victim (`40P01`) runs again once from the start; a
+second deadlock is **409** `revision_conflict`. The integration suite races two
+productions and a hold on one lot on a pool of four.
 
 ### Close and the backorder
 
@@ -754,7 +854,9 @@ own transaction:
    advisory lock, **`pg_advisory_xact_lock(19784, hashtext(user_id))`**, before the
    overlap check, so two supervisors adding the same person's time on different orders at
    once cannot both pass it;
-7. the ledger — `ReserveForProduction`, `Release`, `Produce`.
+7. the ledger — `ReserveForProduction`, `Release`, `Produce`; a production of tracked
+   goods calls `EnsureLots` first (7a) and `Produce` last (7c), and is retried once on a
+   deadlock ([lots on productions](#lots-on-productions)).
 
 A shop-floor action that starts from a work order first reads that work order's order id,
 then follows the order above. A **start** that ends the caller's open log on another
@@ -805,6 +907,8 @@ Migration `00157_manufacturing_orders.sql` adds, in the `manufacturing` schema:
 | `order_components` | A component line: `variant_id` with the `sku`, `product_name` and `unit` snapshots, `required`, `reserved` (Manufacturing's copy), `consumed`, `scrapped`, `operation_id`, `standard_cost` at confirm, `sort_order`, `added`, `note` |
 | `productions` | A production: `client_request_id` (unique) and `request_hash`, `quantity`, `output_scrap`, `to_location_id`, `movement_id` (Inventory's movement, or null), `posted_by_user_id`, `posted_by_display`, `posted_at` |
 | `production_lines` | What a production consumed and scrapped of a component line, and the `from_location_id` the request named |
+| `production_line_lots` | Phase 2 (`00167`): what a production consumed and scrapped of a tracked component line per lot and location, with the lot's number and expiry as read, and `allow_expired`; the rows of a line sum to it |
+| `production_outputs` | Phase 2 (`00167`): the lots a production made, with the number, whether a serial, and the quantity |
 | `order_events` | The timeline: `kind`, `payload`, `actor_user_id`, `actor_display`, `at` |
 
 Quantities are `numeric(14,3)`. A variant, a site, a location and a user are opaque ids
@@ -1552,6 +1656,11 @@ bodies are strict: an unknown property is a 400.
 | `sales_order_line_has_order` | 409 | The sales order line already has its one live order (M44b) |
 | `component_unknown` | 400 | A sub-assembly order for an id that is not a component line of the order (M47) |
 | `nothing_missing` | 400 | A sub-assembly order for a component line whose missing quantity, less what the open sub-assembly orders of its variant still make, is 0 (M47) |
+| `lot_pattern_invalid` | 400 | A BoM's lot pattern whose sample render is no lot number; a production's rendered number that is none (M80) |
+| `picks_mismatch` | 400 | A component line's lots do not sum to its consumed and scrap (M82) |
+| `serial_quantity` | 400 | A serial product's good output that is not a whole number up to 500, or serial numbers not one per unit (M81); from Inventory, 409, a serial that holds stock |
+| `lot_not_allowed` | 400 | An output lot or serials for an untracked product; from Inventory, 409, a lot on an untracked component |
+| `lot_required`, `lot_unknown`, `lot_expired`, `lot_blocked`, `lot_dates_differ` | 409 | Inventory's lot refusals of a production, passed through with `lines[].lotId` (M56, M57, M62) |
 | `insufficient_stock`, `insufficient_available`, `site_archived`, `variant_not_stocked`, `document_reused` | 409 | Inventory's refusal of a production or a reserve, passed through under its own code, `lines` naming the component lines; nothing is posted. A reserve's `insufficient_available` is not answered: it starts the second pass |
 | `dependency_unavailable` | 503 | The catalog or the stock contract is missing at run time; nothing is changed |
 
@@ -1611,8 +1720,9 @@ every order write may answer 503 `dependency_unavailable`.
 | `POST /orders/{id}/reserve` (`reserveManufacturingOrder`) | orders-manage | 200 the order and its `shortLines`; 404; 409 `order_not_open` |
 | `POST /orders/{id}/components` (`addManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `variant_not_found`, `variant_not_goods`, `quantity_invalid`; 404; 409 `order_not_open` |
 | `PUT /orders/{id}/components/{componentId}` (`updateManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `required_below_used`, `quantity_invalid`; 404; 409 `order_not_open` |
-| `GET /orders/{id}/production-draft` (`getManufacturingProductionDraft`) | access | 200 [the prefill](#productions); 400 `quantity_invalid`; 404; 409 `order_not_open` |
-| `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `consumption_differs`, `client_request_reused`, Inventory's refusals |
+| `GET /orders/{id}/production-draft` (`getManufacturingProductionDraft`) | access | 200 [the prefill](#productions) with the lots proposed and offered and the output's lot ([lots on productions](#lots-on-productions)); 400 `quantity_invalid`; 404; 409 `order_not_open` |
+| `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`, `lot_pattern_invalid`, `picks_mismatch`, `serial_quantity`, `lot_not_allowed`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `consumption_differs`, `client_request_reused`, `revision_conflict` (two deadlocks), Inventory's refusals |
+| `GET /orders/{id}/lots` (`getManufacturingOrderLots`) | access | 200 [the lots made and consumed](#lots-on-productions); 404 |
 | `POST /orders/{id}/close` (`closeManufacturingOrder`) | orders-manage | 200 `{order, backorder, shortLines}`; 404; 409 `order_not_open`, `quantity_short` |
 | `POST /orders/{id}/cancel` (`cancelManufacturingOrder`) | orders-manage | 200; 404; 409 `order_not_open`, `order_has_production` |
 | `GET /orders/{id}/events` (`listManufacturingOrderEvents`) | access | 200 [the history](#history), oldest first; 404 |
