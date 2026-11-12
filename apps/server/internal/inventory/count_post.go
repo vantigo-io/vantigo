@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -34,6 +35,14 @@ import (
 // balance — is still posted, with no movement: the count records that the
 // stock was right. The engine's attempt runs under a savepoint, so its
 // claimed key is rolled back with it.
+//
+// Every line sets its own balance — (location, lot) for a tracked variant
+// (manufacturing phase 2 M69). A count opened before its variant became
+// tracked has lines of it without a lot: they are posted as they are — that
+// is, left out — only when every such line of the variant expected 0 and
+// counted 0 (or is uncounted); otherwise the post refuses them lot_required
+// and the count must be counted again. The variants are taken FOR SHARE
+// (LockVariants) after the count's row, as the engine takes them again.
 //
 // The movement's key is derived from the count, so the post is its own
 // replay; the count row's lock and status make a second post count_not_open
@@ -124,6 +133,10 @@ func (s *server) postCount(ctx context.Context, tx pgx.Tx, txq *store.Queries, w
 	if err != nil {
 		return fmt.Errorf("inventory: read the lines of count %d: %w", c.ID, err)
 	}
+	stale, err := s.staleCountVariants(ctx, tx, rows)
+	if err != nil {
+		return err
+	}
 
 	// The lines to post: each counted line set to what was counted, each
 	// uncounted one set to 0 under zero and left out under keep.
@@ -138,8 +151,14 @@ func (s *server) postCount(ctx context.Context, tx pgx.Tx, txq *store.Queries, w
 		if !ok {
 			index, unknown = unknown, unknown+1
 		}
+		if r.LotID == nil && stale[r.VariantID] {
+			continue
+		}
 		location := r.LocationID
 		line := engineLine{index: index, variantID: r.VariantID, setAt: &location}
+		if r.LotID != nil {
+			line.lotID = *r.LotID
+		}
 		switch counted := countedOf(r.Counted); {
 		case counted != nil:
 			line.setTo = counted
@@ -155,7 +174,7 @@ func (s *server) postCount(ctx context.Context, tx pgx.Tx, txq *store.Queries, w
 	check := func(_ []engineLine, variants map[int32]contracts.VariantEntry, balances map[balanceKey]*big.Rat) error {
 		var moved []lineFailure
 		for _, p := range postings {
-			now, expected := balances[balanceKey{p.row.VariantID, p.row.LocationID, 0}], ratFromNumeric(p.row.Expected)
+			now, expected := balances[balanceKey{p.row.VariantID, p.row.LocationID, p.line.lotID}], ratFromNumeric(p.row.Expected)
 			if now.Cmp(expected) == 0 {
 				continue
 			}
@@ -211,6 +230,47 @@ func (s *server) postCount(ctx context.Context, tx pgx.Tx, txq *store.Queries, w
 		EntityKind: entityCount, EntityID: c.ID, SiteID: &c.SiteID, Kind: eventCountPosted,
 		Payload: map[string]any{"movementId": movementID, "uncounted": uncounted, "acceptMoved": acceptMoved, "lines": len(rows)},
 	})
+}
+
+// staleCountVariants is the tracked variants whose every line in the count
+// is without a lot, expected 0 and counted 0 or not at all: a count opened
+// before the variant became tracked, whose lines post as they are — nothing
+// (M69). A tracked variant with any other line without a lot is not among
+// them, so the engine refuses that line lot_required.
+func (s *server) staleCountVariants(ctx context.Context, tx pgx.Tx, rows []store.CountLinesRow) (map[int32]bool, error) {
+	var ids []int32
+	for _, r := range rows {
+		if r.LotID == nil {
+			ids = append(ids, r.VariantID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	ids = distinct(ids)
+	slices.Sort(ids)
+	entries, err := s.lockVariants(ctx, tx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int32]bool{}
+	for _, e := range entries {
+		if tracked(e) {
+			out[e.ID] = true
+		}
+	}
+	for _, r := range rows {
+		if r.LotID != nil || !out[r.VariantID] {
+			continue
+		}
+		counted := countedOf(r.Counted)
+		if ratFromNumeric(r.Expected).Sign() != 0 || (counted != nil && counted.Sign() != 0) {
+			delete(out, r.VariantID)
+		}
+	}
+	// Only the lines without a lot are left out: a variant's lines with one
+	// post as any other.
+	return out, nil
 }
 
 // countLinesMoved is the 409 of a count post whose lines' balances moved

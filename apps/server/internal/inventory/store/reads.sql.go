@@ -175,14 +175,16 @@ WHERE ($1::bigint IS NULL OR m.site_id = $1::bigint)
   AND ($5::int IS NULL OR EXISTS (
         SELECT 1 FROM inventory.movement_lines v WHERE v.movement_id = m.id AND v.variant_id = $5::int))
   AND ($6::bigint IS NULL OR EXISTS (
+        SELECT 1 FROM inventory.movement_lines t WHERE t.movement_id = m.id AND t.lot_id = $6::bigint))
+  AND ($7::bigint IS NULL OR EXISTS (
         SELECT 1 FROM inventory.movement_lines ml
         JOIN inventory.locations l ON l.id = ml.from_location_id OR l.id = ml.to_location_id
         WHERE ml.movement_id = m.id
-          AND (l.id = $6::bigint OR l.ancestors @> ARRAY[$6::bigint])))
-  AND ($7::timestamptz IS NULL
-       OR (m.posted_at, m.id) < ($7::timestamptz, $8::bigint))
+          AND (l.id = $7::bigint OR l.ancestors @> ARRAY[$7::bigint])))
+  AND ($8::timestamptz IS NULL
+       OR (m.posted_at, m.id) < ($8::timestamptz, $9::bigint))
 ORDER BY m.posted_at DESC, m.id DESC
-LIMIT $9::int
+LIMIT $10::int
 `
 
 type ListMovementsParams struct {
@@ -191,6 +193,7 @@ type ListMovementsParams struct {
 	PostedFrom   *time.Time
 	PostedBefore *time.Time
 	VariantID    *int32
+	LotID        *int64
 	LocationID   *int64
 	CursorAt     *time.Time
 	CursorID     *int64
@@ -214,7 +217,7 @@ type ListMovementsRow struct {
 }
 
 // ListMovements is the movements newest first (I30), filtered by site, kind,
-// posting time, variant and location subtree (each NULL for any), after the
+// posting time, variant, lot (M74) and location subtree (each NULL for any), after the
 // cursor's (posted_at, id).
 func (q *Queries) ListMovements(ctx context.Context, arg ListMovementsParams) ([]ListMovementsRow, error) {
 	rows, err := q.db.Query(ctx, listMovements,
@@ -223,6 +226,7 @@ func (q *Queries) ListMovements(ctx context.Context, arg ListMovementsParams) ([
 		arg.PostedFrom,
 		arg.PostedBefore,
 		arg.VariantID,
+		arg.LotID,
 		arg.LocationID,
 		arg.CursorAt,
 		arg.CursorID,

@@ -165,3 +165,33 @@ ORDER BY b.variant_id, t.expiry NULLS LAST, t.received_at, t.id, b.location_id;
 -- LotsByNumber is every variant's lot whose number is the text, ignoring
 -- case: the lookup's lot match (M66).
 SELECT * FROM inventory.lots WHERE lower(number) = lower(@number::text) ORDER BY variant_id, id LIMIT 20;
+
+-- The expiring list and the dashboard's lot items (manufacturing phase 2 M72).
+
+-- name: ExpiringLots :many
+-- ExpiringLots is every lot holding more than 0 — at the site when one is
+-- named — whose expiry is on or before @until (the passed ones included), by
+-- expiry, then number and id, filtered by status, at most row_limit.
+SELECT t.*, s.on_hand::text AS on_hand
+FROM inventory.lots t
+JOIN LATERAL (
+    SELECT sum(b.on_hand) AS on_hand
+    FROM inventory.balances b
+    JOIN inventory.locations l ON l.id = b.location_id
+    WHERE b.lot_id = t.id AND (sqlc.narg(site_id)::bigint IS NULL OR l.site_id = sqlc.narg(site_id)::bigint)
+) s ON true
+WHERE t.expiry IS NOT NULL AND t.expiry <= @until::date
+  AND (sqlc.narg(status)::text IS NULL OR t.status = sqlc.narg(status)::text)
+  AND s.on_hand > 0
+ORDER BY t.expiry, lower(t.number), t.id
+LIMIT @row_limit;
+
+-- name: ExpiringLotCounts :one
+-- ExpiringLotCounts is the dashboard's two lot items: the lots holding stock
+-- whose expiry has passed (before @today), and those whose expiry falls from
+-- @today to @until.
+SELECT count(*) FILTER (WHERE t.expiry < @today::date)::int AS expired,
+       count(*) FILTER (WHERE t.expiry >= @today::date)::int AS expiring
+FROM inventory.lots t
+WHERE t.expiry IS NOT NULL AND t.expiry <= @until::date
+  AND EXISTS (SELECT 1 FROM inventory.balances b WHERE b.lot_id = t.id AND b.on_hand > 0);

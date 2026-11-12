@@ -401,12 +401,13 @@ func (q *Queries) InsertTransferActionLines(ctx context.Context, arg InsertTrans
 }
 
 const insertTransferLines = `-- name: InsertTransferLines :exec
-INSERT INTO inventory.transfer_lines (transfer_id, line_no, variant_id, sku, product_name, quantity, entered, suggestion)
+INSERT INTO inventory.transfer_lines (transfer_id, line_no, variant_id, sku, product_name, quantity, entered, suggestion, lot_id)
 SELECT $1, u.line_no, u.variant_id, u.sku, u.product_name, u.quantity,
-       nullif(u.entered, '')::jsonb, nullif(u.suggestion, '')::jsonb
+       nullif(u.entered, '')::jsonb, nullif(u.suggestion, '')::jsonb, nullif(u.lot_id, 0)
 FROM (SELECT unnest($2::int[]) AS line_no, unnest($3::int[]) AS variant_id, unnest($4::text[]) AS sku,
              unnest($5::text[]) AS product_name, unnest($6::numeric[]) AS quantity,
-             unnest($7::text[]) AS entered, unnest($8::text[]) AS suggestion) AS u
+             unnest($7::text[]) AS entered, unnest($8::text[]) AS suggestion,
+             unnest($9::bigint[]) AS lot_id) AS u
 `
 
 type InsertTransferLinesParams struct {
@@ -418,10 +419,12 @@ type InsertTransferLinesParams struct {
 	Quantities   []pgtype.Numeric
 	Entereds     []string
 	Suggestions  []string
+	LotIds       []int64
 }
 
 // InsertTransferLines writes a draft's lines with the variant snapshots
-// (I36). An entry or a suggestion of ” is none.
+// (I36) and the lot each names, 0 for none (M70). An entry or a suggestion
+// of ” is none.
 func (q *Queries) InsertTransferLines(ctx context.Context, arg InsertTransferLinesParams) error {
 	_, err := q.db.Exec(ctx, insertTransferLines,
 		arg.TransferID,
@@ -432,6 +435,7 @@ func (q *Queries) InsertTransferLines(ctx context.Context, arg InsertTransferLin
 		arg.Quantities,
 		arg.Entereds,
 		arg.Suggestions,
+		arg.LotIds,
 	)
 	return err
 }
@@ -732,10 +736,10 @@ func (q *Queries) OverdueTransfers(ctx context.Context, arg OverdueTransfersPara
 const sendTransferLines = `-- name: SendTransferLines :exec
 UPDATE inventory.transfer_lines l
 SET sku = u.sku, product_name = u.product_name, unit = u.unit, quantity = u.quantity, entered = nullif(u.entered, '')::jsonb,
-    from_location_id = u.from_location_id, sent = u.quantity
+    from_location_id = u.from_location_id, lot_id = nullif(u.lot_id, 0), sent = u.quantity
 FROM (SELECT unnest($2::bigint[]) AS id, unnest($3::text[]) AS sku, unnest($4::text[]) AS product_name,
              unnest($5::text[]) AS unit, unnest($6::numeric[]) AS quantity, unnest($7::text[]) AS entered,
-             unnest($8::bigint[]) AS from_location_id) AS u
+             unnest($8::bigint[]) AS from_location_id, unnest($9::bigint[]) AS lot_id) AS u
 WHERE l.id = u.id AND l.transfer_id = $1
 `
 
@@ -748,10 +752,12 @@ type SendTransferLinesParams struct {
 	Quantities      []pgtype.Numeric
 	Entereds        []string
 	FromLocationIds []int64
+	LotIds          []int64
 }
 
 // SendTransferLines is a send's lines (I39): resolved to units, snapshotted
-// again, with their source location, and sent in full.
+// again, with their source location and the lot sent (0 for none, M70), and
+// sent in full.
 func (q *Queries) SendTransferLines(ctx context.Context, arg SendTransferLinesParams) error {
 	_, err := q.db.Exec(ctx, sendTransferLines,
 		arg.TransferID,
@@ -762,6 +768,7 @@ func (q *Queries) SendTransferLines(ctx context.Context, arg SendTransferLinesPa
 		arg.Quantities,
 		arg.Entereds,
 		arg.FromLocationIds,
+		arg.LotIds,
 	)
 	return err
 }
@@ -951,7 +958,7 @@ func (q *Queries) TransferActions(ctx context.Context, transferID int64) ([]Inve
 }
 
 const transferLines = `-- name: TransferLines :many
-SELECT id, transfer_id, line_no, variant_id, sku, product_name, unit, quantity, entered, suggestion, from_location_id, sent, received, missing, returned FROM inventory.transfer_lines WHERE transfer_id = $1 ORDER BY line_no
+SELECT id, transfer_id, line_no, variant_id, sku, product_name, unit, quantity, entered, suggestion, from_location_id, sent, received, missing, returned, lot_id FROM inventory.transfer_lines WHERE transfer_id = $1 ORDER BY line_no
 `
 
 // TransferLines is a transfer's lines by line number.
@@ -980,6 +987,7 @@ func (q *Queries) TransferLines(ctx context.Context, transferID int64) ([]Invent
 			&i.Received,
 			&i.Missing,
 			&i.Returned,
+			&i.LotID,
 		); err != nil {
 			return nil, err
 		}
@@ -992,7 +1000,7 @@ func (q *Queries) TransferLines(ctx context.Context, transferID int64) ([]Invent
 }
 
 const transferLinesOf = `-- name: TransferLinesOf :many
-SELECT id, transfer_id, line_no, variant_id, sku, product_name, unit, quantity, entered, suggestion, from_location_id, sent, received, missing, returned FROM inventory.transfer_lines WHERE transfer_id = ANY($1::bigint[]) ORDER BY transfer_id, line_no
+SELECT id, transfer_id, line_no, variant_id, sku, product_name, unit, quantity, entered, suggestion, from_location_id, sent, received, missing, returned, lot_id FROM inventory.transfer_lines WHERE transfer_id = ANY($1::bigint[]) ORDER BY transfer_id, line_no
 `
 
 // TransferLinesOf is the lines of several transfers, for a page of them.
@@ -1021,6 +1029,7 @@ func (q *Queries) TransferLinesOf(ctx context.Context, transferIds []int64) ([]I
 			&i.Received,
 			&i.Missing,
 			&i.Returned,
+			&i.LotID,
 		); err != nil {
 			return nil, err
 		}

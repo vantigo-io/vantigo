@@ -28,6 +28,10 @@ import (
 //
 // A count line is moved while its balance differs from what it expected —
 // only while the count is counting; a posted or cancelled count reports none.
+//
+// A line is one balance (manufacturing phase 2 M69): a tracked variant's
+// stock is frozen as a line per lot, an added line of one names its lot, and
+// the post sets each (location, lot).
 
 // The statuses of a count.
 const (
@@ -140,6 +144,9 @@ func (s *server) countOf(ctx context.Context, id int64) (gen.InventoryCount, err
 			Moved:   c.Status == countCounting && expected.Cmp(current) != 0,
 			Entered: snapshotOf(l.Entered), CountedAt: l.CountedAt,
 		}
+		if l.LotID != nil {
+			line.Lot = &gen.InventoryLotRef{Id: *l.LotID, Number: deref(l.LotNumber), Expiry: dateOf(l.LotExpiry)}
+		}
 		if l.Counted.Valid {
 			counted++
 			line.Counted = ptr(wireQuantity(ratFromNumeric(l.Counted)))
@@ -152,11 +159,19 @@ func (s *server) countOf(ctx context.Context, id int64) (gen.InventoryCount, err
 	}
 	slices.SortStableFunc(out, func(a, b gen.InventoryCountLine) int {
 		return cmp.Or(strings.Compare(a.Location.FullCode, b.Location.FullCode), strings.Compare(a.Variant.Sku, b.Variant.Sku),
-			cmp.Compare(a.Variant.Id, b.Variant.Id))
+			cmp.Compare(a.Variant.Id, b.Variant.Id), strings.Compare(lotNumberOf(a.Lot), lotNumberOf(b.Lot)))
 	})
 	answer := countHeader(c, site, locations[c.ScopeLocationID], int32(len(lines)), counted, moved)
 	answer.Lines = &out
 	return answer, nil
+}
+
+// lotNumberOf is a line's lot number, "" for none — which sorts first.
+func lotNumberOf(l *gen.InventoryLotRef) string {
+	if l == nil {
+		return ""
+	}
+	return strings.ToLower(l.Number)
 }
 
 // ListInventoryCounts List counts

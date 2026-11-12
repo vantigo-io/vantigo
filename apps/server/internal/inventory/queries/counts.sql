@@ -22,16 +22,15 @@ VALUES (@site_id, @scope_location_id, 'counting', sqlc.narg(note), sqlc.narg(ope
 RETURNING id;
 
 -- name: FreezeCountLines :execrows
--- FreezeCountLines writes a line per variant and location in the count's
--- scope, expecting what it holds at this moment, summed over its lots (I17;
--- counts per lot are manufacturing phase 2 L2's M69).
-INSERT INTO inventory.count_lines (count_id, variant_id, location_id, expected)
-SELECT @count_id, b.variant_id, b.location_id, sum(b.on_hand)
+-- FreezeCountLines writes a line per balance in the count's scope — a
+-- variant on a location, in a lot for a tracked variant (manufacturing
+-- phase 2 M69) — expecting what it holds at this moment (I17).
+INSERT INTO inventory.count_lines (count_id, variant_id, location_id, lot_id, expected)
+SELECT @count_id, b.variant_id, b.location_id, b.lot_id, b.on_hand
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE l.id = @scope_id OR l.ancestors @> ARRAY[@scope_id::bigint]
-GROUP BY b.location_id, b.variant_id
-ORDER BY b.location_id, b.variant_id;
+ORDER BY b.location_id, b.variant_id, b.lot_id NULLS FIRST;
 
 -- name: GetCount :one
 SELECT * FROM inventory.counts WHERE id = @id;
@@ -42,32 +41,38 @@ SELECT * FROM inventory.counts WHERE id = @id;
 SELECT * FROM inventory.counts WHERE id = @id FOR UPDATE;
 
 -- name: CountLines :many
--- CountLines is a count's lines with their location's full code and the
--- balance they stand on now (0 when there is none).
-SELECT cl.id, cl.count_id, cl.variant_id, cl.location_id, cl.expected, cl.counted, cl.entered, cl.added,
-       cl.counted_by_user_id, cl.counted_by_display, cl.counted_at, l.full_code,
-       coalesce((SELECT sum(b.on_hand) FROM inventory.balances b
-                 WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id), 0)::numeric AS current
+-- CountLines is a count's lines with their location's full code, their lot's
+-- number and expiry (M69), and the balance they stand on now (0 when there
+-- is none).
+SELECT cl.id, cl.count_id, cl.variant_id, cl.location_id, cl.lot_id, cl.expected, cl.counted, cl.entered, cl.added,
+       cl.counted_by_user_id, cl.counted_by_display, cl.counted_at, l.full_code, t.number AS lot_number, t.expiry AS lot_expiry,
+       coalesce((SELECT b.on_hand FROM inventory.balances b
+                 WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id
+                   AND b.lot_id IS NOT DISTINCT FROM cl.lot_id), 0)::numeric AS current
 FROM inventory.count_lines cl
 JOIN inventory.locations l ON l.id = cl.location_id
+LEFT JOIN inventory.lots t ON t.id = cl.lot_id
 WHERE cl.count_id = @count_id
-ORDER BY l.full_code, cl.variant_id;
+ORDER BY l.full_code, cl.variant_id, t.number NULLS FIRST, cl.id;
 
 -- name: CountLinePairs :many
--- CountLinePairs is the (variant, location) pairs a count has lines for.
-SELECT variant_id, location_id FROM inventory.count_lines WHERE count_id = @count_id;
+-- CountLinePairs is the balances — (variant, location, lot) — a count has
+-- lines for, a lot of 0 for none.
+SELECT variant_id, location_id, coalesce(lot_id, 0)::bigint AS lot_id FROM inventory.count_lines WHERE count_id = @count_id;
 
 -- name: UpsertCountLines :exec
--- UpsertCountLines records counted quantities (I18): a pair with a line is
--- changed, a pair without one gets a line, expected 0 and added. Each change
--- records who counted and when.
-INSERT INTO inventory.count_lines (count_id, variant_id, location_id, expected, counted, entered, added,
+-- UpsertCountLines records counted quantities (I18): a balance — (variant,
+-- location, lot), a lot of 0 for none — with a line is changed, one without
+-- gets a line, expected 0 and added. Each change records who counted and
+-- when. The key is NULLS NOT DISTINCT (M69), which the conflict infers.
+INSERT INTO inventory.count_lines (count_id, variant_id, location_id, lot_id, expected, counted, entered, added,
                                    counted_by_user_id, counted_by_display, counted_at)
-SELECT @count_id, u.variant_id, u.location_id, 0, u.counted, nullif(u.entered, '')::jsonb, true,
+SELECT @count_id, u.variant_id, u.location_id, nullif(u.lot_id, 0), 0, u.counted, nullif(u.entered, '')::jsonb, true,
        sqlc.narg(counted_by_user_id), sqlc.narg(counted_by_display), @counted_at::timestamptz
 FROM (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@location_ids::bigint[]) AS location_id,
+             unnest(@lot_ids::bigint[]) AS lot_id,
              unnest(@counteds::numeric[]) AS counted, unnest(@entereds::text[]) AS entered) AS u
-ON CONFLICT (count_id, variant_id, location_id) DO UPDATE
+ON CONFLICT (count_id, variant_id, location_id, lot_id) DO UPDATE
 SET counted = excluded.counted, entered = excluded.entered, counted_by_user_id = excluded.counted_by_user_id,
     counted_by_display = excluded.counted_by_display, counted_at = excluded.counted_at;
 
@@ -99,8 +104,9 @@ SELECT c.*,
        (CASE WHEN c.status = 'counting' THEN (
             SELECT count(*) FROM inventory.count_lines cl
             WHERE cl.count_id = c.id
-              AND coalesce((SELECT sum(b.on_hand) FROM inventory.balances b
-                            WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id), 0) <> cl.expected)
+              AND coalesce((SELECT b.on_hand FROM inventory.balances b
+                            WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id
+                              AND b.lot_id IS NOT DISTINCT FROM cl.lot_id), 0) <> cl.expected)
         ELSE 0 END)::int AS moved_lines
 FROM inventory.counts c
 WHERE (sqlc.narg(status)::text IS NULL OR c.status = sqlc.narg(status)::text)

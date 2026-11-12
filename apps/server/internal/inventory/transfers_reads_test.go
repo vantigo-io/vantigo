@@ -288,7 +288,7 @@ func TestTransfer_Note(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	want := [][]string{{"BOLT-M8", "Bolt M8", "17 pcs (1 × Box, 2 loose)", "OSL-1"}, {"NUT-M8", "Nut M8", "3 pcs", "OSL-2"}}
+	want := [][]string{{"BOLT-M8", "Bolt M8", "17 pcs (1 × Box, 2 loose)", "", "OSL-1"}, {"NUT-M8", "Nut M8", "3 pcs", "", "OSL-2"}}
 	if !slices.EqualFunc(printed, want, slices.Equal) {
 		t.Errorf("printed = %q, want %q", printed, want)
 	}
