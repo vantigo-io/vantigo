@@ -433,10 +433,13 @@ confirmed:
   *MO-12*, whatever the day.
 - `{YYMMDD}`, or `{YYYY}`, `{YY}`, `{MM}`, `{DD}` — the production date: `L{YYMMDD}-{N}`
   makes a new lot each production, *L261112-1*, *L261112-2*.
-- `{SKU}` — the product's SKU; `{N}` — a running number, counted for each prefix.
+- `{SKU}` — the product's SKU; `{N}` — a running number, counted for each prefix. A number
+  it counts always makes a new lot: when someone has typed that number already, the next
+  is taken.
 - Anything else is written as it is. A lot number has 1–20 letters, digits and `. _ / -`;
-  the BoM editor shows an example and refuses a pattern that does not give one (**The lot
-  number pattern does not give a lot number**).
+  the BoM editor shows an example and refuses a pattern that does not give one, judged on
+  a long order number and running number so a pattern that only fits today's short ones
+  is caught too (**Can render … on a later order**).
 
 Keep the number or type another; a number the product already has adds to that lot.
 **Production date** is today unless you change it. **Expiry** and **Best before** are
@@ -446,8 +449,10 @@ dates**).
 
 For a product tracked in **serial numbers**, the good quantity must be whole, and each
 unit gets its own number: **First serial number** is counted up, one per unit — by
-default the order's number and four digits, *MO-12-0001*, continuing from the serials the
-order made before. Output scrap is never numbered.
+default the order's number and four digits, *MO-12-0001*, continuing after the highest such
+number the order made before. Every unit gets a new serial number: one that is used
+already, even by a unit delivered long ago, is refused (**That serial or lot number is
+taken already**). Output scrap is never numbered.
 
 **The lots it consumes.** Under each tracked component the form shows the lots it would
 take, the one that expires first first — *Taken first-expiry-first when you post: B-1 (1
@@ -457,13 +462,17 @@ on hold and expired lots. To take others, choose **Change lot**: each row is a l
 location, chosen among the site's lots with their expiry and what lies there (lots on hold
 and expired lots are marked), and the quantity taken from it. **Add lot** adds a row, the
 cross removes one, and **Take first-expiry-first** goes back to the proposal. The rows must
-add up to what the line consumes and scraps; the form says when they do not. A lot that is
+add up to what the line consumes and scraps; the form says when they do not, and marks a
+row of 0 (**More than 0**) and a lot chosen in two rows (**Chosen in another row**). When
+you choose where a component is taken from (**Take … from**), the lots shown are proposed
+again from that location, as Inventory will take them there. A lot that is
 expired can be used only by someone allowed to use expired lots, who ticks **expired** on
 its row; a lot on hold or blocked is refused (**A lot is on hold or blocked and cannot be
 used**).
 
 When lots you did not change were taken by someone else in the meantime, the production
-proposes them again once from what is in stock and posts.
+proposes them again once from what is in stock and posts. When what is left no longer
+covers the line, nothing is posted and the form says why.
 
 **The order's lots.** The order page's **Lots** tab lists the **Lots made**, with what the
 productions put in each and how many productions, and the **Lots consumed** per component
