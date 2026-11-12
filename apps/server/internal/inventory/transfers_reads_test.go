@@ -225,7 +225,7 @@ func TestTransfer_LookupAndMovements(t *testing.T) {
 		return out.Matches
 	}
 	token := "trf-" + strconv.FormatInt(tr.Number, 10)
-	if m := lookup(token); len(m) != 1 || m[0].Kind != gen.Transfer || m[0].Transfer == nil || m[0].Transfer.Id != tr.Id || m[0].Transfer.Number != tr.Number {
+	if m := lookup(token); len(m) != 1 || m[0].Kind != gen.InventoryLookupMatchKindTransfer || m[0].Transfer == nil || m[0].Transfer.Id != tr.Id || m[0].Transfer.Number != tr.Number {
 		t.Errorf("lookup %s = %+v", token, m)
 	}
 	if m := lookup("TRF-999999"); len(m) != 0 {

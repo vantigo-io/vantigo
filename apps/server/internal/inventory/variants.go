@@ -21,10 +21,16 @@ import (
 // variantRefOf is a catalog entry as the contract names it, with its
 // packagings, which the app breaks quantities down in (I26).
 func variantRefOf(v contracts.VariantEntry) gen.InventoryVariantRef {
-	return gen.InventoryVariantRef{
+	ref := gen.InventoryVariantRef{
 		Id: v.ID, ProductId: &v.ProductID, Sku: v.SKU, ProductName: v.ProductName, Unit: v.Unit, Barcode: v.Barcode,
 		Packagings: packagingsOf(v),
 	}
+	// How its stock is kept (manufacturing phase 2 M49): the forms show the
+	// lot column for a tracked variant only.
+	if v.Tracking != "" {
+		ref.Tracking = ptr(gen.InventoryVariantRefTracking(v.Tracking))
+	}
+	return ref
 }
 
 // deletedVariantRef is a variant the catalog no longer knows, named by a

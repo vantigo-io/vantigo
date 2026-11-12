@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -184,19 +185,133 @@ func (e InventoryLocationKind) Valid() bool {
 
 // Defines values for InventoryLookupMatchKind.
 const (
-	Location InventoryLookupMatchKind = "location"
-	Transfer InventoryLookupMatchKind = "transfer"
-	Variant  InventoryLookupMatchKind = "variant"
+	InventoryLookupMatchKindLocation InventoryLookupMatchKind = "location"
+	InventoryLookupMatchKindLot      InventoryLookupMatchKind = "lot"
+	InventoryLookupMatchKindTransfer InventoryLookupMatchKind = "transfer"
+	InventoryLookupMatchKindVariant  InventoryLookupMatchKind = "variant"
 )
 
 // Valid indicates whether the value is a known member of the InventoryLookupMatchKind enum.
 func (e InventoryLookupMatchKind) Valid() bool {
 	switch e {
-	case Location:
+	case InventoryLookupMatchKindLocation:
 		return true
-	case Transfer:
+	case InventoryLookupMatchKindLot:
 		return true
-	case Variant:
+	case InventoryLookupMatchKindTransfer:
+		return true
+	case InventoryLookupMatchKindVariant:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryLotHoldCause.
+const (
+	InventoryLotHoldCauseComplaint  InventoryLotHoldCause = "complaint"
+	InventoryLotHoldCauseDeviation  InventoryLotHoldCause = "deviation"
+	InventoryLotHoldCauseInspection InventoryLotHoldCause = "inspection"
+	InventoryLotHoldCauseOther      InventoryLotHoldCause = "other"
+	InventoryLotHoldCauseRecall     InventoryLotHoldCause = "recall"
+)
+
+// Valid indicates whether the value is a known member of the InventoryLotHoldCause enum.
+func (e InventoryLotHoldCause) Valid() bool {
+	switch e {
+	case InventoryLotHoldCauseComplaint:
+		return true
+	case InventoryLotHoldCauseDeviation:
+		return true
+	case InventoryLotHoldCauseInspection:
+		return true
+	case InventoryLotHoldCauseOther:
+		return true
+	case InventoryLotHoldCauseRecall:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryLotHoldKind.
+const (
+	InventoryLotHoldKindBlock      InventoryLotHoldKind = "block"
+	InventoryLotHoldKindQuarantine InventoryLotHoldKind = "quarantine"
+)
+
+// Valid indicates whether the value is a known member of the InventoryLotHoldKind enum.
+func (e InventoryLotHoldKind) Valid() bool {
+	switch e {
+	case InventoryLotHoldKindBlock:
+		return true
+	case InventoryLotHoldKindQuarantine:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryLotHoldInputCause.
+const (
+	InventoryLotHoldInputCauseComplaint  InventoryLotHoldInputCause = "complaint"
+	InventoryLotHoldInputCauseDeviation  InventoryLotHoldInputCause = "deviation"
+	InventoryLotHoldInputCauseInspection InventoryLotHoldInputCause = "inspection"
+	InventoryLotHoldInputCauseOther      InventoryLotHoldInputCause = "other"
+	InventoryLotHoldInputCauseRecall     InventoryLotHoldInputCause = "recall"
+)
+
+// Valid indicates whether the value is a known member of the InventoryLotHoldInputCause enum.
+func (e InventoryLotHoldInputCause) Valid() bool {
+	switch e {
+	case InventoryLotHoldInputCauseComplaint:
+		return true
+	case InventoryLotHoldInputCauseDeviation:
+		return true
+	case InventoryLotHoldInputCauseInspection:
+		return true
+	case InventoryLotHoldInputCauseOther:
+		return true
+	case InventoryLotHoldInputCauseRecall:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryLotHoldInputKind.
+const (
+	InventoryLotHoldInputKindBlock      InventoryLotHoldInputKind = "block"
+	InventoryLotHoldInputKindQuarantine InventoryLotHoldInputKind = "quarantine"
+)
+
+// Valid indicates whether the value is a known member of the InventoryLotHoldInputKind enum.
+func (e InventoryLotHoldInputKind) Valid() bool {
+	switch e {
+	case InventoryLotHoldInputKindBlock:
+		return true
+	case InventoryLotHoldInputKindQuarantine:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryLotStatus.
+const (
+	InventoryLotStatusAvailable  InventoryLotStatus = "available"
+	InventoryLotStatusBlocked    InventoryLotStatus = "blocked"
+	InventoryLotStatusQuarantine InventoryLotStatus = "quarantine"
+)
+
+// Valid indicates whether the value is a known member of the InventoryLotStatus enum.
+func (e InventoryLotStatus) Valid() bool {
+	switch e {
+	case InventoryLotStatusAvailable:
+		return true
+	case InventoryLotStatusBlocked:
+		return true
+	case InventoryLotStatusQuarantine:
 		return true
 	default:
 		return false
@@ -479,6 +594,54 @@ func (e InventoryUncounted) Valid() bool {
 	}
 }
 
+// Defines values for InventoryVariantRefTracking.
+const (
+	InventoryVariantRefTrackingLot    InventoryVariantRefTracking = "lot"
+	InventoryVariantRefTrackingNone   InventoryVariantRefTracking = "none"
+	InventoryVariantRefTrackingSerial InventoryVariantRefTracking = "serial"
+)
+
+// Valid indicates whether the value is a known member of the InventoryVariantRefTracking enum.
+func (e InventoryVariantRefTracking) Valid() bool {
+	switch e {
+	case InventoryVariantRefTrackingLot:
+		return true
+	case InventoryVariantRefTrackingNone:
+		return true
+	case InventoryVariantRefTrackingSerial:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListInventoryLotsParamsHoldCause.
+const (
+	ListInventoryLotsParamsHoldCauseComplaint  ListInventoryLotsParamsHoldCause = "complaint"
+	ListInventoryLotsParamsHoldCauseDeviation  ListInventoryLotsParamsHoldCause = "deviation"
+	ListInventoryLotsParamsHoldCauseInspection ListInventoryLotsParamsHoldCause = "inspection"
+	ListInventoryLotsParamsHoldCauseOther      ListInventoryLotsParamsHoldCause = "other"
+	ListInventoryLotsParamsHoldCauseRecall     ListInventoryLotsParamsHoldCause = "recall"
+)
+
+// Valid indicates whether the value is a known member of the ListInventoryLotsParamsHoldCause enum.
+func (e ListInventoryLotsParamsHoldCause) Valid() bool {
+	switch e {
+	case ListInventoryLotsParamsHoldCauseComplaint:
+		return true
+	case ListInventoryLotsParamsHoldCauseDeviation:
+		return true
+	case ListInventoryLotsParamsHoldCauseInspection:
+		return true
+	case ListInventoryLotsParamsHoldCauseOther:
+		return true
+	case ListInventoryLotsParamsHoldCauseRecall:
+		return true
+	default:
+		return false
+	}
+}
+
 // InventoryActor Who posted, as snapshotted when they did.
 type InventoryActor struct {
 	DisplayName string              `json:"displayName"`
@@ -533,11 +696,29 @@ type InventoryAdjustmentLineMode string
 // InventoryAdjustmentReason defines model for InventoryAdjustmentReason.
 type InventoryAdjustmentReason string
 
+// InventoryBalanceLot What lies of one lot on one location (manufacturing phase 2 M63): a stock row's lots, in FEFO order — expiry first, none last, then received.
+type InventoryBalanceLot struct {
+	BestBefore *openapi_types.Date `json:"bestBefore,omitempty"`
+
+	// Expired The expiry is before today in the workspace zone (M62).
+	Expired bool                `json:"expired"`
+	Expiry  *openapi_types.Date `json:"expiry,omitempty"`
+	LotId   int64               `json:"lotId"`
+	Number  string              `json:"number"`
+	OnHand  float64             `json:"onHand"`
+
+	// Status A lot's status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.
+	Status InventoryLotStatus `json:"status"`
+}
+
 // InventoryBalanceRow What lies of one variant on one location.
 type InventoryBalanceRow struct {
 	// Location A location as other answers name it.
 	Location InventoryLocationRef `json:"location"`
-	OnHand   float64              `json:"onHand"`
+
+	// Lots A tracked variant's lots on the location, in FEFO order (manufacturing phase 2 M63); set on a site's stock rows, absent elsewhere and for an untracked variant.
+	Lots   *[]InventoryBalanceLot `json:"lots,omitempty"`
+	OnHand float64                `json:"onHand"`
 
 	// Primary The variant's primary location at the site (I55); set on a site's stock rows, absent elsewhere.
 	Primary *bool `json:"primary,omitempty"`
@@ -856,12 +1037,15 @@ type InventoryLocationUpdate struct {
 	Status    InventoryStatus `json:"status"`
 }
 
-// InventoryLookupMatch One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, or a transfer by its TRF token to a caller holding both views (I52).
+// InventoryLookupMatch One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, a transfer by its TRF token, or a lot by its LOT token or its number (manufacturing phase 2 M66) — the last two to a caller holding both views (I52). A lot match names its lot and its variant.
 type InventoryLookupMatch struct {
 	Kind InventoryLookupMatchKind `json:"kind"`
 
 	// Location A location as other answers name it.
 	Location *InventoryLocationRef `json:"location,omitempty"`
+
+	// Lot A lot as a movement line names it (manufacturing phase 2 M52).
+	Lot *InventoryLotRef `json:"lot,omitempty"`
 
 	// Transfer A transfer as other answers name it.
 	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
@@ -878,11 +1062,188 @@ type InventoryLookupResult struct {
 	Matches []InventoryLookupMatch `json:"matches"`
 }
 
+// InventoryLot A lot's page (manufacturing phase 2 M61): its header, its holds, where it lies, its movement lines and its files.
+type InventoryLot struct {
+	// Attachments The lot's files, newest first (M54).
+	Attachments []InventoryLotAttachment `json:"attachments"`
+	BestBefore  *openapi_types.Date      `json:"bestBefore,omitempty"`
+	CreatedAt   time.Time                `json:"createdAt"`
+
+	// CreatedBy Who posted, as snapshotted when they did.
+	CreatedBy *InventoryActor `json:"createdBy,omitempty"`
+
+	// Expired The expiry is before today in the workspace zone (M62).
+	Expired bool                `json:"expired"`
+	Expiry  *openapi_types.Date `json:"expiry,omitempty"`
+
+	// Holds Every hold, the active ones first, newest first within each (M64).
+	Holds []InventoryLotHold `json:"holds"`
+	Id    int64              `json:"id"`
+
+	// Locations Where it lies, per location, by site code then full code.
+	Locations []InventoryLotLocation `json:"locations"`
+
+	// Movements The lot's movement lines, newest first; the latest 200.
+	Movements []InventoryLotMovementLine `json:"movements"`
+	Note      *string                    `json:"note,omitempty"`
+	Number    string                     `json:"number"`
+
+	// OnHand On hand over every location.
+	OnHand float64 `json:"onHand"`
+
+	// Origin What another module's record caused the movement (design §12): an issue names the document it was posted for, such as an order's delivery.
+	Origin         *InventorySourceRef `json:"origin,omitempty"`
+	ProductionDate *openapi_types.Date `json:"productionDate,omitempty"`
+
+	// ReceivedAt When stock first entered under the lot, the FIFO key (M52).
+	ReceivedAt time.Time `json:"receivedAt"`
+
+	// Revision Sent back as If-Match on a change.
+	Revision int32 `json:"revision"`
+
+	// Serial The variant's tracking was serial when the lot was made; a serial holds at most 1.
+	Serial bool `json:"serial"`
+
+	// Status A lot's status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.
+	Status      InventoryLotStatus `json:"status"`
+	SupplierLot *string            `json:"supplierLot,omitempty"`
+
+	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
+	Variant InventoryVariantRef `json:"variant"`
+}
+
+// InventoryLotAttachment A file of a lot (M54), such as an EN 10204 3.1 certificate. Its bytes are read through GET /lots/{id}/attachments/{attachmentId}; no path is ever returned.
+type InventoryLotAttachment struct {
+	ContentType string    `json:"contentType"`
+	FileName    string    `json:"fileName"`
+	Id          int64     `json:"id"`
+	SizeBytes   int64     `json:"sizeBytes"`
+	UploadedAt  time.Time `json:"uploadedAt"`
+
+	// UploadedBy Who posted, as snapshotted when they did.
+	UploadedBy *InventoryActor `json:"uploadedBy,omitempty"`
+}
+
+// InventoryLotHold One hold on a lot (M64), owned by the document that put it: the lot page's own (inventory/lot/<id>), a receipt's inspection (inventory/movement/<id>), or another module's document, released only there.
+type InventoryLotHold struct {
+	Cause     InventoryLotHoldCause `json:"cause"`
+	CreatedAt time.Time             `json:"createdAt"`
+
+	// CreatedBy Who posted, as snapshotted when they did.
+	CreatedBy *InventoryActor `json:"createdBy,omitempty"`
+	Id        int64           `json:"id"`
+
+	// Inventorys The hold's source is Inventory's, so the lot page may release it; another module's is released on its document (hold_not_inventorys).
+	Inventorys  bool                 `json:"inventorys"`
+	Kind        InventoryLotHoldKind `json:"kind"`
+	Note        *string              `json:"note,omitempty"`
+	ReleaseNote *string              `json:"releaseNote,omitempty"`
+	ReleasedAt  *time.Time           `json:"releasedAt,omitempty"`
+
+	// ReleasedBy Who posted, as snapshotted when they did.
+	ReleasedBy *InventoryActor `json:"releasedBy,omitempty"`
+
+	// Source What another module's record caused the movement (design §12): an issue names the document it was posted for, such as an order's delivery.
+	Source InventorySourceRef `json:"source"`
+}
+
+// InventoryLotHoldCause defines model for InventoryLotHold.Cause.
+type InventoryLotHoldCause string
+
+// InventoryLotHoldKind defines model for InventoryLotHold.Kind.
+type InventoryLotHoldKind string
+
+// InventoryLotHoldInput A hold the lot page puts (M64). A lot that already holds an active hold of the lot page of the same kind is left as is.
+type InventoryLotHoldInput struct {
+	Cause InventoryLotHoldInputCause `json:"cause"`
+	Kind  InventoryLotHoldInputKind  `json:"kind"`
+	Note  *string                    `json:"note,omitempty"`
+}
+
+// InventoryLotHoldInputCause defines model for InventoryLotHoldInput.Cause.
+type InventoryLotHoldInputCause string
+
+// InventoryLotHoldInputKind defines model for InventoryLotHoldInput.Kind.
+type InventoryLotHoldInputKind string
+
+// InventoryLotHoldRelease The release of one of Inventory's own holds (M64), with why.
+type InventoryLotHoldRelease struct {
+	Note *string `json:"note,omitempty"`
+}
+
+// InventoryLotLocation What lies of a lot on one location.
+type InventoryLotLocation struct {
+	// Location A location as other answers name it.
+	Location InventoryLocationRef `json:"location"`
+	OnHand   float64              `json:"onHand"`
+
+	// Site A site as other answers name it.
+	Site InventorySiteRef `json:"site"`
+}
+
+// InventoryLotMovementLine One movement line of a lot.
+type InventoryLotMovementLine struct {
+	// From A location as other answers name it.
+	From *InventoryLocationRef `json:"from,omitempty"`
+
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
+	Kind       InventoryMovementKind `json:"kind"`
+	LineNo     int32                 `json:"lineNo"`
+	MovementId int64                 `json:"movementId"`
+	PostedAt   time.Time             `json:"postedAt"`
+	Quantity   float64               `json:"quantity"`
+
+	// To A location as other answers name it.
+	To *InventoryLocationRef `json:"to,omitempty"`
+}
+
+// InventoryLotPage A page of the lots list (M60).
+type InventoryLotPage struct {
+	Lots []InventoryLotSummary `json:"lots"`
+
+	// NextCursor Absent on the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // InventoryLotRef A lot as a movement line names it (manufacturing phase 2 M52).
 type InventoryLotRef struct {
 	Expiry *openapi_types.Date `json:"expiry,omitempty"`
 	Id     int64               `json:"id"`
 	Number string              `json:"number"`
+}
+
+// InventoryLotStatus A lot's status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.
+type InventoryLotStatus string
+
+// InventoryLotSummary One row of the lots list (M60).
+type InventoryLotSummary struct {
+	BestBefore *openapi_types.Date `json:"bestBefore,omitempty"`
+
+	// Expired The expiry is before today in the workspace zone (M62).
+	Expired bool                `json:"expired"`
+	Expiry  *openapi_types.Date `json:"expiry,omitempty"`
+	Id      int64               `json:"id"`
+	Number  string              `json:"number"`
+
+	// OnHand On hand at the siteId asked for, else over every location.
+	OnHand float64 `json:"onHand"`
+	Serial bool    `json:"serial"`
+
+	// Status A lot's status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.
+	Status      InventoryLotStatus `json:"status"`
+	SupplierLot *string            `json:"supplierLot,omitempty"`
+
+	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
+	Variant InventoryVariantRef `json:"variant"`
+}
+
+// InventoryLotUpdate A lot's editable fields (M61), replaced whole: a field left out is cleared. The number and the variant never change.
+type InventoryLotUpdate struct {
+	BestBefore     *openapi_types.Date `json:"bestBefore,omitempty"`
+	Expiry         *openapi_types.Date `json:"expiry,omitempty"`
+	Note           *string             `json:"note,omitempty"`
+	ProductionDate *openapi_types.Date `json:"productionDate,omitempty"`
+	SupplierLot    *string             `json:"supplierLot,omitempty"`
 }
 
 // InventoryLowStockElsewhere What another active site has available of the variant.
@@ -955,6 +1316,9 @@ type InventoryMeta struct {
 
 	// CanManageLocations inventory:locations-manage — sites and locations.
 	CanManageLocations bool `json:"canManageLocations"`
+
+	// CanManageLots inventory:lots-manage — editing a lot, its files, putting and releasing Inventory's own holds (manufacturing phase 2 M68).
+	CanManageLots bool `json:"canManageLots"`
 
 	// CanOverrideExpired inventory:expired-override — issuing or consuming an expired lot the person chose (manufacturing phase 2 M62).
 	CanOverrideExpired bool `json:"canOverrideExpired"`
@@ -1172,7 +1536,7 @@ type InventoryPlacementInput struct {
 	ReorderPoint      *float64 `json:"reorderPoint"`
 }
 
-// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module's document put, which is released there), attachment_too_large and too_many_attachments (400: a lot's file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type InventoryProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1327,8 +1691,11 @@ type InventorySiteRef struct {
 
 // InventorySiteStock One variant's stock in one site; a site with only incoming has a row with nothing on hand.
 type InventorySiteStock struct {
-	// Available On hand less reserved; negative when a correction took on hand below what is reserved.
+	// Available Usable on hand less reserved (manufacturing phase 2 M63) — on hand without the lots on hold or expired; negative when a correction or a hold took it below what is reserved.
 	Available float64 `json:"available"`
+
+	// Held Of on hand, what lies in lots on hold or expired (M63); 0 for an untracked variant.
+	Held float64 `json:"held"`
 
 	// Incoming In transit to the site on open transfers (I46).
 	Incoming float64 `json:"incoming"`
@@ -1735,15 +2102,21 @@ type InventoryVariantRef struct {
 	ProductId   *int32 `json:"productId,omitempty"`
 	ProductName string `json:"productName"`
 	Sku         string `json:"sku"`
-	Unit        string `json:"unit"`
+
+	// Tracking How the variant's stock is kept (manufacturing phase 2 M49): none, in lots, or in serials; absent on a deleted variant.
+	Tracking *InventoryVariantRefTracking `json:"tracking,omitempty"`
+	Unit     string                       `json:"unit"`
 }
+
+// InventoryVariantRefTracking How the variant's stock is kept (manufacturing phase 2 M49): none, in lots, or in serials; absent on a deleted variant.
+type InventoryVariantRefTracking string
 
 // InventoryVariantStock One variant's stock by site (I27).
 type InventoryVariantStock struct {
 	// Sites Sites holding stock, a reservation or incoming of it, by code.
 	Sites []InventorySiteStock `json:"sites"`
 
-	// TotalAvailable Total on hand less total reserved.
+	// TotalAvailable Total usable on hand — on hand without the lots on hold or expired — less total reserved.
 	TotalAvailable float64 `json:"totalAvailable"`
 	TotalOnHand    float64 `json:"totalOnHand"`
 	TotalReserved  float64 `json:"totalReserved"`
@@ -1785,6 +2158,42 @@ type GetInventoryLocationContentsParams struct {
 type LookupInventoryParams struct {
 	// Q The code as scanned or typed.
 	Q string `form:"q" json:"q"`
+}
+
+// ListInventoryLotsParams defines parameters for ListInventoryLots.
+type ListInventoryLotsParams struct {
+	// Q Part of a lot number, a supplier lot or an SKU.
+	Q         *string `form:"q,omitempty" json:"q,omitempty"`
+	VariantId *int32  `form:"variantId,omitempty" json:"variantId,omitempty"`
+
+	// SiteId On hand is counted at this site, and withStock means stock here.
+	SiteId *int64              `form:"siteId,omitempty" json:"siteId,omitempty"`
+	Status *InventoryLotStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// HoldCause Only lots with an active hold of this cause (M64).
+	HoldCause *ListInventoryLotsParamsHoldCause `form:"holdCause,omitempty" json:"holdCause,omitempty"`
+
+	// ExpiresBefore Only lots whose expiry is before this day.
+	ExpiresBefore *openapi_types.Date `form:"expiresBefore,omitempty" json:"expiresBefore,omitempty"`
+	WithStock     *bool               `form:"withStock,omitempty" json:"withStock,omitempty"`
+
+	// Cursor The previous page's nextCursor.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int32  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListInventoryLotsParamsHoldCause defines parameters for ListInventoryLots.
+type ListInventoryLotsParamsHoldCause string
+
+// PutInventoryLotParams defines parameters for PutInventoryLot.
+type PutInventoryLotParams struct {
+	// IfMatch The revision the lot was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+	IfMatch string `json:"If-Match"`
+}
+
+// PostInventoryLotAttachmentMultipartBody defines parameters for PostInventoryLotAttachment.
+type PostInventoryLotAttachmentMultipartBody struct {
+	File openapi_types.File `json:"file"`
 }
 
 // ListInventoryLowStockParams defines parameters for ListInventoryLowStock.
@@ -1963,6 +2372,18 @@ type BulkCreateInventoryLocationsJSONRequestBody = InventoryBulkCreateInput
 // PutInventoryLocationJSONRequestBody defines body for PutInventoryLocation for application/json ContentType.
 type PutInventoryLocationJSONRequestBody = InventoryLocationUpdate
 
+// PutInventoryLotJSONRequestBody defines body for PutInventoryLot for application/json ContentType.
+type PutInventoryLotJSONRequestBody = InventoryLotUpdate
+
+// PostInventoryLotAttachmentMultipartRequestBody defines body for PostInventoryLotAttachment for multipart/form-data ContentType.
+type PostInventoryLotAttachmentMultipartRequestBody PostInventoryLotAttachmentMultipartBody
+
+// PostInventoryLotHoldJSONRequestBody defines body for PostInventoryLotHold for application/json ContentType.
+type PostInventoryLotHoldJSONRequestBody = InventoryLotHoldInput
+
+// ReleaseInventoryLotHoldJSONRequestBody defines body for ReleaseInventoryLotHold for application/json ContentType.
+type ReleaseInventoryLotHoldJSONRequestBody = InventoryLotHoldRelease
+
 // PostInventoryAdjustmentJSONRequestBody defines body for PostInventoryAdjustment for application/json ContentType.
 type PostInventoryAdjustmentJSONRequestBody = InventoryAdjustmentInput
 
@@ -2046,6 +2467,30 @@ type ServerInterface interface {
 	// LookupInventory Find a location or an item
 	// (GET /api/v1/inventory/lookup)
 	LookupInventory(w http.ResponseWriter, r *http.Request, params LookupInventoryParams)
+	// ListInventoryLots List lots
+	// (GET /api/v1/inventory/lots)
+	ListInventoryLots(w http.ResponseWriter, r *http.Request, params ListInventoryLotsParams)
+	// GetInventoryLot Get a lot
+	// (GET /api/v1/inventory/lots/{id})
+	GetInventoryLot(w http.ResponseWriter, r *http.Request, id int64)
+	// PutInventoryLot Change a lot
+	// (PUT /api/v1/inventory/lots/{id})
+	PutInventoryLot(w http.ResponseWriter, r *http.Request, id int64, params PutInventoryLotParams)
+	// PostInventoryLotAttachment Attach a file to a lot
+	// (POST /api/v1/inventory/lots/{id}/attachments)
+	PostInventoryLotAttachment(w http.ResponseWriter, r *http.Request, id int64)
+	// DeleteInventoryLotAttachment Remove a file from a lot
+	// (DELETE /api/v1/inventory/lots/{id}/attachments/{attachmentId})
+	DeleteInventoryLotAttachment(w http.ResponseWriter, r *http.Request, id int64, attachmentId int64)
+	// GetInventoryLotAttachment Download a lot's file
+	// (GET /api/v1/inventory/lots/{id}/attachments/{attachmentId})
+	GetInventoryLotAttachment(w http.ResponseWriter, r *http.Request, id int64, attachmentId int64)
+	// PostInventoryLotHold Put a lot on hold
+	// (POST /api/v1/inventory/lots/{id}/holds)
+	PostInventoryLotHold(w http.ResponseWriter, r *http.Request, id int64)
+	// ReleaseInventoryLotHold Release a lot's hold
+	// (POST /api/v1/inventory/lots/{id}/holds/{holdId}/release)
+	ReleaseInventoryLotHold(w http.ResponseWriter, r *http.Request, id int64, holdId int64)
 	// ListInventoryLowStock List low stock
 	// (GET /api/v1/inventory/low-stock)
 	ListInventoryLowStock(w http.ResponseWriter, r *http.Request, params ListInventoryLowStockParams)
@@ -2610,6 +3055,380 @@ func (siw *ServerInterfaceWrapper) LookupInventory(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LookupInventory(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInventoryLots operation middleware
+func (siw *ServerInterfaceWrapper) ListInventoryLots(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInventoryLotsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "variantId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "variantId", r.URL.Query(), &params.VariantId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "variantId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "holdCause" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "holdCause", r.URL.Query(), &params.HoldCause, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "holdCause"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "holdCause", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "expiresBefore" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "expiresBefore", r.URL.Query(), &params.ExpiresBefore, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "expiresBefore"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "expiresBefore", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "withStock" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "withStock", r.URL.Query(), &params.WithStock, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "withStock"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "withStock", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInventoryLots(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInventoryLot operation middleware
+func (siw *ServerInterfaceWrapper) GetInventoryLot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInventoryLot(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInventoryLot operation middleware
+func (siw *ServerInterfaceWrapper) PutInventoryLot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutInventoryLotParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		err := fmt.Errorf("Header parameter If-Match is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "If-Match", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInventoryLot(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInventoryLotAttachment operation middleware
+func (siw *ServerInterfaceWrapper) PostInventoryLotAttachment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInventoryLotAttachment(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInventoryLotAttachment operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInventoryLotAttachment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "attachmentId" -------------
+	var attachmentId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "attachmentId", r.PathValue("attachmentId"), &attachmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "attachmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInventoryLotAttachment(w, r, id, attachmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInventoryLotAttachment operation middleware
+func (siw *ServerInterfaceWrapper) GetInventoryLotAttachment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "attachmentId" -------------
+	var attachmentId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "attachmentId", r.PathValue("attachmentId"), &attachmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "attachmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInventoryLotAttachment(w, r, id, attachmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInventoryLotHold operation middleware
+func (siw *ServerInterfaceWrapper) PostInventoryLotHold(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInventoryLotHold(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReleaseInventoryLotHold operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseInventoryLotHold(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "holdId" -------------
+	var holdId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "holdId", r.PathValue("holdId"), &holdId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "holdId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseInventoryLotHold(w, r, id, holdId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4052,6 +4871,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/locations/{id}/contents", wrapper.GetInventoryLocationContents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/locations/bulk", wrapper.BulkCreateInventoryLocations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lookup", wrapper.LookupInventory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots", wrapper.ListInventoryLots)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots/{id}", wrapper.GetInventoryLot)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/inventory/lots/{id}", wrapper.PutInventoryLot)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/attachments", wrapper.PostInventoryLotAttachment)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/attachments/{attachmentId}", wrapper.DeleteInventoryLotAttachment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/attachments/{attachmentId}", wrapper.GetInventoryLotAttachment)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/holds", wrapper.PostInventoryLotHold)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/holds/{holdId}/release", wrapper.ReleaseInventoryLotHold)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/low-stock", wrapper.ListInventoryLowStock)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/low-stock.csv", wrapper.ExportInventoryLowStock)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/meta", wrapper.GetInventoryMeta)
@@ -5368,6 +6195,681 @@ func (response LookupInventory403JSONResponse) VisitLookupInventoryResponse(w ht
 type LookupInventory503ApplicationProblemPlusJSONResponse InventoryProblem
 
 func (response LookupInventory503ApplicationProblemPlusJSONResponse) VisitLookupInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLotsRequestObject struct {
+	Params ListInventoryLotsParams
+}
+
+type ListInventoryLotsResponseObject interface {
+	VisitListInventoryLotsResponse(w http.ResponseWriter) error
+}
+
+type ListInventoryLots200JSONResponse InventoryLotPage
+
+func (response ListInventoryLots200JSONResponse) VisitListInventoryLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLots400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryLots400ApplicationProblemPlusJSONResponse) VisitListInventoryLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLots401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryLots401JSONResponse) VisitListInventoryLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLots403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryLots403JSONResponse) VisitListInventoryLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryLots503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryLots503ApplicationProblemPlusJSONResponse) VisitListInventoryLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryLotRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetInventoryLotResponseObject interface {
+	VisitGetInventoryLotResponse(w http.ResponseWriter) error
+}
+
+type GetInventoryLot200JSONResponse InventoryLot
+
+func (response GetInventoryLot200JSONResponse) VisitGetInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryLot401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryLot401JSONResponse) VisitGetInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryLot403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryLot403JSONResponse) VisitGetInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryLot404Response struct {
+}
+
+func (response GetInventoryLot404Response) VisitGetInventoryLotResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInventoryLot503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response GetInventoryLot503ApplicationProblemPlusJSONResponse) VisitGetInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryLotRequestObject struct {
+	Id     int64 `json:"id"`
+	Params PutInventoryLotParams
+	Body   *PutInventoryLotJSONRequestBody
+}
+
+type PutInventoryLotResponseObject interface {
+	VisitPutInventoryLotResponse(w http.ResponseWriter) error
+}
+
+type PutInventoryLot200JSONResponse InventoryLot
+
+func (response PutInventoryLot200JSONResponse) VisitPutInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryLot400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryLot400ApplicationProblemPlusJSONResponse) VisitPutInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryLot401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryLot401JSONResponse) VisitPutInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryLot403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryLot403JSONResponse) VisitPutInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryLot404Response struct {
+}
+
+func (response PutInventoryLot404Response) VisitPutInventoryLotResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutInventoryLot409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryLot409ApplicationProblemPlusJSONResponse) VisitPutInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryLot503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryLot503ApplicationProblemPlusJSONResponse) VisitPutInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotAttachmentRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *multipart.Reader
+}
+
+type PostInventoryLotAttachmentResponseObject interface {
+	VisitPostInventoryLotAttachmentResponse(w http.ResponseWriter) error
+}
+
+type PostInventoryLotAttachment201JSONResponse InventoryLotAttachment
+
+func (response PostInventoryLotAttachment201JSONResponse) VisitPostInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotAttachment400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryLotAttachment400ApplicationProblemPlusJSONResponse) VisitPostInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotAttachment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInventoryLotAttachment401JSONResponse) VisitPostInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotAttachment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInventoryLotAttachment403JSONResponse) VisitPostInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotAttachment404Response struct {
+}
+
+func (response PostInventoryLotAttachment404Response) VisitPostInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInventoryLotAttachment415ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryLotAttachment415ApplicationProblemPlusJSONResponse) VisitPostInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(415)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotAttachment503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryLotAttachment503ApplicationProblemPlusJSONResponse) VisitPostInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryLotAttachmentRequestObject struct {
+	Id           int64 `json:"id"`
+	AttachmentId int64 `json:"attachmentId"`
+}
+
+type DeleteInventoryLotAttachmentResponseObject interface {
+	VisitDeleteInventoryLotAttachmentResponse(w http.ResponseWriter) error
+}
+
+type DeleteInventoryLotAttachment204Response struct {
+}
+
+func (response DeleteInventoryLotAttachment204Response) VisitDeleteInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInventoryLotAttachment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInventoryLotAttachment401JSONResponse) VisitDeleteInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryLotAttachment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteInventoryLotAttachment403JSONResponse) VisitDeleteInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInventoryLotAttachment404Response struct {
+}
+
+func (response DeleteInventoryLotAttachment404Response) VisitDeleteInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInventoryLotAttachmentRequestObject struct {
+	Id           int64 `json:"id"`
+	AttachmentId int64 `json:"attachmentId"`
+}
+
+type GetInventoryLotAttachmentResponseObject interface {
+	VisitGetInventoryLotAttachmentResponse(w http.ResponseWriter) error
+}
+
+type GetInventoryLotAttachment200AsteriskResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetInventoryLotAttachment200AsteriskResponse) VisitGetInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetInventoryLotAttachment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryLotAttachment401JSONResponse) VisitGetInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryLotAttachment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryLotAttachment403JSONResponse) VisitGetInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryLotAttachment404Response struct {
+}
+
+func (response GetInventoryLotAttachment404Response) VisitGetInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetInventoryLotAttachment503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response GetInventoryLotAttachment503ApplicationProblemPlusJSONResponse) VisitGetInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotHoldRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostInventoryLotHoldJSONRequestBody
+}
+
+type PostInventoryLotHoldResponseObject interface {
+	VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error
+}
+
+type PostInventoryLotHold200JSONResponse InventoryLot
+
+func (response PostInventoryLotHold200JSONResponse) VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotHold400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryLotHold400ApplicationProblemPlusJSONResponse) VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotHold401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInventoryLotHold401JSONResponse) VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotHold403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInventoryLotHold403JSONResponse) VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInventoryLotHold404Response struct {
+}
+
+func (response PostInventoryLotHold404Response) VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInventoryLotHold503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryLotHold503ApplicationProblemPlusJSONResponse) VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseInventoryLotHoldRequestObject struct {
+	Id     int64 `json:"id"`
+	HoldId int64 `json:"holdId"`
+	Body   *ReleaseInventoryLotHoldJSONRequestBody
+}
+
+type ReleaseInventoryLotHoldResponseObject interface {
+	VisitReleaseInventoryLotHoldResponse(w http.ResponseWriter) error
+}
+
+type ReleaseInventoryLotHold200JSONResponse InventoryLot
+
+func (response ReleaseInventoryLotHold200JSONResponse) VisitReleaseInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseInventoryLotHold400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ReleaseInventoryLotHold400ApplicationProblemPlusJSONResponse) VisitReleaseInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseInventoryLotHold401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReleaseInventoryLotHold401JSONResponse) VisitReleaseInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseInventoryLotHold403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReleaseInventoryLotHold403JSONResponse) VisitReleaseInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseInventoryLotHold404Response struct {
+}
+
+func (response ReleaseInventoryLotHold404Response) VisitReleaseInventoryLotHoldResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReleaseInventoryLotHold409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ReleaseInventoryLotHold409ApplicationProblemPlusJSONResponse) VisitReleaseInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseInventoryLotHold503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ReleaseInventoryLotHold503ApplicationProblemPlusJSONResponse) VisitReleaseInventoryLotHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7962,6 +9464,30 @@ type StrictServerInterface interface {
 	// LookupInventory Find a location or an item
 	// (GET /api/v1/inventory/lookup)
 	LookupInventory(ctx context.Context, request LookupInventoryRequestObject) (LookupInventoryResponseObject, error)
+	// ListInventoryLots List lots
+	// (GET /api/v1/inventory/lots)
+	ListInventoryLots(ctx context.Context, request ListInventoryLotsRequestObject) (ListInventoryLotsResponseObject, error)
+	// GetInventoryLot Get a lot
+	// (GET /api/v1/inventory/lots/{id})
+	GetInventoryLot(ctx context.Context, request GetInventoryLotRequestObject) (GetInventoryLotResponseObject, error)
+	// PutInventoryLot Change a lot
+	// (PUT /api/v1/inventory/lots/{id})
+	PutInventoryLot(ctx context.Context, request PutInventoryLotRequestObject) (PutInventoryLotResponseObject, error)
+	// PostInventoryLotAttachment Attach a file to a lot
+	// (POST /api/v1/inventory/lots/{id}/attachments)
+	PostInventoryLotAttachment(ctx context.Context, request PostInventoryLotAttachmentRequestObject) (PostInventoryLotAttachmentResponseObject, error)
+	// DeleteInventoryLotAttachment Remove a file from a lot
+	// (DELETE /api/v1/inventory/lots/{id}/attachments/{attachmentId})
+	DeleteInventoryLotAttachment(ctx context.Context, request DeleteInventoryLotAttachmentRequestObject) (DeleteInventoryLotAttachmentResponseObject, error)
+	// GetInventoryLotAttachment Download a lot's file
+	// (GET /api/v1/inventory/lots/{id}/attachments/{attachmentId})
+	GetInventoryLotAttachment(ctx context.Context, request GetInventoryLotAttachmentRequestObject) (GetInventoryLotAttachmentResponseObject, error)
+	// PostInventoryLotHold Put a lot on hold
+	// (POST /api/v1/inventory/lots/{id}/holds)
+	PostInventoryLotHold(ctx context.Context, request PostInventoryLotHoldRequestObject) (PostInventoryLotHoldResponseObject, error)
+	// ReleaseInventoryLotHold Release a lot's hold
+	// (POST /api/v1/inventory/lots/{id}/holds/{holdId}/release)
+	ReleaseInventoryLotHold(ctx context.Context, request ReleaseInventoryLotHoldRequestObject) (ReleaseInventoryLotHoldResponseObject, error)
 	// ListInventoryLowStock List low stock
 	// (GET /api/v1/inventory/low-stock)
 	ListInventoryLowStock(ctx context.Context, request ListInventoryLowStockRequestObject) (ListInventoryLowStockResponseObject, error)
@@ -8555,6 +10081,246 @@ func (sh *strictHandler) LookupInventory(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LookupInventoryResponseObject); ok {
 		if err := validResponse.VisitLookupInventoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInventoryLots operation middleware
+func (sh *strictHandler) ListInventoryLots(w http.ResponseWriter, r *http.Request, params ListInventoryLotsParams) {
+	var request ListInventoryLotsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInventoryLots(ctx, request.(ListInventoryLotsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInventoryLots")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInventoryLotsResponseObject); ok {
+		if err := validResponse.VisitListInventoryLotsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInventoryLot operation middleware
+func (sh *strictHandler) GetInventoryLot(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetInventoryLotRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInventoryLot(ctx, request.(GetInventoryLotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInventoryLot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInventoryLotResponseObject); ok {
+		if err := validResponse.VisitGetInventoryLotResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInventoryLot operation middleware
+func (sh *strictHandler) PutInventoryLot(w http.ResponseWriter, r *http.Request, id int64, params PutInventoryLotParams) {
+	var request PutInventoryLotRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	var body PutInventoryLotJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInventoryLot(ctx, request.(PutInventoryLotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInventoryLot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInventoryLotResponseObject); ok {
+		if err := validResponse.VisitPutInventoryLotResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInventoryLotAttachment operation middleware
+func (sh *strictHandler) PostInventoryLotAttachment(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInventoryLotAttachmentRequestObject
+
+	request.Id = id
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInventoryLotAttachment(ctx, request.(PostInventoryLotAttachmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInventoryLotAttachment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInventoryLotAttachmentResponseObject); ok {
+		if err := validResponse.VisitPostInventoryLotAttachmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInventoryLotAttachment operation middleware
+func (sh *strictHandler) DeleteInventoryLotAttachment(w http.ResponseWriter, r *http.Request, id int64, attachmentId int64) {
+	var request DeleteInventoryLotAttachmentRequestObject
+
+	request.Id = id
+	request.AttachmentId = attachmentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInventoryLotAttachment(ctx, request.(DeleteInventoryLotAttachmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInventoryLotAttachment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInventoryLotAttachmentResponseObject); ok {
+		if err := validResponse.VisitDeleteInventoryLotAttachmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInventoryLotAttachment operation middleware
+func (sh *strictHandler) GetInventoryLotAttachment(w http.ResponseWriter, r *http.Request, id int64, attachmentId int64) {
+	var request GetInventoryLotAttachmentRequestObject
+
+	request.Id = id
+	request.AttachmentId = attachmentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInventoryLotAttachment(ctx, request.(GetInventoryLotAttachmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInventoryLotAttachment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInventoryLotAttachmentResponseObject); ok {
+		if err := validResponse.VisitGetInventoryLotAttachmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInventoryLotHold operation middleware
+func (sh *strictHandler) PostInventoryLotHold(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostInventoryLotHoldRequestObject
+
+	request.Id = id
+
+	var body PostInventoryLotHoldJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInventoryLotHold(ctx, request.(PostInventoryLotHoldRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInventoryLotHold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInventoryLotHoldResponseObject); ok {
+		if err := validResponse.VisitPostInventoryLotHoldResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleaseInventoryLotHold operation middleware
+func (sh *strictHandler) ReleaseInventoryLotHold(w http.ResponseWriter, r *http.Request, id int64, holdId int64) {
+	var request ReleaseInventoryLotHoldRequestObject
+
+	request.Id = id
+	request.HoldId = holdId
+
+	var body ReleaseInventoryLotHoldJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseInventoryLotHold(ctx, request.(ReleaseInventoryLotHoldRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseInventoryLotHold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseInventoryLotHoldResponseObject); ok {
+		if err := validResponse.VisitReleaseInventoryLotHoldResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

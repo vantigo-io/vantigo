@@ -105,12 +105,49 @@ components:
                 - opening_balance
                 - other
             type: string
+        InventoryBalanceLot:
+            additionalProperties: false
+            description: 'What lies of one lot on one location (manufacturing phase 2 M63): a stock row''s lots, in FEFO order — expiry first, none last, then received.'
+            properties:
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                expired:
+                    description: The expiry is before today in the workspace zone (M62).
+                    type: boolean
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                lotId:
+                    format: int64
+                    type: integer
+                number:
+                    type: string
+                onHand:
+                    format: double
+                    type: number
+                status:
+                    $ref: '#/components/schemas/InventoryLotStatus'
+            required:
+                - lotId
+                - number
+                - status
+                - expired
+                - onHand
+            type: object
         InventoryBalanceRow:
             additionalProperties: false
             description: What lies of one variant on one location.
             properties:
                 location:
                     $ref: '#/components/schemas/InventoryLocationRef'
+                lots:
+                    description: 'A tracked variant''s lots on the location, in FEFO order (manufacturing phase 2 M63); set on a site''s stock rows, absent elsewhere and for an untracked variant.'
+                    items:
+                        $ref: '#/components/schemas/InventoryBalanceLot'
+                    type: array
                 onHand:
                     format: double
                     type: number
@@ -513,6 +550,265 @@ components:
                 - locationIds
                 - layout
             type: object
+        InventoryLot:
+            additionalProperties: false
+            description: 'A lot''s page (manufacturing phase 2 M61): its header, its holds, where it lies, its movement lines and its files.'
+            properties:
+                attachments:
+                    description: The lot's files, newest first (M54).
+                    items:
+                        $ref: '#/components/schemas/InventoryLotAttachment'
+                    type: array
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    $ref: '#/components/schemas/InventoryActor'
+                expired:
+                    description: The expiry is before today in the workspace zone (M62).
+                    type: boolean
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                holds:
+                    description: Every hold, the active ones first, newest first within each (M64).
+                    items:
+                        $ref: '#/components/schemas/InventoryLotHold'
+                    type: array
+                id:
+                    format: int64
+                    type: integer
+                locations:
+                    description: Where it lies, per location, by site code then full code.
+                    items:
+                        $ref: '#/components/schemas/InventoryLotLocation'
+                    type: array
+                movements:
+                    description: The lot's movement lines, newest first; the latest 200.
+                    items:
+                        $ref: '#/components/schemas/InventoryLotMovementLine'
+                    type: array
+                note:
+                    nullable: true
+                    type: string
+                number:
+                    type: string
+                onHand:
+                    description: On hand over every location.
+                    format: double
+                    type: number
+                origin:
+                    $ref: '#/components/schemas/InventorySourceRef'
+                productionDate:
+                    format: date
+                    nullable: true
+                    type: string
+                receivedAt:
+                    description: When stock first entered under the lot, the FIFO key (M52).
+                    format: date-time
+                    type: string
+                revision:
+                    description: Sent back as If-Match on a change.
+                    format: int32
+                    type: integer
+                serial:
+                    description: The variant's tracking was serial when the lot was made; a serial holds at most 1.
+                    type: boolean
+                status:
+                    $ref: '#/components/schemas/InventoryLotStatus'
+                supplierLot:
+                    nullable: true
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/InventoryVariantRef'
+            required:
+                - id
+                - number
+                - serial
+                - variant
+                - status
+                - expired
+                - receivedAt
+                - onHand
+                - revision
+                - createdAt
+                - holds
+                - locations
+                - movements
+                - attachments
+            type: object
+        InventoryLotAttachment:
+            additionalProperties: false
+            description: A file of a lot (M54), such as an EN 10204 3.1 certificate. Its bytes are read through GET /lots/{id}/attachments/{attachmentId}; no path is ever returned.
+            properties:
+                contentType:
+                    type: string
+                fileName:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                sizeBytes:
+                    format: int64
+                    type: integer
+                uploadedAt:
+                    format: date-time
+                    type: string
+                uploadedBy:
+                    $ref: '#/components/schemas/InventoryActor'
+            required:
+                - id
+                - fileName
+                - contentType
+                - sizeBytes
+                - uploadedAt
+            type: object
+        InventoryLotHold:
+            additionalProperties: false
+            description: 'One hold on a lot (M64), owned by the document that put it: the lot page''s own (inventory/lot/<id>), a receipt''s inspection (inventory/movement/<id>), or another module''s document, released only there.'
+            properties:
+                cause:
+                    enum:
+                        - inspection
+                        - deviation
+                        - complaint
+                        - recall
+                        - other
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                createdBy:
+                    $ref: '#/components/schemas/InventoryActor'
+                id:
+                    format: int64
+                    type: integer
+                inventorys:
+                    description: The hold's source is Inventory's, so the lot page may release it; another module's is released on its document (hold_not_inventorys).
+                    type: boolean
+                kind:
+                    enum:
+                        - quarantine
+                        - block
+                    type: string
+                note:
+                    nullable: true
+                    type: string
+                releaseNote:
+                    nullable: true
+                    type: string
+                releasedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                releasedBy:
+                    $ref: '#/components/schemas/InventoryActor'
+                source:
+                    $ref: '#/components/schemas/InventorySourceRef'
+            required:
+                - id
+                - kind
+                - cause
+                - source
+                - inventorys
+                - createdAt
+            type: object
+        InventoryLotHoldInput:
+            additionalProperties: false
+            description: A hold the lot page puts (M64). A lot that already holds an active hold of the lot page of the same kind is left as is.
+            properties:
+                cause:
+                    enum:
+                        - inspection
+                        - deviation
+                        - complaint
+                        - recall
+                        - other
+                    type: string
+                kind:
+                    enum:
+                        - quarantine
+                        - block
+                    type: string
+                note:
+                    maxLength: 1000
+                    type: string
+            required:
+                - kind
+                - cause
+            type: object
+        InventoryLotHoldRelease:
+            additionalProperties: false
+            description: The release of one of Inventory's own holds (M64), with why.
+            properties:
+                note:
+                    maxLength: 1000
+                    type: string
+            type: object
+        InventoryLotLocation:
+            additionalProperties: false
+            description: What lies of a lot on one location.
+            properties:
+                location:
+                    $ref: '#/components/schemas/InventoryLocationRef'
+                onHand:
+                    format: double
+                    type: number
+                site:
+                    $ref: '#/components/schemas/InventorySiteRef'
+            required:
+                - site
+                - location
+                - onHand
+            type: object
+        InventoryLotMovementLine:
+            additionalProperties: false
+            description: One movement line of a lot.
+            properties:
+                from:
+                    $ref: '#/components/schemas/InventoryLocationRef'
+                kind:
+                    $ref: '#/components/schemas/InventoryMovementKind'
+                lineNo:
+                    format: int32
+                    type: integer
+                movementId:
+                    format: int64
+                    type: integer
+                postedAt:
+                    format: date-time
+                    type: string
+                quantity:
+                    format: double
+                    type: number
+                to:
+                    $ref: '#/components/schemas/InventoryLocationRef'
+            required:
+                - movementId
+                - kind
+                - postedAt
+                - lineNo
+                - quantity
+            type: object
+        InventoryLotPage:
+            additionalProperties: false
+            description: A page of the lots list (M60).
+            properties:
+                lots:
+                    items:
+                        $ref: '#/components/schemas/InventoryLotSummary'
+                    type: array
+                nextCursor:
+                    description: Absent on the last page.
+                    type: string
+            required:
+                - lots
+            type: object
         InventoryLotRef:
             additionalProperties: false
             description: A lot as a movement line names it (manufacturing phase 2 M52).
@@ -529,6 +825,75 @@ components:
             required:
                 - id
                 - number
+            type: object
+        InventoryLotStatus:
+            description: 'A lot''s status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.'
+            enum:
+                - available
+                - quarantine
+                - blocked
+            type: string
+        InventoryLotSummary:
+            additionalProperties: false
+            description: One row of the lots list (M60).
+            properties:
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                expired:
+                    description: The expiry is before today in the workspace zone (M62).
+                    type: boolean
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                number:
+                    type: string
+                onHand:
+                    description: On hand at the siteId asked for, else over every location.
+                    format: double
+                    type: number
+                serial:
+                    type: boolean
+                status:
+                    $ref: '#/components/schemas/InventoryLotStatus'
+                supplierLot:
+                    nullable: true
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/InventoryVariantRef'
+            required:
+                - id
+                - number
+                - serial
+                - variant
+                - status
+                - expired
+                - onHand
+            type: object
+        InventoryLotUpdate:
+            additionalProperties: false
+            description: 'A lot''s editable fields (M61), replaced whole: a field left out is cleared. The number and the variant never change.'
+            properties:
+                bestBefore:
+                    format: date
+                    type: string
+                expiry:
+                    format: date
+                    type: string
+                note:
+                    maxLength: 2000
+                    type: string
+                productionDate:
+                    format: date
+                    type: string
+                supplierLot:
+                    maxLength: 40
+                    type: string
             type: object
         InventoryLocation:
             additionalProperties: false
@@ -731,16 +1096,19 @@ components:
             type: object
         InventoryLookupMatch:
             additionalProperties: false
-            description: 'One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, or a transfer by its TRF token to a caller holding both views (I52).'
+            description: 'One match of the lookup (I28): a location by its LOC token or full code, a variant by its SKU or barcode, a transfer by its TRF token, or a lot by its LOT token or its number (manufacturing phase 2 M66) — the last two to a caller holding both views (I52). A lot match names its lot and its variant.'
             properties:
                 kind:
                     enum:
                         - location
                         - variant
                         - transfer
+                        - lot
                     type: string
                 location:
                     $ref: '#/components/schemas/InventoryLocationRef'
+                lot:
+                    $ref: '#/components/schemas/InventoryLotRef'
                 transfer:
                     $ref: '#/components/schemas/InventoryTransferRef'
                 variant:
@@ -901,6 +1269,9 @@ components:
                 canCount:
                     description: inventory:counts-manage — counts.
                     type: boolean
+                canManageLots:
+                    description: inventory:lots-manage — editing a lot, its files, putting and releasing Inventory's own holds (manufacturing phase 2 M68).
+                    type: boolean
                 canManageLocations:
                     description: inventory:locations-manage — sites and locations.
                     type: boolean
@@ -925,6 +1296,7 @@ components:
                 - canCount
                 - canTransfer
                 - canOverrideExpired
+                - canManageLots
                 - today
             type: object
         InventoryMoveInput:
@@ -1293,7 +1665,7 @@ components:
                 - maximum
             type: object
         InventoryProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site''s in the deployment, a location''s among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site''s root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement''s maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting''s line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line''s outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant''s line names no lot), lot_not_allowed (an untracked variant''s line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line''s quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot''s), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site''s in the deployment, a location''s among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site''s root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module''s document put, which is released there), attachment_too_large and too_many_attachments (400: a lot''s file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement''s maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting''s line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line''s outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant''s line names no lot), lot_not_allowed (an untracked variant''s line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line''s quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot''s), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request''s camelCase field. A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -1578,7 +1950,11 @@ components:
             description: One variant's stock in one site; a site with only incoming has a row with nothing on hand.
             properties:
                 available:
-                    description: On hand less reserved; negative when a correction took on hand below what is reserved.
+                    description: Usable on hand less reserved (manufacturing phase 2 M63) — on hand without the lots on hold or expired; negative when a correction or a hold took it below what is reserved.
+                    format: double
+                    type: number
+                held:
+                    description: Of on hand, what lies in lots on hold or expired (M63); 0 for an untracked variant.
                     format: double
                     type: number
                 incoming:
@@ -1606,6 +1982,7 @@ components:
                 - onHand
                 - reserved
                 - available
+                - held
                 - rows
                 - incoming
             type: object
@@ -2357,6 +2734,13 @@ components:
                     type: string
                 sku:
                     type: string
+                tracking:
+                    description: 'How the variant''s stock is kept (manufacturing phase 2 M49): none, in lots, or in serials; absent on a deleted variant.'
+                    enum:
+                        - none
+                        - lot
+                        - serial
+                    type: string
                 unit:
                     type: string
             required:
@@ -2375,7 +2759,7 @@ components:
                         $ref: '#/components/schemas/InventorySiteStock'
                     type: array
                 totalAvailable:
-                    description: Total on hand less total reserved.
+                    description: Total usable on hand — on hand without the lots on hold or expired — less total reserved.
                     format: double
                     type: number
                 totalOnHand:
@@ -3182,6 +3566,491 @@ paths:
             tags:
                 - Inventory
             x-vantigo-access: session
+    /api/v1/inventory/lots:
+        get:
+            description: 'The lots (manufacturing phase 2 M60), by variant then number, by cursor. q matches the lot number, the supplier lot or the SKU, ignoring case; holdCause a lot with an active hold of that cause; expiresBefore an expiry before that day. withStock (default true) lists only lots holding more than 0 — at siteId when it is given, where onHand is counted too.'
+            operationId: listInventoryLots
+            parameters:
+                - description: Part of a lot number, a supplier lot or an SKU.
+                  in: query
+                  name: q
+                  required: false
+                  schema:
+                    maxLength: 100
+                    type: string
+                - in: query
+                  name: variantId
+                  required: false
+                  schema:
+                    format: int32
+                    type: integer
+                - description: On hand is counted at this site, and withStock means stock here.
+                  in: query
+                  name: siteId
+                  required: false
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: status
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryLotStatus'
+                - description: Only lots with an active hold of this cause (M64).
+                  in: query
+                  name: holdCause
+                  required: false
+                  schema:
+                    enum:
+                        - inspection
+                        - deviation
+                        - complaint
+                        - recall
+                        - other
+                    type: string
+                - description: Only lots whose expiry is before this day.
+                  in: query
+                  name: expiresBefore
+                  required: false
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: withStock
+                  required: false
+                  schema:
+                    default: true
+                    type: boolean
+                - description: The previous page's nextCursor.
+                  in: query
+                  name: cursor
+                  required: false
+                  schema:
+                    type: string
+                - in: query
+                  name: limit
+                  required: false
+                  schema:
+                    default: 100
+                    format: int32
+                    maximum: 500
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryLotPage'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — a filter or cursor that does not parse.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed.'
+            summary: List lots
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/lots/{id}:
+        get:
+            description: A lot's page (M61) — its header, holds, where it lies, its latest movement lines and its files.
+            operationId: getInventoryLot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryLot'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed.'
+            summary: Get a lot
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+        put:
+            description: Replaces a lot's supplier lot, production, best-before and expiry dates and note (M61). The number and the variant never change. A changed expiry is judged from the next posting on.
+            operationId: putInventoryLot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The revision the lot was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
+                  in: header
+                  name: If-Match
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryLotUpdate'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryLot'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Conflict — revision_conflict.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed.'
+            summary: Change a lot
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:lots-manage+inventory:stock-view
+    /api/v1/inventory/lots/{id}/attachments:
+        post:
+            description: 'Attaches one file to a lot (M54): a PDF, JPEG or PNG of at most 20 MB in the multipart field file, whose own bytes decide its type and must agree with the type and extension it is sent under; at most 20 a lot. The object is written before the row and removed again by whatever refuses after it.'
+            operationId: postInventoryLotAttachment
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryLotAttachment'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — attachment_too_large (over 20 MB), too_many_attachments (the lot carries 20), or a field error on file (missing, empty or sent twice).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot. The body is empty.
+                "415":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Unsupported Media Type — attachment_type: not a PDF, JPEG or PNG, or its bytes disagree with its declared type or extension.'
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Service Unavailable — storage_not_configured, or the object store could not be written; nothing was recorded.
+            summary: Attach a file to a lot
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:lots-manage+inventory:stock-view
+            x-vantigo-assistant: never
+    /api/v1/inventory/lots/{id}/attachments/{attachmentId}:
+        delete:
+            description: Removes a lot's file (M54); its object is queued for removal in the same transaction and removed once that has committed, retried by the inventory.object-deletions worker until the store confirms.
+            operationId: deleteInventoryLotAttachment
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: attachmentId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot, or no such file of it. The body is empty.
+            summary: Remove a file from a lot
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:lots-manage+inventory:stock-view
+        get:
+            description: Streams a lot's file with the type it was sniffed as on upload, named as uploaded, never cached and never sniffed, under a sandboxing content-security-policy (M54). A file of another lot is the 404 an unknown id is.
+            operationId: getInventoryLotAttachment
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: attachmentId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        '*/*':
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot, or no such file of it. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Service Unavailable — storage_not_configured, or the object store could not be read.
+            summary: Download a lot's file
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/lots/{id}/holds:
+        post:
+            description: Puts a hold of the lot page on the lot (M64), source inventory/lot/<id>; the status is derived again. An active hold of the lot page of the same kind is left as is.
+            operationId: postInventoryLotHold
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryLotHoldInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryLot'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed.'
+            summary: Put a lot on hold
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:lots-manage+inventory:stock-view
+    /api/v1/inventory/lots/{id}/holds/{holdId}/release:
+        post:
+            description: Releases one of Inventory's own holds on the lot (M64) — the lot page's, or a receipt's inspection — with a note; the status is derived again. A hold another module's document put is released there (409 hold_not_inventorys). A hold already released answers the lot as it is.
+            operationId: releaseInventoryLotHold
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: holdId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryLotHoldRelease'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryLot'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot, or no such hold of it. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Conflict — hold_not_inventorys: the hold''s source is another module''s document, where it is released.'
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed.'
+            summary: Release a lot's hold
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:lots-manage+inventory:stock-view
     /api/v1/inventory/low-stock:
         get:
             description: 'Every low placement at active sites (I56, I58): available plus incoming at or below the reorder point, by site code, then the SKU, by cursor. Each row carries what is needed to reach the target — the maximum, or one above the reorder point — the suggestion rounded up to whole packagings (I57), what the other active sites have available, and the draft transfers already open to the site for the variant. Variants gone from the catalog are skipped.'

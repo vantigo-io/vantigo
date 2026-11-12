@@ -598,6 +598,15 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 	if err := writeBalances(ctx, txq, keys, balances, s.deps.Clock()); err != nil {
 		return postResult{}, err
 	}
+	// The lots' screens hear of their stock on the posting's own transaction
+	// (manufacturing phase 2 §17), whichever module's it is.
+	touched := make([]int64, 0, len(posted))
+	for _, l := range posted {
+		touched = append(touched, l.lotID)
+	}
+	if err := notifyLots(ctx, tx, touched); err != nil {
+		return postResult{}, err
+	}
 	return postResult{movementID: id, picks: picks}, nil
 }
 

@@ -117,6 +117,39 @@ func (q *Queries) DeriveLotStatuses(ctx context.Context, arg DeriveLotStatusesPa
 	return items, nil
 }
 
+const getLotHold = `-- name: GetLotHold :one
+SELECT id, lot_id, kind, cause, note, source_module, source_kind, source_id, created_by_user_id, created_by_display, created_at, released_at, released_by_user_id, released_by_display, release_note FROM inventory.lot_holds WHERE id = $1 AND lot_id = $2
+`
+
+type GetLotHoldParams struct {
+	ID    int64
+	LotID int64
+}
+
+// GetLotHold is one hold of a lot; another lot's is no row.
+func (q *Queries) GetLotHold(ctx context.Context, arg GetLotHoldParams) (InventoryLotHold, error) {
+	row := q.db.QueryRow(ctx, getLotHold, arg.ID, arg.LotID)
+	var i InventoryLotHold
+	err := row.Scan(
+		&i.ID,
+		&i.LotID,
+		&i.Kind,
+		&i.Cause,
+		&i.Note,
+		&i.SourceModule,
+		&i.SourceKind,
+		&i.SourceID,
+		&i.CreatedByUserID,
+		&i.CreatedByDisplay,
+		&i.CreatedAt,
+		&i.ReleasedAt,
+		&i.ReleasedByUserID,
+		&i.ReleasedByDisplay,
+		&i.ReleaseNote,
+	)
+	return i, err
+}
+
 const insertLotHold = `-- name: InsertLotHold :one
 INSERT INTO inventory.lot_holds (lot_id, kind, cause, note, source_module, source_kind, source_id,
                                  created_by_user_id, created_by_display, created_at)
@@ -156,6 +189,49 @@ func (q *Queries) InsertLotHold(ctx context.Context, arg InsertLotHoldParams) (i
 	return id, err
 }
 
+const lotHolds = `-- name: LotHolds :many
+SELECT id, lot_id, kind, cause, note, source_module, source_kind, source_id, created_by_user_id, created_by_display, created_at, released_at, released_by_user_id, released_by_display, release_note FROM inventory.lot_holds WHERE lot_id = $1
+ORDER BY (released_at IS NULL) DESC, created_at DESC, id DESC
+`
+
+// LotHolds is every hold of a lot, the active ones first, newest first
+// within each (M61).
+func (q *Queries) LotHolds(ctx context.Context, lotID int64) ([]InventoryLotHold, error) {
+	rows, err := q.db.Query(ctx, lotHolds, lotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InventoryLotHold
+	for rows.Next() {
+		var i InventoryLotHold
+		if err := rows.Scan(
+			&i.ID,
+			&i.LotID,
+			&i.Kind,
+			&i.Cause,
+			&i.Note,
+			&i.SourceModule,
+			&i.SourceKind,
+			&i.SourceID,
+			&i.CreatedByUserID,
+			&i.CreatedByDisplay,
+			&i.CreatedAt,
+			&i.ReleasedAt,
+			&i.ReleasedByUserID,
+			&i.ReleasedByDisplay,
+			&i.ReleaseNote,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lotsHeldBySource = `-- name: LotsHeldBySource :many
 SELECT DISTINCT lot_id FROM inventory.lot_holds
 WHERE released_at IS NULL AND source_module = $1 AND source_kind = $2 AND source_id = $3
@@ -188,6 +264,55 @@ func (q *Queries) LotsHeldBySource(ctx context.Context, arg LotsHeldBySourcePara
 		return nil, err
 	}
 	return items, nil
+}
+
+const releaseLotHold = `-- name: ReleaseLotHold :one
+UPDATE inventory.lot_holds
+SET released_at = $1::timestamptz, released_by_user_id = $2,
+    released_by_display = $3, release_note = $4
+WHERE id = $5 AND lot_id = $6 AND released_at IS NULL
+RETURNING id, lot_id, kind, cause, note, source_module, source_kind, source_id, created_by_user_id, created_by_display, created_at, released_at, released_by_user_id, released_by_display, release_note
+`
+
+type ReleaseLotHoldParams struct {
+	Now               time.Time
+	ReleasedByUserID  *uuid.UUID
+	ReleasedByDisplay *string
+	ReleaseNote       *string
+	ID                int64
+	LotID             int64
+}
+
+// ReleaseLotHold releases one active hold, with the releaser's note (M64:
+// the lot page's Release); a released one is no row.
+func (q *Queries) ReleaseLotHold(ctx context.Context, arg ReleaseLotHoldParams) (InventoryLotHold, error) {
+	row := q.db.QueryRow(ctx, releaseLotHold,
+		arg.Now,
+		arg.ReleasedByUserID,
+		arg.ReleasedByDisplay,
+		arg.ReleaseNote,
+		arg.ID,
+		arg.LotID,
+	)
+	var i InventoryLotHold
+	err := row.Scan(
+		&i.ID,
+		&i.LotID,
+		&i.Kind,
+		&i.Cause,
+		&i.Note,
+		&i.SourceModule,
+		&i.SourceKind,
+		&i.SourceID,
+		&i.CreatedByUserID,
+		&i.CreatedByDisplay,
+		&i.CreatedAt,
+		&i.ReleasedAt,
+		&i.ReleasedByUserID,
+		&i.ReleasedByDisplay,
+		&i.ReleaseNote,
+	)
+	return i, err
 }
 
 const releaseSourceHolds = `-- name: ReleaseSourceHolds :many

@@ -16,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/store"
+	"github.com/vantigo-io/vantigo/server/internal/live"
 )
 
 // Lots (manufacturing phase 2 M52–M58, M64): a numbered quantity of one
@@ -488,7 +489,7 @@ func (l ledger) HoldLots(ctx context.Context, tx pgx.Tx, src contracts.StockSour
 		}
 		ids = append(ids, h.LotID)
 	}
-	return l.s.holdLots(ctx, store.New(tx), sourceText(src), holds, ids)
+	return l.s.holdLots(ctx, tx, store.New(tx), sourceText(src), holds, ids)
 }
 
 // sourceText is a document as a hold keeps it.
@@ -496,8 +497,9 @@ func sourceText(src contracts.StockSource) movementSource {
 	return movementSource{module: src.Module, kind: src.Kind, id: strconv.FormatInt(src.ID, 10)}
 }
 
-// holdLots is HoldLots' work, for any source.
-func (s *server) holdLots(ctx context.Context, txq *store.Queries, src movementSource, holds []contracts.LotHold, ids []int64) error {
+// holdLots is HoldLots' work, for any source: the lot page's too. It tells
+// the lots' live topics on q, the transaction that holds them.
+func (s *server) holdLots(ctx context.Context, q live.Execer, txq *store.Queries, src movementSource, holds []contracts.LotHold, ids []int64) error {
 	update := map[int64]bool{}
 	for _, id := range ids {
 		update[id] = true
@@ -553,7 +555,7 @@ func (s *server) holdLots(ctx context.Context, txq *store.Queries, src movementS
 	if _, err := txq.DeriveLotStatuses(ctx, store.DeriveLotStatusesParams{Ids: ids, Now: s.deps.Clock()}); err != nil {
 		return fmt.Errorf("inventory: derive the lots' statuses: %w", err)
 	}
-	return nil
+	return notifyLots(ctx, q, ids)
 }
 
 // ReleaseLotHolds releases every active hold src's document put on the lots
@@ -574,11 +576,12 @@ func (l ledger) ReleaseLotHolds(ctx context.Context, tx pgx.Tx, src contracts.St
 	if len(lotIDs) == 0 {
 		return nil
 	}
-	return l.s.releaseHolds(ctx, txq, text, lotIDs, by)
+	return l.s.releaseHolds(ctx, tx, txq, text, lotIDs, by)
 }
 
-// releaseHolds is ReleaseLotHolds' work, for any source.
-func (s *server) releaseHolds(ctx context.Context, txq *store.Queries, src movementSource, lotIDs []int64, by contracts.LotActor) error {
+// releaseHolds is ReleaseLotHolds' work, for any source, telling the lots'
+// live topics on q.
+func (s *server) releaseHolds(ctx context.Context, q live.Execer, txq *store.Queries, src movementSource, lotIDs []int64, by contracts.LotActor) error {
 	update := map[int64]bool{}
 	for _, id := range lotIDs {
 		update[id] = true
@@ -603,5 +606,5 @@ func (s *server) releaseHolds(ctx context.Context, txq *store.Queries, src movem
 	if _, err := txq.DeriveLotStatuses(ctx, store.DeriveLotStatusesParams{Ids: lotIDs, Now: s.deps.Clock()}); err != nil {
 		return fmt.Errorf("inventory: derive the lots' statuses: %w", err)
 	}
-	return nil
+	return notifyLots(ctx, q, lotIDs)
 }
