@@ -1028,7 +1028,11 @@ What the design deferred, each waiting for what is named:
   guard until production records lots, lots and their holds, the balance per (variant,
   location, lot), expiry, FEFO and AutoLot, usable on hand and the lot-aware stock
   contracts ([Inventory](docs/src/content/docs/en/reference/inventory.md#lots),
-  [Products](docs/src/content/docs/en/reference/products.md#tracking)).
+  [Products](docs/src/content/docs/en/reference/products.md#tracking)); **M — lot capture
+  in Manufacturing (built)**: the guard removed and the Tracking select shown, the output
+  lot by the BoM's pattern, serials one per unit, consumed lots named or taken FEFO by
+  Inventory, the one re-proposal and the deadlock retried once, the order's Lots tab
+  ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#lots-on-productions)).
 - **Quality checks on operations.**
 - **Operation dependencies (parallel operations).**
 - **Alternative work centers, a drag to another center, overlap.**

@@ -300,8 +300,9 @@ An item can be kept in **lots** — a batch with its own number, such as a suppl
 of steel or a day's production of milk — or in **serial numbers**, where each piece is a
 lot of its own and holds exactly one. Every quantity of such an item lies under its lot,
 so you can tell which lot is on which shelf, when it expires, and where it went. Lot
-tracking is switched on per item in Products once deliveries and productions record lots;
-until then the forms show no lot.
+tracking is switched on per item in [Products](/en/user/products/#track-lots-and-serial-numbers),
+while the item holds no stock; deliveries in Orders and productions in
+[Manufacturing](/en/user/manufacturing/#lots-and-serial-numbers) then name their lots too.
 
 A lot has its **number** (1–20 letters, digits and `. _ / -`, one per item), the
 supplier's **supplier lot** — the heat number of a 3.1 certificate, for example — a

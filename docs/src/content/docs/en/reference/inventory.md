@@ -710,10 +710,12 @@ the first line about the state of things — `insufficient_stock`, `lot_expired`
 Manufacturing phase 2's delivery L1a ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-12-manufacturing-phase2-design.md),
 decisions M49–M67) makes the ledger lot-aware. A variant's **tracking** is Products'
 (`none`, `lot` or `serial`, answered as `VariantEntry.Tracking` by every catalog read
-and by `LockVariants`); until production records lots, Products refuses any mode but
-`none` ([Products](/en/reference/products/#tracking)), so in this delivery a tracked
-variant exists only in tests. An untracked variant posts exactly as before: its
-balances and lines carry no lot.
+and by `LockVariants`), changed only while the variant holds nothing
+([Products](/en/reference/products/#tracking)). Orders' deliveries pick lots (layer O) and
+Manufacturing's productions name and consume them (layer M,
+[Manufacturing](/en/reference/manufacturing/#lots-on-productions)), so since layer M every
+mode is open. An untracked variant posts exactly as before: its balances and lines carry
+no lot.
 
 ### The lot
 
