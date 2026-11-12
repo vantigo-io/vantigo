@@ -34,6 +34,7 @@ import { type ReactNode, useState } from "react";
 import {
   deleteLotAttachment,
   holdCauses,
+  holdKinds,
   type InventoryLot,
   type InventoryLotHold,
   type InventoryLotHoldCause,
@@ -73,8 +74,34 @@ const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   </Stack>
 );
 
+/** A lot page's movement lines are the latest this many (M61): the server's own bound. */
+const LOT_PAGE_MOVEMENTS = 200;
+
+/** Another module's name as the host labels it; the key itself when the host gives none. */
+type ModuleLabel = (module: string) => string;
+const ownKey: ModuleLabel = (module) => module;
+
+/** Whether the lot page itself has an active hold of the kind on the lot: it holds a lot once per kind (409 hold_exists). */
+const pageHolds = (lot: InventoryLot, kind: InventoryLotHoldKind) =>
+  lot.holds.some(
+    (hold) =>
+      !hold.releasedAt &&
+      hold.kind === kind &&
+      hold.source.module === "inventory" &&
+      hold.source.kind === "lot" &&
+      hold.source.id === String(lot.id),
+  );
+
 /** The document that made a lot or put a hold: this page, a movement linked, another module's named. */
-const SourceLink = ({ source, lotId }: { source: InventoryLotHold["source"]; lotId: number }) => {
+const SourceLink = ({
+  source,
+  lotId,
+  moduleLabel,
+}: {
+  source: InventoryLotHold["source"];
+  lotId: number;
+  moduleLabel: ModuleLabel;
+}) => {
   const { t } = useInventoryFormat();
   if (source.module === "inventory" && source.kind === "lot" && source.id === String(lotId))
     return <>{t("holdSource_lot")}</>;
@@ -84,7 +111,7 @@ const SourceLink = ({ source, lotId }: { source: InventoryLotHold["source"]; lot
         {t("movementById", { id: source.id })}
       </Anchor>
     );
-  return <>{`${source.module} · ${source.kind} ${source.id}`}</>;
+  return <>{`${moduleLabel(source.module)} · ${source.kind} ${source.id}`}</>;
 };
 
 /** The edit dialog (M61): the supplier lot, the three dates and the note, replaced whole at the revision read. */
@@ -259,10 +286,11 @@ const ReleaseDialog = ({ lot, hold, onClose }: { lot: InventoryLot; hold: Invent
 };
 
 /** The holds panel (M61, M64): every hold, active ones first, with Quarantine, Block and Release for a lot manager. */
-const HoldsPanel = ({ lot, manage }: { lot: InventoryLot; manage: boolean }) => {
+const HoldsPanel = ({ lot, manage, moduleLabel }: { lot: InventoryLot; manage: boolean; moduleLabel: ModuleLabel }) => {
   const { t, stamp } = useInventoryFormat();
   const [putting, setPutting] = useState<InventoryLotHoldKind>();
   const [releasing, setReleasing] = useState<InventoryLotHold>();
+  const held = { quarantine: pageHolds(lot, "quarantine"), block: pageHolds(lot, "block") };
   return (
     <PageSection>
       <Stack gap="sm" data-assist="inventory.lot.holds">
@@ -275,6 +303,7 @@ const HoldsPanel = ({ lot, manage }: { lot: InventoryLot; manage: boolean }) => 
                 variant="light"
                 color="orange"
                 leftSection={<IconShieldPause size={14} />}
+                disabled={held.quarantine}
                 onClick={() => setPutting("quarantine")}
               >
                 {t("quarantineLot")}
@@ -284,6 +313,7 @@ const HoldsPanel = ({ lot, manage }: { lot: InventoryLot; manage: boolean }) => 
                 variant="light"
                 color="red"
                 leftSection={<IconLock size={14} />}
+                disabled={held.block}
                 onClick={() => setPutting("block")}
               >
                 {t("blockLot")}
@@ -291,6 +321,14 @@ const HoldsPanel = ({ lot, manage }: { lot: InventoryLot; manage: boolean }) => 
             </Group>
           )}
         </Group>
+        {manage &&
+          holdKinds
+            .filter((kind) => held[kind])
+            .map((kind) => (
+              <Text key={kind} size="xs" c="dimmed">
+                {t(`holdExists_${kind}`)}
+              </Text>
+            ))}
         {lot.holds.length === 0 ? (
           <Text size="sm" c="dimmed">
             {t("noHolds")}
@@ -315,7 +353,7 @@ const HoldsPanel = ({ lot, manage }: { lot: InventoryLot; manage: boolean }) => 
                         {hold.note ? ` — ${hold.note}` : ""}
                       </Text>
                       <Text size="xs" c="dimmed">
-                        <SourceLink source={hold.source} lotId={lot.id} />
+                        <SourceLink source={hold.source} lotId={lot.id} moduleLabel={moduleLabel} />
                         {" · "}
                         {t("heldByAt", { name: hold.createdBy?.displayName ?? "—", when: stamp(hold.createdAt) })}
                       </Text>
@@ -340,7 +378,7 @@ const HoldsPanel = ({ lot, manage }: { lot: InventoryLot; manage: boolean }) => 
                         )
                       ) : (
                         <Text size="xs" c="dimmed">
-                          {t("holdSourceElsewhere", { module: hold.source.module })}
+                          {t("holdSourceElsewhere", { module: moduleLabel(hold.source.module) })}
                         </Text>
                       ))}
                   </Table.Td>
@@ -427,7 +465,7 @@ const FilesPanel = ({ lot, manage }: { lot: InventoryLot; manage: boolean }) => 
               {lot.attachments.map((file) => (
                 <Table.Tr key={file.id}>
                   <Table.Td>
-                    <Anchor size="sm" href={lotAttachmentHref(lot.id, file.id)} target="_blank" rel="noopener">
+                    <Anchor size="sm" href={lotAttachmentHref(lot.id, file.id)} download={file.fileName}>
                       {file.fileName}
                     </Anchor>
                   </Table.Td>
@@ -497,7 +535,7 @@ const FilesPanel = ({ lot, manage }: { lot: InventoryLot; manage: boolean }) => 
  * `inventory:lots-manage`. The page refetches on the lot's live topic and
  * polls while it is down.
  */
-export const LotPage = () => {
+export const LotPage = ({ moduleLabel = ownKey }: { moduleLabel?: ModuleLabel }) => {
   const { t, quantity, stamp, day } = useInventoryFormat();
   const { lotId: rawId } = useParams({ strict: false }) as { lotId: string };
   const lotId = Number(rawId);
@@ -567,7 +605,7 @@ export const LotPage = () => {
               </Fact>
               {data.origin && (
                 <Fact label={t("madeBy")}>
-                  <SourceLink source={data.origin} lotId={data.id} />
+                  <SourceLink source={data.origin} lotId={data.id} moduleLabel={moduleLabel} />
                 </Fact>
               )}
             </SimpleGrid>
@@ -577,7 +615,7 @@ export const LotPage = () => {
               </Text>
             )}
           </PageSection>
-          <HoldsPanel lot={data} manage={manage} />
+          <HoldsPanel lot={data} manage={manage} moduleLabel={moduleLabel} />
           <PageSection>
             <Stack gap="sm">
               <Title order={4}>{t("whereItLies")}</Title>
@@ -664,6 +702,11 @@ export const LotPage = () => {
                     </Table.Tbody>
                   </Table>
                 </Table.ScrollContainer>
+              )}
+              {data.movements.length >= LOT_PAGE_MOVEMENTS && (
+                <Text size="xs" c="dimmed">
+                  {t("movementsLatest", { count: LOT_PAGE_MOVEMENTS })}
+                </Text>
               )}
             </Stack>
           </PageSection>

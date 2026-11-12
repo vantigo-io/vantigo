@@ -291,7 +291,7 @@ export const LineEditor = ({
                       <Table.Td miw={200}>
                         {isTracked(line.variant) ? (
                           <LotField
-                            key={line.variant?.id}
+                            key={`${line.variant?.id}:${siteId}`}
                             kind={kind}
                             n={n}
                             line={line}

@@ -3,7 +3,8 @@ import { DatePickerInput } from "@mantine/dates";
 import { IconCalendar } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { fefoOrder, type InventoryLotSummary, usableLot, variantLotsQueryOptions } from "../api/lots";
+import { fefoOrder, type InventoryBalanceLot, usableLot } from "../api/lots";
+import { variantStockQueryOptions } from "../api/stock";
 import { useInventoryFormat } from "../lib/format";
 import { type EditorLine, type LineEditorKind, takesSerials } from "../lib/lines";
 
@@ -23,29 +24,48 @@ export interface LotFieldProps {
  * A tracked row's lot (manufacturing phase 2 M59): on a receipt the lot's
  * number, picked from the variant's lots at the site or typed — left empty,
  * one is made — with its dates; on a receipt of a serial variant the first
- * serial and how many; on a move a lot the variant has at the site; on an
- * adjustment one of those or a new number. A move or an adjustment proposes
- * the first usable lot in FEFO order, as the server's own proposal would.
+ * serial and how many; on a move a lot the variant has on the row's from
+ * location; on an adjustment one of the lots on its location or a new
+ * number. The lots are the variant's stock rows (`GET /variants/{id}/stock`),
+ * every one of them, per location. Once a move's or an adjustment's location
+ * is chosen the field proposes its first usable lot there in FEFO order, as
+ * the server's own proposal would; a lot the row names that does not lie on a
+ * newly chosen location gives way to that location's proposal.
  */
 export const LotField = ({ kind, n, line, siteId, onChange }: LotFieldProps) => {
   const { t, quantity, day } = useInventoryFormat();
   const variant = line.variant;
-  const lots = useQuery({
-    ...variantLotsQueryOptions(variant?.id ?? 0, siteId),
+  const stock = useQuery({
+    ...variantStockQueryOptions(variant?.id ?? 0),
     enabled: variant !== undefined && siteId !== undefined,
   });
-  const ordered = fefoOrder(lots.data ?? []);
-  const proposal = kind === "receipt" ? undefined : (ordered.find(usableLot) ?? ordered[0]);
-  // The proposal fills an untouched row once, when the lots are read; a row the person empties stays empty.
-  const proposed = useRef(false);
+  const site = stock.data?.sites.find((one) => one.site.id === siteId);
+  // A receipt offers the lots anywhere at the site, summed; a move or an adjustment the lots on its location.
+  const here = new Map<number, InventoryBalanceLot>();
+  for (const row of site?.rows ?? []) {
+    if (kind !== "receipt" && row.location.id !== line.locationId) continue;
+    for (const lot of row.lots ?? []) {
+      const seen = here.get(lot.lotId);
+      here.set(lot.lotId, seen ? { ...seen, onHand: seen.onHand + lot.onHand } : lot);
+    }
+  }
+  const ordered = fefoOrder([...here.values()], (lot) => lot.lotId);
+  const proposal = kind === "receipt" || line.locationId === null ? undefined : (ordered.find(usableLot) ?? ordered[0]);
+  const lotHere = line.lotId !== undefined && here.has(line.lotId);
+  // The proposal fills a row once per location chosen, when its lots are read; a row the person empties stays
+  // empty until the location changes, and a new number typed on an adjustment is kept.
+  const proposedAt = useRef<number | null>(null);
+  const ready = stock.data !== undefined;
   useEffect(() => {
-    if (proposed.current || !proposal) return;
-    proposed.current = true;
-    if (line.lotId === undefined && line.lotNumber === "") onChange({ lotId: proposal.id, lotNumber: proposal.number });
-  }, [proposal, line.lotId, line.lotNumber, onChange]);
+    if (kind === "receipt" || !ready || line.locationId === null || proposedAt.current === line.locationId) return;
+    proposedAt.current = line.locationId;
+    if (lotHere || (line.lotId === undefined && line.lotNumber !== "")) return;
+    if (proposal) onChange({ lotId: proposal.lotId, lotNumber: proposal.number });
+    else if (line.lotId !== undefined) onChange({ lotId: undefined, lotNumber: "" });
+  }, [kind, ready, line.locationId, line.lotId, line.lotNumber, lotHere, proposal, onChange]);
   if (!variant) return null;
 
-  const label = (lot: InventoryLotSummary) => {
+  const label = (lot: InventoryBalanceLot) => {
     const text = lot.expiry
       ? t("lotExpiresOption", {
           number: lot.number,
@@ -126,11 +146,11 @@ export const LotField = ({ kind, n, line, siteId, onChange }: LotFieldProps) => 
         searchable
         aria-label={t("lotOfLine", { n })}
         placeholder={t("lotPickPlaceholder")}
-        data={ordered.map((lot) => ({ value: String(lot.id), label: label(lot) }))}
+        data={ordered.map((lot) => ({ value: String(lot.lotId), label: label(lot) }))}
         value={line.lotId === undefined ? null : String(line.lotId)}
         onChange={(value) => {
-          const lot = ordered.find((one) => String(one.id) === value);
-          onChange({ lotId: lot?.id, lotNumber: lot?.number ?? "" });
+          const lot = ordered.find((one) => String(one.lotId) === value);
+          onChange({ lotId: lot?.lotId, lotNumber: lot?.number ?? "" });
         }}
       />
     );
@@ -146,7 +166,7 @@ export const LotField = ({ kind, n, line, siteId, onChange }: LotFieldProps) => 
         maxLength={20}
         data={ordered.map((lot) => ({ value: lot.number, label: label(lot) }))}
         value={line.lotNumber}
-        onChange={(text) => onChange({ lotNumber: text, lotId: byNumber(text)?.id })}
+        onChange={(text) => onChange({ lotNumber: text, lotId: byNumber(text)?.lotId })}
       />
       {dates}
     </Group>

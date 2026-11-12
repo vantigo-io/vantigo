@@ -379,6 +379,27 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       revision: one.revision,
       low: one.reorderPoint !== null && available + incoming <= one.reorderPoint,
     };
+  /** A tracked variant's lots on a location, as the fixture lots' `locations` place them, in the order given. */
+  const lotsOn = (variantId: number, locationId: number) => {
+    const lots = state.lots.flatMap((one) => {
+      const at = one.variant.id === variantId ? one.locations.find((row) => row.location.id === locationId) : undefined;
+      return at
+        ? [
+            {
+              lotId: one.id,
+              number: one.number,
+              status: one.status,
+              expired: one.expired,
+              expiry: one.expiry,
+              bestBefore: one.bestBefore,
+              receivedAt: one.receivedAt,
+              onHand: at.onHand,
+            },
+          ]
+        : [];
+    });
+    return lots.length > 0 ? { lots } : {};
+  };
   const variantStock = (variant: InventoryVariantRef): InventoryVariantStock => {
     const rows = rowsOf(state.balances.filter((one) => one.variantId === variant.id));
     const reservedAt = (siteId?: number) =>
@@ -394,7 +415,11 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         const placement = placementAt(variant.id, site.id);
         // The primary location first, marked (I55).
         const ordered = here
-          .map((row) => ({ ...row, primary: row.location.id === placement?.primaryLocationId }))
+          .map((row) => ({
+            ...row,
+            primary: row.location.id === placement?.primaryLocationId,
+            ...lotsOn(variant.id, row.location.id),
+          }))
           .sort((a, b) => Number(b.primary) - Number(a.primary));
         return {
           site: siteRef(site),
@@ -807,6 +832,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
           bestBefore: one.bestBefore,
           supplierLot: one.supplierLot,
           onHand: one.onHand,
+          receivedAt: one.receivedAt,
         }));
       return jsonResponse(200, { lots: rows });
     }
@@ -818,6 +844,8 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
     if (!page[2] && method === "GET") return jsonResponse(200, one);
     if (page[2] && !page[3] && method === "POST") {
       const input = body as InventoryLotHoldInput;
+      if (one.holds.some((h) => !h.releasedAt && h.kind === input.kind && h.inventorys && h.source.kind === "lot"))
+        return inventoryProblem(409, "hold_exists");
       const hold = {
         id: nextId++,
         kind: input.kind,
