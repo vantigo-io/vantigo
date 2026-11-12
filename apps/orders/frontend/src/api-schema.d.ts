@@ -228,7 +228,7 @@ export interface paths {
         get: operations["getDelivery"];
         /**
          * Save a delivery
-         * @description Saves a draft delivery's lines: quantities and the locations they are picked from (O47). A line names an open goods line of the order, at most what is open (over_delivery), and a location of the site (location_unknown). A tracked line names its lots instead (manufacturing phase 2 M77): each a lot of the site holding the variant at the location (lot_unknown); an untracked line names none (lot_not_allowed). Lots the person sends are marked chosen; a tracked line sent without lots keeps its picks while they add up to its quantity, and is proposed again otherwise.
+         * @description Saves a draft delivery's lines: quantities and the locations they are picked from (O47). A line names an open goods line of the order, at most what is open (over_delivery), and a location of the site (location_unknown). A tracked line names its lots instead (manufacturing phase 2 M77): each a lot of the site holding the variant at the location (lot_unknown); an untracked line names none (lot_not_allowed). Lots the person sends are marked chosen; a serial number's lot takes 1 (serial_quantity), and a new or changed lot that allows expiry needs inventory:expired-override (expired_override_required). A tracked line sent without lots keeps its picks when a person chose them or while they add up to its quantity, and is proposed again otherwise; proposeAgain proposes it again whatever its lots.
          */
         put: operations["updateDelivery"];
         post?: never;
@@ -2039,14 +2039,18 @@ export interface components {
             lotNumber: string;
             /** Format: double */
             quantity: number;
+            /** @description Whether the lot is a serial number's: a pick of it takes exactly 1 (serial_quantity otherwise). */
+            serial: boolean;
             /** @enum {string} */
             status: "available" | "quarantine" | "blocked";
         };
-        /** @description A draft delivery's line as the editor saves it. lots are a tracked line's picks as the person chose them (manufacturing phase 2 M77); left out, the line keeps its picks while they still add up to its quantity, and is proposed again (FEFO) otherwise. */
+        /** @description A draft delivery's line as the editor saves it. lots are a tracked line's picks as the person chose them (manufacturing phase 2 M77); left out, the line keeps its picks when a person chose them or while they still add up to its quantity, and is proposed again (FEFO) otherwise. proposeAgain proposes the line's lots again (FEFO) whatever they were, and is sent without lots. */
         OrdersDeliveryLineInput: {
             /** Format: int64 */
             fromLocationId?: number | null;
             lots?: components["schemas"]["OrdersDeliveryLotInput"][];
+            /** @description A tracked line's Propose again: its lots are proposed again from the site's lots (FEFO) and are no longer chosen. */
+            proposeAgain?: boolean;
             /** Format: int64 */
             orderLineId: number;
             /**
@@ -2057,7 +2061,7 @@ export interface components {
         };
         /** @description One lot a tracked line takes, as the person chose it: a lot of the site holding the variant at the location (lot_unknown otherwise). */
         OrdersDeliveryLotInput: {
-            /** @description Use the lot although it is expired (Use expired lot); the post honours it only for a poster holding inventory:expired-override. */
+            /** @description Use the lot although it is expired (Use expired lot): set on a new or changed lot only by a holder of inventory:expired-override (expired_override_required otherwise), and the post honours it only for a poster holding it. */
             allowExpired?: boolean;
             /** Format: int64 */
             locationId: number;
@@ -2084,7 +2088,7 @@ export interface components {
             id: number;
             /** Format: int32 */
             lines: number;
-            /** @description The lot numbers the delivery takes, once each, in line order (manufacturing phase 2 M79). */
+            /** @description The lot numbers the delivery takes, once each, in line order (manufacturing phase 2 M79): a posted delivery's, and a draft's as proposed or chosen so far; none for a cancelled delivery. */
             lots: string[];
             /** Format: int64 */
             number: number;
@@ -4665,7 +4669,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrdersDelivery"];
                 };
             };
-            /** @description Bad Request — field errors, a line's codes: line_not_found, quantity_invalid, over_delivery, location_unknown, lot_unknown, lot_not_allowed. */
+            /** @description Bad Request — field errors, a line's codes: line_not_found, line_invalid, quantity_invalid, over_delivery, location_unknown, lot_unknown, lot_not_allowed, serial_quantity, expired_override_required. */
             400: {
                 headers: {
                     [name: string]: unknown;

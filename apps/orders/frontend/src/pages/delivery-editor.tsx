@@ -4,7 +4,7 @@ import { IconCircleCheck, IconDeviceFloppy, IconPlayerPause, IconX } from "@tabl
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   cancelDelivery,
   deliveryQueryOptions,
@@ -74,6 +74,52 @@ interface Row {
   lotsEdited: boolean;
 }
 
+/** Where a sent line stands among the editor's rows, and each of its sent lot rows among the row's lots. */
+interface Sent {
+  row: number;
+  lots: number[];
+}
+
+/**
+ * The lines a save sends — a line at 0 left out, a lot at 0 too — and where
+ * each stands in the editor, so a refusal's indexes find their rows again.
+ * The line at `proposeAgain` is sent with *Propose again* and no lots.
+ */
+const deliveryInputs = (rows: readonly Row[], proposeAgain: number | null) => {
+  const lines: DeliveryLineInput[] = [];
+  const sent: Sent[] = [];
+  rows.forEach((row, index) => {
+    if (row.quantity === "" || row.quantity <= 0) return;
+    const input: DeliveryLineInput = {
+      orderLineId: row.orderLineId,
+      quantity: row.quantity,
+      fromLocationId: row.fromLocationId,
+    };
+    if (index === proposeAgain) {
+      lines.push({ ...input, proposeAgain: true });
+      sent.push({ row: index, lots: [] });
+      return;
+    }
+    if (!row.lotsEdited) {
+      lines.push(input);
+      sent.push({ row: index, lots: [] });
+      return;
+    }
+    const kept = row.lots.flatMap((lot, at) => (lot.quantity !== "" && lot.quantity > 0 ? [{ lot, at }] : []));
+    lines.push({
+      ...input,
+      lots: kept.map(({ lot }) => ({
+        lotId: lot.lotId,
+        locationId: lot.locationId,
+        quantity: lot.quantity as number,
+        ...(lot.allowExpired ? { allowExpired: true } : {}),
+      })),
+    });
+    sent.push({ row: index, lots: kept.map(({ at }) => at) });
+  });
+  return { lines, sent };
+};
+
 const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: OrdersAccess }) => {
   const { t, quantity } = useOrdersFormat();
   const queryClient = useQueryClient();
@@ -100,6 +146,8 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
   // A refusal naming a tracked line's lot row, by "line:lot".
   const [refusedLots, setRefusedLots] = useState<ReadonlyMap<string, string>>(new Map());
   const [dialog, setDialog] = useState<"cancel" | null>(null);
+  // Where the last save's lines stood, to map its refusal back to the rows.
+  const sentRef = useRef<Sent[]>([]);
 
   const done = async (next: Delivery, message: string) => {
     queryClient.setQueryData(detailKey, next);
@@ -110,53 +158,42 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
     notifications.show({ color: "green", message });
     setDialog(null);
   };
-  const refuse = (title: string) => (error: unknown) => {
+  // A post's and a cancel's indexes are the delivery's lines; a save's, the lines it sent.
+  const refuse = (title: string, sent?: readonly Sent[]) => (error: unknown) => {
     const failing = refusedLines(error);
+    const rowOf = (index: number) => (sent ? (sent[index]?.row ?? index) : index);
+    const lotOf = (index: number, lot: number) => (sent ? (sent[index]?.lots[lot] ?? lot) : lot);
     setRefused(
       new Map(
         failing
           .filter((line) => line.lotIndex === undefined)
-          .map((line) => [line.index, lineRefusalWords(line.code, line.detail, t)]),
+          .map((line) => [rowOf(line.index), lineRefusalWords(line.code, line.detail, t)]),
       ),
     );
     setRefusedLots(
       new Map(
-        failing
-          .filter((line) => line.lotIndex !== undefined)
-          .map((line) => [`${line.index}:${line.lotIndex}`, lineRefusalWords(line.code, line.detail, t)]),
+        failing.flatMap((line) =>
+          line.lotIndex === undefined
+            ? []
+            : [
+                [
+                  `${rowOf(line.index)}:${lotOf(line.index, line.lotIndex)}`,
+                  lineRefusalWords(line.code, line.detail, t),
+                ] as const,
+              ],
+        ),
       ),
     );
     notifications.show({ color: "red", title, message: refusalMessage(error, t) });
   };
   const save = useMutation({
-    mutationFn: () =>
-      updateDelivery(
-        delivery.id,
-        delivery,
-        rows
-          .filter((row) => row.quantity !== "" && row.quantity > 0)
-          .map((row): DeliveryLineInput => {
-            const input: DeliveryLineInput = {
-              orderLineId: row.orderLineId,
-              quantity: row.quantity as number,
-              fromLocationId: row.fromLocationId,
-            };
-            if (!row.lotsEdited) return input;
-            return {
-              ...input,
-              lots: row.lots
-                .filter((lot) => lot.quantity !== "" && lot.quantity > 0)
-                .map((lot) => ({
-                  lotId: lot.lotId,
-                  locationId: lot.locationId,
-                  quantity: lot.quantity as number,
-                  ...(lot.allowExpired ? { allowExpired: true } : {}),
-                })),
-            };
-          }),
-      ),
+    mutationFn: (proposeAgain: number | null) => {
+      const { lines, sent } = deliveryInputs(rows, proposeAgain);
+      sentRef.current = sent;
+      return updateDelivery(delivery.id, delivery, lines);
+    },
     onSuccess: (next) => done(next, t("deliverySaved")),
-    onError: refuse(t("couldNotSave")),
+    onError: (error) => refuse(t("couldNotSave"), sentRef.current)(error),
   });
   const post = useMutation({
     mutationFn: () => postDelivery(delivery.id, delivery),
@@ -222,7 +259,7 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
                 leftSection={<IconDeviceFloppy size={16} />}
                 disabled={!dirty || busy}
                 loading={save.isPending}
-                onClick={() => save.mutate()}
+                onClick={() => save.mutate(null)}
               >
                 {t("save")}
               </Button>
@@ -366,6 +403,8 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
                               editable={editable}
                               canOverrideExpired={meta.data?.canOverrideExpired ?? false}
                               onChange={(lots) => set(index, { lots, lotsEdited: true })}
+                              onProposeAgain={() => save.mutate(index)}
+                              busy={busy}
                               refused={lotProblems}
                             />
                           </Table.Td>

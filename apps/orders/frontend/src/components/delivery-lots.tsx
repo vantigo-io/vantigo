@@ -1,5 +1,5 @@
-import { ActionIcon, Badge, Checkbox, Group, NumberInput, Select, Stack, Table, Text } from "@mantine/core";
-import { IconTrash } from "@tabler/icons-react";
+import { ActionIcon, Badge, Button, Checkbox, Group, NumberInput, Select, Stack, Table, Text } from "@mantine/core";
+import { IconRefresh, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import type { DeliveryLine } from "../api/types";
 import { type LotPickRow, lotsTotal } from "../lib/delivery-lots";
@@ -16,6 +16,10 @@ export interface DeliveryLotsProps {
   /** The caller holds `inventory:expired-override`: *Use expired lot* is offered. */
   canOverrideExpired: boolean;
   onChange: (picks: LotPickRow[]) => void;
+  /** *Propose again*: saves the delivery with this line's lots proposed again (FEFO). */
+  onProposeAgain: () => void;
+  /** A save, post or cancel is under way. */
+  busy: boolean;
   /** A refusal's words per lot row, by the row's index. */
   refused: ReadonlyMap<number, string>;
 }
@@ -26,8 +30,10 @@ export interface DeliveryLotsProps {
  * location and quantity; *Change lot* picks among the site's lots of the
  * variant in FEFO order — a lot on hold cannot be chosen, nor an expired one
  * unless *Use expired lot* is ticked, which only a holder of
- * `inventory:expired-override` is offered. *Short by* shows what the lots do
- * not cover of the line; the post refuses until they add up.
+ * `inventory:expired-override` is offered. A serial number's lot takes 1.
+ * *Short by* shows what the lots do not cover of the line; the post refuses
+ * until they add up. *Propose again* saves the delivery with the line's lots
+ * proposed FEFO from the site's lots as they are now.
  */
 export const DeliveryLots = ({
   line,
@@ -37,6 +43,8 @@ export const DeliveryLots = ({
   editable,
   canOverrideExpired,
   onChange,
+  onProposeAgain,
+  busy,
   refused,
 }: DeliveryLotsProps) => {
   const { t, quantity, date } = useOrdersFormat();
@@ -49,6 +57,7 @@ export const DeliveryLots = ({
       expiry: choice ? choice.expiry : stored?.expiry,
       code: choice?.fullCode ?? stored?.locationCode ?? "",
       expired: choice?.expired ?? false,
+      serial: choice?.serial ?? false,
       status: choice?.status,
     };
   };
@@ -135,7 +144,8 @@ export const DeliveryLots = ({
                         size="xs"
                         aria-label={t("lotQuantity", { lot: lot.number, position })}
                         min={0}
-                        decimalScale={3}
+                        max={lot.serial ? 1 : undefined}
+                        decimalScale={lot.serial ? 0 : 3}
                         value={pick.quantity}
                         onChange={(value) => set(index, { quantity: typeof value === "number" ? value : "" })}
                         rightSection={<Text size="xs">{line.unit}</Text>}
@@ -186,6 +196,18 @@ export const DeliveryLots = ({
             searchable
             onChange={choose}
           />
+        )}
+        {editable && (
+          <Button
+            size="xs"
+            variant="subtle"
+            leftSection={<IconRefresh size={14} />}
+            disabled={busy}
+            onClick={onProposeAgain}
+            aria-label={t("proposeAgainOf", { position })}
+          >
+            {t("proposeAgain")}
+          </Button>
         )}
         {editable && canOverrideExpired && (
           <Checkbox

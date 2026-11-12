@@ -49,6 +49,7 @@ const trackedLine = (overrides: Partial<DeliveryLine> = {}): DeliveryLine => ({
       quantity: 9,
       status: "available",
       expired: true,
+      serial: false,
     },
     {
       lotId: 21,
@@ -60,6 +61,7 @@ const trackedLine = (overrides: Partial<DeliveryLine> = {}): DeliveryLine => ({
       quantity: 4,
       status: "available",
       expired: false,
+      serial: false,
     },
     {
       lotId: 24,
@@ -71,6 +73,7 @@ const trackedLine = (overrides: Partial<DeliveryLine> = {}): DeliveryLine => ({
       quantity: 10,
       status: "quarantine",
       expired: false,
+      serial: false,
     },
     {
       lotId: 22,
@@ -82,6 +85,7 @@ const trackedLine = (overrides: Partial<DeliveryLine> = {}): DeliveryLine => ({
       quantity: 5,
       status: "available",
       expired: false,
+      serial: false,
     },
   ],
   short: 2,
@@ -197,6 +201,46 @@ describe("a delivery's lots", () => {
         { lotId: 23, locationId: 11, quantity: 2, allowExpired: true },
       ]);
     });
+  });
+
+  it("proposes a line's lots again, saving the line with Propose again and no lots", async () => {
+    const fake = server(delivery(), (call) =>
+      call.method === "PUT" && call.url === deliveryUrl
+        ? jsonResponse(200, delivery({ version: 2, updatedAt: "2026-11-05T08:30:00Z" }))
+        : undefined,
+    );
+    renderRoute("/orders/deliveries/7002");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Propose the lots of line 1 again" }));
+    await waitFor(() =>
+      expect(fake.sent("PUT", deliveryUrl)?.body).toEqual({
+        version: 1,
+        expectedUpdatedAt: "2026-11-05T08:00:00Z",
+        lines: [{ orderLineId: 5002, quantity: 6, fromLocationId: null, proposeAgain: true }],
+      }),
+    );
+  });
+
+  it("names a save's refused lot on the row it was sent from, past a lot left at 0", async () => {
+    server(delivery(), (call) =>
+      call.method === "PUT" && call.url === deliveryUrl
+        ? refusal(400, "lot_unknown", {
+            lines: [{ index: 0, code: "lot_unknown", detail: "Lot 22 holds none.", lotIndex: 0, lotId: 22 }],
+          })
+        : undefined,
+    );
+    renderRoute("/orders/deliveries/7002");
+
+    const lots = await screen.findByTestId("delivery-lots-1");
+    await userEvent.click(within(lots).getByRole("combobox", { name: "Change lot of line 1" }));
+    await userEvent.click(await screen.findByRole("option", { name: /^A1 / }));
+    const b2 = within(lots).getByRole("textbox", { name: "Quantity of lot B2 on line 1" });
+    await userEvent.clear(b2);
+    await userEvent.type(b2, "0");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const alert = await within(lots).findByRole("alert");
+    expect(alert).toHaveTextContent("That lot does not hold the item at that location.");
+    expect(alert.closest("tr")).toHaveTextContent("A1");
   });
 
   it("names a refused lot on its row", async () => {
