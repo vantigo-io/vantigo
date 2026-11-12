@@ -157,6 +157,9 @@ const (
 	componentUpdateSchema     = "ManufacturingComponentUpdate"
 	productionInputSchema     = "ManufacturingProductionInput"
 	productionLineInputSchema = "ManufacturingProductionLineInput"
+	productionLotInputSchema  = "ManufacturingProductionLotInput"
+	outputLotInputSchema      = "ManufacturingOutputLotInput"
+	outputSerialsInputSchema  = "ManufacturingOutputSerialsInput"
 	closeInputSchema          = "ManufacturingCloseInput"
 
 	startInputSchema     = "ManufacturingStartInput"
@@ -175,7 +178,7 @@ var closedSchemas = []string{
 	workCenterInputSchema, workCenterUpdateSchema, weekPatternSchema, intervalSchema, revisionInputSchema,
 	closureInputSchema, bomInputSchema, bomUpdateSchema, bomOperationInputSchema, bomLineInputSchema,
 	orderInputSchema, orderUpdateSchema, componentInputSchema, componentUpdateSchema, productionInputSchema,
-	productionLineInputSchema, closeInputSchema, startInputSchema, finishInputSchema, scrapInputSchema, scrapLineInputSchema,
+	productionLineInputSchema, productionLotInputSchema, outputLotInputSchema, outputSerialsInputSchema, closeInputSchema, startInputSchema, finishInputSchema, scrapInputSchema, scrapLineInputSchema,
 	blockInputSchema, correctionSchema, timeLogInputSchema,
 }
 
@@ -190,20 +193,23 @@ var weekPatternDays = map[string]string{
 // closed schemas of their own: a key the contract does not name inside an
 // operation or a line is refused on operations[i].<key> or lines[i].<key>.
 var closedItems = map[string]map[string]string{
-	bomInputSchema:        {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
-	bomUpdateSchema:       {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
-	weekPatternSchema:     weekPatternDays,
-	productionInputSchema: {"lines": productionLineInputSchema},
-	scrapInputSchema:      {"lines": scrapLineInputSchema},
+	bomInputSchema:            {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
+	bomUpdateSchema:           {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
+	weekPatternSchema:         weekPatternDays,
+	productionInputSchema:     {"lines": productionLineInputSchema},
+	productionLineInputSchema: {"lots": productionLotInputSchema},
+	scrapInputSchema:          {"lines": scrapLineInputSchema},
 }
 
 // closedObjects is, per closed schema, its object properties that are closed
 // schemas of their own: a work center's weekly pattern (M9), a finish's
-// production (M29).
+// production (M29), a production's output lot and serials (manufacturing
+// phase 2 M80, M81).
 var closedObjects = map[string]map[string]string{
 	workCenterInputSchema:  {"pattern": weekPatternSchema},
 	workCenterUpdateSchema: {"pattern": weekPatternSchema},
 	finishInputSchema:      {"production": productionInputSchema},
+	productionInputSchema:  {"outputLot": outputLotInputSchema, "outputSerials": outputSerialsInputSchema},
 }
 
 // checkClosedSchemas fails the mount unless the contract has every schema of

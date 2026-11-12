@@ -176,7 +176,7 @@ func (q *Queries) DeleteBomOperationsExcept(ctx context.Context, arg DeleteBomOp
 }
 
 const getBom = `-- name: GetBom :one
-SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at FROM manufacturing.boms WHERE id = $1
+SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern FROM manufacturing.boms WHERE id = $1
 `
 
 func (q *Queries) GetBom(ctx context.Context, id int64) (ManufacturingBom, error) {
@@ -195,12 +195,13 @@ func (q *Queries) GetBom(ctx context.Context, id int64) (ManufacturingBom, error
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LotPattern,
 	)
 	return i, err
 }
 
 const getBomForShare = `-- name: GetBomForShare :one
-SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at FROM manufacturing.boms WHERE id = $1 FOR SHARE
+SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern FROM manufacturing.boms WHERE id = $1 FOR SHARE
 `
 
 // GetBomForShare takes the BoM's row FOR SHARE: an order write that
@@ -224,12 +225,13 @@ func (q *Queries) GetBomForShare(ctx context.Context, id int64) (ManufacturingBo
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LotPattern,
 	)
 	return i, err
 }
 
 const getBomForUpdate = `-- name: GetBomForUpdate :one
-SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at FROM manufacturing.boms WHERE id = $1 FOR UPDATE
+SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern FROM manufacturing.boms WHERE id = $1 FOR UPDATE
 `
 
 // GetBomForUpdate takes the BoM's row FOR UPDATE, after LockBomGraph.
@@ -249,16 +251,17 @@ func (q *Queries) GetBomForUpdate(ctx context.Context, id int64) (ManufacturingB
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LotPattern,
 	)
 	return i, err
 }
 
 const insertBom = `-- name: InsertBom :one
 INSERT INTO manufacturing.boms (variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note,
-                                created_at, updated_at)
+                                lot_pattern, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7,
-        $8::timestamptz, $8::timestamptz)
-RETURNING id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at
+        $8, $9::timestamptz, $9::timestamptz)
+RETURNING id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern
 `
 
 type InsertBomParams struct {
@@ -269,6 +272,7 @@ type InsertBomParams struct {
 	MakeToOrder    bool
 	LeadTimeDays   int32
 	Note           string
+	LotPattern     string
 	Now            time.Time
 }
 
@@ -281,6 +285,7 @@ func (q *Queries) InsertBom(ctx context.Context, arg InsertBomParams) (Manufactu
 		arg.MakeToOrder,
 		arg.LeadTimeDays,
 		arg.Note,
+		arg.LotPattern,
 		arg.Now,
 	)
 	var i ManufacturingBom
@@ -297,6 +302,7 @@ func (q *Queries) InsertBom(ctx context.Context, arg InsertBomParams) (Manufactu
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -418,7 +424,7 @@ func (q *Queries) LinesOfBoms(ctx context.Context, bomIds []int64) ([]Manufactur
 }
 
 const listBoms = `-- name: ListBoms :many
-SELECT b.id, b.variant_id, b.code, b.output_quantity, b.is_default, b.make_to_order, b.lead_time_days, b.note, b.status, b.revision, b.created_at, b.updated_at,
+SELECT b.id, b.variant_id, b.code, b.output_quantity, b.is_default, b.make_to_order, b.lead_time_days, b.note, b.status, b.revision, b.created_at, b.updated_at, b.lot_pattern,
        (SELECT count(*) FROM manufacturing.bom_lines l WHERE l.bom_id = b.id)::int AS line_count,
        (SELECT count(*) FROM manufacturing.bom_operations o WHERE o.bom_id = b.id)::int AS operation_count
 FROM manufacturing.boms b
@@ -454,6 +460,7 @@ type ListBomsRow struct {
 	Revision       int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	LotPattern     string
 	LineCount      int32
 	OperationCount int32
 }
@@ -492,6 +499,7 @@ func (q *Queries) ListBoms(ctx context.Context, arg ListBomsParams) ([]ListBomsR
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LotPattern,
 			&i.LineCount,
 			&i.OperationCount,
 		); err != nil {
@@ -524,7 +532,7 @@ func (q *Queries) LockBomGraph(ctx context.Context) error {
 }
 
 const oldestOtherActiveBom = `-- name: OldestOtherActiveBom :one
-SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at FROM manufacturing.boms
+SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern FROM manufacturing.boms
 WHERE variant_id = $1 AND status = 'active' AND id <> $2
 ORDER BY created_at, id
 LIMIT 1
@@ -553,6 +561,7 @@ func (q *Queries) OldestOtherActiveBom(ctx context.Context, arg OldestOtherActiv
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -635,7 +644,7 @@ const setBomDefault = `-- name: SetBomDefault :one
 UPDATE manufacturing.boms
 SET is_default = true, revision = revision + 1, updated_at = $1::timestamptz
 WHERE id = $2
-RETURNING id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at
+RETURNING id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern
 `
 
 type SetBomDefaultParams struct {
@@ -662,6 +671,7 @@ func (q *Queries) SetBomDefault(ctx context.Context, arg SetBomDefaultParams) (M
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -670,7 +680,7 @@ const setBomStatus = `-- name: SetBomStatus :one
 UPDATE manufacturing.boms
 SET status = $1, is_default = $2, revision = revision + 1, updated_at = $3::timestamptz
 WHERE id = $4
-RETURNING id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at
+RETURNING id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern
 `
 
 type SetBomStatusParams struct {
@@ -703,6 +713,7 @@ func (q *Queries) SetBomStatus(ctx context.Context, arg SetBomStatusParams) (Man
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -745,9 +756,9 @@ func (q *Queries) UnsetVariantDefault(ctx context.Context, arg UnsetVariantDefau
 const updateBom = `-- name: UpdateBom :one
 UPDATE manufacturing.boms
 SET code = $1, output_quantity = $2, make_to_order = $3,
-    lead_time_days = $4, note = $5, revision = revision + 1, updated_at = $6::timestamptz
-WHERE id = $7
-RETURNING id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at
+    lead_time_days = $4, note = $5, lot_pattern = $6, revision = revision + 1, updated_at = $7::timestamptz
+WHERE id = $8
+RETURNING id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern
 `
 
 type UpdateBomParams struct {
@@ -756,6 +767,7 @@ type UpdateBomParams struct {
 	MakeToOrder    bool
 	LeadTimeDays   int32
 	Note           string
+	LotPattern     string
 	Now            time.Time
 	ID             int64
 }
@@ -769,6 +781,7 @@ func (q *Queries) UpdateBom(ctx context.Context, arg UpdateBomParams) (Manufactu
 		arg.MakeToOrder,
 		arg.LeadTimeDays,
 		arg.Note,
+		arg.LotPattern,
 		arg.Now,
 		arg.ID,
 	)
@@ -786,6 +799,7 @@ func (q *Queries) UpdateBom(ctx context.Context, arg UpdateBomParams) (Manufactu
 		&i.Revision,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LotPattern,
 	)
 	return i, err
 }

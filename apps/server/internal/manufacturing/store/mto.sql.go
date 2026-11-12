@@ -36,7 +36,7 @@ func (q *Queries) CancelMtoRequest(ctx context.Context, arg CancelMtoRequestPara
 }
 
 const defaultBomsOfVariants = `-- name: DefaultBomsOfVariants :many
-SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at FROM manufacturing.boms
+SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern FROM manufacturing.boms
 WHERE variant_id = ANY($1::int[]) AND is_default AND status = 'active'
 ORDER BY variant_id
 `
@@ -65,6 +65,7 @@ func (q *Queries) DefaultBomsOfVariants(ctx context.Context, variantIds []int32)
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LotPattern,
 		); err != nil {
 			return nil, err
 		}
@@ -365,7 +366,7 @@ func (q *Queries) OpenChildrenOfOrder(ctx context.Context, parentOrderID *int64)
 }
 
 const ordersForLines = `-- name: OrdersForLines :many
-SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled FROM manufacturing.orders
+SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern FROM manufacturing.orders
 WHERE origin_kind = 'sales_order' AND origin_line_id = ANY($1::bigint[]) AND status <> 'cancelled'
 ORDER BY origin_line_id, number, suffix
 `
@@ -416,6 +417,7 @@ func (q *Queries) OrdersForLines(ctx context.Context, lineIds []int64) ([]Manufa
 			&i.Estimate,
 			&i.Actual,
 			&i.OriginCancelled,
+			&i.LotPattern,
 		); err != nil {
 			return nil, err
 		}

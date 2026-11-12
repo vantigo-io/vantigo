@@ -69,6 +69,12 @@ const (
 	codeComponentUnknown       = "component_unknown"          // 400
 	codeNothingMissing         = "nothing_missing"            // 400
 
+	// Lots (manufacturing phase 2 M80–M82).
+	codeLotPatternInvalid = "lot_pattern_invalid" // 400
+	codePicksMismatch     = "picks_mismatch"      // 400
+	codeSerialQuantity    = "serial_quantity"     // 400
+	codeLotNotAllowed     = "lot_not_allowed"     // 400
+
 	// A line's codes (ManufacturingProblemLine.code), each also a problem's
 	// own code when it is the first failing line's or a field's.
 	codeVariantNotGoods     = "variant_not_goods"
@@ -90,6 +96,7 @@ var refusalCodes = []string{
 	codeWorkCenterBlocked, codeWorkOrderPending, codeWorkOrderClosed, codeLogConflict, codeLogLocked, codeOrderClosed, codeLogOverlaps,
 	codeNoCapacity, codePeriodTooLong,
 	codeSalesOrderLineUnknown, codeSalesOrderLineHasOrder, codeComponentUnknown, codeNothingMissing,
+	codeLotPatternInvalid, codePicksMismatch, codeSerialQuantity, codeLotNotAllowed,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

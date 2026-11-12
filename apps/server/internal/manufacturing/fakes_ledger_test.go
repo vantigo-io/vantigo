@@ -38,6 +38,29 @@ type ledgerState struct {
 	// inside a transaction that makes orders.
 	reserveHook func()
 	produced    []contracts.StockProduction
+	// The lots (manufacturing phase 2): each lot by id, what each holds at
+	// each location (also counted in onHand), and every EnsureLots asked.
+	lots    map[int64]*fakeLot
+	lotHeld map[lotSpot]*big.Rat
+	nextLot int64
+	ensured [][]contracts.NewLot
+}
+
+// fakeLot is a lot of the fake: its variant, number, dates and status.
+type fakeLot struct {
+	variant    int32
+	number     string
+	serial     bool
+	expiry     *time.Time
+	bestBefore *time.Time
+	production time.Time
+	received   time.Time
+	status     string
+}
+
+type lotSpot struct {
+	lot      int64
+	location int64
 }
 
 type fakeLocation struct {
@@ -61,6 +84,7 @@ type lineKey struct {
 type postedProduction struct {
 	movement int64
 	body     string
+	picks    []contracts.StockPick
 }
 
 // The seeded locations: each site's root, two places at the main site and an
@@ -84,6 +108,7 @@ func newLedgerState() ledgerState {
 		},
 		onHand: map[spot]*big.Rat{}, primary: map[spot]bool{}, reserved: map[lineKey]*big.Rat{},
 		variantOf: map[lineKey]int32{}, posted: map[contracts.StockSource]postedProduction{}, movements: 7000,
+		lots: map[int64]*fakeLot{}, lotHeld: map[lotSpot]*big.Rat{}, nextLot: 5000,
 	}
 }
 
@@ -240,10 +265,139 @@ func (s *fakeStock) Issue(context.Context, pgx.Tx, contracts.StockSource, contra
 	return contracts.StockPosted{}, errNotManufacturing
 }
 
-// EnsureLots, HoldLots and ReleaseLotHolds are layer M's and Q's; nothing
-// in this layer calls them.
-func (s *fakeStock) EnsureLots(context.Context, pgx.Tx, contracts.StockSource, time.Time, []contracts.NewLot) ([]int64, error) {
-	return nil, errNotManufacturing
+// receiveLot makes a lot of the variant holding qty at location, received
+// at received, with an expiry when given; it answers the lot's id.
+func (s *fakeStock) receiveLot(variant int32, number string, location int64, qty string, received time.Time, expiry *time.Time) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextLot++
+	id := s.nextLot
+	s.lots[id] = &fakeLot{variant: variant, number: number, expiry: expiry, received: received, status: contracts.LotAvailable}
+	s.lotHeld[lotSpot{id, location}] = rat(qty)
+	k := spot{variant, location}
+	s.onHand[k] = new(big.Rat).Add(orZero(s.onHand[k]), rat(qty))
+	return id
+}
+
+// setLotStatus puts a lot on hold ("quarantine", "blocked") or frees it.
+func (s *fakeStock) setLotStatus(id int64, status string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lots[id].status = status
+}
+
+// lotAt is what a lot holds at a location.
+func (s *fakeStock) lotAt(id, location int64) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return ratText(orZero(s.lotHeld[lotSpot{id, location}]))
+}
+
+// ensureCalls is every EnsureLots asked, in order.
+func (s *fakeStock) ensureCalls() [][]contracts.NewLot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.ensured)
+}
+
+// EnsureLots finds each lot by its variant and number, comparing only the
+// dates stated, or creates it: Inventory's rule (M57, M67), without the
+// catalog's offsets.
+func (s *fakeStock) EnsureLots(_ context.Context, tx pgx.Tx, src contracts.StockSource, today time.Time, lots []contracts.NewLot) ([]int64, error) {
+	if tx == nil {
+		panic("EnsureLots without a transaction")
+	}
+	if today.IsZero() {
+		return nil, errNoToday
+	}
+	if err := src.Validate(); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensured = append(s.ensured, slices.Clone(lots))
+	ids := make([]int64, 0, len(lots))
+	var refused []contracts.StockLineRefusal
+	for i, n := range lots {
+		if n.ProductionDate.IsZero() {
+			return nil, errors.New("fake ledger: a lot without a production date")
+		}
+		var found int64
+		for id, l := range s.lots {
+			if l.variant == n.VariantID && strings.EqualFold(l.number, n.Number) {
+				found = id
+			}
+		}
+		if found != 0 {
+			l := s.lots[found]
+			differs := func(stated, stored *time.Time) bool {
+				return stated != nil && (stored == nil || !stated.Equal(*stored))
+			}
+			if differs(n.Expiry, l.expiry) || differs(n.BestBefore, l.bestBefore) {
+				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLotDatesDiffer, VariantID: n.VariantID, Index: i, LotID: found,
+					Detail: "A stated date differs from the lot's."})
+			}
+			ids = append(ids, found)
+			continue
+		}
+		s.nextLot++
+		s.lots[s.nextLot] = &fakeLot{variant: n.VariantID, number: n.Number, expiry: n.Expiry, bestBefore: n.BestBefore,
+			production: n.ProductionDate, received: today, status: contracts.LotAvailable}
+		ids = append(ids, s.nextLot)
+	}
+	if len(refused) > 0 {
+		return nil, &contracts.StockRefusal{Code: refused[0].Code, VariantID: refused[0].VariantID, Detail: refused[0].Detail, Lines: refused}
+	}
+	return ids, nil
+}
+
+// lotsAt is the variant's lots holding stock at the location, FEFO; the
+// caller holds mu.
+func (s *fakeStock) lotsAt(variant int32, location int64) []contracts.StockLot {
+	var out []contracts.StockLot
+	for k, q := range s.lotHeld {
+		l := s.lots[k.lot]
+		if l.variant != variant || k.location != location || q.Sign() <= 0 {
+			continue
+		}
+		out = append(out, contracts.StockLot{VariantID: variant, LotID: k.lot, Number: l.number, Serial: l.serial, Expiry: l.expiry,
+			BestBefore: l.bestBefore, ReceivedAt: l.received, LocationID: k.location, FullCode: s.locations[k.location].code,
+			Quantity: ratText(q), Status: l.status})
+	}
+	sortFEFO(out)
+	return out
+}
+
+func sortFEFO(rows []contracts.StockLot) {
+	slices.SortFunc(rows, func(a, b contracts.StockLot) int {
+		switch {
+		case a.Expiry == nil && b.Expiry != nil:
+			return 1
+		case a.Expiry != nil && b.Expiry == nil:
+			return -1
+		case a.Expiry != nil && b.Expiry != nil:
+			if c := a.Expiry.Compare(*b.Expiry); c != 0 {
+				return c
+			}
+		}
+		return cmp.Or(a.ReceivedAt.Compare(b.ReceivedAt), cmp.Compare(a.LotID, b.LotID), cmp.Compare(a.LocationID, b.LocationID))
+	})
+}
+
+// siteLots is Stock.Lots over the fake; the caller holds mu.
+func (s *fakeStock) siteLots(ids []int32, site int64) []contracts.StockLot {
+	var out []contracts.StockLot
+	for _, v := range ids {
+		var rows []contracts.StockLot
+		for id, loc := range s.locations {
+			if loc.site == site && loc.active {
+				rows = append(rows, s.lotsAt(v, id)...)
+			}
+		}
+		sortFEFO(rows)
+		out = append(out, rows...)
+	}
+	return out
 }
 
 func (s *fakeStock) HoldLots(context.Context, pgx.Tx, contracts.StockSource, []contracts.LotHold) error {
@@ -361,23 +515,23 @@ func (s *fakeStock) ReservationsFor(_ context.Context, _ pgx.Tx, src contracts.S
 // the line's reservation, each produce line onto its location; idempotent by
 // the document.
 func (s *fakeStock) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (contracts.StockPosted, error) {
-	movement, err := s.produce(ctx, tx, src, p)
-	return contracts.StockPosted{MovementID: movement}, err
+	movement, picks, err := s.produce(ctx, tx, src, p)
+	return contracts.StockPosted{MovementID: movement, Picks: picks}, err
 }
 
-func (s *fakeStock) produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (int64, error) {
+func (s *fakeStock) produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (int64, []contracts.StockPick, error) {
 	if tx == nil {
 		panic("Produce without a transaction")
 	}
 	if p.Today.IsZero() {
-		return 0, errNoToday
+		return 0, nil, errNoToday
 	}
 	s.mu.Lock()
 	hook := s.produceHook
 	s.mu.Unlock()
 	if hook != nil {
 		if err := hook(ctx, tx, p); err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 	}
 	s.mu.Lock()
@@ -385,33 +539,86 @@ func (s *fakeStock) produce(ctx context.Context, tx pgx.Tx, src contracts.StockS
 	body := fmt.Sprint(p.Consume, p.Produce)
 	if prior, ok := s.posted[p.Document]; ok {
 		if prior.body != body {
-			return 0, &contracts.StockRefusal{Code: contracts.StockDocumentReused, Detail: "Posted before with another body."}
+			return 0, nil, &contracts.StockRefusal{Code: contracts.StockDocumentReused, Detail: "Posted before with another body."}
 		}
-		return prior.movement, nil
+		return prior.movement, prior.picks, nil
 	}
 	if len(p.Consume) == 0 && len(p.Produce) == 0 {
-		return 0, &contracts.StockRefusal{Code: contracts.StockNothingToPost, Detail: "No line."}
+		return 0, nil, &contracts.StockRefusal{Code: contracts.StockNothingToPost, Detail: "No line."}
 	}
 	take := map[spot]*big.Rat{}
+	lotTake := map[lotSpot]*big.Rat{}
 	for _, l := range p.Consume {
 		k := spot{l.VariantID, l.FromLocationID}
 		take[k] = new(big.Rat).Add(orZero(take[k]), rat(l.Quantity))
+		if l.LotID != 0 {
+			lk := lotSpot{l.LotID, l.FromLocationID}
+			lotTake[lk] = new(big.Rat).Add(orZero(lotTake[lk]), rat(l.Quantity))
+		}
 	}
 	var refused []contracts.StockLineRefusal
-	for _, l := range p.Consume {
+	var picks []contracts.StockPick
+	for i, l := range p.Consume {
 		k := spot{l.VariantID, l.FromLocationID}
 		if loc := s.locations[l.FromLocationID]; loc.site != p.SiteID || !loc.active {
-			refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLocationUnknown, VariantID: l.VariantID, LineID: l.LineID, Detail: "No such location."})
+			refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLocationUnknown, VariantID: l.VariantID, LineID: l.LineID, Index: i, Detail: "No such location."})
 			continue
 		}
 		if take[k].Cmp(orZero(s.onHand[k])) > 0 {
-			refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockInsufficientStock, VariantID: l.VariantID, LineID: l.LineID,
+			refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockInsufficientStock, VariantID: l.VariantID, LineID: l.LineID, Index: i,
 				Detail: ratText(orZero(s.onHand[k])) + " at the location."})
+			continue
+		}
+		if l.LotID != 0 {
+			lot := s.lots[l.LotID]
+			lk := lotSpot{l.LotID, l.FromLocationID}
+			switch {
+			case lot == nil || lot.variant != l.VariantID:
+				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLotUnknown, VariantID: l.VariantID, LineID: l.LineID, Index: i, LotID: l.LotID, Detail: "No such lot."})
+			case lot.status != contracts.LotAvailable:
+				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLotBlocked, VariantID: l.VariantID, LineID: l.LineID, Index: i, LotID: l.LotID,
+					LocationID: l.FromLocationID, Detail: "The lot is on hold."})
+			case contracts.LotExpired(lot.expiry, p.Today) && (!l.AllowExpired || !p.ExpiredOverride):
+				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLotExpired, VariantID: l.VariantID, LineID: l.LineID, Index: i, LotID: l.LotID,
+					LocationID: l.FromLocationID, Detail: "The lot is expired."})
+			case lotTake[lk].Cmp(orZero(s.lotHeld[lk])) > 0:
+				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockInsufficientStock, VariantID: l.VariantID, LineID: l.LineID, Index: i, LotID: l.LotID,
+					LocationID: l.FromLocationID, Detail: ratText(orZero(s.lotHeld[lk])) + " of the lot at the location."})
+			}
+			continue
+		}
+		if l.AutoLot {
+			left := rat(l.Quantity)
+			for _, r := range s.lotsAt(l.VariantID, l.FromLocationID) {
+				if left.Sign() == 0 {
+					break
+				}
+				if r.Status != contracts.LotAvailable || contracts.LotExpired(r.Expiry, p.Today) {
+					continue
+				}
+				q := minRatFake(rat(r.Quantity), left)
+				left.Sub(left, q)
+				picks = append(picks, contracts.StockPick{Index: i, LotID: r.LotID, LocationID: r.LocationID, Quantity: ratText(q)})
+			}
+			if left.Sign() > 0 {
+				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockInsufficientStock, VariantID: l.VariantID, LineID: l.LineID, Index: i,
+					LocationID: l.FromLocationID, Detail: "The usable lots at the location do not cover it."})
+			}
 		}
 	}
 	if len(refused) > 0 {
-		return 0, &contracts.StockRefusal{Code: refused[0].Code, VariantID: refused[0].VariantID, LineID: refused[0].LineID,
+		return 0, nil, &contracts.StockRefusal{Code: refused[0].Code, VariantID: refused[0].VariantID, LineID: refused[0].LineID,
 			Detail: refused[0].Detail, Lines: refused}
+	}
+	for _, l := range p.Consume {
+		if l.LotID != 0 {
+			lk := lotSpot{l.LotID, l.FromLocationID}
+			s.lotHeld[lk] = new(big.Rat).Sub(orZero(s.lotHeld[lk]), rat(l.Quantity))
+		}
+	}
+	for _, pk := range picks {
+		lk := lotSpot{pk.LotID, pk.LocationID}
+		s.lotHeld[lk] = new(big.Rat).Sub(orZero(s.lotHeld[lk]), rat(pk.Quantity))
 	}
 	for _, l := range p.Consume {
 		k := spot{l.VariantID, l.FromLocationID}
@@ -429,9 +636,20 @@ func (s *fakeStock) produce(ctx context.Context, tx pgx.Tx, src contracts.StockS
 	for _, l := range p.Produce {
 		k := spot{l.VariantID, l.ToLocationID}
 		s.onHand[k] = new(big.Rat).Add(orZero(s.onHand[k]), rat(l.Quantity))
+		if l.LotID != 0 {
+			lk := lotSpot{l.LotID, l.ToLocationID}
+			s.lotHeld[lk] = new(big.Rat).Add(orZero(s.lotHeld[lk]), rat(l.Quantity))
+		}
 	}
 	s.movements++
-	s.posted[p.Document] = postedProduction{movement: s.movements, body: body}
+	s.posted[p.Document] = postedProduction{movement: s.movements, body: body, picks: picks}
 	s.produced = append(s.produced, p)
-	return s.movements, nil
+	return s.movements, picks, nil
+}
+
+func minRatFake(a, b *big.Rat) *big.Rat {
+	if a.Cmp(b) < 0 {
+		return new(big.Rat).Set(a)
+	}
+	return new(big.Rat).Set(b)
 }

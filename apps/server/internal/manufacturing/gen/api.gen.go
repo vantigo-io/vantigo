@@ -71,6 +71,27 @@ func (e ManufacturingDowntimeReason) Valid() bool {
 	}
 }
 
+// Defines values for ManufacturingLotChoiceStatus.
+const (
+	ManufacturingLotChoiceStatusAvailable  ManufacturingLotChoiceStatus = "available"
+	ManufacturingLotChoiceStatusBlocked    ManufacturingLotChoiceStatus = "blocked"
+	ManufacturingLotChoiceStatusQuarantine ManufacturingLotChoiceStatus = "quarantine"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingLotChoiceStatus enum.
+func (e ManufacturingLotChoiceStatus) Valid() bool {
+	switch e {
+	case ManufacturingLotChoiceStatusAvailable:
+		return true
+	case ManufacturingLotChoiceStatusBlocked:
+		return true
+	case ManufacturingLotChoiceStatusQuarantine:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ManufacturingOrderEventKind.
 const (
 	ManufacturingOrderEventKindBackorderCreated ManufacturingOrderEventKind = "backorder_created"
@@ -332,6 +353,27 @@ func (e ManufacturingTimeLogKind) Valid() bool {
 	}
 }
 
+// Defines values for ManufacturingTracking.
+const (
+	Lot    ManufacturingTracking = "lot"
+	None   ManufacturingTracking = "none"
+	Serial ManufacturingTracking = "serial"
+)
+
+// Valid indicates whether the value is a known member of the ManufacturingTracking enum.
+func (e ManufacturingTracking) Valid() bool {
+	switch e {
+	case Lot:
+		return true
+	case None:
+		return true
+	case Serial:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ManufacturingWorkOrderStatus.
 const (
 	ManufacturingWorkOrderStatusCancelled  ManufacturingWorkOrderStatus = "cancelled"
@@ -466,15 +508,18 @@ type ManufacturingBlockInput struct {
 
 // ManufacturingBom A bill of materials (M10) with its operations and lines.
 type ManufacturingBom struct {
-	Code         *string                     `json:"code"`
-	CreatedAt    time.Time                   `json:"createdAt"`
-	Id           int64                       `json:"id"`
-	IsDefault    bool                        `json:"isDefault"`
-	LeadTimeDays int32                       `json:"leadTimeDays"`
-	Lines        []ManufacturingBomLine      `json:"lines"`
-	MakeToOrder  bool                        `json:"makeToOrder"`
-	Note         string                      `json:"note"`
-	Operations   []ManufacturingBomOperation `json:"operations"`
+	Code         *string                `json:"code"`
+	CreatedAt    time.Time              `json:"createdAt"`
+	Id           int64                  `json:"id"`
+	IsDefault    bool                   `json:"isDefault"`
+	LeadTimeDays int32                  `json:"leadTimeDays"`
+	Lines        []ManufacturingBomLine `json:"lines"`
+
+	// LotPattern The pattern the number of the lot its productions make is rendered from (manufacturing phase 2 M80).
+	LotPattern  string                      `json:"lotPattern"`
+	MakeToOrder bool                        `json:"makeToOrder"`
+	Note        string                      `json:"note"`
+	Operations  []ManufacturingBomOperation `json:"operations"`
 
 	// OutputQuantity Exact decimal, more than 0, at most three decimals.
 	OutputQuantity string `json:"outputQuantity"`
@@ -502,6 +547,9 @@ type ManufacturingBomInput struct {
 	// LeadTimeDays 0 or more; default 0.
 	LeadTimeDays *int32                      `json:"leadTimeDays,omitempty"`
 	Lines        []ManufacturingBomLineInput `json:"lines"`
+
+	// LotPattern The number of the lot its productions make, 1–40 characters (manufacturing phase 2 M80): {MO} the order's number, {YYYY} {YY} {MM} {DD} and {YYMMDD} the production date, {SKU} the product's SKU, {N} a counter per rendered prefix; anything else is literal. A sample render must be a lot number — 1–20 characters A–Z, a–z, 0–9 and . _ / - (lot_pattern_invalid). Default {MO}: every production of an order adds to one lot; L{YYMMDD}-{N} makes a lot per production. An update that leaves it out keeps the stored pattern.
+	LotPattern *string `json:"lotPattern,omitempty"`
 
 	// MakeToOrder Default false.
 	MakeToOrder *bool                            `json:"makeToOrder,omitempty"`
@@ -653,6 +701,9 @@ type ManufacturingBomUpdate struct {
 	LeadTimeDays *int32                      `json:"leadTimeDays,omitempty"`
 	Lines        []ManufacturingBomLineInput `json:"lines"`
 
+	// LotPattern The number of the lot its productions make, 1–40 characters (manufacturing phase 2 M80): {MO} the order's number, {YYYY} {YY} {MM} {DD} and {YYMMDD} the production date, {SKU} the product's SKU, {N} a counter per rendered prefix; anything else is literal. A sample render must be a lot number — 1–20 characters A–Z, a–z, 0–9 and . _ / - (lot_pattern_invalid). Default {MO}: every production of an order adds to one lot; L{YYMMDD}-{N} makes a lot per production. An update that leaves it out keeps the stored pattern.
+	LotPattern *string `json:"lotPattern,omitempty"`
+
 	// MakeToOrder Default false.
 	MakeToOrder *bool                            `json:"makeToOrder,omitempty"`
 	Note        *string                          `json:"note,omitempty"`
@@ -801,6 +852,18 @@ type ManufacturingDowntimeMinutes struct {
 // ManufacturingDowntimeReason Why a work center stopped (M29, M30).
 type ManufacturingDowntimeReason string
 
+// ManufacturingDraftLot One lot the production draft proposes a tracked component line take from (manufacturing phase 2 M82), FEFO; quantity is what it takes there.
+type ManufacturingDraftLot struct {
+	Expiry     *openapi_types.Date `json:"expiry"`
+	FullCode   string              `json:"fullCode"`
+	LocationId int64               `json:"locationId"`
+	LotId      int64               `json:"lotId"`
+	LotNumber  string              `json:"lotNumber"`
+
+	// Quantity Exact decimal.
+	Quantity string `json:"quantity"`
+}
+
 // ManufacturingFinishInput Finishing a work order (M29).
 type ManufacturingFinishInput struct {
 	// Production A production registered against an order (M22, M22a).
@@ -838,6 +901,29 @@ type ManufacturingLocation struct {
 type ManufacturingLocationList struct {
 	Items []ManufacturingLocation `json:"items"`
 }
+
+// ManufacturingLotChoice A lot of the component at a location of the order's site, as Change lot offers it, in FEFO order (manufacturing phase 2 M65, M82), so neither the order page nor the shop floor reads Inventory for the picker.
+type ManufacturingLotChoice struct {
+	BestBefore *openapi_types.Date `json:"bestBefore"`
+
+	// Expired Whether the lot's expiry lies before today in the workspace's zone.
+	Expired    bool                `json:"expired"`
+	Expiry     *openapi_types.Date `json:"expiry"`
+	FullCode   string              `json:"fullCode"`
+	LocationId int64               `json:"locationId"`
+	LotId      int64               `json:"lotId"`
+	LotNumber  string              `json:"lotNumber"`
+
+	// Quantity What lies there, exact decimal.
+	Quantity string `json:"quantity"`
+	Serial   bool   `json:"serial"`
+
+	// Status available, quarantine or blocked, from the lot's holds.
+	Status ManufacturingLotChoiceStatus `json:"status"`
+}
+
+// ManufacturingLotChoiceStatus available, quarantine or blocked, from the lot's holds.
+type ManufacturingLotChoiceStatus string
 
 // ManufacturingMeta What the caller may do in Manufacturing, for the screens to offer.
 type ManufacturingMeta struct {
@@ -909,6 +995,9 @@ type ManufacturingOrder struct {
 
 	// LateByDays Planned to finish after the due date (M35): the calendar days from the due date to the planned finish's day in the business time zone; null when it is not late or not planned.
 	LateByDays *int32 `json:"lateByDays"`
+
+	// LotPattern The lot pattern of the order's BoM, kept at confirm (manufacturing phase 2 M80); a draft shows the default.
+	LotPattern string `json:"lotPattern"`
 	Note       string `json:"note"`
 
 	// Number MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
@@ -1007,6 +1096,27 @@ type ManufacturingOrderComponent struct {
 	Variant ManufacturingVariantRef `json:"variant"`
 }
 
+// ManufacturingOrderComponentLots The lots the order's productions took one component line from, each with what they consumed and scrapped of it together.
+type ManufacturingOrderComponentLots struct {
+	ComponentId int64                           `json:"componentId"`
+	Lots        []ManufacturingOrderConsumedLot `json:"lots"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingOrderConsumedLot One lot a component line was taken from, over the order's productions.
+type ManufacturingOrderConsumedLot struct {
+	// Consumed Exact decimal.
+	Consumed  string              `json:"consumed"`
+	Expiry    *openapi_types.Date `json:"expiry"`
+	LotId     int64               `json:"lotId"`
+	LotNumber string              `json:"lotNumber"`
+
+	// Scrapped Exact decimal.
+	Scrapped string `json:"scrapped"`
+}
+
 // ManufacturingOrderCost An order's cost (M38–M41), answered only to a holder of manufacturing:costs-view and left out of the order otherwise. The estimate is fixed at confirm; the actual runs while the order is open (open logs counted to now) and is fixed at close, with the cost per unit and the deviation.
 type ManufacturingOrderCost struct {
 	// Actual Components: Σ (consumed + scrapped) × the standard cost at confirm; machine: the union of each work order's productive logs × its machine rate; labour: Σ every productive log × the labour rate (M40). Null on a draft.
@@ -1103,6 +1213,12 @@ type ManufacturingOrderLink struct {
 	VariantId int32 `json:"variantId"`
 }
 
+// ManufacturingOrderLots The lots an order's productions made and consumed (manufacturing phase 2 M83), for the order page's Lots tab.
+type ManufacturingOrderLots struct {
+	Components []ManufacturingOrderComponentLots `json:"components"`
+	Outputs    []ManufacturingOrderOutputLot     `json:"outputs"`
+}
+
 // ManufacturingOrderOriginInfo Where the order came from (M17).
 type ManufacturingOrderOriginInfo struct {
 	// Cancelled The sales order it was made for was cancelled (M44); the order is left as it is for a person to decide.
@@ -1122,6 +1238,19 @@ type ManufacturingOrderOriginInfo struct {
 
 	// Reference The origin's display reference, such as SO-12.
 	Reference *string `json:"reference"`
+}
+
+// ManufacturingOrderOutputLot A lot the order's productions put good output in, with what they put there together.
+type ManufacturingOrderOutputLot struct {
+	LotId     int64  `json:"lotId"`
+	LotNumber string `json:"lotNumber"`
+
+	// Productions How many productions put output in it.
+	Productions int32 `json:"productions"`
+
+	// Quantity Exact decimal.
+	Quantity string `json:"quantity"`
+	Serial   bool   `json:"serial"`
 }
 
 // ManufacturingOrderPage One page of the list.
@@ -1230,6 +1359,23 @@ type ManufacturingOrderWithShortLines struct {
 // ManufacturingOrigin Where an order came from (M17): by hand, a sales order (delivery E) or a parent order (E).
 type ManufacturingOrigin string
 
+// ManufacturingOutputLotInput The lot a production of a lot-tracked product puts its good output in (manufacturing phase 2 M80). Every field is optional. The number defaults to the order's lot pattern rendered on the production date; a number the product has already names that lot, and only the dates sent are compared with it (lot_dates_differ). The production date defaults to today; expiry and bestBefore to the variant's offsets from it, when the lot is made.
+type ManufacturingOutputLotInput struct {
+	BestBefore *openapi_types.Date `json:"bestBefore,omitempty"`
+	Expiry     *openapi_types.Date `json:"expiry,omitempty"`
+
+	// Number 1–20 characters A–Z, a–z, 0–9 and . _ / -.
+	Number         *string             `json:"number,omitempty"`
+	ProductionDate *openapi_types.Date `json:"productionDate,omitempty"`
+	SupplierLot    *string             `json:"supplierLot,omitempty"`
+}
+
+// ManufacturingOutputSerialsInput The serial numbers a production of a serial product gives its good output, one per unit (manufacturing phase 2 M81) — first, counted up by its trailing digits keeping their width, or numbers, one per unit. Absent, they continue from the order's serials so far, from {MO}-0001.
+type ManufacturingOutputSerialsInput struct {
+	First   *string   `json:"first,omitempty"`
+	Numbers *[]string `json:"numbers,omitempty"`
+}
+
 // ManufacturingOverviewNode One node of the exploded BoM (M15): the root is the BoM's variant; a made node recurses through its default active BoM.
 type ManufacturingOverviewNode struct {
 	// Available Available at siteId, exact decimal; null when no site was asked.
@@ -1297,7 +1443,7 @@ type ManufacturingPlanAllResult struct {
 // ManufacturingPriority An order's priority (M17).
 type ManufacturingPriority string
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), Inventory's refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, serial_quantity, lot_expired, lot_blocked, lot_dates_differ; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.
 type ManufacturingProblem struct {
 	Code   *string `json:"code,omitempty"`
 	Detail *string `json:"detail,omitempty"`
@@ -1330,6 +1476,9 @@ type ManufacturingProblemLine struct {
 
 	// Index The line's position in the request, from 0.
 	Index int32 `json:"index"`
+
+	// LotId The lot the line failed at, for a refusal of a production's lot (manufacturing phase 2 M82).
+	LotId *int64 `json:"lotId,omitempty"`
 }
 
 // ManufacturingProblemPathStep One variant of a cycle's path.
@@ -1348,6 +1497,9 @@ type ManufacturingProduction struct {
 	MovementId  *int64 `json:"movementId"`
 	OrderId     int64  `json:"orderId"`
 	OrderNumber string `json:"orderNumber"`
+
+	// OutputLots The lots the good output went into; empty for an untracked product.
+	OutputLots []ManufacturingProductionOutput `json:"outputLots"`
 
 	// OutputScrap Finished units discarded.
 	OutputScrap     string              `json:"outputScrap"`
@@ -1415,6 +1567,9 @@ type ManufacturingProductionCostTotals struct {
 type ManufacturingProductionDraft struct {
 	Lines []ManufacturingProductionDraftLine `json:"lines"`
 
+	// Output What a production of the draft's quantity makes (manufacturing phase 2 M80, M81). For a lot-tracked product, lotNumber is the number the order's pattern renders today — {N} shown as the next the counter hands out — and expiry and bestBefore the dates the variant's offsets give from today; for a serial product, serialFirst is the first default serial, continuing from the order's serials so far.
+	Output ManufacturingProductionDraftOutput `json:"output"`
+
 	// OutputScrap The output scrap asked for.
 	OutputScrap string `json:"outputScrap"`
 
@@ -1426,6 +1581,12 @@ type ManufacturingProductionDraft struct {
 // ManufacturingProductionDraftLine A component line's prefill (M22a).
 type ManufacturingProductionDraftLine struct {
 	ComponentId int64 `json:"componentId"`
+
+	// LotChoices For a tracked component, every lot of it at the site's active locations, FEFO, for Change lot; empty otherwise.
+	LotChoices []ManufacturingLotChoice `json:"lotChoices"`
+
+	// Lots For a tracked component, the lots proposed for proposed, FEFO from the order's component location when it has one, else the whole site (manufacturing phase 2 M82); empty otherwise.
+	Lots []ManufacturingDraftLot `json:"lots"`
 
 	// Proposed required × (quantity + outputScrap) / order quantity, rounded half-up to three decimals.
 	Proposed string `json:"proposed"`
@@ -1439,8 +1600,27 @@ type ManufacturingProductionDraftLine struct {
 	// Reserved Reserved for the line.
 	Reserved string `json:"reserved"`
 
+	// Short What the proposed lots do not cover of proposed, exact decimal; 0 when they cover it or the component is not tracked.
+	Short string `json:"short"`
+
+	// Tracking How a variant's stock is tracked (manufacturing phase 2 M49).
+	Tracking ManufacturingTracking `json:"tracking"`
+
 	// Variant A catalog variant as Manufacturing names it.
 	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingProductionDraftOutput What a production of the draft's quantity makes (manufacturing phase 2 M80, M81). For a lot-tracked product, lotNumber is the number the order's pattern renders today — {N} shown as the next the counter hands out — and expiry and bestBefore the dates the variant's offsets give from today; for a serial product, serialFirst is the first default serial, continuing from the order's serials so far.
+type ManufacturingProductionDraftOutput struct {
+	BestBefore     *openapi_types.Date `json:"bestBefore"`
+	Expiry         *openapi_types.Date `json:"expiry"`
+	LotNumber      *string             `json:"lotNumber"`
+	LotPattern     string              `json:"lotPattern"`
+	ProductionDate openapi_types.Date  `json:"productionDate"`
+	SerialFirst    *string             `json:"serialFirst"`
+
+	// Tracking How a variant's stock is tracked (manufacturing phase 2 M49).
+	Tracking ManufacturingTracking `json:"tracking"`
 }
 
 // ManufacturingProductionInput A production registered against an order (M22, M22a).
@@ -1452,10 +1632,12 @@ type ManufacturingProductionInput struct {
 	ClientRequestId string `json:"clientRequestId"`
 
 	// Lines Omitted lines are not judged and consume nothing.
-	Lines []ManufacturingProductionLineInput `json:"lines"`
+	Lines     []ManufacturingProductionLineInput `json:"lines"`
+	OutputLot *ManufacturingOutputLotInput       `json:"outputLot,omitempty"`
 
 	// OutputScrap Finished units produced and discarded, exact decimal, 0 or more; default 0.
-	OutputScrap *string `json:"outputScrap,omitempty"`
+	OutputScrap   *string                          `json:"outputScrap,omitempty"`
+	OutputSerials *ManufacturingOutputSerialsInput `json:"outputSerials,omitempty"`
 
 	// Quantity Good output, exact decimal, 0 or more; 0 only with consumption, scrap or output scrap.
 	Quantity string `json:"quantity"`
@@ -1474,6 +1656,9 @@ type ManufacturingProductionLine struct {
 	// FromLocationId The location the request named, if any.
 	FromLocationId *int64 `json:"fromLocationId"`
 
+	// Lots For a tracked component, the lots it was taken from; empty otherwise.
+	Lots []ManufacturingProductionLineLot `json:"lots"`
+
 	// Scrapped Exact decimal.
 	Scrapped string `json:"scrapped"`
 
@@ -1491,8 +1676,53 @@ type ManufacturingProductionLineInput struct {
 	// FromLocationId Where it is taken from; default the order's component location, else split over the locations holding it (M22a).
 	FromLocationId *int64 `json:"fromLocationId,omitempty"`
 
+	// Lots For a tracked component, the lots it takes from, each lot and location once, summing to the line's consumed and scrap (picks_mismatch); fromLocationId is then ignored. Left out, Inventory takes the lots FEFO under its own locks at the line's location (AutoLot) and the production answers them (manufacturing phase 2 M82).
+	Lots *[]ManufacturingProductionLotInput `json:"lots,omitempty"`
+
+	// LotsProposed The lots are the production draft's proposal as it was, not a person's choice. Refused insufficient_stock or lot_blocked on them, the post proposes the line's lots again once from the stock then and posts again (manufacturing phase 2 M65a).
+	LotsProposed *bool `json:"lotsProposed,omitempty"`
+
 	// Scrap Exact decimal, 0 or more: lost, consumed with no output.
 	Scrap *string `json:"scrap,omitempty"`
+}
+
+// ManufacturingProductionLineLot What a production consumed and scrapped of one lot at one location (manufacturing phase 2 M82).
+type ManufacturingProductionLineLot struct {
+	AllowExpired bool `json:"allowExpired"`
+
+	// Consumed Exact decimal.
+	Consumed   string              `json:"consumed"`
+	Expiry     *openapi_types.Date `json:"expiry"`
+	LocationId int64               `json:"locationId"`
+	LotId      int64               `json:"lotId"`
+	LotNumber  string              `json:"lotNumber"`
+
+	// Scrapped Exact decimal.
+	Scrapped string `json:"scrapped"`
+}
+
+// ManufacturingProductionLotInput What a production consumed and scrapped of one lot at one location, for a tracked component line (manufacturing phase 2 M82).
+type ManufacturingProductionLotInput struct {
+	// AllowExpired The person chose this lot although it is expired; honoured only for a poster holding inventory:expired-override, else lot_expired.
+	AllowExpired *bool `json:"allowExpired,omitempty"`
+
+	// Consumed Exact decimal, 0 or more, at most three decimals; default 0.
+	Consumed   *string `json:"consumed,omitempty"`
+	LocationId int64   `json:"locationId"`
+	LotId      int64   `json:"lotId"`
+
+	// Scrapped Exact decimal, 0 or more, at most three decimals; default 0.
+	Scrapped *string `json:"scrapped,omitempty"`
+}
+
+// ManufacturingProductionOutput A lot a production put its good output in (manufacturing phase 2 M80, M81).
+type ManufacturingProductionOutput struct {
+	LotId     int64  `json:"lotId"`
+	LotNumber string `json:"lotNumber"`
+
+	// Quantity Exact decimal.
+	Quantity string `json:"quantity"`
+	Serial   bool   `json:"serial"`
 }
 
 // ManufacturingRescheduleInput A drag on the board (M36): the work order is planned to start at start (now when start is past), in the first free time from there.
@@ -1845,6 +2075,9 @@ type ManufacturingTimeLogKind string
 type ManufacturingTimeLogList struct {
 	Items []ManufacturingTimeLog `json:"items"`
 }
+
+// ManufacturingTracking How a variant's stock is tracked (manufacturing phase 2 M49).
+type ManufacturingTracking string
 
 // ManufacturingUtilisationReport The work-center utilisation report (M42): per work center and ISO week, the days of the week inside the period.
 type ManufacturingUtilisationReport struct {
@@ -2529,6 +2762,9 @@ type ServerInterface interface {
 	// ListManufacturingOrderEvents List a manufacturing order's history
 	// (GET /api/v1/manufacturing/orders/{id}/events)
 	ListManufacturingOrderEvents(w http.ResponseWriter, r *http.Request, id int64)
+	// GetManufacturingOrderLots List the lots a manufacturing order made and consumed
+	// (GET /api/v1/manufacturing/orders/{id}/lots)
+	GetManufacturingOrderLots(w http.ResponseWriter, r *http.Request, id int64)
 	// PlanManufacturingOrder Plan a manufacturing order
 	// (POST /api/v1/manufacturing/orders/{id}/plan)
 	PlanManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
@@ -3414,6 +3650,32 @@ func (siw *ServerInterfaceWrapper) ListManufacturingOrderEvents(w http.ResponseW
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListManufacturingOrderEvents(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingOrderLots operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingOrderLots(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingOrderLots(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4893,6 +5155,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/components/{componentId}", wrapper.UpdateManufacturingOrderComponent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/confirm", wrapper.ConfirmManufacturingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/events", wrapper.ListManufacturingOrderEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/lots", wrapper.GetManufacturingOrderLots)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/plan", wrapper.PlanManufacturingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/production-draft", wrapper.GetManufacturingProductionDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/productions", wrapper.PostManufacturingProduction)
@@ -6655,6 +6918,64 @@ type ListManufacturingOrderEvents404Response struct {
 }
 
 func (response ListManufacturingOrderEvents404Response) VisitListManufacturingOrderEventsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetManufacturingOrderLotsRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetManufacturingOrderLotsResponseObject interface {
+	VisitGetManufacturingOrderLotsResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingOrderLots200JSONResponse ManufacturingOrderLots
+
+func (response GetManufacturingOrderLots200JSONResponse) VisitGetManufacturingOrderLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingOrderLots401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingOrderLots401JSONResponse) VisitGetManufacturingOrderLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingOrderLots403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingOrderLots403JSONResponse) VisitGetManufacturingOrderLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingOrderLots404Response struct {
+}
+
+func (response GetManufacturingOrderLots404Response) VisitGetManufacturingOrderLotsResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
 }
@@ -10208,6 +10529,9 @@ type StrictServerInterface interface {
 	// ListManufacturingOrderEvents List a manufacturing order's history
 	// (GET /api/v1/manufacturing/orders/{id}/events)
 	ListManufacturingOrderEvents(ctx context.Context, request ListManufacturingOrderEventsRequestObject) (ListManufacturingOrderEventsResponseObject, error)
+	// GetManufacturingOrderLots List the lots a manufacturing order made and consumed
+	// (GET /api/v1/manufacturing/orders/{id}/lots)
+	GetManufacturingOrderLots(ctx context.Context, request GetManufacturingOrderLotsRequestObject) (GetManufacturingOrderLotsResponseObject, error)
 	// PlanManufacturingOrder Plan a manufacturing order
 	// (POST /api/v1/manufacturing/orders/{id}/plan)
 	PlanManufacturingOrder(ctx context.Context, request PlanManufacturingOrderRequestObject) (PlanManufacturingOrderResponseObject, error)
@@ -10975,6 +11299,32 @@ func (sh *strictHandler) ListManufacturingOrderEvents(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListManufacturingOrderEventsResponseObject); ok {
 		if err := validResponse.VisitListManufacturingOrderEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingOrderLots operation middleware
+func (sh *strictHandler) GetManufacturingOrderLots(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetManufacturingOrderLotsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingOrderLots(ctx, request.(GetManufacturingOrderLotsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingOrderLots")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingOrderLotsResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingOrderLotsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

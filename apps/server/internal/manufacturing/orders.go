@@ -1001,7 +1001,7 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		OutputScrap: numericText(o.OutputScrap, quantityPlaces), Status: sum.Status, SiteId: o.SiteID,
 		ComponentLocationId: o.ComponentLocationID, OutputLocationId: o.OutputLocationID, DueDate: sum.DueDate,
 		PlannedStart: o.PlannedStart, PlannedFinish: o.PlannedFinish, Priority: sum.Priority, Responsible: sum.Responsible,
-		Note: o.Note, Origin: sum.Origin, ReservationStatus: sum.ReservationStatus, Late: sum.Late, BackorderOfId: o.BackorderOfID,
+		Note: o.Note, LotPattern: o.LotPattern, Origin: sum.Origin, ReservationStatus: sum.ReservationStatus, Late: sum.Late, BackorderOfId: o.BackorderOfID,
 		Backorders: []gen.ManufacturingOrderLink{}, Children: []gen.ManufacturingOrderLink{},
 		Components: make([]gen.ManufacturingOrderComponent, 0, len(components)), Availability: cov.status,
 		Overrun:     text(positive(new(big.Rat).Sub(ratOrZero(o.Produced), ratOrZero(o.Quantity))), quantityPlaces),

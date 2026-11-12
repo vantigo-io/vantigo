@@ -138,6 +138,60 @@ FROM manufacturing.production_lines l JOIN manufacturing.order_components c ON c
 WHERE l.production_id = @production_id
 ORDER BY c.sort_order, c.id;
 
+-- name: SetOrderLotPattern :exec
+-- SetOrderLotPattern keeps the BoM's lot pattern on the order at confirm
+-- (manufacturing phase 2 M80).
+UPDATE manufacturing.orders SET lot_pattern = @lot_pattern WHERE id = @id;
+
+-- name: NextLotCounter :one
+-- NextLotCounter allocates the next {N} of a lot pattern's rendered prefix
+-- under the counter row's lock (manufacturing phase 2 M80), from 1.
+INSERT INTO manufacturing.counters (counter_name, next_value) VALUES (@counter_name, 2)
+ON CONFLICT (counter_name) DO UPDATE SET next_value = manufacturing.counters.next_value + 1
+RETURNING (next_value - 1)::bigint AS number;
+
+-- name: PeekLotCounter :one
+-- PeekLotCounter is the {N} a prefix would hand out next, for the
+-- production draft's preview; 1 when none was handed out.
+SELECT COALESCE((SELECT next_value FROM manufacturing.counters WHERE counter_name = @counter_name), 1)::bigint AS number;
+
+-- name: InsertProductionLineLot :exec
+INSERT INTO manufacturing.production_line_lots (production_id, component_id, lot_id, location_id, lot_number, expiry, consumed, scrapped, allow_expired)
+VALUES (@production_id, @component_id, @lot_id, @location_id, @lot_number, @expiry, @consumed, @scrapped, @allow_expired)
+ON CONFLICT (production_id, component_id, lot_id, location_id) DO UPDATE
+SET consumed = manufacturing.production_line_lots.consumed + EXCLUDED.consumed,
+    scrapped = manufacturing.production_line_lots.scrapped + EXCLUDED.scrapped,
+    allow_expired = manufacturing.production_line_lots.allow_expired OR EXCLUDED.allow_expired;
+
+-- name: InsertProductionOutput :exec
+INSERT INTO manufacturing.production_outputs (production_id, lot_id, lot_number, serial, quantity)
+VALUES (@production_id, @lot_id, @lot_number, @serial, @quantity)
+ON CONFLICT (production_id, lot_id) DO UPDATE SET quantity = manufacturing.production_outputs.quantity + EXCLUDED.quantity;
+
+-- name: ProductionLineLots :many
+-- ProductionLineLots is the lots productions consumed, by component line's
+-- order then the lot's number.
+SELECT l.*
+FROM manufacturing.production_line_lots l JOIN manufacturing.order_components c ON c.id = l.component_id
+WHERE l.production_id = ANY(@production_ids::bigint[])
+ORDER BY l.production_id, c.sort_order, c.id, l.lot_number, l.location_id;
+
+-- name: ProductionOutputs :many
+-- ProductionOutputs is the lots productions made, by production then number.
+SELECT * FROM manufacturing.production_outputs
+WHERE production_id = ANY(@production_ids::bigint[])
+ORDER BY production_id, lot_number;
+
+-- name: ProductionIDsOfOrder :many
+SELECT id FROM manufacturing.productions WHERE order_id = @order_id ORDER BY id;
+
+-- name: CountSerialOutputsOfOrder :one
+-- CountSerialOutputsOfOrder is how many serials the order's productions
+-- made so far: the default serials of the next continue after them (M81).
+SELECT count(*)::int FROM manufacturing.production_outputs po
+JOIN manufacturing.productions p ON p.id = po.production_id
+WHERE p.order_id = @order_id AND po.serial;
+
 -- name: CountProductionsOfOrder :one
 SELECT count(*)::int FROM manufacturing.productions WHERE order_id = @order_id;
 

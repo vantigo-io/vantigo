@@ -50,6 +50,7 @@ type bomFields struct {
 	MakeToOrder    *bool
 	LeadTimeDays   *int32
 	Note           *string
+	LotPattern     *string
 	Operations     []gen.ManufacturingBomOperationInput
 	Lines          []gen.ManufacturingBomLineInput
 }
@@ -61,6 +62,7 @@ type bomValues struct {
 	makeToOrder bool
 	leadTime    int32
 	note        string
+	lotPattern  *string // nil: not sent — the default on a create, kept on an update
 	ops         []opValues
 	lines       []lineValues
 }
@@ -150,6 +152,13 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 		if utf8.RuneCountInString(v.note) > maxBomNote {
 			j.f.add("note", "At most 2000 characters")
 		}
+	}
+	if in.LotPattern != nil {
+		pattern := strings.TrimSpace(*in.LotPattern)
+		if n := utf8.RuneCountInString(pattern); n < 1 || n > maxLotPattern {
+			j.f.addCoded("lotPattern", codeLotPatternInvalid, "1–40 characters")
+		}
+		v.lotPattern = &pattern
 	}
 	if len(in.Operations) > maxOperations {
 		j.f.addCoded("operations", codeTooManyOperations, "At most 50 operations")
@@ -464,7 +473,7 @@ func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManuf
 	in := req.Body
 	v, j := s.judgeBom(ctx, bomFields{
 		Code: in.Code, OutputQuantity: in.OutputQuantity, MakeToOrder: in.MakeToOrder, LeadTimeDays: in.LeadTimeDays,
-		Note: in.Note, Operations: in.Operations, Lines: in.Lines,
+		Note: in.Note, LotPattern: in.LotPattern, Operations: in.Operations, Lines: in.Lines,
 	}, bomInputSchema)
 	if j.f.failed() {
 		return answer(j.err(), createBomAnswers())
@@ -478,6 +487,11 @@ func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManuf
 				return err
 			}
 			judgeGoods(&j, in.VariantId, components, locked)
+			pattern := defaultLotPattern
+			if v.lotPattern != nil {
+				pattern = *v.lotPattern
+			}
+			judgeLotPattern(&j, pattern, locked[in.VariantId].SKU)
 			if err := j.err(); err != nil {
 				return err
 			}
@@ -506,7 +520,7 @@ func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManuf
 			}
 			b, err := txq.InsertBom(ctx, store.InsertBomParams{
 				VariantID: in.VariantId, Code: v.code, OutputQuantity: numeric(v.output, quantityPlaces), IsDefault: isDefault,
-				MakeToOrder: v.makeToOrder, LeadTimeDays: v.leadTime, Note: v.note, Now: now,
+				MakeToOrder: v.makeToOrder, LeadTimeDays: v.leadTime, Note: v.note, LotPattern: pattern, Now: now,
 			})
 			if err != nil {
 				return err
@@ -556,7 +570,7 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 	}
 	v, j := s.judgeBom(ctx, bomFields{
 		Code: in.Code, OutputQuantity: in.OutputQuantity, MakeToOrder: in.MakeToOrder, LeadTimeDays: in.LeadTimeDays,
-		Note: in.Note, Operations: in.Operations, Lines: in.Lines,
+		Note: in.Note, LotPattern: in.LotPattern, Operations: in.Operations, Lines: in.Lines,
 	}, bomUpdateSchema)
 	if j.f.failed() {
 		return answer(j.err(), updateBomAnswers())
@@ -579,6 +593,11 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 				return notActive()
 			}
 			judgeGoods(&j, b.VariantID, components, locked)
+			pattern := b.LotPattern
+			if v.lotPattern != nil {
+				pattern = *v.lotPattern
+			}
+			judgeLotPattern(&j, pattern, locked[b.VariantID].SKU)
 			if err := j.err(); err != nil {
 				return err
 			}
@@ -601,7 +620,7 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 			}
 			if _, err := txq.UpdateBom(ctx, store.UpdateBomParams{
 				ID: b.ID, Code: v.code, OutputQuantity: numeric(v.output, quantityPlaces), MakeToOrder: v.makeToOrder,
-				LeadTimeDays: v.leadTime, Note: v.note, Now: s.deps.Clock(),
+				LeadTimeDays: v.leadTime, Note: v.note, LotPattern: pattern, Now: s.deps.Clock(),
 			}); err != nil {
 				return err
 			}

@@ -16,6 +16,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/inventory"
 	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/accesspoint/storecovetest"
+	"github.com/vantigo-io/vantigo/server/internal/manufacturing"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
@@ -49,15 +50,16 @@ import (
 // The module names, so a test says which installation it is about rather than
 // repeating a list.
 const (
-	modCustomers = "customers"
-	modProjects  = "projects"
-	modTime      = "time"
-	modExpenses  = "expenses"
-	modInvoices  = "invoices"
-	modEnergy    = "energy"
-	modProducts  = "products"
-	modOrders    = "orders"
-	modInventory = "inventory"
+	modCustomers     = "customers"
+	modProjects      = "projects"
+	modTime          = "time"
+	modExpenses      = "expenses"
+	modInvoices      = "invoices"
+	modEnergy        = "energy"
+	modProducts      = "products"
+	modOrders        = "orders"
+	modInventory     = "inventory"
+	modManufacturing = "manufacturing"
 )
 
 // moduleNamed is the real module value for one name. It is the only place this
@@ -84,6 +86,8 @@ func moduleNamed(t *testing.T, name string) module.Module {
 		return orders.Module()
 	case modInventory:
 		return inventory.Module()
+	case modManufacturing:
+		return manufacturing.Module()
 	}
 	t.Fatalf("integration: no module named %q", name)
 	return module.Module{}
@@ -162,7 +166,7 @@ func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
 // exchange by path through the document it is given, and the modules' paths
 // are disjoint (/api/v1/customers, /api/v1/projects, /api/v1/time,
 // /api/v1/expenses, /api/v1/invoices, /api/v1/energy, /api/v1/products,
-// /api/v1/orders), so a
+// /api/v1/orders, /api/v1/inventory, /api/v1/manufacturing), so a
 // document holding all of them routes each exchange to its own operation. The
 // documents are already fully resolved when Load returns, so a path item
 // carries its schemas with it and nothing is lost in the merge.
@@ -171,7 +175,7 @@ func withStorecove(t *testing.T) (*storecovetest.Server, []modtest.Option) {
 // TestMain's job over its own contract, and a cross-module test that counted
 // towards it would let an operation look exercised without its module's suite
 // ever having exercised it.
-var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices, modEnergy, modProducts, modOrders, modInventory)
+var recorder = mergedRecorder(modCustomers, modProjects, modTime, modExpenses, modInvoices, modEnergy, modProducts, modOrders, modInventory, modManufacturing)
 
 func mergedRecorder(names ...string) *contracttest.Recorder {
 	merged := &openapi3.T{
