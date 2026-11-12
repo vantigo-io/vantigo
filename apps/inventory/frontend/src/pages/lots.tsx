@@ -85,6 +85,7 @@ export const LotsPage = () => {
         onClose={() => setPrinting(false)}
         lotIds={rows.slice(0, 1000).map((lot) => lot.id)}
         name="lots"
+        onlyShown={lots.hasNextPage || rows.length > 1000}
       />
       {meta.data && !canViewLots(meta.data) ? (
         <Alert color="yellow" icon={<IconAlertCircle size={16} />}>

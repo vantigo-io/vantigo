@@ -13,6 +13,8 @@ export interface PrintLotLabelsDialogProps {
   lotIds: readonly number[];
   /** What the PDF is named after: a lot's number, or the list's name. */
   name: string;
+  /** Whether the lots are only those a list has loaded so far, which the dialog then says. */
+  onlyShown?: boolean;
 }
 
 /**
@@ -21,7 +23,7 @@ export interface PrintLotLabelsDialogProps {
  * an Avery L7160 or L7163 sheet, as many copies of each as asked. A serial is
  * a lot of its own, so serials get a label each. The PDF downloads.
  */
-export const PrintLotLabelsDialog = ({ opened, onClose, lotIds, name }: PrintLotLabelsDialogProps) => {
+export const PrintLotLabelsDialog = ({ opened, onClose, lotIds, name, onlyShown }: PrintLotLabelsDialogProps) => {
   const { t } = useInventoryFormat();
   const [layout, setLayout] = useState<InventoryLabelLayout>("l7160");
   const [copies, setCopies] = useState<number | "">(1);
@@ -41,6 +43,11 @@ export const PrintLotLabelsDialog = ({ opened, onClose, lotIds, name }: PrintLot
         <Text size="sm" c="dimmed">
           {t("printLotLabelsHint", { count: lotIds.length })}
         </Text>
+        {onlyShown && (
+          <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+            {t("printLotLabelsShown", { count: lotIds.length })}
+          </Alert>
+        )}
         <NumberInput
           label={t("labelCopies")}
           min={1}

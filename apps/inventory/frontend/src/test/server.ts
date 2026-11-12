@@ -834,7 +834,14 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
           onHand: one.onHand,
           receivedAt: one.receivedAt,
         }));
-      return jsonResponse(200, { lots: rows });
+      // A page of `limit` at a time, the cursor the offset of the next.
+      const limit = Number(query.get("limit") ?? 100);
+      const from = Number(query.get("cursor") ?? 0);
+      const more = from + limit < rows.length;
+      return jsonResponse(200, {
+        lots: rows.slice(from, from + limit),
+        ...(more ? { nextCursor: String(from + limit) } : {}),
+      });
     }
     // The expiring list's CSV and lot labels (M72, M73): the bytes do not matter here, only that they are asked.
     if (path === "/lots/expiring.csv" && method === "GET")
@@ -1009,6 +1016,14 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         ...state.transfers
           .filter((one) => q === `TRF-${one.number}`)
           .map((one) => ({ kind: "transfer", transfer: { id: one.id, number: one.number } })),
+        // A lot by its label's LOT<id> token or its number.
+        ...state.lots
+          .filter((one) => q === `LOT${one.id}` || one.number.toUpperCase() === q)
+          .map((one) => ({
+            kind: "lot",
+            lot: { id: one.id, number: one.number, expiry: one.expiry },
+            variant: one.variant,
+          })),
       ];
       return jsonResponse(200, { matches: found });
     }
@@ -1316,7 +1331,14 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       }
       if (action === "/lines") {
         const input = body as {
-          lines: { variantId: number; locationId: number; counted?: number; entered?: Entered }[];
+          lines: {
+            variantId: number;
+            locationId: number;
+            counted?: number;
+            entered?: Entered;
+            lotId?: number;
+            lot?: { number: string };
+          }[];
         };
         const scopeIds = below(count.scope.id);
         const refused = input.lines
@@ -1326,8 +1348,37 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         if (refused.length > 0) return inventoryProblem(400, undefined, { lines: refused });
         for (const line of input.lines) {
           const counted = line.entered ? amount({ ...line, quantity: undefined }) : (line.counted ?? 0);
+          // A lot named by number is found among the variant's or made.
+          let lot = line.lotId === undefined ? undefined : state.lots.find((one) => one.id === line.lotId);
+          if (line.lot) {
+            const number = line.lot.number;
+            lot = state.lots.find(
+              (one) => one.variant.id === line.variantId && one.number.toLowerCase() === number.toLowerCase(),
+            );
+            if (!lot) {
+              const variant = variantOf(line.variantId) ?? catalog[0];
+              lot = {
+                id: ++nextId,
+                number,
+                serial: false,
+                variant,
+                status: "available",
+                expired: false,
+                receivedAt: STAMP,
+                onHand: 0,
+                revision: 1,
+                createdAt: STAMP,
+                holds: [],
+                locations: [],
+                movements: [],
+                attachments: [],
+              };
+              state.lots.push(lot);
+            }
+          }
           let held = count.lines?.find(
-            (one) => one.variant.id === line.variantId && one.location.id === line.locationId,
+            (one) =>
+              one.variant.id === line.variantId && one.location.id === line.locationId && one.lot?.id === lot?.id,
           );
           if (!held) {
             const where = locationOf(line.locationId);
@@ -1336,6 +1387,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
               id: ++nextId,
               variant: variantOf(line.variantId) ?? catalog[0],
               location: ref(where),
+              ...(lot ? { lot: { id: lot.id, number: lot.number, expiry: lot.expiry } } : {}),
               expected: 0,
               current: 0,
               added: true,

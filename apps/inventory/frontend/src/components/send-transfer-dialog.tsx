@@ -98,6 +98,13 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
     return (here.find(usableLot) ?? here[0])?.lotId ?? null;
   };
 
+  // The chosen lot's on hand at the source when it holds less than the line: a line sends one lot, so the rest needs a
+  // line of its own on the draft.
+  const lotShort = (line: InventoryTransfer["lines"][number], source: number | null): number | undefined => {
+    const onHand = lotsAt(line.variant.id, source).find((lot) => lot.lotId === lotOf(line))?.onHand;
+    return onHand !== undefined && onHand < line.quantity ? onHand : undefined;
+  };
+
   // What the transfer takes of each variant, every line of it together.
   const wanted = new Map<number, number>();
   for (const line of lines) wanted.set(line.variant.id, (wanted.get(line.variant.id) ?? 0) + line.quantity);
@@ -317,6 +324,11 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
                               }))
                             }
                           />
+                        )}
+                        {lotShort(line, source) !== undefined && (
+                          <Text size="xs" c="orange" mt={4}>
+                            {t("sendMoreThanLot", { onHand: quantity(lotShort(line, source) ?? 0, line.variant.unit) })}
+                          </Text>
                         )}
                       </Table.Td>
                     )}

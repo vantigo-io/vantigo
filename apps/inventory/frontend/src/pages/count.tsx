@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Badge,
@@ -6,6 +7,7 @@ import {
   Checkbox,
   Group,
   NumberInput,
+  Popover,
   Radio,
   SimpleGrid,
   Stack,
@@ -15,9 +17,10 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
+import { DatePickerInput } from "@mantine/dates";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconCircleCheck, IconScan, IconX } from "@tabler/icons-react";
+import { IconAlertCircle, IconCalendar, IconCircleCheck, IconScan, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useBlocker, useParams } from "@tanstack/react-router";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
@@ -36,7 +39,7 @@ import {
 } from "../api/counts";
 import type { InventoryLocationRef } from "../api/locations";
 import { siteLocationListQueryOptions } from "../api/locations";
-import { lookupQueryOptions } from "../api/lookup";
+import { type InventoryLookupMatch, lookupQueryOptions } from "../api/lookup";
 import type { InventoryLotRef } from "../api/lots";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { refusalCodes } from "../api/movements";
@@ -65,12 +68,21 @@ const LINE_HEIGHT_ESTIMATE = 64;
 /** How many lines are drawn beyond the window's edges, so Tab reaches the next one. */
 const LINES_OVERSCAN = 10;
 
+/** A new lot's dates as picked, YYYY-MM-DD: a counted lot gets only these, none from the item's days. */
+type LotDates = Readonly<Partial<Record<"productionDate" | "bestBefore" | "expiry", string>>>;
+
 /** What the person has counted on a line and not yet saved. */
 interface Draft {
   counted: number | "";
   packs: Readonly<Record<number, number>>;
-  /** The lot number typed on an added line of a tracked item with no lot yet. */
+  /** On a new lot's line: the lot number as it is being typed. */
+  lotTyped?: string;
+  /**
+   * On a new lot's line: the number taken on leaving the field or pressing Enter, when it reads. The line saves only
+   * with one, so a half-typed number never becomes a lot.
+   */
   lotNumber?: string;
+  lotDates?: LotDates;
 }
 
 /**
@@ -92,6 +104,12 @@ type Marks = ReadonlyMap<string, { message: string; detail?: string }>;
 class NotSavedError extends Error {}
 
 const keyOf = (variantId: number, locationId: number, lotId?: number) => `${variantId}:${locationId}:${lotId ?? 0}`;
+
+/** A line the person added for a new lot: `<variant>:<location>:new:<n>`, so several can stand side by side. */
+const isNewKey = (key: string) => key.includes(":new:");
+
+/** A lot number as the server reads one. */
+const LOT_NUMBER = /^[A-Za-z0-9._/-]{1,20}$/;
 
 /** Whether the item is tracked in lots or serials, so its lines name their lot. */
 const trackedRef = (variant: InventoryVariantRef) => variant.tracking !== undefined && variant.tracking !== "none";
@@ -125,7 +143,12 @@ const lineInput = (row: Row, draft: Draft): InventoryCountLineInput => ({
   ...(row.lot
     ? { lotId: row.lot.id }
     : !row.line && trackedRef(row.variant)
-      ? { lot: { number: draft.lotNumber?.trim() ?? "" } }
+      ? {
+          lot: {
+            number: draft.lotNumber ?? "",
+            ...Object.fromEntries(Object.entries(draft.lotDates ?? {}).filter(([, value]) => value)),
+          },
+        }
       : {}),
   ...(isPackedDraft(draft)
     ? { entered: enteredOf(draft.packs, draft.counted) }
@@ -146,6 +169,77 @@ const LotText = ({ lot }: { lot: InventoryLotRef }) => {
         </Text>
       )}
     </Stack>
+  );
+};
+
+/**
+ * A new lot's fields on a count line: its number, taken only when the person leaves the field or presses Enter and it
+ * reads, and its dates — the only ones the lot gets, since a counted lot takes none from the item's days (M69).
+ */
+const NewLotFields = ({
+  rowKey,
+  label,
+  draft,
+  onChange,
+}: {
+  rowKey: string;
+  label: string;
+  draft: Draft;
+  onChange: (change: Partial<Draft>) => void;
+}) => {
+  const { t } = useInventoryFormat();
+  const typed = draft.lotTyped ?? draft.lotNumber ?? "";
+  const invalid = typed.trim() !== "" && !LOT_NUMBER.test(typed.trim());
+  const take = () => {
+    const number = typed.trim();
+    if (LOT_NUMBER.test(number) && number !== draft.lotNumber) onChange({ lotNumber: number });
+  };
+  return (
+    <Group gap={4} wrap="nowrap" align="flex-start">
+      <TextInput
+        id={`count-lot-${rowKey}`}
+        size="xs"
+        w={140}
+        maxLength={20}
+        aria-label={t("countLotNumberOf", { line: label })}
+        placeholder={t("countLotNumber")}
+        value={typed}
+        error={invalid ? t("lotNumberInvalid") : undefined}
+        onChange={(event) => onChange({ lotTyped: event.currentTarget.value, lotNumber: undefined })}
+        onBlur={take}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          take();
+        }}
+      />
+      <Popover position="bottom-end" withArrow shadow="md">
+        <Popover.Target>
+          <ActionIcon variant="subtle" aria-label={t("countLotDatesOf", { line: label })} title={t("lotDates")}>
+            <IconCalendar size={16} />
+          </ActionIcon>
+        </Popover.Target>
+        <Popover.Dropdown>
+          <Stack gap="xs" maw={260}>
+            <Text size="xs" c="dimmed">
+              {t("countLotDatesHint")}
+            </Text>
+            {(["productionDate", "bestBefore", "expiry"] as const).map((field) => (
+              <DatePickerInput
+                key={field}
+                size="xs"
+                clearable
+                dropdownType="modal"
+                valueFormat={t("dateInputFormat")}
+                label={t(field === "expiry" ? "expiryDate" : field)}
+                value={draft.lotDates?.[field] || null}
+                onChange={(next) => onChange({ lotDates: { ...draft.lotDates, [field]: next ?? "" } })}
+              />
+            ))}
+          </Stack>
+        </Popover.Dropdown>
+      </Popover>
+    </Group>
   );
 };
 
@@ -172,7 +266,7 @@ const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
  * posting needs accepted — and what to do with the lines nobody counted.
  */
 const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: RefObject<Promise<boolean>> }) => {
-  const { t, quantity, number } = useInventoryFormat();
+  const { t, quantity, number, day } = useInventoryFormat();
   const queryClient = useQueryClient();
   const invalidate = useInvalidateInventory();
   const [drafts, setDrafts] = useState<ReadonlyMap<string, Draft>>(new Map());
@@ -182,8 +276,9 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
   const [scan, setScan] = useState("");
   const [scanError, setScanError] = useState<string>();
   // Each scan asks anew, so scanning the same item twice focuses it twice.
-  const [focusRequest, setFocusRequest] = useState<{ key: string }>();
-  const focused = useRef<{ key: string }>(undefined);
+  const [focusRequest, setFocusRequest] = useState<{ key: string; field: "line" | "lot" }>();
+  const focused = useRef<{ key: string; field: "line" | "lot" }>(undefined);
+  const newRows = useRef(0);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
   const [marks, setMarks] = useState<Marks>(new Map());
@@ -240,15 +335,18 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
   const saveNow = useCallback(async (): Promise<boolean> => {
     const emptied = new Set<string>();
     const pending = [...draftsRef.current].filter(([key, draft]) => {
-      // An added line of a tracked item waits for its lot number.
-      if (key.endsWith(":new") && !draft.lotNumber?.trim()) return false;
+      // A new lot's line waits for its lot number, taken when the person leaves the field.
+      if (isNewKey(key) && !draft.lotNumber) return false;
       if (draft.counted !== "" || isPackedDraft(draft)) return true;
       // A field emptied cannot uncount a line: it goes back to what was saved.
       emptied.add(key);
       return false;
     });
     if (emptied.size > 0)
-      forget((key, draft) => emptied.has(key) && draft.counted === "" && !isPackedDraft(draft) && !draft.lotNumber);
+      forget(
+        (key, draft) =>
+          emptied.has(key) && draft.counted === "" && !isPackedDraft(draft) && !draft.lotNumber && !draft.lotTyped,
+      );
     if (pending.length === 0) return true;
     const byKey = new Map(rows.map((row) => [row.key, row]));
     setSaving(true);
@@ -265,9 +363,36 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
           const cached = queryClient.getQueryData(countKey);
           if (!cached || answer.revision >= cached.revision) queryClient.setQueryData(countKey, answer);
           const saved = new Map(batch);
-          forget((key, draft) => saved.get(key) === draft);
-          // A line added under a typed lot number comes back saved under its lot: the saved line stands in for it.
-          setAdded((now) => now.filter((row) => !(row.key.endsWith(":new") && saved.has(row.key))));
+          // A new lot's line comes back saved under its lot: the saved line stands in for it, and a count changed
+          // while the request was out moves over to it, so no draft is left without a line.
+          const savedAs = new Map<string, string>();
+          for (const [key, draft] of batch) {
+            const row = byKey.get(key);
+            if (!row || !isNewKey(key)) continue;
+            const line = (answer.lines ?? []).find(
+              (one) =>
+                one.variant.id === row.variant.id &&
+                one.location.id === row.location.id &&
+                one.lot?.number.toLowerCase() === draft.lotNumber?.toLowerCase(),
+            );
+            if (line?.lot) savedAs.set(key, keyOf(row.variant.id, row.location.id, line.lot.id));
+          }
+          const settle = (now: ReadonlyMap<string, Draft>) => {
+            const next = new Map(now);
+            for (const [key, draft] of now) {
+              if (!saved.has(key)) continue;
+              if (saved.get(key) === draft) next.delete(key);
+              else if (isNewKey(key)) {
+                next.delete(key);
+                const to = savedAs.get(key);
+                if (to && !next.has(to)) next.set(to, { counted: draft.counted, packs: draft.packs });
+              }
+            }
+            return next;
+          };
+          draftsRef.current = settle(draftsRef.current);
+          setDrafts(settle);
+          setAdded((now) => now.filter((row) => !(isNewKey(row.key) && saved.has(row.key))));
           setMarks(new Map());
         } catch (error) {
           const failing = refusedLines(error);
@@ -334,6 +459,45 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
     return () => clearTimeout(timer);
   }, [drafts, saving, saveError, save]);
 
+  // Asks which of options is meant; undefined when the dialog is closed without a choice.
+  const choose = <T,>(title: string, hint: string, options: readonly { label: string; value: T }[]) =>
+    new Promise<T | undefined>((resolve) => {
+      const id = modals.open({
+        title,
+        onClose: () => resolve(undefined),
+        children: (
+          <Stack gap="xs">
+            <Text size="sm" c="dimmed">
+              {hint}
+            </Text>
+            {options.map((option) => (
+              <Button
+                key={option.label}
+                variant="default"
+                justify="flex-start"
+                onClick={() => {
+                  resolve(option.value);
+                  modals.close(id);
+                }}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </Stack>
+        ),
+      });
+    });
+
+  // A line of a lot as a choice names it: its number and expiry, or the number being typed on a new lot's line.
+  const lotLabel = (row: Row) => {
+    if (row.lot)
+      return [row.lot.number, row.lot.expiry ? t("lotExpires", { date: day(row.lot.expiry) }) : ""]
+        .filter(Boolean)
+        .join(" · ");
+    const draft = draftOf(row);
+    return draft.lotNumber || draft.lotTyped || t("countLotNumber");
+  };
+
   const scanned = async (code: string) => {
     if (!code) return;
     setScan("");
@@ -358,9 +522,9 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
         return;
       }
       // A lot's label (LOT<id>) or number names its item and its lot (M69).
-      const lotMatch = matches.find((match) => match.kind === "lot" && match.variant);
-      const variant = lotMatch?.variant ?? matches.find((match) => match.kind === "variant")?.variant;
-      if (!variant) {
+      const lotMatches = matches.filter((match) => match.kind === "lot" && match.variant && match.lot);
+      const variantMatch = matches.find((match) => match.kind === "variant")?.variant;
+      if (lotMatches.length === 0 && !variantMatch) {
         keep();
         setScanError(t("scanNothing", { code }));
         return;
@@ -370,15 +534,64 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
         setScanError(t("scanLocationFirst"));
         return;
       }
-      // A tracked item scanned by its own code: its first lot here, else a new line whose lot is typed.
-      const lot =
-        lotMatch?.lot ??
-        (trackedRef(variant)
-          ? rows.find((one) => one.variant.id === variant.id && one.location.id === current.id && one.lot)?.lot
-          : undefined);
-      const key =
-        trackedRef(variant) && !lot ? `${variant.id}:${current.id}:new` : keyOf(variant.id, current.id, lot?.id);
-      const row = rows.find((one) => one.key === key) ?? { key, variant, location: current, lot };
+      const here = (variantId: number) =>
+        rows.filter((one) => one.variant.id === variantId && one.location.id === current.id);
+      let chosen: Row | undefined;
+      if (lotMatches.length > 0) {
+        // A number several items use: the one already counted here, else the person says which.
+        const counted = lotMatches.filter((match) => here(match.variant?.id ?? 0).length > 0);
+        const match =
+          lotMatches.length === 1
+            ? lotMatches[0]
+            : counted.length === 1
+              ? counted[0]
+              : await choose<InventoryLookupMatch>(
+                  t("countPickItemTitle"),
+                  t("countPickItemHint", { number: lotMatches[0].lot?.number }),
+                  lotMatches.map((one) => ({
+                    label: `${one.variant?.sku} · ${one.variant?.productName}`,
+                    value: one,
+                  })),
+                );
+        if (!match?.variant || !match.lot) return;
+        const key = keyOf(match.variant.id, current.id, match.lot.id);
+        chosen = rows.find((one) => one.key === key) ?? {
+          key,
+          variant: match.variant,
+          location: current,
+          lot: match.lot,
+        };
+      } else if (variantMatch && trackedRef(variantMatch)) {
+        // A tracked item scanned by its own or its packaging's code: which lot is not known, so the person picks one
+        // of its lines here or starts a new lot.
+        const lines = here(variantMatch.id);
+        const picked =
+          lines.length === 0
+            ? "new"
+            : await choose<Row | "new">(
+                t("countPickLotTitle", { sku: variantMatch.sku }),
+                t("countPickLotHint", { sku: variantMatch.sku, location: current.fullCode }),
+                [
+                  ...lines.map((one) => ({ label: lotLabel(one), value: one as Row | "new" })),
+                  { label: t("countNewLot"), value: "new" as const },
+                ],
+              );
+        if (picked === undefined) return;
+        if (picked === "new") {
+          newRows.current += 1;
+          chosen = {
+            key: `${variantMatch.id}:${current.id}:new:${newRows.current}`,
+            variant: variantMatch,
+            location: current,
+          };
+        } else chosen = picked;
+      } else if (variantMatch) {
+        const key = keyOf(variantMatch.id, current.id);
+        chosen = rows.find((one) => one.key === key) ?? { key, variant: variantMatch, location: current };
+      }
+      if (!chosen) return;
+      const row = chosen;
+      const { key, variant } = row;
       if (!rows.some((one) => one.key === key)) setAdded((now) => [...now, row]);
       const packaging = variant.packagings?.find((one) => one.barcode === code);
       if (packaging)
@@ -389,7 +602,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
             packs: { ...draft.packs, [packaging.id]: (draft.packs[packaging.id] ?? 0) + 1 },
           });
         });
-      setFocusRequest({ key });
+      setFocusRequest({ key, field: isNewKey(key) && !draftOf(row).lotNumber ? "lot" : "line" });
     } catch (error) {
       keep();
       setScanError(refusalMessage(t, error as Error));
@@ -453,7 +666,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
   // A scanned item's line is scrolled to when it is not drawn, and its field takes the focus once it is.
   useEffect(() => {
     if (!focusRequest || focused.current === focusRequest) return;
-    const field = document.getElementById(`count-line-${focusRequest.key}`) as HTMLInputElement | null;
+    const field = document.getElementById(`count-${focusRequest.field}-${focusRequest.key}`) as HTMLInputElement | null;
     if (!field) {
       const index = shown.findIndex((row) => row.key === focusRequest.key);
       if (index >= 0) virtualizer.scrollToIndex(index, { align: "center" });
@@ -638,14 +851,11 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                             {row.lot ? (
                               <LotText lot={row.lot} />
                             ) : !row.line && trackedRef(row.variant) ? (
-                              <TextInput
-                                size="xs"
-                                w={140}
-                                maxLength={20}
-                                aria-label={t("countLotNumberOf", { line: label })}
-                                placeholder={t("countLotNumber")}
-                                value={draft.lotNumber ?? ""}
-                                onChange={(event) => edit(row, { lotNumber: event.currentTarget.value })}
+                              <NewLotFields
+                                rowKey={row.key}
+                                label={label}
+                                draft={draft}
+                                onChange={(change) => edit(row, change)}
                               />
                             ) : (
                               <Text size="sm" c="dimmed">
