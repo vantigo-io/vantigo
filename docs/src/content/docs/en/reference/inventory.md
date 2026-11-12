@@ -124,7 +124,7 @@ of it — on Products' transaction and answers a `VariantHold` of kind `stock`
 — the same for every purpose, since stock stops a delete, a change to Service and a
 change of the tracking mode alike: the quantity as the shortest
 decimal that says it (`"34"`, `"2.5"`, `"0.125"`) and the number of locations it lies
-on. When it lies nowhere but is [reserved](#reservations-and-issues), it answers kind
+on — a location holding it in several lots counted once. When it lies nowhere but is [reserved](#reservations-and-issues), it answers kind
 `reserved`: the quantity reserved and, in `Locations`, the number of sites. When it
 lies nowhere and nothing is reserved but a [transfer](#transfers) carries it — sent and
 neither received, recorded missing nor returned — it answers kind **`in_transit`**
@@ -377,7 +377,12 @@ stock.
 - **`balances.lot_id`** — the primary key `(variant_id, location_id)` is dropped and
   replaced by **`ux_balances_key` on `(variant_id, location_id, lot_id) NULLS NOT
   DISTINCT`**: no lot is one key of its own, so two postings to a new (variant,
-  location, no lot) still serialise on one row. Indexed by lot where set.
+  location, no lot) still serialise on one row. Indexed by lot where set. **The table
+  has no primary key** from then on: a primary key's columns are `NOT NULL` and the lot
+  is null for untracked stock, and the unique index cannot be the replica identity for
+  the same reason. Were the table ever published for logical replication, it would need
+  a surrogate id as its key, or `REPLICA IDENTITY FULL`. A posting's writes match the
+  lot as an equality or both none, so the index serves them.
 - **`movement_lines.lot_id`** (indexed with the movement where set) and
   **`movement_lines.expired_override`** (`boolean`, false) — an expired lot taken on the
   poster's [override](#expiry-and-today).
@@ -489,7 +494,8 @@ root location** — kind `site`, coded as the site — in the same transaction. 
 `GET /sites` lists the active sites, or those of the `status` asked for. Every site it
 answers — and `GET` and `PUT /sites/{id}` — carries its **figures**, read in one
 query per request: `locationCount`, the active locations below the root, to everyone;
-and to a caller holding `stock-view`, `stockLines` (the balances in the site) and
+and to a caller holding `stock-view`, `stockLines` (the stock lines in the site: a
+variant on a location, its lots counted once) and
 `lastReceiptAt` (the last receipt posted there, absent when there was none), and
 `incomingTransfers` and `outgoingTransfers`, the number of transfers sent or partly
 received to and from it. The app's home draws its site cards from them with no request
@@ -766,17 +772,21 @@ The API's lines name lots (M57, M59); the forms gain the lot column in L1b.
   (location, lot).
 
 **A lot by number.** An empty number generates **`L<n>`** from the counter row `lot`,
-from 1001, allocated in the posting's transaction. A number the variant has names that
-lot: receiving more under a supplier's lot adds to it and **its dates are not changed**.
+from 1001, allocated in the posting's transaction. **A generated number never joins a
+lot**: when the variant has that number already — typed by a receipt, `L1001` say, in any
+case — the posting takes the next number, under the counter row's lock, until one is
+free, and a lot of its own is made. A number the line types names that lot: receiving more under a supplier's lot adds to it and **its dates are not changed**.
 Only a date the line **states** is compared — a stated date that differs is
 `lot_dates_differ`, so a typo is seen — and a date left out is not, so an ordinary repeat
 receipt never trips it. **Defaults apply only when the lot is made**: `expiry` is the
 production date when given, else the receipt's day in the workspace zone, plus the
 variant's `expiryDays`; `bestBefore` likewise with `bestBeforeDays`; each only when the
 variant has the offset and the line gives no date. A lot made by a receipt or an
-adjustment names its movement as its origin (`inventory/movement/<id>`). Two receipts
-making one number at once serialise on the unique index; the second reads the first's
-lot once it commits (tested). The movement's lines answer their **`lot`** (`id`,
+adjustment names its movement as its origin (`inventory/movement/<id>`), and its
+`lot_created` event is recorded once that movement is claimed — so a posting that loses
+its key to a concurrent first attempt, and removes the lots it made, leaves no event
+behind. Two receipts making one number at once serialise on the unique index; the
+second reads the first's lot once it commits (tested). The movement's lines answer their **`lot`** (`id`,
 `number`, `expiry`) and, when an expired lot was taken on the override,
 `expiredOverride`.
 
@@ -794,20 +804,25 @@ the call's `ExpiredOverride` is true; the movement line records it
 (`expired_override`). A zero `Today` is a programming error. Inventory's own handlers
 read the zone the same way, before their transactions, and only when a line names a
 lot by number. A test proves that every ledger call made inside another module's
-transaction records no contract call.
+transaction records no contract call. **A date is its own year, month and day**:
+`Today`, a `NewLot`'s dates and `StockLot`'s are calendar dates, by convention at
+midnight UTC, and the expiry rule reads each as given, never moved to UTC first.
 
 ### Usable on hand
 
 **Usable** on hand is the balances whose lot is none, plus those of lots with no active
 hold that are not expired today. It is what can be promised: `Reserve` and
 `ReserveForProduction` judge available as usable less reserved, `Stock.Available`
-answers usable less reserved, and the low-stock list reads the same figure; on hand —
-`Stock.OnHand` and every stock page — stays everything that lies there.
+answers usable less reserved, the low-stock list reads the same figure, and so do the
+stock pages' **available** and their placement's **low**; on hand — `Stock.OnHand` and
+every stock page's on hand — stays everything that lies there.
 
 **The reserve's lock (M65b).** A serial variant has one balance row per serial, and a
 reserve locks every one of the variant's rows at the site. The test reserving against
 **10,000 serial balances** at one site takes about 23 ms locally, under the design's
-50 ms, so **the row locks were kept**: no (variant, site) advisory lock was built.
+50 ms, so **the row locks were kept**: no (variant, site) advisory lock was built. The
+test logs its runs, so CI's log carries the figure the 50 ms is judged against; it fails
+only an order of magnitude beyond it, for a loaded run under the race detector.
 
 ### Holds and their status
 
@@ -827,13 +842,18 @@ holds are L1b's.
 One order everywhere a lot is proposed or listed: **expiry ascending, none last, then
 received, then lot id** — FIFO when no lot expires. **`AutoLot`** on an issue or consume
 line lets Inventory take the lots itself at the line's location, **under its own
-locks**: the candidates are read on the transaction, locked with the named lots and
-their balances, and taken in that order, skipping lots on hold and expired lots — even
+locks**: the candidates are read plainly on the transaction in that order, and only
+those that look usable — available and not expired — until they cover what the
+location's AutoLot lines take, **and two more**, are locked with the named lots and
+their balances. Should they fall short under the locks — a lot held or emptied between
+the read and the lock — the posting, run on a savepoint, is rolled back to it, its locks
+with it, and runs again with every candidate. The lots are taken in that order, skipping lots on hold and expired lots — even
 with `AllowExpired`: auto never uses an expired lot — and never splitting a serial. A lot
 that appeared after the candidates were read is not used, and what they do not cover is
 `insufficient_stock`. The lots taken come back in **`StockPosted.Picks`** —
 `{Index, LotID, LocationID, Quantity}` per lot, by the line's index — and a replay
-answers the same picks, read back from its movement's lines.
+answers the same picks, read back from its movement's lines; an `AutoLot` line of an
+untracked variant posts as one line with no lot and picks nothing.
 `contracts.ProposeLots` is the same order as a pure function for a proposal read on the
 pool.
 
@@ -846,7 +866,11 @@ that exists for the variant is answered as is: only the dates the `NewLot` state
 compared (`lot_dates_differ`), its production date never; a new serial whose number
 holds stock is `serial_quantity`; an untracked variant is `lot_not_allowed`. A
 `ProduceLine` of a tracked variant names such a lot by `LotID`. The production's lines
-are keyed by (variant, line id). After any refusal the caller rolls back.
+are keyed by (variant, line id). After any refusal the caller rolls back. **It takes
+every lot it answers `FOR NO KEY UPDATE`**, not only a serial's: a production's
+`HoldLots` on its output in the same transaction (design M86, step 7b) then holds the
+lock it needs already, where upgrading a `FOR SHARE` would deadlock two productions of
+one lot.
 
 ### The lock order
 
@@ -857,8 +881,8 @@ lower(number)) order; **every lot named**, AutoLot's candidates included, in id 
 movement's header, the locations `FOR SHARE` and the balances in **(variant, location,
 lot)** order, no lot first. The lots come before the header and the locations for every
 writer, so no posting holds a location and then waits for a lot. A caller's
-`EnsureLots` runs the counter, the new lots and the lot locks; its `Produce` runs the
-rest. A hold or a release takes the lots `FOR NO KEY UPDATE` in id order, then the
+`EnsureLots` runs the counter, the new lots and the lot locks — every lot `FOR NO KEY
+UPDATE` — and its `Produce` runs the rest. A hold or a release takes the lots `FOR NO KEY UPDATE` in id order, then the
 holds. A reserve's `LockSiteBalances` orders as the engine does, no lot first. A test
 races issues, receipts into a lot and holds on it on a pool of four.
 
@@ -1459,10 +1483,9 @@ target    = maximum, or reorderPoint + 1 when there is no maximum
 needed    = target − projected, at least 1 when low
 ```
 
-The list, its CSV and the dashboard's count read **usable** on hand (manufacturing phase
-2 M63), on the workspace's today; a site's stock row on the product and variant pages
-still judges on all of it until those pages show what is held (L1b) — the two differ
-only for a tracked variant with stock on hold or expired.
+The list, its CSV, the dashboard's count and a site's stock row on the product and
+variant pages and the stock at sites all read **usable** on hand (manufacturing phase 2
+M63), on the workspace's today, so a placement the stock page calls low is on the list.
 
 Without a maximum the target is **one above** the reorder point, so filling it takes the
 row off the list; filling *to* the reorder point would leave it low. A placement with no
@@ -1702,7 +1725,7 @@ against packagings that hold until the commit.
   **goods** variant of the product in the catalog's order, with or without stock, each
   by site (by code) and location (by full code), with the totals summed exactly. Each
   site and the variant's totals carry `reserved` — what orders hold there — and
-  `available`, on hand less reserved, which may be negative; each site carries
+  `available`, [usable](#usable-on-hand) on hand less reserved, which may be negative; each site carries
   `incoming`, what is [in transit](#in-transit) to it on transfers. A site where the
   variant is reserved, or incoming, but lies nowhere is listed with no rows, and so is an
   active site where it only has a [placement](#placement). Each site carries its
@@ -1791,8 +1814,8 @@ text, or one longer than the limit, is a 400 on `q`.
 ### Stats
 
 `GET /stats` answers the dashboard card's figures: the active sites, the active
-locations below the roots, the **balances** (one per variant and location holding
-stock, the *Stock lines*), and **`receiptsThisWeek`**, the receipts posted since
+locations below the roots, the **stock lines** (one per variant and location holding
+stock, its lots counted once, the *Stock lines*), and **`receiptsThisWeek`**, the receipts posted since
 **Monday 00:00** of the business week in the workspace's zone, and **`openCounts`**,
 the counts still counting.
 

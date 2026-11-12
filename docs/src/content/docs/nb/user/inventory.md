@@ -572,7 +572,7 @@ lagersted kommer aldri på listen over lav beholdning.
 **Lav beholdning** i sidemenyen — *Varer på eller under bestillingspunktet på hvert
 lagersted, og hva som fyller dem opp.* — lister hver vare som har blitt lav på et aktivt
 lagersted. En vare er **lav** på et lagersted når det som er **disponibelt** der —
-beholdningen over alle lagerstedets lokasjoner, minus det ordrer har
+beholdningen som kan brukes over alle lagerstedets lokasjoner, minus det ordrer har
 [reservert](#reservert-og-disponibelt) — pluss det som er **innkommende** på overføringer
 til lagerstedet, er på eller under bestillingspunktet. Varer som allerede er på vei,
 teller med: så snart en overføring som bringer nok er sendt, forsvinner varen fra listen.
@@ -855,8 +855,10 @@ Beholdning-kortet og på en vares beholdningsside ser du da *Reservert … · di
 
 For en vare som holdes i **partier**, teller disponibelt bare beholdning som kan brukes:
 et parti som er sperret — i karantene eller blokkert — eller har passert utløpsdatoen,
-blir stående i beholdningen, men holdes utenfor disponibelt, og dermed utenfor det en ny
-ordre kan reservere og utenfor lista over lav beholdning. En sperring på beholdning som
+blir stående i beholdningen, men holdes utenfor disponibelt — på Beholdning-kortet, på en
+vares beholdningsside og i kolonnene i overføringsskjemaet likt — og dermed utenfor det en
+ny ordre kan reservere og utenfor lista over lav beholdning. En vare som er merket lav på
+beholdningssiden, står på lista over lav beholdning. En sperring på beholdning som
 allerede er reservert, kan gjøre disponibelt negativt; reservasjonene blir stående.
 Partisporing slås på per vare når leveranser og produksjoner kan registrere partier.
 
@@ -876,7 +878,8 @@ Bare lagersteder som **leverer ordrer**, tar imot reservasjoner
 
 **Hjem** har et **Lager**-kort — *Hold oversikt over hva som ligger hvor* — for alle med
 en av visningsrettighetene; trykk det for å åpne Lager. Med begge har tallraden et
-Lager-kort: **Lagerlinjer**, antallet par av vare og lokasjon som har beholdning, med
+Lager-kort: **Lagerlinjer**, antallet par av vare og lokasjon som har beholdning — en
+vare som ligger i flere partier på én lokasjon, telles én gang — med
 ukens varemottak ved siden av (*3 varemottak denne uken*), der uken begynner på mandag.
 
 Med **Telle varer** og begge visningsrettighetene viser **Trenger oppfølging** **En
