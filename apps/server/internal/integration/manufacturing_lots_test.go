@@ -1,12 +1,16 @@
 package integration_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	mfggen "github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -225,5 +229,77 @@ func TestManufacturingLots_RaceOnSharedLot(t *testing.T) {
 	}
 	if r := results[2]; r.Status != http.StatusOK && r.Status != http.StatusCreated {
 		t.Errorf("the hold = %d %s", r.Status, r.Body)
+	}
+}
+
+// TestManufacturingLots_OppositeLockOrder is M86's retry where a cycle can
+// form: a production takes its output lot FOR NO KEY UPDATE (7a) before it
+// shares the lot it consumes (7c), while another writer — a hold on both
+// lots, in id order — takes the consumed lot first and then the output lot.
+// The test takes the two lots in that order on its own transaction around
+// the production, so the two wait on each other; PostgreSQL breaks the
+// cycle, and the production answers 201 — retried once when it was the
+// victim — having consumed and produced exactly once.
+func TestManufacturingLots_OppositeLockOrder(t *testing.T) {
+	t.Parallel()
+	s := newLotsInstallation(t, modtest.WithPoolMaxConns(4))
+	s.receiveLot(t, s.berry, "BER-O", 100)
+	o := s.jamOrder(t, "4")
+	in := func(id string) mfggen.ManufacturingProductionInput {
+		return mfggen.ManufacturingProductionInput{ClientRequestId: id, Quantity: "2",
+			Lines: []mfggen.ManufacturingProductionLineInput{{ComponentId: *o.Components[0].Id, Consumed: strPtr("4")}}}
+	}
+	first := s.produce(o, in("opposite-1"))
+	if first.Status != http.StatusCreated {
+		t.Fatalf("the first production = %d %s", first.Status, first.Body)
+	}
+	var made mfggen.ManufacturingProduction
+	first.JSON(&made)
+	consumed, output := made.Lines[0].Lots[0].LotId, made.OutputLots[0].LotId
+	if consumed >= output {
+		t.Fatalf("the consumed lot %d is not before the output lot %d in id order", consumed, output)
+	}
+
+	ctx := t.Context()
+	tx, err := s.h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	if _, err := tx.Exec(ctx, `SELECT id FROM inventory.lots WHERE id = $1 FOR NO KEY UPDATE`, consumed); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *modtest.Response, 1)
+	go func() { done <- s.produce(o, in("opposite-2")) }()
+	// The production holds its output lot and waits for the consumed one.
+	deadline := time.Now().Add(10 * time.Second)
+	for s.h.Count(t, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the production never waited for the consumed lot")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// The other writer's second lock closes the cycle: one side is the victim.
+	_, err = tx.Exec(ctx, `SELECT id FROM inventory.lots WHERE id = $1 FOR NO KEY UPDATE`, output)
+	var pgErr *pgconn.PgError
+	if err != nil && (!errors.As(err, &pgErr) || pgErr.Code != "40P01") {
+		t.Fatalf("the other writer's second lock: %v", err)
+	}
+	_ = tx.Rollback(ctx)
+	res := <-done
+	if res.Status != http.StatusCreated {
+		t.Fatalf("the production met in the opposite order = %d %s", res.Status, res.Body)
+	}
+	if got := s.h.Count(t, `SELECT count(*) FROM manufacturing.productions WHERE order_id = $1`, o.Id); got != 2 {
+		t.Errorf("%d productions, want 2", got)
+	}
+	onHand := func(lot int64) string {
+		return modtest.One[string](t, s.h, `SELECT coalesce(sum(on_hand), 0)::text FROM inventory.balances WHERE lot_id = $1`, lot)
+	}
+	if got := onHand(consumed); got != "92.000" {
+		t.Errorf("the consumed lot holds %s, want 92.000", got)
+	}
+	if got := onHand(output); got != "4.000" {
+		t.Errorf("the output lot holds %s, want 4.000", got)
 	}
 }

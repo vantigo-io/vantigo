@@ -139,7 +139,7 @@ func (s *server) GetManufacturingProductionDraft(ctx context.Context, req gen.Ge
 			}
 			picks, short, err := pool.propose(c.VariantID, proposed, o.ComponentLocationID, today)
 			if err != nil {
-				return nil, err
+				return answer(err, draftAnswers())
 			}
 			for _, pk := range picks {
 				l := known[[2]int64{pk.LotID, pk.LocationID}]
@@ -170,11 +170,11 @@ func (s *server) draftOutput(ctx context.Context, o store.ManufacturingOrder, e 
 		out.BestBefore = &openapi_types.Date{Time: today.AddDate(0, 0, int(*e.BestBeforeDays))}
 	}
 	if e.Tracking == contracts.TrackingSerial {
-		before, err := q.CountSerialOutputsOfOrder(ctx, o.ID)
+		before, err := q.SerialOutputNumbersOfOrder(ctx, o.ID)
 		if err != nil {
 			return out, err
 		}
-		first := defaultSerialFirst(mo, int(before))
+		first := defaultSerialFirst(mo, before)
 		out.SerialFirst = &first
 		return out, nil
 	}
@@ -413,6 +413,10 @@ type preparedProduction struct {
 	expiredOverride bool
 	// reproposed is set once the proposed lots were proposed again (M65a).
 	reproposed bool
+	// prefix is where the production sits in the body ("" for a
+	// production's own post, "production." inside a finish), for the field
+	// errors raised in the transaction.
+	prefix string
 }
 
 // prepareProduction judges a production request for order orderID before
@@ -426,7 +430,7 @@ func (s *server) prepareProduction(ctx context.Context, orderID int64, in gen.Ma
 	}
 	pool := store.New(s.deps.Pool)
 	if p, err := pool.ProductionByClientRequest(ctx, in.ClientRequestId); err == nil {
-		return &preparedProduction{in: in, v: v, orderID: orderID, replay: &p}, nil
+		return &preparedProduction{in: in, v: v, orderID: orderID, replay: &p, prefix: prefix}, nil
 	} else if !noRows(err) {
 		return nil, err
 	}
@@ -476,7 +480,7 @@ func (s *server) prepareProduction(ctx context.Context, orderID int64, in gen.Ma
 		return nil, err
 	}
 	prep := &preparedProduction{in: in, v: v, orderID: orderID, siteID: pre.SiteID, variants: make([]int32, 0, len(components)),
-		today: today, expiredOverride: s.has(ctx, permInventoryExpiredOverride)}
+		today: today, expiredOverride: s.has(ctx, permInventoryExpiredOverride), prefix: prefix}
 	for _, c := range components {
 		prep.variants = append(prep.variants, c.VariantID)
 	}
@@ -499,7 +503,8 @@ func (s *server) prepareProduction(ctx context.Context, orderID int64, in gen.Ma
 // PostgreSQL chose it as a deadlock's victim (M86) — a second deadlock is 409
 // revision_conflict. A nil prep runs before alone. A clientRequestId
 // committed by another request meanwhile answers that production as the
-// replay. idsOf names the orders the write locks, by default the
+// replay. A lot taken that was still not read on the last attempt is 409
+// revision_conflict: a lot row is never kept without its number. idsOf names the orders the write locks, by default the
 // production's alone; the production's order is one of them.
 func (s *server) runProduction(ctx context.Context, orderID int64, idsOf func(context.Context, *store.Queries) ([]int64, error), prep *preparedProduction, who actor,
 	before func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error) (int64, error) {
@@ -543,7 +548,7 @@ func (s *server) runProduction(ctx context.Context, orderID int64, idsOf func(co
 			continue
 		case errors.As(err, &again) && !prep.reproposed:
 			prep.reproposed = true
-			if err = s.repropose(ctx, prep, componentLocation, again.components); err != nil {
+			if err = s.repropose(ctx, prep, componentLocation, again); err != nil {
 				return 0, err
 			}
 			continue
@@ -552,6 +557,8 @@ func (s *server) runProduction(ctx context.Context, orderID int64, idsOf func(co
 			continue
 		case isDeadlock(err):
 			err = deadlockConflict()
+		case errors.Is(err, errLotsMoved):
+			err = lotsMovedConflict()
 		}
 		break
 	}
@@ -622,8 +629,8 @@ func (s *server) productionResponse(ctx context.Context, id int64, replayed bool
 // postProduction is the post on the locked order: the state, the lines, the
 // consumption warning, the production row, the output's lots (M80, M81,
 // step 7a), the split, Produce (7c), the lots taken (M82), and the totals.
-// Unless last, Inventory's insufficient_stock on a split line is errResplit,
-// and a lot taken that known has no number of is errLotsMoved; a refusal of
+// Unless last, Inventory's insufficient_stock on a split line is errResplit;
+// a lot taken that known has no number of is errLotsMoved; a refusal of
 // proposed lots only is errRepropose until they were proposed again (M65a).
 func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queries, lo *lockedOrder, prep *preparedProduction,
 	held map[int32][]contracts.StockLocation, known map[int64]lotInfo, who actor, last bool) (int64, error) {
@@ -648,7 +655,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 	var f fieldErrors
 	for i, l := range v.lines {
 		if _, ok := byID[l.componentID]; !ok {
-			f.add(fmt.Sprintf("lines[%d].componentId", i), "Not a component line of this order")
+			f.add(fmt.Sprintf("%slines[%d].componentId", prep.prefix, i), "Not a component line of this order")
 		}
 	}
 	if f.failed() {
@@ -678,21 +685,13 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 	// 7a. The output's lots, found or made after the order's lock and
 	// before Produce (M80, M86): the lots come before the locations
 	// Produce shares, for every writer (M58).
-	outs, newLots, err := s.outputLots(ctx, txq, o, lo.locked[o.VariantID], v, prep.today)
+	outs, newLots, err := s.outputLots(ctx, txq, o, lo.locked[o.VariantID], v, prep.today, prep.prefix)
 	if err != nil {
 		return 0, err
 	}
 	if len(newLots) > 0 {
-		ids, err := ledger.EnsureLots(ctx, tx, productionSource(p.ID), prep.today, newLots)
-		if err != nil {
-			var r *contracts.StockRefusal
-			if errors.As(err, &r) {
-				return 0, stockRefusal(r, nil)
-			}
-			return 0, fmt.Errorf("manufacturing: ensure production %d's lots: %w", p.ID, err)
-		}
-		for i := range outs {
-			outs[i].lotID = ids[i]
+		if err := s.ensureOutputLots(ctx, tx, txq, ledger, o, lo.locked[o.VariantID], prep, p.ID, outs, newLots); err != nil {
+			return 0, err
 		}
 	}
 	tracked := map[int32]bool{}
@@ -729,7 +728,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 					return 0, errResplit
 				}
 				if again := reproposable(r, refs); again != nil && !prep.reproposed {
-					return 0, &errRepropose{components: again}
+					return 0, &errRepropose{components: again, refusal: productionRefusal(r, components, refs)}
 				}
 				return 0, productionRefusal(r, components, refs)
 			}
@@ -755,7 +754,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 			}
 		}
 	}
-	lotRows, err := writeLineLots(ctx, txq, p.ID, v.lines, refs, posted, known, last)
+	lotRows, err := writeLineLots(ctx, txq, p.ID, v.lines, refs, posted, known)
 	if err != nil {
 		return 0, err
 	}
@@ -868,6 +867,20 @@ func splitConsumption(o store.ManufacturingOrder, byID map[int64]store.Manufactu
 	for _, l := range lines {
 		c := byID[l.componentID]
 		if l.lots != nil {
+			// The rows add up to the line (M82): judged on the request, and
+			// again here for rows a re-proposal wrote.
+			want, got := new(big.Rat).Set(l.scrap), new(big.Rat)
+			if l.consumed != nil {
+				want.Add(want, l.consumed)
+			}
+			for _, r := range l.lots {
+				got.Add(got, r.total())
+			}
+			if got.Cmp(want) != 0 {
+				short = append(short, contracts.StockLineRefusal{Code: contracts.StockInsufficientStock, VariantID: c.VariantID, LineID: c.ID,
+					Detail: fmt.Sprintf("The lots cover %s of the %s of %s the line takes.", text(got, quantityPlaces), text(want, quantityPlaces), c.Sku)})
+				continue
+			}
 			for j, r := range l.lots {
 				if r.total().Sign() == 0 {
 					continue

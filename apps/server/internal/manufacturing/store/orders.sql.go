@@ -195,21 +195,6 @@ func (q *Queries) CountProductionsOfOrder(ctx context.Context, orderID int64) (i
 	return column_1, err
 }
 
-const countSerialOutputsOfOrder = `-- name: CountSerialOutputsOfOrder :one
-SELECT count(*)::int FROM manufacturing.production_outputs po
-JOIN manufacturing.productions p ON p.id = po.production_id
-WHERE p.order_id = $1 AND po.serial
-`
-
-// CountSerialOutputsOfOrder is how many serials the order's productions
-// made so far: the default serials of the next continue after them (M81).
-func (q *Queries) CountSerialOutputsOfOrder(ctx context.Context, orderID int64) (int32, error) {
-	row := q.db.QueryRow(ctx, countSerialOutputsOfOrder, orderID)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const getOrder = `-- name: GetOrder :one
 SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern FROM manufacturing.orders WHERE id = $1
 `
@@ -1294,6 +1279,35 @@ func (q *Queries) ProductionOutputs(ctx context.Context, productionIds []int64) 
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const serialOutputNumbersOfOrder = `-- name: SerialOutputNumbersOfOrder :many
+SELECT po.lot_number FROM manufacturing.production_outputs po
+JOIN manufacturing.productions p ON p.id = po.production_id
+WHERE p.order_id = $1 AND po.serial
+`
+
+// SerialOutputNumbersOfOrder is the numbers of the serials the order's
+// productions made so far: the default serials of the next continue after
+// the highest of them (M81).
+func (q *Queries) SerialOutputNumbersOfOrder(ctx context.Context, orderID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, serialOutputNumbersOfOrder, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var lot_number string
+		if err := rows.Scan(&lot_number); err != nil {
+			return nil, err
+		}
+		items = append(items, lot_number)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
