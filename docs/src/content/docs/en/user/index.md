@@ -83,7 +83,7 @@ shorter than yours:
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Virtual employees](/en/user/agents/) | Agents (Persona, Roles, Permissions, Usage, Activity), Settings |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
-| [Inventory](/en/user/inventory/) | Overview, Lots, Transfers, Movements, Receipts, Counts, Low stock, Import opening balances (and placements) |
+| [Inventory](/en/user/inventory/) | Overview, Lots, Expiring, Transfers, Movements, Receipts, Counts, Low stock, Import opening balances (and placements) |
 | [Orders](/en/user/orders/) | Quotes, Sales orders, Deliveries, Subscriptions, Quote templates, Sales analysis, Orders settings |
 | [Manufacturing](/en/user/manufacturing/) | Overview, Manufacturing orders, Shop floor, Production schedule, Bills of materials, Work centers |
 | [Knowledge](/en/user/knowledge/) | Articles, Trash |
