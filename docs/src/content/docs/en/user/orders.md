@@ -385,13 +385,22 @@ taken from are listed under it with each lot's **Expiry**, **Location** and **Qu
 4. An expired lot can only be delivered by someone with the permission **Use expired
    lots** (`inventory:expired-override`): tick **Use expired lot** under the line, then
    choose it in **Change lot**; it is marked **Expired**. Without the permission it is
-   shown but cannot be chosen, and a delivery that names one is refused.
-5. **Save**. Change only the line's quantity, and its lots are chosen for you again.
+   shown but cannot be chosen, and a delivery that names one is refused. Someone without
+   the permission can still save the delivery with that lot as it was chosen, but not
+   change its quantity.
+5. A serial number is delivered one at a time: its quantity is 1.
+6. **Save**. Change only the line's quantity, and lots you chose stay: the line says
+   **Short by** or that the lots take more than its quantity until you make them add up.
+   Lots chosen for you are chosen again for the new quantity.
+7. **Propose again** under a line chooses its lots for you again — the one that expires
+   first, from what is there now — and saves the delivery.
 
 The **Pick list** has a row per lot, under its location, with the lot number and expiry in
 the **Lot** column. The **Packing slip** lists the lots — and serial numbers — under each
-line, with their expiry: it is the customer's record of which lots they received. The
-order's **Deliveries** card lists each delivery's lots.
+line, with their expiry, each lot once with how much of it the line takes: it is the
+customer's record of which lots they received. The order's **Deliveries** card lists the
+lots of each posted delivery and of each draft as chosen so far; a cancelled delivery
+lists none.
 
 When you post, someone else may have taken a lot meanwhile, or put it on hold. If you did
 not change the lots yourself, they are chosen again from what is there now and the
@@ -673,6 +682,7 @@ confirmed or cancelled ([the timeline](/en/user/customers/#the-timeline)).
 | The lot is expired. | Choose another lot, or ask someone with **Use expired lots** to post the delivery with **Use expired lot**. |
 | The lot is on hold. | The lot is in quarantine or blocked in Inventory: choose another lot. |
 | That lot does not hold the item at that location. | Someone took the lot meanwhile: reload and choose another. |
+| Only someone allowed to use expired lots can choose an expired lot. | Choose another lot, or ask someone with **Use expired lots** to choose it. |
 | Nothing of the order is open and available at its site. | Wait for the goods, or reserve them, or finish the draft delivery that already holds them. |
 | The order has deliveries; its site no longer changes. | Leave the site as it is. |
 | A posted delivery no longer changes. | Correct the stock in Inventory and use **Undo delivered** on the order. |

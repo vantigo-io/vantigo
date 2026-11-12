@@ -922,8 +922,8 @@ its expiry and the location's full code as snapshots for the PDFs — the lot an
 are Inventory's, named by id only. The line's own `from_location_id` stays null. The
 delivery answers per line `tracked`, `lots`, `short` (what the picks leave uncovered of the
 quantity, 0 when none) and, on a draft, `lotChoices` — `Stock.Lots` for the variant at the
-site, in FEFO order, each with its expiry, best-before, status, quantity and whether it is
-expired on the workspace's today.
+site, in FEFO order, each with its expiry, best-before, status, quantity, whether it is
+expired on the workspace's today and whether it is a serial number's (`serial`).
 
 - **The proposal** (M76). Create reads `Stock.Lots` for the order's delivery-method
   variants on the pool before its transaction, with the business day, and under the
@@ -936,11 +936,19 @@ expired on the workspace's today.
   allowExpired}]`. Each must be a lot of `Stock.Lots` holding the variant at that location
   (`lot_unknown`) — a pick the line already had stands even when its lot no longer shows
   there — named once per location (`line_invalid`), at a valid quantity
-  (`quantity_invalid`); lots on an untracked line are `lot_not_allowed`. All are 400 line
-  failures; a failure about one pick carries its `lotIndex` (its place in the line's
-  `lots`) and `lotId`. Lots sent as the line had them keep their `chosen`; any change marks
-  them all chosen. A tracked line sent **without** `lots` keeps its picks while they add up
-  to its quantity, and is proposed again otherwise.
+  (`quantity_invalid`) — exactly 1 for a variant tracked by serial number
+  (`serial_quantity`); lots on an untracked line are `lot_not_allowed`. A pick with
+  `allowExpired` that is new, or whose `allowExpired` or quantity changed, needs
+  `inventory:expired-override`, read on the pool before the transaction
+  (`expired_override_required`); a pick the line already had so, sent unchanged, stands
+  for anyone. All are 400 line failures; a failure about one pick carries its `lotIndex`
+  (its place in the line's `lots`) and `lotId`. Lots sent as the line had them keep their
+  `chosen`; any change marks them all chosen. A tracked line sent **without** `lots` keeps
+  its picks when any is chosen — a quantity changed alone leaves them, and the line is
+  short or over until they add up — or while they add up to its quantity, and is proposed
+  again otherwise. `proposeAgain: true` (*Propose again*, §19) proposes the line again from
+  `Stock.Lots` whatever its picks, as not chosen; sent together with `lots` it is
+  `line_invalid`.
 - **Posting** (M78). The post reads `Today` and whether the poster holds
   `inventory:expired-override` on the pool before its transaction (rule 24). Under the
   locks, a tracked line with no pick is `lot_required` and one whose picks do not add up
@@ -949,17 +957,23 @@ expired on the workspace's today.
   `LotID` and its `AllowExpired`. Inventory's refusals come back through the refusal's
   `Index`: a line failure names the delivery line, and for a pick its `lotIndex` and
   `lotId` — `lot_expired` (an expired lot without both `allowExpired` and the override),
-  `lot_blocked` (a lot on hold), `insufficient_stock`.
+  `lot_blocked` (a lot on hold), `insufficient_stock`. A variant the post finds under the
+  order's and the delivery's locks that it had not locked — a save between its read and
+  its locks — is never locked after them: the transaction rolls back and the post starts
+  again with every variant locked first (rule 21), at most twice more, then
+  `version_conflict`.
 - **Proposed again, once** (M65a). When every failing pick is `insufficient_stock` or
   `lot_blocked` on a line whose picks are all proposed, the post — after its transaction
   rolled back — reads `Stock.Lots` again, proposes those lines anew from what is there
   less what the delivery's other lines pick, and posts once more, replacing their picks
   inside that transaction; the delivery keeps the new picks. A line the lots no longer
-  cover answers the first refusal; a second refusal is answered as it is. A person's
-  chosen picks are never proposed again.
+  cover answers the first refusal; so does a refusal of the second post, whose new picks
+  roll back with it — the first refusal's `lotIndex` names the picks the delivery still
+  holds. A person's chosen picks are never proposed again.
 - **After the post** the picks stay with the delivery; nothing else changes in the
   order's buckets. `GET /deliveries` answers each delivery's `lots`, its lot numbers once
-  each in line order, which the order page's deliveries card shows.
+  each in line order — a posted delivery's, a draft's as proposed or chosen so far, none
+  for a cancelled one — which the order page's deliveries card shows.
 
 ### Back orders
 
@@ -979,9 +993,10 @@ line prints a row per pick, under the pick's location, with the lot number and e
 the *Lot* column (*Parti*), and a *Not chosen* row for what its picks leave short. The **packing slip** (`GET
 /deliveries/{id}/packing-slip`, *pakkseddel*) prints the seller, the order's delivery
 address, contact and references, and per line what was ordered, what this delivery takes
-and what is left as back order, and under a tracked line its lots — each number once, with
-its expiry and, when the line takes more than one lot, the quantity; serial numbers listed
-and wrapped — so the stored slip is the customer's record of which lots went to them
+and what is left as back order, and under a tracked line its lots — each lot once, what it
+takes summed over its locations, with its expiry and, when the line takes more than one
+lot, that quantity; a variant tracked by serial number (its catalog `Tracking`) lists its
+numbers without quantities, wrapped — so the stored slip is the customer's record of which lots went to them
 (M79); a posted delivery's is the stored one (`orders.documents`,
 owner kind `delivery`, kind `packing_slip`), a draft's is printed now with the draft mark.
 Once a shipment of the delivery is booked, the packing slip is printed now — dated the day
@@ -1531,6 +1546,8 @@ a bare 400.
 | `line_not_found` | 400 | A delivery line not on the order |
 | `lot_unknown` | 400 | A delivery's pick names a lot that holds none of the item at that location of the site |
 | `lot_not_allowed` | 400 | A delivery's untracked line names lots |
+| `serial_quantity` | 400 | A delivery's pick of a serial-tracked variant takes other than 1 |
+| `expired_override_required` | 400 | A delivery's new or changed pick allows an expired lot, from a caller without `inventory:expired-override` |
 | `lot_required` | 400 | Posting a tracked delivery line with no lot |
 | `picks_mismatch` | 400 | Posting a tracked delivery line whose lots do not add up to its quantity |
 | `lot_expired`, `lot_blocked` | 409 | Inventory refused a delivery's pick: the lot is expired (without *Use expired lot* and `inventory:expired-override`), or on hold |
@@ -1764,7 +1781,7 @@ and 403 are the platform's. Every write of a quote or an order also answers 409
 | `GET /deliveries` | access | 200 — newest first, by status, order, customer, site and a search, each with its lots; 400 paging |
 | `POST /deliveries` | deliveries-manage | 201; 400; 404 the order; 409 `order_not_confirmed`, `order_on_hold`, `order_has_no_site`, `nothing_to_deliver`; 503 without stock |
 | `GET /deliveries/{id}` | access | 200 with lines, their lots and, on a draft, the locations and lots holding each variant; 404 |
-| `PUT /deliveries/{id}` | deliveries-manage | 200; 400 `line_not_found`, `line_invalid`, `quantity_invalid`, `over_delivery`, `location_unknown`, `lot_unknown`, `lot_not_allowed`; 404; 409 `version_conflict`, `delivery_not_draft`; 503 |
+| `PUT /deliveries/{id}` | deliveries-manage | 200; 400 `line_not_found`, `line_invalid`, `quantity_invalid`, `over_delivery`, `location_unknown`, `lot_unknown`, `lot_not_allowed`, `serial_quantity`, `expired_override_required`; 404; 409 `version_conflict`, `delivery_not_draft`; 503 |
 | `POST /deliveries/{id}/post` | deliveries-manage | 200; 400 `location_missing`, `over_delivery`, `lot_required`, `picks_mismatch`; 404; 409 `version_conflict`, `delivery_not_draft`, `order_on_hold`, `insufficient_stock`, `location_unknown`, `site_not_fulfilling`, `variant_not_stocked`, `lot_expired`, `lot_blocked`, `lot_unknown`, `lot_required`, `lot_not_allowed`, `serial_quantity`; 503 |
 | `POST /deliveries/{id}/cancel` | deliveries-manage | 200; 404; 409 `version_conflict`, `delivery_not_draft` |
 | `GET /deliveries/{id}/pick-list` | access | 200 printed now; 404 |
