@@ -481,7 +481,10 @@ into a confirmed order; **Manage Orders settings** keeps the quote templates as 
 cannot be delegated; **Manage subscriptions** makes, changes, pauses and ends
 subscriptions; **Manage deliveries** makes, picks, posts and cancels deliveries; and
 **Manage carriers** is listed for the shipping still to come and does nothing yet
-([Orders](/en/admin/orders/#give-people-access)).
+([Orders](/en/admin/orders/#give-people-access)). In Inventory, **Use expired lots** lets a person
+take a lot past its expiry date on a delivery or a production, when they choose that lot
+themselves; it does nothing until lot tracking is switched on
+([Inventory](/en/reference/inventory/#expiry-and-today)).
 
 ### Assignments
 
