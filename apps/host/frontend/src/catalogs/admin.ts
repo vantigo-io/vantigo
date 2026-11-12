@@ -501,6 +501,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.inventoryExpiredOverride",
     descriptionKey: "admin.permission.inventoryExpiredOverrideDescription",
   },
+  "inventory:lots-manage": {
+    moduleKey: "admin.permission.module.inventory",
+    categoryKey: "admin.permission.category.inventory",
+    displayNameKey: "admin.permission.inventoryLotsManage",
+    descriptionKey: "admin.permission.inventoryLotsManageDescription",
+  },
   "orders:access": {
     moduleKey: "admin.permission.module.orders",
     categoryKey: "admin.permission.category.orders",
@@ -1097,6 +1103,9 @@ const en = {
   "admin.permission.inventoryExpiredOverride": "Use expired lots",
   "admin.permission.inventoryExpiredOverrideDescription":
     "Issue or consume a lot past its expiry date, when the lot is chosen by hand on a delivery or a production.",
+  "admin.permission.inventoryLotsManage": "Manage lots",
+  "admin.permission.inventoryLotsManageDescription":
+    "Change a lot's dates, supplier lot and note, add and remove its files, and put and release its holds on the lot page.",
   "admin.permission.ordersAccess": "Use Orders",
   "admin.permission.ordersAccessDescription":
     "See the Orders app and read quotes, orders, subscriptions and deliveries.",
@@ -1859,6 +1868,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.inventoryExpiredOverride": "Bruke utgåtte partier",
   "admin.permission.inventoryExpiredOverrideDescription":
     "Ta ut eller forbruke et parti etter utløpsdatoen, når partiet velges for hånd på en leveranse eller en produksjon.",
+  "admin.permission.inventoryLotsManage": "Administrere partier",
+  "admin.permission.inventoryLotsManageDescription":
+    "Endre et partis datoer, leverandørparti og merknad, legge til og fjerne filene, og sette og frigi sperringer på partisiden.",
   "admin.permission.ordersAccess": "Bruke Ordre",
   "admin.permission.ordersAccessDescription": "Se Ordre-appen og lese tilbud, ordrer, abonnementer og leveranser.",
   "admin.permission.ordersQuotesManage": "Håndtere tilbud",

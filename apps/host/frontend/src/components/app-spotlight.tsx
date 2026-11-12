@@ -38,7 +38,7 @@ import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
-import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
+import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH, LOTS_ROUTE_PATH } from "@vantigo/inventory-ui/lib/routes";
 import { searchQueryOptions as knowledgeSearchQueryOptions } from "@vantigo/knowledge-ui/api/articles";
 import { ARTICLE_ROUTE_PATH, KNOWLEDGE_HOME_ROUTE_PATH } from "@vantigo/knowledge-ui/lib/routes";
 import {
@@ -237,6 +237,13 @@ export const AppSpotlight = ({
             search: undefined,
           },
         ]
+      : []),
+    // Find a lot (manufacturing phase 2 M60): the lots list, searched by a
+    // number, a supplier lot or an SKU; a stock read, so both views.
+    ...(enabledModules?.includes("inventory") &&
+    hasPermissions(permissions, ["inventory:locations-view"]) &&
+    hasPermissions(permissions, ["inventory:stock-view"])
+      ? [{ label: t("dashboard.findLot"), icon: IconBarcode, path: LOTS_ROUTE_PATH, search: undefined }]
       : []),
     // Start count is the counter's: the counts open the start form on arrival
     // (`new=1`). Starting one needs inventory:counts-manage and, as every

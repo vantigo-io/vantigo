@@ -9,6 +9,7 @@ import {
   inventoryNavItems,
   LOCATION_ROUTE_PATH,
   LOOKUP_ROUTE_PATH,
+  LOT_ROUTE_PATH,
   MOVEMENT_ROUTE_PATH,
   MOVEMENTS_ROUTE_PATH,
   NEW_ADJUSTMENT_ROUTE_PATH,
@@ -79,6 +80,7 @@ describe("the inventory routes", () => {
     expect(matchedRouteIds("/inventory/counts/5")).toContain(COUNT_ROUTE_PATH);
     expect(countLinkOptions(5)).toEqual({ to: COUNT_ROUTE_PATH, params: { countId: "5" } });
     expect(matchedRouteIds(IMPORT_ROUTE_PATH)).toContain(IMPORT_ROUTE_PATH);
+    expect(matchedRouteIds("/inventory/lots/1001")).toContain(LOT_ROUTE_PATH);
     for (const item of inventoryNavItems) expect(matchedRouteIds(item.to)).toContain(item.to);
   });
 

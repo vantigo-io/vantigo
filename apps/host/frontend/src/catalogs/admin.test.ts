@@ -60,6 +60,7 @@ const inventoryPermissionKeys = [
   "inventory:counts-manage",
   "inventory:transfers-manage",
   "inventory:expired-override",
+  "inventory:lots-manage",
 ] as const;
 
 describe("the admin permission catalog", () => {
