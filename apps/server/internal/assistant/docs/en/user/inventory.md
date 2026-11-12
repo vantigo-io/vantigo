@@ -1,6 +1,6 @@
 ---
 title: Inventory
-description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, lots and serial numbers — on receipts, moves and adjustments, the Lots list, a lot's page, putting a lot on hold and releasing it, a lot's files — counting stock, importing opening balances, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
+description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, lots and serial numbers — on receipts, moves and adjustments, the Lots list, a lot's page, putting a lot on hold and releasing it, a lot's files, the lots expiring soon, lot labels — counting stock, lots included, importing opening balances with or without lots, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
 sidebar:
   order: 65
 sources:
@@ -36,6 +36,7 @@ The **Inventory** tile, after Products in the app switcher, is shown to everyone
 | --- | --- |
 | **Overview** — the lookup and the sites | `inventory:locations-view` or `inventory:stock-view` |
 | **Lots** — the lots of the items kept in lots or serial numbers | `inventory:locations-view` and `inventory:stock-view` |
+| **Expiring** — the lots in stock that expire soon or have expired | `inventory:locations-view` and `inventory:stock-view` |
 | **Transfers** — stock sent between sites | `inventory:locations-view` and `inventory:stock-view` |
 | **Movements** | `inventory:locations-view` and `inventory:stock-view` |
 | **Receipts** — the movements list showing receipts only | `inventory:locations-view` and `inventory:stock-view` |
@@ -390,6 +391,33 @@ name or its download button to save it — the browser downloads it rather than 
 Files need the installation's [object storage](/en/admin/object-storage/); without it,
 *File storage is not set up in this installation.*
 
+### Lots expiring soon
+
+**Expiring** in the sidebar lists the lots in stock that expire within the next 30 days,
+or have already expired, the one expiring first at the top: **Expiry**, **Days left** —
+*8 days*, or *2 days ago* in red once it has passed —, **Lot**, **SKU**, **Product**,
+**Status** and **On hand**. Change **Expiring within (days)** — 1 to 365 — to look
+further or nearer; **Site** counts what lies at one site only, and **Status** narrows it
+to the lots available, in quarantine or blocked. A lot that holds nothing any more is
+not listed. **Export CSV** downloads the same rows, `expiring-2026-09-12.csv`, with the
+days left as a number, negative once passed; **Print labels** prints the lots' labels.
+The list shows at most 1000 lots: *Only the first 1000 lots are shown. Narrow the days or
+choose a site.* It needs both views.
+
+### Print lot labels
+
+**Print labels** on a lot's page, on the **Lots** list — for the lots it shows — and on
+**Expiring** downloads a PDF of lot labels, on the same Avery sheets as
+[location labels](#print-location-labels): choose **Avery L7160** (21 labels per A4) or
+**Avery L7163** (14 per A4) and how many **Labels per lot**, and press **Download PDF**.
+Each label carries the lot's `LOT` code as a barcode across its top — `LOT1001`, its
+number in Inventory, which never changes —, the lot number large, the SKU and the
+product's name, and the expiry date (*EXP 2026-12-31*), or the best-before date (*BB …*)
+when the lot has no expiry. A serial number is a lot of its own, so serials get a label
+each. Scanning a label in **Find location or item**, or on a count, finds the lot. At
+most 1000 labels at a time. These are labels for your own shelves; labels with GS1
+barcodes for customers come later.
+
 ## Transfer stock between sites
 
 A **transfer** sends stock from one site — the **From site** — to another — the **To
@@ -418,7 +446,12 @@ be different (*The from site and the to site must be different.*), and, if you w
 **Expected arrival**, a **Reference** and a **Note**. Then add the lines with the
 [line editor](#the-line-editor): scan or search for each item and enter the quantity, in
 its unit or [in packagings](#enter-quantities-in-packagings). An item may be on several
-lines — that is how stock from two locations travels in one transfer.
+lines — that is how stock from two locations, or two lots, travels in one transfer.
+
+For an item kept in [lots](#lots-and-serial-numbers), the **Lot** column offers the
+item's lots at the from site, each with its expiry date and what lies of it. A line
+carries one lot: pick it now, or leave it — *Chosen when sent* — and the send proposes
+one. Two lots of an item go on two lines.
 
 Beside each line, two columns show the stock at both sites as you type:
 
@@ -452,6 +485,15 @@ starts on the item's primary location there, marked *(primary)*, when that holds
 of it — else on the one holding most. An item that lies nowhere at the site says *Nothing of it
 lies at the site*.
 
+For an item kept in lots, the **Lot** column offers the lots that lie on the line's
+location, with their expiry dates, and starts on the draft's lot when it lies there —
+else on the first that can be used, the one expiring first, as on a move. Choosing
+another location proposes that location's lot. A lot on hold or past its expiry date can
+still be sent; it is marked. A line of a tracked item with no lot is held back — *The
+item is tracked in lots: name the lot.* The lot sent travels with the line: in transit
+is per lot, the receive puts that lot on the shelf at the to site, and a cancel puts it
+back where it left.
+
 The dialog warns you before you send:
 
 - *The location holds only …; the send will be refused.* — choose another location, or
@@ -476,8 +518,8 @@ since the draft was written is refused at send.
 Once a transfer is sent, **Print transfer note** on its page downloads its transfer note
 as a PDF, `folgeseddel-TRF-1042.pdf`, to travel with the goods: the number, the two sites with their
 addresses, when it was sent and by whom, the expected arrival, the reference, each line
-with its SKU, name, quantity (and the packagings it was entered in) and the location it
-was picked from, a line for the receiver's signature, and a barcode of the transfer's
+with its SKU, name, quantity (and the packagings it was entered in), its lot and expiry
+date when it has one, and the location it was picked from, a line for the receiver's signature, and a barcode of the transfer's
 token, `TRF-1042`. Scanning that barcode — in **Find location or item** or on the receive
 page — opens the transfer.
 
@@ -750,6 +792,21 @@ A count of a whole site may hold thousands of lines. The page draws only the lin
 what you see and draws the rest as you scroll, so it stays quick; a scanned item's line
 is scrolled into view wherever it lies, and **Tab** moves on to the next line as before.
 
+An item kept in [lots](#lots-and-serial-numbers) has a line per lot on each location,
+one under the other, each with the lot's number — linked to its page — and expiry date in
+the **Lot** column: count each lot on its own line. Scanning a lot's
+[label](#print-lot-labels) or typing its number goes to that lot's line, or adds one. An
+item kept in lots that is scanned where none of its lots was expected gets a new line
+with a **Lot number** field: type the number on the pack — a lot the item has is counted,
+a new number makes a new lot when the line is saved. A serial number is counted 0 or 1
+(*A serial number holds exactly one, and is in stock once.*). Posting sets each lot on
+each location to what was counted.
+
+If an item became kept in lots after the count was opened, its lines have no lot. They
+post as they are when nothing was expected and nothing counted; otherwise the post is
+refused — *The item is tracked in lots: name the lot.* — and the item must be counted
+again in a new count.
+
 Each line shows **Expected**, **Now** — what lies there now —, **Counted** and the
 **Difference**. A line whose stock changed since the count opened is marked **Moved**.
 What you type is **saved by itself** a moment after you stop: the page says **Saving…**,
@@ -799,13 +856,26 @@ the sidebar (it needs **Adjust stock** and both views).
    Excel does when it saves CSV in Norwegian — or put the quantity in quotes (`"2,5"`):
    in a comma-separated file an unquoted `2,5` becomes two cells, and the row is
    refused as **Not a valid quantity**. A file saved from Excel reads as it is.
+   The template also has the columns `lot`, `supplier_lot`, `production_date`,
+   `best_before` and `expiry`, for items kept in [lots](#lots-and-serial-numbers): each
+   row of such an item gives its lot's number, and may give its supplier lot and dates
+   (`2026-12-31` or `31.12.2026`); left empty, the dates follow from the item's days. A
+   number the item already has adds to that lot; a new one makes it, with the import as
+   where it came from. A serial number's row is of quantity 1. The lot columns may be left
+   out of a file without lots, and left empty on the rows of other items.
 2. Choose the **Site** and the **CSV file**, and press **Dry run**. Nothing is posted:
    each row shows its **Outcome** — **OK**, **No such location in the site**, **No such
-   SKU**, **A service, not kept in stock** or **Not a valid quantity**.
+   SKU**, **A service, not kept in stock**, **Not a valid quantity**, **The item is
+   tracked in lots: give its lot**, **The item is not tracked in lots**, **The lot or its
+   dates do not read** or **A serial number's row is of quantity 1** — and, when the file
+   has lots, the **Lot** of each row.
 3. When every row is OK (*All 120 rows are ready to post.*), press **Commit**. The rows
    are posted as **one adjustment** with the reason **Opening balance**, and the page
    says **Opening balances posted** with a link to it. If any row fails, nothing is
    posted: fix the file and try again.
+
+This is also how stock already on the shelves is brought under lots: once an item holds
+nothing, have it kept in lots in Products, then import its stock with the lot columns.
 
 Uploading **the same file again to the same site** posts nothing new — it answers the
 movement already posted — so a commit cannot be doubled by accident. A changed file is a
@@ -970,6 +1040,10 @@ With both views, **Needs attention** shows, for each active site with anything l
 *4 items at or below their reorder point at a site*; press it to open
 [the low-stock list](#the-low-stock-list) filtered to that site.
 
+With both views, **Needs attention** also shows *3 lots in stock expire within 14 days*
+and *2 lots in stock have expired* when there are any; press either to open
+[Expiring](#lots-expiring-soon).
+
 ## Who sees what
 
 | What | View locations | View stock | Manage locations | Adjust stock | Receive goods | Count stock | Transfer stock | Manage lots |
@@ -985,6 +1059,7 @@ With both views, **Needs attention** shows, for each active site with anything l
 | **Transfers**, a transfer's page and its history, **Print transfer note**, transfers in the lookup, **Incoming** and **Outgoing** on a site, **Transfer differences** on an item | ✓ | ✓ | – | – | – | – | – | – |
 | **New transfer**, **Edit**, **Save draft**, **Send…**, **Send and receive…**, **Delete draft**, **Receive…**, closing a difference, **Cancel transfer**; the dashboard's **A transfer is past its expected arrival**; **Create transfer** on the low-stock list | ✓ | ✓ | – | – | – | – | ✓ | – |
 | **Lots**, a lot's page with its holds, where it lies, its movements and its files; lots in the lookup and **Find a lot** | ✓ | ✓ | – | – | – | – | – | – |
+| **Expiring**, its **Export CSV**, **Print labels** on lots; the dashboard's lots expiring and expired | ✓ | ✓ | – | – | – | – | – | – |
 | **Edit** on a lot, **Quarantine**, **Block**, **Release**, **Add file**, **Remove** | ✓ | ✓ | – | – | – | – | – | ✓ |
 
 Every other row needs every permission it ticks: the posting and counting buttons
