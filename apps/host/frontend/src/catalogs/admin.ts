@@ -627,6 +627,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.manufacturingCostsView",
     descriptionKey: "admin.permission.manufacturingCostsViewDescription",
   },
+  "manufacturing:quality-manage": {
+    moduleKey: "admin.permission.module.manufacturing",
+    categoryKey: "admin.permission.category.manufacturing",
+    displayNameKey: "admin.permission.manufacturingQualityManage",
+    descriptionKey: "admin.permission.manufacturingQualityManageDescription",
+  },
   "calendar:access": {
     moduleKey: "admin.permission.module.calendar",
     categoryKey: "admin.permission.category.calendar",
@@ -1162,6 +1168,9 @@ const en = {
   "admin.permission.manufacturingCostsView": "See manufacturing costs",
   "admin.permission.manufacturingCostsViewDescription":
     "See and write the work centers' cost rates, the standard costs and the rolled-up cost of a bill of materials.",
+  "admin.permission.manufacturingQualityManage": "Manage quality",
+  "admin.permission.manufacturingQualityManageDescription":
+    "Close deviations with their disposition, which releases the quarantine holds they put on lots, and release the holds of a deviation closed as scrap or return.",
   "admin.permission.calendarAccess": "Use Calendar",
   "admin.permission.calendarAccessDescription":
     "Use the Calendar app: your own calendar, your appointments and your answers to them, and the dashboard's agenda.",
@@ -1930,6 +1939,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.manufacturingCostsView": "Se produksjonskostnader",
   "admin.permission.manufacturingCostsViewDescription":
     "Se og skrive arbeidsstasjonenes kostnadssatser, standardkostene og den samlede kostnaden for en stykkliste.",
+  "admin.permission.manufacturingQualityManage": "Administrere kvalitet",
+  "admin.permission.manufacturingQualityManageDescription":
+    "Lukke avvik med disponering, som opphever karantenesperrene de satte på partier, og oppheve sperrene til et avvik lukket som kassering eller retur.",
   "admin.permission.calendarAccess": "Bruk Kalender",
   "admin.permission.calendarAccessDescription":
     "Bruk Kalender-appen: din egen kalender, avtalene dine og svarene dine på dem, og agendaen på kontrollpanelet.",
