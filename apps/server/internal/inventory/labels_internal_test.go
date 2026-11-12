@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,5 +116,27 @@ func TestLotLabels_Layout(t *testing.T) {
 	}
 	if got := len(pdfPages.FindAll(pdf, -1)); got != 1 {
 		t.Errorf("%d pages, want 1", got)
+	}
+}
+
+// TestLotLabels_NameOnOneLine is the SKU · name line of a lot label cut to
+// one line with an ellipsis, so the expiry below it never overlaps it; a
+// short one prints whole.
+func TestLotLabels_NameOnOneLine(t *testing.T) {
+	t.Parallel()
+	for _, layout := range []gen.InventoryLabelLayout{gen.L7160, gen.L7163} {
+		sheet := labelSheets[layout]
+		if got := oneLine("MILK-1 · Milk", sheet.nameSize, sheet.width-4); got != "MILK-1 · Milk" {
+			t.Errorf("%s: short name = %q, want it whole", layout, got)
+		}
+		long := "WIDGET-XL-2000 · " + strings.Repeat("Extra wide stainless steel bracket ", 4)
+		got := oneLine(long, sheet.nameSize, sheet.width-4)
+		if !strings.HasSuffix(got, "…") || len([]rune(got)) >= len([]rune(long)) || !strings.HasPrefix(got, "WIDGET-XL-2000 · ") {
+			t.Errorf("%s: long name = %q, want it cut with an ellipsis", layout, got)
+		}
+		// Upper-case W is among the widest glyphs: about 60 of them pass 59.5 mm at 8 pt.
+		if got := oneLine(strings.Repeat("W", 60), sheet.nameSize, sheet.width-4); !strings.HasSuffix(got, "…") {
+			t.Errorf("%s: wide name = %q, want it cut", layout, got)
+		}
 	}
 }

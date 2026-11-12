@@ -353,8 +353,8 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 			fail(*l, codeLotRequired, fmt.Sprintf("%s is tracked in lots; the line must name one.", v.SKU))
 		case v.Tracking == contracts.TrackingSerial && names && l.setAt == nil && l.quantity != nil && l.quantity.Cmp(big.NewRat(1, 1)) != 0:
 			fail(*l, codeSerialQuantity, fmt.Sprintf("%s is tracked in serials; a line moves exactly 1 of a serial.", v.SKU))
-		case v.Tracking == contracts.TrackingSerial && names && l.setAt != nil && l.setTo != nil && l.setTo.Cmp(big.NewRat(1, 1)) > 0:
-			fail(*l, codeSerialQuantity, fmt.Sprintf("%s is tracked in serials; a serial holds at most 1.", v.SKU))
+		case v.Tracking == contracts.TrackingSerial && names && l.setAt != nil && l.setTo != nil && l.setTo.Sign() != 0 && l.setTo.Cmp(big.NewRat(1, 1)) != 0:
+			fail(*l, codeSerialQuantity, fmt.Sprintf("%s is tracked in serials; a serial holds 0 or 1.", v.SKU))
 		}
 	}
 

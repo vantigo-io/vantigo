@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/johnfercher/maroto/v2"
@@ -24,6 +26,9 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/fontrepository"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 	"github.com/phpdave11/gofpdf"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/sfnt"
+	"golang.org/x/image/math/fixed"
 
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/store"
@@ -156,7 +161,12 @@ func layoutLabels(labels []label, sheet labelSheet, title string) (core.Maroto, 
 					)
 					nameTop := 3 + barcodeWidth/5 + 4 + sheet.codeSize*0.3528 + 1
 					if l.name != "" {
-						cell.Add(text.New(l.name, props.Text{
+						name := l.name
+						if l.extra != "" {
+							// One line only, so the line below never overlaps it.
+							name = oneLine(name, sheet.nameSize, sheet.width-4)
+						}
+						cell.Add(text.New(name, props.Text{
 							Top: nameTop, Size: sheet.nameSize, Align: align.Center,
 							Left: 2, Right: 2,
 						}))
@@ -286,4 +296,46 @@ func (s *server) PrintInventoryLabels(ctx context.Context, req gen.PrintInventor
 func labelsTooMany(would string) gen.InventoryProblem {
 	return problem(http.StatusBadRequest, codeLabelsTooMany, invalidLabelsTitle,
 		fmt.Sprintf("A request prints at most %d labels; this one would print %s labels.", maxLabels, would))
+}
+
+// labelFont is the regular label font, parsed once, for measuring a line.
+var labelFont = sync.OnceValues(func() (*sfnt.Font, error) { return sfnt.Parse(notoSansRegular) })
+
+// oneLine is text as it fits on one line width millimetres wide at size
+// points in the regular label font: whole, or cut with an ellipsis.
+func oneLine(text string, size, width float64) string {
+	f, err := labelFont()
+	if err != nil {
+		return text
+	}
+	var buf sfnt.Buffer
+	em := fixed.I(int(f.UnitsPerEm()))
+	mm := func(r rune) float64 {
+		g, err := f.GlyphIndex(&buf, r)
+		if err != nil {
+			return 0
+		}
+		adv, err := f.GlyphAdvance(&buf, g, em, font.HintingNone)
+		if err != nil {
+			return 0
+		}
+		return float64(adv) / float64(em) * size * 0.3528
+	}
+	runes := []rune(text)
+	total := 0.0
+	for _, r := range runes {
+		total += mm(r)
+	}
+	if total <= width {
+		return text
+	}
+	room := width - mm('…')
+	used := 0.0
+	for i, r := range runes {
+		if used+mm(r) > room {
+			return strings.TrimRight(string(runes[:i]), " ·") + "…"
+		}
+		used += mm(r)
+	}
+	return text
 }

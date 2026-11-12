@@ -85,6 +85,10 @@ type lotRequest struct {
 	// with an existing lot's: the API's, not EnsureLots' (whose production
 	// date is always given — today for a production).
 	compareProduction bool
+	// noDefaults is whether a lot made here takes only the dates stated, not
+	// the variant's day offsets: a count's (its lot was made on a day nobody
+	// knows).
+	noDefaults bool
 }
 
 // lotOutcome is a lotRequest found or made: its lot, whether this writer
@@ -191,11 +195,11 @@ func (s *server) ensureLots(ctx context.Context, txq *store.Queries, reqs []lotR
 			return nil, fmt.Errorf("contracts: a stock call without today")
 		}
 		p.BestBefore = pgDate(r.bestBefore)
-		if r.bestBefore == nil && v.BestBeforeDays != nil {
+		if r.bestBefore == nil && v.BestBeforeDays != nil && !r.noDefaults {
 			p.BestBefore = pgDate(ptr(base.AddDate(0, 0, int(*v.BestBeforeDays))))
 		}
 		p.Expiry = pgDate(r.expiry)
-		if r.expiry == nil && v.ExpiryDays != nil {
+		if r.expiry == nil && v.ExpiryDays != nil && !r.noDefaults {
 			p.Expiry = pgDate(ptr(base.AddDate(0, 0, int(*v.ExpiryDays))))
 		}
 		if origin != nil {

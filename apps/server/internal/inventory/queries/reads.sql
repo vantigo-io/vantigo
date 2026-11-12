@@ -62,13 +62,16 @@ LIMIT @row_limit::int;
 -- name: StockTotals :many
 -- StockTotals is each of the variants' on hand across every location and
 -- what is reserved of it across every site (I33); a variant with neither is
--- absent.
+-- absent. With a lot, only that lot's on hand (M74); a reservation names no
+-- lot, so none counts.
 SELECT coalesce(b.variant_id, r.variant_id)::int AS variant_id, coalesce(b.on_hand, 0)::text AS on_hand,
        coalesce(r.reserved, 0)::text AS reserved
 FROM (SELECT variant_id, sum(on_hand) AS on_hand FROM inventory.balances
-      WHERE variant_id = ANY(@variant_ids::int[]) GROUP BY variant_id) b
+      WHERE variant_id = ANY(@variant_ids::int[]) AND (sqlc.narg(lot_id)::bigint IS NULL OR lot_id = sqlc.narg(lot_id)::bigint)
+      GROUP BY variant_id) b
 FULL JOIN (SELECT variant_id, sum(quantity) AS reserved FROM inventory.reservations
-           WHERE variant_id = ANY(@variant_ids::int[]) GROUP BY variant_id) r ON r.variant_id = b.variant_id
+           WHERE variant_id = ANY(@variant_ids::int[]) AND sqlc.narg(lot_id)::bigint IS NULL
+           GROUP BY variant_id) r ON r.variant_id = b.variant_id
 ORDER BY 1;
 
 -- name: ReservedOfVariants :many

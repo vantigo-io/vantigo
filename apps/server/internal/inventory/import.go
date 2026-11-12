@@ -45,7 +45,8 @@ import (
 // supplier_lot, production_date, best_before and expiry, each optional, the
 // dates as YYYY-MM-DD or DD.MM.YYYY. A tracked variant's row names its lot by
 // number (lot_required), an untracked one's none (lot_not_allowed), and a
-// serial's row is of quantity 1 (serial_quantity); a number or a date that
+// serial's row is of quantity 1 and names a serial no earlier row does
+// (serial_quantity, judged in the dry run too); a number or a date that
 // does not read, or dates out of order, is lot_invalid. The lots are found or
 // made as a receipt's are (M57), the import — its movement — their origin.
 // This is how stock already on hand is brought in with lots: set the
@@ -282,6 +283,7 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 
 	rows := make([]gen.InventoryImportRow, 0, len(file.Rows))
 	var lines []engineLine
+	serials := map[lotKey]bool{}
 	for i, r := range file.Rows {
 		row := gen.InventoryImportRow{
 			Row: int32(r.Row + 1), Location: cell(r, "location"), Sku: cell(r, "sku"), Quantity: cell(r, "quantity"),
@@ -319,6 +321,16 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 		case v.tracking == contracts.TrackingSerial && q.Cmp(big.NewRat(1, 1)) != 0:
 			row.Outcome, row.Detail = gen.InventoryImportOutcomeSerialQuantity, ptr(row.Sku+" is tracked in serials; a serial's row is of quantity 1")
 		default:
+			// A serial named on two rows would hold 2: the dry run says so,
+			// on the later row, as the commit would refuse it.
+			if v.tracking == contracts.TrackingSerial {
+				k := lotKey{v.id, strings.ToLower(lot.number)}
+				if serials[k] {
+					row.Outcome, row.Detail = gen.InventoryImportOutcomeSerialQuantity, ptr(fmt.Sprintf("The serial %s of %s is on an earlier row; a serial holds at most 1", lot.number, row.Sku))
+					break
+				}
+				serials[k] = true
+			}
 			to := loc.ID
 			lines = append(lines, engineLine{index: i, variantID: v.id, to: &to, quantity: q, newLot: lot})
 		}
