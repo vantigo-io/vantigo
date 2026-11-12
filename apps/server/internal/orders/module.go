@@ -107,6 +107,9 @@ func Module() module.Module {
 		// Manufacturing's read of the sales order lines (manufacturing
 		// design M43a), resolved from the enabled modules only.
 		SalesOrderLines: newSalesOrderLines,
+		// Inventory's read of the posted deliveries for its trace
+		// (manufacturing phase 2 M90), provider-gated on orders:access.
+		DeliveryTrace: newDeliveryTrace,
 	}
 }
 

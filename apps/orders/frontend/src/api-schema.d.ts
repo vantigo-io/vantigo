@@ -2495,6 +2495,8 @@ export interface components {
             baseCurrency: string;
             /** @description Whether the caller holds inventory:expired-override: a delivery's Use expired lot is offered (manufacturing phase 2 M77). */
             canOverrideExpired: boolean;
+            /** @description Whether Inventory keeps stock and the caller holds inventory:locations-view and inventory:stock-view: a delivery's lots link to their pages and their trace in Inventory (manufacturing phase 2 M94). */
+            canTraceLots: boolean;
             /** Format: int32 */
             defaultPaymentTermsDays: number;
             /** Format: int32 */

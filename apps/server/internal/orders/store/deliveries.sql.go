@@ -193,6 +193,53 @@ func (q *Queries) DeleteDraftDeliveryLinesOf(ctx context.Context, arg DeleteDraf
 	return items, nil
 }
 
+const deliveriesForTrace = `-- name: DeliveriesForTrace :many
+SELECT d.id, d.number, d.order_id, o.number AS order_number, o.customer_id, d.posted_at::timestamptz AS posted_at
+FROM orders.deliveries d
+JOIN orders.orders o ON o.id = d.order_id
+WHERE d.id = ANY($1::bigint[]) AND d.status = 'posted'
+ORDER BY d.id
+`
+
+type DeliveriesForTraceRow struct {
+	ID          int64
+	Number      int64
+	OrderID     int64
+	OrderNumber int64
+	CustomerID  int32
+	PostedAt    time.Time
+}
+
+// DeliveriesForTrace is the posted deliveries among the ids, with their
+// order's number and customer (manufacturing phase 2 M90: Inventory's trace
+// through contracts.DeliveryTrace), by id.
+func (q *Queries) DeliveriesForTrace(ctx context.Context, ids []int64) ([]DeliveriesForTraceRow, error) {
+	rows, err := q.db.Query(ctx, deliveriesForTrace, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DeliveriesForTraceRow
+	for rows.Next() {
+		var i DeliveriesForTraceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.OrderID,
+			&i.OrderNumber,
+			&i.CustomerID,
+			&i.PostedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deliveriesOfOrder = `-- name: DeliveriesOfOrder :many
 SELECT id, number, order_id, site_id, status, movement_id, posted_at, posted_by_user_id, posted_by_display, cancelled_at, packing_slip_document_id, version, created_by_user_id, created_by_display, created_at, updated_at FROM orders.deliveries WHERE order_id = $1 ORDER BY id DESC
 `

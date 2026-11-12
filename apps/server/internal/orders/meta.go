@@ -32,6 +32,9 @@ func (s *server) GetOrdersMeta(ctx context.Context, _ gen.GetOrdersMetaRequestOb
 		SendingAvailable: available, QuoteValidityDays: settings.quoteValidityDays,
 		DefaultPaymentTermsDays: settings.defaultPaymentTermsDays, BaseCurrency: baseCurrency,
 		StockKept: s.deps.Stock != nil, CanOverrideExpired: s.has(ctx, permInventoryExpiredOverride),
+		// A delivery's lots link to Inventory's lot page and trace (M94),
+		// which read stock: both views.
+		CanTraceLots: s.deps.Stock != nil && contracts.HasPermissions(ctx, s.deps.Access, permInventoryLocationsView, permInventoryStockView),
 	}), nil
 }
 

@@ -234,6 +234,14 @@ func trimZeros(s string) string {
 // before a delivery's transaction and passes it to the ledger as data.
 const permInventoryExpiredOverride = "inventory:expired-override"
 
+// permInventoryLocationsView and permInventoryStockView are Inventory's two
+// views, which its lot page and trace need (manufacturing phase 2 M94): a
+// delivery's lots link there only for a caller holding both.
+const (
+	permInventoryLocationsView = "inventory:locations-view"
+	permInventoryStockView     = "inventory:stock-view"
+)
+
 // reserveLines reserves want of each line at the order's site, on tx: lines
 // with nothing wanted are skipped, and a refusal names the order's lines by
 // their index in lines (stockRefused). today is the business day, read on

@@ -223,6 +223,12 @@ type Deps struct {
 	// same way, from Module.Production, beside SalesOrderLines; it is nil
 	// when Manufacturing is off.
 	Production contracts.Production
+	// DeliveryTrace is Orders' read of its posted deliveries for Inventory's
+	// trace (contracts.DeliveryTrace, manufacturing phase 2 M90),
+	// provider-gated on orders:access. Compose and Workers set it the same
+	// way, from Module.DeliveryTrace, beside SalesOrderLines; it is nil when
+	// Orders is off.
+	DeliveryTrace contracts.DeliveryTrace
 	// Workforce is Staff's register of competences, the one sanctioned way a
 	// module reads who holds what (see contracts.Workforce, staff competence
 	// design S15). Compose sets it, on every module's Deps copy, from
@@ -665,6 +671,11 @@ type Module struct {
 	// one (manufacturing). At most one enabled module may set it; Compose and
 	// Workers call it beside SalesOrderLines, from Deps.Pool and Deps.Access.
 	Production func(Deps) contracts.Production
+	// DeliveryTrace builds this module's contracts.DeliveryTrace, if it
+	// provides one (orders). At most one enabled module may set it; Compose
+	// and Workers call it beside SalesOrderLines, from Deps.Pool and
+	// Deps.Access.
+	DeliveryTrace func(Deps) contracts.DeliveryTrace
 	// Workforce builds this module's contracts.Workforce implementation, if
 	// it provides one (staff). At most one enabled module may set it; Compose
 	// and Workers call it before anything they build runs — after they have

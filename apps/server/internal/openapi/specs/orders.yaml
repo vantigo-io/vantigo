@@ -1786,6 +1786,9 @@ components:
                 canOverrideExpired:
                     description: "Whether the caller holds inventory:expired-override: a delivery's Use expired lot is offered (manufacturing phase 2 M77)."
                     type: boolean
+                canTraceLots:
+                    description: "Whether Inventory keeps stock and the caller holds inventory:locations-view and inventory:stock-view: a delivery's lots link to their pages and their trace in Inventory (manufacturing phase 2 M94)."
+                    type: boolean
                 defaultPaymentTermsDays:
                     format: int32
                     type: integer
@@ -1805,6 +1808,7 @@ components:
                 - defaultPaymentTermsDays
                 - baseCurrency
                 - canOverrideExpired
+                - canTraceLots
             type: object
         OrdersOrder:
             additionalProperties: false
