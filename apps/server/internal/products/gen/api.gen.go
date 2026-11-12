@@ -373,14 +373,14 @@ type VariantRequest struct {
 	Sku          string                 `json:"sku"`
 	StandardCost *float64               `json:"standardCost,omitempty"`
 
-	// Tracking How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
+	// Tracking How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. A change of the stored mode is refused with 409 *Tracking held* while the variant holds stock, reservations or stock in transit.
 	Tracking *VariantTracking `json:"tracking,omitempty"`
 	Unit     *string          `json:"unit,omitempty"`
 	WeightKg *float64         `json:"weightKg,omitempty"`
 	WidthCm  *float64         `json:"widthCm,omitempty"`
 }
 
-// VariantTracking How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
+// VariantTracking How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. A change of the stored mode is refused with 409 *Tracking held* while the variant holds stock, reservations or stock in transit.
 type VariantTracking string
 
 // GetProductsParams defines parameters for GetProducts.

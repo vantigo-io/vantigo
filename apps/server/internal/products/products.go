@@ -333,11 +333,6 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 	if len(errs) > 0 {
 		return gen.PostProducts400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid product", errs)), nil
 	}
-	for _, v := range parsed.Variants {
-		if p := trackingUnavailable(v.trackingOr(contracts.TrackingNone)); p != nil {
-			return gen.PostProducts409ApplicationProblemPlusJSONResponse(*p), nil
-		}
-	}
 
 	q := store.New(s.deps.Pool)
 

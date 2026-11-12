@@ -100,9 +100,6 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 	if trackingRequiresGoods("", tracking, product.Type, errs); len(errs) > 0 {
 		return gen.PostProductsByIdVariants400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid variant", errs)), nil
 	}
-	if p := trackingUnavailable(tracking); p != nil {
-		return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(*p), nil
-	}
 
 	skuExists, err := q.VariantSkuExists(ctx, parsed.Sku)
 	if err != nil {
@@ -201,23 +198,18 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 		return nil, fmt.Errorf("products: get variant: %w", err)
 	}
 
-	// The tracking mode (manufacturing phase 2 M49): goods only, and — until
-	// layer M — none, whenever the request names a mode. The product type is
-	// read here, before the transaction; while the guard below refuses every
-	// tracked mode, a product turned into a service meanwhile cannot gain a
-	// tracked variant. Layer M, removing the guard, must judge the product
-	// type again under the variant's FOR UPDATE inside the transaction.
+	// The tracking mode (manufacturing phase 2 M49): goods only. The product
+	// type is read here first, for the plain refusal, and judged again under
+	// the variant's FOR UPDATE inside the transaction: a change to Service
+	// locks every variant FOR UPDATE before it updates the product, so once
+	// the lock is held the type read is the committed one, and a product
+	// turned into a service meanwhile never gains a tracked variant.
 	productType, err := q.GetProductType(ctx, req.Id)
 	if err != nil {
 		return nil, fmt.Errorf("products: get product type: %w", err)
 	}
 	if trackingRequiresGoods("", parsed.trackingOr(existing.Tracking), productType, errs); len(errs) > 0 {
 		return gen.PutProductsByIdVariantsByVariantId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid variant", errs)), nil
-	}
-	if parsed.Tracking != nil {
-		if p := trackingUnavailable(*parsed.Tracking); p != nil {
-			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(*p), nil
-		}
 	}
 
 	if existing.Sku != parsed.Sku {
@@ -261,6 +253,13 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 			return fmt.Errorf("read the tracking: %w", err)
 		}
 		tracking := parsed.trackingOr(stored.Tracking)
+		lockedType, err := txq.GetProductType(ctx, req.Id)
+		if err != nil {
+			return fmt.Errorf("read the product type: %w", err)
+		}
+		if trackingRequiresGoods("", tracking, lockedType, errs); len(errs) > 0 {
+			return nil
+		}
 		if tracking != stored.Tracking {
 			hold, err := s.variantHeld(ctx, tx, req.VariantId, contracts.VariantHoldTrackingChange)
 			if err != nil {
@@ -294,6 +293,9 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 	}
 	if err != nil {
 		return nil, fmt.Errorf("products: update variant: %w", err)
+	}
+	if len(errs) > 0 {
+		return gen.PutProductsByIdVariantsByVariantId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid variant", errs)), nil
 	}
 	if refused != nil {
 		return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(*refused), nil
