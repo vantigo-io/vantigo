@@ -87,7 +87,7 @@ kortere enn din:
 | [Kommunikasjon](/nb/user/communications/) | Innboks, Kanaler, Blokkeringer |
 | [Virtuelle ansatte](/nb/user/agents/) | Agenter (Persona, Roller, Tillatelser, Bruk, Aktivitet), Innstillinger |
 | [Produkter](/nb/user/products/) | Produkter, Kategorier, Avgiftskategorier |
-| [Lager](/nb/user/inventory/) | Oversikt, Partier, Overføringer, Bevegelser, Varemottak, Varetellinger, Lav beholdning, Importer inngående beholdning (og påfylling) |
+| [Lager](/nb/user/inventory/) | Oversikt, Partier, Utløper snart, Overføringer, Bevegelser, Varemottak, Varetellinger, Lav beholdning, Importer inngående beholdning (og påfylling) |
 | [Ordre](/nb/user/orders/) | Tilbud, Ordre, Leveranser, Abonnement, Tilbudsmaler, Salgsanalyse, Ordreinnstillinger |
 | [Produksjon](/nb/user/manufacturing/) | Oversikt, Produksjonsordrer, Verksted, Produksjonsplan, Stykklister, Arbeidsstasjoner |
 | [Kunnskap](/nb/user/knowledge/) | Artikler, Papirkurv |
