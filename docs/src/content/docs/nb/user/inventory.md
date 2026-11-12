@@ -1,6 +1,6 @@
 ---
 title: Lager
-description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, partier og serienumre — på varemottak, flyttinger og justeringer, listen Partier, siden for et parti, å sperre et parti og frigi det, filene til et parti — varetelling, import av inngående beholdning, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
+description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, partier og serienumre — på varemottak, flyttinger og justeringer, listen Partier, siden for et parti, å sperre et parti og frigi det, filene til et parti, partiene som utløper snart, partietiketter — varetelling, partier medregnet, import av inngående beholdning med eller uten partier, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
 sidebar:
   order: 65
 sources:
@@ -35,6 +35,7 @@ Sidemenyen viser:
 | --- | --- |
 | **Oversikt** — oppslaget og lagerstedene | `inventory:locations-view` eller `inventory:stock-view` |
 | **Partier** — partiene til varene som holdes i partier eller serienumre | `inventory:locations-view` og `inventory:stock-view` |
+| **Utløper snart** — partiene på lager som snart utløper eller har utløpt | `inventory:locations-view` og `inventory:stock-view` |
 | **Overføringer** — varer sendt mellom lagersteder | `inventory:locations-view` og `inventory:stock-view` |
 | **Bevegelser** | `inventory:locations-view` og `inventory:stock-view` |
 | **Varemottak** — listen over bevegelser med bare varemottak | `inventory:locations-view` og `inventory:stock-view` |
@@ -396,6 +397,34 @@ laster den ned i stedet for å åpne den — og **Fjern** for å ta den av parti
 [objektlagring](/nb/admin/object-storage/); uten den står det *Fillagring er ikke satt opp i
 denne installasjonen.*
 
+### Utløper snart
+
+**Utløper snart** i sidemenyen viser partiene på lager som utløper innen de neste 30
+dagene, eller allerede har utløpt, med det som utløper først øverst: **Utløpsdato**,
+**Dager igjen** — *8 dager*, eller *for 2 dager siden* i rødt når den er passert —,
+**Parti**, **Varenummer**, **Produkt**, **Status** og **Beholdning**. Endre **Utløper innen
+(dager)** — 1 til 365 — for å se lenger eller kortere fram; **Lagersted** teller bare det
+som ligger på ett lagersted, og **Status** viser bare partiene som er tilgjengelige, i
+karantene eller blokkert. Et parti som ikke har noe igjen, vises ikke. **Eksporter CSV**
+laster ned de samme radene, `expiring-2026-09-12.csv`, med dager igjen som tall, negativt
+når datoen er passert; **Skriv ut etiketter** skriver ut partienes etiketter. Listen viser
+høyst 1000 partier: *Bare de første 1000 partiene vises. Velg færre dager eller et
+lagersted.* Den krever begge visningsrettighetene.
+
+### Skriv ut partietiketter
+
+**Skriv ut etiketter** på siden for et parti, på listen **Partier** — for partiene den
+viser — og på **Utløper snart** laster ned en PDF med partietiketter, på de samme
+Avery-arkene som [lokasjonsetikettene](#skriv-ut-lokasjonsetiketter): velg **Avery L7160**
+(21 etiketter per A4) eller **Avery L7163** (14 per A4) og hvor mange **Etiketter per
+parti**, og trykk **Last ned PDF**. Hver etikett har partiets `LOT`-kode som strekkode
+øverst — `LOT1001`, nummeret i Lager, som aldri endres —, partinummeret med store tegn,
+varenummeret og produktets navn, og utløpsdatoen (*EXP 2026-12-31*), eller best
+før-datoen (*BB …*) når partiet ikke har noen utløpsdato. Et serienummer er et parti for
+seg, så serienumre får en etikett hver. Å skanne en etikett i **Finn lokasjon eller
+vare**, eller på en varetelling, finner partiet. Høyst 1000 etiketter om gangen. Dette er
+etiketter for egne hyller; etiketter med GS1-strekkoder for kunder kommer senere.
+
 ## Overfør varer mellom lagersteder
 
 En **overføring** sender varer fra ett lagersted — **Fra lagersted** — til et annet —
@@ -424,7 +453,13 @@ lagersted**, som må være forskjellige (*Fra- og til-lagerstedet må være fors
 og om du vil, **Forventet ankomst**, en **Referanse** og et **Notat**. Legg så til
 linjene med [linjeredigeringen](#linjeredigeringen): skann eller søk etter hver vare og
 skriv antallet, i varens enhet eller [i pakninger](#registrer-antall-i-pakninger). En
-vare kan stå på flere linjer — slik reiser varer fra to lokasjoner i én overføring.
+vare kan stå på flere linjer — slik reiser varer fra to lokasjoner, eller to partier, i
+én overføring.
+
+For en vare som holdes i [partier](#partier-og-serienumre), tilbyr kolonnen **Parti**
+varens partier på fra-lagerstedet, hvert med utløpsdato og hva som ligger av det. En linje
+har ett parti: velg det nå, eller la det stå — *Velges ved sending* — så foreslår
+sendingen ett. To partier av en vare står på to linjer.
 
 Ved siden av hver linje viser to kolonner beholdningen på begge lagerstedene mens du
 skriver:
@@ -459,6 +494,15 @@ ligger der, og starter på varens hovedlokasjon der, merket *(hovedlokasjon)*, n
 noe av varen — ellers på den som har mest. En vare som ikke ligger noe sted på
 lagerstedet, sier *Ingenting av den ligger på lagerstedet*.
 
+For en vare som holdes i partier, tilbyr kolonnen **Parti** partiene som ligger på
+linjens lokasjon, med utløpsdatoene, og starter på utkastets parti når det ligger der —
+ellers på det første som kan brukes, det som utløper først, som ved en flytting. Velger du
+en annen lokasjon, foreslås den lokasjonens parti. Et sperret eller utløpt parti kan
+fortsatt sendes; det er merket. En linje for en sporet vare uten parti holdes tilbake —
+*Varen spores i partier: oppgi partiet.* Partiet som sendes, følger linjen: i transitt er
+per parti, mottaket legger det partiet i hyllen på til-lagerstedet, og en avbrytelse
+legger det tilbake der det kom fra.
+
 Dialogen varsler deg før du sender:
 
 - *Lokasjonen har bare …; sendingen vil bli avvist.* — velg en annen lokasjon, eller del
@@ -483,8 +527,8 @@ utkastet ble skrevet, avvises ved sending.
 Når en overføring er sendt, laster **Skriv ut følgeseddel** på siden ned følgeseddelen
 som PDF, `folgeseddel-TRF-1042.pdf`, som følger varene: nummeret, de to lagerstedene med adressene
 sine, når den ble sendt og av hvem, forventet ankomst, referansen, hver linje med
-varenummer, navn, antall (og pakningene det ble registrert i) og lokasjonen den ble
-plukket fra, en linje for mottakerens signatur, og en strekkode for overføringens kode,
+varenummer, navn, antall (og pakningene det ble registrert i), partiet og utløpsdatoen
+når den har et, og lokasjonen den ble plukket fra, en linje for mottakerens signatur, og en strekkode for overføringens kode,
 `TRF-1042`. Å skanne den strekkoden — i **Finn lokasjon eller vare** eller på
 mottakssiden — åpner overføringen.
 
@@ -773,6 +817,21 @@ nær det du ser, og resten etter hvert som du ruller, så den holder seg rask; l
 skannet vare rulles fram uansett hvor den ligger, og **Tab** går videre til neste linje
 som før.
 
+En vare som holdes i [partier](#partier-og-serienumre), har en linje per parti på hver
+lokasjon, under hverandre, hver med partiets nummer — lenket til siden — og utløpsdato i
+kolonnen **Parti**: tell hvert parti på sin egen linje. Å skanne et partis
+[etikett](#skriv-ut-partietiketter) eller skrive nummeret går til det partiets linje, eller
+legger til en. En vare som holdes i partier og skannes der ingen av partiene var
+forventet, får en ny linje med feltet **Partinummer**: skriv nummeret på pakken — et parti
+varen har, telles, et nytt nummer lager et nytt parti når linjen lagres. Et serienummer
+telles 0 eller 1 (*Et serienummer gjelder nøyaktig én, og er på lager én gang.*).
+Bokføringen setter hvert parti på hver lokasjon til det som ble telt.
+
+Ble en vare holdt i partier etter at varetellingen ble åpnet, har linjene dens ikke noe
+parti. De bokføres som de er når ingenting var forventet og ingenting telt; ellers avvises
+bokføringen — *Varen spores i partier: oppgi partiet.* — og varen må telles på nytt i en
+ny varetelling.
+
 Hver linje viser **Forventet**, **Nå** — det som ligger der nå —, **Telt** og
 **Differanse**. En linje der beholdningen er endret siden varetellingen ble åpnet, er
 merket **Endret**. Det du skriver, **lagres av seg selv** et øyeblikk etter at du
@@ -824,14 +883,27 @@ visningsrettighetene).
    det lagrer CSV på norsk — eller setter antallet i anførselstegn (`"2,5"`): i en fil
    skilt med komma blir en `2,5` uten anførselstegn to celler, og raden avvises som
    **Ikke et gyldig antall**. En fil lagret fra Excel leses som den er.
+   Malen har også kolonnene `lot`, `supplier_lot`, `production_date`, `best_before` og
+   `expiry`, for varer som holdes i [partier](#partier-og-serienumre): hver rad for en
+   slik vare oppgir partiets nummer, og kan oppgi leverandørparti og datoer (`2026-12-31`
+   eller `31.12.2026`); står datoene tomme, følger de av varens dager. Et nummer varen
+   allerede har, legges til i det partiet; et nytt lager partiet, med importen som
+   opphav. En rad med et serienummer har antall 1. Partikolonnene kan utelates i en fil
+   uten partier, og stå tomme på radene for andre varer.
 2. Velg **Lagersted** og **CSV-fil**, og trykk **Prøvekjøring**. Ingenting bokføres:
    hver rad viser sitt **Resultat** — **OK**, **Lokasjonen finnes ikke på
-   lagerstedet**, **Varenummeret finnes ikke**, **En tjeneste, holdes ikke på lager**
-   eller **Ikke et gyldig antall**.
+   lagerstedet**, **Varenummeret finnes ikke**, **En tjeneste, holdes ikke på lager**,
+   **Ikke et gyldig antall**, **Varen spores i partier: oppgi partiet**, **Varen spores
+   ikke i partier**, **Partiet eller datoene kan ikke leses** eller **En rad med et
+   serienummer har antall 1** — og, når filen har partier, **Parti** for hver rad.
 3. Når alle radene er OK (*Alle 120 rader er klare til bokføring.*), trykker du
    **Importer**. Radene bokføres som **én justering** med årsaken **Inngående
    beholdning**, og siden sier **Inngående beholdning bokført** med en lenke til den.
    Feiler en rad, bokføres ingenting: rett filen og prøv igjen.
+
+Slik legges også beholdning som allerede står i hyllene, under partier: når en vare ikke
+har noe på lager, lar du den holdes i partier i Produkter, og importerer så beholdningen
+med partikolonnene.
 
 Laster du opp **den samme filen igjen til samme lagersted**, bokføres ingenting nytt —
 svaret er bevegelsen som alt er bokført — så en import kan ikke dobles ved et uhell. En
@@ -1008,6 +1080,10 @@ med noe lavt, *4 varer på eller under bestillingspunktet på et lagersted*; try
 for å åpne [listen over lav beholdning](#listen-over-lav-beholdning) filtrert på det
 lagerstedet.
 
+Med begge visningsrettighetene viser **Trenger oppfølging** også *3 partier på lager
+utløper innen 14 dager* og *2 partier på lager har utløpt* når det finnes noen; trykk på
+en av dem for å åpne [Utløper snart](#utløper-snart).
+
 ## Hvem ser hva
 
 | Hva | Se lagersteder | Se beholdning | Administrere lagersteder | Justere beholdning | Motta varer | Telle varer | Overføre varer | Administrere partier |
@@ -1023,6 +1099,7 @@ lagerstedet.
 | **Overføringer**, siden for en overføring og historikken, **Skriv ut følgeseddel**, overføringer i oppslaget, **Innkommende** og **Utgående** på et lagersted, **Avvik på overføringer** på en vare | ✓ | ✓ | – | – | – | – | – | – |
 | **Ny overføring**, **Rediger**, **Lagre utkast**, **Send …**, **Send og motta …**, **Slett utkast**, **Motta …**, å avslutte med avvik, **Avbryt overføring**; **En overføring har passert forventet ankomst** på dashbordet; **Opprett overføring** på listen over lav beholdning | ✓ | ✓ | – | – | – | – | ✓ | – |
 | **Partier**, siden for et parti med sperringene, hvor det ligger, bevegelsene og filene; partier i oppslaget og **Finn et parti** | ✓ | ✓ | – | – | – | – | – | – |
+| **Utløper snart**, **Eksporter CSV** der, **Skriv ut etiketter** for partier; partiene som utløper og har utløpt på dashbordet | ✓ | ✓ | – | – | – | – | – | – |
 | **Rediger** på et parti, **Karantene**, **Blokker**, **Frigi**, **Legg til fil**, **Fjern** | ✓ | ✓ | – | – | – | – | – | ✓ |
 
 Hver av de andre radene krever hver rettighet den krysser av: knappene som bokfører og
