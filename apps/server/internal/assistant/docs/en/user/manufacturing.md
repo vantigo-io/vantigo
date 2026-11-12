@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, moving a work order by dragging it or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, moving a work order by dragging it or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -144,6 +144,9 @@ are asked to reload, so that nobody overwrites another's change unseen.
      [The default and the alternative bills of materials](#the-default-and-the-alternative-bills-of-materials)).
    - **Make to order** — the product is made for each sales order rather than to stock
      ([Make to order](#make-to-order)).
+   - **Lot number pattern** — for a product tracked in lots: how the lot its
+     productions make is numbered, `{MO}` unless changed. See
+     [Lots and serial numbers](#lots-and-serial-numbers).
    - **Note** — up to 2,000 characters.
 4. Under **Operations**, choose **Add operation** for each step of the work, in the order
    they are done. Each has:
@@ -416,6 +419,57 @@ only once.
 A registered production cannot be undone in Manufacturing. Correct a mistake with an
 adjustment in [Inventory](/en/user/inventory/).
 
+### Lots and serial numbers
+
+When the product or a component is tracked in **lots** or **serial numbers** (its
+variant's **Tracking** in [Products](/en/user/products/#track-lots-and-serial-numbers)),
+**Register production** asks for them too.
+
+**The lot the production makes.** For a product tracked in lots the form shows its **Lot
+number**, made from the BoM's **Lot number pattern** as the order kept it when it was
+confirmed:
+
+- `{MO}` — the order's number, the default: every production of the order adds to one lot,
+  *MO-12*, whatever the day.
+- `{YYMMDD}`, or `{YYYY}`, `{YY}`, `{MM}`, `{DD}` — the production date: `L{YYMMDD}-{N}`
+  makes a new lot each production, *L261112-1*, *L261112-2*.
+- `{SKU}` — the product's SKU; `{N}` — a running number, counted for each prefix.
+- Anything else is written as it is. A lot number has 1–20 letters, digits and `. _ / -`;
+  the BoM editor shows an example and refuses a pattern that does not give one (**The lot
+  number pattern does not give a lot number**).
+
+Keep the number or type another; a number the product already has adds to that lot.
+**Production date** is today unless you change it. **Expiry** and **Best before** are
+left empty to take the product's own number of days from the production date; a date you
+type on a lot that already exists must be the lot's own (**The lot exists with other
+dates**).
+
+For a product tracked in **serial numbers**, the good quantity must be whole, and each
+unit gets its own number: **First serial number** is counted up, one per unit — by
+default the order's number and four digits, *MO-12-0001*, continuing from the serials the
+order made before. Output scrap is never numbered.
+
+**The lots it consumes.** Under each tracked component the form shows the lots it would
+take, the one that expires first first — *Taken first-expiry-first when you post: B-1 (1
+Dec 2026) 30 · B-2 10* — or that none is in stock, or how much the lots in stock are short.
+Left as it is, Inventory takes the lots when you post, first-expiry-first, skipping lots
+on hold and expired lots. To take others, choose **Change lot**: each row is a lot at a
+location, chosen among the site's lots with their expiry and what lies there (lots on hold
+and expired lots are marked), and the quantity taken from it. **Add lot** adds a row, the
+cross removes one, and **Take first-expiry-first** goes back to the proposal. The rows must
+add up to what the line consumes and scraps; the form says when they do not. A lot that is
+expired can be used only by someone allowed to use expired lots, who ticks **expired** on
+its row; a lot on hold or blocked is refused (**A lot is on hold or blocked and cannot be
+used**).
+
+When lots you did not change were taken by someone else in the meantime, the production
+proposes them again once from what is in stock and posts.
+
+**The order's lots.** The order page's **Lots** tab lists the **Lots made**, with what the
+productions put in each and how many productions, and the **Lots consumed** per component
+with their expiry, consumed and scrap. Each lot links to its page in
+[Inventory](/en/user/inventory/).
+
 ### Close an order
 
 Choose **Close** on a confirmed or in-progress order when the work is finished. Whatever is
@@ -580,8 +634,9 @@ On the order's last operation, **Register production** stands beside **Finish**.
 the form of the order page — the **Quantity** made, any **Output scrap**, and each
 component's prefilled **Consumed** and **Scrap** (see
 [Register a production](#register-a-production)), with the same warning when a figure is
-more than 10 % off. Choosing **Post** registers the production and leaves the work order
-running, so you can register more as you go.
+more than 10 % off, and the lot, the serial numbers and the components' lots of
+[Lots and serial numbers](#lots-and-serial-numbers). Choosing **Post** registers the
+production and leaves the work order running, so you can register more as you go.
 
 When this is the last of it, also tick **Also finish this operation**: the production is
 registered **and** the work order finished, together — which stops the time of everyone
@@ -597,8 +652,8 @@ orders.
 Choose **Report scrap** on the work order when components are lost or finished units are
 thrown away, at any operation. Give the scrap of each component and the **Output scrap**.
 It is registered as a production with no good units: the components are taken out of
-stock in Inventory and the order's figures count them. Sending it twice posts it only
-once.
+stock in Inventory and the order's figures count them — a component tracked in lots from
+the lots that expire first. Sending it twice posts it only once.
 
 ### Block a stopped work center
 

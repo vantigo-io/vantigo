@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, å flytte en arbeidsordre ved å dra den eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
+description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, å flytte en arbeidsordre ved å dra den eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
 sidebar:
   order: 66
 sources:
@@ -146,6 +146,9 @@ den.
      [Standardstykklisten og de alternative stykklistene](#standardstykklisten-og-de-alternative-stykklistene)).
    - **Produser mot ordre** — produktet lages for hver salgsordre i stedet for til lager
      ([Produser mot ordre](#produser-mot-ordre)).
+   - **Mønster for partinummer** — for et produkt som spores med partier: hvordan partiet
+     produksjonene lager, nummereres, `{MO}` med mindre det endres. Se
+     [Partier og serienumre](#partier-og-serienumre).
    - **Merknad** — opptil 2 000 tegn.
 4. Under **Operasjoner** velger du **Legg til operasjon** for hvert steg i arbeidet, i
    rekkefølgen de gjøres. Hver har:
@@ -419,6 +422,57 @@ registrering to ganger — et dobbeltklikk, en tapt forbindelse — bokføres de
 En registrert produksjon kan ikke angres i Produksjon. Rett en feil med en justering i
 [Lager](/nb/user/inventory/).
 
+### Partier og serienumre
+
+Når produktet eller en komponent spores med **partier** eller **serienumre** (variantens
+**Sporing** i [Produkter](/nb/user/products/#spor-partier-og-serienumre)), spør
+**Registrer produksjon** også etter dem.
+
+**Partiet produksjonen lager.** For et produkt som spores med partier viser skjemaet
+**Partinummer**, laget av stykklistens **Mønster for partinummer** slik ordren beholdt det
+da den ble bekreftet:
+
+- `{MO}` — ordrens nummer, standarden: alle produksjoner på ordren legges i ett parti,
+  *MO-12*, uansett dag.
+- `{YYMMDD}`, eller `{YYYY}`, `{YY}`, `{MM}`, `{DD}` — produksjonsdatoen: `L{YYMMDD}-{N}`
+  lager et nytt parti for hver produksjon, *L261112-1*, *L261112-2*.
+- `{SKU}` — produktets SKU; `{N}` — et løpenummer, talt for hvert prefiks.
+- Alt annet skrives som det står. Et partinummer har 1–20 bokstaver, sifre og `. _ / -`;
+  stykklisteredigeringen viser et eksempel og nekter et mønster som ikke gir et
+  (**Mønsteret for partinummer gir ikke et partinummer**).
+
+Behold nummeret eller skriv et annet; et nummer produktet allerede har, legger til i det
+partiet. **Produksjonsdato** er i dag med mindre du endrer den. **Utløpsdato** og **Best
+før** står tomme for å ta produktets eget antall dager fra produksjonsdatoen; en dato du
+skriver på et parti som allerede finnes, må være partiets egen (**Partiet finnes med andre
+datoer**).
+
+For et produkt som spores med **serienumre** må godkjent antall være helt, og hver enhet
+får sitt eget nummer: **Første serienummer** telles opp, ett per enhet — som standard
+ordrens nummer og fire sifre, *MO-12-0001*, videre fra serienumrene ordren laget før.
+Kasserte ferdigvarer nummereres aldri.
+
+**Partiene den forbruker.** Under hver sporet komponent viser skjemaet partiene den ville
+ta, det som går ut først først — *Tas etter først utløpt, først ut når du bokfører: B-1 (1.
+des. 2026) 30 · B-2 10* — eller at ingen er på lager, eller hvor mye partiene på lager
+mangler. Lar du det stå, tar Lager partiene når du bokfører, først utløpt først ut, og
+hopper over sperrede og utløpte partier. For å ta andre velger du **Bytt parti**: hver rad
+er et parti på en lokasjon, valgt blant lagerstedets partier med utløpsdato og det som
+ligger der (sperrede og utløpte partier er merket), og antallet som tas fra det. **Legg
+til parti** legger til en rad, krysset fjerner en, og **Ta etter først utløpt, først ut**
+går tilbake til forslaget. Radene må summere til det linjen forbruker og kasserer;
+skjemaet sier fra når de ikke gjør det. Et utløpt parti kan bare brukes av den som har lov
+til å bruke utløpte partier, og som krysser av for **utløpt** på raden; et sperret eller
+blokkert parti nektes (**Et parti er sperret eller blokkert og kan ikke brukes**).
+
+Når partier du ikke endret, er tatt av noen andre i mellomtiden, foreslår produksjonen dem
+på nytt én gang ut fra det som er på lager, og bokfører.
+
+**Ordrens partier.** Fanen **Partier** på ordresiden viser **Partier laget**, med det
+produksjonene la i hvert og hvor mange produksjoner, og **Partier forbrukt** per komponent
+med utløpsdato, forbrukt og svinn. Hvert parti lenker til siden sin i
+[Lager](/nb/user/inventory/).
+
 ### Lukk en ordre
 
 Velg **Lukk** på en bekreftet eller påbegynt ordre når arbeidet er ferdig. Det som
@@ -587,8 +641,9 @@ På ordrens siste operasjon står **Registrer produksjon** ved siden av **Ferdig
 åpner skjemaet fra ordresiden — **Antall** laget, eventuelle **Kasserte ferdigvarer**, og
 hver komponents forhåndsutfylte **Forbrukt** og **Svinn** (se
 [Registrer en produksjon](#registrer-en-produksjon)), med samme advarsel når et tall
-avviker mer enn 10 %. Å velge **Bokfør** registrerer produksjonen og lar arbeidsordren
-løpe videre, så du kan registrere mer underveis.
+avviker mer enn 10 %, og partiet, serienumrene og komponentenes partier fra
+[Partier og serienumre](#partier-og-serienumre). Å velge **Bokfør** registrerer
+produksjonen og lar arbeidsordren løpe videre, så du kan registrere mer underveis.
 
 Når dette er det siste, krysser du også av for **Fullfør også denne operasjonen**:
 produksjonen registreres **og** arbeidsordren fullføres, sammen — noe som stopper tiden for
@@ -603,8 +658,8 @@ fortsetter å løpe. Sendes den to ganger, bokføres den bare én gang.
 Velg **Meld svinn** på arbeidsordren når komponenter går tapt eller ferdige enheter
 kastes, i hvilken som helst operasjon. Oppgi svinnet for hver komponent og **Kasserte
 ferdigvarer**. Det registreres som en produksjon uten gode enheter: komponentene tas ut av
-lageret i Lager, og ordrens tall teller dem. Sendes det to ganger, bokføres det bare én
-gang.
+lageret i Lager, og ordrens tall teller dem — en komponent som spores med partier fra
+partiene som går ut først. Sendes det to ganger, bokføres det bare én gang.
 
 ### Blokker en arbeidsstasjon som har stoppet
 

@@ -320,6 +320,11 @@
     "description": "The history of a manufacturing order: each event, who did it and when."
   },
   {
+    "key": "manufacturing.order.lots-tab",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The tab on a manufacturing order that shows the lots its productions made and the lots they consumed."
+  },
+  {
     "key": "manufacturing.order.plan",
     "route": "/manufacturing/orders/{orderId}",
     "description": "Plans the order's unfinished work orders forward on their work centers' calendars, from the requested start or now."

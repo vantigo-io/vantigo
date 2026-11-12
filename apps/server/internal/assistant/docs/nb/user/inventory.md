@@ -304,8 +304,9 @@ En vare kan holdes i **partier** — en sats med eget nummer, som et leverandør
 stål eller en dags produksjon av melk — eller i **serienumre**, der hvert eksemplar er et
 parti for seg og gjelder nøyaktig én. All beholdning av en slik vare ligger under partiet
 sitt, så du ser hvilket parti som ligger i hvilken hylle, når det går ut, og hvor det ble
-av. Partisporing slås på per vare i Produkter når leveranser og produksjoner registrerer
-partier; inntil da viser skjemaene ikke noe parti.
+av. Partisporing slås på per vare i [Produkter](/nb/user/products/#spor-partier-og-serienumre),
+mens varen ikke har beholdning; leveranser i Ordrer og produksjoner i
+[Produksjon](/nb/user/manufacturing/#partier-og-serienumre) oppgir da også partiene sine.
 
 Et parti har sitt **nummer** (1–20 bokstaver, sifre og `. _ / -`, ett per vare),
 leverandørens **leverandørparti** — for eksempel smeltenummeret på et 3.1-sertifikat — en
