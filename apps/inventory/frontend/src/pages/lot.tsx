@@ -30,6 +30,7 @@ import {
   IconShieldPause,
   IconTrash,
   IconUpload,
+  IconZoomExclamation,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -66,15 +67,17 @@ import {
 } from "../api/trace";
 import { LotStatusBadges } from "../components/lot-status";
 import { PrintLotLabelsDialog } from "../components/print-lot-labels-dialog";
-import { canManageLots } from "../lib/capabilities";
+import { canManageLots, canViewLots } from "../lib/capabilities";
 import { movementKindColor, refusalMessage, useInventoryFormat } from "../lib/format";
 import {
   countLinkOptions,
+  deviationHref,
   INVENTORY_HOME_ROUTE_PATH,
   LOTS_ROUTE_PATH,
   locationLinkOptions,
   lotLinkOptions,
   movementLinkOptions,
+  reportDeviationHref,
   siteLinkOptions,
   traceLinkOptions,
   variantStockLinkOptions,
@@ -122,6 +125,20 @@ const SourceLink = ({
   const { t } = useInventoryFormat();
   if (source.module === "inventory" && source.kind === "lot" && source.id === String(lotId))
     return <>{t("holdSource_lot")}</>;
+  // A receipt's inspection hold names its movement (manufacturing phase 2 M100); a deviation's, the deviation (M99).
+  if (source.module === "inventory" && source.kind === "receipt" && /^\d+$/.test(source.id))
+    return (
+      <Anchor size="sm" renderRoot={(props) => <Link {...movementLinkOptions(Number(source.id))} {...props} />}>
+        {t("receiptById", { id: source.id })}
+      </Anchor>
+    );
+  const deviation = deviationHref(source);
+  if (deviation)
+    return (
+      <Anchor size="sm" renderRoot={(props) => <Link to={deviation as never} {...props} />}>
+        {t("deviationById", { id: source.id })}
+      </Anchor>
+    );
   if (source.module === "inventory" && source.kind === "movement" && /^\d+$/.test(source.id))
     return (
       <Anchor size="sm" renderRoot={(props) => <Link {...movementLinkOptions(Number(source.id))} {...props} />}>
@@ -743,6 +760,7 @@ export const LotPage = ({ moduleLabel = ownKey }: { moduleLabel?: ModuleLabel })
   const lot = useQuery(lotQueryOptions(lotId, live));
   const data = lot.data;
   const manage = canManageLots(meta.data);
+  const reportDeviation = canViewLots(meta.data) ? reportDeviationHref(lotId) : undefined;
   const [editing, setEditing] = useState(false);
   const [printing, setPrinting] = useState(false);
 
@@ -790,6 +808,17 @@ export const LotPage = ({ moduleLabel = ownKey }: { moduleLabel?: ModuleLabel })
               {manage && (
                 <Button variant="light" leftSection={<IconPencil size={16} />} onClick={() => setEditing(true)}>
                   {t("editLot")}
+                </Button>
+              )}
+              {reportDeviation && (
+                <Button
+                  variant="default"
+                  color="red"
+                  leftSection={<IconZoomExclamation size={16} />}
+                  data-assist="inventory.lot.report-deviation"
+                  renderRoot={(props) => <Link to={reportDeviation as never} {...props} />}
+                >
+                  {t("reportDeviation")}
                 </Button>
               )}
             </Group>

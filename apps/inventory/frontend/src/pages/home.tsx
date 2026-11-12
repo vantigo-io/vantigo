@@ -6,6 +6,7 @@ import {
   IconBuildingWarehouse,
   IconPackageImport,
   IconPlus,
+  IconZoomExclamation,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -13,11 +14,18 @@ import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/f
 import { useState } from "react";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { type InventorySite, sitesQueryOptions } from "../api/sites";
+import { inventoryStatsQueryOptions } from "../api/stats";
 import { InventoryLookupField } from "../components/lookup-field";
 import { SiteFormModal } from "../components/site-form";
 import { canPost } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
-import { NEW_ADJUSTMENT_ROUTE_PATH, NEW_MOVE_ROUTE_PATH, NEW_RECEIPT_ROUTE_PATH, siteLinkOptions } from "../lib/routes";
+import {
+  lotsLinkOptions,
+  NEW_ADJUSTMENT_ROUTE_PATH,
+  NEW_MOVE_ROUTE_PATH,
+  NEW_RECEIPT_ROUTE_PATH,
+  siteLinkOptions,
+} from "../lib/routes";
 
 /**
  * A site's card: its kind and address, how many locations it has, and — with
@@ -67,6 +75,9 @@ export const InventoryHomePage = () => {
   const meta = useQuery(inventoryMetaQueryOptions());
   const canViewLocations = meta.data?.canViewLocations === true;
   const sites = useQuery({ ...sitesQueryOptions(), enabled: canViewLocations });
+  // The inspection queue (manufacturing phase 2 M100): lots a receipt put in quarantine for inspection.
+  const stats = useQuery({ ...inventoryStatsQueryOptions(), enabled: meta.data?.canViewStock === true });
+  const awaiting = stats.data?.lotsAwaitingInspection ?? 0;
   const [creating, setCreating] = useState(false);
 
   return (
@@ -121,6 +132,23 @@ export const InventoryHomePage = () => {
       <PageSection>
         <InventoryLookupField />
       </PageSection>
+      {canViewLocations && awaiting > 0 && (
+        <Alert
+          color="orange"
+          variant="light"
+          icon={<IconZoomExclamation size={16} />}
+          data-assist="inventory.home.awaiting-inspection"
+        >
+          <Anchor
+            fw={500}
+            renderRoot={(props) => (
+              <Link {...lotsLinkOptions({ status: "quarantine", holdCause: "inspection" })} {...props} />
+            )}
+          >
+            {t("awaitingInspection", { count: awaiting })}
+          </Anchor>
+        </Alert>
+      )}
       {meta.error ? (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotLoad")}>
           {meta.error.message}

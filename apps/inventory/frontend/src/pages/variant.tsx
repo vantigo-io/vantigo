@@ -8,6 +8,7 @@ import { inventoryMetaQueryOptions } from "../api/meta";
 import type { InventoryPlacement } from "../api/placements";
 import { type InventorySiteRef, sitesQueryOptions } from "../api/sites";
 import { type InventoryVariantRef, variantStockQueryOptions } from "../api/stock";
+import { InspectionRule } from "../components/inspection-rule";
 import { MovementList } from "../components/movement-list";
 import { PlacementDialog } from "../components/placement-dialog";
 import { HeldQuantity, ReservedAvailable } from "../components/product-stock";
@@ -149,6 +150,7 @@ export const VariantStockPage = () => {
                 />
               </Stack>
             </Group>
+            {!stock.data.variant.deleted && <InspectionRule variant={stock.data.variant} />}
             {stock.data.sites.some((site) => site.available < 0) && (
               <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
                 {t("availableNegative")}
