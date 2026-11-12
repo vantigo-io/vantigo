@@ -228,7 +228,7 @@ export interface paths {
         get: operations["getDelivery"];
         /**
          * Save a delivery
-         * @description Saves a draft delivery's lines: quantities and the locations they are picked from (O47). A line names an open goods line of the order, at most what is open (over_delivery), and a location of the site (location_unknown).
+         * @description Saves a draft delivery's lines: quantities and the locations they are picked from (O47). A line names an open goods line of the order, at most what is open (over_delivery), and a location of the site (location_unknown). A tracked line names its lots instead (manufacturing phase 2 M77): each a lot of the site holding the variant at the location (lot_unknown); an untracked line names none (lot_not_allowed). Lots the person sends are marked chosen; a tracked line sent without lots keeps its picks while they add up to its quantity, and is proposed again otherwise.
          */
         put: operations["updateDelivery"];
         post?: never;
@@ -309,7 +309,7 @@ export interface paths {
         put?: never;
         /**
          * Post a delivery
-         * @description Posts a draft delivery (O47): every line needs a location; Inventory issues the stock from the site in one movement, consuming the order lines' reservations; the order lines' delivered quantities grow, the back order is what remains, orders.delivery.posted.v1 is published and the packing slip is stored. Refused for an order on hold (order_on_hold), beyond what is open (over_delivery) or beyond what the location holds (insufficient_stock, naming every short line).
+         * @description Posts a draft delivery (O47): every line needs a location; Inventory issues the stock from the site in one movement, consuming the order lines' reservations; the order lines' delivered quantities grow, the back order is what remains, orders.delivery.posted.v1 is published and the packing slip is stored. Refused for an order on hold (order_on_hold), beyond what is open (over_delivery) or beyond what the location holds (insufficient_stock, naming every short line). A tracked line issues one ledger line per lot row (manufacturing phase 2 M78): its lots must add up to its quantity (picks_mismatch) and name a lot (lot_required); a lot on hold is refused (lot_blocked), an expired one too unless the row allows it and the poster holds inventory:expired-override (lot_expired). When a refusal of insufficient_stock or lot_blocked falls only on lines whose lots were all proposed, those lines are proposed again once (FEFO) and posted again; the delivery keeps the new lots.
          */
         post: operations["postDelivery"];
         delete?: never;
@@ -1974,7 +1974,7 @@ export interface components {
             /** Format: int64 */
             orderId: number;
         };
-        /** @description A delivery's line: one order line, the quantity, and the location it is picked from (null until picked). open is what of the order line is still to deliver outside this delivery; locations, on a draft, are the site's locations holding the variant, by full code. */
+        /** @description A delivery's line: one order line, the quantity, and the location it is picked from (null until picked). open is what of the order line is still to deliver outside this delivery; locations, on a draft, are the site's locations holding the variant, by full code. A tracked variant's line (tracked) holds its quantity in lots instead, one row per lot and location (manufacturing phase 2 M75), and its fromLocationId stays null; lotChoices, on a draft, are the site's lots of the variant in FEFO order, for Change lot. */
         OrdersDeliveryLine: {
             fromLocationCode?: string | null;
             /** Format: int64 */
@@ -1982,6 +1982,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             locations: components["schemas"]["OrdersStockLocation"][];
+            lotChoices: components["schemas"]["OrdersDeliveryLotChoice"][];
+            lots: components["schemas"]["OrdersDeliveryLineLot"][];
             name?: string | null;
             /** Format: double */
             open: number;
@@ -1993,20 +1995,77 @@ export interface components {
             position: number;
             /** Format: double */
             quantity: number;
+            /**
+             * Format: double
+             * @description What the lots do not cover of a tracked line's quantity, 0 when they cover it: the page marks the line Short by n, and the post refuses it (picks_mismatch) until the lots add up.
+             */
+            short: number;
             sku?: string | null;
+            /** @description Whether the variant is tracked by lot or serial number: the line is picked by lot. */
+            tracked: boolean;
             unit: string;
             /** Format: int32 */
             variantId: number;
         };
-        /** @description A draft delivery's line as the editor saves it. */
+        /** @description One lot a tracked delivery line takes (manufacturing phase 2 M75): the lot and the location, with the lot's number, expiry and the location's code as they were when picked. chosen is whether a person chose it; proposed picks (FEFO) may be proposed again at the post when stock moved (M65a). */
+        OrdersDeliveryLineLot: {
+            /** @description The person chose this lot although it is expired; honoured only for a poster holding inventory:expired-override. */
+            allowExpired: boolean;
+            chosen: boolean;
+            /** Format: date */
+            expiry: string | null;
+            locationCode: string;
+            /** Format: int64 */
+            locationId: number;
+            /** Format: int64 */
+            lotId: number;
+            lotNumber: string;
+            /** Format: double */
+            quantity: number;
+        };
+        /** @description A lot of the variant at a location of the site, as Change lot offers it, in FEFO order (manufacturing phase 2 M65): its expiry and best-before, its status and what lies there. */
+        OrdersDeliveryLotChoice: {
+            /** Format: date */
+            bestBefore: string | null;
+            /** @description Whether the lot's expiry lies before today in the workspace's zone. */
+            expired: boolean;
+            /** Format: date */
+            expiry: string | null;
+            fullCode: string;
+            /** Format: int64 */
+            locationId: number;
+            /** Format: int64 */
+            lotId: number;
+            lotNumber: string;
+            /** Format: double */
+            quantity: number;
+            /** @enum {string} */
+            status: "available" | "quarantine" | "blocked";
+        };
+        /** @description A draft delivery's line as the editor saves it. lots are a tracked line's picks as the person chose them (manufacturing phase 2 M77); left out, the line keeps its picks while they still add up to its quantity, and is proposed again (FEFO) otherwise. */
         OrdersDeliveryLineInput: {
             /** Format: int64 */
             fromLocationId?: number | null;
+            lots?: components["schemas"]["OrdersDeliveryLotInput"][];
             /** Format: int64 */
             orderLineId: number;
             /**
              * Format: double
              * @description Greater than 0, at most three decimals, never beyond what is open (over_delivery).
+             */
+            quantity: number;
+        };
+        /** @description One lot a tracked line takes, as the person chose it: a lot of the site holding the variant at the location (lot_unknown otherwise). */
+        OrdersDeliveryLotInput: {
+            /** @description Use the lot although it is expired (Use expired lot); the post honours it only for a poster holding inventory:expired-override. */
+            allowExpired?: boolean;
+            /** Format: int64 */
+            locationId: number;
+            /** Format: int64 */
+            lotId: number;
+            /**
+             * Format: double
+             * @description Greater than 0, at most three decimals.
              */
             quantity: number;
         };
@@ -2025,6 +2084,8 @@ export interface components {
             id: number;
             /** Format: int32 */
             lines: number;
+            /** @description The lot numbers the delivery takes, once each, in line order (manufacturing phase 2 M79). */
+            lots: string[];
             /** Format: int64 */
             number: number;
             /** Format: int64 */
@@ -2428,6 +2489,8 @@ export interface components {
         OrdersMeta: {
             /** @description The deployment's currency, a document's when its customer names none (O13). */
             baseCurrency: string;
+            /** @description Whether the caller holds inventory:expired-override: a delivery's Use expired lot is offered (manufacturing phase 2 M77). */
+            canOverrideExpired: boolean;
             /** Format: int32 */
             defaultPaymentTermsDays: number;
             /** Format: int32 */
@@ -2706,6 +2769,16 @@ export interface components {
              * @description The line's position in the request, from 0.
              */
             index: number;
+            /**
+             * Format: int64
+             * @description On a delivery's tracked line, the lot the refusal is about (manufacturing phase 2 M78).
+             */
+            lotId?: number;
+            /**
+             * Format: int32
+             * @description On a delivery's tracked line, the lot row's position among the line's lots, from 0.
+             */
+            lotIndex?: number;
         };
         /** @description A quote (O13, O20). number stays across revisions; revision counts the sends. */
         OrdersQuote: {
@@ -4592,7 +4665,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrdersDelivery"];
                 };
             };
-            /** @description Bad Request — field errors, a line's codes: line_not_found, quantity_invalid, over_delivery, location_unknown. */
+            /** @description Bad Request — field errors, a line's codes: line_not_found, quantity_invalid, over_delivery, location_unknown, lot_unknown, lot_not_allowed. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4833,7 +4906,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrdersDelivery"];
                 };
             };
-            /** @description Bad Request — a line's codes: location_missing, over_delivery. */
+            /** @description Bad Request — a line's codes: location_missing, over_delivery, picks_mismatch, lot_required. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -4867,7 +4940,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — version_conflict, delivery_not_draft, order_on_hold, insufficient_stock, location_unknown, site_not_fulfilling, variant_not_stocked. */
+            /** @description Conflict — version_conflict, delivery_not_draft, order_on_hold, insufficient_stock, location_unknown, site_not_fulfilling, variant_not_stocked, lot_expired, lot_blocked, lot_unknown, lot_required, lot_not_allowed, serial_quantity. */
             409: {
                 headers: {
                     [name: string]: unknown;

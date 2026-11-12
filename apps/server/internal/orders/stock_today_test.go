@@ -38,7 +38,7 @@ func TestDelivery_PassesTodayAndTheOverride(t *testing.T) {
 		}
 		for _, l := range issue.Lines {
 			if l.LotID != 0 || l.AutoLot || l.AllowExpired {
-				t.Errorf("an issue line names a lot before layer O: %+v", l)
+				t.Errorf("an untracked line names a lot: %+v", l)
 			}
 		}
 	}
