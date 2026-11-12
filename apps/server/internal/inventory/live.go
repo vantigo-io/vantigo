@@ -14,7 +14,8 @@ import (
 // only: a screen that hears one refetches through its ordinary request, which
 // checks the person's permission.
 const (
-	// liveLots is the lots list's topic, keyless: lot.changed with the id.
+	// liveLots is the lots list's topic, keyless: lot.changed, once per
+	// transaction, with no id.
 	liveLots = "inventory.lots"
 	// liveLot is one lot's page, keyed by its id: its holds, files and stock.
 	liveLot = "inventory.lot"
@@ -44,24 +45,25 @@ func liveTopics(module.Deps) []live.Topic {
 	}
 }
 
-// notifyLots tells the lots list and each lot's page that the lots changed,
-// once per lot, in id order, on q — the transaction that wrote — so a
-// listener hears it only if it commits (the K-D rules). Postings call it for
-// the lots their lines touch, whichever module's transaction they run on: a
-// notification is a statement on that transaction, not a call out.
+// notifyLots tells the lots list once and each lot's page that the lots
+// changed, in one statement on q — the transaction that wrote — so a listener
+// hears it only if it commits (the K-D rules), and a posting of 500 serials
+// is one round trip, not a thousand. The list's event carries no id: it
+// refetches whatever changed. Postings call it for the lots their lines
+// touch, whichever module's transaction they run on: a notification is a
+// statement on that transaction, not a call out.
 func notifyLots(ctx context.Context, q live.Execer, ids []int64) error {
 	ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+	events := make([]live.Event, 0, len(ids)+1)
 	for _, id := range ids {
 		if id == 0 {
 			continue
 		}
+		if len(events) == 0 {
+			events = append(events, live.Event{Topic: liveLots, Kind: eventLiveLotChanged})
+		}
 		key := strconv.FormatInt(id, 10)
-		if err := live.Notify(ctx, q, liveLots, eventLiveLotChanged, key); err != nil {
-			return err
-		}
-		if err := live.Notify(ctx, q, liveLot+":"+key, eventLiveLotChanged, key); err != nil {
-			return err
-		}
+		events = append(events, live.Event{Topic: liveLot + ":" + key, Kind: eventLiveLotChanged, ID: key})
 	}
-	return nil
+	return live.NotifyAll(ctx, q, events)
 }

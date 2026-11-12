@@ -49,23 +49,60 @@ const presenceKind = "presence"
 // never in a loop over many rows (L6). It refuses a topic outside the grammar,
 // an empty or malformed kind, and a payload over 7 KiB.
 func Notify(ctx context.Context, q Execer, topic, kind, id string) error {
-	if !ValidTopic(topic) {
-		return fmt.Errorf("live: notify: topic %q does not follow the grammar", topic)
-	}
-	if !eventKindPattern.MatchString(kind) {
-		return fmt.Errorf("live: notify: kind %q is not an event kind", kind)
-	}
-	body, err := json.Marshal(payload{T: topic, K: kind, ID: id})
+	body, err := eventPayload(topic, kind, id)
 	if err != nil {
-		return fmt.Errorf("live: notify: %w", err)
+		return err
 	}
-	if len(body) > maxPayload {
-		return fmt.Errorf("live: notify: the payload is %d bytes, over %d", len(body), maxPayload)
-	}
-	if _, err := q.Exec(ctx, "SELECT pg_notify($1, $2)", Channel, string(body)); err != nil {
+	if _, err := q.Exec(ctx, "SELECT pg_notify($1, $2)", Channel, body); err != nil {
 		return fmt.Errorf("live: notify: %w", err)
 	}
 	return nil
+}
+
+// Event is one notification of NotifyAll: kind happened on Topic, to the thing
+// ID names ("" for none).
+type Event struct {
+	Topic, Kind, ID string
+}
+
+// NotifyAll is Notify for several events at once, in one statement on q — one
+// round trip, however many — for a write that changes several aggregates of
+// one kind together, a posting's lots. It refuses the whole batch when any
+// event fails Notify's rules, and sends nothing for none.
+func NotifyAll(ctx context.Context, q Execer, events []Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	bodies := make([]string, 0, len(events))
+	for _, e := range events {
+		body, err := eventPayload(e.Topic, e.Kind, e.ID)
+		if err != nil {
+			return err
+		}
+		bodies = append(bodies, body)
+	}
+	if _, err := q.Exec(ctx, "SELECT pg_notify($1, p) FROM unnest($2::text[]) AS p", Channel, bodies); err != nil {
+		return fmt.Errorf("live: notify: %w", err)
+	}
+	return nil
+}
+
+// eventPayload is an event's payload, or why Notify refuses it.
+func eventPayload(topic, kind, id string) (string, error) {
+	if !ValidTopic(topic) {
+		return "", fmt.Errorf("live: notify: topic %q does not follow the grammar", topic)
+	}
+	if !eventKindPattern.MatchString(kind) {
+		return "", fmt.Errorf("live: notify: kind %q is not an event kind", kind)
+	}
+	body, err := json.Marshal(payload{T: topic, K: kind, ID: id})
+	if err != nil {
+		return "", fmt.Errorf("live: notify: %w", err)
+	}
+	if len(body) > maxPayload {
+		return "", fmt.Errorf("live: notify: the payload is %d bytes, over %d", len(body), maxPayload)
+	}
+	return string(body), nil
 }
 
 // The document notifications (K27, K32): kinds on a document topic.

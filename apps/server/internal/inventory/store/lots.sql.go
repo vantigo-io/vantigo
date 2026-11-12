@@ -496,7 +496,7 @@ func (q *Queries) LotMovementLines(ctx context.Context, arg LotMovementLinesPara
 }
 
 const lotStockOfVariants = `-- name: LotStockOfVariants :many
-SELECT b.variant_id, b.location_id, b.on_hand, t.id AS lot_id, t.number, t.expiry, t.best_before, t.status
+SELECT b.variant_id, b.location_id, b.on_hand, t.id AS lot_id, t.number, t.expiry, t.best_before, t.status, t.received_at
 FROM inventory.balances b
 JOIN inventory.lots t ON t.id = b.lot_id
 WHERE b.variant_id = ANY($1::int[]) AND b.on_hand <> 0
@@ -512,6 +512,7 @@ type LotStockOfVariantsRow struct {
 	Expiry     pgtype.Date
 	BestBefore pgtype.Date
 	Status     string
+	ReceivedAt time.Time
 }
 
 // LotStockOfVariants is every balance of the variants that is in a lot, with
@@ -534,6 +535,7 @@ func (q *Queries) LotStockOfVariants(ctx context.Context, variantIds []int32) ([
 			&i.Expiry,
 			&i.BestBefore,
 			&i.Status,
+			&i.ReceivedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -42,6 +42,8 @@ const (
 	lotSourceKind        = "lot"
 	eventLotUpdated      = "lot_updated"
 	codeHoldNotInventory = "hold_not_inventorys"
+	codeHoldExists       = "hold_exists"
+	codeLotDatesInvalid  = "lot_dates_invalid"
 	invalidLotTitle      = "Invalid lot"
 )
 
@@ -58,7 +60,7 @@ func lotSummaryOf(l store.InventoryLot, onHand string, ref gen.InventoryVariantR
 	return gen.InventoryLotSummary{
 		Id: l.ID, Number: l.Number, Serial: l.Serial, Variant: ref, Status: gen.InventoryLotStatus(l.Status),
 		Expired: lotExpired(l, today), Expiry: wireDate(dateOrNil(l.Expiry)), BestBefore: wireDate(dateOrNil(l.BestBefore)),
-		SupplierLot: l.SupplierLot, OnHand: wireQuantity(ratFromText(onHand)),
+		SupplierLot: l.SupplierLot, OnHand: wireQuantity(ratFromText(onHand)), ReceivedAt: l.ReceivedAt,
 	}
 }
 
@@ -356,14 +358,15 @@ func (s *server) PutInventoryLot(ctx context.Context, req gen.PutInventoryLotReq
 	f := s.unknownProperties(ctx, lotUpdateSchema)
 	supplierLot := optionalText(&f, "supplierLot", in.SupplierLot, 40)
 	note := optionalText(&f, "note", in.Note, 2000)
-	if f.failed() {
-		return gen.PutInventoryLot400ApplicationProblemPlusJSONResponse(invalid(invalidLotTitle, f)), nil
-	}
 	date := func(d *openapi_types.Date) *time.Time {
 		if d == nil {
 			return nil
 		}
 		return &d.Time
+	}
+	checkLotDates(&f, "", date(in.ProductionDate), date(in.BestBefore), date(in.Expiry))
+	if f.failed() {
+		return gen.PutInventoryLot400ApplicationProblemPlusJSONResponse(invalid(invalidLotTitle, f)), nil
 	}
 	who, err := s.actorFor(ctx)
 	if err != nil {
@@ -484,9 +487,31 @@ func (s *server) PostInventoryLotHold(ctx context.Context, req gen.PostInventory
 	}
 	hold := contracts.LotHold{LotID: req.Id, Kind: string(in.Kind), Cause: string(in.Cause), Note: deref(note),
 		By: contracts.LotActor{UserID: who.UserID, Display: who.Display}}
+	src := lotPageSource(req.Id)
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		return s.holdLots(ctx, tx, txq, lotPageSource(req.Id), []contracts.LotHold{hold}, []int64{req.Id})
+		if _, err := lockLotForChange(ctx, txq, req.Id); err != nil {
+			return err
+		}
+		active, err := txq.ActiveHoldsOfSource(ctx, store.ActiveHoldsOfSourceParams{LotIds: []int64{req.Id}, SourceModule: src.module, SourceKind: src.kind, SourceID: src.id})
+		if err != nil {
+			return fmt.Errorf("inventory: read the holds of lot %d: %w", req.Id, err)
+		}
+		for _, a := range active {
+			if a.Kind == hold.Kind {
+				return refuse(problem(http.StatusConflict, codeHoldExists, "The lot is held already",
+					fmt.Sprintf("The lot page has an active %s on the lot; release it before putting another.", hold.Kind)))
+			}
+		}
+		return s.holdLots(ctx, tx, txq, src, []contracts.LotHold{hold}, []int64{req.Id})
 	})
+	if status, p, ok := answerOf(err); ok {
+		switch status {
+		case http.StatusNotFound:
+			return gen.PostInventoryLotHold404Response{}, nil
+		case http.StatusConflict:
+			return gen.PostInventoryLotHold409ApplicationProblemPlusJSONResponse(p), nil
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

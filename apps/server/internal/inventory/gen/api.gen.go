@@ -678,7 +678,7 @@ type InventoryAdjustmentLine struct {
 	Entered    *InventoryEntered `json:"entered,omitempty"`
 	LocationId int64             `json:"locationId"`
 
-	// Lot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays.
+	// Lot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays. Dates stated out of order — an expiry before the production date, or a best-before after the expiry — are 400 lot_dates_invalid.
 	Lot *InventoryNewLot `json:"lot,omitempty"`
 
 	// LotId The lot the line takes or puts (manufacturing phase 2 M59): required for a tracked variant, refused for an untracked one (lot_not_allowed).
@@ -706,6 +706,9 @@ type InventoryBalanceLot struct {
 	LotId   int64               `json:"lotId"`
 	Number  string              `json:"number"`
 	OnHand  float64             `json:"onHand"`
+
+	// ReceivedAt When the lot was first received; FEFO's second key, after the expiry (M65).
+	ReceivedAt time.Time `json:"receivedAt"`
 
 	// Status A lot's status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.
 	Status InventoryLotStatus `json:"status"`
@@ -1227,7 +1230,10 @@ type InventoryLotSummary struct {
 
 	// OnHand On hand at the siteId asked for, else over every location.
 	OnHand float64 `json:"onHand"`
-	Serial bool    `json:"serial"`
+
+	// ReceivedAt When the lot was first received; FEFO's second key, after the expiry (M65).
+	ReceivedAt time.Time `json:"receivedAt"`
+	Serial     bool      `json:"serial"`
 
 	// Status A lot's status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.
 	Status      InventoryLotStatus `json:"status"`
@@ -1454,7 +1460,7 @@ type InventoryMovementSummary struct {
 	Transfer *InventoryTransferRef `json:"transfer,omitempty"`
 }
 
-// InventoryNewLot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays.
+// InventoryNewLot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays. Dates stated out of order — an expiry before the production date, or a best-before after the expiry — are 400 lot_dates_invalid.
 type InventoryNewLot struct {
 	BestBefore *openapi_types.Date `json:"bestBefore,omitempty"`
 	Expiry     *openapi_types.Date `json:"expiry,omitempty"`
@@ -1536,7 +1542,7 @@ type InventoryPlacementInput struct {
 	ReorderPoint      *float64 `json:"reorderPoint"`
 }
 
-// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module's document put, which is released there), attachment_too_large and too_many_attachments (400: a lot's file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module's document put, which is released there), hold_exists (409: the lot page putting a second active hold of one kind on a lot), lot_dates_invalid (400: a lot's dates stated out of order — an expiry before the production date, or a best-before date after the expiry — on a lot's edit or a receipt or adjustment line's new lot; errors names the field), attachment_too_large and too_many_attachments (400: a lot's file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
 type InventoryProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1592,7 +1598,7 @@ type InventoryReceiptLine struct {
 	// LocationId Overrides the receipt's toLocationId for this line.
 	LocationId *int64 `json:"locationId,omitempty"`
 
-	// Lot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays.
+	// Lot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays. Dates stated out of order — an expiry before the production date, or a best-before after the expiry — are 400 lot_dates_invalid.
 	Lot *InventoryNewLot `json:"lot,omitempty"`
 
 	// LotId The lot the line takes or puts (manufacturing phase 2 M59): required for a tracked variant, refused for an untracked one (lot_not_allowed).
@@ -6763,6 +6769,20 @@ type PostInventoryLotHold404Response struct {
 func (response PostInventoryLotHold404Response) VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PostInventoryLotHold409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PostInventoryLotHold409ApplicationProblemPlusJSONResponse) VisitPostInventoryLotHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PostInventoryLotHold503ApplicationProblemPlusJSONResponse InventoryProblem

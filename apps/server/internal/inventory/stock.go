@@ -81,7 +81,7 @@ func (sn *stockSnapshot) lotsAt(variantID int32, locationID int64) *[]gen.Invent
 		out = append(out, gen.InventoryBalanceLot{
 			LotId: b.lot.LotID, Number: b.lot.Number, Status: gen.InventoryLotStatus(b.lot.Status),
 			Expired: contracts.LotExpired(dateOrNil(b.lot.Expiry), sn.today), Expiry: wireDate(dateOrNil(b.lot.Expiry)),
-			BestBefore: wireDate(dateOrNil(b.lot.BestBefore)), OnHand: wireQuantity(b.onHand),
+			BestBefore: wireDate(dateOrNil(b.lot.BestBefore)), OnHand: wireQuantity(b.onHand), ReceivedAt: b.lot.ReceivedAt,
 		})
 	}
 	if out == nil {

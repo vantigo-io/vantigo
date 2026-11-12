@@ -155,7 +155,7 @@ UPDATE inventory.lots SET revision = revision + 1, updated_at = @now::timestampt
 -- name: LotStockOfVariants :many
 -- LotStockOfVariants is every balance of the variants that is in a lot, with
 -- the lot, in FEFO order (M63, M65): the stock reads' lot rows.
-SELECT b.variant_id, b.location_id, b.on_hand, t.id AS lot_id, t.number, t.expiry, t.best_before, t.status
+SELECT b.variant_id, b.location_id, b.on_hand, t.id AS lot_id, t.number, t.expiry, t.best_before, t.status, t.received_at
 FROM inventory.balances b
 JOIN inventory.lots t ON t.id = b.lot_id
 WHERE b.variant_id = ANY(@variant_ids::int[]) AND b.on_hand <> 0
