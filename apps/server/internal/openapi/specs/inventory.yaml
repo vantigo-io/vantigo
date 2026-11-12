@@ -548,6 +548,12 @@ components:
                 - l7160
                 - l7163
             type: string
+        InventoryLabelFormat:
+            description: 'internal: the LOT token as Code 128 (M73). gs1: a GS1-128 label (manufacturing phase 2 M93) — FNC1, (01) the GTIN-14 when the variant''s barcode is a valid GTIN, (11) the production date, (17) the expiry, (15) the best-before when there is no expiry, and (10) the lot or (21) the serial last; a lot whose variant has no valid GTIN falls back to the internal label, marked No GTIN — not a GS1 label.'
+            enum:
+                - internal
+                - gs1
+            type: string
         InventoryLabelsInput:
             additionalProperties: false
             description: 'Labels to print (I7): each carries the location''s LOC token as a Code 128 barcode, its full code and its name.'
@@ -687,6 +693,63 @@ components:
                 - sizeBytes
                 - uploadedAt
             type: object
+        InventoryLotBlock:
+            additionalProperties: false
+            description: What a block with the downstream list did (manufacturing phase 2 M92) — the lot as it is now, and every lot the block holds, the lot itself first, as the walk found them inside the block's transaction.
+            properties:
+                blocked:
+                    items:
+                        $ref: '#/components/schemas/InventoryLotBlocked'
+                    type: array
+                lot:
+                    $ref: '#/components/schemas/InventoryLot'
+            required:
+                - lot
+                - blocked
+            type: object
+        InventoryLotBlocked:
+            additionalProperties: false
+            description: One lot a block holds.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                number:
+                    type: string
+                productName:
+                    type: string
+                root:
+                    description: True for the lot the block was asked for; false for a lot made from it.
+                    type: boolean
+                sku:
+                    type: string
+            required:
+                - id
+                - number
+                - sku
+                - productName
+                - root
+            type: object
+        InventoryLotBlockInput:
+            additionalProperties: false
+            description: 'A block of the lot page (manufacturing phase 2 M92): a block hold, source inventory/lot/<id>, on the lot and — with downstream, the default — on every lot made from it that still holds stock, as the usage trace finds them inside the block''s transaction. A lot already blocked by this lot page is left as is, so a block may be asked again to catch the lots made since.'
+            properties:
+                cause:
+                    enum:
+                        - recall
+                        - complaint
+                        - other
+                    type: string
+                downstream:
+                    default: true
+                    description: Also block the lots made from it that still hold stock.
+                    type: boolean
+                note:
+                    maxLength: 1000
+                    type: string
+            required:
+                - cause
+            type: object
         InventoryLotExpiringPage:
             additionalProperties: false
             description: 'The lots expiring soon (manufacturing phase 2 M72): lots holding stock whose expiry falls within the days asked for or has passed, by expiry, at most 1000.'
@@ -790,6 +853,9 @@ components:
             additionalProperties: false
             description: The release of one of Inventory's own holds (M64), with why.
             properties:
+                downstream:
+                    description: 'For a block of the lot page (M92): also release the blocks it put on the lots made from it. A hold of another source on any of them stays.'
+                    type: boolean
                 note:
                     maxLength: 1000
                     type: string
@@ -2252,6 +2318,243 @@ components:
                     type: array
             required:
                 - totals
+            type: object
+        InventoryTrace:
+            additionalProperties: false
+            description: 'A lot''s trace (manufacturing phase 2 M88, M89): its nodes in tree order, each after its parent — the lot, the lots made from it (usage) or that it was made from (origin) through productions, and the movements that end each path. A lot reached twice is expanded once; later references carry seenAt.'
+            properties:
+                components:
+                    $ref: '#/components/schemas/InventoryTraceComponents'
+                customerNames:
+                    description: True when the deliveries name their customers — the caller holds customers:view.
+                    type: boolean
+                deliveries:
+                    description: 'shown: the deliveries carry their order and customer (orders:access, through contracts.DeliveryTrace); hidden: the caller may not see Orders'' deliveries, so a delivery is its movement alone; unavailable: Orders is not composed.'
+                    enum:
+                        - shown
+                        - hidden
+                        - unavailable
+                    type: string
+                direction:
+                    $ref: '#/components/schemas/InventoryTraceDirection'
+                generatedAt:
+                    format: date-time
+                    type: string
+                lotId:
+                    format: int64
+                    type: integer
+                maxDepth:
+                    format: int32
+                    type: integer
+                nodes:
+                    items:
+                        $ref: '#/components/schemas/InventoryTraceNode'
+                    type: array
+            required:
+                - lotId
+                - direction
+                - components
+                - maxDepth
+                - generatedAt
+                - deliveries
+                - customerNames
+                - nodes
+            type: object
+        InventoryTraceComponents:
+            description: 'tracked (the default): the trace lists lots only. all: the origin trace also lists the untracked components each production consumed, as leaves without a lot.'
+            enum:
+                - tracked
+                - all
+            type: string
+        InventoryTraceDelivery:
+            additionalProperties: false
+            description: The delivery an issue was posted for, as Orders answers it (contracts.DeliveryTrace); the customer's name only for a caller holding customers:view.
+            properties:
+                customerId:
+                    format: int32
+                    type: integer
+                customerName:
+                    type: string
+                deliveryId:
+                    format: int64
+                    type: integer
+                deliveryNumber:
+                    format: int64
+                    type: integer
+                orderId:
+                    format: int64
+                    type: integer
+                orderNumber:
+                    format: int64
+                    type: integer
+                postedAt:
+                    format: date-time
+                    type: string
+            required:
+                - deliveryId
+                - deliveryNumber
+                - orderId
+                - orderNumber
+                - customerId
+                - postedAt
+            type: object
+        InventoryTraceDirection:
+            description: 'usage: where the lot went — its own issues and the lots made from it, recursively. origin: where it came from — its receipts and the lots it was made from, recursively.'
+            enum:
+                - usage
+                - origin
+            type: string
+        InventoryTraceEdge:
+            additionalProperties: false
+            description: The production that links a node to its parent — the parent lot's consumed quantity and the made lot's produced quantity in that movement.
+            properties:
+                consumed:
+                    format: double
+                    type: number
+                movementId:
+                    format: int64
+                    type: integer
+                postedAt:
+                    format: date-time
+                    type: string
+                produced:
+                    format: double
+                    type: number
+                source:
+                    $ref: '#/components/schemas/InventorySourceRef'
+            required:
+                - movementId
+                - postedAt
+                - consumed
+                - produced
+            type: object
+        InventoryTraceLot:
+            additionalProperties: false
+            description: A lot on the trace, with what was received or produced under it and what it holds now.
+            properties:
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                number:
+                    type: string
+                onHand:
+                    format: double
+                    type: number
+                productionDate:
+                    format: date
+                    nullable: true
+                    type: string
+                quantityIn:
+                    description: Received, produced or adjusted in under the lot, over every movement.
+                    format: double
+                    type: number
+                serial:
+                    type: boolean
+                status:
+                    $ref: '#/components/schemas/InventoryLotStatus'
+                supplierLot:
+                    type: string
+            required:
+                - id
+                - number
+                - serial
+                - status
+                - quantityIn
+                - onHand
+            type: object
+        InventoryTraceMovement:
+            additionalProperties: false
+            description: The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out or a production that made no lot on the usage side; an unbuild on either.
+            properties:
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    $ref: '#/components/schemas/InventoryMovementKind'
+                postedAt:
+                    format: date-time
+                    type: string
+                reason:
+                    type: string
+                source:
+                    $ref: '#/components/schemas/InventorySourceRef'
+                supplierName:
+                    type: string
+                supplierReference:
+                    type: string
+            required:
+                - id
+                - kind
+                - postedAt
+            type: object
+        InventoryTraceNode:
+            additionalProperties: false
+            description: 'One node of a trace. kind lot is a lot (the root at depth 0, or one reached through a production, with its edge); component is an untracked component a production consumed (origin, components=all); every other kind is the movement that ends a path, named by its kind, with the lot''s quantity on it.'
+            properties:
+                delivery:
+                    $ref: '#/components/schemas/InventoryTraceDelivery'
+                depth:
+                    format: int32
+                    type: integer
+                depthLimit:
+                    description: True on a lot at maxDepth, which is not expanded.
+                    type: boolean
+                edge:
+                    $ref: '#/components/schemas/InventoryTraceEdge'
+                key:
+                    description: The node's path from the root, its indexes joined by dots ("0", "0.2", "0.2.1").
+                    type: string
+                kind:
+                    enum:
+                        - lot
+                        - component
+                        - receipt
+                        - issue
+                        - adjustment
+                        - count
+                        - transfer_out
+                        - production
+                        - unbuild
+                    type: string
+                    x-enum-varnames:
+                        - TraceLot
+                        - TraceComponent
+                        - TraceReceipt
+                        - TraceIssue
+                        - TraceAdjustment
+                        - TraceCount
+                        - TraceTransferOut
+                        - TraceProduction
+                        - TraceUnbuild
+                lot:
+                    $ref: '#/components/schemas/InventoryTraceLot'
+                movement:
+                    $ref: '#/components/schemas/InventoryTraceMovement'
+                parentKey:
+                    type: string
+                quantity:
+                    description: An end's quantity of the lot on its movement; a component's quantity consumed.
+                    format: double
+                    type: number
+                seenAt:
+                    description: On a lot traced already, the key of the node where it is expanded; this one is not.
+                    type: string
+                variant:
+                    $ref: '#/components/schemas/InventoryVariantRef'
+            required:
+                - key
+                - depth
+                - kind
+                - variant
+                - depthLimit
             type: object
         InventoryTransfer:
             additionalProperties: false
@@ -3857,7 +4160,7 @@ paths:
             x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
     /api/v1/inventory/lots/labels.pdf:
         get:
-            description: 'A PDF of lot labels on Avery L7160 or L7163 sheets (manufacturing phase 2 M73), in the order the ids are given: each carries the lot''s LOT token — LOT and its id, which the lookup reads back — as a Code 128 barcode across its top, the lot number large, the SKU and product name, and the expiry, else the best-before date. A serial is a lot of its own, so serials print one label each. These are internal labels; at most 1000 (labels_too_many).'
+            description: 'A PDF of lot labels on Avery L7160 or L7163 sheets (manufacturing phase 2 M73), in the order the ids are given: each carries the lot''s LOT token — LOT and its id, which the lookup reads back — as a Code 128 barcode across its top, the lot number large, the SKU and product name, and the expiry, else the best-before date. A serial is a lot of its own, so serials print one label each. These are internal labels; with format gs1 each is a GS1-128 label instead (M93), the element string as its barcode and its AIs in brackets below it. At most 1000 (labels_too_many).'
             operationId: printInventoryLotLabels
             parameters:
                 - description: Comma-separated lot ids, at most 1000.
@@ -3878,6 +4181,11 @@ paths:
                   required: false
                   schema:
                     $ref: '#/components/schemas/InventoryLabelLayout'
+                - in: query
+                  name: format
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryLabelFormat'
                 - description: Labels per lot (default 1); copies × lots is at most 1000.
                   in: query
                   name: copies
@@ -3914,6 +4222,12 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed, which GS1 labels read the GTIN from.'
             summary: Print lot labels
             tags:
                 - Inventory
@@ -4178,6 +4492,61 @@ paths:
             tags:
                 - Inventory
             x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/lots/{id}/block:
+        post:
+            description: 'Blocks the lot with the downstream list (manufacturing phase 2 M92): a block hold of the lot page, source inventory/lot/<id>, on the lot and, with downstream, on every lot made from it that still holds stock — the usage walk run again inside the block''s transaction, after the lot''s lock, so a lot produced since the dialog''s summary is caught. Each lot is taken FOR NO KEY UPDATE in id order, with its own event naming the lot blocked. A walk beyond 2000 nodes is trace_too_large, and nothing is blocked.'
+            operationId: blockInventoryLot
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/InventoryLotBlockInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryLotBlock'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: Bad Request — field errors, or trace_too_large.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Service Unavailable — dependency_unavailable: Products is not composed.'
+            summary: Block a lot and the lots made from it
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:lots-manage+inventory:stock-view
+            x-vantigo-assistant: confirm
     /api/v1/inventory/lots/{id}/holds:
         post:
             description: Puts a hold of the lot page on the lot (M64), source inventory/lot/<id>; the status is derived again. The lot page holds a lot at most once per kind — a second quarantine or block while one is active is 409 hold_exists; another module's holds do not count.
@@ -4240,7 +4609,7 @@ paths:
             x-vantigo-access: permission:inventory:locations-view+inventory:lots-manage+inventory:stock-view
     /api/v1/inventory/lots/{id}/holds/{holdId}/release:
         post:
-            description: Releases one of Inventory's own holds on the lot (M64) — the lot page's, or a receipt's inspection — with a note; the status is derived again. A hold another module's document put is released there (409 hold_not_inventorys). A hold already released answers the lot as it is.
+            description: Releases one of Inventory's own holds on the lot (M64) — the lot page's, or a receipt's inspection — with a note; the status is derived again. A hold another module's document put is released there (409 hold_not_inventorys). A hold already released answers the lot as it is. With downstream, the release of a block also releases the blocks the same lot page put on the lots made from it (M92).
             operationId: releaseInventoryLotHold
             parameters:
                 - in: path
@@ -5228,6 +5597,197 @@ paths:
                                 $ref: '#/components/schemas/InventoryProblem'
                     description: 'Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed.'
             summary: Stock of variants at sites
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/trace:
+        get:
+            description: 'A lot''s trace (manufacturing phase 2 M87–M90), read on the pool from Inventory''s own movement lines: in a production movement every lot consumed is a parent of every lot produced; an unbuild is a reverse edge, shown as an end and never expanded. usage walks where the lot went, origin where it came from, up to maxDepth productions and at most 2000 nodes. An issue for an Orders delivery carries the delivery, its order and its customer when the caller holds orders:access (contracts.DeliveryTrace), and the customer''s name when the caller also holds customers:view.'
+            operationId: getInventoryTrace
+            parameters:
+                - description: The lot traced.
+                  in: query
+                  name: lotId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: direction
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryTraceDirection'
+                - in: query
+                  name: components
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryTraceComponents'
+                - description: How many productions deep the walk goes (default 10).
+                  in: query
+                  name: maxDepth
+                  required: false
+                  schema:
+                    default: 10
+                    format: int32
+                    maximum: 10
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryTrace'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot. The body is empty.
+            summary: Trace a lot
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/trace.csv:
+        get:
+            description: 'The trace as CSV (manufacturing phase 2 M91), with the same parameters: one row per node — depth, kind, lot, sku, product, quantity, unit, date, document, supplier or customer (a customer''s name only under customers:view).'
+            operationId: exportInventoryTrace
+            parameters:
+                - description: The lot traced.
+                  in: query
+                  name: lotId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: direction
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryTraceDirection'
+                - in: query
+                  name: components
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryTraceComponents'
+                - description: How many productions deep the walk goes (default 10).
+                  in: query
+                  name: maxDepth
+                  required: false
+                  schema:
+                    default: 10
+                    format: int32
+                    maximum: 10
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — served as an attachment named trace-<lot>-<direction>.csv, and never cached.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot. The body is empty.
+            summary: Export a lot's trace as CSV
+            tags:
+                - Inventory
+            x-vantigo-access: permission:inventory:locations-view+inventory:stock-view
+    /api/v1/inventory/trace.pdf:
+        get:
+            description: 'The trace as a PDF (manufacturing phase 2 M91), with the same parameters and rows as the CSV, stating when it was made, by whom and in which direction — for an authority''s within-hours answer.'
+            operationId: printInventoryTrace
+            parameters:
+                - description: The lot traced.
+                  in: query
+                  name: lotId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: direction
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryTraceDirection'
+                - in: query
+                  name: components
+                  required: false
+                  schema:
+                    $ref: '#/components/schemas/InventoryTraceComponents'
+                - description: How many productions deep the walk goes (default 10).
+                  in: query
+                  name: maxDepth
+                  required: false
+                  schema:
+                    default: 10
+                    format: int32
+                    maximum: 10
+                    minimum: 1
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/pdf:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — served as an attachment named trace-<lot>-<direction>.pdf, and never cached.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/InventoryProblem'
+                    description: 'Bad Request — field errors, or trace_too_large: the trace would have more than 2000 nodes.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such lot. The body is empty.
+            summary: Print a lot's trace
             tags:
                 - Inventory
             x-vantigo-access: permission:inventory:locations-view+inventory:stock-view

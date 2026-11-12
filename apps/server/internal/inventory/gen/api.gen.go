@@ -129,6 +129,24 @@ func (e InventoryImportOutcome) Valid() bool {
 	}
 }
 
+// Defines values for InventoryLabelFormat.
+const (
+	Gs1      InventoryLabelFormat = "gs1"
+	Internal InventoryLabelFormat = "internal"
+)
+
+// Valid indicates whether the value is a known member of the InventoryLabelFormat enum.
+func (e InventoryLabelFormat) Valid() bool {
+	switch e {
+	case Gs1:
+		return true
+	case Internal:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for InventoryLabelLayout.
 const (
 	L7160 InventoryLabelLayout = "l7160"
@@ -213,6 +231,27 @@ func (e InventoryLookupMatchKind) Valid() bool {
 	case InventoryLookupMatchKindTransfer:
 		return true
 	case InventoryLookupMatchKindVariant:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryLotBlockInputCause.
+const (
+	InventoryLotBlockInputCauseComplaint InventoryLotBlockInputCause = "complaint"
+	InventoryLotBlockInputCauseOther     InventoryLotBlockInputCause = "other"
+	InventoryLotBlockInputCauseRecall    InventoryLotBlockInputCause = "recall"
+)
+
+// Valid indicates whether the value is a known member of the InventoryLotBlockInputCause enum.
+func (e InventoryLotBlockInputCause) Valid() bool {
+	switch e {
+	case InventoryLotBlockInputCauseComplaint:
+		return true
+	case InventoryLotBlockInputCauseOther:
+		return true
+	case InventoryLotBlockInputCauseRecall:
 		return true
 	default:
 		return false
@@ -462,6 +501,102 @@ func (e InventoryStatus) Valid() bool {
 	case Active:
 		return true
 	case Archived:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTraceDeliveries.
+const (
+	Hidden      InventoryTraceDeliveries = "hidden"
+	Shown       InventoryTraceDeliveries = "shown"
+	Unavailable InventoryTraceDeliveries = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTraceDeliveries enum.
+func (e InventoryTraceDeliveries) Valid() bool {
+	switch e {
+	case Hidden:
+		return true
+	case Shown:
+		return true
+	case Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTraceComponents.
+const (
+	All     InventoryTraceComponents = "all"
+	Tracked InventoryTraceComponents = "tracked"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTraceComponents enum.
+func (e InventoryTraceComponents) Valid() bool {
+	switch e {
+	case All:
+		return true
+	case Tracked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTraceDirection.
+const (
+	Origin InventoryTraceDirection = "origin"
+	Usage  InventoryTraceDirection = "usage"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTraceDirection enum.
+func (e InventoryTraceDirection) Valid() bool {
+	switch e {
+	case Origin:
+		return true
+	case Usage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryTraceNodeKind.
+const (
+	TraceAdjustment  InventoryTraceNodeKind = "adjustment"
+	TraceComponent   InventoryTraceNodeKind = "component"
+	TraceCount       InventoryTraceNodeKind = "count"
+	TraceIssue       InventoryTraceNodeKind = "issue"
+	TraceLot         InventoryTraceNodeKind = "lot"
+	TraceProduction  InventoryTraceNodeKind = "production"
+	TraceReceipt     InventoryTraceNodeKind = "receipt"
+	TraceTransferOut InventoryTraceNodeKind = "transfer_out"
+	TraceUnbuild     InventoryTraceNodeKind = "unbuild"
+)
+
+// Valid indicates whether the value is a known member of the InventoryTraceNodeKind enum.
+func (e InventoryTraceNodeKind) Valid() bool {
+	switch e {
+	case TraceAdjustment:
+		return true
+	case TraceComponent:
+		return true
+	case TraceCount:
+		return true
+	case TraceIssue:
+		return true
+	case TraceLot:
+		return true
+	case TraceProduction:
+		return true
+	case TraceReceipt:
+		return true
+	case TraceTransferOut:
+		return true
+	case TraceUnbuild:
 		return true
 	default:
 		return false
@@ -955,6 +1090,9 @@ type InventoryImportRow struct {
 	Sku string `json:"sku"`
 }
 
+// InventoryLabelFormat internal: the LOT token as Code 128 (M73). gs1: a GS1-128 label (manufacturing phase 2 M93) — FNC1, (01) the GTIN-14 when the variant's barcode is a valid GTIN, (11) the production date, (17) the expiry, (15) the best-before when there is no expiry, and (10) the lot or (21) the serial last; a lot whose variant has no valid GTIN falls back to the internal label, marked No GTIN — not a GS1 label.
+type InventoryLabelFormat string
+
 // InventoryLabelLayout Avery L7160 (21 labels per A4) or L7163 (14 per A4).
 type InventoryLabelLayout string
 
@@ -1155,6 +1293,37 @@ type InventoryLotAttachment struct {
 	UploadedBy *InventoryActor `json:"uploadedBy,omitempty"`
 }
 
+// InventoryLotBlock What a block with the downstream list did (manufacturing phase 2 M92) — the lot as it is now, and every lot the block holds, the lot itself first, as the walk found them inside the block's transaction.
+type InventoryLotBlock struct {
+	Blocked []InventoryLotBlocked `json:"blocked"`
+
+	// Lot A lot's page (manufacturing phase 2 M61): its header, its holds, where it lies, its movement lines and its files.
+	Lot InventoryLot `json:"lot"`
+}
+
+// InventoryLotBlockInput A block of the lot page (manufacturing phase 2 M92): a block hold, source inventory/lot/<id>, on the lot and — with downstream, the default — on every lot made from it that still holds stock, as the usage trace finds them inside the block's transaction. A lot already blocked by this lot page is left as is, so a block may be asked again to catch the lots made since.
+type InventoryLotBlockInput struct {
+	Cause InventoryLotBlockInputCause `json:"cause"`
+
+	// Downstream Also block the lots made from it that still hold stock.
+	Downstream *bool   `json:"downstream,omitempty"`
+	Note       *string `json:"note,omitempty"`
+}
+
+// InventoryLotBlockInputCause defines model for InventoryLotBlockInput.Cause.
+type InventoryLotBlockInputCause string
+
+// InventoryLotBlocked One lot a block holds.
+type InventoryLotBlocked struct {
+	Id          int64  `json:"id"`
+	Number      string `json:"number"`
+	ProductName string `json:"productName"`
+
+	// Root True for the lot the block was asked for; false for a lot made from it.
+	Root bool   `json:"root"`
+	Sku  string `json:"sku"`
+}
+
 // InventoryLotExpiringPage The lots expiring soon (manufacturing phase 2 M72): lots holding stock whose expiry falls within the days asked for or has passed, by expiry, at most 1000.
 type InventoryLotExpiringPage struct {
 	Lots []InventoryLotSummary `json:"lots"`
@@ -1213,7 +1382,9 @@ type InventoryLotHoldInputKind string
 
 // InventoryLotHoldRelease The release of one of Inventory's own holds (M64), with why.
 type InventoryLotHoldRelease struct {
-	Note *string `json:"note,omitempty"`
+	// Downstream For a block of the lot page (M92): also release the blocks it put on the lots made from it. A hold of another source on any of them stays.
+	Downstream *bool   `json:"downstream,omitempty"`
+	Note       *string `json:"note,omitempty"`
 }
 
 // InventoryLotLocation What lies of a lot on one location.
@@ -1872,6 +2043,125 @@ type InventoryStockTotals struct {
 	Totals []InventoryStockTotal `json:"totals"`
 }
 
+// InventoryTrace A lot's trace (manufacturing phase 2 M88, M89): its nodes in tree order, each after its parent — the lot, the lots made from it (usage) or that it was made from (origin) through productions, and the movements that end each path. A lot reached twice is expanded once; later references carry seenAt.
+type InventoryTrace struct {
+	// Components tracked (the default): the trace lists lots only. all: the origin trace also lists the untracked components each production consumed, as leaves without a lot.
+	Components InventoryTraceComponents `json:"components"`
+
+	// CustomerNames True when the deliveries name their customers — the caller holds customers:view.
+	CustomerNames bool `json:"customerNames"`
+
+	// Deliveries shown: the deliveries carry their order and customer (orders:access, through contracts.DeliveryTrace); hidden: the caller may not see Orders' deliveries, so a delivery is its movement alone; unavailable: Orders is not composed.
+	Deliveries InventoryTraceDeliveries `json:"deliveries"`
+
+	// Direction usage: where the lot went — its own issues and the lots made from it, recursively. origin: where it came from — its receipts and the lots it was made from, recursively.
+	Direction   InventoryTraceDirection `json:"direction"`
+	GeneratedAt time.Time               `json:"generatedAt"`
+	LotId       int64                   `json:"lotId"`
+	MaxDepth    int32                   `json:"maxDepth"`
+	Nodes       []InventoryTraceNode    `json:"nodes"`
+}
+
+// InventoryTraceDeliveries shown: the deliveries carry their order and customer (orders:access, through contracts.DeliveryTrace); hidden: the caller may not see Orders' deliveries, so a delivery is its movement alone; unavailable: Orders is not composed.
+type InventoryTraceDeliveries string
+
+// InventoryTraceComponents tracked (the default): the trace lists lots only. all: the origin trace also lists the untracked components each production consumed, as leaves without a lot.
+type InventoryTraceComponents string
+
+// InventoryTraceDelivery The delivery an issue was posted for, as Orders answers it (contracts.DeliveryTrace); the customer's name only for a caller holding customers:view.
+type InventoryTraceDelivery struct {
+	CustomerId     int32     `json:"customerId"`
+	CustomerName   *string   `json:"customerName,omitempty"`
+	DeliveryId     int64     `json:"deliveryId"`
+	DeliveryNumber int64     `json:"deliveryNumber"`
+	OrderId        int64     `json:"orderId"`
+	OrderNumber    int64     `json:"orderNumber"`
+	PostedAt       time.Time `json:"postedAt"`
+}
+
+// InventoryTraceDirection usage: where the lot went — its own issues and the lots made from it, recursively. origin: where it came from — its receipts and the lots it was made from, recursively.
+type InventoryTraceDirection string
+
+// InventoryTraceEdge The production that links a node to its parent — the parent lot's consumed quantity and the made lot's produced quantity in that movement.
+type InventoryTraceEdge struct {
+	Consumed   float64   `json:"consumed"`
+	MovementId int64     `json:"movementId"`
+	PostedAt   time.Time `json:"postedAt"`
+	Produced   float64   `json:"produced"`
+
+	// Source What another module's record caused the movement (design §12): an issue names the document it was posted for, such as an order's delivery.
+	Source *InventorySourceRef `json:"source,omitempty"`
+}
+
+// InventoryTraceLot A lot on the trace, with what was received or produced under it and what it holds now.
+type InventoryTraceLot struct {
+	BestBefore     *openapi_types.Date `json:"bestBefore,omitempty"`
+	Expiry         *openapi_types.Date `json:"expiry,omitempty"`
+	Id             int64               `json:"id"`
+	Number         string              `json:"number"`
+	OnHand         float64             `json:"onHand"`
+	ProductionDate *openapi_types.Date `json:"productionDate,omitempty"`
+
+	// QuantityIn Received, produced or adjusted in under the lot, over every movement.
+	QuantityIn float64 `json:"quantityIn"`
+	Serial     bool    `json:"serial"`
+
+	// Status A lot's status, derived from its active holds (M64): blocked while any is a block, quarantine while any is a quarantine, else available.
+	Status      InventoryLotStatus `json:"status"`
+	SupplierLot *string            `json:"supplierLot,omitempty"`
+}
+
+// InventoryTraceMovement The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out or a production that made no lot on the usage side; an unbuild on either.
+type InventoryTraceMovement struct {
+	Id int64 `json:"id"`
+
+	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
+	Kind     InventoryMovementKind `json:"kind"`
+	PostedAt time.Time             `json:"postedAt"`
+	Reason   *string               `json:"reason,omitempty"`
+
+	// Source What another module's record caused the movement (design §12): an issue names the document it was posted for, such as an order's delivery.
+	Source            *InventorySourceRef `json:"source,omitempty"`
+	SupplierName      *string             `json:"supplierName,omitempty"`
+	SupplierReference *string             `json:"supplierReference,omitempty"`
+}
+
+// InventoryTraceNode One node of a trace. kind lot is a lot (the root at depth 0, or one reached through a production, with its edge); component is an untracked component a production consumed (origin, components=all); every other kind is the movement that ends a path, named by its kind, with the lot's quantity on it.
+type InventoryTraceNode struct {
+	// Delivery The delivery an issue was posted for, as Orders answers it (contracts.DeliveryTrace); the customer's name only for a caller holding customers:view.
+	Delivery *InventoryTraceDelivery `json:"delivery,omitempty"`
+	Depth    int32                   `json:"depth"`
+
+	// DepthLimit True on a lot at maxDepth, which is not expanded.
+	DepthLimit bool `json:"depthLimit"`
+
+	// Edge The production that links a node to its parent — the parent lot's consumed quantity and the made lot's produced quantity in that movement.
+	Edge *InventoryTraceEdge `json:"edge,omitempty"`
+
+	// Key The node's path from the root, its indexes joined by dots ("0", "0.2", "0.2.1").
+	Key  string                 `json:"key"`
+	Kind InventoryTraceNodeKind `json:"kind"`
+
+	// Lot A lot on the trace, with what was received or produced under it and what it holds now.
+	Lot *InventoryTraceLot `json:"lot,omitempty"`
+
+	// Movement The movement that ends a path — a receipt, an adjustment or a count on the origin side; an issue, an adjustment or count down, a transfer out or a production that made no lot on the usage side; an unbuild on either.
+	Movement  *InventoryTraceMovement `json:"movement,omitempty"`
+	ParentKey *string                 `json:"parentKey,omitempty"`
+
+	// Quantity An end's quantity of the lot on its movement; a component's quantity consumed.
+	Quantity *float64 `json:"quantity,omitempty"`
+
+	// SeenAt On a lot traced already, the key of the node where it is expanded; this one is not.
+	SeenAt *string `json:"seenAt,omitempty"`
+
+	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
+	Variant InventoryVariantRef `json:"variant"`
+}
+
+// InventoryTraceNodeKind defines model for InventoryTraceNode.Kind.
+type InventoryTraceNodeKind string
+
 // InventoryTransfer A transfer of stock from one site to another (I36), with its lines and its actions.
 type InventoryTransfer struct {
 	// Actions Oldest first.
@@ -2263,6 +2553,7 @@ type PrintInventoryLotLabelsParams struct {
 	// Ids Comma-separated lot ids, at most 1000.
 	Ids    []int64               `form:"ids" json:"ids"`
 	Layout *InventoryLabelLayout `form:"layout,omitempty" json:"layout,omitempty"`
+	Format *InventoryLabelFormat `form:"format,omitempty" json:"format,omitempty"`
 
 	// Copies Labels per lot (default 1); copies × lots is at most 1000.
 	Copies *int32 `form:"copies,omitempty" json:"copies,omitempty"`
@@ -2367,6 +2658,39 @@ type ListInventoryStockAtSitesParams struct {
 	SiteIds []int64 `form:"siteIds" json:"siteIds"`
 }
 
+// GetInventoryTraceParams defines parameters for GetInventoryTrace.
+type GetInventoryTraceParams struct {
+	// LotId The lot traced.
+	LotId      int64                     `form:"lotId" json:"lotId"`
+	Direction  *InventoryTraceDirection  `form:"direction,omitempty" json:"direction,omitempty"`
+	Components *InventoryTraceComponents `form:"components,omitempty" json:"components,omitempty"`
+
+	// MaxDepth How many productions deep the walk goes (default 10).
+	MaxDepth *int32 `form:"maxDepth,omitempty" json:"maxDepth,omitempty"`
+}
+
+// ExportInventoryTraceParams defines parameters for ExportInventoryTrace.
+type ExportInventoryTraceParams struct {
+	// LotId The lot traced.
+	LotId      int64                     `form:"lotId" json:"lotId"`
+	Direction  *InventoryTraceDirection  `form:"direction,omitempty" json:"direction,omitempty"`
+	Components *InventoryTraceComponents `form:"components,omitempty" json:"components,omitempty"`
+
+	// MaxDepth How many productions deep the walk goes (default 10).
+	MaxDepth *int32 `form:"maxDepth,omitempty" json:"maxDepth,omitempty"`
+}
+
+// PrintInventoryTraceParams defines parameters for PrintInventoryTrace.
+type PrintInventoryTraceParams struct {
+	// LotId The lot traced.
+	LotId      int64                     `form:"lotId" json:"lotId"`
+	Direction  *InventoryTraceDirection  `form:"direction,omitempty" json:"direction,omitempty"`
+	Components *InventoryTraceComponents `form:"components,omitempty" json:"components,omitempty"`
+
+	// MaxDepth How many productions deep the walk goes (default 10).
+	MaxDepth *int32 `form:"maxDepth,omitempty" json:"maxDepth,omitempty"`
+}
+
 // ListInventoryTransfersParams defines parameters for ListInventoryTransfers.
 type ListInventoryTransfersParams struct {
 	// Status A status, or open (the default when absent is every status).
@@ -2466,6 +2790,9 @@ type PutInventoryLotJSONRequestBody = InventoryLotUpdate
 
 // PostInventoryLotAttachmentMultipartRequestBody defines body for PostInventoryLotAttachment for multipart/form-data ContentType.
 type PostInventoryLotAttachmentMultipartRequestBody PostInventoryLotAttachmentMultipartBody
+
+// BlockInventoryLotJSONRequestBody defines body for BlockInventoryLot for application/json ContentType.
+type BlockInventoryLotJSONRequestBody = InventoryLotBlockInput
 
 // PostInventoryLotHoldJSONRequestBody defines body for PostInventoryLotHold for application/json ContentType.
 type PostInventoryLotHoldJSONRequestBody = InventoryLotHoldInput
@@ -2583,6 +2910,9 @@ type ServerInterface interface {
 	// GetInventoryLotAttachment Download a lot's file
 	// (GET /api/v1/inventory/lots/{id}/attachments/{attachmentId})
 	GetInventoryLotAttachment(w http.ResponseWriter, r *http.Request, id int64, attachmentId int64)
+	// BlockInventoryLot Block a lot and the lots made from it
+	// (POST /api/v1/inventory/lots/{id}/block)
+	BlockInventoryLot(w http.ResponseWriter, r *http.Request, id int64)
 	// PostInventoryLotHold Put a lot on hold
 	// (POST /api/v1/inventory/lots/{id}/holds)
 	PostInventoryLotHold(w http.ResponseWriter, r *http.Request, id int64)
@@ -2646,6 +2976,15 @@ type ServerInterface interface {
 	// ListInventoryStockAtSites Stock of variants at sites
 	// (GET /api/v1/inventory/stock/sites)
 	ListInventoryStockAtSites(w http.ResponseWriter, r *http.Request, params ListInventoryStockAtSitesParams)
+	// GetInventoryTrace Trace a lot
+	// (GET /api/v1/inventory/trace)
+	GetInventoryTrace(w http.ResponseWriter, r *http.Request, params GetInventoryTraceParams)
+	// ExportInventoryTrace Export a lot's trace as CSV
+	// (GET /api/v1/inventory/trace.csv)
+	ExportInventoryTrace(w http.ResponseWriter, r *http.Request, params ExportInventoryTraceParams)
+	// PrintInventoryTrace Print a lot's trace
+	// (GET /api/v1/inventory/trace.pdf)
+	PrintInventoryTrace(w http.ResponseWriter, r *http.Request, params PrintInventoryTraceParams)
 	// ListInventoryTransfers List transfers
 	// (GET /api/v1/inventory/transfers)
 	ListInventoryTransfers(w http.ResponseWriter, r *http.Request, params ListInventoryTransfersParams)
@@ -3452,6 +3791,19 @@ func (siw *ServerInterfaceWrapper) PrintInventoryLotLabels(w http.ResponseWriter
 		return
 	}
 
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", r.URL.Query(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "format"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "format", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "copies" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "copies", r.URL.Query(), &params.Copies, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
@@ -3643,6 +3995,32 @@ func (siw *ServerInterfaceWrapper) GetInventoryLotAttachment(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetInventoryLotAttachment(w, r, id, attachmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BlockInventoryLot operation middleware
+func (siw *ServerInterfaceWrapper) BlockInventoryLot(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BlockInventoryLot(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4382,6 +4760,222 @@ func (siw *ServerInterfaceWrapper) ListInventoryStockAtSites(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListInventoryStockAtSites(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInventoryTrace operation middleware
+func (siw *ServerInterfaceWrapper) GetInventoryTrace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetInventoryTraceParams
+
+	// ------------- Required query parameter "lotId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "lotId", r.URL.Query(), &params.LotId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "lotId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lotId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "direction" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "direction", r.URL.Query(), &params.Direction, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "direction"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "direction", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "components" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "components", r.URL.Query(), &params.Components, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "components"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "components", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDepth" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDepth", r.URL.Query(), &params.MaxDepth, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDepth"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDepth", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInventoryTrace(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportInventoryTrace operation middleware
+func (siw *ServerInterfaceWrapper) ExportInventoryTrace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportInventoryTraceParams
+
+	// ------------- Required query parameter "lotId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "lotId", r.URL.Query(), &params.LotId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "lotId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lotId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "direction" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "direction", r.URL.Query(), &params.Direction, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "direction"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "direction", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "components" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "components", r.URL.Query(), &params.Components, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "components"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "components", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDepth" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDepth", r.URL.Query(), &params.MaxDepth, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDepth"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDepth", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportInventoryTrace(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PrintInventoryTrace operation middleware
+func (siw *ServerInterfaceWrapper) PrintInventoryTrace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PrintInventoryTraceParams
+
+	// ------------- Required query parameter "lotId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "lotId", r.URL.Query(), &params.LotId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "lotId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lotId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "direction" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "direction", r.URL.Query(), &params.Direction, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "direction"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "direction", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "components" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "components", r.URL.Query(), &params.Components, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "components"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "components", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDepth" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDepth", r.URL.Query(), &params.MaxDepth, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDepth"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDepth", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PrintInventoryTrace(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5181,6 +5775,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/attachments", wrapper.PostInventoryLotAttachment)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/attachments/{attachmentId}", wrapper.DeleteInventoryLotAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/attachments/{attachmentId}", wrapper.GetInventoryLotAttachment)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/block", wrapper.BlockInventoryLot)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/holds", wrapper.PostInventoryLotHold)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/holds/{holdId}/release", wrapper.ReleaseInventoryLotHold)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/low-stock", wrapper.ListInventoryLowStock)
@@ -5202,6 +5797,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stats/attention", wrapper.GetInventoryStatsAttention)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stock", wrapper.ListInventoryStockTotals)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/stock/sites", wrapper.ListInventoryStockAtSites)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/trace", wrapper.GetInventoryTrace)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/trace.csv", wrapper.ExportInventoryTrace)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/trace.pdf", wrapper.PrintInventoryTrace)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/transfers", wrapper.ListInventoryTransfers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/transfers", wrapper.CreateInventoryTransfer)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/inventory/transfers/{id}", wrapper.DeleteInventoryTransfer)
@@ -6820,6 +7418,20 @@ func (response PrintInventoryLotLabels403JSONResponse) VisitPrintInventoryLotLab
 	return err
 }
 
+type PrintInventoryLotLabels503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PrintInventoryLotLabels503ApplicationProblemPlusJSONResponse) VisitPrintInventoryLotLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetInventoryLotRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -7217,6 +7829,93 @@ func (response GetInventoryLotAttachment404Response) VisitGetInventoryLotAttachm
 type GetInventoryLotAttachment503ApplicationProblemPlusJSONResponse InventoryProblem
 
 func (response GetInventoryLotAttachment503ApplicationProblemPlusJSONResponse) VisitGetInventoryLotAttachmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockInventoryLotRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *BlockInventoryLotJSONRequestBody
+}
+
+type BlockInventoryLotResponseObject interface {
+	VisitBlockInventoryLotResponse(w http.ResponseWriter) error
+}
+
+type BlockInventoryLot200JSONResponse InventoryLotBlock
+
+func (response BlockInventoryLot200JSONResponse) VisitBlockInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockInventoryLot400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response BlockInventoryLot400ApplicationProblemPlusJSONResponse) VisitBlockInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockInventoryLot401JSONResponse externalRef0.AuthErrorResponse
+
+func (response BlockInventoryLot401JSONResponse) VisitBlockInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockInventoryLot403JSONResponse externalRef0.AuthErrorResponse
+
+func (response BlockInventoryLot403JSONResponse) VisitBlockInventoryLotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockInventoryLot404Response struct {
+}
+
+func (response BlockInventoryLot404Response) VisitBlockInventoryLotResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type BlockInventoryLot503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response BlockInventoryLot503ApplicationProblemPlusJSONResponse) VisitBlockInventoryLotResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -8807,6 +9506,234 @@ func (response ListInventoryStockAtSites503ApplicationProblemPlusJSONResponse) V
 	return err
 }
 
+type GetInventoryTraceRequestObject struct {
+	Params GetInventoryTraceParams
+}
+
+type GetInventoryTraceResponseObject interface {
+	VisitGetInventoryTraceResponse(w http.ResponseWriter) error
+}
+
+type GetInventoryTrace200JSONResponse InventoryTrace
+
+func (response GetInventoryTrace200JSONResponse) VisitGetInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTrace400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response GetInventoryTrace400ApplicationProblemPlusJSONResponse) VisitGetInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTrace401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryTrace401JSONResponse) VisitGetInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTrace403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryTrace403JSONResponse) VisitGetInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryTrace404Response struct {
+}
+
+func (response GetInventoryTrace404Response) VisitGetInventoryTraceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ExportInventoryTraceRequestObject struct {
+	Params ExportInventoryTraceParams
+}
+
+type ExportInventoryTraceResponseObject interface {
+	VisitExportInventoryTraceResponse(w http.ResponseWriter) error
+}
+
+type ExportInventoryTrace200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportInventoryTrace200TextcsvResponse) VisitExportInventoryTraceResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportInventoryTrace400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ExportInventoryTrace400ApplicationProblemPlusJSONResponse) VisitExportInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryTrace401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportInventoryTrace401JSONResponse) VisitExportInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryTrace403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportInventoryTrace403JSONResponse) VisitExportInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryTrace404Response struct {
+}
+
+func (response ExportInventoryTrace404Response) VisitExportInventoryTraceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PrintInventoryTraceRequestObject struct {
+	Params PrintInventoryTraceParams
+}
+
+type PrintInventoryTraceResponseObject interface {
+	VisitPrintInventoryTraceResponse(w http.ResponseWriter) error
+}
+
+type PrintInventoryTrace200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response PrintInventoryTrace200ApplicationpdfResponse) VisitPrintInventoryTraceResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type PrintInventoryTrace400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PrintInventoryTrace400ApplicationProblemPlusJSONResponse) VisitPrintInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryTrace401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PrintInventoryTrace401JSONResponse) VisitPrintInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryTrace403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PrintInventoryTrace403JSONResponse) VisitPrintInventoryTraceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryTrace404Response struct {
+}
+
+func (response PrintInventoryTrace404Response) VisitPrintInventoryTraceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type ListInventoryTransfersRequestObject struct {
 	Params ListInventoryTransfersParams
 }
@@ -10041,6 +10968,9 @@ type StrictServerInterface interface {
 	// GetInventoryLotAttachment Download a lot's file
 	// (GET /api/v1/inventory/lots/{id}/attachments/{attachmentId})
 	GetInventoryLotAttachment(ctx context.Context, request GetInventoryLotAttachmentRequestObject) (GetInventoryLotAttachmentResponseObject, error)
+	// BlockInventoryLot Block a lot and the lots made from it
+	// (POST /api/v1/inventory/lots/{id}/block)
+	BlockInventoryLot(ctx context.Context, request BlockInventoryLotRequestObject) (BlockInventoryLotResponseObject, error)
 	// PostInventoryLotHold Put a lot on hold
 	// (POST /api/v1/inventory/lots/{id}/holds)
 	PostInventoryLotHold(ctx context.Context, request PostInventoryLotHoldRequestObject) (PostInventoryLotHoldResponseObject, error)
@@ -10104,6 +11034,15 @@ type StrictServerInterface interface {
 	// ListInventoryStockAtSites Stock of variants at sites
 	// (GET /api/v1/inventory/stock/sites)
 	ListInventoryStockAtSites(ctx context.Context, request ListInventoryStockAtSitesRequestObject) (ListInventoryStockAtSitesResponseObject, error)
+	// GetInventoryTrace Trace a lot
+	// (GET /api/v1/inventory/trace)
+	GetInventoryTrace(ctx context.Context, request GetInventoryTraceRequestObject) (GetInventoryTraceResponseObject, error)
+	// ExportInventoryTrace Export a lot's trace as CSV
+	// (GET /api/v1/inventory/trace.csv)
+	ExportInventoryTrace(ctx context.Context, request ExportInventoryTraceRequestObject) (ExportInventoryTraceResponseObject, error)
+	// PrintInventoryTrace Print a lot's trace
+	// (GET /api/v1/inventory/trace.pdf)
+	PrintInventoryTrace(ctx context.Context, request PrintInventoryTraceRequestObject) (PrintInventoryTraceResponseObject, error)
 	// ListInventoryTransfers List transfers
 	// (GET /api/v1/inventory/transfers)
 	ListInventoryTransfers(ctx context.Context, request ListInventoryTransfersRequestObject) (ListInventoryTransfersResponseObject, error)
@@ -10898,6 +11837,39 @@ func (sh *strictHandler) GetInventoryLotAttachment(w http.ResponseWriter, r *htt
 	}
 }
 
+// BlockInventoryLot operation middleware
+func (sh *strictHandler) BlockInventoryLot(w http.ResponseWriter, r *http.Request, id int64) {
+	var request BlockInventoryLotRequestObject
+
+	request.Id = id
+
+	var body BlockInventoryLotJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BlockInventoryLot(ctx, request.(BlockInventoryLotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BlockInventoryLot")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BlockInventoryLotResponseObject); ok {
+		if err := validResponse.VisitBlockInventoryLotResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostInventoryLotHold operation middleware
 func (sh *strictHandler) PostInventoryLotHold(w http.ResponseWriter, r *http.Request, id int64) {
 	var request PostInventoryLotHoldRequestObject
@@ -11475,6 +12447,84 @@ func (sh *strictHandler) ListInventoryStockAtSites(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListInventoryStockAtSitesResponseObject); ok {
 		if err := validResponse.VisitListInventoryStockAtSitesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInventoryTrace operation middleware
+func (sh *strictHandler) GetInventoryTrace(w http.ResponseWriter, r *http.Request, params GetInventoryTraceParams) {
+	var request GetInventoryTraceRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInventoryTrace(ctx, request.(GetInventoryTraceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInventoryTrace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInventoryTraceResponseObject); ok {
+		if err := validResponse.VisitGetInventoryTraceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportInventoryTrace operation middleware
+func (sh *strictHandler) ExportInventoryTrace(w http.ResponseWriter, r *http.Request, params ExportInventoryTraceParams) {
+	var request ExportInventoryTraceRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportInventoryTrace(ctx, request.(ExportInventoryTraceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportInventoryTrace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportInventoryTraceResponseObject); ok {
+		if err := validResponse.VisitExportInventoryTraceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PrintInventoryTrace operation middleware
+func (sh *strictHandler) PrintInventoryTrace(w http.ResponseWriter, r *http.Request, params PrintInventoryTraceParams) {
+	var request PrintInventoryTraceRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PrintInventoryTrace(ctx, request.(PrintInventoryTraceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PrintInventoryTrace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PrintInventoryTraceResponseObject); ok {
+		if err := validResponse.VisitPrintInventoryTraceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -45,3 +45,13 @@ func SetPlacementsResolvedHook(hook func()) {
 	}
 	placementsResolved.Store(&hook)
 }
+
+// SetTracePDFHook installs the hook a trace PDF's header and rows are
+// reported to as they are printed (trace_handlers.go); nil removes it.
+func SetTracePDFHook(hook func(header []string, rows [][]string)) {
+	if hook == nil {
+		traceRowsBuilt.Store(nil)
+		return
+	}
+	traceRowsBuilt.Store(&hook)
+}
