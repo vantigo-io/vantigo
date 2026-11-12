@@ -402,6 +402,7 @@ const DeliveryEditor = ({ delivery, access }: { delivery: Delivery; access: Orde
                               quantity={row.quantity === "" ? 0 : row.quantity}
                               editable={editable}
                               canOverrideExpired={meta.data?.canOverrideExpired ?? false}
+                              canTraceLots={meta.data?.canTraceLots ?? false}
                               onChange={(lots) => set(index, { lots, lotsEdited: true })}
                               onProposeAgain={() => save.mutate(index)}
                               busy={busy}

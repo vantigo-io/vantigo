@@ -1,4 +1,16 @@
-import { ActionIcon, Badge, Button, Checkbox, Group, NumberInput, Select, Stack, Table, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Anchor,
+  Badge,
+  Button,
+  Checkbox,
+  Group,
+  NumberInput,
+  Select,
+  Stack,
+  Table,
+  Text,
+} from "@mantine/core";
 import { IconRefresh, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import type { DeliveryLine } from "../api/types";
@@ -15,6 +27,11 @@ export interface DeliveryLotsProps {
   editable: boolean;
   /** The caller holds `inventory:expired-override`: *Use expired lot* is offered. */
   canOverrideExpired: boolean;
+  /**
+   * Inventory keeps stock and the caller holds both of its views (the meta's `canTraceLots`): each lot links to
+   * its page and its trace in Inventory (manufacturing phase 2 M94). Hidden otherwise.
+   */
+  canTraceLots?: boolean;
   onChange: (picks: LotPickRow[]) => void;
   /** *Propose again*: saves the delivery with this line's lots proposed again (FEFO). */
   onProposeAgain: () => void;
@@ -42,6 +59,7 @@ export const DeliveryLots = ({
   quantity: lineQuantity,
   editable,
   canOverrideExpired,
+  canTraceLots = false,
   onChange,
   onProposeAgain,
   busy,
@@ -119,7 +137,23 @@ export const DeliveryLots = ({
                 <Table.Tr key={`${pick.lotId}:${pick.locationId}`}>
                   <Table.Td>
                     <Group gap={6}>
-                      <Text size="sm">{lot.number}</Text>
+                      {canTraceLots ? (
+                        <>
+                          <Anchor size="sm" href={`/inventory/lots/${pick.lotId}`}>
+                            {lot.number}
+                          </Anchor>
+                          <Anchor
+                            size="xs"
+                            c="dimmed"
+                            href={`/inventory/trace?lotId=${pick.lotId}`}
+                            aria-label={t("traceLotOf", { lot: lot.number })}
+                          >
+                            {t("traceLot")}
+                          </Anchor>
+                        </>
+                      ) : (
+                        <Text size="sm">{lot.number}</Text>
+                      )}
                       {(pick.allowExpired || lot.expired) && (
                         <Badge size="xs" color="red" variant="light">
                           {t("expiredLot")}
