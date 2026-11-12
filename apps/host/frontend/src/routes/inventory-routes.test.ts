@@ -4,6 +4,7 @@ import {
   COUNT_ROUTE_PATH,
   COUNTS_ROUTE_PATH,
   countLinkOptions,
+  EXPIRING_ROUTE_PATH,
   IMPORT_ROUTE_PATH,
   INVENTORY_HOME_ROUTE_PATH,
   inventoryNavItems,
@@ -81,6 +82,7 @@ describe("the inventory routes", () => {
     expect(countLinkOptions(5)).toEqual({ to: COUNT_ROUTE_PATH, params: { countId: "5" } });
     expect(matchedRouteIds(IMPORT_ROUTE_PATH)).toContain(IMPORT_ROUTE_PATH);
     expect(matchedRouteIds("/inventory/lots/1001")).toContain(LOT_ROUTE_PATH);
+    expect(matchedRouteIds(EXPIRING_ROUTE_PATH)).toContain(EXPIRING_ROUTE_PATH);
     for (const item of inventoryNavItems) expect(matchedRouteIds(item.to)).toContain(item.to);
   });
 

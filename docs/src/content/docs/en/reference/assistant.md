@@ -347,7 +347,7 @@ that replays the turn carries the same bytes. The person never sees it, and the 
 
 The route list the prompt carries is the host's route shapes (`appRoutes` in `prompt.go`): the same
 list `navigate` validates against. It names one prefix per app with the record screens under it — for
-Inventory, `/inventory` with a site, a location, a variant's stock, the movements, a transfer and, since phase 2's delivery B, the low-stock list `/inventory/low-stock`, and since manufacturing phase 2's L1b the lots `/inventory/lots` and a lot `/inventory/lots/{lotId}`, and for Orders,
+Inventory, `/inventory` with a site, a location, a variant's stock, the movements, a transfer and, since phase 2's delivery B, the low-stock list `/inventory/low-stock`, and since manufacturing phase 2's L1b the lots `/inventory/lots` and a lot `/inventory/lots/{lotId}`, and since L2 the lots expiring soon `/inventory/expiring`, and for Orders,
 `/orders` with a quote, an order, a delivery, a subscription, the templates, the settings and the sales analysis, beside the customer's `/orders` tab, and for
 Manufacturing, `/manufacturing` with the manufacturing orders and an order, a bill of materials, its overview, a work center and, since delivery C, the shop floor `/manufacturing/shop-floor` with a work center's queue, a work order and My work `/manufacturing/shop-floor/mine`, and since delivery D the production schedule `/manufacturing/schedule` and the reports `/manufacturing/reports` — so an app the
 list does not name cannot be linked to. Its targets join [the registry](#guided-tours) the same way:

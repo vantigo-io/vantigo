@@ -20,6 +20,7 @@ import type { InventoryStats } from "@vantigo/inventory-ui/api/stats";
 import {
   COUNTS_ROUTE_PATH,
   countLinkOptions,
+  EXPIRING_ROUTE_PATH,
   LOW_STOCK_ROUTE_PATH,
   lowStockLinkOptions,
   TRANSFERS_ROUTE_PATH,
@@ -480,6 +481,9 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
       const { to, search } = lowStockLinkOptions({ siteId: id });
       return `${to}?siteId=${search.siteId}`;
     }
+    // The lots expiring within 14 days, and those expired, open the expiring list (manufacturing phase 2 M72).
+    if (item.type === "lotsExpiring") return `${EXPIRING_ROUTE_PATH}?days=14`;
+    if (item.type === "lotsExpired") return EXPIRING_ROUTE_PATH;
     return "/inventory";
   }
   return "/communications/inbox";
@@ -507,10 +511,14 @@ const planningAttentionTitleKeys: Record<string, string> = {
  * here, in the reader's language, and name nothing — the link opens the count
  * or the transfer. Low stock has no key: its title is the server's, which
  * names the count and the site, and the link opens the site's low-stock list.
+ * The lots expiring and expired (manufacturing phase 2 M72) are worded here
+ * with the server's count.
  */
 const inventoryAttentionTitleKeys: Record<string, string> = {
   countOpenLong: "dashboard.inventoryCountOpenLong",
   transferOverdue: "dashboard.inventoryTransferOverdue",
+  lotsExpiring: "dashboard.inventoryLotsExpiring",
+  lotsExpired: "dashboard.inventoryLotsExpired",
 };
 
 /**
@@ -758,8 +766,8 @@ export const attentionTitle = (
       count: item.count ?? (item.type === "reminderBatchUnposted" ? 0 : 1),
     });
   }
-  // Inventory's sentence names nothing: its entityId is a count's id, not a week.
-  if (item.module === "inventory") return t(key);
+  // Inventory's sentence names nothing: its entityId is a count's id, not a week; the lots' name their count.
+  if (item.module === "inventory") return t(key, { count: item.count ?? 1 });
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };
 

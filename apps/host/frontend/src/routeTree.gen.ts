@@ -64,6 +64,7 @@ import { Route as ExpensesApprovalsRouteImport } from './routes/expenses/approva
 import { Route as ExpensesReimbursementsRouteImport } from './routes/expenses/reimbursements'
 import { Route as ExpensesSettingsRouteImport } from './routes/expenses/settings'
 import { Route as InventoryIndexRouteImport } from './routes/inventory/index'
+import { Route as InventoryExpiringRouteImport } from './routes/inventory/expiring'
 import { Route as InventoryImportRouteImport } from './routes/inventory/import'
 import { Route as InventoryLookupRouteImport } from './routes/inventory/lookup'
 import { Route as InventoryLowStockRouteImport } from './routes/inventory/low-stock'
@@ -491,6 +492,11 @@ const ExpensesSettingsRoute = ExpensesSettingsRouteImport.update({
 const InventoryIndexRoute = InventoryIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => InventoryRoute,
+} as any)
+const InventoryExpiringRoute = InventoryExpiringRouteImport.update({
+  id: '/expiring',
+  path: '/expiring',
   getParentRoute: () => InventoryRoute,
 } as any)
 const InventoryImportRoute = InventoryImportRouteImport.update({
@@ -1347,6 +1353,7 @@ export interface FileRoutesByFullPath {
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
+  '/inventory/expiring': typeof InventoryExpiringRoute
   '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/inventory/low-stock': typeof InventoryLowStockRoute
@@ -1534,6 +1541,7 @@ export interface FileRoutesByTo {
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
+  '/inventory/expiring': typeof InventoryExpiringRoute
   '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/inventory/low-stock': typeof InventoryLowStockRoute
@@ -1741,6 +1749,7 @@ export interface FileRoutesById {
   '/expenses/approvals': typeof ExpensesApprovalsRoute
   '/expenses/reimbursements': typeof ExpensesReimbursementsRoute
   '/expenses/settings': typeof ExpensesSettingsRoute
+  '/inventory/expiring': typeof InventoryExpiringRoute
   '/inventory/import': typeof InventoryImportRoute
   '/inventory/lookup': typeof InventoryLookupRoute
   '/inventory/low-stock': typeof InventoryLowStockRoute
@@ -1952,6 +1961,7 @@ export interface FileRouteTypes {
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
+    | '/inventory/expiring'
     | '/inventory/import'
     | '/inventory/lookup'
     | '/inventory/low-stock'
@@ -2139,6 +2149,7 @@ export interface FileRouteTypes {
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
+    | '/inventory/expiring'
     | '/inventory/import'
     | '/inventory/lookup'
     | '/inventory/low-stock'
@@ -2345,6 +2356,7 @@ export interface FileRouteTypes {
     | '/expenses/approvals'
     | '/expenses/reimbursements'
     | '/expenses/settings'
+    | '/inventory/expiring'
     | '/inventory/import'
     | '/inventory/lookup'
     | '/inventory/low-stock'
@@ -2930,6 +2942,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/inventory/'
       preLoaderRoute: typeof InventoryIndexRouteImport
+      parentRoute: typeof InventoryRoute
+    }
+    '/inventory/expiring': {
+      id: '/inventory/expiring'
+      path: '/expiring'
+      fullPath: '/inventory/expiring'
+      preLoaderRoute: typeof InventoryExpiringRouteImport
       parentRoute: typeof InventoryRoute
     }
     '/inventory/import': {
@@ -4177,6 +4196,7 @@ const ExpensesRouteWithChildren = ExpensesRoute._addFileChildren(
 )
 
 interface InventoryRouteChildren {
+  InventoryExpiringRoute: typeof InventoryExpiringRoute
   InventoryImportRoute: typeof InventoryImportRoute
   InventoryLookupRoute: typeof InventoryLookupRoute
   InventoryLowStockRoute: typeof InventoryLowStockRoute
@@ -4200,6 +4220,7 @@ interface InventoryRouteChildren {
 }
 
 const InventoryRouteChildren: InventoryRouteChildren = {
+  InventoryExpiringRoute: InventoryExpiringRoute,
   InventoryImportRoute: InventoryImportRoute,
   InventoryLookupRoute: InventoryLookupRoute,
   InventoryLowStockRoute: InventoryLowStockRoute,
