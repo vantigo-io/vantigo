@@ -17,7 +17,7 @@ import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { downloadBlob } from "../api/labels";
 import { lotsInfiniteQueryOptions } from "../api/lots";
 import {
@@ -318,18 +318,20 @@ export const TracePage = () => {
   const margin = virtualizer.options.scrollMargin;
   const spaceAbove = drawn.length > 0 ? drawn[0].start - margin : 0;
   const spaceBelow = drawn.length > 0 ? virtualizer.getTotalSize() - (drawn[drawn.length - 1].end - margin) : 0;
-  // *Already shown above*: open the path to the row, then scroll to it once it is among the rows shown.
-  const [jumpTo, setJumpTo] = useState<string>();
+  // *Already shown above*: open the path to the row, then, after that render, scroll to it.
+  const pendingJump = useRef<string | undefined>(undefined);
   const jump = (key: string) => {
+    pendingJump.current = key;
     setCollapsed((current) => openPathTo(current, key));
-    setJumpTo(key);
   };
-  const jumpIndex = jumpTo === undefined ? -1 : shown.findIndex((node) => node.key === jumpTo);
   useEffect(() => {
-    if (jumpIndex < 0) return;
-    virtualizer.scrollToIndex(jumpIndex, { align: "start" });
-    setJumpTo(undefined);
-  }, [jumpIndex, virtualizer]);
+    const key = pendingJump.current;
+    if (key === undefined) return;
+    const index = shown.findIndex((node) => node.key === key);
+    if (index < 0) return;
+    pendingJump.current = undefined;
+    virtualizer.scrollToIndex(index, { align: "start" });
+  });
 
   return (
     <Stack gap="lg">
