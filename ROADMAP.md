@@ -1033,7 +1033,13 @@ What the design deferred, each waiting for what is named:
   lot by the BoM's pattern, serials one per unit, consumed lots named or taken FEFO by
   Inventory, the one re-proposal and the deadlock retried once, the order's Lots tab
   ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#lots-on-productions)).
-- **Quality checks on operations.**
+- **Quality checks on operations (built, Q)**: checks on a BoM's operations — instruction,
+  pass/fail, measure, photo; each work order or first piece — recorded at the station,
+  the production gated on the checks before the output work order and its first-piece
+  checks, a finish on its own; deviations holding the order's lots in quarantine through
+  the ledger, released only by their own close; inspection on receipt in Inventory
+  ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#quality),
+  [Inventory](docs/src/content/docs/en/reference/inventory.md#inspection-on-receipt)).
 - **Operation dependencies (parallel operations).**
 - **Alternative work centers, a drag to another center, overlap.**
 - **Auto-computed standard times**, reading delivery D's time deviation.

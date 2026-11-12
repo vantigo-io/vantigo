@@ -1,6 +1,6 @@
 ---
 title: Inventory
-description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, lots and serial numbers — on receipts, moves and adjustments, the Lots list, a lot's page, putting a lot on hold and releasing it, a lot's files, the lots expiring soon, lot labels, tracing a lot both ways and exporting the trace, blocking a lot with the lots made from it for a recall, GS1-128 labels — counting stock, lots included, importing opening balances with or without lots, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
+description: What lies where — the Inventory app and its sidebar, finding a location or an item by typing or scanning its code, setting up a site, adding locations one at a time and in bulk, changing, moving, archiving and deleting them, printing location labels, receiving goods, adjusting and moving stock with the line editor, entering quantities in packagings, lots and serial numbers — on receipts, moves and adjustments, the Lots list, a lot's page, putting a lot on hold and releasing it, inspection on receipt and the lots awaiting it, reporting a deviation of a lot, a lot's files, the lots expiring soon, lot labels, tracing a lot both ways and exporting the trace, blocking a lot with the lots made from it for a recall, GS1-128 labels — counting stock, lots included, importing opening balances with or without lots, transferring stock between sites — drafting, sending, receiving in parts, closing a difference and cancelling — the transfers list and a transfer's page, setting an item's primary location, reorder point and maximum at a site, the low-stock list — its suggestions rounded up to whole packagings, creating a transfer from it and exporting it — importing placements, what lies on a location, an item's stock and movements, the Movements list and a movement's page, the Stock card on the product page, what orders have reserved and what is available, which sites fulfil orders, the dashboard card, its attention items and the quick actions, and who sees what.
 sidebar:
   order: 65
 sources:
@@ -385,6 +385,30 @@ quarantine already*, and likewise **Block** — release that hold to put a new o
 put by another module's document — a manufacturing deviation, say — shows *Put by
 Manufacturing, released there*: it is released on that document, not here, and it does
 not stop the page putting its own.
+
+### Inspect on receipt
+
+On the page of an item tracked in lots or serial numbers, **Inspect on receipt** puts what
+arrives in quarantine until someone has inspected it. Switching it needs **Adjust stock**
+(`inventory:stock-adjust`); an item that is not tracked does not offer it.
+
+From then on, every receipt of the item puts each lot it creates, or adds to, under a
+quarantine hold of cause **Inspection**, named by the receipt's movement. The receipt says
+so when it is posted: *2 lots held for inspection*. Received into a lot that holds stock
+already, the whole lot is in quarantine — what was there before with it — because a lot
+is one quantity: release it once the new goods are inspected.
+
+The lots awaiting inspection are the inspection queue: the home page links to them as
+*Lots awaiting inspection*, and they are the **Lots** list filtered on **Quarantine** with
+the cause **Inspection**. On a lot's page, **Release** on the receipt's hold — with
+**Manage lots** — ends it like any of the page's own holds.
+
+### Report a deviation of a lot
+
+When Manufacturing is in use, **Report a deviation** on a lot's page opens a new deviation
+of the lot in Manufacturing, which can put the lot in quarantine. Its hold shows on the
+page with the deviation's number, linked to it, and is released by closing the deviation:
+see [Deviations](/en/user/manufacturing/#deviations).
 
 ### A lot's files
 
