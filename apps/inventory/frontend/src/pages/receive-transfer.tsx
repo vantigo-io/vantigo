@@ -335,6 +335,11 @@ const ReceiveLines = ({ transfer, rootLocationId }: { transfer: InventoryTransfe
                         <Text size="sm">
                           {line.variant.sku} · {line.variant.productName}
                         </Text>
+                        {line.lot && (
+                          <Text size="xs" c="dimmed">
+                            {t("lotOnLine", { number: line.lot.number })}
+                          </Text>
+                        )}
                         {mark && (
                           <Text size="xs" c="red" fw={500}>
                             {mark}

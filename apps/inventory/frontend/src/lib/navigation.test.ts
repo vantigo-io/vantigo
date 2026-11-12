@@ -10,6 +10,7 @@ describe("the sidebar entries", () => {
     expect(keys(["inventory:locations-view", "inventory:stock-view"])).toEqual([
       "overview",
       "lots",
+      "expiring",
       "transfers",
       "movements",
       "receipts",
@@ -22,6 +23,7 @@ describe("the sidebar entries", () => {
     expect(keys([...views, "inventory:counts-manage"])).toEqual([
       "overview",
       "lots",
+      "expiring",
       "transfers",
       "movements",
       "receipts",
@@ -31,6 +33,7 @@ describe("the sidebar entries", () => {
     expect(keys([...views, "inventory:stock-adjust"])).toEqual([
       "overview",
       "lots",
+      "expiring",
       "transfers",
       "movements",
       "receipts",
@@ -46,6 +49,7 @@ describe("the sidebar entries", () => {
     expect(keys(["*"])).toEqual([
       "overview",
       "lots",
+      "expiring",
       "transfers",
       "movements",
       "receipts",

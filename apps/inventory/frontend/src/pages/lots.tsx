@@ -11,7 +11,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconAlertCircle, IconBarcode, IconSearch } from "@tabler/icons-react";
+import { IconAlertCircle, IconBarcode, IconPrinter, IconSearch } from "@tabler/icons-react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
@@ -20,6 +20,7 @@ import { holdCauses, lotStatuses, lotsInfiniteQueryOptions, useLotsLive } from "
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { sitesQueryOptions } from "../api/sites";
 import { LotStatusBadges } from "../components/lot-status";
+import { PrintLotLabelsDialog } from "../components/print-lot-labels-dialog";
 import { canViewLots } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
 import { INVENTORY_HOME_ROUTE_PATH, LOTS_ROUTE_PATH, lotLinkOptions, variantStockLinkOptions } from "../lib/routes";
@@ -63,6 +64,7 @@ export const LotsPage = () => {
   const filter = (patch: Partial<LotsSearch>) =>
     void navigate({ to: LOTS_ROUTE_PATH, search: { ...search, ...patch }, replace: true });
   const rows = lots.data?.pages.flatMap((page) => page.lots) ?? [];
+  const [printing, setPrinting] = useState(false);
 
   return (
     <Stack gap="lg">
@@ -70,6 +72,19 @@ export const LotsPage = () => {
         breadcrumbs={[{ label: t("inventory"), to: INVENTORY_HOME_ROUTE_PATH }, { label: t("lotsTitle") }]}
         title={t("lotsTitle")}
         description={t("lotsDescription")}
+        actions={
+          rows.length > 0 && (
+            <Button variant="default" leftSection={<IconPrinter size={16} />} onClick={() => setPrinting(true)}>
+              {t("printLotLabels")}
+            </Button>
+          )
+        }
+      />
+      <PrintLotLabelsDialog
+        opened={printing}
+        onClose={() => setPrinting(false)}
+        lotIds={rows.slice(0, 1000).map((lot) => lot.id)}
+        name="lots"
       />
       {meta.data && !canViewLots(meta.data) ? (
         <Alert color="yellow" icon={<IconAlertCircle size={16} />}>

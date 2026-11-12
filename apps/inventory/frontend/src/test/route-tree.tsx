@@ -14,6 +14,7 @@ import { render } from "@testing-library/react";
 import {
   COUNT_ROUTE_PATH,
   COUNTS_ROUTE_PATH,
+  EXPIRING_ROUTE_PATH,
   IMPORT_ROUTE_PATH,
   INVENTORY_HOME_ROUTE_PATH,
   LOCATION_ROUTE_PATH,
@@ -35,6 +36,7 @@ import {
 } from "../lib/routes";
 import {
   validateCountsSearch,
+  validateExpiringSearch,
   validateLookupSearch,
   validateLotsSearch,
   validateLowStockSearch,
@@ -45,6 +47,7 @@ import {
 } from "../lib/search";
 import { CountPage } from "../pages/count";
 import { CountsPage } from "../pages/counts";
+import { ExpiringPage } from "../pages/expiring";
 import { InventoryHomePage } from "../pages/home";
 import { ImportPage } from "../pages/import";
 import { LocationPage } from "../pages/location";
@@ -102,6 +105,7 @@ export const makeRouteTree = () => {
     route(RECEIVE_TRANSFER_ROUTE_PATH, ReceiveTransferPage),
     route(LOW_STOCK_ROUTE_PATH, LowStockPage, validateLowStockSearch),
     route(LOTS_ROUTE_PATH, LotsPage, validateLotsSearch),
+    route(EXPIRING_ROUTE_PATH, ExpiringPage, validateExpiringSearch),
     route(LOT_ROUTE_PATH, () => <LotPage />),
     route(PRODUCT_TEST_PATH, ProductSlot),
   ]);

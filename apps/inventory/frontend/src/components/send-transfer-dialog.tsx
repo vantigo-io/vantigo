@@ -1,10 +1,12 @@
 import { Alert, Button, Checkbox, Group, Modal, Select, Stack, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueries } from "@tanstack/react-query";
 import { useState } from "react";
+import { fefoOrder, type InventoryBalanceLot, usableLot } from "../api/lots";
 import { refusalCodes } from "../api/movements";
 import { isRevisionConflict, refusalCode, refusedLines } from "../api/request";
+import { type InventoryVariantStock, variantStockQueryOptions } from "../api/stock";
 import { type InventoryTransfer, sendTransfer } from "../api/transfers";
 import { refusalMessage, useInvalidateInventory, useInventoryFormat } from "../lib/format";
 import { stockAtKey, useStockAtSites } from "../lib/stock-at-sites";
@@ -32,9 +34,14 @@ type Marks = ReadonlyMap<number, string>;
  * With `withReceive` each line also gets its destination at the to site and
  * everything sent is received at once (I43). The send's key is derived from
  * the transfer on the server, so a retry replays.
+ *
+ * A tracked item's line sends one lot (manufacturing phase 2 M70): the
+ * draft's when it lies on the source location, else the first usable lot
+ * there in FEFO order — the server's own order — until the person picks
+ * another; the lots are the variant's stock rows at the from site.
  */
 export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: SendTransferDialogProps) => {
-  const { t, quantity } = useInventoryFormat();
+  const { t, quantity, day } = useInventoryFormat();
   const invalidate = useInvalidateInventory();
   const { printNote } = useTransferActions();
   const lines = transfer.lines;
@@ -44,6 +51,18 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
   );
   const [sources, setSources] = useState<Record<number, number | null>>({});
   const [destinations, setDestinations] = useState<Record<number, number | null>>({});
+  const [chosenLots, setChosenLots] = useState<Record<number, number | null>>({});
+  const trackedIds = [
+    ...new Set(lines.filter((line) => (line.variant.tracking ?? "none") !== "none").map((line) => line.variant.id)),
+  ];
+  const lotStock = useQueries({
+    queries: trackedIds.map((id) => variantStockQueryOptions(id)),
+    combine: (results) => {
+      const out = new Map<number, InventoryVariantStock>();
+      for (const result of results) if (result.data) out.set(result.data.variant.id, result.data);
+      return out;
+    },
+  });
   const [print, setPrint] = useState(!withReceive);
   const [marks, setMarks] = useState<Marks>(new Map());
   const [problem, setProblem] = useState<string>();
@@ -63,6 +82,21 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
     destinations[lineId] !== undefined
       ? destinations[lineId]
       : (stock.data?.get(stockAtKey(variantId, transfer.toSite.id))?.placement?.primaryLocationId ?? null);
+
+  // A tracked line's lots on its source location, FEFO, and the one it sends.
+  const lotsAt = (variantId: number, locationId: number | null): InventoryBalanceLot[] => {
+    const site = lotStock.get(variantId)?.sites.find((one) => one.site.id === transfer.fromSite.id);
+    const row = site?.rows.find((one) => one.location.id === locationId);
+    return fefoOrder(row?.lots ?? [], (lot) => lot.lotId);
+  };
+  const tracked = (line: InventoryTransfer["lines"][number]) => (line.variant.tracking ?? "none") !== "none";
+  const lotOf = (line: InventoryTransfer["lines"][number]): number | null => {
+    if (!tracked(line)) return null;
+    if (chosenLots[line.id] !== undefined) return chosenLots[line.id];
+    const here = lotsAt(line.variant.id, sourceOf(line.id, line.variant.id));
+    if (line.lot && (here.length === 0 || here.some((lot) => lot.lotId === line.lot?.id))) return line.lot.id;
+    return (here.find(usableLot) ?? here[0])?.lotId ?? null;
+  };
 
   // What the transfer takes of each variant, every line of it together.
   const wanted = new Map<number, number>();
@@ -101,6 +135,7 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
             ...(sourceOf(line.id, line.variant.id) === null
               ? {}
               : { fromLocationId: sourceOf(line.id, line.variant.id) ?? 0 }),
+            ...(lotOf(line) === null ? {} : { lotId: lotOf(line) ?? 0 }),
           })),
           ...(withReceive
             ? {
@@ -157,6 +192,7 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
     const gaps = new Map<number, string>();
     for (const line of lines) {
       if (sourceOf(line.id, line.variant.id) === null) gaps.set(line.id, t("refusal.from_location_required"));
+      else if (tracked(line) && lotOf(line) === null) gaps.set(line.id, t("refusal.lot_required"));
       else if (withReceive && !destinationOf(line.id, line.variant.id)) gaps.set(line.id, t("pickDestination"));
     }
     setMarks(gaps);
@@ -205,6 +241,7 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
                 <Table.Th>{t("columnItem")}</Table.Th>
                 <Table.Th ta="right">{t("columnQuantity")}</Table.Th>
                 <Table.Th>{t("sendFrom", { site: transfer.fromSite.code })}</Table.Th>
+                {trackedIds.length > 0 && <Table.Th>{t("columnLot")}</Table.Th>}
                 {withReceive && <Table.Th>{t("receiveTo", { site: transfer.toSite.code })}</Table.Th>}
               </Table.Tr>
             </Table.Thead>
@@ -242,12 +279,43 @@ export const SendTransferDialog = ({ opened, onClose, transfer, withReceive }: S
                           label: `${one.location.fullCode}${one.primary ? ` (${t("primary")})` : ""} · ${quantity(one.onHand)}`,
                         }))}
                         value={source === null ? null : String(source)}
-                        onChange={(next) =>
-                          setSources((current) => ({ ...current, [line.id]: next === null ? null : Number(next) }))
-                        }
+                        onChange={(next) => {
+                          setSources((current) => ({ ...current, [line.id]: next === null ? null : Number(next) }));
+                          // Another location proposes its own lot.
+                          setChosenLots(({ [line.id]: _, ...rest }) => rest);
+                        }}
                         disabled={stock.isPending}
                       />
                     </Table.Td>
+                    {trackedIds.length > 0 && (
+                      <Table.Td miw={200}>
+                        {tracked(line) && (
+                          <Select
+                            aria-label={t("lotOfLine", { n: line.lineNo })}
+                            placeholder={t("lotPickPlaceholder")}
+                            searchable
+                            data={lotsAt(line.variant.id, source).map((lot) => ({
+                              value: String(lot.lotId),
+                              label: [
+                                lot.number,
+                                lot.expiry ? t("lotExpires", { date: day(lot.expiry) }) : "",
+                                quantity(lot.onHand, line.variant.unit),
+                                usableLot(lot) ? "" : lot.expired ? t("expired") : t(`lotStatus_${lot.status}`),
+                              ]
+                                .filter(Boolean)
+                                .join(" · "),
+                            }))}
+                            value={lotOf(line) === null ? null : String(lotOf(line))}
+                            onChange={(next) =>
+                              setChosenLots((current) => ({
+                                ...current,
+                                [line.id]: next === null ? null : Number(next),
+                              }))
+                            }
+                          />
+                        )}
+                      </Table.Td>
+                    )}
                     {withReceive && (
                       <Table.Td miw={200}>
                         <LocationPicker

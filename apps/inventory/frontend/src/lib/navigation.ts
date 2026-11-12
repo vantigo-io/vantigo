@@ -1,5 +1,6 @@
 import {
   COUNTS_ROUTE_PATH,
+  EXPIRING_ROUTE_PATH,
   IMPORT_ROUTE_PATH,
   INVENTORY_HOME_ROUTE_PATH,
   LOTS_ROUTE_PATH,
@@ -10,7 +11,7 @@ import {
 
 /** One sidebar destination of the app; the host owns its label and icon. */
 export interface InventoryNavItem {
-  key: "overview" | "lots" | "transfers" | "movements" | "receipts" | "counts" | "lowStock" | "import";
+  key: "overview" | "lots" | "expiring" | "transfers" | "movements" | "receipts" | "counts" | "lowStock" | "import";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -36,6 +37,14 @@ export const inventoryNavItems: readonly InventoryNavItem[] = [
     key: "lots",
     label: "navLots",
     to: LOTS_ROUTE_PATH,
+    requiredPermissions: ["inventory:stock-view"],
+    requiredAllPermissions: stockViews,
+  },
+  {
+    // The lots expiring soon (M72) are a stock read too.
+    key: "expiring",
+    label: "navExpiring",
+    to: EXPIRING_ROUTE_PATH,
     requiredPermissions: ["inventory:stock-view"],
     requiredAllPermissions: stockViews,
   },

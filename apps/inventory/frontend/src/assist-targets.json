@@ -180,6 +180,18 @@
     }
   },
   {
+    "key": "inventory.expiring.list",
+    "route": "/inventory/expiring",
+    "label": {
+      "en": "Expiring",
+      "nb": "Utløper snart"
+    },
+    "description": {
+      "en": "The list on the Expiring page: every lot with stock whose expiry falls within the days chosen (30 unless changed) or has already passed, by expiry, with the days left, the item, the status and what lies of it, filtered by site and status. Export the list as CSV or print the lots' labels.",
+      "nb": "Listen på siden Utløper snart: alle partier med beholdning der utløpsdatoen faller innen antall dager som er valgt (30 hvis ikke endret) eller allerede er passert, sortert på utløpsdato, med dager igjen, varen, statusen og hva som ligger av dem, filtrert på lagersted og status. Eksporter listen som CSV eller skriv ut partienes etiketter."
+    }
+  },
+  {
     "key": "inventory.lot.holds",
     "route": "/inventory/lots/{lotId}",
     "label": {

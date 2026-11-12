@@ -14,10 +14,17 @@ export const importOutcomes: readonly InventoryImportOutcome[] = [
   "variant_not_found",
   "variant_not_stockable",
   "quantity_invalid",
+  "lot_required",
+  "lot_not_allowed",
+  "lot_invalid",
+  "serial_quantity",
 ];
 
-/** The header the file must start with. */
-export const IMPORT_HEADER = "location,sku,quantity";
+/**
+ * The template's header: the three columns the file must have, then the lot's, which it may (manufacturing
+ * phase 2 M71) — a tracked item's row names its lot, an untracked one's leaves them empty.
+ */
+export const IMPORT_HEADER = "location,sku,quantity,lot,supplier_lot,production_date,best_before,expiry";
 
 /**
  * The opening-balance import (I32): a dry run answers every row's outcome; a

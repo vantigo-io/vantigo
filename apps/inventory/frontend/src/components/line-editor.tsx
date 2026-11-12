@@ -46,6 +46,8 @@ export interface LineEditorProps {
   lineErrors: ReadonlyMap<string, { message: string; detail?: string }>;
   /** Columns drawn after the quantity, read-only. */
   extraColumns?: readonly LineEditorColumn[];
+  /** The site whose lots a row offers, when it is not `siteId`: a transfer's from site (manufacturing phase 2 M70). */
+  lotSiteId?: number;
 }
 
 /**
@@ -66,6 +68,7 @@ export const LineEditor = ({
   defaultLocationId,
   lineErrors,
   extraColumns = [],
+  lotSiteId,
 }: LineEditorProps) => {
   const { t, quantity } = useInventoryFormat();
   const queryClient = useQueryClient();
@@ -81,8 +84,8 @@ export const LineEditor = ({
       ),
     [onChange],
   );
-  // A tracked variant's rows name a lot (manufacturing phase 2 M59): the column shows when any row has one.
-  const showLots = kind !== "transfer" && lines.some((line) => isTracked(line.variant));
+  // A tracked variant's rows name a lot (manufacturing phase 2 M59, M70): the column shows when any row has one.
+  const showLots = lines.some((line) => isTracked(line.variant));
 
   // A receipt line goes to the variant's primary location at the site by default (I55): a picked
   // variant carries it from the search, a scanned one is read from its stock at the site.
@@ -291,11 +294,11 @@ export const LineEditor = ({
                       <Table.Td miw={200}>
                         {isTracked(line.variant) ? (
                           <LotField
-                            key={`${line.variant?.id}:${siteId}`}
+                            key={`${line.variant?.id}:${lotSiteId ?? siteId}`}
                             kind={kind}
                             n={n}
                             line={line}
-                            siteId={siteId}
+                            siteId={lotSiteId ?? siteId}
                             onChange={(change) => update(line.key, change)}
                           />
                         ) : (

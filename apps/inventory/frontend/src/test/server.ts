@@ -836,6 +836,33 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
         }));
       return jsonResponse(200, { lots: rows });
     }
+    // The expiring list's CSV and lot labels (M72, M73): the bytes do not matter here, only that they are asked.
+    if (path === "/lots/expiring.csv" && method === "GET")
+      return new Response("lot;sku\r\n", { status: 200, headers: { "Content-Type": "text/csv" } });
+    if (path === "/lots/labels.pdf" && method === "GET")
+      return new Response("%PDF-1.3", { status: 200, headers: { "Content-Type": "application/pdf" } });
+    // The expiring list (manufacturing phase 2 L2, M72): lots with stock expiring on or before today + days.
+    if (path === "/lots/expiring" && method === "GET") {
+      const days = Number(query.get("days") ?? 30);
+      const until = new Date(Date.parse(`${meta.today}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+      const rows = state.lots
+        .filter((one) => one.expiry && one.expiry <= until && one.onHand > 0)
+        .sort((a, b) => (a.expiry ?? "").localeCompare(b.expiry ?? ""))
+        .map((one) => ({
+          id: one.id,
+          number: one.number,
+          serial: one.serial,
+          variant: one.variant,
+          status: one.status,
+          expired: one.expired,
+          expiry: one.expiry,
+          bestBefore: one.bestBefore,
+          supplierLot: one.supplierLot,
+          onHand: one.onHand,
+          receivedAt: one.receivedAt,
+        }));
+      return jsonResponse(200, { lots: rows, more: false, today: meta.today, until });
+    }
     const page = /^\/lots\/(\d+)(\/holds(?:\/(\d+)\/release)?)?$/.exec(path);
     if (!page) return undefined;
     const index = state.lots.findIndex((one) => one.id === Number(page[1]));
