@@ -821,6 +821,12 @@ Stock card and on an item's stock page you then see *Reserved … · available �
 - **Available** is the quantity on hand at the site, summed over all its locations,
   less what is reserved. It is what a new order can still reserve.
 
+For an item kept in **lots**, available counts only stock that may be used: a lot that is
+on hold — in quarantine or blocked — or past its expiry date stays on hand but is left out
+of available, and so of what a new order can reserve and of the low-stock list. A hold
+put on stock that is already reserved can make available negative; the reservations stay.
+Lot tracking is switched on per item once deliveries and productions can record lots.
+
 An order's delivery takes the stock off the shelves it is picked from and uses up the
 reservation. Cancelling the order, or reducing a line, gives the reservation back.
 
