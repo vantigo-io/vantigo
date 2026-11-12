@@ -136,6 +136,25 @@ describe("a delivery's lots", () => {
     expect(screen.getByText("Make every line's lots add up to its quantity first")).toBeInTheDocument();
   });
 
+  it("links each lot to its page and its trace in Inventory only for a caller who may read stock (M94)", async () => {
+    server(delivery(), undefined, { canTraceLots: true });
+    renderRoute("/orders/deliveries/7002");
+    const lots = await screen.findByTestId("delivery-lots-1");
+    expect(await within(lots).findByRole("link", { name: "B2" })).toHaveAttribute("href", "/inventory/lots/21");
+    expect(within(lots).getByRole("link", { name: "Trace lot B2" })).toHaveAttribute(
+      "href",
+      "/inventory/trace?lotId=21",
+    );
+  });
+
+  it("names the lots without links for a caller who may not read stock", async () => {
+    server(delivery());
+    renderRoute("/orders/deliveries/7002");
+    const lots = await screen.findByTestId("delivery-lots-1");
+    expect(within(lots).getByText("B2")).toBeInTheDocument();
+    expect(within(lots).queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("changes a lot, offering held and expired lots only as the rules allow, and saves the lots chosen", async () => {
     const fake = server(delivery(), (call) =>
       call.method === "PUT" && call.url === deliveryUrl
