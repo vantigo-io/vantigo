@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the eight permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; and their screens (L1b) — the lots list, a lot's page and its edit, the lot page's holds, a lot's files in the inventory-lots storage scope and their deletion worker, stock per lot and held, the lookup's LOT token and lot numbers, and Inventory's live topics; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the nine permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -12,6 +12,7 @@ sources:
   - apps/server/internal/db/migrations/00152_inventory_transfers.sql
   - apps/server/internal/db/migrations/00155_inventory_placements.sql
   - apps/server/internal/db/migrations/00163_inventory_lots.sql
+  - apps/server/internal/db/migrations/00164_inventory_lot_attachments.sql
   - apps/server/internal/contracts/stock.go
   - apps/host/frontend/src/routes/inventory
 ---
@@ -402,12 +403,14 @@ Its down restores the old key and fails while any balance or line has a lot.
 | `inventory:counts-manage` | Count stock | "Open, count, post and cancel stock counts." |
 | `inventory:transfers-manage` | Transfer stock | "Create, send, receive and cancel transfers of stock between sites, and close a transfer's difference." |
 | `inventory:expired-override` | Use expired lots | "Issue or consume a lot past its expiry date, when the lot is chosen by hand on a delivery or a production." |
+| `inventory:lots-manage` | Manage lots | "Change a lot's dates, supplier lot and note, add and remove its files, and put and release its holds on the lot page." |
 
-All eight are in the category "Inventory", **none is sensitive** and all are delegable;
+All nine are in the category "Inventory", **none is sensitive** and all are delegable;
 the Owner holds them through the wildcard. In Norwegian they read *Se lagersteder*,
 *Administrere lagersteder*, *Se beholdning*, *Justere beholdning*, *Motta varer*,
-*Telle varer*, *Overføre varer* and *Bruke utgåtte partier*. `transfers-manage` came
-with phase 2 (I63), `expired-override` with manufacturing phase 2 (M68). Inventory
+*Telle varer*, *Overføre varer*, *Bruke utgåtte partier* and *Administrere partier*.
+`transfers-manage` came with phase 2 (I63), `expired-override` and `lots-manage` with
+manufacturing phase 2 (M68). Inventory
 checks `expired-override` in no ledger call: the caller reads it on the pool before its
 transaction and passes it as `ExpiredOverride` ([expiry](#expiry-and-today)).
 
@@ -423,19 +426,22 @@ home are offered with either view; Movements, Receipts, Counts, Transfers and Im
 opening balances in the sidebar, the product page's Stock card, the product list's
 *On hand* column and the dashboard's figures with both — and **Low stock**, a read, with
 both views alone; its *Create transfer* is hidden without `transfers-manage`, and
-*Edit placement* and the placements import without `stock-adjust`. **Seeing a transfer and printing
+*Edit placement* and the placements import without `stock-adjust`. **The lots**, a lot's
+page and its files' downloads need both views alone; *Edit*, *Quarantine*, *Block*,
+*Release* and the files' writes are hidden without `lots-manage`. **Seeing a transfer and printing
 its følgeseddel need both views alone**; *New transfer*, *Send*, *Receive* and *Cancel*
 are hidden without `transfers-manage`.
 
-| Reads and writes | `locations-view` | + `stock-view` | + `locations-manage` | + `stock-adjust` | + `receipts-manage` | + `counts-manage` | + `transfers-manage` |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Sites, their location trees, a location, the lookup's location matches, [labels](#labels) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Contents, a product's and a variant's stock, the stock totals, the stock at sites, the movements, the variant search, the stats, the lookup's item and transfer matches; the transfers, one transfer and its følgeseddel; the low-stock list, its CSV and the `lowStock` item | – | ✓ | – | ✓ | ✓ | ✓ | ✓ |
-| Create, change, archive, reactivate and delete sites and locations; bulk | – | – | ✓ | – | – | – | – |
-| Adjustments and moves; the opening-balance import; placements — set, remove, import | – | – | – | ✓ | – | – | – |
-| Goods receipts | – | – | – | – | ✓ | – | – |
-| Counts: list, open, count, post, cancel; the `countOpenLong` item | – | – | – | – | – | ✓ | – |
-| Transfers: create, change and delete a draft, send, receive, close, cancel; the `transferOverdue` item | – | – | – | – | – | – | ✓ |
+| Reads and writes | `locations-view` | + `stock-view` | + `locations-manage` | + `stock-adjust` | + `receipts-manage` | + `counts-manage` | + `transfers-manage` | + `lots-manage` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Sites, their location trees, a location, the lookup's location matches, [labels](#labels) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Contents, a product's and a variant's stock, the stock totals, the stock at sites, the movements, the variant search, the stats, the lookup's item, transfer and lot matches; the lots, a lot's page and its files; the transfers, one transfer and its følgeseddel; the low-stock list, its CSV and the `lowStock` item | – | ✓ | – | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Create, change, archive, reactivate and delete sites and locations; bulk | – | – | ✓ | – | – | – | – | – |
+| Adjustments and moves; the opening-balance import; placements — set, remove, import | – | – | – | ✓ | – | – | – | – |
+| Goods receipts | – | – | – | – | ✓ | – | – | – |
+| Counts: list, open, count, post, cancel; the `countOpenLong` item | – | – | – | – | – | ✓ | – | – |
+| Transfers: create, change and delete a draft, send, receive, close, cancel; the `transferOverdue` item | – | – | – | – | – | – | ✓ | – |
+| Lots: change a lot, put and release the lot page's holds, add and remove its files | – | – | – | – | – | – | – | ✓ |
 
 Each column adds to `locations-view`; the write columns assume `stock-view` too.
 **Labels need `locations-view` alone**: a label prints a location's token, code and
@@ -443,9 +449,9 @@ name, which that key already shows. The design's §5 table put labels under
 `locations-manage`; its contract and §6 say view, and view was kept — printing changes
 nothing.
 
-**`GET /meta`** is the session's: it answers the caller's eight capabilities —
+**`GET /meta`** is the session's: it answers the caller's nine capabilities —
 `canViewLocations`, `canManageLocations`, `canViewStock`, `canAdjust`, `canReceive`,
-`canCount`, `canTransfer`, `canOverrideExpired` — and **`today`**, the workspace zone's
+`canCount`, `canTransfer`, `canOverrideExpired`, `canManageLots` — and **`today`**, the workspace zone's
 date that a lot's expiry is judged on, so the app shows only what works and a caller with
 none of them learns that rather than a 403.
 
@@ -725,7 +731,8 @@ serialise on one row (tested). The writes unnest a lot array beside the variants
 locations, `0` for none, and match with `IS NOT DISTINCT FROM`. A movement line carries
 its lot. Every read that showed a balance per (variant, location) — a location's
 contents, a product's and a variant's stock, `Stock.Locations`, a count's lines — sums
-it over the lots on purpose; the lots themselves are on screen from L1b.
+it over the lots on purpose; the lots themselves are on screen from L1b ([stock per
+lot](#stock-per-lot)).
 
 ### The lot rules
 
@@ -834,8 +841,8 @@ quarantine, else `available`; every hold change rewrites it in its transaction, 
 the lot's `FOR NO KEY UPDATE`, and writes an event (`lot_held`, `lot_released`; a lot's
 creation is `lot_created`). **A release removes only its own hold**: two sources may hold
 one lot, and it is free when neither does. Another module's holds go through
-`StockLedger.HoldLots` and `ReleaseLotHolds` on its own transaction; the lot page's own
-holds are L1b's.
+`StockLedger.HoldLots` and `ReleaseLotHolds` on its own transaction; the lot page puts and
+releases its own ([the lot page's holds](#the-lot-pages-holds)).
 
 ### FEFO and AutoLot
 
@@ -872,6 +879,120 @@ every lot it answers `FOR NO KEY UPDATE`**, not only a serial's: a production's
 lock it needs already, where upgrading a `FOR SHARE` would deadlock two productions of
 one lot.
 
+### The lot screens
+
+L1b (M54, M60–M66) puts the lots on screen. Reading a lot needs **both views**, as every
+stock read; changing one needs **`inventory:lots-manage`** beside them (M68).
+
+- **`GET /lots`** — the lots list, by **(variant, lower(number), id)**, `limit` 100 by
+  default and at most 500, with an opaque `nextCursor`. `q` (up to 100 characters)
+  matches the lot number, the supplier lot or the SKU snapshot, ignoring case; `variantId`;
+  `siteId`, which makes `onHand` what lies at that site; `status`; `holdCause`, a lot with
+  an **active** hold of that cause; `expiresBefore`, an expiry before that day; and
+  `withStock`, **true by default**: only lots holding more than 0 — at the site when one
+  is named. Each row carries the variant, the number, `serial`, the supplier lot, the
+  expiry and best-before dates, the status, **`expired`** — the expiry before today in
+  the workspace zone, read on the pool first — and `onHand`. A filter or cursor that does
+  not parse is a 400.
+- **`GET /lots/{id}`** — a lot's page, in one snapshot: the header (number, variant,
+  supplier lot, the three dates, `receivedAt`, the status, `expired`, the origin as a
+  source reference — `inventory/movement/<id>` for a receipt's or an adjustment's lot —
+  the note, the creator and the **revision**); **`holds`**, every hold, the active ones
+  first, newest first within each, each with its source and **`inventorys`** — whether
+  its source module is Inventory, so the page may release it; **`locations`**, what lies
+  of it per location, by site code then full code, and `onHand` over them; **`movements`**,
+  its movement lines, newest first, the latest 200; and **`attachments`**, its files,
+  newest first. An unknown lot is the 404.
+- **`PUT /lots/{id}`** with **`If-Match`** replaces the supplier lot (≤ 40), the
+  production, best-before and expiry dates and the note (≤ 2000), **whole**: a field left
+  out is cleared. The number and the variant never change, and no other property is
+  taken. It takes the lot `FOR NO KEY UPDATE`, answers `revision_conflict` (409) on a
+  stale revision, moves the revision on and records `lot_updated` with the fields that
+  changed. A changed expiry is judged from the next posting on; nothing already posted is
+  undone.
+
+### The lot page's holds
+
+**`POST /lots/{id}/holds`** `{kind, cause, note?}` puts a hold whose source is the lot
+itself, **`inventory/lot/<id>`**, through the same code as `HoldLots`: the lot
+`FOR NO KEY UPDATE`, the hold — left as is when the lot page already holds an active one
+of the same kind — the `lot_held` event and the status derived again. **`POST
+/lots/{id}/holds/{holdId}/release`** `{note?}` releases **one** hold, with its
+`release_note`, under the lot's lock, records `lot_released` and derives the status
+again. It releases only a hold whose source module is Inventory — the lot page's, or a
+receipt's inspection (Q): a hold another module's document put is shown with its source
+and released there, **`hold_not_inventorys`** (409). A hold released already answers the
+lot as it is; another lot's hold is the 404. Both need `lots-manage` and answer the lot's
+page.
+
+### A lot's files
+
+A lot keeps up to **20** files (`inventory.lot_attachments`, migration 00164): an EN
+10204 3.1 certificate, an analysis, a photo. Customers' attachments are the model
+([Customers](/en/reference/customers/#attachments)), copied because no module imports
+another.
+
+- **`POST /lots/{id}/attachments`**, multipart with one part `file`: a **PDF, JPEG or
+  PNG** whose own bytes decide its type and must not be contradicted by the type or the
+  extension it is sent under (`attachment_type`, 415), at most **20 MiB**
+  (`attachment_too_large`, 400; the router caps the request just above), and at most 20 a
+  lot, counted under the lot's lock (`too_many_attachments`, 400). The object is written
+  to the store **before** the row's transaction and removed again by whatever refuses
+  after it; the row keeps the file name — its path and control characters stripped, at
+  most 255 characters — the type, the size and the uploader, moves the lot's revision on
+  and records `lot_attachment_added`. It answers 201 with the file. The assistant never
+  calls it (`x-vantigo-assistant: never`).
+- **`GET /lots/{id}/attachments/{attachmentId}`** reads the row on the pool and streams
+  the object with its stored type, inline, named as uploaded (RFC 5987), never cached,
+  never sniffed, under `default-src 'none'; sandbox`. A file of another lot is the 404 an
+  unknown id is. No path is ever returned.
+- **`DELETE /lots/{id}/attachments/{attachmentId}`** removes the row and queues its
+  object in **`inventory.object_deletions`** in one transaction under the lot's lock,
+  records `lot_attachment_removed`, then makes one attempt at the object once that has
+  committed; 204.
+
+The store is `Deps.ObjectStore` when a harness set one, else the one the configuration
+builds, under the scope **`inventory-lots`**, keys `lots/<uuid>` that name no lot
+([object storage](/en/admin/object-storage/)). An upload or a download with no store
+configured answers **`storage_not_configured`** (503) and records nothing; a store that
+fails answers 503 without a code. The store is never reached inside a transaction.
+
+**The deletion worker.** A removal the store refuses stays on the ledger, its attempt
+counted and its reason recorded, for the worker **`inventory.object-deletions`**
+(every five minutes, in worker mode through `module.Workers`): each pass selects the due
+rows, a hundred at a time, claims each by a conditional update with a five-minute window
+— so two replicas never attempt one row at once — and makes one attempt, retrying an
+object two seconds after its first failure, doubling, at most an hour apart, until the
+store confirms; a key the store no longer has is confirmed too. Every statement takes a
+pooled connection for itself, none is held while the store is asked, and a test drains it
+built through `module.Workers` on a pool of one.
+
+### Stock per lot
+
+The stock reads carry the lots (M63). On **`GET /products/{productId}/stock`** and
+**`GET /variants/{variantId}/stock`**, each site's row has **`held`** — what lies there in
+lots on hold or expired today — and **`available`** is **usable** on hand less reserved,
+`totalAvailable` likewise; each location row of a tracked variant carries **`lots`**,
+`{lotId, number, expiry, bestBefore, status, expired, onHand}` per lot on it, in FEFO
+order. **`GET /stock/sites`** answers `available` as usable less reserved too, and a
+placement's **`low`** everywhere it is judged on usable on hand. `onHand` stays everything
+that lies there. Today is read on the pool before the snapshot.
+
+The variant reference every answer names a variant with carries its **`tracking`** —
+`none`, `lot` or `serial` — so the forms show the lot column for a tracked variant only.
+
+### The lots' live topics
+
+Inventory's first live topics (§17; [live updates](/en/contributing/platform-packages/#live-updates)):
+**`inventory.lots`**, keyless, and **`inventory.lot:<id>`**, both authorised by both views,
+a key that is not an id refused alike whether the lot exists or not. Each carries
+`lot.changed` with the lot's id. **Every posting** tells both for each lot its lines
+touch, on the posting's own transaction — whichever module's it is, since a notification
+is a statement on that transaction and not a call out — and so does every hold or release
+(the lot page's and `HoldLots`/`ReleaseLotHolds`), an edit and a file added or removed.
+The list and a lot's page refetch on them and poll every 30 seconds while the socket is
+down.
+
 ### The lock order
 
 Inventory's postings take, in order (`posting.go`): the key's read; `LockVariants`;
@@ -882,8 +1003,10 @@ movement's header, the locations `FOR SHARE` and the balances in **(variant, loc
 lot)** order, no lot first. The lots come before the header and the locations for every
 writer, so no posting holds a location and then waits for a lot. A caller's
 `EnsureLots` runs the counter, the new lots and the lot locks — every lot `FOR NO KEY
-UPDATE` — and its `Produce` runs the rest. A hold or a release takes the lots `FOR NO KEY UPDATE` in id order, then the
-holds. A reserve's `LockSiteBalances` orders as the engine does, no lot first. A test
+UPDATE` — and its `Produce` runs the rest. A hold or a release — another module's or the
+lot page's — takes the lots `FOR NO KEY UPDATE` in id order, then the holds; an edit of a
+lot and a change of its files take the lot the same way. A reserve's `LockSiteBalances`
+orders as the engine does, no lot first. A test
 races issues, receipts into a lot and holds on it on a pool of four.
 
 ## Entering in packagings
@@ -1725,7 +1848,9 @@ against packagings that hold until the commit.
   **goods** variant of the product in the catalog's order, with or without stock, each
   by site (by code) and location (by full code), with the totals summed exactly. Each
   site and the variant's totals carry `reserved` — what orders hold there — and
-  `available`, [usable](#usable-on-hand) on hand less reserved, which may be negative; each site carries
+  `available`, [usable](#usable-on-hand) on hand less reserved, which may be negative,
+  and each site `held`, what lies in lots on hold or expired; a tracked variant's rows
+  carry their `lots` ([stock per lot](#stock-per-lot)); each site carries
   `incoming`, what is [in transit](#in-transit) to it on transfers. A site where the
   variant is reserved, or incoming, but lies nowhere is listed with no rows, and so is an
   active site where it only has a [placement](#placement). Each site carries its
@@ -1757,7 +1882,7 @@ against packagings that hold until the commit.
   for the transfer form's columns and the send dialog's defaults: at most **100**
   variants and **20** sites (none, more, or an unknown site is a 400 on its field), and
   one row per variant and site asked, in the order asked, whether or not anything lies
-  there — `onHand`, `reserved`, `available`, `incoming`, the locations holding it, the
+  there — `onHand`, `reserved`, `available` (usable on hand less reserved), `incoming`, the locations holding it, the
   most first, then by full code, each with **`primary`**, and the **`placement`** there,
   or none: the send dialog's default source and a send and receive's default
   destination.
@@ -1803,11 +1928,15 @@ trimmed and matched, in order:
 3. a transfer's **`TRF-<number>`** token, case-insensitive, as its
    [følgeseddel](#the-følgeseddel) carries it (`kind: transfer`, with the transfer's id
    and number);
-4. a variant's **SKU or barcode**, or a **packaging's barcode**, through `LookupCode`;
-   a packaging's barcode answers its variant, once.
+4. a lot's **`LOT<id>` token**, case-insensitive, as L2's lot labels will carry it, then
+   every variant's lot whose **number** is the text, ignoring case (`kind: lot`, with the
+   lot's id, number and expiry and its variant; manufacturing phase 2 M66);
+5. a variant's **SKU or barcode**, or a **packaging's barcode**, through `LookupCode`;
+   a packaging's barcode answers its variant, once. A serial number that is also an SKU
+   shows both, the lot first.
 
 The access is the **session**, and each kind of match is shown by its own keys: the
-location matches to `locations-view`, the transfer and item matches to `locations-view`
+location matches to `locations-view`, the transfer, lot and item matches to `locations-view`
 with `stock-view`. A caller holding neither gets no matches rather than a 403. An empty
 text, or one longer than the limit, is a 400 on `q`.
 
@@ -1857,7 +1986,8 @@ The module stores about a person their **user id and display name** as a movemen
 poster (`posted_by_user_id`, `posted_by_display`) and as an event's actor
 (`actor_user_id`, `actor_display`), and since phase 2 as a transfer's creator, sender
 and closer and an action's poster (`*_by_user_id`, `*_by_display`), and a placement's
-last writer (`updated_by_user_id`, `updated_by_display`), and nothing else. A movement is an **immutable
+last writer (`updated_by_user_id`, `updated_by_display`), and since manufacturing phase 2
+a lot's creator, a hold's putter and releaser, and a lot file's uploader, and nothing else. A movement is an **immutable
 record of the stock ledger**, an event the record of a structural write, and a
 transfer and its actions the record of who sent and received what; all keep
 the poster's or the actor's id and name **after the person is erased** — they are
@@ -1912,6 +2042,10 @@ placements import *Invalid import*, as the opening-balance import does.
 | `transfer_over_received` | 400 (line) | A receive's line taking more than the line has outstanding; the index is the line's place in the request. |
 | `lot_required`, `lot_not_allowed`, `lot_unknown`, `serial_quantity`, `serial_first_invalid`, `lot_dates_differ` | 400 (line) | The [lot rules](#the-lot-rules) (manufacturing phase 2 M56, M57). |
 | `lot_expired`, `lot_blocked` | 409 (line) | An issue or consume line taking an expired lot without the override, or a lot on hold; a receipt into a blocked lot. The problem's code is the first such line's. |
+| `hold_not_inventorys` | 409 | The lot page releasing a hold another module's document put; it is released there. |
+| `attachment_too_large`, `too_many_attachments` | 400 | A lot's file over 20 MiB, or a 21st. |
+| `attachment_type` | 415 | A lot's file that is not a PDF, JPEG or PNG, or whose bytes disagree with the type or extension it is sent under. |
+| `storage_not_configured` | 503 | A lot's file uploaded or downloaded with no object store configured. |
 | `quantity_invalid` | 400 (line) | A quantity not more than 0 (a `set` or a count below 0), a `change` of 0, more than three decimals, or a line or balance above 99,999,999,999.999; an entry's loose rest out of its rule, an entry coming to 0 where more is needed, or to more than the maximum. |
 | `site_code_taken` | 409 | A site code another site holds. |
 | `location_code_taken` | 409 | A code a sibling holds; a bulk names every colliding full code. |
@@ -1973,6 +2107,8 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `inventory.transfers.new` | `/inventory/transfers` | New transfer |
 | `inventory.transfer-receive.scan` | `/inventory/transfers/{transferId}/receive` | The scan field (Scan an item or the transfer note) |
 | `inventory.low-stock.list` | `/inventory/low-stock` | The low-stock list, its filters and Create transfer |
+| `inventory.lots.list` | `/inventory/lots` | The lots list and its filters |
+| `inventory.lot.holds` | `/inventory/lots/{lotId}` | A lot's Holds panel: Quarantine, Block and Release |
 
 ## Enabling and disabling
 
@@ -1999,9 +2135,9 @@ reservations made while Inventory was on, and turning it back on shows true figu
 **A transfer in transit is frozen** while the module is off (I50): nothing can be
 received or cancelled until it is on again, and the holder still answers `in_transit`
 for what it carries, so Products still refuses to delete the variant.
-`Deps.Stock` is nil while it is off, and Orders then reserves and issues nothing. Inventory contributes **no background worker** and no
-setting — a count left open, or a transfer overdue, is raised on the dashboard when it
-is read, not by a job.
+`Deps.Stock` is nil while it is off, and Orders then reserves and issues nothing. Inventory contributes **one background worker**, `inventory.object-deletions`, which
+removes the objects of [deleted lot files](#a-lots-files), and no setting — a count left
+open, or a transfer overdue, is raised on the dashboard when it is read, not by a job.
 
 ## What comes next
 
@@ -2033,9 +2169,10 @@ import and the `lowStock` item. **Phase 2 is complete.**
 
 **Lots** came with manufacturing phase 2's L1a ([lots](#lots)): the schema, the
 lot-aware key and engine, holds and the derived status, expiry, FEFO and AutoLot,
-usable on hand, and the contracts. The lot screens, attachments, stock per lot and the
-lookup are L1b's; counts, transfers and the import with lots, the expiring list and lot
-labels L2's.
+usable on hand, and the contracts. Their screens came with L1b: the lots list and a
+lot's page, its edit and holds, its files and their deletion worker, stock per lot, the
+lookup and Inventory's live topics. Counts, transfers and the import with lots, the
+expiring list and lot labels are L2's.
 
 **Later** (phase 1 §11 and phase 2 §11), each waiting for what it names:
 lots on a count, a transfer and the import (manufacturing phase 2 L2); negative stock by a setting
@@ -2060,8 +2197,8 @@ requires, all of them.
 
 | Operation | Permission | |
 | --- | --- | --- |
-| `GET /meta` | session | The caller's seven capabilities. |
-| `GET /lookup` | session | A location by token or full code (`locations-view`), a transfer by `TRF-` token or an item by SKU or barcode (+ `stock-view`). |
+| `GET /meta` | session | The caller's nine capabilities and today. |
+| `GET /lookup` | session | A location by token or full code (`locations-view`), a transfer by `TRF-` token, a lot by `LOT` token or number, or an item by SKU or barcode (+ `stock-view`). |
 | `GET /sites` | `locations-view` | The active sites, or those of a status. |
 | `POST /sites` | `locations-manage` + `locations-view` | Create a site and its root. |
 | `GET /sites/{id}` | `locations-view` | One site with its root's id. |
@@ -2078,6 +2215,14 @@ requires, all of them.
 | `GET /variants` | `locations-view` + `stock-view` | Goods variants by SKU, name or barcode; with `siteId`, each with its primary location there. |
 | `GET /stock` | `locations-view` + `stock-view` | On hand of up to 100 variants across every location. |
 | `GET /variants/{variantId}/stock` | `locations-view` + `stock-view` | One variant's stock, a deleted one by its snapshot. |
+| `GET /lots` | `locations-view` + `stock-view` | The lots, filtered, by variant then number. |
+| `GET /lots/{id}` | `locations-view` + `stock-view` | A lot's page: its holds, where it lies, its movement lines and its files. |
+| `PUT /lots/{id}` | `locations-view` + `lots-manage` + `stock-view` | Change a lot's supplier lot, dates and note, with `If-Match`. |
+| `POST /lots/{id}/holds` | `locations-view` + `lots-manage` + `stock-view` | Put a hold of the lot page. |
+| `POST /lots/{id}/holds/{holdId}/release` | `locations-view` + `lots-manage` + `stock-view` | Release one of Inventory's own holds. |
+| `POST /lots/{id}/attachments` | `locations-view` + `lots-manage` + `stock-view` | Add a file; 201. |
+| `GET /lots/{id}/attachments/{attachmentId}` | `locations-view` + `stock-view` | Download a file. |
+| `DELETE /lots/{id}/attachments/{attachmentId}` | `locations-view` + `lots-manage` + `stock-view` | Remove a file; 204. |
 | `GET /stock/sites` | `locations-view` + `stock-view` | Up to 100 variants' stock at up to 20 sites, with incoming, the locations holding it — the primary marked — and the placement. |
 | `PUT /variants/{variantId}/placements/{siteId}` | `locations-view` + `stock-view` + `stock-adjust` | Create a placement with `If-None-Match: *` (201) or change it with `If-Match` (200). |
 | `DELETE /variants/{variantId}/placements/{siteId}` | `locations-view` + `stock-view` + `stock-adjust` | Remove a placement, with `If-Match`; 204. |

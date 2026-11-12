@@ -139,7 +139,10 @@ sammenslåing flytter vedleggets rad til kunden som overlever, og lageret ikke k
 navn ([Kunder](/en/reference/customers/#attachments)). Produkter bruker omfanget
 `products-images`: et produktbildes relative nøkkel er `<productId>/<uuid>` og miniatyrbildets
 `<productId>/<uuid>-thumb`, så de fysiske nøklene er `products-images/<productId>/<uuid>` og
-`products-images/<productId>/<uuid>-thumb` ([Produkter](/en/reference/products/#images)). Et avgrenset lager
+`products-images/<productId>/<uuid>-thumb` ([Produkter](/en/reference/products/#images)). Lager bruker
+omfanget `inventory-lots`: en partifils relative nøkkel er `lots/<uuid>`, så den fysiske nøkkelen
+er `inventory-lots/lots/<uuid>` — en nøkkel som ikke navngir noe parti og aldri lages av
+filnavnet ([Lager](/en/reference/inventory/#a-lots-files)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 
@@ -189,6 +192,19 @@ objektene Kunder fortsatt skylder en fjerning, navngitt i arbeiderens logg; med
 [Kunder](/en/reference/customers/#attachments) for opplastingsreglene og
 hastighetsbegrensningen.
 
+**Lagers partifiler, spesifikt.** Et partis sertifikater, analyser og bilder — hver en PDF,
+JPEG eller PNG på høyst 20 MiB, høyst 20 per parti. En fil leses med begge Lagers
+visningsrettigheter og skrives med `inventory:lots-manage`, alltid gjennom Lagers eget
+nedlastingsendepunkt. Objektet skrives før raden og fjernes igjen hvis raden avvises. En
+sletting fjerner raden og fører objektet i Lagers logg over objekter som skal fjernes
+(`inventory.object_deletions`) i én transaksjon; objektet fjernes så, og en fjerning lageret
+avviser, blir stående i loggen for arbeideren `inventory.object-deletions`, som kjører hvert
+femte minutt i arbeidermodus og prøver hvert objekt på nytt — to sekunder etter første feil,
+doblet, høyst en time imellom — til lageret bekrefter. Loggradene et lagringsbrudd
+etterlater, er det man bør følge med på: de er objektene Lager fortsatt skylder en fjerning,
+navngitt i arbeiderens logg. Uten konfigurert objektlagring svarer en opplasting eller en
+nedlasting 503 `storage_not_configured`, og ingenting registreres.
+
 ## Nedlastinger
 
 Nedlastinger strømmes alltid gjennom et autorisert applikasjonsendepunkt.
@@ -215,3 +231,7 @@ Kunders `GET /customers/{id}/attachments/{attachmentId}` gjør det samme gjennom
 `customers`-avgrensede lager, under tidslinjens leserettighet, med de samme hodene og den
 samme 503-en for et objekt som ikke kan leses. Se
 [Kunder](/en/reference/customers/#attachments).
+
+Lagers `GET /lots/{id}/attachments/{attachmentId}` gjør det samme gjennom sitt
+`inventory-lots`-avgrensede lager, under begge Lagers visningsrettigheter, med de samme
+hodene. Se [Lager](/en/reference/inventory/#a-lots-files).

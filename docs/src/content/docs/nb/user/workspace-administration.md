@@ -494,7 +494,9 @@ leveranser; og **Håndtere fraktselskaper** er listet for frakten som kommer, og
 ennå ([Ordre](/nb/admin/orders/#gi-folk-tilgang)). I Lager lar **Bruke utgåtte partier** en person
 ta ut et parti etter utløpsdatoen på en leveranse eller en produksjon, når de selv velger
 partiet; den gjør ingenting før partisporing er slått på
-([Lager](/en/reference/inventory/#expiry-and-today)).
+([Lager](/en/reference/inventory/#expiry-and-today)). **Administrere partier** lar en person endre
+et partis datoer, leverandørparti og merknad, legge til og fjerne filene, og sette og frigi
+sperringer på siden for partiet ([Lager](/nb/user/inventory/#partier-og-serienumre)).
 
 ### Tildelinger
 
