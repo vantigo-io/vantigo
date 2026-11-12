@@ -94,6 +94,22 @@ func (s *server) lockVariants(ctx context.Context, tx pgx.Tx, ids []int32) (map[
 // lockVariantsCall is the name the hook hears lockVariants by.
 const lockVariantsCall = "Products.LockVariants"
 
+// lotRefs is Inventory's read of lots by id, before any transaction
+// (manufacturing phase 2 M99: a deviation opened from a lot).
+func (s *server) lotRefs(ctx context.Context, ids []int64) ([]contracts.LotRef, error) {
+	if err := noteContractCall(ctx, "Stock.LotRefs"); err != nil {
+		return nil, err
+	}
+	if s.deps.Stock == nil {
+		return nil, errDependencyUnavailable
+	}
+	refs, err := s.deps.Stock.LotRefs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("manufacturing: read the lots: %w", err)
+	}
+	return refs, nil
+}
+
 // searchVariants is the catalog's search for a BoM's product or component,
 // before any transaction.
 func (s *server) searchVariants(ctx context.Context, q string, search contracts.VariantSearch) ([]contracts.VariantEntry, error) {

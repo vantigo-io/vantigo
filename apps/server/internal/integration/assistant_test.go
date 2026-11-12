@@ -197,6 +197,10 @@ var markedByHand = map[string]string{
 	"reportManufacturingWorkOrderScrap": "never",
 	"blockManufacturingWorkCenter":      "never",
 	"unblockManufacturingWorkCenter":    "never",
+	// A check's result and its photo are the station's (manufacturing phase 2
+	// M97): an agent neither measures nor photographs.
+	"recordManufacturingCheckResult": "never",
+	"uploadManufacturingCheckPhoto":  "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
@@ -442,6 +446,7 @@ var filesOrRedirects = []string{
 	"printInventoryTrace",
 	"importInventoryPlacements",
 	"getInventoryLotAttachment",
+	"getManufacturingCheckPhoto",
 	"getQuotePdf",
 	"getQuoteProforma",
 	"getSalesOrderPdf",

@@ -31,7 +31,7 @@ const mfgBase = "/api/v1/manufacturing"
 // manufacturingPermissions are the keys beyond deliveryPermissions.
 var manufacturingPermissions = []string{
 	"manufacturing:access", "manufacturing:boms-manage", "manufacturing:orders-manage", "manufacturing:shop-floor",
-	"inventory:lots-manage",
+	"manufacturing:quality-manage", "inventory:lots-manage",
 }
 
 // lotsInstallation is a stock installation with Manufacturing, a jam made

@@ -107,6 +107,10 @@ func snapshotWorkOrders(ctx context.Context, txq *store.Queries, o store.Manufac
 		if err != nil {
 			return nil, err
 		}
+		// The operation's checks, copied as the operation is (M96).
+		if err := txq.SnapshotWorkOrderChecks(ctx, store.SnapshotWorkOrderChecksParams{WorkOrderID: w.ID, OperationID: op.ID}); err != nil {
+			return nil, err
+		}
 		out = append(out, w)
 	}
 	centers := make([]int64, 0, len(out))
@@ -547,6 +551,10 @@ func (s *server) FinishManufacturingWorkOrder(ctx context.Context, req gen.Finis
 		}) {
 			return refuseField("The work order was not finished", "quantity", "", "You have no open time log on this work order to register it on")
 		}
+		// Every check of the work order has its result (M98).
+		if err := finishGate(ctx, txq, w.ID); err != nil {
+			return err
+		}
 		now := s.deps.Clock()
 		if err := endLogs(ctx, txq, open, now, who.id, quantity, n); err != nil {
 			return err
@@ -926,6 +934,7 @@ type workOrderRead struct {
 	logs       map[int64][]store.ManufacturingTimeLog        // by work order, by start
 	last       map[int64]int64                               // by order: its last work order not cancelled
 	centers    map[int64]store.ManufacturingWorkCenter
+	checks     map[int64][]gen.ManufacturingWorkOrderCheck // by work order, by sequence (M96)
 }
 
 // readWorkOrders reads the work orders ids names, in that order, with their
@@ -983,6 +992,11 @@ func readWorkOrders(ctx context.Context, q *store.Queries, ids []int64) (workOrd
 	for _, c := range centers {
 		r.centers[c.ID] = c
 	}
+	checks, err := q.ChecksOfWorkOrders(ctx, ids)
+	if err != nil {
+		return r, err
+	}
+	r.checks = workOrderChecksOf(checks)
 	return r, nil
 }
 
@@ -1044,6 +1058,11 @@ func workOrderOf(row store.WorkOrderRowsRow, r workOrderRead, entries map[int32]
 				User: gen.ManufacturingPerson{Id: *l.UserID, DisplayName: l.UserDisplay}, Kind: gen.ManufacturingTimeLogKind(l.Kind), StartedAt: l.StartedAt})
 		}
 	}
+	checks := r.checks[w.ID]
+	if checks == nil {
+		checks = []gen.ManufacturingWorkOrderCheck{}
+	}
+	out.Checks = &checks
 	out.LoggedMinutes = int64(logged / time.Minute)
 	out.ActualMinutes, out.DeviationMinutes, out.DeviationPercent = workOrderDuration(w, r.logs[w.ID], now)
 	return out

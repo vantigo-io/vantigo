@@ -35,6 +35,9 @@ const (
 	permOrdersManage = "manufacturing:orders-manage"
 	permShopFloor    = "manufacturing:shop-floor"
 	permCostsView    = "manufacturing:costs-view"
+	// permQualityManage closes deviations, which releases their own holds
+	// (manufacturing phase 2 M102).
+	permQualityManage = "manufacturing:quality-manage"
 )
 
 var permissions = []contracts.Permission{
@@ -62,6 +65,11 @@ var permissions = []contracts.Permission{
 		Key: permCostsView, Display: "See manufacturing costs",
 		Description: "See and write the work centers' cost rates, the standard costs and the rolled-up cost of a bill of materials.",
 		Category:    "Manufacturing", Sensitive: true, Delegable: false,
+	},
+	{
+		Key: permQualityManage, Display: "Manage quality",
+		Description: "Close deviations with their disposition, which releases the quarantine holds they put on lots, and release the holds of a deviation closed as scrap or return.",
+		Category:    "Manufacturing", Sensitive: false, Delegable: true,
 	},
 }
 

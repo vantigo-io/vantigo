@@ -49,9 +49,80 @@ type ManufacturingBomOperation struct {
 	Instructions    string
 }
 
+type ManufacturingBomOperationCheck struct {
+	ID               int64
+	OperationID      int64
+	Sequence         int32
+	Kind             string
+	Title            string
+	Instructions     string
+	Nominal          pgtype.Numeric
+	MinValue         pgtype.Numeric
+	MaxValue         pgtype.Numeric
+	Unit             *string
+	Frequency        string
+	QuarantineOnFail bool
+}
+
+type ManufacturingCheckPhoto struct {
+	ID                int64
+	WorkOrderID       int64
+	ObjectKey         string
+	ContentType       string
+	SizeBytes         int64
+	UploadedByUserID  *uuid.UUID
+	UploadedByDisplay *string
+	CreatedAt         time.Time
+}
+
+type ManufacturingCheckResult struct {
+	ID               int64
+	WorkOrderCheckID int64
+	Result           string
+	Value            pgtype.Numeric
+	Note             *string
+	PhotoID          *int64
+	UserID           *uuid.UUID
+	UserDisplay      string
+	RecordedAt       time.Time
+	SupersededBy     *int64
+}
+
 type ManufacturingCounter struct {
 	CounterName string
 	NextValue   int64
+}
+
+type ManufacturingDeviation struct {
+	ID              int64
+	Number          int64
+	Title           string
+	Description     string
+	OrderID         *int64
+	WorkOrderID     *int64
+	CheckResultID   *int64
+	LotID           *int64
+	LotNumber       *string
+	VariantID       *int32
+	Disposition     *string
+	Status          string
+	Quarantine      bool
+	HoldsReleased   bool
+	OpenedByUserID  *uuid.UUID
+	OpenedByDisplay string
+	OpenedAt        time.Time
+	ClosedByUserID  *uuid.UUID
+	ClosedByDisplay *string
+	ClosedAt        *time.Time
+	ClosingNote     *string
+	Revision        int32
+}
+
+type ManufacturingDeviationLot struct {
+	DeviationID int64
+	LotID       int64
+	LotNumber   string
+	HeldAt      time.Time
 }
 
 type ManufacturingMtoRequest struct {
@@ -65,6 +136,16 @@ type ManufacturingMtoRequest struct {
 	NextAttemptAt time.Time
 	CreatedAt     time.Time
 	DoneAt        *time.Time
+}
+
+type ManufacturingObjectDeletion struct {
+	ID            int64
+	ObjectKey     string
+	Attempts      int32
+	NextAttemptAt time.Time
+	ClaimedUntil  *time.Time
+	LastError     *string
+	CreatedAt     time.Time
 }
 
 type ManufacturingOrder struct {
@@ -243,6 +324,22 @@ type ManufacturingWorkOrder struct {
 	StartedAt       *time.Time
 	FinishedAt      *time.Time
 	Revision        int32
+}
+
+type ManufacturingWorkOrderCheck struct {
+	ID               int64
+	WorkOrderID      int64
+	TemplateID       *int64
+	Sequence         int32
+	Kind             string
+	Title            string
+	Instructions     string
+	Nominal          pgtype.Numeric
+	MinValue         pgtype.Numeric
+	MaxValue         pgtype.Numeric
+	Unit             *string
+	Frequency        string
+	QuarantineOnFail bool
 }
 
 type ManufacturingWorkOrderSlot struct {

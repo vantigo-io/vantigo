@@ -666,6 +666,12 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 			return 0, err
 		}
 	}
+	// The checks a production with good output waits for (M98).
+	if v.quantity.Sign() > 0 {
+		if err := productionGate(ctx, txq, o.ID); err != nil {
+			return 0, err
+		}
+	}
 	to := o.OutputLocationID
 	if v.to != nil {
 		to = *v.to
@@ -691,6 +697,11 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 	}
 	if len(newLots) > 0 {
 		if err := s.ensureOutputLots(ctx, tx, txq, ledger, o, lo.locked[o.VariantID], prep, p.ID, outs, newLots); err != nil {
+			return 0, err
+		}
+		// 7b. The open quarantining deviations of the order hold every
+		// lot it makes or adds to (M80, M86, M99).
+		if err := s.holdNewOutput(ctx, tx, txq, o.ID, outs, who, at); err != nil {
 			return 0, err
 		}
 	}
