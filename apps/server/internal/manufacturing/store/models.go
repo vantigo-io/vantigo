@@ -24,6 +24,7 @@ type ManufacturingBom struct {
 	Revision       int32
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	LotPattern     string
 }
 
 type ManufacturingBomLine struct {
@@ -100,6 +101,7 @@ type ManufacturingOrder struct {
 	Estimate            []byte
 	Actual              []byte
 	OriginCancelled     bool
+	LotPattern          string
 }
 
 type ManufacturingOrderComponent struct {
@@ -150,6 +152,26 @@ type ManufacturingProductionLine struct {
 	Consumed       pgtype.Numeric
 	Scrapped       pgtype.Numeric
 	FromLocationID *int64
+}
+
+type ManufacturingProductionLineLot struct {
+	ProductionID int64
+	ComponentID  int64
+	LotID        int64
+	LocationID   int64
+	LotNumber    string
+	Expiry       pgtype.Date
+	Consumed     pgtype.Numeric
+	Scrapped     pgtype.Numeric
+	AllowExpired bool
+}
+
+type ManufacturingProductionOutput struct {
+	ProductionID int64
+	LotID        int64
+	LotNumber    string
+	Serial       bool
+	Quantity     pgtype.Numeric
 }
 
 type ManufacturingTimeLog struct {

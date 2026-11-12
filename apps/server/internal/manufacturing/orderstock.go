@@ -271,6 +271,11 @@ func (s *server) confirmOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries
 	if err != nil {
 		return nil, err
 	}
+	// The lot pattern is the BoM's at confirm (manufacturing phase 2 M80).
+	if err := txq.SetOrderLotPattern(ctx, store.SetOrderLotPatternParams{ID: o.ID, LotPattern: bom.LotPattern}); err != nil {
+		return nil, err
+	}
+	o.LotPattern = bom.LotPattern
 	workOrders, err := snapshotWorkOrders(ctx, txq, o, bom)
 	if err != nil {
 		return nil, err

@@ -61,9 +61,9 @@ SELECT EXISTS (SELECT 1 FROM manufacturing.boms WHERE code = @code AND id <> @id
 
 -- name: InsertBom :one
 INSERT INTO manufacturing.boms (variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note,
-                                created_at, updated_at)
+                                lot_pattern, created_at, updated_at)
 VALUES (@variant_id, sqlc.narg(code), @output_quantity, @is_default, @make_to_order, @lead_time_days, @note,
-        @now::timestamptz, @now::timestamptz)
+        @lot_pattern, @now::timestamptz, @now::timestamptz)
 RETURNING *;
 
 -- name: UpdateBom :one
@@ -71,7 +71,7 @@ RETURNING *;
 -- variant and its default are not an edit's.
 UPDATE manufacturing.boms
 SET code = sqlc.narg(code), output_quantity = @output_quantity, make_to_order = @make_to_order,
-    lead_time_days = @lead_time_days, note = @note, revision = revision + 1, updated_at = @now::timestamptz
+    lead_time_days = @lead_time_days, note = @note, lot_pattern = @lot_pattern, revision = revision + 1, updated_at = @now::timestamptz
 WHERE id = @id
 RETURNING *;
 

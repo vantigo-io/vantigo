@@ -34,7 +34,7 @@ UPDATE manufacturing.orders SET
     status = CASE WHEN status = 'confirmed' THEN 'in_progress' ELSE status END,
     revision = revision + 1, updated_at = $3
 WHERE id = $4
-RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled
+RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern
 `
 
 type AddOrderProductionParams struct {
@@ -88,6 +88,7 @@ func (q *Queries) AddOrderProduction(ctx context.Context, arg AddOrderProduction
 		&i.Estimate,
 		&i.Actual,
 		&i.OriginCancelled,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -194,8 +195,23 @@ func (q *Queries) CountProductionsOfOrder(ctx context.Context, orderID int64) (i
 	return column_1, err
 }
 
+const countSerialOutputsOfOrder = `-- name: CountSerialOutputsOfOrder :one
+SELECT count(*)::int FROM manufacturing.production_outputs po
+JOIN manufacturing.productions p ON p.id = po.production_id
+WHERE p.order_id = $1 AND po.serial
+`
+
+// CountSerialOutputsOfOrder is how many serials the order's productions
+// made so far: the default serials of the next continue after them (M81).
+func (q *Queries) CountSerialOutputsOfOrder(ctx context.Context, orderID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countSerialOutputsOfOrder, orderID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getOrder = `-- name: GetOrder :one
-SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled FROM manufacturing.orders WHERE id = $1
+SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern FROM manufacturing.orders WHERE id = $1
 `
 
 func (q *Queries) GetOrder(ctx context.Context, id int64) (ManufacturingOrder, error) {
@@ -235,12 +251,13 @@ func (q *Queries) GetOrder(ctx context.Context, id int64) (ManufacturingOrder, e
 		&i.Estimate,
 		&i.Actual,
 		&i.OriginCancelled,
+		&i.LotPattern,
 	)
 	return i, err
 }
 
 const getOrderForUpdate = `-- name: GetOrderForUpdate :one
-SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled FROM manufacturing.orders WHERE id = $1 FOR UPDATE
+SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern FROM manufacturing.orders WHERE id = $1 FOR UPDATE
 `
 
 // GetOrderForUpdate is step 2 of the lock order (M26a), after LockVariants.
@@ -281,6 +298,7 @@ func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (Manufacturin
 		&i.Estimate,
 		&i.Actual,
 		&i.OriginCancelled,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -339,7 +357,7 @@ VALUES (
     $9, $10, $11, $12, $13, $14, $15,
     $16, $17, $18, $19, $20, $21, $22,
     $23, $23)
-RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled
+RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern
 `
 
 type InsertOrderParams struct {
@@ -429,6 +447,7 @@ func (q *Queries) InsertOrder(ctx context.Context, arg InsertOrderParams) (Manuf
 		&i.Estimate,
 		&i.Actual,
 		&i.OriginCancelled,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -589,6 +608,67 @@ func (q *Queries) InsertProductionLine(ctx context.Context, arg InsertProduction
 	return err
 }
 
+const insertProductionLineLot = `-- name: InsertProductionLineLot :exec
+INSERT INTO manufacturing.production_line_lots (production_id, component_id, lot_id, location_id, lot_number, expiry, consumed, scrapped, allow_expired)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (production_id, component_id, lot_id, location_id) DO UPDATE
+SET consumed = manufacturing.production_line_lots.consumed + EXCLUDED.consumed,
+    scrapped = manufacturing.production_line_lots.scrapped + EXCLUDED.scrapped,
+    allow_expired = manufacturing.production_line_lots.allow_expired OR EXCLUDED.allow_expired
+`
+
+type InsertProductionLineLotParams struct {
+	ProductionID int64
+	ComponentID  int64
+	LotID        int64
+	LocationID   int64
+	LotNumber    string
+	Expiry       pgtype.Date
+	Consumed     pgtype.Numeric
+	Scrapped     pgtype.Numeric
+	AllowExpired bool
+}
+
+func (q *Queries) InsertProductionLineLot(ctx context.Context, arg InsertProductionLineLotParams) error {
+	_, err := q.db.Exec(ctx, insertProductionLineLot,
+		arg.ProductionID,
+		arg.ComponentID,
+		arg.LotID,
+		arg.LocationID,
+		arg.LotNumber,
+		arg.Expiry,
+		arg.Consumed,
+		arg.Scrapped,
+		arg.AllowExpired,
+	)
+	return err
+}
+
+const insertProductionOutput = `-- name: InsertProductionOutput :exec
+INSERT INTO manufacturing.production_outputs (production_id, lot_id, lot_number, serial, quantity)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (production_id, lot_id) DO UPDATE SET quantity = manufacturing.production_outputs.quantity + EXCLUDED.quantity
+`
+
+type InsertProductionOutputParams struct {
+	ProductionID int64
+	LotID        int64
+	LotNumber    string
+	Serial       bool
+	Quantity     pgtype.Numeric
+}
+
+func (q *Queries) InsertProductionOutput(ctx context.Context, arg InsertProductionOutputParams) error {
+	_, err := q.db.Exec(ctx, insertProductionOutput,
+		arg.ProductionID,
+		arg.LotID,
+		arg.LotNumber,
+		arg.Serial,
+		arg.Quantity,
+	)
+	return err
+}
+
 const listOrderComponents = `-- name: ListOrderComponents :many
 SELECT id, order_id, variant_id, sku, product_name, unit, required, reserved, consumed, scrapped, operation_id, standard_cost, sort_order, added, note FROM manufacturing.order_components WHERE order_id = $1 ORDER BY sort_order, id
 `
@@ -663,7 +743,7 @@ func (q *Queries) ListOrderEvents(ctx context.Context, orderID int64) ([]Manufac
 
 const listOrders = `-- name: ListOrders :many
 WITH filtered AS (
-    SELECT o.id, o.number, o.suffix, o.variant_id, o.bom_id, o.quantity, o.produced, o.output_scrap, o.site_id, o.component_location_id, o.output_location_id, o.due_date, o.planned_start, o.planned_finish, o.priority, o.responsible_user_id, o.note, o.origin_kind, o.origin_order_id, o.origin_line_id, o.origin_reference, o.parent_order_id, o.backorder_of_id, o.status, o.confirmed_at, o.closed_at, o.revision, o.created_at, o.updated_at, o.requested_start, o.estimate, o.actual, o.origin_cancelled,
+    SELECT o.id, o.number, o.suffix, o.variant_id, o.bom_id, o.quantity, o.produced, o.output_scrap, o.site_id, o.component_location_id, o.output_location_id, o.due_date, o.planned_start, o.planned_finish, o.priority, o.responsible_user_id, o.note, o.origin_kind, o.origin_order_id, o.origin_line_id, o.origin_reference, o.parent_order_id, o.backorder_of_id, o.status, o.confirmed_at, o.closed_at, o.revision, o.created_at, o.updated_at, o.requested_start, o.estimate, o.actual, o.origin_cancelled, o.lot_pattern,
            CASE WHEN o.status NOT IN ('confirmed', 'in_progress') THEN ''
                 WHEN NOT EXISTS (SELECT 1 FROM manufacturing.order_components c
                                  WHERE c.order_id = o.id AND c.required - c.consumed - c.scrapped > c.reserved) THEN 'reserved'
@@ -685,7 +765,7 @@ WITH filtered AS (
       AND ($14::uuid IS NULL OR o.responsible_user_id = $14)
       AND (NOT $15::boolean OR o.number = $16 OR o.variant_id = ANY($17::int[]))
 )
-SELECT f.id, f.number, f.suffix, f.variant_id, f.bom_id, f.quantity, f.produced, f.output_scrap, f.site_id, f.component_location_id, f.output_location_id, f.due_date, f.planned_start, f.planned_finish, f.priority, f.responsible_user_id, f.note, f.origin_kind, f.origin_order_id, f.origin_line_id, f.origin_reference, f.parent_order_id, f.backorder_of_id, f.status, f.confirmed_at, f.closed_at, f.revision, f.created_at, f.updated_at, f.requested_start, f.estimate, f.actual, f.origin_cancelled, f.reservation_status, count(*) OVER ()::int AS total
+SELECT f.id, f.number, f.suffix, f.variant_id, f.bom_id, f.quantity, f.produced, f.output_scrap, f.site_id, f.component_location_id, f.output_location_id, f.due_date, f.planned_start, f.planned_finish, f.priority, f.responsible_user_id, f.note, f.origin_kind, f.origin_order_id, f.origin_line_id, f.origin_reference, f.parent_order_id, f.backorder_of_id, f.status, f.confirmed_at, f.closed_at, f.revision, f.created_at, f.updated_at, f.requested_start, f.estimate, f.actual, f.origin_cancelled, f.lot_pattern, f.reservation_status, count(*) OVER ()::int AS total
 FROM filtered f
 WHERE $1::text IS NULL OR f.reservation_status = $1
 ORDER BY
@@ -750,6 +830,7 @@ type ListOrdersRow struct {
 	Estimate            []byte
 	Actual              []byte
 	OriginCancelled     bool
+	LotPattern          string
 	ReservationStatus   string
 	Total               int32
 }
@@ -818,6 +899,7 @@ func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]ListO
 			&i.Estimate,
 			&i.Actual,
 			&i.OriginCancelled,
+			&i.LotPattern,
 			&i.ReservationStatus,
 			&i.Total,
 		); err != nil {
@@ -905,6 +987,21 @@ func (q *Queries) NextComponentSortOrder(ctx context.Context, orderID int64) (in
 	return column_1, err
 }
 
+const nextLotCounter = `-- name: NextLotCounter :one
+INSERT INTO manufacturing.counters (counter_name, next_value) VALUES ($1, 2)
+ON CONFLICT (counter_name) DO UPDATE SET next_value = manufacturing.counters.next_value + 1
+RETURNING (next_value - 1)::bigint AS number
+`
+
+// NextLotCounter allocates the next {N} of a lot pattern's rendered prefix
+// under the counter row's lock (manufacturing phase 2 M80), from 1.
+func (q *Queries) NextLotCounter(ctx context.Context, counterName string) (int64, error) {
+	row := q.db.QueryRow(ctx, nextLotCounter, counterName)
+	var number int64
+	err := row.Scan(&number)
+	return number, err
+}
+
 const nextOrderNumber = `-- name: NextOrderNumber :one
 
 INSERT INTO manufacturing.counters (counter_name, next_value) VALUES ('orders', 2)
@@ -924,7 +1021,7 @@ func (q *Queries) NextOrderNumber(ctx context.Context) (int64, error) {
 }
 
 const orderLinks = `-- name: OrderLinks :many
-SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled FROM manufacturing.orders WHERE backorder_of_id = $1 OR parent_order_id = $1 ORDER BY id
+SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern FROM manufacturing.orders WHERE backorder_of_id = $1 OR parent_order_id = $1 ORDER BY id
 `
 
 // OrderLinks is the orders made from id: its backorders (backorder_of_id)
@@ -972,6 +1069,7 @@ func (q *Queries) OrderLinks(ctx context.Context, id *int64) ([]ManufacturingOrd
 			&i.Estimate,
 			&i.Actual,
 			&i.OriginCancelled,
+			&i.LotPattern,
 		); err != nil {
 			return nil, err
 		}
@@ -1013,7 +1111,7 @@ func (q *Queries) OrderStats(ctx context.Context, arg OrderStatsParams) (OrderSt
 }
 
 const ordersByIDs = `-- name: OrdersByIDs :many
-SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled FROM manufacturing.orders WHERE id = ANY($1::bigint[]) ORDER BY id
+SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern FROM manufacturing.orders WHERE id = ANY($1::bigint[]) ORDER BY id
 `
 
 func (q *Queries) OrdersByIDs(ctx context.Context, ids []int64) ([]ManufacturingOrder, error) {
@@ -1059,6 +1157,7 @@ func (q *Queries) OrdersByIDs(ctx context.Context, ids []int64) ([]Manufacturing
 			&i.Estimate,
 			&i.Actual,
 			&i.OriginCancelled,
+			&i.LotPattern,
 		); err != nil {
 			return nil, err
 		}
@@ -1068,6 +1167,19 @@ func (q *Queries) OrdersByIDs(ctx context.Context, ids []int64) ([]Manufacturing
 		return nil, err
 	}
 	return items, nil
+}
+
+const peekLotCounter = `-- name: PeekLotCounter :one
+SELECT COALESCE((SELECT next_value FROM manufacturing.counters WHERE counter_name = $1), 1)::bigint AS number
+`
+
+// PeekLotCounter is the {N} a prefix would hand out next, for the
+// production draft's preview; 1 when none was handed out.
+func (q *Queries) PeekLotCounter(ctx context.Context, counterName string) (int64, error) {
+	row := q.db.QueryRow(ctx, peekLotCounter, counterName)
+	var number int64
+	err := row.Scan(&number)
+	return number, err
 }
 
 const productionByClientRequest = `-- name: ProductionByClientRequest :one
@@ -1091,6 +1203,102 @@ func (q *Queries) ProductionByClientRequest(ctx context.Context, clientRequestID
 		&i.PostedAt,
 	)
 	return i, err
+}
+
+const productionIDsOfOrder = `-- name: ProductionIDsOfOrder :many
+SELECT id FROM manufacturing.productions WHERE order_id = $1 ORDER BY id
+`
+
+func (q *Queries) ProductionIDsOfOrder(ctx context.Context, orderID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, productionIDsOfOrder, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const productionLineLots = `-- name: ProductionLineLots :many
+SELECT l.production_id, l.component_id, l.lot_id, l.location_id, l.lot_number, l.expiry, l.consumed, l.scrapped, l.allow_expired
+FROM manufacturing.production_line_lots l JOIN manufacturing.order_components c ON c.id = l.component_id
+WHERE l.production_id = ANY($1::bigint[])
+ORDER BY l.production_id, c.sort_order, c.id, l.lot_number, l.location_id
+`
+
+// ProductionLineLots is the lots productions consumed, by component line's
+// order then the lot's number.
+func (q *Queries) ProductionLineLots(ctx context.Context, productionIds []int64) ([]ManufacturingProductionLineLot, error) {
+	rows, err := q.db.Query(ctx, productionLineLots, productionIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ManufacturingProductionLineLot
+	for rows.Next() {
+		var i ManufacturingProductionLineLot
+		if err := rows.Scan(
+			&i.ProductionID,
+			&i.ComponentID,
+			&i.LotID,
+			&i.LocationID,
+			&i.LotNumber,
+			&i.Expiry,
+			&i.Consumed,
+			&i.Scrapped,
+			&i.AllowExpired,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const productionOutputs = `-- name: ProductionOutputs :many
+SELECT production_id, lot_id, lot_number, serial, quantity FROM manufacturing.production_outputs
+WHERE production_id = ANY($1::bigint[])
+ORDER BY production_id, lot_number
+`
+
+// ProductionOutputs is the lots productions made, by production then number.
+func (q *Queries) ProductionOutputs(ctx context.Context, productionIds []int64) ([]ManufacturingProductionOutput, error) {
+	rows, err := q.db.Query(ctx, productionOutputs, productionIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ManufacturingProductionOutput
+	for rows.Next() {
+		var i ManufacturingProductionOutput
+		if err := rows.Scan(
+			&i.ProductionID,
+			&i.LotID,
+			&i.LotNumber,
+			&i.Serial,
+			&i.Quantity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setComponentRequired = `-- name: SetComponentRequired :exec
@@ -1124,6 +1332,22 @@ func (q *Queries) SetComponentReserved(ctx context.Context, arg SetComponentRese
 	return err
 }
 
+const setOrderLotPattern = `-- name: SetOrderLotPattern :exec
+UPDATE manufacturing.orders SET lot_pattern = $1 WHERE id = $2
+`
+
+type SetOrderLotPatternParams struct {
+	LotPattern string
+	ID         int64
+}
+
+// SetOrderLotPattern keeps the BoM's lot pattern on the order at confirm
+// (manufacturing phase 2 M80).
+func (q *Queries) SetOrderLotPattern(ctx context.Context, arg SetOrderLotPatternParams) error {
+	_, err := q.db.Exec(ctx, setOrderLotPattern, arg.LotPattern, arg.ID)
+	return err
+}
+
 const setOrderStatus = `-- name: SetOrderStatus :one
 UPDATE manufacturing.orders SET
     status = $1,
@@ -1131,7 +1355,7 @@ UPDATE manufacturing.orders SET
     closed_at = COALESCE($3, closed_at),
     revision = revision + 1, updated_at = $4
 WHERE id = $5
-RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled
+RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern
 `
 
 type SetOrderStatusParams struct {
@@ -1187,6 +1411,7 @@ func (q *Queries) SetOrderStatus(ctx context.Context, arg SetOrderStatusParams) 
 		&i.Estimate,
 		&i.Actual,
 		&i.OriginCancelled,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -1206,7 +1431,7 @@ func (q *Queries) SetProductionMovement(ctx context.Context, arg SetProductionMo
 }
 
 const touchOrder = `-- name: TouchOrder :one
-UPDATE manufacturing.orders SET revision = revision + 1, updated_at = $1 WHERE id = $2 RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled
+UPDATE manufacturing.orders SET revision = revision + 1, updated_at = $1 WHERE id = $2 RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern
 `
 
 type TouchOrderParams struct {
@@ -1252,6 +1477,7 @@ func (q *Queries) TouchOrder(ctx context.Context, arg TouchOrderParams) (Manufac
 		&i.Estimate,
 		&i.Actual,
 		&i.OriginCancelled,
+		&i.LotPattern,
 	)
 	return i, err
 }
@@ -1265,7 +1491,7 @@ UPDATE manufacturing.orders SET
     requested_start = $10,
     revision = revision + 1, updated_at = $11
 WHERE id = $12
-RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled
+RETURNING id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern
 `
 
 type UpdateOrderParams struct {
@@ -1335,6 +1561,7 @@ func (q *Queries) UpdateOrder(ctx context.Context, arg UpdateOrderParams) (Manuf
 		&i.Estimate,
 		&i.Actual,
 		&i.OriginCancelled,
+		&i.LotPattern,
 	)
 	return i, err
 }

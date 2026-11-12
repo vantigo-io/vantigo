@@ -388,8 +388,11 @@ func (s *fakeStock) onLocations(hook func()) {
 }
 
 // Lots is layer M's read; no tracked variant exists in this layer.
-func (s *fakeStock) Lots(context.Context, []int32, int64) ([]contracts.StockLot, error) {
-	return nil, nil
+func (s *fakeStock) Lots(ctx context.Context, ids []int32, site int64) ([]contracts.StockLot, error) {
+	lockedContractCalls.note(ctx, "fake Stock.Lots")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.siteLots(ids, site), nil
 }
 
 func (s *fakeStock) SiteLocations(ctx context.Context, site int64) ([]contracts.StockSiteLocation, error) {

@@ -41,6 +41,9 @@ components:
                     items:
                         $ref: '#/components/schemas/ManufacturingBomLine'
                     type: array
+                lotPattern:
+                    description: The pattern the number of the lot its productions make is rendered from (manufacturing phase 2 M80).
+                    type: string
                 makeToOrder:
                     type: boolean
                 note:
@@ -83,6 +86,7 @@ components:
                 - lines
                 - createdAt
                 - updatedAt
+                - lotPattern
             type: object
         ManufacturingBomInput:
             additionalProperties: false
@@ -107,6 +111,11 @@ components:
                         $ref: '#/components/schemas/ManufacturingBomLineInput'
                     maxItems: 200
                     type: array
+                lotPattern:
+                    description: "The number of the lot its productions make, 1–40 characters (manufacturing phase 2 M80): {MO} the order's number, {YYYY} {YY} {MM} {DD} and {YYMMDD} the production date, {SKU} the product's SKU, {N} a counter per rendered prefix; anything else is literal. A sample render must be a lot number — 1–20 characters A–Z, a–z, 0–9 and . _ / - (lot_pattern_invalid). Default {MO}: every production of an order adds to one lot; L{YYMMDD}-{N} makes a lot per production. An update that leaves it out keeps the stored pattern."
+                    maxLength: 40
+                    minLength: 1
+                    type: string
                 makeToOrder:
                     description: Default false.
                     type: boolean
@@ -397,6 +406,11 @@ components:
                         $ref: '#/components/schemas/ManufacturingBomLineInput'
                     maxItems: 200
                     type: array
+                lotPattern:
+                    description: "The number of the lot its productions make, 1–40 characters (manufacturing phase 2 M80): {MO} the order's number, {YYYY} {YY} {MM} {DD} and {YYMMDD} the production date, {SKU} the product's SKU, {N} a counter per rendered prefix; anything else is literal. A sample render must be a lot number — 1–20 characters A–Z, a–z, 0–9 and . _ / - (lot_pattern_invalid). Default {MO}: every production of an order adds to one lot; L{YYMMDD}-{N} makes a lot per production. An update that leaves it out keeps the stored pattern."
+                    maxLength: 40
+                    minLength: 1
+                    type: string
                 makeToOrder:
                     description: Default false.
                     type: boolean
@@ -652,6 +666,35 @@ components:
                 - quality
                 - other
             type: string
+        ManufacturingDraftLot:
+            additionalProperties: false
+            description: One lot the production draft proposes a tracked component line take from (manufacturing phase 2 M82), FEFO; quantity is what it takes there.
+            properties:
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                fullCode:
+                    type: string
+                locationId:
+                    format: int64
+                    type: integer
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    type: string
+                quantity:
+                    description: Exact decimal.
+                    type: string
+            required:
+                - lotId
+                - lotNumber
+                - expiry
+                - locationId
+                - fullCode
+                - quantity
+            type: object
         ManufacturingFinishInput:
             additionalProperties: false
             description: Finishing a work order (M29).
@@ -719,6 +762,55 @@ components:
                     type: array
             required:
                 - items
+            type: object
+        ManufacturingLotChoice:
+            additionalProperties: false
+            description: A lot of the component at a location of the order's site, as Change lot offers it, in FEFO order (manufacturing phase 2 M65, M82), so neither the order page nor the shop floor reads Inventory for the picker.
+            properties:
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                expired:
+                    description: Whether the lot's expiry lies before today in the workspace's zone.
+                    type: boolean
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                fullCode:
+                    type: string
+                locationId:
+                    format: int64
+                    type: integer
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    type: string
+                quantity:
+                    description: What lies there, exact decimal.
+                    type: string
+                serial:
+                    type: boolean
+                status:
+                    description: available, quarantine or blocked, from the lot's holds.
+                    enum:
+                        - available
+                        - quarantine
+                        - blocked
+                    type: string
+            required:
+                - lotId
+                - lotNumber
+                - expiry
+                - bestBefore
+                - locationId
+                - fullCode
+                - quantity
+                - status
+                - expired
+                - serial
             type: object
         ManufacturingMeta:
             additionalProperties: false
@@ -842,6 +934,9 @@ components:
                     format: int32
                     nullable: true
                     type: integer
+                lotPattern:
+                    description: The lot pattern of the order's BoM, kept at confirm (manufacturing phase 2 M80); a draft shows the default.
+                    type: string
                 note:
                     type: string
                 number:
@@ -957,6 +1052,7 @@ components:
                 - requestedStart
                 - requestedStartDefault
                 - lateByDays
+                - lotPattern
             type: object
         ManufacturingOrderComponent:
             additionalProperties: false
@@ -1026,6 +1122,50 @@ components:
                 - added
                 - note
                 - sortOrder
+            type: object
+        ManufacturingOrderComponentLots:
+            additionalProperties: false
+            description: The lots the order's productions took one component line from, each with what they consumed and scrapped of it together.
+            properties:
+                componentId:
+                    format: int64
+                    type: integer
+                lots:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderConsumedLot'
+                    type: array
+                variant:
+                    $ref: '#/components/schemas/ManufacturingVariantRef'
+            required:
+                - componentId
+                - variant
+                - lots
+            type: object
+        ManufacturingOrderConsumedLot:
+            additionalProperties: false
+            description: One lot a component line was taken from, over the order's productions.
+            properties:
+                consumed:
+                    description: Exact decimal.
+                    type: string
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    type: string
+                scrapped:
+                    description: Exact decimal.
+                    type: string
+            required:
+                - lotId
+                - lotNumber
+                - expiry
+                - consumed
+                - scrapped
             type: object
         ManufacturingOrderCost:
             additionalProperties: false
@@ -1215,6 +1355,22 @@ components:
                 - produced
                 - variantId
             type: object
+        ManufacturingOrderLots:
+            additionalProperties: false
+            description: The lots an order's productions made and consumed (manufacturing phase 2 M83), for the order page's Lots tab.
+            properties:
+                components:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderComponentLots'
+                    type: array
+                outputs:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingOrderOutputLot'
+                    type: array
+            required:
+                - outputs
+                - components
+            type: object
         ManufacturingOrderOriginInfo:
             additionalProperties: false
             description: Where the order came from (M17).
@@ -1248,6 +1404,31 @@ components:
                 - lineId
                 - reference
                 - cancelled
+            type: object
+        ManufacturingOrderOutputLot:
+            additionalProperties: false
+            description: A lot the order's productions put good output in, with what they put there together.
+            properties:
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    type: string
+                productions:
+                    description: How many productions put output in it.
+                    format: int32
+                    type: integer
+                quantity:
+                    description: Exact decimal.
+                    type: string
+                serial:
+                    type: boolean
+            required:
+                - lotId
+                - lotNumber
+                - serial
+                - quantity
+                - productions
             type: object
         ManufacturingOrderPage:
             additionalProperties: false
@@ -1454,6 +1635,48 @@ components:
                 - sales_order
                 - parent
             type: string
+        ManufacturingOutputLotInput:
+            additionalProperties: false
+            description: The lot a production of a lot-tracked product puts its good output in (manufacturing phase 2 M80). Every field is optional. The number defaults to the order's lot pattern rendered on the production date; a number the product has already names that lot, and only the dates sent are compared with it (lot_dates_differ). The production date defaults to today; expiry and bestBefore to the variant's offsets from it, when the lot is made.
+            properties:
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                number:
+                    description: 1–20 characters A–Z, a–z, 0–9 and . _ / -.
+                    maxLength: 20
+                    nullable: true
+                    type: string
+                productionDate:
+                    format: date
+                    nullable: true
+                    type: string
+                supplierLot:
+                    maxLength: 40
+                    nullable: true
+                    type: string
+            type: object
+        ManufacturingOutputSerialsInput:
+            additionalProperties: false
+            description: The serial numbers a production of a serial product gives its good output, one per unit (manufacturing phase 2 M81) — first, counted up by its trailing digits keeping their width, or numbers, one per unit. Absent, they continue from the order's serials so far, from {MO}-0001.
+            properties:
+                first:
+                    maxLength: 20
+                    nullable: true
+                    type: string
+                numbers:
+                    items:
+                        maxLength: 20
+                        type: string
+                    maxItems: 500
+                    nullable: true
+                    type: array
+            type: object
         ManufacturingOverviewNode:
             additionalProperties: false
             description: 'One node of the exploded BoM (M15): the root is the BoM''s variant; a made node recurses through its default active BoM.'
@@ -1603,7 +1826,7 @@ components:
                 - urgent
             type: string
         ManufacturingProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant''s default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation''s work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM''s variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order''s site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft''s change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center''s calendar within 365 days of the start, M35), period_too_long (400: a report''s to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), Inventory''s refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused; lines name the component lines) and dependency_unavailable (503). A line''s codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant''s default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation''s work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM''s variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order''s site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft''s change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center''s calendar within 365 days of the start, M35), period_too_long (400: a report''s to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM''s lot pattern whose sample render is no lot number, or a production''s rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line''s lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product''s good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), Inventory''s refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, serial_quantity, lot_expired, lot_blocked, lot_dates_differ; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line''s codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.'
             properties:
                 code:
                     nullable: true
@@ -1664,6 +1887,10 @@ components:
                     description: The line's position in the request, from 0.
                     format: int32
                     type: integer
+                lotId:
+                    description: The lot the line failed at, for a refusal of a production's lot (manufacturing phase 2 M82).
+                    format: int64
+                    type: integer
             required:
                 - index
                 - code
@@ -1705,6 +1932,11 @@ components:
                     type: integer
                 orderNumber:
                     type: string
+                outputLots:
+                    description: The lots the good output went into; empty for an untracked product.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingProductionOutput'
+                    type: array
                 outputScrap:
                     description: Finished units discarded.
                     type: string
@@ -1736,6 +1968,7 @@ components:
                 - postedByDisplay
                 - postedAt
                 - lines
+                - outputLots
             type: object
         ManufacturingProductionCostGroup:
             additionalProperties: false
@@ -1863,6 +2096,8 @@ components:
                     items:
                         $ref: '#/components/schemas/ManufacturingProductionDraftLine'
                     type: array
+                output:
+                    $ref: '#/components/schemas/ManufacturingProductionDraftOutput'
                 outputScrap:
                     description: The output scrap asked for.
                     type: string
@@ -1877,6 +2112,7 @@ components:
                 - outputScrap
                 - toLocationId
                 - lines
+                - output
             type: object
         ManufacturingProductionDraftLine:
             additionalProperties: false
@@ -1885,6 +2121,16 @@ components:
                 componentId:
                     format: int64
                     type: integer
+                lotChoices:
+                    description: For a tracked component, every lot of it at the site's active locations, FEFO, for Change lot; empty otherwise.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingLotChoice'
+                    type: array
+                lots:
+                    description: For a tracked component, the lots proposed for proposed, FEFO from the order's component location when it has one, else the whole site (manufacturing phase 2 M82); empty otherwise.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingDraftLot'
+                    type: array
                 proposed:
                     description: required × (quantity + outputScrap) / order quantity, rounded half-up to three decimals.
                     type: string
@@ -1897,6 +2143,11 @@ components:
                 reserved:
                     description: Reserved for the line.
                     type: string
+                short:
+                    description: What the proposed lots do not cover of proposed, exact decimal; 0 when they cover it or the component is not tracked.
+                    type: string
+                tracking:
+                    $ref: '#/components/schemas/ManufacturingTracking'
                 variant:
                     $ref: '#/components/schemas/ManufacturingVariantRef'
             required:
@@ -1906,6 +2157,44 @@ components:
                 - remaining
                 - reserved
                 - proposed
+                - tracking
+                - lots
+                - short
+                - lotChoices
+            type: object
+        ManufacturingProductionDraftOutput:
+            additionalProperties: false
+            description: What a production of the draft's quantity makes (manufacturing phase 2 M80, M81). For a lot-tracked product, lotNumber is the number the order's pattern renders today — {N} shown as the next the counter hands out — and expiry and bestBefore the dates the variant's offsets give from today; for a serial product, serialFirst is the first default serial, continuing from the order's serials so far.
+            properties:
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                lotNumber:
+                    nullable: true
+                    type: string
+                lotPattern:
+                    type: string
+                productionDate:
+                    format: date
+                    type: string
+                serialFirst:
+                    nullable: true
+                    type: string
+                tracking:
+                    $ref: '#/components/schemas/ManufacturingTracking'
+            required:
+                - tracking
+                - lotPattern
+                - lotNumber
+                - productionDate
+                - expiry
+                - bestBefore
+                - serialFirst
             type: object
         ManufacturingProductionInput:
             additionalProperties: false
@@ -1925,9 +2214,17 @@ components:
                         $ref: '#/components/schemas/ManufacturingProductionLineInput'
                     maxItems: 400
                     type: array
+                outputLot:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingOutputLotInput'
+                    nullable: true
                 outputScrap:
                     description: Finished units produced and discarded, exact decimal, 0 or more; default 0.
                     type: string
+                outputSerials:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingOutputSerialsInput'
+                    nullable: true
                 quantity:
                     description: Good output, exact decimal, 0 or more; 0 only with consumption, scrap or output scrap.
                     type: string
@@ -1956,6 +2253,11 @@ components:
                     format: int64
                     nullable: true
                     type: integer
+                lots:
+                    description: For a tracked component, the lots it was taken from; empty otherwise.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingProductionLineLot'
+                    type: array
                 scrapped:
                     description: Exact decimal.
                     type: string
@@ -1967,6 +2269,7 @@ components:
                 - consumed
                 - scrapped
                 - fromLocationId
+                - lots
             type: object
         ManufacturingProductionLineInput:
             additionalProperties: false
@@ -1984,12 +2287,100 @@ components:
                     format: int64
                     nullable: true
                     type: integer
+                lots:
+                    description: For a tracked component, the lots it takes from, each lot and location once, summing to the line's consumed and scrap (picks_mismatch); fromLocationId is then ignored. Left out, Inventory takes the lots FEFO under its own locks at the line's location (AutoLot) and the production answers them (manufacturing phase 2 M82).
+                    items:
+                        $ref: '#/components/schemas/ManufacturingProductionLotInput'
+                    maxItems: 100
+                    nullable: true
+                    type: array
+                lotsProposed:
+                    description: The lots are the production draft's proposal as it was, not a person's choice. Refused insufficient_stock or lot_blocked on them, the post proposes the line's lots again once from the stock then and posts again (manufacturing phase 2 M65a).
+                    type: boolean
                 scrap:
                     description: 'Exact decimal, 0 or more: lost, consumed with no output.'
                     nullable: true
                     type: string
             required:
                 - componentId
+            type: object
+        ManufacturingProductionLineLot:
+            additionalProperties: false
+            description: What a production consumed and scrapped of one lot at one location (manufacturing phase 2 M82).
+            properties:
+                allowExpired:
+                    type: boolean
+                consumed:
+                    description: Exact decimal.
+                    type: string
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                locationId:
+                    format: int64
+                    type: integer
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    type: string
+                scrapped:
+                    description: Exact decimal.
+                    type: string
+            required:
+                - lotId
+                - lotNumber
+                - expiry
+                - locationId
+                - consumed
+                - scrapped
+                - allowExpired
+            type: object
+        ManufacturingProductionLotInput:
+            additionalProperties: false
+            description: What a production consumed and scrapped of one lot at one location, for a tracked component line (manufacturing phase 2 M82).
+            properties:
+                allowExpired:
+                    description: The person chose this lot although it is expired; honoured only for a poster holding inventory:expired-override, else lot_expired.
+                    type: boolean
+                consumed:
+                    description: Exact decimal, 0 or more, at most three decimals; default 0.
+                    nullable: true
+                    type: string
+                locationId:
+                    format: int64
+                    type: integer
+                lotId:
+                    format: int64
+                    type: integer
+                scrapped:
+                    description: Exact decimal, 0 or more, at most three decimals; default 0.
+                    nullable: true
+                    type: string
+            required:
+                - lotId
+                - locationId
+            type: object
+        ManufacturingProductionOutput:
+            additionalProperties: false
+            description: A lot a production put its good output in (manufacturing phase 2 M80, M81).
+            properties:
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    type: string
+                quantity:
+                    description: Exact decimal.
+                    type: string
+                serial:
+                    type: boolean
+            required:
+                - lotId
+                - lotNumber
+                - serial
+                - quantity
             type: object
         ManufacturingRescheduleInput:
             additionalProperties: false
@@ -2721,6 +3112,13 @@ components:
             required:
                 - items
             type: object
+        ManufacturingTracking:
+            description: How a variant's stock is tracked (manufacturing phase 2 M49).
+            enum:
+                - none
+                - lot
+                - serial
+            type: string
         ManufacturingUtilisationReport:
             additionalProperties: false
             description: 'The work-center utilisation report (M42): per work center and ISO week, the days of the week inside the period.'
@@ -4574,6 +4972,42 @@ paths:
                 "404":
                     description: Not Found — no such manufacturing order. The body is empty.
             summary: List a manufacturing order's history
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/orders/{id}/lots:
+        get:
+            description: The lots the order's productions made and consumed (manufacturing phase 2 M83), from Manufacturing's own records.
+            operationId: getManufacturingOrderLots
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingOrderLots'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such manufacturing order. The body is empty.
+            summary: List the lots a manufacturing order made and consumed
             tags:
                 - Manufacturing
             x-vantigo-access: permission:manufacturing:access

@@ -55,7 +55,7 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 	out := gen.ManufacturingBom{
 		Id: b.ID, Variant: refOf(entries, b.VariantID, costs), Code: b.Code,
 		OutputQuantity: numericText(b.OutputQuantity, quantityPlaces), IsDefault: b.IsDefault, MakeToOrder: b.MakeToOrder,
-		LeadTimeDays: b.LeadTimeDays, Note: b.Note, Status: gen.ManufacturingStatus(b.Status), Revision: b.Revision,
+		LeadTimeDays: b.LeadTimeDays, Note: b.Note, LotPattern: b.LotPattern, Status: gen.ManufacturingStatus(b.Status), Revision: b.Revision,
 		Operations: make([]gen.ManufacturingBomOperation, 0, len(ops)), Lines: make([]gen.ManufacturingBomLine, 0, len(lines)),
 		CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt,
 	}

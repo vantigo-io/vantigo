@@ -3,6 +3,7 @@ package integration_test
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 	"testing"
 
@@ -39,7 +40,15 @@ type stockInstallation struct {
 
 func newStockInstallation(t *testing.T, opts ...modtest.Option) stockInstallation {
 	t.Helper()
-	h, c, _, _ := installInvoices(t, []string{modCustomers, modProducts, modInventory, modInvoices, modOrders}, deliveryPermissions, opts...)
+	return newStockInstallationOf(t, nil, nil, opts...)
+}
+
+// newStockInstallationOf is newStockInstallation with more modules composed
+// after Orders, and more permissions for its caller.
+func newStockInstallationOf(t *testing.T, more, perms []string, opts ...modtest.Option) stockInstallation {
+	t.Helper()
+	names := append([]string{modCustomers, modProducts, modInventory, modInvoices, modOrders}, more...)
+	h, c, _, _ := installInvoices(t, names, append(slices.Clone(deliveryPermissions), perms...), opts...)
 	standard := taxCategory(t, c, "Standard", 0.25, 1)
 	food := taxCategory(t, c, "Næringsmidler", 0.15, 2)
 	o := ordersInstallation{
