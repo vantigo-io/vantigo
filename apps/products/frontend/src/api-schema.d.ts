@@ -665,7 +665,7 @@ export interface components {
             rate: number;
         };
         /**
-         * @description How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
+         * @description How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. A change of the stored mode is refused with 409 *Tracking held* while the variant holds stock, reservations or stock in transit.
          * @enum {string}
          */
         VariantTracking: "none" | "lot" | "serial";

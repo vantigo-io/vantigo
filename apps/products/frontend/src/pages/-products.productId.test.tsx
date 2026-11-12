@@ -208,6 +208,78 @@ describe("ProductDetailsPage variants", () => {
   });
 });
 
+describe("ProductDetailsPage variant tracking", () => {
+  afterEach(() => {
+    cleanup();
+    notifications.clean();
+    vi.unstubAllGlobals();
+  });
+
+  // Answers the product, and the variant's PUT with put (recording its body).
+  const stubTracking = (productResponse: unknown, put: Response) => {
+    const bodies: unknown[] = [];
+    stubFetch((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url) === "/api/v1/products/1" && (init?.method ?? "GET") === "GET") {
+        return Promise.resolve(jsonResponse(200, productResponse));
+      }
+      if (String(url) === "/api/v1/products/1/variants/1" && init?.method === "PUT") {
+        bodies.push(JSON.parse(String(init.body)));
+        return Promise.resolve(put);
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    return bodies;
+  };
+
+  it("sends the tracking mode and the lot offsets a person chose", async () => {
+    const lot = { ...variant(1, "W-ONLY", {}), tracking: "serial", expiryDays: 30 };
+    const bodies = stubTracking(
+      product([lot as ReturnType<typeof variant>, variant(2, "W-SECOND", {})]),
+      jsonResponse(200, lot),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit W-ONLY" }));
+    expect(await screen.findByDisplayValue("Serial numbers")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Expiry (days)" })).toHaveValue("30");
+    fireEvent.change(screen.getByRole("textbox", { name: "Best before (days)" }), { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save variant" }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ tracking: "serial", expiryDays: 30, bestBeforeDays: 20 });
+  });
+
+  it("says in its own words that a variant holding stock keeps its tracking", async () => {
+    stubTracking(
+      twoVariants(),
+      jsonResponse(409, {
+        title: "Tracking held",
+        status: 409,
+        detail: "This variant still has 3 pcs in stock at 1 location.",
+      }),
+    );
+    renderPage({ stockHref: (variantId) => `/inventory/variants/${variantId}` });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit W-ONLY" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save variant" }));
+
+    expect(await screen.findByText("Tracking cannot change")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See where it lies" })).toHaveAttribute("href", "/inventory/variants/1");
+  });
+
+  it("offers no tracking for a service's variant", async () => {
+    stubTracking(
+      product([variant(1, "W-ONLY", {}), variant(2, "W-SECOND", {})], { type: "Service" }),
+      jsonResponse(200, {}),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit W-ONLY" }));
+    await screen.findByRole("button", { name: "Save variant" });
+    expect(screen.queryAllByLabelText("Tracking")).toHaveLength(0);
+  });
+});
+
 describe("ProductDetailsPage extra panels", () => {
   afterEach(() => {
     cleanup();

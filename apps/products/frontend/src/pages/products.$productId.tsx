@@ -6,6 +6,8 @@ import {
   Group,
   Modal,
   NumberInput,
+  Select,
+  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -38,6 +40,7 @@ import {
   updateProductVariant,
   type VariantInput,
   type VariantResponse,
+  type VariantTracking,
 } from "../api/products";
 import { toIsoTimestamp, toPickerValue } from "../lib/dates";
 import { PackagingsEditor } from "./-packagings-editor";
@@ -48,6 +51,27 @@ const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal",
 
 type PriceModalState = { mode: "add" } | { mode: "edit"; price: PriceRow };
 type VariantModalState = { mode: "add" } | { mode: "edit"; variant: VariantResponse };
+
+/** The variant form, as typed: the offsets are whole days, "" for none. */
+interface VariantFormValues {
+  sku: string;
+  unit: string;
+  standardCost: number | string;
+  optionValues: string;
+  tracking: VariantTracking;
+  expiryDays: number | string;
+  bestBeforeDays: number | string;
+}
+
+const emptyVariantForm: VariantFormValues = {
+  sku: "",
+  unit: "pcs",
+  standardCost: "",
+  optionValues: "",
+  tracking: "none",
+  expiryDays: "",
+  bestBeforeDays: "",
+};
 
 interface PriceFormValues {
   currency: string;
@@ -85,8 +109,8 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
   const [modalState, setModalState] = useState<ProductModalState | null>(null);
   const [priceModal, setPriceModal] = useState<PriceModalState | null>(null);
   const [variantModal, setVariantModal] = useState<VariantModalState | null>(null);
-  const variantForm = useForm<{ sku: string; unit: string; standardCost: number | string; optionValues: string }>({
-    initialValues: { sku: "", unit: "pcs", standardCost: "", optionValues: "" },
+  const variantForm = useForm<VariantFormValues>({
+    initialValues: emptyVariantForm,
   });
   const priceForm = useForm<PriceFormValues>({
     initialValues: { currency: "NOK", amount: "", validFrom: null, validTo: null },
@@ -137,8 +161,28 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
       void queryClient.invalidateQueries({ queryKey: ["products", product.id] });
       setVariantModal(null);
     },
-    onError: (error) =>
-      notifications.show({ color: "red", title: t("prices.couldNotSaveVariant"), message: error.message }),
+    onError: (error) => {
+      // A change of the tracking mode while the variant holds stock, reservations or stock in transit (manufacturing phase 2 M51).
+      if (error instanceof ApiConflictError && error.title === "Tracking held") {
+        notifications.show({
+          color: "red",
+          autoClose: false,
+          title: t("prices.trackingHeld"),
+          message: (
+            <Stack gap={4}>
+              <Text size="sm">{t("prices.trackingHeldMessage")}</Text>
+              {variantModal?.mode === "edit" && stockHref && (
+                <Anchor size="sm" href={stockHref(variantModal.variant.id)}>
+                  {t("prices.seeWhereItLies")}
+                </Anchor>
+              )}
+            </Stack>
+          ),
+        });
+        return;
+      }
+      notifications.show({ color: "red", title: t("prices.couldNotSaveVariant"), message: error.message });
+    },
   });
   const variantRemoval = useMutation({
     mutationFn: (id: number) => deleteProductVariant(product.id, id),
@@ -187,8 +231,11 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
             optionValues: Object.entries(item.optionValues)
               .map(([key, value]) => `${key}=${value}`)
               .join(", "),
+            tracking: item.tracking ?? "none",
+            expiryDays: item.expiryDays ?? "",
+            bestBeforeDays: item.bestBeforeDays ?? "",
           }
-        : { sku: "", unit: "pcs", standardCost: "", optionValues: "" },
+        : emptyVariantForm,
     );
     setVariantModal(item ? { mode: "edit", variant: item } : { mode: "add" });
   };
@@ -203,9 +250,10 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
           .map((entry) => entry.split("=").map((part) => part.trim()))
           .filter(([key, value]) => key && value),
       ),
-      // The lot offsets are not on the form yet; an edit keeps the stored ones.
-      expiryDays: variantModal?.mode === "edit" ? (variantModal.variant.expiryDays ?? undefined) : undefined,
-      bestBeforeDays: variantModal?.mode === "edit" ? (variantModal.variant.bestBeforeDays ?? undefined) : undefined,
+      // Only a goods product's variant is tracked (manufacturing phase 2 M49); a service's keeps none.
+      tracking: product.type === "Goods" ? values.tracking : undefined,
+      expiryDays: values.expiryDays === "" ? undefined : Number(values.expiryDays),
+      bestBeforeDays: values.bestBeforeDays === "" ? undefined : Number(values.bestBeforeDays),
     }),
   );
 
@@ -577,6 +625,36 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
               decimalScale={2}
               {...variantForm.getInputProps("standardCost")}
             />
+            {product.type === "Goods" && (
+              <Select
+                label={t("prices.tracking")}
+                description={t("prices.trackingHint")}
+                allowDeselect={false}
+                data={(["none", "lot", "serial"] as const).map((mode) => ({
+                  value: mode,
+                  label: t(`prices.tracking_${mode}`),
+                }))}
+                {...variantForm.getInputProps("tracking")}
+              />
+            )}
+            <SimpleGrid cols={2}>
+              <NumberInput
+                label={t("prices.expiryDays")}
+                description={t("prices.expiryDaysHint")}
+                min={1}
+                max={3650}
+                allowDecimal={false}
+                {...variantForm.getInputProps("expiryDays")}
+              />
+              <NumberInput
+                label={t("prices.bestBeforeDays")}
+                description={t("prices.bestBeforeDaysHint")}
+                min={1}
+                max={3650}
+                allowDecimal={false}
+                {...variantForm.getInputProps("bestBeforeDays")}
+              />
+            </SimpleGrid>
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setVariantModal(null)}>
                 {t("common.cancel")}
