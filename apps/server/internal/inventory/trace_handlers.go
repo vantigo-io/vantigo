@@ -672,7 +672,7 @@ func (s *server) BlockInventoryLot(ctx context.Context, req gen.BlockInventoryLo
 // the lots locked, by id, and those below root that still hold stock. An
 // unknown root is the 404 refusal.
 func (s *server) lockBlockWalk(ctx context.Context, txq *store.Queries, root int64) (map[int64]store.InventoryLot, []int64, error) {
-	found, below, err := blockWalk(ctx, txq, root)
+	found, _, err := blockWalk(ctx, txq, root)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -697,7 +697,7 @@ func (s *server) lockBlockWalk(ctx context.Context, txq *store.Queries, root int
 		return nil, nil, notFound()
 	}
 	for round := 1; ; round++ {
-		found, below, err = blockWalk(ctx, txq, root)
+		found, below, err := blockWalk(ctx, txq, root)
 		if err != nil {
 			return nil, nil, err
 		}
