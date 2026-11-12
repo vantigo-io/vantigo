@@ -4,6 +4,7 @@ import type { ManufacturingMeta } from "../api/meta";
 import type {
   ManufacturingOrder,
   ManufacturingOrderEvent,
+  ManufacturingOrderLots,
   ManufacturingOrderSummary,
   ManufacturingProductionDraft,
   ManufacturingSalesOrderLine,
@@ -104,6 +105,7 @@ export const bomFixture = (patch: Partial<ManufacturingBom> = {}): Manufacturing
     makeToOrder: false,
     leadTimeDays: 0,
     note: "",
+    lotPattern: "{MO}",
     status: "active",
     revision: 3,
     siteId: 1,
@@ -173,6 +175,7 @@ export const orderFixture = (patch: Partial<ManufacturingOrder> = {}): Manufactu
     bomId: 7,
     bomCode: "Rev B",
     bomOutputQuantity: "1",
+    lotPattern: "{MO}",
     quantity: "10",
     produced: "0",
     outputScrap: "0",
@@ -261,6 +264,15 @@ export const draftFor = (order: ManufacturingOrder, query: URLSearchParams): Man
     quantity,
     outputScrap,
     toLocationId: order.outputLocationId,
+    output: {
+      tracking: "none",
+      lotPattern: order.lotPattern,
+      lotNumber: null,
+      productionDate: "2026-11-11",
+      expiry: null,
+      bestBefore: null,
+      serialFirst: null,
+    },
     lines: order.components.map((line) => ({
       componentId: line.id ?? 0,
       variant: line.variant,
@@ -268,6 +280,10 @@ export const draftFor = (order: ManufacturingOrder, query: URLSearchParams): Man
       remaining: line.remaining,
       reserved: line.reserved,
       proposed: ((Number(line.required) * base) / Number(order.quantity)).toFixed(3),
+      tracking: "none",
+      lots: [],
+      lotChoices: [],
+      short: "0",
     })),
   };
 };
@@ -432,6 +448,10 @@ export interface ManufacturingServer {
   reports?: Record<string, unknown>;
   /** The sales order lines read through Orders (M45), by line id; any other is 404. */
   salesOrderLines?: Record<number, ManufacturingSalesOrderLine>;
+  /** Changes the production draft the fake answers (a tracked product or component's lots). */
+  draft?: (draft: ManufacturingProductionDraft) => ManufacturingProductionDraft;
+  /** The orders' lots (manufacturing phase 2 M83), by order id; none made or consumed when absent. */
+  orderLots?: Record<number, ManufacturingOrderLots>;
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -600,13 +620,17 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       const items = orders.map(orderSummaryOf);
       return Promise.resolve(jsonResponse(200, { items, total: items.length, page: 1, pageSize: 50 }));
     }
-    const order = /^\/orders\/(\d+)(\/events|\/production-draft)?$/.exec(path);
+    const order = /^\/orders\/(\d+)(\/events|\/production-draft|\/lots)?$/.exec(path);
     if (order) {
       const found = orders.find((one) => one.id === Number(order[1]));
       if (!found) return Promise.resolve(manufacturingProblem(404, undefined));
       if (order[2] === "/events") return Promise.resolve(jsonResponse(200, { items: server.events ?? [] }));
-      if (order[2] === "/production-draft")
-        return Promise.resolve(jsonResponse(200, draftFor(found, url.searchParams)));
+      if (order[2] === "/lots")
+        return Promise.resolve(jsonResponse(200, server.orderLots?.[found.id] ?? { outputs: [], components: [] }));
+      if (order[2] === "/production-draft") {
+        const draft = draftFor(found, url.searchParams);
+        return Promise.resolve(jsonResponse(200, server.draft ? server.draft(draft) : draft));
+      }
       return Promise.resolve(jsonResponse(200, found));
     }
     const orderWork = /^\/orders\/(\d+)\/(work-orders|time-logs)$/.exec(path);

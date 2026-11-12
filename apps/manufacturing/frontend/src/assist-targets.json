@@ -384,6 +384,18 @@
     }
   },
   {
+    "key": "manufacturing.order.lots-tab",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Lots tab",
+      "nb": "Fanen Partier"
+    },
+    "description": {
+      "en": "The tab on a manufacturing order that shows the lots its productions made and the lots they consumed.",
+      "nb": "Fanen på en produksjonsordre som viser partiene produksjonene laget og partiene de forbrukte."
+    }
+  },
+  {
     "key": "manufacturing.order.work-orders",
     "route": "/manufacturing/orders/{orderId}",
     "label": {

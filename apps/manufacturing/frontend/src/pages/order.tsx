@@ -53,6 +53,7 @@ import { CloseDialog } from "../components/close-dialog";
 import { CostPanel } from "../components/cost-panel";
 import { OrderComponents } from "../components/order-components";
 import { OrderForm } from "../components/order-form";
+import { OrderLots } from "../components/order-lots";
 import { ProductionDialog } from "../components/production-dialog";
 import { WorkOrdersPanel } from "../components/work-orders-panel";
 import { useRecordActions } from "../lib/actions";
@@ -561,6 +562,9 @@ export const OrderPage = () => {
                 <Tabs.Tab value="work-orders" data-assist="manufacturing.order.work-orders-tab">
                   {t("workOrders")}
                 </Tabs.Tab>
+                <Tabs.Tab value="lots" data-assist="manufacturing.order.lots-tab">
+                  {t("lotsTab")}
+                </Tabs.Tab>
               </Tabs.List>
               <Tabs.Panel value="components">
                 <OrderComponents
@@ -571,6 +575,9 @@ export const OrderPage = () => {
               </Tabs.Panel>
               <Tabs.Panel value="work-orders">
                 <WorkOrdersPanel order={data} live={live} canManage={manage} />
+              </Tabs.Panel>
+              <Tabs.Panel value="lots">
+                <OrderLots order={data} />
               </Tabs.Panel>
             </Tabs>
           )}

@@ -39,6 +39,7 @@ import {
 } from "../lib/bom-body";
 import { canManageBoms } from "../lib/capabilities";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
+import { LOT_NUMBER, renderLotPattern } from "../lib/lots";
 import { BOMS_ROUTE_PATH, bomLinkOptions } from "../lib/routes";
 import { VariantPicker } from "./variant-picker";
 
@@ -216,6 +217,13 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
               onChange={(event) => setHeader({ makeToOrder: event.currentTarget.checked })}
             />
           </Group>
+          <LotPatternInput
+            value={state.header.lotPattern}
+            sku={state.header.variant?.sku ?? ""}
+            disabled={readOnly}
+            error={errors.lotPattern}
+            onChange={(lotPattern) => setHeader({ lotPattern })}
+          />
           <Textarea
             label={t("note")}
             maxLength={2000}
@@ -531,5 +539,35 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
         </Group>
       )}
     </Stack>
+  );
+};
+
+interface LotPatternInputProps {
+  value: string;
+  sku: string;
+  disabled?: boolean;
+  error?: string;
+  onChange: (value: string) => void;
+}
+
+/**
+ * The lot number pattern (manufacturing phase 2 M80) with a preview of the
+ * number it gives today, and whether that is a lot number at all: the server
+ * judges a sample render the same way (lot_pattern_invalid).
+ */
+const LotPatternInput = ({ value, sku, disabled, error, onChange }: LotPatternInputProps) => {
+  const { t } = useManufacturingFormat();
+  const sample = renderLotPattern(value.trim() === "" ? "{MO}" : value.trim(), sku);
+  const valid = LOT_NUMBER.test(sample);
+  return (
+    <TextInput
+      label={t("lotPattern")}
+      description={`${t("lotPatternHint")} ${valid ? t("lotPatternPreview", { sample }) : ""}`.trim()}
+      maxLength={40}
+      disabled={disabled}
+      value={value}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      error={error ?? (valid ? undefined : t("lotPatternInvalid", { sample }))}
+    />
   );
 };
