@@ -76,6 +76,7 @@ type opValues struct {
 	setup        *big.Rat
 	perCycle     *big.Rat
 	instructions string
+	checks       []checkValues
 }
 
 type lineValues struct {
@@ -211,6 +212,9 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 			if utf8.RuneCountInString(o.instructions) > maxInstructions {
 				j.f.add(at+"instructions", "At most 20000 characters")
 			}
+		}
+		if op.Checks != nil {
+			o.checks = judgeChecks(&j.f, at, *op.Checks)
 		}
 		v.ops = append(v.ops, o)
 	}
@@ -390,6 +394,9 @@ func writeStructure(ctx context.Context, txq *store.Queries, bomID int64, v bomV
 	if err := txq.DeleteBomOperationsExcept(ctx, store.DeleteBomOperationsExceptParams{BomID: bomID, KeepIds: keep}); err != nil {
 		return err
 	}
+	if err := txq.DeleteChecksOfBom(ctx, bomID); err != nil {
+		return err
+	}
 	opIDs := map[string]int64{}
 	for _, o := range v.ops {
 		setup := numeric(o.setup, minutePlaces)
@@ -402,6 +409,9 @@ func writeStructure(ctx context.Context, txq *store.Queries, bomID int64, v bomV
 				return err
 			}
 			opIDs[o.key] = row.ID
+			if err := writeChecks(ctx, txq, row.ID, o.checks); err != nil {
+				return err
+			}
 			continue
 		}
 		row, err := txq.InsertBomOperation(ctx, store.InsertBomOperationParams{
@@ -412,6 +422,9 @@ func writeStructure(ctx context.Context, txq *store.Queries, bomID int64, v bomV
 			return err
 		}
 		opIDs[o.key] = row.ID
+		if err := writeChecks(ctx, txq, row.ID, o.checks); err != nil {
+			return err
+		}
 	}
 	for _, l := range v.lines {
 		var op *int64

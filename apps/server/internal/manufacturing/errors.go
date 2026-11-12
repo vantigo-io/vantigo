@@ -97,6 +97,8 @@ var refusalCodes = []string{
 	codeNoCapacity, codePeriodTooLong,
 	codeSalesOrderLineUnknown, codeSalesOrderLineHasOrder, codeComponentUnknown, codeNothingMissing,
 	codeLotPatternInvalid, codePicksMismatch, codeSerialQuantity, codeLotNotAllowed,
+	codeCheckLimitsInvalid, codePhotoRequired, codeChecksIncomplete, codeCheckNotOpen, codeDeviationClosed,
+	codePhotoTooLarge, codePhotoType, codeStorageNotConfig,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

@@ -225,6 +225,11 @@ components:
             additionalProperties: false
             description: An operation of a BoM (M12), run in sequence order.
             properties:
+                checks:
+                    description: Its quality checks, by sequence (manufacturing phase 2 M95).
+                    items:
+                        $ref: '#/components/schemas/ManufacturingCheckTemplate'
+                    type: array
                 id:
                     format: int64
                     type: integer
@@ -264,11 +269,18 @@ components:
                 - setupMinutes
                 - minutesPerCycle
                 - instructions
+                - checks
             type: object
         ManufacturingBomOperationInput:
             additionalProperties: false
             description: An operation as the editor sends it.
             properties:
+                checks:
+                    description: 'Its quality checks, in order (M95): at most 20; absent or empty for none. They replace the operation''s checks.'
+                    items:
+                        $ref: '#/components/schemas/ManufacturingCheckTemplateInput'
+                    maxItems: 20
+                    type: array
                 id:
                     description: An existing operation of this BoM to keep; absent for a new one.
                     format: int64
@@ -434,6 +446,199 @@ components:
                 - operations
                 - lines
                 - revision
+            type: object
+        ManufacturingCheckFrequency:
+            description: 'When a check is recorded (manufacturing phase 2 M95): each_work_order, once before the work order finishes; first_piece, before any output is registered past the work order, shown first at Start.'
+            enum:
+                - each_work_order
+                - first_piece
+            type: string
+        ManufacturingCheckKind:
+            description: 'What a check asks (M95): instruction, read and acknowledged (done); pass_fail; measure, a value the server judges against min and max; photo, a picture taken at the station.'
+            enum:
+                - instruction
+                - pass_fail
+                - measure
+                - photo
+            type: string
+        ManufacturingCheckPhoto:
+            additionalProperties: false
+            description: 'A check''s photo, uploaded before the result that names it (M97). One no result names 24 hours after its upload is removed.'
+            properties:
+                contentType:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                sizeBytes:
+                    format: int64
+                    type: integer
+                uploadedAt:
+                    format: date-time
+                    type: string
+                workOrderId:
+                    format: int64
+                    type: integer
+            required:
+                - id
+                - workOrderId
+                - contentType
+                - sizeBytes
+                - uploadedAt
+            type: object
+        ManufacturingCheckResult:
+            additionalProperties: false
+            description: 'A check''s result in force (M97): the latest recorded; an earlier one is kept, superseded.'
+            properties:
+                deviationId:
+                    description: The deviation the result opened when it failed (M99).
+                    format: int64
+                    nullable: true
+                    type: integer
+                deviationNumber:
+                    description: DEV-<n>.
+                    nullable: true
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                note:
+                    nullable: true
+                    type: string
+                photoId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                recordedAt:
+                    format: date-time
+                    type: string
+                recordedBy:
+                    $ref: '#/components/schemas/ManufacturingDeviationActor'
+                result:
+                    $ref: '#/components/schemas/ManufacturingCheckResultValue'
+                value:
+                    description: 'A measure''s value, exact decimal with at most four decimals.'
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - result
+                - value
+                - note
+                - photoId
+                - recordedBy
+                - recordedAt
+                - deviationId
+                - deviationNumber
+            type: object
+        ManufacturingCheckResultInput:
+            additionalProperties: false
+            description: 'A check''s result as the station sends it (M97): result for an instruction (done) or a pass/fail check (pass, fail); value for a measure, judged by the server; photoId for a photo, optional on the others. A photo check without a photo is photo_required.'
+            properties:
+                note:
+                    maxLength: 1000
+                    type: string
+                photoId:
+                    description: A photo uploaded to this work order.
+                    format: int64
+                    type: integer
+                result:
+                    $ref: '#/components/schemas/ManufacturingCheckResultValue'
+                value:
+                    description: 'A measure''s value: exact decimal, at most four decimals.'
+                    type: string
+            type: object
+        ManufacturingCheckResultValue:
+            enum:
+                - done
+                - pass
+                - fail
+            type: string
+        ManufacturingCheckTemplate:
+            additionalProperties: false
+            description: A check of a BoM operation (M95), copied onto the work order at confirm (M96).
+            properties:
+                frequency:
+                    $ref: '#/components/schemas/ManufacturingCheckFrequency'
+                id:
+                    format: int64
+                    type: integer
+                instructions:
+                    description: Markdown.
+                    type: string
+                kind:
+                    $ref: '#/components/schemas/ManufacturingCheckKind'
+                max:
+                    description: Exact decimal, at most four decimals; a measure's upper limit.
+                    nullable: true
+                    type: string
+                min:
+                    description: Exact decimal, at most four decimals; a measure's lower limit.
+                    nullable: true
+                    type: string
+                nominal:
+                    description: Exact decimal, at most four decimals; a measure's target.
+                    nullable: true
+                    type: string
+                quarantineOnFail:
+                    description: A failed result's deviation puts the order's output in quarantine (M99).
+                    type: boolean
+                sequence:
+                    format: int32
+                    type: integer
+                title:
+                    type: string
+                unit:
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - sequence
+                - kind
+                - title
+                - instructions
+                - nominal
+                - min
+                - max
+                - unit
+                - frequency
+                - quarantineOnFail
+            type: object
+        ManufacturingCheckTemplateInput:
+            additionalProperties: false
+            description: 'A check as the BoM editor sends it (M95). A measure needs min or max, and min ≤ nominal ≤ max where given (check_limits_invalid). At most 20 an operation.'
+            properties:
+                frequency:
+                    $ref: '#/components/schemas/ManufacturingCheckFrequency'
+                instructions:
+                    description: Markdown.
+                    maxLength: 5000
+                    type: string
+                kind:
+                    $ref: '#/components/schemas/ManufacturingCheckKind'
+                max:
+                    nullable: true
+                    type: string
+                min:
+                    nullable: true
+                    type: string
+                nominal:
+                    nullable: true
+                    type: string
+                quarantineOnFail:
+                    type: boolean
+                title:
+                    maxLength: 200
+                    minLength: 1
+                    type: string
+                unit:
+                    maxLength: 20
+                    nullable: true
+                    type: string
+            required:
+                - kind
+                - title
+                - frequency
             type: object
         ManufacturingCloseInput:
             additionalProperties: false
@@ -643,6 +848,62 @@ components:
                 - expected
                 - consumed
             type: object
+        ManufacturingDeviationActor:
+            additionalProperties: false
+            description: Who did something, as it was recorded; the user id stays after the person is erased (rule 19).
+            properties:
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - userId
+                - displayName
+            type: object
+        ManufacturingDeviationCloseInput:
+            additionalProperties: false
+            description: 'Closing a deviation (M99): the disposition and a closing note. use_as_is and rework release its own holds; scrap and return keep them.'
+            properties:
+                closingNote:
+                    maxLength: 2000
+                    minLength: 1
+                    type: string
+                disposition:
+                    $ref: '#/components/schemas/ManufacturingDeviationDisposition'
+                revision:
+                    format: int32
+                    type: integer
+            required:
+                - disposition
+                - closingNote
+                - revision
+            type: object
+        ManufacturingDeviationDisposition:
+            enum:
+                - use_as_is
+                - rework
+                - scrap
+                - return
+            type: string
+        ManufacturingDeviationLot:
+            additionalProperties: false
+            description: A lot the deviation put a quarantine hold on.
+            properties:
+                heldAt:
+                    format: date-time
+                    type: string
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    type: string
+            required:
+                - lotId
+                - lotNumber
+                - heldAt
+            type: object
         ManufacturingDowntimeMinutes:
             additionalProperties: false
             description: Downtime of one reason, in whole minutes (the union of the logs, rounded down).
@@ -822,6 +1083,9 @@ components:
                 canManageOrders:
                     description: Holds manufacturing:orders-manage.
                     type: boolean
+                canManageQuality:
+                    description: 'Holds manufacturing:quality-manage: closes deviations and releases their holds (manufacturing phase 2 M102).'
+                    type: boolean
                 canSeeCosts:
                     description: 'Holds manufacturing:costs-view: cost fields are answered.'
                     type: boolean
@@ -839,8 +1103,36 @@ components:
                 - canSeeCosts
                 - canManageOrders
                 - canWorkShopFloor
+                - canManageQuality
                 - canTraceLots
                 - currency
+            type: object
+        ManufacturingMissingCheck:
+            additionalProperties: false
+            description: A check with no result that stops a production or a finish (checks_incomplete, M98).
+            properties:
+                checkId:
+                    format: int64
+                    type: integer
+                frequency:
+                    $ref: '#/components/schemas/ManufacturingCheckFrequency'
+                title:
+                    type: string
+                workOrderId:
+                    format: int64
+                    type: integer
+                workOrderName:
+                    type: string
+                workOrderSequence:
+                    format: int32
+                    type: integer
+            required:
+                - checkId
+                - title
+                - frequency
+                - workOrderId
+                - workOrderName
+                - workOrderSequence
             type: object
         ManufacturingMyWork:
             additionalProperties: false
@@ -1240,7 +1532,7 @@ components:
                 - at
             type: object
         ManufacturingOrderEventKind:
-            description: What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44).
+            description: What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44); check_recorded a check's result at one of its work orders, deviation_opened and deviation_closed a deviation of it (manufacturing phase 2 M97, M99).
             enum:
                 - created
                 - updated
@@ -1259,6 +1551,9 @@ components:
                 - rescheduled
                 - children_created
                 - origin_cancelled
+                - check_recorded
+                - deviation_opened
+                - deviation_closed
             type: string
         ManufacturingOrderEventList:
             additionalProperties: false
@@ -1830,8 +2125,13 @@ components:
                 - urgent
             type: string
         ManufacturingProblem:
-            description: 'An RFC 9457 problem with this module''s refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant''s default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation''s work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM''s variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order''s site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft''s change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center''s calendar within 365 days of the start, M35), period_too_long (400: a report''s to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM''s lot pattern whose sample render is no lot number, or a production''s rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line''s lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product''s good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot''s, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order''s counter found no free number in 100, M57, M81), Inventory''s other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line''s codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.'
+            description: 'An RFC 9457 problem with this module''s refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant''s default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation''s work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM''s variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order''s site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft''s change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center''s calendar within 365 days of the start, M35), period_too_long (400: a report''s to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM''s lot pattern whose sample render is no lot number, or a production''s rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line''s lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product''s good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot''s, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order''s counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order''s own has none; checks names them, M98), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory''s other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line''s codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither.'
             properties:
+                checks:
+                    description: 'checks_incomplete only: every check with no result that stops it (M98).'
+                    items:
+                        $ref: '#/components/schemas/ManufacturingMissingCheck'
+                    type: array
                 code:
                     nullable: true
                     type: string
@@ -2386,6 +2686,154 @@ components:
                 - serial
                 - quantity
             type: object
+        ManufacturingQualityDeviation:
+            additionalProperties: false
+            description: 'A deviation (nb avvik, M99): opened by a failed check or by a person, linked to what it was opened from; quarantine holds the order''s output lots and its lot while it is open.'
+            properties:
+                checkResultId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                closedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                closedBy:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingDeviationActor'
+                    nullable: true
+                closingNote:
+                    nullable: true
+                    type: string
+                description:
+                    description: Markdown.
+                    type: string
+                disposition:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingDeviationDisposition'
+                    nullable: true
+                holdsReleased:
+                    description: Its holds were released, at close (use_as_is, rework) or afterwards.
+                    type: boolean
+                id:
+                    format: int64
+                    type: integer
+                lotId:
+                    description: The lot it was opened from.
+                    format: int64
+                    nullable: true
+                    type: integer
+                lotNumber:
+                    nullable: true
+                    type: string
+                lots:
+                    description: The lots it put a quarantine hold on, by number.
+                    items:
+                        $ref: '#/components/schemas/ManufacturingDeviationLot'
+                    type: array
+                number:
+                    description: DEV-<n>.
+                    type: string
+                openedAt:
+                    format: date-time
+                    type: string
+                openedBy:
+                    $ref: '#/components/schemas/ManufacturingDeviationActor'
+                order:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingOrderLink'
+                    nullable: true
+                quarantine:
+                    description: It holds the order's output, and its lot, in quarantine.
+                    type: boolean
+                revision:
+                    format: int32
+                    type: integer
+                status:
+                    $ref: '#/components/schemas/ManufacturingQualityDeviationStatus'
+                title:
+                    type: string
+                variant:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingVariantRef'
+                    nullable: true
+                workOrderId:
+                    format: int64
+                    nullable: true
+                    type: integer
+                workOrderName:
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - number
+                - title
+                - description
+                - status
+                - disposition
+                - quarantine
+                - holdsReleased
+                - order
+                - workOrderId
+                - workOrderName
+                - checkResultId
+                - lotId
+                - lotNumber
+                - variant
+                - lots
+                - openedBy
+                - openedAt
+                - closedBy
+                - closedAt
+                - closingNote
+                - revision
+            type: object
+        ManufacturingQualityDeviationInput:
+            additionalProperties: false
+            description: 'A deviation reported by a person (M99), from an order, a work order (its order is taken) or a lot. quarantine holds the order''s output lots so far and those it makes while the deviation is open, and the lot.'
+            properties:
+                description:
+                    maxLength: 5000
+                    type: string
+                lotId:
+                    description: An Inventory lot.
+                    format: int64
+                    type: integer
+                orderId:
+                    format: int64
+                    type: integer
+                quarantine:
+                    type: boolean
+                title:
+                    maxLength: 200
+                    minLength: 1
+                    type: string
+                workOrderId:
+                    format: int64
+                    type: integer
+            required:
+                - title
+            type: object
+        ManufacturingQualityDeviationList:
+            additionalProperties: false
+            description: A page of deviations, newest first, with the total.
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/ManufacturingQualityDeviation'
+                    type: array
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - items
+                - total
+            type: object
+        ManufacturingQualityDeviationStatus:
+            enum:
+                - open
+                - closed
+            type: string
         ManufacturingRescheduleInput:
             additionalProperties: false
             description: 'A drag on the board (M36): the work order is planned to start at start (now when start is past), in the first free time from there.'
@@ -3604,6 +4052,11 @@ components:
                     description: The work center's capacity at confirm (M27a).
                     format: int32
                     type: integer
+                checks:
+                    description: Its quality checks, by sequence, each with its result in force (manufacturing phase 2 M96, M97).
+                    items:
+                        $ref: '#/components/schemas/ManufacturingWorkOrderCheck'
+                    type: array
                 cleanupMinutes:
                     description: Exact decimal, as at confirm.
                     type: string
@@ -3702,6 +4155,60 @@ components:
                 - actualMinutes
                 - deviationMinutes
                 - deviationPercent
+            type: object
+        ManufacturingWorkOrderCheck:
+            additionalProperties: false
+            description: A check of a work order as it was copied at confirm (M96), with its result in force.
+            properties:
+                frequency:
+                    $ref: '#/components/schemas/ManufacturingCheckFrequency'
+                id:
+                    format: int64
+                    type: integer
+                instructions:
+                    type: string
+                kind:
+                    $ref: '#/components/schemas/ManufacturingCheckKind'
+                max:
+                    nullable: true
+                    type: string
+                min:
+                    nullable: true
+                    type: string
+                nominal:
+                    nullable: true
+                    type: string
+                quarantineOnFail:
+                    type: boolean
+                result:
+                    allOf:
+                        - $ref: '#/components/schemas/ManufacturingCheckResult'
+                    nullable: true
+                sequence:
+                    format: int32
+                    type: integer
+                title:
+                    type: string
+                unit:
+                    nullable: true
+                    type: string
+                workOrderId:
+                    format: int64
+                    type: integer
+            required:
+                - id
+                - workOrderId
+                - sequence
+                - kind
+                - title
+                - instructions
+                - nominal
+                - min
+                - max
+                - unit
+                - frequency
+                - quarantineOnFail
+                - result
             type: object
         ManufacturingWorkOrderList:
             additionalProperties: false
@@ -4284,6 +4791,317 @@ paths:
             tags:
                 - Manufacturing
             x-vantigo-access: permission:manufacturing:access+manufacturing:boms-manage
+    /api/v1/manufacturing/deviations:
+        get:
+            description: 'The deviations, newest first (manufacturing phase 2 M99): by status, order, product (the deviation''s variant or its order''s), lot (the lot it was opened from or one it holds) and the period it was opened in. With format=csv, every match as a semicolon-separated file, UTF-8 with a byte order mark, the decimal comma, guarded against formulas.'
+            operationId: listManufacturingDeviations
+            parameters:
+                - in: query
+                  name: status
+                  schema:
+                    $ref: '#/components/schemas/ManufacturingQualityDeviationStatus'
+                - in: query
+                  name: orderId
+                  schema:
+                    format: int64
+                    type: integer
+                - in: query
+                  name: variantId
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: lotId
+                  schema:
+                    format: int64
+                    type: integer
+                - description: The first day it was opened on, in the business time zone.
+                  in: query
+                  name: from
+                  schema:
+                    format: date
+                    type: string
+                - description: The last day, included.
+                  in: query
+                  name: to
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: limit
+                  schema:
+                    format: int32
+                    maximum: 200
+                    minimum: 1
+                    type: integer
+                - in: query
+                  name: offset
+                  schema:
+                    format: int32
+                    minimum: 0
+                    type: integer
+                - description: json (the default) or csv.
+                  in: query
+                  name: format
+                  schema:
+                    enum:
+                        - json
+                        - csv
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingQualityDeviationList'
+                        text/csv:
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK — with format=csv, one row per deviation, served as an attachment, manufacturing-deviations.csv.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — from is after to.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: List deviations
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+        post:
+            description: 'Reports a deviation by hand (M99), from an order, a work order or a lot. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler. Under the lock order — LockVariants on the order''s variants or the lot''s, the order FOR UPDATE, the deviation — and with the ledger last, quarantine puts a quarantine hold (cause deviation, source manufacturing/deviation/<id>) on every lot the order made so far and on the lot; while it is open, every lot a production of the order makes or adds to is held too.'
+            operationId: createManufacturingDeviation
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingQualityDeviationInput'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingQualityDeviation'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors (title; orderId, workOrderId or lotId naming nothing).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — revision_conflict, or Inventory's refusal of a hold. Nothing was changed.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Report a deviation
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/deviations/{id}:
+        get:
+            description: One deviation with the lots it holds (M99).
+            operationId: getManufacturingDeviation
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingQualityDeviation'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such deviation. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Get a deviation
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/deviations/{id}/close:
+        post:
+            description: 'Closes the deviation with its disposition and a closing note (M99). use_as_is and rework release its own holds through ReleaseLotHolds — a hold of another deviation, a recall or the lot page stays; scrap and return keep them, to be released afterwards with release once the lot is written off or returned.'
+            operationId: closeManufacturingDeviation
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingDeviationCloseInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingQualityDeviation'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors (disposition, closingNote).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such deviation. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — deviation_closed, revision_conflict. Nothing was changed.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Close a deviation
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:quality-manage
+    /api/v1/manufacturing/deviations/{id}/release:
+        post:
+            description: 'Releases the holds a closed deviation kept — closed as scrap or return — once what is left of the lot is written off or returned (M99). Only its own holds go.'
+            operationId: releaseManufacturingDeviationHolds
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingRevisionInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingQualityDeviation'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such deviation. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — deviation_closed (the deviation is still open), revision_conflict. Nothing was changed.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Release a deviation's holds
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access+manufacturing:quality-manage
     /api/v1/manufacturing/meta:
         get:
             operationId: getManufacturingMeta
@@ -5193,7 +6011,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/ManufacturingProblem'
-                    description: Conflict — order_not_open, consumption_differs (deviations), client_request_reused; Inventory's insufficient_stock, site_archived, variant_not_stocked, document_reused (lines name the component lines). Nothing was posted.
+                    description: Conflict — order_not_open, checks_incomplete (a check before the output work order, or a first-piece check of it, has no result; checks names them), consumption_differs (deviations), client_request_reused; Inventory's insufficient_stock, site_archived, variant_not_stocked, document_reused (lines name the component lines). Nothing was posted.
                 "503":
                     content:
                         application/problem+json:
@@ -6734,6 +7552,76 @@ paths:
             tags:
                 - Manufacturing
             x-vantigo-access: permission:manufacturing:access
+    /api/v1/manufacturing/work-orders/{id}/checks/{checkId}/result:
+        post:
+            description: 'Records a check''s result (M97): a measure judged by the server against its limits, an instruction done, a pass or a fail, a photo with its photo. A result recorded again supersedes the one in force, which is kept. Under the lock order — LockVariants on the order''s variants, the order, the work order, the check FOR UPDATE — a fail opens a deviation in the same transaction, and when the check says quarantineOnFail the deviation holds the order''s output lots through Inventory''s ledger, last. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler.'
+            operationId: recordManufacturingCheckResult
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: checkId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManufacturingCheckResultInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingWorkOrderView'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — field errors (result, value, note, photoId); photo_required.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage.
+                "404":
+                    description: Not Found — no such work order, or no such check of it. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Conflict — order_not_open, check_not_open (the work order is done or cancelled), revision_conflict; Inventory's refusal of a hold. Nothing was changed.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed.'
+            summary: Record a check's result
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+            x-vantigo-assistant: never
     /api/v1/manufacturing/work-orders/{id}/finish:
         post:
             description: Ends every open log on the work order, sets it done and readies the next by sequence (M27, M29). A production in the body is posted in the same transaction, as the order's productions are (M22). Finishing a done work order again with the production it posted answers 200 with it. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
@@ -6786,7 +7674,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: '#/components/schemas/ManufacturingProblem'
-                    description: Conflict — order_not_open, work_order_closed, work_order_pending, revision_conflict; the production's consumption_differs, client_request_reused and Inventory's refusals. Nothing was changed.
+                    description: Conflict — order_not_open, work_order_closed, work_order_pending, checks_incomplete (a check of the work order has no result, or the production's), revision_conflict; the production's consumption_differs, client_request_reused and Inventory's refusals. Nothing was changed.
                 "503":
                     content:
                         application/problem+json:
@@ -6850,6 +7738,131 @@ paths:
                 - Manufacturing
             x-vantigo-access: permission:manufacturing:access
             x-vantigo-assistant: never
+    /api/v1/manufacturing/work-orders/{id}/photos:
+        post:
+            description: 'Uploads a check''s photo (M97): a JPEG or PNG of at most 10 MB in the multipart field file, its metadata stripped, kept in the manufacturing-quality storage scope. The answer''s id is the photoId a result names. A photo no result names 24 hours after its upload is removed. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler.'
+            operationId: uploadManufacturingCheckPhoto
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                file:
+                                    format: binary
+                                    type: string
+                            required:
+                                - file
+                            type: object
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingCheckPhoto'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Bad Request — attachment_too_large (over 10 MB), or a field error on file (missing, empty, sent twice or not a picture that can be read).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage.
+                "404":
+                    description: Not Found — no such work order. The body is empty.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Conflict — check_not_open: the work order is done or cancelled.'
+                "415":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: 'Unsupported Media Type — attachment_type: not a JPEG or PNG.'
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Service Unavailable — storage_not_configured, or the object store could not be written; nothing was recorded.
+            summary: Upload a check's photo
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
+            x-vantigo-assistant: never
+    /api/v1/manufacturing/work-orders/{id}/photos/{photoId}:
+        get:
+            description: 'Streams a check''s photo (M97), never cached and never sniffed, under a sandboxing content-security-policy. A photo of another work order is the 404 an unknown id is.'
+            operationId: getManufacturingCheckPhoto
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+                - in: path
+                  name: photoId
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        '*/*':
+                            schema:
+                                format: binary
+                                type: string
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no such work order, or no such photo of it. The body is empty.
+                "503":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: '#/components/schemas/ManufacturingProblem'
+                    description: Service Unavailable — storage_not_configured, or the object store could not be read.
+            summary: Download a check's photo
+            tags:
+                - Manufacturing
+            x-vantigo-access: permission:manufacturing:access
     /api/v1/manufacturing/work-orders/{id}/reschedule:
         post:
             description: 'Moves a work order on the board (M36): it is planned again from start (now when start is past), in the first free time from there; the later work orders of its order move after it when they would otherwise overlap; no other order moves. Under the work order''s revision.'

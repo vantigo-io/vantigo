@@ -27,10 +27,12 @@ const (
 	erasureChunk = 200
 )
 
-// workers are the module's background workers: the erasure sweep and the
-// make-to-order worker (mto.go).
+// workers are the module's background workers: the erasure sweep, the
+// make-to-order worker (mto.go) and the photos' deletion ledger
+// (quality_photos.go).
 func workers(d module.Deps) []worker.Worker {
-	return []worker.Worker{&erasureWorker{deps: d}, &mtoWorker{s: newServer(d)}}
+	s := newServer(d)
+	return []worker.Worker{&erasureWorker{deps: d}, &mtoWorker{s: s}, &objectDeletionsWorker{s: s}}
 }
 
 // erasureWorker blanks the time-log notes of the operators identity erased.

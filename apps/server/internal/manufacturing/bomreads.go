@@ -26,9 +26,10 @@ const (
 // snapshot, then the catalog's variants after it. An unknown id is the 404.
 func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom, error) {
 	var (
-		b     store.ManufacturingBom
-		ops   []store.OperationsOfBomsRow
-		lines []store.ManufacturingBomLine
+		b      store.ManufacturingBom
+		ops    []store.OperationsOfBomsRow
+		lines  []store.ManufacturingBomLine
+		checks []store.ManufacturingBomOperationCheck
 	)
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -38,6 +39,13 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 			return err
 		}
 		if ops, err = q.OperationsOfBoms(ctx, []int64{id}); err != nil {
+			return err
+		}
+		opIDs := make([]int64, 0, len(ops))
+		for _, o := range ops {
+			opIDs = append(opIDs, o.ID)
+		}
+		if checks, err = q.ChecksOfOperations(ctx, opIDs); err != nil {
 			return err
 		}
 		lines, err = q.LinesOfBoms(ctx, []int64{id})
@@ -73,6 +81,7 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 			Id: o.ID, Key: operationKey(o.ID), Sequence: o.Sequence, Name: o.Name, WorkCenterId: o.WorkCenterID,
 			WorkCenterCode: o.WorkCenterCode, WorkCenterName: o.WorkCenterName, SetupMinutes: setup,
 			MinutesPerCycle: numericText(o.MinutesPerCycle, minutePlaces), Instructions: o.Instructions,
+			Checks: checkTemplatesOf(checks, o.ID),
 		})
 	}
 	for _, l := range lines {
