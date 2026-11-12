@@ -96,6 +96,9 @@ func variantResponse(v store.ProductsProductVariant, prices []store.ProductsProd
 		OptionValues:    camelizeOptionValueKeys(unmarshalOptionValues(v.OptionValues)),
 		EffectivePrices: effectiveResponses,
 		Packagings:      &packagingResponses,
+		Tracking:        gen.VariantTracking(v.Tracking),
+		ExpiryDays:      v.ExpiryDays,
+		BestBeforeDays:  v.BestBeforeDays,
 		CreatedAt:       v.CreatedAt,
 		UpdatedAt:       v.UpdatedAt,
 	}

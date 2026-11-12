@@ -89,12 +89,19 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 	}
 
 	q := store.New(s.deps.Pool)
-	exists, err := q.ProductExists(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("products: check product exists: %w", err)
-	}
-	if !exists {
+	product, err := q.GetProductByID(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return gen.PostProductsByIdVariants404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("products: get product: %w", err)
+	}
+	tracking := parsed.trackingOr(contracts.TrackingNone)
+	if trackingRequiresGoods("", tracking, product.Type, errs); len(errs) > 0 {
+		return gen.PostProductsByIdVariants400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid variant", errs)), nil
+	}
+	if p := trackingUnavailable(tracking); p != nil {
+		return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(*p), nil
 	}
 
 	skuExists, err := q.VariantSkuExists(ctx, parsed.Sku)
@@ -126,6 +133,7 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 			StandardCost: nums.StandardCost, WeightKg: nums.WeightKg,
 			LengthCm: nums.LengthCm, WidthCm: nums.WidthCm, HeightCm: nums.HeightCm,
 			OptionValues: marshalOptionValues(parsed.OptionValues), Now: now,
+			Tracking: tracking, ExpiryDays: parsed.ExpiryDays, BestBeforeDays: parsed.BestBeforeDays,
 		})
 		if err != nil {
 			return err
@@ -193,6 +201,21 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 		return nil, fmt.Errorf("products: get variant: %w", err)
 	}
 
+	// The tracking mode (manufacturing phase 2 M49): goods only, and — until
+	// layer M — none, whenever the request names a mode.
+	productType, err := q.GetProductType(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("products: get product type: %w", err)
+	}
+	if trackingRequiresGoods("", parsed.trackingOr(existing.Tracking), productType, errs); len(errs) > 0 {
+		return gen.PutProductsByIdVariantsByVariantId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid variant", errs)), nil
+	}
+	if parsed.Tracking != nil {
+		if p := trackingUnavailable(*parsed.Tracking); p != nil {
+			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(*p), nil
+		}
+	}
+
 	if existing.Sku != parsed.Sku {
 		status, err := q.GetProductStatus(ctx, req.Id)
 		if err != nil {
@@ -226,6 +249,27 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 		if _, err := txq.LockVariantOfProduct(ctx, store.LockVariantOfProductParams{ID: req.VariantId, ProductID: req.Id}); err != nil {
 			return fmt.Errorf("lock variant: %w", err)
 		}
+		// A change of the tracking mode is held by stock, reservations and
+		// stock in transit (M51), asked under the variant's FOR UPDATE: a
+		// posting holds FOR SHARE on it, so it has committed or waits.
+		stored, err := txq.VariantTracking(ctx, req.VariantId)
+		if err != nil {
+			return fmt.Errorf("read the tracking: %w", err)
+		}
+		tracking := parsed.trackingOr(stored.Tracking)
+		if tracking != stored.Tracking {
+			hold, err := s.variantHeld(ctx, tx, req.VariantId, contracts.VariantHoldTrackingChange)
+			if err != nil {
+				return err
+			}
+			if hold != nil {
+				p := apicommon.ProblemStatus("Tracking held",
+					fmt.Sprintf("This variant still has %s. %s before you change its tracking.", holdText(hold, stored.Unit), holdRemedy(hold)),
+					http.StatusConflict)
+				refused = &p
+				return nil
+			}
+		}
 		if parsed.Barcode != nil {
 			if refused, err = duplicateVariantBarcode(ctx, txq, *parsed.Barcode, req.VariantId); err != nil || refused != nil {
 				return err
@@ -236,6 +280,7 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 			StandardCost: nums.StandardCost, WeightKg: nums.WeightKg,
 			LengthCm: nums.LengthCm, WidthCm: nums.WidthCm, HeightCm: nums.HeightCm,
 			OptionValues: marshalOptionValues(parsed.OptionValues), UpdatedAt: s.deps.Clock(), ID: req.VariantId,
+			Tracking: tracking, ExpiryDays: parsed.ExpiryDays, BestBeforeDays: parsed.BestBeforeDays,
 		})
 		return err
 	})

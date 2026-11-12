@@ -24,6 +24,7 @@ const product = {
       sku: "W-1",
       unit: "pcs",
       standardCost: 1,
+      tracking: "none" as const,
       optionValues: {},
       effectivePrices: [],
       createdAt: "",

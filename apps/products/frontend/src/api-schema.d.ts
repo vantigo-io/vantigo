@@ -630,6 +630,17 @@ export interface components {
             sku: string;
             /** Format: double */
             standardCost?: number | null;
+            tracking: components["schemas"]["VariantTracking"];
+            /**
+             * Format: int32
+             * @description The days a new lot's expiry lies after its production or receipt date (manufacturing phase 2 M49); null when unset.
+             */
+            expiryDays?: number | null;
+            /**
+             * Format: int32
+             * @description The days a new lot's best-before date lies after its production or receipt date; null when unset.
+             */
+            bestBeforeDays?: number | null;
             unit: string;
             /** Format: date-time */
             updatedAt: string;
@@ -652,6 +663,11 @@ export interface components {
             /** Format: double */
             rate: number;
         };
+        /**
+         * @description How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
+         * @enum {string}
+         */
+        VariantTracking: "none" | "lot" | "serial";
         VariantRequest: {
             barcode?: string | null;
             /** Format: double */
@@ -665,6 +681,17 @@ export interface components {
             sku: string;
             /** Format: double */
             standardCost?: number | null;
+            tracking?: components["schemas"]["VariantTracking"];
+            /**
+             * Format: int32
+             * @description The days a new lot's expiry lies after its production or receipt date, 1–3650; null or absent clears it.
+             */
+            expiryDays?: number | null;
+            /**
+             * Format: int32
+             * @description The days a new lot's best-before date lies after its production or receipt date, 1–3650; null or absent clears it.
+             */
+            bestBeforeDays?: number | null;
             unit?: string | null;
             /** Format: double */
             weightKg?: number | null;

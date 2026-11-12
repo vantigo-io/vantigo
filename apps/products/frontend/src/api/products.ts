@@ -46,9 +46,15 @@ export interface VariantResponse {
   effectivePrices: PriceRow[];
   /** By sort order then id. Always sent; optional only as the contract declares it. */
   packagings?: PackagingResponse[];
+  /** How the variant's stock is tracked; only none can be written until production records lots. */
+  tracking: VariantTracking;
+  /** The days a new lot's expiry and best-before lie after its production or receipt. */
+  expiryDays?: number | null;
+  bestBeforeDays?: number | null;
   createdAt: string;
   updatedAt: string;
 }
+export type VariantTracking = "none" | "lot" | "serial";
 export const PACKAGING_KINDS = ["inner", "case", "pallet", "other"] as const;
 export type PackagingKind = (typeof PACKAGING_KINDS)[number];
 /** A box, case or pallet of a variant. quantity is in the variant's unit, derived when containsPackagingId is set. */
@@ -93,6 +99,11 @@ export interface VariantInput {
   heightCm?: number;
   optionValues?: Record<string, string>;
   prices?: PriceInput[];
+  /** An update that leaves it out keeps the stored mode. */
+  tracking?: VariantTracking;
+  /** An update that leaves them out clears them, as every field of the replacement. */
+  expiryDays?: number;
+  bestBeforeDays?: number;
 }
 export interface ProductResponse {
   id: number;

@@ -50,7 +50,19 @@ type VariantEntry struct {
 	// ("12.50"), "" when it has none (manufacturing design M4: the one cost
 	// Manufacturing reads). Every read of the catalog fills it.
 	StandardCost string
+	// Tracking is "none", "lot" or "serial" (manufacturing phase 2 M49).
+	Tracking string
+	// ExpiryDays and BestBeforeDays are the days a new lot's expiry and best-before
+	// date lie after its production or receipt date, nil when unset.
+	ExpiryDays, BestBeforeDays *int32
 }
+
+// The tracking modes of VariantEntry.Tracking (manufacturing phase 2 M49).
+const (
+	TrackingNone   = "none"
+	TrackingLot    = "lot"
+	TrackingSerial = "serial"
+)
 
 // ProductImage is an image of a product as another module may read it
 // (messenger design N15): what names and describes the picture, never where

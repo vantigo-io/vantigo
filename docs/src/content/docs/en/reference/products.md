@@ -1,12 +1,13 @@
 ---
 title: "Products module"
-description: "The catalog of goods and services the company sells, with prices, variants and their packagings; the catalog contract other modules read and lock; the variants that hold stock; the product images; the API, its permissions and the product list's extra columns."
+description: "The catalog of goods and services the company sells, with prices, variants and their packagings; a variant's tracking mode and lot offsets, held by stock and guarded until production records lots; the catalog contract other modules read and lock; the variants that hold stock; the product images; the API, its permissions and the product list's extra columns."
 sources:
   - apps/server/internal/products
   - apps/products/frontend
   - openapi/products.yaml
   - apps/server/internal/db/migrations/00109_products_packagings.sql
   - apps/server/internal/db/migrations/00131_products_images.sql
+  - apps/server/internal/db/migrations/00162_products_variant_tracking.sql
 ---
 The Products module is the catalog of everything the company sells: physical goods
 and performed services alike. It is a vertical-slice module inside the single Vantigo
@@ -24,8 +25,9 @@ price billing lines with it, and future Orders and Booking modules will read it 
 - **ProductVariant** — the sellable identity: company-wide unique `sku`, optional
   GTIN `barcode`, `unit`, `standardCost`, logistics fields (`weightKg`, `lengthCm`,
   `widthCm`, `heightCm`), free-form `optionValues` (for instance `Color=Red`,
-  stored as JSONB) and the variant's prices. Barcodes are digits-only
-  GTIN-8/12/13/14 values with a valid check digit and are unique when set.
+  stored as JSONB), its [tracking mode and lot offsets](#tracking) and the variant's
+  prices. Barcodes are digits-only GTIN-8/12/13/14 values with a valid check digit and
+  are unique when set.
   Single-variant products are additionally flattened in API responses so simple
   products keep an inline UX.
 - **Packaging** — a box, a case or a pallet a variant is bought, stored and counted in:
@@ -63,7 +65,9 @@ when it has none — Orders' variant grid), its own barcode (nil when it has non
 weight in grams (`WeightGrams`, the variant's weight in kilograms as whole grams, nil when it
 has none — Orders proposes a shipment's parcel from it), its standard cost
 (`StandardCost`, exact decimal text with two places such as `"12.50"`, `""` when it has
-none — the one cost Manufacturing reads, manufacturing design M4) and its
+none — the one cost Manufacturing reads, manufacturing design M4), its **tracking**
+(`Tracking`: `none`, `lot` or `serial`, and `ExpiryDays` and `BestBeforeDays`, nil when
+unset — [tracking](#tracking)) and its
 **packagings** (`PackagingEntry`: id, name, kind, quantity as a three-place decimal
 such as `"600.000"`, barcode; by sort order then id, empty when it has none) — never
 enough to manage the catalog. Every read fills the packagings, `LockVariants` included,
@@ -111,7 +115,8 @@ collected from every module the binary composes, enabled or not
 ([rule 20](/en/contributing/module-boundaries/#the-rules)). Only Products calls it,
 inside the transaction that deletes a variant or turns a product into a service, after
 locking the variants. Its `VariantHeld(tx, variantID, purpose)` is told which write
-asks — `delete` or `type_change` — and answers nil, or a `VariantHold` whose `Kind` is
+asks — `delete`, `type_change` or, for a change of the [tracking mode](#tracking),
+`tracking_change` — and answers nil, or a `VariantHold` whose `Kind` is
 `stock` — the quantity the holder keeps in the variant's unit and the number of
 locations it lies at —, `reserved` — a quantity orders have reserved of it with nothing
 on hand, and the number of sites ([Inventory](/en/reference/inventory/#reservations-and-issues)) —,
@@ -123,8 +128,10 @@ variant, or of Manufacturing's active bills of materials that name it as their p
 a component ([Manufacturing](/en/reference/manufacturing/#the-variant-holder)). A holder
 may stop one write and not the other:
 open orders will stop a delete but never a change to Service (orders design O30).
-Inventory's stock, its reservations and its stock in transit stop both, and so do
-Manufacturing's active bills of materials (manufacturing design M16a).
+Inventory's stock, its reservations and its stock in transit stop all three, and
+Manufacturing's active bills of materials stop a delete and a change to Service
+(manufacturing design M16a); Orders' and Manufacturing's open documents never stop a
+tracking change.
 
 **Deleting a variant** (`DELETE /api/v1/products/{id}/variants/{variantId}`) is one
 transaction:
@@ -171,6 +178,41 @@ Archiving a product (`Discontinued`) is unaffected.
 These problems carry no `code`, as none of Products' does: the app tells *Variant has
 stock* from *Last variant* by its title, and shows its own sentence rather than the
 server's detail.
+
+### Tracking
+
+A variant's **tracking mode** (manufacturing phase 2 M49–M51,
+`00162_products_variant_tracking.sql`) says how its stock is kept in
+[Inventory](/en/reference/inventory/#lots): `tracking` is `none`, `lot` (in numbered
+lots) or `serial` (lots of at most one), default `none`; `expiryDays` and
+`bestBeforeDays` (1–3650, null when unset) are the days a new lot's expiry and
+best-before date lie after its production or receipt date. The variant request and
+response carry the three; the response always sends `tracking`. On a create an absent
+`tracking` is `none`; on an update it **keeps the stored mode**, while the two offsets,
+as every field of the replacement, are cleared when left out. The design's codes are
+Products' titles, since Products' problems carry no code:
+
+- **Goods only** — a tracking other than `none` on a variant of a product that is not
+  goods is a 400 *Invalid variant* (or *Invalid product* on a product's create) with a
+  field error on `tracking` (`tracking_requires_goods`). A product's change to Service
+  sets every variant's tracking to `none` in the same transaction, after the holders
+  have said it holds no stock.
+- **The guard, until production records lots** — any write that names a mode other
+  than `none` — a variant's create or update, a product's create — is refused 409
+  ***Tracking unavailable*** (`tracking_unavailable`), after the field checks. Deliveries
+  and productions cannot pick lots yet (layers O and M of manufacturing phase 2), so a
+  tracked variant would be refused `lot_required` by every document that takes it; the
+  variant form shows no *Tracking* select. Layer M removes the guard and adds the select.
+  A tracked variant exists until then only where a test writes it to the table.
+- **A change is held** — a variant `PUT` whose `tracking` differs from the stored one
+  asks every holder, inside its transaction and after the variant's `FOR UPDATE`, with
+  the purpose `tracking_change`; the first hold refuses 409 ***Tracking held***
+  (`tracking_held`), "This variant still has 34 pcs in stock at 3 locations. Move the
+  stock or adjust it to zero before you change its tracking." — with the reserved and
+  in-transit wordings of a delete. Changing `expiryDays` or `bestBeforeDays` is never
+  held; the offsets apply to lots made afterwards. There is no guided conversion: the
+  way for existing stock is to change the mode at zero and import the opening balance
+  with lots (Inventory's L2).
 
 ## Packagings
 

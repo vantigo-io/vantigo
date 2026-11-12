@@ -9,6 +9,7 @@ sql:
       - ../db/migrations/00004_products_baseline.sql
       - ../db/migrations/00109_products_packagings.sql
       - ../db/migrations/00131_products_images.sql
+      - ../db/migrations/00162_products_variant_tracking.sql
     queries: queries
     gen:
       go:

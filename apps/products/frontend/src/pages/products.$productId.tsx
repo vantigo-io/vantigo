@@ -203,6 +203,9 @@ export const ProductDetailsPage = ({ extraPanels, stockHref }: ProductDetailsPag
           .map((entry) => entry.split("=").map((part) => part.trim()))
           .filter(([key, value]) => key && value),
       ),
+      // The lot offsets are not on the form yet; an edit keeps the stored ones.
+      expiryDays: variantModal?.mode === "edit" ? (variantModal.variant.expiryDays ?? undefined) : undefined,
+      bestBeforeDays: variantModal?.mode === "edit" ? (variantModal.variant.bestBeforeDays ?? undefined) : undefined,
     }),
   );
 

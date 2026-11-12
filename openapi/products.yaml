@@ -539,6 +539,18 @@ components:
                     format: double
                     nullable: true
                     type: number
+                tracking:
+                    $ref: '#/components/schemas/VariantTracking'
+                expiryDays:
+                    description: The days a new lot's expiry lies after its production or receipt date (manufacturing phase 2 M49); null when unset.
+                    format: int32
+                    nullable: true
+                    type: integer
+                bestBeforeDays:
+                    description: The days a new lot's best-before date lies after its production or receipt date; null when unset.
+                    format: int32
+                    nullable: true
+                    type: integer
                 unit:
                     type: string
                 updatedAt:
@@ -558,6 +570,7 @@ components:
                 - unit
                 - optionValues
                 - effectivePrices
+                - tracking
                 - createdAt
                 - updatedAt
             type: object
@@ -593,6 +606,14 @@ components:
                 - kind
                 - rate
             type: object
+        VariantTracking:
+            description: |-
+                How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
+            enum:
+                - none
+                - lot
+                - serial
+            type: string
         VariantRequest:
             properties:
                 barcode:
@@ -622,6 +643,18 @@ components:
                     format: double
                     nullable: true
                     type: number
+                tracking:
+                    $ref: '#/components/schemas/VariantTracking'
+                expiryDays:
+                    description: The days a new lot's expiry lies after its production or receipt date, 1–3650; null or absent clears it.
+                    format: int32
+                    nullable: true
+                    type: integer
+                bestBeforeDays:
+                    description: The days a new lot's best-before date lies after its production or receipt date, 1–3650; null or absent clears it.
+                    format: int32
+                    nullable: true
+                    type: integer
                 unit:
                     nullable: true
                     type: string
