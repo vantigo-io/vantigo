@@ -83,7 +83,7 @@ shorter than yours:
 | [Communications](/en/user/communications/) | Inbox, Channels, Suppressions |
 | [Virtual employees](/en/user/agents/) | Agents (Persona, Roles, Permissions, Usage, Activity), Settings |
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
-| [Inventory](/en/user/inventory/) | Overview, Transfers, Movements, Receipts, Counts, Low stock, Import opening balances (and placements) |
+| [Inventory](/en/user/inventory/) | Overview, Lots, Transfers, Movements, Receipts, Counts, Low stock, Import opening balances (and placements) |
 | [Orders](/en/user/orders/) | Quotes, Sales orders, Deliveries, Subscriptions, Quote templates, Sales analysis, Orders settings |
 | [Manufacturing](/en/user/manufacturing/) | Overview, Manufacturing orders, Shop floor, Production schedule, Bills of materials, Work centers |
 | [Knowledge](/en/user/knowledge/) | Articles, Trash |
@@ -106,7 +106,7 @@ orders](/en/user/invoices/#invoicing-orders)).
 The search box in the top bar (or the keyboard shortcut shown in it) opens a spotlight
 that jumps to any screen you have access to, so you rarely need the switcher for a
 screen you know the name of. It also offers a few quick actions, such as Orders' **New quote**
-for those who may make quotes, **New manufacturing order** in Manufacturing for those who may create orders, **Open the shop floor** for those who work there, and **Open the production schedule** and **Manufacturing reports** for everyone who uses Manufacturing.
+for those who may make quotes, Inventory's **Find a lot** for those who see stock, **New manufacturing order** in Manufacturing for those who may create orders, **Open the shop floor** for those who work there, and **Open the production schedule** and **Manufacturing reports** for everyone who uses Manufacturing.
 
 ## Your account
 

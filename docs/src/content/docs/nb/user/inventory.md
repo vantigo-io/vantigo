@@ -1,6 +1,6 @@
 ---
 title: Lager
-description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, varetelling, import av inngående beholdning, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
+description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, partier og serienumre — på varemottak, flyttinger og justeringer, listen Partier, siden for et parti, å sperre et parti og frigi det, filene til et parti — varetelling, import av inngående beholdning, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
 sidebar:
   order: 65
 sources:
@@ -34,6 +34,7 @@ Sidemenyen viser:
 | Område i sidemenyen | Hvem ser det |
 | --- | --- |
 | **Oversikt** — oppslaget og lagerstedene | `inventory:locations-view` eller `inventory:stock-view` |
+| **Partier** — partiene til varene som holdes i partier eller serienumre | `inventory:locations-view` og `inventory:stock-view` |
 | **Overføringer** — varer sendt mellom lagersteder | `inventory:locations-view` og `inventory:stock-view` |
 | **Bevegelser** | `inventory:locations-view` og `inventory:stock-view` |
 | **Varemottak** — listen over bevegelser med bare varemottak | `inventory:locations-view` og `inventory:stock-view` |
@@ -45,7 +46,7 @@ Det rettighetene dine ikke tillater, vises ikke i det hele tatt: en knapp du ikk
 en rettighet du ikke har. Knappene som bokfører — varemottak, justeringer og flyttinger —
 krever begge visningsrettighetene i tillegg til **Motta varer** eller **Justere
 beholdning**; varetelling krever begge visningsrettighetene og **Telle varer**; å opprette, sende,
-motta og avbryte overføringer krever begge visningsrettighetene og **Overføre varer**. Antall krever begge visningsrettighetene, fordi ethvert sted
+motta og avbryte overføringer krever begge visningsrettighetene og **Overføre varer**; å endre et parti, sperringene og filene krever begge visningsrettighetene og **Administrere partier**. Antall krever begge visningsrettighetene, fordi ethvert sted
 beholdning ligger, er en lokasjon; **Se lagersteder** alene viser lagerstedene og
 lokasjonene deres uten antall.
 
@@ -59,12 +60,15 @@ eller skann ett av disse og trykk Enter:
 - en vares **varenummer** eller **strekkode**, eller strekkoden til en av pakningene
   dens — en eske eller en pall åpner varen;
 - en overførings kode, `TRF` og nummeret, slik den står under strekkoden på
-  [følgeseddelen](#skriv-ut-følgeseddelen) — den åpner overføringen.
+  [følgeseddelen](#skriv-ut-følgeseddelen) — den åpner overføringen;
+- et [partis](#partier-og-serienumre) nummer eller serienummer, med store eller små
+  bokstaver, eller etikettkoden, `LOT` og et tall — det åpner siden for partiet. Et
+  serienummer som også er en vares varenummer, viser begge.
 
 Ett treff åpnes med en gang: en lokasjon åpner siden sin, en vare beholdningssiden sin.
-Flere treff listes opp, hvert merket **Lokasjon** eller **Vare**, så du kan velge. Ingen
+Flere treff listes opp, hvert merket **Lokasjon**, **Vare**, **Overføring** eller **Parti**, så du kan velge. Ingen
 treff gir *Ingenting passer med «…».*, og det du skrev, blir stående så du kan rette
-det. Overføringer, som varer, vises bare for dem som har begge visningsrettighetene.
+det. Overføringer og partier, som varer, vises bare for dem som har begge visningsrettighetene.
 
 En **håndskanner** virker i feltet som den er: skanneren skriver koden den leser og
 trykker Enter, og det er nettopp det oppslaget venter på. Varer vises bare for dem som
@@ -292,6 +296,97 @@ lokasjon, beholdningssiden for en vare, kortet **Beholdning** på produktsiden o
 varetellingen — vises et antall av en vare med pakninger også fordelt, største pakning
 først: 1 830 pcs med en pall på 600 og en eske på 15 blir *3 Euro pallet, 2 Box*, under
 selve antallet.
+
+## Partier og serienumre
+
+En vare kan holdes i **partier** — en sats med eget nummer, som et leverandørparti med
+stål eller en dags produksjon av melk — eller i **serienumre**, der hvert eksemplar er et
+parti for seg og gjelder nøyaktig én. All beholdning av en slik vare ligger under partiet
+sitt, så du ser hvilket parti som ligger i hvilken hylle, når det går ut, og hvor det ble
+av. Partisporing slås på per vare i Produkter når leveranser og produksjoner registrerer
+partier; inntil da viser skjemaene ikke noe parti.
+
+Et parti har sitt **nummer** (1–20 bokstaver, sifre og `. _ / -`, ett per vare),
+leverandørens **leverandørparti** — for eksempel smeltenummeret på et 3.1-sertifikat — en
+**produksjonsdato**, en **best før**-dato og en **utløpsdato**. En vare kan gi et nytt
+parti datoene selv: så mange dager etter produksjonsdatoen, eller etter dagen det mottas.
+Et parti er **utløpt** fra dagen etter utløpsdatoen, i organisasjonens tidssone; best før
+alene stopper aldri noe, den vises.
+
+Et parti er **Tilgjengelig**, i **Karantene** eller **Blokkert**, ut fra **sperringene**
+sine: et parti med en blokkering er blokkert, med en karantene er det i karantene.
+Beholdning i et sperret eller utløpt parti blir liggende, men kan ikke leveres eller
+brukes, og holdes utenfor [disponibelt](#reservert-og-disponibelt). Den kan fortsatt
+flyttes — til en sperrehylle, for eksempel — telles, skrives av med en justering og
+sendes tilbake.
+
+### Partier på varemottak, flytting og justering
+
+For en vare som holdes i partier, viser [linjeredigeringen](#linjeredigeringen) kolonnen
+**Parti**:
+
+- På et **varemottak** skriver du partiets nummer eller velger et varen allerede har på
+  lagerstedet; står det tomt, lages et nummer (`L1001`, `L1002` …). Et nummer varen
+  allerede har, legges til i det partiet. Kalenderknappen ved siden av åpner partiets
+  **Produksjonsdato**, **Best før** og **Utløpsdato**: står de tomme, følger de av varens
+  dager; for et parti som finnes, må en dato du oppgir stemme med partiets egen — *Partiet
+  finnes med en annen dato. Utelat datoen for å legge til i det.*
+- For en vare som holdes i **serienumre**, tar en linje på varemottaket **Første
+  serienummer** og **Antall**: sifrene på slutten telles opp med samme bredde — `SN0099`,
+  `SN0100`, `SN0101` — og linjens antall er antallet serienumre. Et serienummer som
+  allerede er på lager, avvises.
+- På en **flytting** velger du partiet blant dem varen har på lagerstedet, hvert med
+  utløpsdato og hva som ligger av det; skjemaet foreslår det første partiet som kan
+  brukes, det som går ut først.
+- På en **justering** velger du et av varens partier, eller skriver et nytt nummer for å
+  legge beholdning under et nytt parti.
+
+En linje for en sporet vare uten parti holdes tilbake — *Velg partiet på linjen* — og
+serveren avviser et parti av en annen vare, en serienummerlinje på mer enn én og et
+varemottak til et blokkert parti.
+
+### Listen Partier
+
+**Partier** i sidemenyen lister partiene etter vare og nummer: **Parti**, **Varenummer**,
+**Produkt**, **Leverandørparti**, **Utløpsdato**, **Best før**, **Status** — *Utløpt* i rødt
+etter utløpsdatoen — og **Beholdning**. **Søk** finner et partinummer, et leverandørparti
+eller et varenummer; **Lagersted** teller bare det som ligger der; **Status** og **Årsak**
+snevrer inn til de sperrede partiene, og hvorfor. **Bare med beholdning** er på med mindre
+du vil se partier som ikke lenger har noe. **Last flere** henter neste side. Søket i
+toppfeltet tilbyr **Finn et parti**, som åpner denne listen.
+
+### Siden for et parti
+
+Trykk et partinummer — i listen, under en lokasjon på en vares beholdning, på en bevegelse
+eller i oppslaget — for å åpne siden: varen, hva som ligger av det i alt,
+leverandørpartiet, når det først ble mottatt, de tre datoene, bevegelsen som opprettet
+det, og merknaden. **Sperringer** lister alle sperringer, de aktive først; **Hvor det
+ligger** lister lagerstedene og lokasjonene som har det; **Bevegelser** bevegelseslinjene,
+nyeste først, hver med lenke; **Filer** filene. Med **Administrere partier** endrer
+**Rediger** leverandørpartiet, de tre datoene og merknaden; nummeret og varen endres
+aldri, og en ny utløpsdato gjelder fra neste bokføring.
+
+Siden og listen oppdateres av seg selv når noen andre bokfører beholdning av partiet,
+sperrer det eller legger til en fil.
+
+### Sperr et parti og frigi det
+
+Med **Administrere partier** setter **Karantene** eller **Blokker** på siden for et parti en
+sperring fra partisiden: velg **Årsak** — **Kontroll**, **Avvik**, **Reklamasjon**,
+**Tilbakekalling** eller **Annet** — skriv en **Merknad** og trykk **Sperr**. **Frigi** på en
+av sidens egne sperringer spør *Hvorfor den frigis* og avslutter den; partiet er
+tilgjengelig igjen når ingen sperring er igjen. En sperring som et dokument i en annen
+modul har satt — et avvik i Produksjon, for eksempel — viser *Satt av manufacturing,
+frigis der*: den frigis på det dokumentet, ikke her.
+
+### Filene til et parti
+
+Med **Administrere partier** legger **Legg til fil** på siden for et parti til et
+sertifikat, en analyse eller et bilde: en PDF, JPEG eller PNG på høyst 20 MB, og høyst 20
+filer per parti. Trykk filnavnet for å åpne filen, nedlastingsknappen for å lagre den, og
+**Fjern** for å ta den av partiet. Filer krever installasjonens
+[objektlagring](/nb/admin/object-storage/); uten den står det *Fillagring er ikke satt opp i
+denne installasjonen.*
 
 ## Overfør varer mellom lagersteder
 
@@ -787,7 +882,10 @@ på lager ennå har også en rad. Varens
 [hovedlokasjon](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare) på et lagersted står
 først blant lokasjonene, merket *hovedlokasjon*, og hvert lagersted viser
 **Bestillingspunkt** og **Maksbeholdning**, **Lav** mens varen er lav der og, med
-**Justere beholdning**, **Endre påfylling**. **Motta** og **Juster** tilbys etter
+**Justere beholdning**, **Endre påfylling**. For en vare som holdes i partier, lister
+hver lokasjon partiene sine under seg — nummer, utløpsdato og *Karantene*, *Blokkert*
+eller *Utløpt* der det gjelder — og et lagersted med sperret eller utløpt beholdning sier
+*herav … sperret eller utløpt* under antallet. **Motta** og **Juster** tilbys etter
 rettighetene dine. En
 vare som er slettet fra katalogen, viser fortsatt historikken sin, merket *Slettet fra
 katalogen*.
@@ -818,8 +916,9 @@ Siden for en bevegelse viser typen, lagerstedet, når og av hvem den ble bokfør
 årsaken eller leverandøren og leverandørens referanse, notatet, varetellingen den
 bokførte eller overføringen den hører til (**Overføring**), kilden (**Kilde**) en annen
 modul bokførte den for — en produksjons kilde lenker til produksjonsordren når
-Produksjon er i bruk — og linjene: **Varenummer**, **Produkt**, **Fra**, **Til** og **Antall**, med
-**Registrert som** for en linje registrert i pakninger. En bevegelse redigeres eller
+Produksjon er i bruk — og linjene: **Varenummer**, **Produkt**, **Fra**, **Til**, **Parti** for en vare som holdes i
+partier — med lenke til partiet, og *Utløpt* der et utløpt parti ble tatt med vilje — og
+**Antall**, med **Registrert som** for en linje registrert i pakninger. En bevegelse redigeres eller
 slettes aldri.
 
 ## Beholdning-kortet på produktsiden
@@ -833,7 +932,10 @@ vises som *Under transport …* ved siden av totalen, og *+… innkommende* unde
 lagerstedet de skal til; de er ikke med i samlet beholdning, som er det som ligger i
 hyllene. Under et lagersted der varen har et
 [bestillingspunkt](#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare), sier *bestill
-ved ≤ 10 stk* hva det er, i rødt mens varen er lav der. Er ingenting på lager og ingenting på vei, står det **Ingen beholdning**, og
+ved ≤ 10 stk* hva det er, i rødt mens varen er lav der. For en vare som holdes i partier,
+lister hver lokasjon partiene sine — nummer, utløpsdato og status — med lenke til
+partiet, og *herav … sperret eller utløpt* under lagerstedet sier hvor mye som ikke kan
+brukes. Er ingenting på lager og ingenting på vei, står det **Ingen beholdning**, og
 **Motta** eller **Juster** tilbys etter det du har lov til. En tjeneste
 har ikke noe Beholdning-kort. Se [produktsiden](/nb/user/products/#produktsiden).
 
@@ -900,18 +1002,20 @@ lagerstedet.
 
 ## Hvem ser hva
 
-| Hva | Se lagersteder | Se beholdning | Administrere lagersteder | Justere beholdning | Motta varer | Telle varer | Overføre varer |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Flisen og **Oversikt** med oppslaget — én av visningsrettighetene er nok | ✓ | ✓ | – | – | – | – | – |
-| Lagerstedene, lokasjonene deres og siden for en lokasjon; lokasjoner i oppslaget og **Finn lokasjon eller vare**; **Skriv ut etiketter** | ✓ | – | – | – | – | – | – |
-| Antall: **Innhold**, beholdningssiden for en vare, **Bevegelser** og **Varemottak**, **Beholdning**-kortet på produktsiden, kolonnen **Beholdning** i produktlisten, tallene på dashbordet, varer i oppslaget | ✓ | ✓ | – | – | – | – | – |
-| **Nytt lagersted**, **Ny lokasjon**, **Legg til mange**, **Rediger**, **Arkiver**, **Gjenåpne**, **Slett** | ✓ | – | ✓ | – | – | – | – |
-| **Lav beholdning**, **Eksporter CSV**; punktet om lav beholdning på dashbordet | ✓ | ✓ | – | – | – | – | – |
-| **Ny justering**, **Juster**, **Ny flytting**, **Flytt herfra** — i Oversikt, på en lokasjon, en vare, bevegelsene og produktets Beholdning-kort; **Endre påfylling**; **Importer inngående beholdning**, begge slagene | ✓ | ✓ | – | ✓ | – | – | – |
-| **Nytt varemottak**, **Motta her**, **Motta** — der de enn vises | ✓ | ✓ | – | – | ✓ | – | – |
-| **Varetellinger**, **Åpne varetelling**, **Tell**, **Start varetelling**, telling, bokføring og avbrytelse; **En varetelling har vært åpen lenge** på dashbordet | ✓ | ✓ | – | – | – | ✓ | – |
-| **Overføringer**, siden for en overføring og historikken, **Skriv ut følgeseddel**, overføringer i oppslaget, **Innkommende** og **Utgående** på et lagersted, **Avvik på overføringer** på en vare | ✓ | ✓ | – | – | – | – | – |
-| **Ny overføring**, **Rediger**, **Lagre utkast**, **Send …**, **Send og motta …**, **Slett utkast**, **Motta …**, å avslutte med avvik, **Avbryt overføring**; **En overføring har passert forventet ankomst** på dashbordet; **Opprett overføring** på listen over lav beholdning | ✓ | ✓ | – | – | – | – | ✓ |
+| Hva | Se lagersteder | Se beholdning | Administrere lagersteder | Justere beholdning | Motta varer | Telle varer | Overføre varer | Administrere partier |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Flisen og **Oversikt** med oppslaget — én av visningsrettighetene er nok | ✓ | ✓ | – | – | – | – | – | – |
+| Lagerstedene, lokasjonene deres og siden for en lokasjon; lokasjoner i oppslaget og **Finn lokasjon eller vare**; **Skriv ut etiketter** | ✓ | – | – | – | – | – | – | – |
+| Antall: **Innhold**, beholdningssiden for en vare, **Bevegelser** og **Varemottak**, **Beholdning**-kortet på produktsiden, kolonnen **Beholdning** i produktlisten, tallene på dashbordet, varer i oppslaget | ✓ | ✓ | – | – | – | – | – | – |
+| **Nytt lagersted**, **Ny lokasjon**, **Legg til mange**, **Rediger**, **Arkiver**, **Gjenåpne**, **Slett** | ✓ | – | ✓ | – | – | – | – | – |
+| **Lav beholdning**, **Eksporter CSV**; punktet om lav beholdning på dashbordet | ✓ | ✓ | – | – | – | – | – | – |
+| **Ny justering**, **Juster**, **Ny flytting**, **Flytt herfra** — i Oversikt, på en lokasjon, en vare, bevegelsene og produktets Beholdning-kort; **Endre påfylling**; **Importer inngående beholdning**, begge slagene | ✓ | ✓ | – | ✓ | – | – | – | – |
+| **Nytt varemottak**, **Motta her**, **Motta** — der de enn vises | ✓ | ✓ | – | – | ✓ | – | – | – |
+| **Varetellinger**, **Åpne varetelling**, **Tell**, **Start varetelling**, telling, bokføring og avbrytelse; **En varetelling har vært åpen lenge** på dashbordet | ✓ | ✓ | – | – | – | ✓ | – | – |
+| **Overføringer**, siden for en overføring og historikken, **Skriv ut følgeseddel**, overføringer i oppslaget, **Innkommende** og **Utgående** på et lagersted, **Avvik på overføringer** på en vare | ✓ | ✓ | – | – | – | – | – | – |
+| **Ny overføring**, **Rediger**, **Lagre utkast**, **Send …**, **Send og motta …**, **Slett utkast**, **Motta …**, å avslutte med avvik, **Avbryt overføring**; **En overføring har passert forventet ankomst** på dashbordet; **Opprett overføring** på listen over lav beholdning | ✓ | ✓ | – | – | – | – | ✓ | – |
+| **Partier**, siden for et parti med sperringene, hvor det ligger, bevegelsene og filene; partier i oppslaget og **Finn et parti** | ✓ | ✓ | – | – | – | – | – | – |
+| **Rediger** på et parti, **Karantene**, **Blokker**, **Frigi**, **Legg til fil**, **Fjern** | ✓ | ✓ | – | – | – | – | – | ✓ |
 
 Hver av de andre radene krever hver rettighet den krysser av: knappene som bokfører og
 teller, vises bare for den som har begge visningsrettighetene **og** skriverettigheten.
@@ -919,5 +1023,5 @@ teller, vises bare for den som har begge visningsrettighetene **og** skriveretti
 lokasjonen ikke viser. Å motta en overføring krever **Overføre varer**, ikke **Motta
 varer**: den flytter dine egne varer mellom dine lagersteder og er ikke et mottak fra en
 leverandør. Å angi en påfylling krever **Justere beholdning**: den er en innstilling for
-beholdningen, aldri beholdning i seg selv. Ingen av de sju rettighetene er sensitive. Hele tabellen står
+beholdningen, aldri beholdning i seg selv. Å endre et parti krever **Administrere partier**: en sperring hindrer at partiet leveres eller brukes. Ingen av de ni rettighetene er sensitive. Hele tabellen står
 under [rettighetene](/en/reference/inventory/#permissions) i referansen.
