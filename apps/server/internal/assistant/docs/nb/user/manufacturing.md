@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, å flytte en arbeidsordre ved å dra den eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
+description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, å flytte en arbeidsordre ved å dra den eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; kvalitet — kontrollene på en operasjon, å registrere dem ved stasjonen, hva de stopper, og avvik — å melde et, å sette produksjonen i karantene, å lukke det og å oppheve sperrene; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
 sidebar:
   order: 66
 sources:
@@ -39,6 +39,7 @@ Sidemenyen viser:
 | **Produksjonsordrer** | Alle åpne produksjonsordrer, med nummer, produkt, antall, lagersted, forfallsdato og reservasjonsstatus |
 | **Verksted** | Arbeidsstasjonenes køer, der operatørene starter, setter på pause og fullfører arbeidsordrer, og **Mitt arbeid** |
 | **Produksjonsplan** | Tavlen: arbeidsordrene som er planlagt på hver arbeidsstasjon, dag for dag, med belastningen, og ordrene som gjenstår å planlegge |
+| **Avvik** | Det som gikk galt: alle avvik, de åpne først, med ordre, produkt og partier, og om de holdes i karantene |
 | **Stykklister** | Alle stykklistene, med produktet, koden, produsert antall, om den er standard, og antall linjer og operasjoner |
 | **Arbeidsstasjoner** | Alle arbeidsstasjonene, etter kode, med lagerstedet sitt |
 
@@ -159,7 +160,9 @@ den.
    - **Rigg-minutter**, valgfritt: la feltet stå tomt for å bruke arbeidsstasjonens;
    - **Minutter per syklus**, mer enn 0: tiden én syklus på arbeidsstasjonen tar;
    - **Instruksjoner**, i Markdown, opptil 20 000 tegn: det operatøren trenger å vite ved
-     stasjonen.
+     stasjonen;
+   - **Kvalitetskontroller**, valgfritt: det operatøren registrerer ved stasjonen — se
+     [Kvalitetskontroller på en operasjon](#kvalitetskontroller-på-en-operasjon).
 5. Under **Komponenter** velger du **Legg til komponent** for hver linje. Hver har:
    - **Komponent**, en vare valgt slik produktet ble valgt;
    - **Antall** per produsert antall, mer enn 0 med høyst tre desimaler, i komponentens
@@ -181,6 +184,32 @@ la til i samme redigering, før noen av dem er lagret.
 omgang. Når du fjerner en operasjon en linje navnga, navngir linjen rett og slett ingen
 lenger. Redigeringen nektes når noen andre har lagret stykklisten etter at du åpnet den;
 last inn på nytt og gjør endringen din igjen.
+
+### Kvalitetskontroller på en operasjon
+
+Under hver operasjon legger **Legg til kontroll** til en kvalitetskontroll, opptil 20 per
+operasjon. Hver har:
+
+- en **Kontroll**: tittelen, for eksempel *Fyllvekt* eller *Tett forsegling*;
+- en **Type**:
+  - **Instruks** — lest og bekreftet med **Utført**;
+  - **Godkjent eller avvist** — operatøren svarer **Godkjent** eller **Avvist**;
+  - **Måling** — operatøren skriver inn den målte verdien, og Vantigo vurderer den:
+    innenfor grensene er godkjent, utenfor er avvist. Oppgi **Min**, **Maks** eller
+    begge, og eventuelt den **Nominelle** — mellom dem — og **Enheten**. Opptil fire
+    desimaler; en måling kan være negativ;
+  - **Bilde** — operatøren tar et bilde med nettbrettets kamera;
+- **Når**:
+  - **Hver arbeidsordre** — registreres én gang før arbeidsordren fullføres;
+  - **Første stykk** — registreres før noe som er laget på arbeidsordren, sendes videre,
+    og vises først når operatøren starter;
+- **Instruks til operatøren**, valgfritt;
+- **Karantene ved avvik**: når kontrollen avvises, setter avviket den oppretter det ordren
+  lager på vent — se [Avvik](#avvik).
+
+Kontrollene lagres med stykklisten. En produksjonsordre får kontrollene til operasjonene
+sine når den bekreftes: å endre stykklisten etterpå endrer ikke kontrollene til en ordre
+som allerede er bekreftet.
 
 ### Det en stykkliste ikke kan
 
@@ -665,6 +694,50 @@ fortsetter å løpe. Sendes den to ganger, bokføres den bare én gang.
 
 Å lukke ordren gjøres fortsatt på ordresiden, av en med Administrere produksjonsordrer.
 
+### Registrer kontrollene
+
+En arbeidsordre med kvalitetskontroller viser panelet **Kontroller**: kontrollene for
+første stykk som ikke er registrert øverst, så resten i rekkefølge. Hver viser typen, når
+den skal gjøres, instruksen og, for en måling, grensene. Registrer hver med de store
+knappene:
+
+- en instruks: **Utført**;
+- godkjent eller avvist: **Godkjent** eller **Avvist**;
+- en måling: skriv verdien i **Målt verdi** — nettbrettet viser talltastaturet — og velg
+  **Registrer**. Resultatet, **Godkjent** eller **Avvist**, er Vantigos, vurdert mot
+  grensene;
+- et bilde: **Ta bilde** åpner kameraet; bildet lagres med resultatet. En JPEG eller PNG
+  på høyst 10 MB; det kameraet skriver inn i et bilde om hvor og når det ble tatt,
+  fjernes før det lagres.
+
+En **Merknad** er valgfri på hver kontroll. Å registrere en kontroll på nytt erstatter
+resultatet; det forrige beholdes, med hvem som registrerte det og når. Ingenting kan
+registreres på en arbeidsordre som er ferdig eller kansellert.
+
+Det kontrollene stopper:
+
+- **Ferdig** nektes mens en kontroll på arbeidsordren, av begge slag, mangler resultat:
+  *Kontroller mangler*.
+- **Registrer produksjon** — på ordresiden eller på den siste operasjonen — nektes mens
+  en kontroll på en tidligere operasjon mangler resultat, eller en kontroll for **første
+  stykk** på den siste operasjonen mangler et. Avvisningen navngir kontrollene. Å bare
+  melde svinn stoppes ikke.
+- Å starte stoppes aldri.
+
+**Avvist** stopper ingenting: det oppretter straks et avvik, navngitt på kontrollen —
+**DEV-12**, for eksempel — som en arbeidsleder tar stilling til. Når kontrollen har
+**Karantene ved avvik**, setter avviket det ordren lager i karantene.
+
+Ordresidens fane **Arbeidsordrer** viser hver kontroll under **Kontrollresultater**, med
+resultatet, hvem som registrerte det og når, og avviket en avvisning opprettet.
+
+### Meld avvik
+
+Velg **Meld avvik** på en arbeidsordre, på ordresiden, i listen **Avvik** eller på siden
+til et parti i Lager. Oppgi **Tittel**, en **Beskrivelse** om du vil, og kryss av for
+**Sett produksjonen i karantene** for å holde det ordren har laget — se [Avvik](#avvik).
+Å melde avvik krever samme rettighet som verkstedet.
+
 ### Meld svinn
 
 Velg **Meld svinn** på arbeidsordren når komponenter går tapt eller ferdige enheter
@@ -902,6 +975,55 @@ Ordresiden lister **Underordrer**, og hver av dem lenker til sin **Overordnet or
 Ingenting lages automatisk. Det en underordre lager, reserveres ikke for den overordnede
 av seg selv: velg **Reserver nå** på den overordnede når det er på lager.
 
+## Avvik
+
+Et **avvik** registrerer noe som gikk galt: en avvist kontroll, en feil funnet ved
+stasjonen, et parti som ikke er som det skal. Hvert har et nummer, **DEV-1** og oppover,
+tittel og beskrivelse, og det det ble meldt fra: en ordre, en av arbeidsordrene, et
+kontrollresultat eller et parti.
+
+### Karantene
+
+Et avvik som **setter produksjonen i karantene** — meldt med avkrysningen, eller opprettet
+av en avvist kontroll med **Karantene ved avvik** — setter en karantenesperre på:
+
+- hvert parti ordren har laget så langt;
+- hvert parti en produksjon av ordren lager, eller legger til, mens avviket er åpent — så
+  et første stykk som avvises før noe er laget, holder likevel partiet ordren lager
+  etterpå;
+- partiet det ble meldt fra, for et som er meldt på siden til et parti.
+
+Et parti i karantene tas ikke av leveranser eller produksjoner før sperrene er opphevet
+(se [Partier](/nb/user/inventory/) i Lager). Sperren er avvikets: partisiden viser den med
+avviksnummeret og en lenke, og kan ikke oppheve den der. Bare produkter som spores med
+partier eller serienumre har partier å holde.
+
+### Finn et avvik
+
+**Avvik** viser dem med det nyeste først, de åpne med mindre du endrer **Status**; filtrer
+på perioden de ble opprettet i. En lenke fra en ordre eller et parti viser avvikene til
+den ordren eller det partiet. **Last ned CSV** gir alle avvik filtrene treffer, som en
+fil. Siden til et avvik viser hvor det kom fra, beskrivelsen og **Partier i karantene** —
+hver lenket til siden sin i Lager, for dem som kan se beholdning.
+
+### Lukk et avvik
+
+Å lukke krever **Administrere kvalitet** (`manufacturing:quality-manage`).
+
+1. Åpne avviket.
+2. Under **Lukk avviket** velger du **Disponering**:
+   - **Bruk som den er** eller **Omarbeid** — sperrene oppheves når det lukkes;
+   - **Kasser** eller **Returner** — sperrene blir stående: det som er igjen av partiet,
+     skal ikke brukes.
+3. Skriv **Avslutningsnotat**, og velg **Lukk avviket**.
+
+Å lukke opphever bare avvikets egne sperrer. Et parti som et annet avvik holder, eller som
+en tilbakekalling har sperret, blir holdt til også det er opphevet.
+
+Etter **Kasser** eller **Returner** skriver du av det som er igjen med en
+[justering](/nb/user/inventory/) i Lager, eller returnerer det, og velger så **Opphev
+sperrene** på avviket.
+
 ## Å slette et produkt en stykkliste bruker
 
 Produkter nekter å slette en variant, eller å gjøre produktet til en tjeneste, så lenge en
@@ -939,9 +1061,13 @@ delegeres.
 | **Produksjonsplan**, **Rapporter** (uten produksjonskostnad) | ✓ | – | – |
 | **Planlegg**, **Planlegg på nytt**, **Fjern plan**, **Planlegg alle**, å flytte en arbeidsordre, **Ønsket start** | ✓ | ✓ | – |
 | **Opprett underordrer**, og **Opprett produksjonsordre** på en salgsordres linje | ✓ | ✓ | – |
+| **Avvik**, et avvik, ordrens **Kontrollresultater** | ✓ | – | – |
+| Å registrere en kontroll, **Ta bilde**, **Meld avvik** | ✓ | en av dem | en av dem |
 
 Å registrere en produksjon, og hver handling i verkstedet, krever Bruke Produksjon og en
-av de to andre. Assistenten utfører ingen handlinger i verkstedet: en operatør stempler
+av de to andre. Å lukke et avvik og **Opphev sperrene** krever **Administrere kvalitet**
+(`manufacturing:quality-manage`) i tillegg til Bruke Produksjon; å endre kontrollene på en
+operasjon er en del av å endre stykklisten. Assistenten utfører ingen handlinger i verkstedet: en operatør stempler
 inn selv.
 Beholdningstallene i oversikten og på en ordre er Produksjons egne og krever ingen
 rettighet i Lager. En ordre laget for en salgsordre navngir salgsordrens kunde bare for dem som også har Bruke Ordre. Hele tabellen står under [Permissions](/en/reference/manufacturing/#permissions) i

@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/invoices/print_batches.go
   - apps/server/internal/staff/objects.go
   - apps/server/internal/customers/objects.go
+  - apps/server/internal/manufacturing/quality_photos.go
   - apps/server/internal/products/objects.go
 ---
 Objektlagring er applikasjonsporten Kommunikasjon mellomlagrer og serverer vedlegg
@@ -142,7 +143,9 @@ navn ([Kunder](/en/reference/customers/#attachments)). Produkter bruker omfanget
 `products-images/<productId>/<uuid>-thumb` ([Produkter](/en/reference/products/#images)). Lager bruker
 omfanget `inventory-lots`: en partifils relative nøkkel er `lots/<uuid>`, så den fysiske nøkkelen
 er `inventory-lots/lots/<uuid>` — en nøkkel som ikke navngir noe parti og aldri lages av
-filnavnet ([Lager](/en/reference/inventory/#a-lots-files)). Et avgrenset lager
+filnavnet ([Lager](/en/reference/inventory/#a-lots-files)). Produksjon bruker omfanget `manufacturing-quality`: et kontrollbildes relative nøkkel er
+`checks/<uuid>`, så den fysiske nøkkelen er `manufacturing-quality/checks/<uuid>` — en
+nøkkel som ikke navngir noen arbeidsordre ([Produksjon](/en/reference/manufacturing/#photos)). Et avgrenset lager
 avviser en relativ nøkkel som er lik omfanget sitt eller allerede begynner med
 `{scope}/`: kallere sender bare relative nøkler og må aldri bygge prefikset selv.
 
@@ -235,3 +238,9 @@ samme 503-en for et objekt som ikke kan leses. Se
 Lagers `GET /lots/{id}/attachments/{attachmentId}` gjør det samme gjennom sitt
 `inventory-lots`-avgrensede lager, under begge Lagers visningsrettigheter, med de samme
 hodene. Se [Lager](/en/reference/inventory/#a-lots-files).
+
+Produksjons `GET /work-orders/{id}/photos/{photoId}` gjør det samme gjennom sitt
+`manufacturing-quality`-avgrensede lager, under Bruke Produksjon, med de samme hodene; det
+vises på plass, som et bilde. En opplasting som intet kontrollresultat navngir etter et
+døgn, fjernes av arbeideren `manufacturing.object-deletions`. Se
+[Produksjon](/en/reference/manufacturing/#photos).

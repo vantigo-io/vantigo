@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, moving a work order by dragging it or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, moving a work order by dragging it or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -39,6 +39,7 @@ The **Manufacturing** tile is shown to everyone with **Use Manufacturing**
 | **Manufacturing orders** | Every open manufacturing order, with its number, product, quantity, site, due date and reservation status |
 | **Shop floor** | The work centers' queues, where operators start, pause and finish work orders, and **My work** |
 | **Production schedule** | The board: each work center's planned work orders, day by day, with its load, and the orders still to plan |
+| **Deviations** | What went wrong: every deviation, open ones first in view, with its order, product and lots, and whether it holds them in quarantine |
 | **Bills of materials** | Every bill of materials, with its product, its code, its output quantity, whether it is the default, and its number of lines and operations |
 | **Work centers** | Every work center, by code, with its site |
 
@@ -157,7 +158,9 @@ are asked to reload, so that nobody overwrites another's change unseen.
    - **Setup minutes**, optional: leave it empty to use the work center's;
    - **Minutes per cycle**, more than 0: the time one cycle of the work center takes;
    - **Instructions**, in Markdown, up to 20,000 characters: what the operator needs to
-     know at the station.
+     know at the station;
+   - **Quality checks**, optional: what the operator records at the station — see
+     [Quality checks on an operation](#quality-checks-on-an-operation).
 5. Under **Components**, choose **Add component** for each line. Each has:
    - **Component**, a goods variant picked as the product was;
    - **Quantity** per output quantity, more than 0 with at most three decimals, in the
@@ -179,6 +182,31 @@ the same edit, before either is saved.
 remove an operation a line named, the line simply no longer names one. The edit is
 refused when someone else saved the BoM after you opened it; reload and make your change
 again.
+
+### Quality checks on an operation
+
+Under each operation, **Add check** adds a quality check, up to 20 an operation. Each has:
+
+- a **Check**: its title, such as *Fill weight* or *Seal tight*;
+- a **Kind**:
+  - **Instruction** — read and acknowledged with **Done**;
+  - **Pass or fail** — the operator answers **Pass** or **Fail**;
+  - **Measure** — the operator types the measured value, and Vantigo judges it: within
+    the limits is a pass, outside them a fail. Give a **Min**, a **Max** or both, and
+    optionally the **Nominal** — between them — and the **Unit**. Up to four decimals;
+    a measure may be negative;
+  - **Photo** — the operator takes a picture with the tablet's camera;
+- **When**:
+  - **Each work order** — recorded once before the work order is finished;
+  - **First piece** — recorded before anything made at the work order is passed on, and
+    shown first when the operator starts;
+- **Instructions for the operator**, optional;
+- **Quarantine on fail**: when the check fails, the deviation it opens puts what the
+  order makes on hold — see [Deviations](#deviations).
+
+The checks are saved with the bill of materials. A manufacturing order gets its
+operations' checks when it is confirmed: changing the bill of materials afterwards does
+not change the checks of an order already confirmed.
 
 ### What a bill of materials may not do
 
@@ -660,6 +688,49 @@ time keeps running. Sending it twice posts it only once.
 Closing the order is still done on the order page, by someone with Manage manufacturing
 orders.
 
+### Record the checks
+
+A work order with quality checks shows a **Checks** panel: the first-piece checks not yet
+recorded at the top, then the rest in order. Each shows its kind, when it is due, its
+instructions and, for a measure, its limits. Record each one with its large buttons:
+
+- an instruction: **Done**;
+- pass or fail: **Pass** or **Fail**;
+- a measure: type the value in **Measured value** — the tablet offers its number pad —
+  and choose **Record**. The result, **Pass** or **Fail**, is Vantigo's, judged against
+  the limits;
+- a photo: **Take photo** opens the camera; the picture is kept with the result. A JPEG
+  or PNG of at most 10 MB; what the camera writes into a photo about where and when it
+  was taken is removed before it is kept.
+
+A **Note** is optional on every check. Recording a check again replaces its result; the
+earlier one is kept, with who recorded it and when. Nothing can be recorded on a work
+order that is done or cancelled.
+
+What the checks stop:
+
+- **Finish** is refused while a check of the work order, of either kind, has no result:
+  *Checks are missing*.
+- **Register production** — on the order page or at the last operation — is refused
+  while any check of an earlier operation has no result, or a **first-piece** check of
+  the last operation has none. The refusal names the checks. Reporting scrap only is
+  not stopped.
+- Starting is never stopped.
+
+A **Fail** does not stop anything: it opens a deviation at once, named on the check —
+**DEV-12**, say — for a supervisor to decide on. When the check says **Quarantine on
+fail**, the deviation puts the order's output in quarantine.
+
+The order page's **Work orders** tab lists every check under **Check results**, with its
+result, who recorded it and when, and the deviation a failure opened.
+
+### Report a deviation
+
+Choose **Report a deviation** on a work order, on the order page, on the **Deviations**
+list or on a lot's page in Inventory. Give its **Title**, a **Description** if you like,
+and tick **Put the output in quarantine** to hold what the order made — see
+[Deviations](#deviations). Reporting needs the same permission as the shop floor.
+
 ### Report scrap
 
 Choose **Report scrap** on the work order when components are lost or finished units are
@@ -895,6 +966,54 @@ The order page lists its **Sub-assembly orders**, and each of them links to its 
 order**. Nothing is made automatically. What a sub-assembly order makes is not reserved for
 the parent by itself: choose **Reserve now** on the parent once it is in stock.
 
+## Deviations
+
+A **deviation** (**avvik**) records something that went wrong: a failed check, a fault
+found at the station, a lot that is not what it should be. Each has a number, **DEV-1**
+upwards, its title and description, and what it was reported from: an order, one of its
+work orders, a check's result, or a lot.
+
+### Quarantine
+
+A deviation that **puts the output in quarantine** — reported with the box ticked, or
+opened by a failed check marked **Quarantine on fail** — puts a quarantine hold on:
+
+- every lot its order has made so far;
+- every lot a production of the order makes, or adds to, while the deviation is open — so
+  a first piece that fails before anything is made still holds the lot the order makes
+  next;
+- the lot it was reported from, for one reported on a lot's page.
+
+A lot in quarantine is not taken by deliveries or productions until its holds are
+released (see [Lots](/en/user/inventory/) in Inventory). The hold is the deviation's: the
+lot page shows it with the deviation's number and a link, and cannot release it there.
+Only products tracked in lots or serial numbers have lots to hold.
+
+### Find a deviation
+
+**Deviations** lists them newest first, open ones unless you change **Status**; filter by
+the period they were opened in. A link from an order or a lot shows that order's or lot's
+deviations. **Download CSV** gives every deviation the filters match as a file. A
+deviation's page shows where it came from, its description, and the **Lots in
+quarantine** — each linked to its page in Inventory, for those who may see stock.
+
+### Close a deviation
+
+Closing needs **Manage quality** (`manufacturing:quality-manage`).
+
+1. Open the deviation.
+2. Under **Close the deviation**, choose the **Disposition**:
+   - **Use as is** or **Rework** — its holds are released when it closes;
+   - **Scrap** or **Return** — its holds stay: what is left of the lot is not to be used.
+3. Write the **Closing note**, and choose **Close the deviation**.
+
+Closing releases only the deviation's own holds. A lot another deviation holds, or a
+recall has blocked, stays held until that is released too.
+
+After **Scrap** or **Return**, write off what is left with an
+[adjustment](/en/user/inventory/) in Inventory, or return it, then choose **Release its
+holds** on the deviation.
+
 ## Deleting a product a bill of materials uses
 
 Products refuses to delete a variant, or to turn its product into a service, while an
@@ -932,9 +1051,13 @@ cannot be delegated.
 | **Production schedule**, **Reports** (without production cost) | ✓ | – | – |
 | **Plan**, **Plan again**, **Unplan**, **Plan all**, moving a work order, **Requested start** | ✓ | ✓ | – |
 | **Create sub-assembly orders**, and **Create manufacturing order** on a sales order's line | ✓ | ✓ | – |
+| **Deviations**, a deviation, an order's **Check results** | ✓ | – | – |
+| Recording a check, **Take photo**, **Report a deviation** | ✓ | either | either |
 
 Registering a production, and every action on the shop floor, needs Use Manufacturing and
-either of the other two. The Assistant does not take shop-floor actions: an operator
+either of the other two. Closing a deviation and **Release its holds** need **Manage
+quality** (`manufacturing:quality-manage`) beside Use Manufacturing; editing the checks
+of an operation is part of editing the bill of materials. The Assistant does not take shop-floor actions: an operator
 clocks in themselves. The stock
 figures in the overview and on an order are Manufacturing's own and need
 no Inventory permission. An order made for a sales order names the sales order's
