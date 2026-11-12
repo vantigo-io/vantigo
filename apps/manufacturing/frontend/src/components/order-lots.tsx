@@ -16,11 +16,12 @@ const LotLink = ({ lotId, number }: { lotId: number; number: string }) => (
 );
 
 /**
- * The order's Lots tab (manufacturing phase 2 M83): the lots its productions
- * put the output in, and per component line the lots they took, each linked
- * to its page in Inventory.
+ * The order's lots (manufacturing phase 2 M83), on the order page's Lots tab
+ * and the work order's page: the lots its productions put the output in, and
+ * per component line the lots they took, each linked to its page in
+ * Inventory.
  */
-export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id" | "variant"> }) => {
+export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id"> & { variant: { unit: string } } }) => {
   const { t, quantity, day } = useManufacturingFormat();
   const lots = useQuery(orderLotsQueryOptions(order.id));
   if (lots.isPending) return <ContentSkeleton />;
