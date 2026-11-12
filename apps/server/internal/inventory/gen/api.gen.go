@@ -93,8 +93,12 @@ func (e InventoryCountStatus) Valid() bool {
 // Defines values for InventoryImportOutcome.
 const (
 	InventoryImportOutcomeLocationNotFound    InventoryImportOutcome = "location_not_found"
+	InventoryImportOutcomeLotInvalid          InventoryImportOutcome = "lot_invalid"
+	InventoryImportOutcomeLotNotAllowed       InventoryImportOutcome = "lot_not_allowed"
+	InventoryImportOutcomeLotRequired         InventoryImportOutcome = "lot_required"
 	InventoryImportOutcomeOk                  InventoryImportOutcome = "ok"
 	InventoryImportOutcomeQuantityInvalid     InventoryImportOutcome = "quantity_invalid"
+	InventoryImportOutcomeSerialQuantity      InventoryImportOutcome = "serial_quantity"
 	InventoryImportOutcomeVariantNotFound     InventoryImportOutcome = "variant_not_found"
 	InventoryImportOutcomeVariantNotStockable InventoryImportOutcome = "variant_not_stockable"
 )
@@ -104,9 +108,17 @@ func (e InventoryImportOutcome) Valid() bool {
 	switch e {
 	case InventoryImportOutcomeLocationNotFound:
 		return true
+	case InventoryImportOutcomeLotInvalid:
+		return true
+	case InventoryImportOutcomeLotNotAllowed:
+		return true
+	case InventoryImportOutcomeLotRequired:
+		return true
 	case InventoryImportOutcomeOk:
 		return true
 	case InventoryImportOutcomeQuantityInvalid:
+		return true
+	case InventoryImportOutcomeSerialQuantity:
 		return true
 	case InventoryImportOutcomeVariantNotFound:
 		return true
@@ -414,6 +426,8 @@ func (e InventorySiteKind) Valid() bool {
 // Defines values for InventoryStatsAttentionItemType.
 const (
 	CountOpenLong   InventoryStatsAttentionItemType = "countOpenLong"
+	LotsExpired     InventoryStatsAttentionItemType = "lotsExpired"
+	LotsExpiring    InventoryStatsAttentionItemType = "lotsExpiring"
 	LowStock        InventoryStatsAttentionItemType = "lowStock"
 	TransferOverdue InventoryStatsAttentionItemType = "transferOverdue"
 )
@@ -422,6 +436,10 @@ const (
 func (e InventoryStatsAttentionItemType) Valid() bool {
 	switch e {
 	case CountOpenLong:
+		return true
+	case LotsExpired:
+		return true
+	case LotsExpiring:
 		return true
 	case LowStock:
 		return true
@@ -802,7 +820,7 @@ type InventoryCountInput struct {
 	SiteId     int64   `json:"siteId"`
 }
 
-// InventoryCountLine One variant on one location in a count: what was expected when it opened, what the balance is now, and what was counted (I17–I19).
+// InventoryCountLine One balance in a count — a variant on one location, in one lot for a tracked variant (manufacturing phase 2 M69): what was expected when it opened, what the balance is now, and what was counted (I17–I19).
 type InventoryCountLine struct {
 	// Added The line was added while counting: nothing was expected there.
 	Added bool `json:"added"`
@@ -827,6 +845,9 @@ type InventoryCountLine struct {
 	// Location A location as other answers name it.
 	Location InventoryLocationRef `json:"location"`
 
+	// Lot A lot as a movement line names it (manufacturing phase 2 M52).
+	Lot *InventoryLotRef `json:"lot,omitempty"`
+
 	// Moved The balance changed since the count opened; posting needs acceptMoved (I19).
 	Moved bool `json:"moved"`
 
@@ -834,7 +855,7 @@ type InventoryCountLine struct {
 	Variant InventoryVariantRef `json:"variant"`
 }
 
-// InventoryCountLineInput A counted quantity of a variant on a location in the count's scope (I18): a line that exists is changed, a pair with no line is added. Exactly one of quantity and entered is given. 0 is a valid count.
+// InventoryCountLineInput A counted quantity of a variant on a location in the count's scope (I18): a line that exists is changed, a balance with no line is added. Exactly one of quantity and entered is given. 0 is a valid count. A tracked variant's line names its lot (manufacturing phase 2 M69): lotId for one the variant has, or lot to find or make one by number as a receipt does (lot_required, lot_not_allowed, lot_unknown); a serial is counted 0 or 1 (serial_quantity).
 type InventoryCountLineInput struct {
 	// Counted 0 or more, at most three decimals.
 	Counted *float64 `json:"counted,omitempty"`
@@ -842,7 +863,11 @@ type InventoryCountLineInput struct {
 	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
 	Entered    *InventoryEntered `json:"entered,omitempty"`
 	LocationId int64             `json:"locationId"`
-	VariantId  int32             `json:"variantId"`
+
+	// Lot A lot a receipt line or an adjustment up names by number (manufacturing phase 2 M57). An empty number generates L<n>. A number the variant already has names that lot, whose dates are not changed: a date stated here that differs from the stored one is lot_dates_differ; a date left out is not compared. On creation, an expiry and a best-before left out default to the production date (else the receipt's day) plus the variant's expiryDays and bestBeforeDays. Dates stated out of order — an expiry before the production date, or a best-before after the expiry — are 400 lot_dates_invalid.
+	Lot       *InventoryNewLot `json:"lot,omitempty"`
+	LotId     *int64           `json:"lotId,omitempty"`
+	VariantId int32            `json:"variantId"`
 }
 
 // InventoryCountLinesInput Counted lines, at most 500 per request.
@@ -914,8 +939,11 @@ type InventoryImportRow struct {
 	Detail *string `json:"detail,omitempty"`
 
 	// Location The full code as written.
-	Location string                 `json:"location"`
-	Outcome  InventoryImportOutcome `json:"outcome"`
+	Location string `json:"location"`
+
+	// Lot The lot number as written, absent when the file has no lot column (manufacturing phase 2 M71).
+	Lot     *string                `json:"lot,omitempty"`
+	Outcome InventoryImportOutcome `json:"outcome"`
 
 	// Quantity As written.
 	Quantity string `json:"quantity"`
@@ -1125,6 +1153,20 @@ type InventoryLotAttachment struct {
 
 	// UploadedBy Who posted, as snapshotted when they did.
 	UploadedBy *InventoryActor `json:"uploadedBy,omitempty"`
+}
+
+// InventoryLotExpiringPage The lots expiring soon (manufacturing phase 2 M72): lots holding stock whose expiry falls within the days asked for or has passed, by expiry, at most 1000.
+type InventoryLotExpiringPage struct {
+	Lots []InventoryLotSummary `json:"lots"`
+
+	// More More lots match than the 1000 answered.
+	More bool `json:"more"`
+
+	// Today Today in the workspace zone, the day the days are counted from.
+	Today openapi_types.Date `json:"today"`
+
+	// Until The last expiry day the list reaches.
+	Until openapi_types.Date `json:"until"`
 }
 
 // InventoryLotHold One hold on a lot (M64), owned by the document that put it: the lot page's own (inventory/lot/<id>), a receipt's inspection (inventory/movement/<id>), or another module's document, released only there.
@@ -1763,7 +1805,7 @@ type InventoryStats struct {
 	StockLines int32 `json:"stockLines"`
 }
 
-// InventoryStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date; lowStock, one per active site with items at or below their reorder point, to a caller with both views, entityId the site's id, count the items and occurredAt the time of the read (I62).
+// InventoryStatsAttentionItem One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date; lowStock, one per active site with items at or below their reorder point, to a caller with both views, entityId the site's id, count the items and occurredAt the time of the read (I62); lotsExpiring, the lots with stock whose expiry falls within 14 days, and lotsExpired, the lots with stock whose expiry has passed, each one item to a caller with both views, entityId "lots", count the lots and occurredAt the time of the read (manufacturing phase 2 M72).
 type InventoryStatsAttentionItem struct {
 	// Count How many the item stands for, when more than one.
 	Count      *int32                          `json:"count,omitempty"`
@@ -1943,7 +1985,7 @@ type InventoryTransferInput struct {
 	ToSiteId        int64                        `json:"toSiteId"`
 }
 
-// InventoryTransferLine A transfer line (I36, I46): what was asked for and the running totals. inTransit is sent − received − missing − returned, 0 on every line of a received or cancelled transfer.
+// InventoryTransferLine A transfer line (I36, I46): what was asked for and the running totals. inTransit is sent − received − missing − returned, 0 on every line of a received or cancelled transfer. A line carries one lot (manufacturing phase 2 M70), and its in transit is of that lot.
 type InventoryTransferLine struct {
 	// Entered What a line was entered as, as it was at posting: each packaging's name, count and content then, and the loose rest (I25).
 	Entered *InventoryEnteredSnapshot `json:"entered,omitempty"`
@@ -1953,7 +1995,10 @@ type InventoryTransferLine struct {
 	Id           int64                 `json:"id"`
 	InTransit    float64               `json:"inTransit"`
 	LineNo       int32                 `json:"lineNo"`
-	Missing      float64               `json:"missing"`
+
+	// Lot A lot as a movement line names it (manufacturing phase 2 M52).
+	Lot     *InventoryLotRef `json:"lot,omitempty"`
+	Missing float64          `json:"missing"`
 
 	// Quantity More than 0, in the variant's unit.
 	Quantity float64 `json:"quantity"`
@@ -1968,10 +2013,11 @@ type InventoryTransferLine struct {
 	Variant InventoryVariantRef `json:"variant"`
 }
 
-// InventoryTransferLineInput A draft line: a variant and a quantity of it, in its own unit or entered in packagings (I25). Exactly one of quantity and entered is given. A variant may appear on several lines.
+// InventoryTransferLineInput A draft line: a variant and a quantity of it, in its own unit or entered in packagings (I25). Exactly one of quantity and entered is given. A variant may appear on several lines — which is how two lots of it travel: a line names at most one lot (manufacturing phase 2 M70), one of the variant's (lot_unknown), and only for a tracked variant (lot_not_allowed).
 type InventoryTransferLineInput struct {
 	// Entered A quantity entered in packagings (I25) instead of quantity: the server computes the base quantity from the packagings as they are at posting and keeps the entry on the line.
 	Entered *InventoryEntered `json:"entered,omitempty"`
+	LotId   *int64            `json:"lotId,omitempty"`
 
 	// Quantity A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11).
 	Quantity *float64 `json:"quantity,omitempty"`
@@ -2025,10 +2071,11 @@ type InventoryTransferSendInput struct {
 	Receive *InventoryTransferSendReceive `json:"receive,omitempty"`
 }
 
-// InventoryTransferSendLine Where one line is sent from: a location at the from site. A line of the transfer without one is from_location_required.
+// InventoryTransferSendLine Where one line is sent from: a location at the from site. A line of the transfer without one is from_location_required. lotId names the lot sent, replacing the draft's; a tracked variant's line sent with none is lot_required (manufacturing phase 2 M70).
 type InventoryTransferSendLine struct {
 	FromLocationId *int64 `json:"fromLocationId,omitempty"`
 	LineId         int64  `json:"lineId"`
+	LotId          *int64 `json:"lotId,omitempty"`
 }
 
 // InventoryTransferSendReceive Send and receive (I43): a destination for every line, or receive_incomplete; everything sent is received in the same transaction.
@@ -2191,6 +2238,36 @@ type ListInventoryLotsParams struct {
 // ListInventoryLotsParamsHoldCause defines parameters for ListInventoryLots.
 type ListInventoryLotsParamsHoldCause string
 
+// ListInventoryExpiringLotsParams defines parameters for ListInventoryExpiringLots.
+type ListInventoryExpiringLotsParams struct {
+	// Days Expiring within this many days of today (default 30); lots already expired are always listed.
+	Days *int32 `form:"days,omitempty" json:"days,omitempty"`
+
+	// SiteId Only stock at this site; onHand is counted here.
+	SiteId *int64              `form:"siteId,omitempty" json:"siteId,omitempty"`
+	Status *InventoryLotStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// ExportInventoryExpiringLotsParams defines parameters for ExportInventoryExpiringLots.
+type ExportInventoryExpiringLotsParams struct {
+	// Days Expiring within this many days of today (default 30); lots already expired are always listed.
+	Days *int32 `form:"days,omitempty" json:"days,omitempty"`
+
+	// SiteId Only stock at this site; onHand is counted here.
+	SiteId *int64              `form:"siteId,omitempty" json:"siteId,omitempty"`
+	Status *InventoryLotStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// PrintInventoryLotLabelsParams defines parameters for PrintInventoryLotLabels.
+type PrintInventoryLotLabelsParams struct {
+	// Ids Comma-separated lot ids, at most 1000.
+	Ids    []int64               `form:"ids" json:"ids"`
+	Layout *InventoryLabelLayout `form:"layout,omitempty" json:"layout,omitempty"`
+
+	// Copies Labels per lot (default 1); copies × lots is at most 1000.
+	Copies *int32 `form:"copies,omitempty" json:"copies,omitempty"`
+}
+
 // PutInventoryLotParams defines parameters for PutInventoryLot.
 type PutInventoryLotParams struct {
 	// IfMatch The revision the lot was read at, bare (3) or quoted ("3"). A revision that has moved on is a 409 revision_conflict.
@@ -2233,6 +2310,9 @@ type ListInventoryMovementsParams struct {
 
 	// VariantId Only those with a line of this variant.
 	VariantId *int32 `form:"variantId,omitempty" json:"variantId,omitempty"`
+
+	// LotId Only those with a line of this lot (manufacturing phase 2 M74).
+	LotId *int64 `form:"lotId,omitempty" json:"lotId,omitempty"`
 
 	// Kind Only this kind.
 	Kind *InventoryMovementKind `form:"kind,omitempty" json:"kind,omitempty"`
@@ -2476,6 +2556,15 @@ type ServerInterface interface {
 	// ListInventoryLots List lots
 	// (GET /api/v1/inventory/lots)
 	ListInventoryLots(w http.ResponseWriter, r *http.Request, params ListInventoryLotsParams)
+	// ListInventoryExpiringLots List lots expiring soon
+	// (GET /api/v1/inventory/lots/expiring)
+	ListInventoryExpiringLots(w http.ResponseWriter, r *http.Request, params ListInventoryExpiringLotsParams)
+	// ExportInventoryExpiringLots Export lots expiring soon as CSV
+	// (GET /api/v1/inventory/lots/expiring.csv)
+	ExportInventoryExpiringLots(w http.ResponseWriter, r *http.Request, params ExportInventoryExpiringLotsParams)
+	// PrintInventoryLotLabels Print lot labels
+	// (GET /api/v1/inventory/lots/labels.pdf)
+	PrintInventoryLotLabels(w http.ResponseWriter, r *http.Request, params PrintInventoryLotLabelsParams)
 	// GetInventoryLot Get a lot
 	// (GET /api/v1/inventory/lots/{id})
 	GetInventoryLot(w http.ResponseWriter, r *http.Request, id int64)
@@ -3207,6 +3296,183 @@ func (siw *ServerInterfaceWrapper) ListInventoryLots(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListInventoryExpiringLots operation middleware
+func (siw *ServerInterfaceWrapper) ListInventoryExpiringLots(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInventoryExpiringLotsParams
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInventoryExpiringLots(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportInventoryExpiringLots operation middleware
+func (siw *ServerInterfaceWrapper) ExportInventoryExpiringLots(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportInventoryExpiringLotsParams
+
+	// ------------- Optional query parameter "days" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "days", r.URL.Query(), &params.Days, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "days"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "days", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportInventoryExpiringLots(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PrintInventoryLotLabels operation middleware
+func (siw *ServerInterfaceWrapper) PrintInventoryLotLabels(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PrintInventoryLotLabelsParams
+
+	// ------------- Required query parameter "ids" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, true, "ids", r.URL.Query(), &params.Ids, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ids"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ids", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "layout" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "layout", r.URL.Query(), &params.Layout, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "layout"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "layout", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "copies" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "copies", r.URL.Query(), &params.Copies, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "copies"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "copies", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PrintInventoryLotLabels(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetInventoryLot operation middleware
 func (siw *ServerInterfaceWrapper) GetInventoryLot(w http.ResponseWriter, r *http.Request) {
 
@@ -3607,6 +3873,19 @@ func (siw *ServerInterfaceWrapper) ListInventoryMovements(w http.ResponseWriter,
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "variantId"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "lotId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "lotId", r.URL.Query(), &params.LotId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "lotId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lotId", Err: err})
 		}
 		return
 	}
@@ -4878,6 +5157,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/locations/bulk", wrapper.BulkCreateInventoryLocations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lookup", wrapper.LookupInventory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots", wrapper.ListInventoryLots)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots/expiring", wrapper.ListInventoryExpiringLots)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots/expiring.csv", wrapper.ExportInventoryExpiringLots)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots/labels.pdf", wrapper.PrintInventoryLotLabels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/lots/{id}", wrapper.GetInventoryLot)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/inventory/lots/{id}", wrapper.PutInventoryLot)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/inventory/lots/{id}/attachments", wrapper.PostInventoryLotAttachment)
@@ -6286,6 +6568,238 @@ func (response ListInventoryLots503ApplicationProblemPlusJSONResponse) VisitList
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryExpiringLotsRequestObject struct {
+	Params ListInventoryExpiringLotsParams
+}
+
+type ListInventoryExpiringLotsResponseObject interface {
+	VisitListInventoryExpiringLotsResponse(w http.ResponseWriter) error
+}
+
+type ListInventoryExpiringLots200JSONResponse InventoryLotExpiringPage
+
+func (response ListInventoryExpiringLots200JSONResponse) VisitListInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryExpiringLots400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryExpiringLots400ApplicationProblemPlusJSONResponse) VisitListInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryExpiringLots401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryExpiringLots401JSONResponse) VisitListInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryExpiringLots403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListInventoryExpiringLots403JSONResponse) VisitListInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInventoryExpiringLots503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ListInventoryExpiringLots503ApplicationProblemPlusJSONResponse) VisitListInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryExpiringLotsRequestObject struct {
+	Params ExportInventoryExpiringLotsParams
+}
+
+type ExportInventoryExpiringLotsResponseObject interface {
+	VisitExportInventoryExpiringLotsResponse(w http.ResponseWriter) error
+}
+
+type ExportInventoryExpiringLots200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportInventoryExpiringLots200TextcsvResponse) VisitExportInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportInventoryExpiringLots400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ExportInventoryExpiringLots400ApplicationProblemPlusJSONResponse) VisitExportInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryExpiringLots401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportInventoryExpiringLots401JSONResponse) VisitExportInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryExpiringLots403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportInventoryExpiringLots403JSONResponse) VisitExportInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInventoryExpiringLots503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response ExportInventoryExpiringLots503ApplicationProblemPlusJSONResponse) VisitExportInventoryExpiringLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryLotLabelsRequestObject struct {
+	Params PrintInventoryLotLabelsParams
+}
+
+type PrintInventoryLotLabelsResponseObject interface {
+	VisitPrintInventoryLotLabelsResponse(w http.ResponseWriter) error
+}
+
+type PrintInventoryLotLabels200ApplicationpdfResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response PrintInventoryLotLabels200ApplicationpdfResponse) VisitPrintInventoryLotLabelsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type PrintInventoryLotLabels400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PrintInventoryLotLabels400ApplicationProblemPlusJSONResponse) VisitPrintInventoryLotLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryLotLabels401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PrintInventoryLotLabels401JSONResponse) VisitPrintInventoryLotLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrintInventoryLotLabels403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PrintInventoryLotLabels403JSONResponse) VisitPrintInventoryLotLabelsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -9487,6 +10001,15 @@ type StrictServerInterface interface {
 	// ListInventoryLots List lots
 	// (GET /api/v1/inventory/lots)
 	ListInventoryLots(ctx context.Context, request ListInventoryLotsRequestObject) (ListInventoryLotsResponseObject, error)
+	// ListInventoryExpiringLots List lots expiring soon
+	// (GET /api/v1/inventory/lots/expiring)
+	ListInventoryExpiringLots(ctx context.Context, request ListInventoryExpiringLotsRequestObject) (ListInventoryExpiringLotsResponseObject, error)
+	// ExportInventoryExpiringLots Export lots expiring soon as CSV
+	// (GET /api/v1/inventory/lots/expiring.csv)
+	ExportInventoryExpiringLots(ctx context.Context, request ExportInventoryExpiringLotsRequestObject) (ExportInventoryExpiringLotsResponseObject, error)
+	// PrintInventoryLotLabels Print lot labels
+	// (GET /api/v1/inventory/lots/labels.pdf)
+	PrintInventoryLotLabels(ctx context.Context, request PrintInventoryLotLabelsRequestObject) (PrintInventoryLotLabelsResponseObject, error)
 	// GetInventoryLot Get a lot
 	// (GET /api/v1/inventory/lots/{id})
 	GetInventoryLot(ctx context.Context, request GetInventoryLotRequestObject) (GetInventoryLotResponseObject, error)
@@ -10127,6 +10650,84 @@ func (sh *strictHandler) ListInventoryLots(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListInventoryLotsResponseObject); ok {
 		if err := validResponse.VisitListInventoryLotsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInventoryExpiringLots operation middleware
+func (sh *strictHandler) ListInventoryExpiringLots(w http.ResponseWriter, r *http.Request, params ListInventoryExpiringLotsParams) {
+	var request ListInventoryExpiringLotsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInventoryExpiringLots(ctx, request.(ListInventoryExpiringLotsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInventoryExpiringLots")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInventoryExpiringLotsResponseObject); ok {
+		if err := validResponse.VisitListInventoryExpiringLotsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportInventoryExpiringLots operation middleware
+func (sh *strictHandler) ExportInventoryExpiringLots(w http.ResponseWriter, r *http.Request, params ExportInventoryExpiringLotsParams) {
+	var request ExportInventoryExpiringLotsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportInventoryExpiringLots(ctx, request.(ExportInventoryExpiringLotsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportInventoryExpiringLots")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportInventoryExpiringLotsResponseObject); ok {
+		if err := validResponse.VisitExportInventoryExpiringLotsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PrintInventoryLotLabels operation middleware
+func (sh *strictHandler) PrintInventoryLotLabels(w http.ResponseWriter, r *http.Request, params PrintInventoryLotLabelsParams) {
+	var request PrintInventoryLotLabelsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PrintInventoryLotLabels(ctx, request.(PrintInventoryLotLabelsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PrintInventoryLotLabels")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PrintInventoryLotLabelsResponseObject); ok {
+		if err := validResponse.VisitPrintInventoryLotLabelsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

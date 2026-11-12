@@ -51,6 +51,7 @@ type InventoryCountLine struct {
 	CountedByUserID  *uuid.UUID
 	CountedByDisplay *string
 	CountedAt        *time.Time
+	LotID            *int64
 }
 
 type InventoryCounter struct {
@@ -294,4 +295,5 @@ type InventoryTransferLine struct {
 	Received       pgtype.Numeric
 	Missing        pgtype.Numeric
 	Returned       pgtype.Numeric
+	LotID          *int64
 }

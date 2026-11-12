@@ -92,23 +92,26 @@ DELETE FROM inventory.transfer_lines WHERE transfer_id = @transfer_id;
 
 -- name: InsertTransferLines :exec
 -- InsertTransferLines writes a draft's lines with the variant snapshots
--- (I36). An entry or a suggestion of '' is none.
-INSERT INTO inventory.transfer_lines (transfer_id, line_no, variant_id, sku, product_name, quantity, entered, suggestion)
+-- (I36) and the lot each names, 0 for none (M70). An entry or a suggestion
+-- of '' is none.
+INSERT INTO inventory.transfer_lines (transfer_id, line_no, variant_id, sku, product_name, quantity, entered, suggestion, lot_id)
 SELECT @transfer_id, u.line_no, u.variant_id, u.sku, u.product_name, u.quantity,
-       nullif(u.entered, '')::jsonb, nullif(u.suggestion, '')::jsonb
+       nullif(u.entered, '')::jsonb, nullif(u.suggestion, '')::jsonb, nullif(u.lot_id, 0)
 FROM (SELECT unnest(@line_nos::int[]) AS line_no, unnest(@variant_ids::int[]) AS variant_id, unnest(@skus::text[]) AS sku,
              unnest(@product_names::text[]) AS product_name, unnest(@quantities::numeric[]) AS quantity,
-             unnest(@entereds::text[]) AS entered, unnest(@suggestions::text[]) AS suggestion) AS u;
+             unnest(@entereds::text[]) AS entered, unnest(@suggestions::text[]) AS suggestion,
+             unnest(@lot_ids::bigint[]) AS lot_id) AS u;
 
 -- name: SendTransferLines :exec
 -- SendTransferLines is a send's lines (I39): resolved to units, snapshotted
--- again, with their source location, and sent in full.
+-- again, with their source location and the lot sent (0 for none, M70), and
+-- sent in full.
 UPDATE inventory.transfer_lines l
 SET sku = u.sku, product_name = u.product_name, unit = u.unit, quantity = u.quantity, entered = nullif(u.entered, '')::jsonb,
-    from_location_id = u.from_location_id, sent = u.quantity
+    from_location_id = u.from_location_id, lot_id = nullif(u.lot_id, 0), sent = u.quantity
 FROM (SELECT unnest(@ids::bigint[]) AS id, unnest(@skus::text[]) AS sku, unnest(@product_names::text[]) AS product_name,
              unnest(@units::text[]) AS unit, unnest(@quantities::numeric[]) AS quantity, unnest(@entereds::text[]) AS entered,
-             unnest(@from_location_ids::bigint[]) AS from_location_id) AS u
+             unnest(@from_location_ids::bigint[]) AS from_location_id, unnest(@lot_ids::bigint[]) AS lot_id) AS u
 WHERE l.id = u.id AND l.transfer_id = @transfer_id;
 
 -- name: AddTransferLineTotals :exec

@@ -8,12 +8,16 @@ import (
 	"math/big"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/fileimport"
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
@@ -36,6 +40,17 @@ import (
 // change adding its quantity, through the engine with no line cap. Its key is
 // derived from the SHA-256 of the file and the site, so the same file posted
 // twice to the same site is one movement: the second answers it, 200.
+//
+// The file may carry the lot columns too (manufacturing phase 2 M71): lot,
+// supplier_lot, production_date, best_before and expiry, each optional, the
+// dates as YYYY-MM-DD or DD.MM.YYYY. A tracked variant's row names its lot by
+// number (lot_required), an untracked one's none (lot_not_allowed), and a
+// serial's row is of quantity 1 (serial_quantity); a number or a date that
+// does not read, or dates out of order, is lot_invalid. The lots are found or
+// made as a receipt's are (M57), the import — its movement — their origin.
+// This is how stock already on hand is brought in with lots: set the
+// variant's tracking while it holds nothing, then import its opening
+// balance.
 
 const (
 	maxImportRows         = 5000
@@ -47,8 +62,31 @@ const (
 var importLimits = fileimport.Limits{MaxBytes: maxImportBytes, MaxRows: maxImportRows, MaxColumns: maxImportColumns}
 
 // importColumns are the header's three names, as fileimport.HeaderKey reads
-// them.
-var importColumns = []string{"location", "sku", "quantity"}
+// them; importLotColumns the optional ones of a file with lots (M71) —
+// supplier_lot, production_date and best_before as HeaderKey reads them.
+var (
+	importColumns    = []string{"location", "sku", "quantity"}
+	importLotColumns = []string{"lot", "supplierlot", "productiondate", "bestbefore", "expiry"}
+)
+
+// lotOriginImport is the origin kind of a lot the import made (M71); its id
+// is the import's movement.
+const lotOriginImport = "import"
+
+// parseImportDate is a date cell as a date, nil when blank, or why it is not
+// one: YYYY-MM-DD, or DD.MM.YYYY as a Norwegian spreadsheet writes it.
+func parseImportDate(text, what string) (*time.Time, string) {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return nil, ""
+	}
+	for _, layout := range []string{time.DateOnly, "02.01.2006", "2.1.2006"} {
+		if d, err := time.Parse(layout, t); err == nil {
+			return &d, ""
+		}
+	}
+	return nil, fmt.Sprintf("The %s %q is not a date such as 2026-12-31 or 31.12.2026", what, t)
+}
 
 // importKeySpace is the namespace an import's clientRequestId is derived in.
 var importKeySpace = uuid.MustParse("0b6a3f0e-8f53-4d7e-a1c2-5e9b7d4c3a10")
@@ -115,11 +153,18 @@ func (s *server) ImportInventoryOpeningBalances(ctx context.Context, req gen.Imp
 	for i, h := range file.Header {
 		column[fileimport.HeaderKey(h)] = i
 	}
-	for _, name := range importColumns {
-		if _, ok := column[name]; !ok || len(file.Header) != len(importColumns) {
-			return importProblem("file", "The header must name exactly the columns location, sku and quantity"), nil
+	known := 0
+	for name := range column {
+		if slices.Contains(importColumns, name) || slices.Contains(importLotColumns, name) {
+			known++
 		}
 	}
+	for _, name := range importColumns {
+		if _, ok := column[name]; !ok || known != len(file.Header) {
+			return importProblem("file", "The header must name the columns location, sku and quantity, and may name lot, supplier_lot, production_date, best_before and expiry"), nil
+		}
+	}
+	_, withLots := column["lot"]
 	site, err := store.New(s.deps.Pool).GetSite(ctx, req.Params.SiteId)
 	if noRows(err) {
 		return importProblem("siteId", "No site has this id"), nil
@@ -139,6 +184,14 @@ func (s *server) ImportInventoryOpeningBalances(ctx context.Context, req gen.Imp
 	if (req.Params.DryRun == nil || *req.Params.DryRun) || !result.Ok {
 		return gen.ImportInventoryOpeningBalances200JSONResponse(result), nil
 	}
+	// Today, on the pool before the transaction (M62): what a new lot's
+	// dates default from.
+	var today time.Time
+	if withLots {
+		if today, err = s.today(ctx); err != nil {
+			return nil, err
+		}
+	}
 
 	sum := sha256.Sum256(data)
 	key := append(sum[:], []byte(":"+strconv.FormatInt(site.ID, 10))...)
@@ -155,7 +208,7 @@ func (s *server) ImportInventoryOpeningBalances(ctx context.Context, req gen.Imp
 			res, err = s.post(ctx, tx, txq, movementHeader{
 				clientRequestID: uuid.NewSHA1(importKeySpace, key), requestHash: hash[:], siteID: site.ID,
 				kind: string(gen.Adjustment), reason: &reason, poster: who,
-			}, lines, postOptions{})
+			}, lines, postOptions{today: today, lotOrigin: lotOriginImport})
 			return err
 		})
 	})
@@ -185,7 +238,7 @@ func (s *server) ImportInventoryOpeningBalances(ctx context.Context, req gen.Imp
 // transaction.
 func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimport.File, column map[string]int) ([]gen.InventoryImportRow, []engineLine, error) {
 	cell := func(r fileimport.Record, name string) string {
-		if i := column[name]; i < len(r.Cells) {
+		if i, ok := column[name]; ok && i < len(r.Cells) {
 			return strings.TrimSpace(r.Cells[i])
 		}
 		return ""
@@ -209,6 +262,7 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 	type variant struct {
 		id        int32
 		stockable bool
+		tracking  string
 	}
 	var distinctSKUs []string
 	for sku := range skus {
@@ -223,7 +277,7 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 	bySKU := map[string]variant{}
 	for sku, entries := range found {
 		// The first by id, as the lookup by code answered one SKU before.
-		bySKU[sku] = variant{id: entries[0].ID, stockable: entries[0].ProductType == productTypeGoods}
+		bySKU[sku] = variant{id: entries[0].ID, stockable: entries[0].ProductType == productTypeGoods, tracking: entries[0].Tracking}
 	}
 
 	rows := make([]gen.InventoryImportRow, 0, len(file.Rows))
@@ -233,9 +287,14 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 			Row: int32(r.Row + 1), Location: cell(r, "location"), Sku: cell(r, "sku"), Quantity: cell(r, "quantity"),
 			Outcome: gen.InventoryImportOutcomeOk,
 		}
+		if _, ok := column["lot"]; ok {
+			row.Lot = ptr(cell(r, "lot"))
+		}
 		loc, locOK := byCode[strings.ToUpper(row.Location)]
 		v, variantOK := bySKU[strings.ToLower(row.Sku)]
 		q, msg := parseImportQuantity(row.Quantity)
+		lot, lotMsg := importLot(cell, r)
+		isTracked := v.tracking != "" && v.tracking != contracts.TrackingNone
 		switch {
 		case extraCells(r, len(file.Header)):
 			// A decimal comma in a comma-separated file splits the quantity:
@@ -251,13 +310,59 @@ func (s *server) resolveImport(ctx context.Context, siteID int64, file fileimpor
 			row.Outcome, row.Detail = gen.InventoryImportOutcomeVariantNotStockable, ptr(row.Sku+" is a service; only goods are kept in stock")
 		case msg != "":
 			row.Outcome, row.Detail = gen.InventoryImportOutcomeQuantityInvalid, &msg
+		case isTracked && lot == nil && lotMsg == "":
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeLotRequired, ptr(row.Sku+" is tracked in lots; the row must name its lot")
+		case !isTracked && (lot != nil || lotMsg != ""):
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeLotNotAllowed, ptr(row.Sku+" is not tracked in lots; the row names none")
+		case lotMsg != "":
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeLotInvalid, &lotMsg
+		case v.tracking == contracts.TrackingSerial && q.Cmp(big.NewRat(1, 1)) != 0:
+			row.Outcome, row.Detail = gen.InventoryImportOutcomeSerialQuantity, ptr(row.Sku+" is tracked in serials; a serial's row is of quantity 1")
 		default:
 			to := loc.ID
-			lines = append(lines, engineLine{index: i, variantID: v.id, to: &to, quantity: q})
+			lines = append(lines, engineLine{index: i, variantID: v.id, to: &to, quantity: q, newLot: lot})
 		}
 		rows = append(rows, row)
 	}
 	return rows, lines, nil
+}
+
+// importLot is a row's lot as the engine takes it, nil when the row names
+// none — no lot column, or every lot cell blank — or why its cells do not
+// read.
+func importLot(cell func(fileimport.Record, string) string, r fileimport.Record) (*lotRequest, string) {
+	number := cell(r, "lot")
+	supplier := cell(r, "supplierlot")
+	production, msg1 := parseImportDate(cell(r, "productiondate"), "production date")
+	bestBefore, msg2 := parseImportDate(cell(r, "bestbefore"), "best-before date")
+	expiry, msg3 := parseImportDate(cell(r, "expiry"), "expiry")
+	if number == "" && supplier == "" && production == nil && bestBefore == nil && expiry == nil && msg1+msg2+msg3 == "" {
+		return nil, ""
+	}
+	switch {
+	case number == "":
+		return nil, "The row gives a lot's details but no lot number"
+	case !lotNumberPattern.MatchString(number):
+		return nil, "A lot number is 1–20 characters A–Z, a–z, 0–9 and . _ / -"
+	case utf8.RuneCountInString(supplier) > 40:
+		return nil, "A supplier lot is at most 40 characters"
+	case msg1 != "":
+		return nil, msg1
+	case msg2 != "":
+		return nil, msg2
+	case msg3 != "":
+		return nil, msg3
+	}
+	var f fieldErrors
+	checkLotDates(&f, "", production, bestBefore, expiry)
+	if f.failed() {
+		return nil, "The dates are out of order: the expiry is before the production date, or the best-before after the expiry"
+	}
+	out := &lotRequest{number: number, production: production, bestBefore: bestBefore, expiry: expiry, compareProduction: true}
+	if supplier != "" {
+		out.supplierLot = &supplier
+	}
+	return out, ""
 }
 
 // extraCells reports whether the record has a non-blank cell past the

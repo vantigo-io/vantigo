@@ -32,7 +32,8 @@ import (
 // and the receive page's scan field open (I52); the from and to site with
 // their addresses; when it was sent and by whom; the expected arrival and the
 // reference — never the transfer's internal note; the lines — SKU, name, quantity with what was entered in
-// packagings, and the source location's full code; and a line for the
+// packagings, the lot and its expiry (manufacturing phase 2 M70), and the
+// source location's full code; and a line for the
 // receiver's signature. Laid out with maroto as the location labels are, in
 // the same fonts, with its words in Norwegian and English together. Built on
 // demand, never stored.
@@ -42,7 +43,8 @@ import (
 // may install it while other tests' handlers render notes.
 var noteRowsBuilt atomic.Pointer[func(rows [][]string)]
 
-// noteRows is the lines of the note: SKU, name, quantity, source location.
+// noteRows is the lines of the note: SKU, name, quantity, lot (its number
+// and expiry, "" for none), source location.
 func noteRows(r transferRead) [][]string {
 	out := make([][]string, 0, len(r.lines))
 	for _, l := range r.lines {
@@ -55,7 +57,15 @@ func noteRows(r transferRead) [][]string {
 		if e := enteredText(l.Entered); e != "" {
 			quantity += " (" + e + ")"
 		}
-		out = append(out, []string{l.Sku, l.ProductName, strings.TrimSpace(quantity), location})
+		lot := ""
+		if l.LotID != nil {
+			ref := r.lotRefOf(*l.LotID)
+			lot = ref.Number
+			if ref.Expiry != nil {
+				lot += " (" + ref.Expiry.Format(time.DateOnly) + ")"
+			}
+		}
+		out = append(out, []string{l.Sku, l.ProductName, strings.TrimSpace(quantity), lot, location})
 	}
 	return out
 }
@@ -151,7 +161,7 @@ func renderNote(r transferRead, zone *time.Location) ([]byte, error) {
 		doc.AddAutoRow(text.NewCol(4, kv[0], bold), text.NewCol(8, kv[1]))
 	}
 	doc.AddRows(line.NewRow(4))
-	sizes := []int{2, 5, 2, 3}
+	sizes := []int{2, 3, 2, 2, 3}
 	row := func(cells []string, header bool) {
 		cols := make([]core.Col, 0, len(cells))
 		for i, c := range cells {
@@ -166,7 +176,7 @@ func renderNote(r transferRead, zone *time.Location) ([]byte, error) {
 		}
 		doc.AddAutoRow(cols...)
 	}
-	row([]string{"SKU", "Vare / Item", "Antall / Quantity", "Fra lokasjon / From location"}, true)
+	row([]string{"SKU", "Vare / Item", "Antall / Quantity", "Parti / Lot", "Fra lokasjon / From location"}, true)
 	rows := noteRows(r)
 	if hook := noteRowsBuilt.Load(); hook != nil {
 		(*hook)(rows)

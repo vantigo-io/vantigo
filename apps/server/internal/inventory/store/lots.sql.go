@@ -50,6 +50,135 @@ func (q *Queries) DeleteLots(ctx context.Context, ids []int64) error {
 	return err
 }
 
+const expiringLotCounts = `-- name: ExpiringLotCounts :one
+SELECT count(*) FILTER (WHERE t.expiry < $1::date)::int AS expired,
+       count(*) FILTER (WHERE t.expiry >= $1::date)::int AS expiring
+FROM inventory.lots t
+WHERE t.expiry IS NOT NULL AND t.expiry <= $2::date
+  AND EXISTS (SELECT 1 FROM inventory.balances b WHERE b.lot_id = t.id AND b.on_hand > 0)
+`
+
+type ExpiringLotCountsParams struct {
+	Today pgtype.Date
+	Until pgtype.Date
+}
+
+type ExpiringLotCountsRow struct {
+	Expired  int32
+	Expiring int32
+}
+
+// ExpiringLotCounts is the dashboard's two lot items: the lots holding stock
+// whose expiry has passed (before @today), and those whose expiry falls from
+// @today to @until.
+func (q *Queries) ExpiringLotCounts(ctx context.Context, arg ExpiringLotCountsParams) (ExpiringLotCountsRow, error) {
+	row := q.db.QueryRow(ctx, expiringLotCounts, arg.Today, arg.Until)
+	var i ExpiringLotCountsRow
+	err := row.Scan(&i.Expired, &i.Expiring)
+	return i, err
+}
+
+const expiringLots = `-- name: ExpiringLots :many
+
+SELECT t.id, t.variant_id, t.number, t.serial, t.supplier_lot, t.production_date, t.best_before, t.expiry, t.received_at, t.origin_module, t.origin_kind, t.origin_id, t.status, t.note, t.sku, t.product_name, t.revision, t.created_by_user_id, t.created_by_display, t.created_at, t.updated_at, s.on_hand::text AS on_hand
+FROM inventory.lots t
+JOIN LATERAL (
+    SELECT sum(b.on_hand) AS on_hand
+    FROM inventory.balances b
+    JOIN inventory.locations l ON l.id = b.location_id
+    WHERE b.lot_id = t.id AND ($1::bigint IS NULL OR l.site_id = $1::bigint)
+) s ON true
+WHERE t.expiry IS NOT NULL AND t.expiry <= $2::date
+  AND ($3::text IS NULL OR t.status = $3::text)
+  AND s.on_hand > 0
+ORDER BY t.expiry, lower(t.number), t.id
+LIMIT $4
+`
+
+type ExpiringLotsParams struct {
+	SiteID   *int64
+	Until    pgtype.Date
+	Status   *string
+	RowLimit int32
+}
+
+type ExpiringLotsRow struct {
+	ID               int64
+	VariantID        int32
+	Number           string
+	Serial           bool
+	SupplierLot      *string
+	ProductionDate   pgtype.Date
+	BestBefore       pgtype.Date
+	Expiry           pgtype.Date
+	ReceivedAt       time.Time
+	OriginModule     *string
+	OriginKind       *string
+	OriginID         *string
+	Status           string
+	Note             *string
+	Sku              string
+	ProductName      string
+	Revision         int32
+	CreatedByUserID  *uuid.UUID
+	CreatedByDisplay *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	OnHand           string
+}
+
+// The expiring list and the dashboard's lot items (manufacturing phase 2 M72).
+// ExpiringLots is every lot holding more than 0 — at the site when one is
+// named — whose expiry is on or before @until (the passed ones included), by
+// expiry, then number and id, filtered by status, at most row_limit.
+func (q *Queries) ExpiringLots(ctx context.Context, arg ExpiringLotsParams) ([]ExpiringLotsRow, error) {
+	rows, err := q.db.Query(ctx, expiringLots,
+		arg.SiteID,
+		arg.Until,
+		arg.Status,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpiringLotsRow
+	for rows.Next() {
+		var i ExpiringLotsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.VariantID,
+			&i.Number,
+			&i.Serial,
+			&i.SupplierLot,
+			&i.ProductionDate,
+			&i.BestBefore,
+			&i.Expiry,
+			&i.ReceivedAt,
+			&i.OriginModule,
+			&i.OriginKind,
+			&i.OriginID,
+			&i.Status,
+			&i.Note,
+			&i.Sku,
+			&i.ProductName,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedByDisplay,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OnHand,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getLot = `-- name: GetLot :one
 
 SELECT id, variant_id, number, serial, supplier_lot, production_date, best_before, expiry, received_at, origin_module, origin_kind, origin_id, status, note, sku, product_name, revision, created_by_user_id, created_by_display, created_at, updated_at FROM inventory.lots WHERE id = $1

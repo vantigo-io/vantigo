@@ -5,10 +5,13 @@ import (
 	"regexp"
 	"slices"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 
 	"github.com/vantigo-io/vantigo/server/internal/inventory/gen"
+	"github.com/vantigo-io/vantigo/server/internal/inventory/store"
 )
 
 // pdfPages counts a PDF's page objects (/Type /Page, not /Pages): how many
@@ -46,7 +49,7 @@ func TestLabels_Sheets(t *testing.T) {
 		{gen.L7160, 21, 1}, {gen.L7160, 22, 2}, {gen.L7160, 30, 2}, {gen.L7163, 14, 1}, {gen.L7163, 15, 2}, {gen.L7163, 30, 3}, {gen.L7163, 1, 1},
 	} {
 		sheet := labelSheets[tc.layout]
-		doc, err := layoutLabels(labels[:tc.n], sheet)
+		doc, err := layoutLabels(labels[:tc.n], sheet, "Location labels")
 		if err != nil {
 			t.Fatalf("%s × %d: %v", tc.layout, tc.n, err)
 		}
@@ -59,7 +62,7 @@ func TestLabels_Sheets(t *testing.T) {
 		if !slices.Equal(tokens, want) {
 			t.Errorf("%s × %d: tokens = %v, want %v", tc.layout, tc.n, tokens, want)
 		}
-		pdf, err := renderLabels(labels[:tc.n], sheet)
+		pdf, err := renderLabels(labels[:tc.n], sheet, "Location labels")
 		if err != nil {
 			t.Fatalf("%s × %d: render: %v", tc.layout, tc.n, err)
 		}
@@ -72,5 +75,45 @@ func TestLabels_Sheets(t *testing.T) {
 	}
 	if s := labelSheets[gen.L7163]; s.perSheet() != 14 {
 		t.Errorf("L7163 holds %d, want 14", s.perSheet())
+	}
+}
+
+// TestLotLabels_Layout is M73's label: the LOT<id> token as the barcode,
+// the number large, the SKU and name, the expiry — else the best-before.
+func TestLotLabels_Layout(t *testing.T) {
+	t.Parallel()
+	expiry := pgtype.Date{Time: time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC), Valid: true}
+	lots := []store.InventoryLot{
+		{ID: 1001, Number: "A-1", Sku: "MILK-1", ProductName: "Milk", Expiry: expiry},
+		{ID: 1002, Number: "SN0001", Sku: "PUMP-1", ProductName: "Pump", BestBefore: expiry},
+		{ID: 1003, Number: "B-7", Sku: "BOLT-M8", ProductName: "Bolt"},
+	}
+	var labels []label
+	for _, l := range lots {
+		labels = append(labels, lotLabelOf(l))
+	}
+	want := []label{
+		{token: "LOT1001", fullCode: "A-1", name: "MILK-1 · Milk", extra: "EXP 2026-12-31"},
+		{token: "LOT1002", fullCode: "SN0001", name: "PUMP-1 · Pump", extra: "BB 2026-12-31"},
+		{token: "LOT1003", fullCode: "B-7", name: "BOLT-M8 · Bolt"},
+	}
+	if !slices.Equal(labels, want) {
+		t.Errorf("labels = %+v, want %+v", labels, want)
+	}
+	doc, err := layoutLabels(labels, labelSheets[gen.L7160], "Lot labels")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tokens []string
+	barcodeTokens(doc.GetStructure(), &tokens)
+	if !slices.Equal(tokens, []string{"LOT1001", "LOT1002", "LOT1003"}) {
+		t.Errorf("tokens = %v", tokens)
+	}
+	pdf, err := renderLabels(labels, labelSheets[gen.L7160], "Lot labels")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(pdfPages.FindAll(pdf, -1)); got != 1 {
+		t.Errorf("%d pages, want 1", got)
 	}
 }

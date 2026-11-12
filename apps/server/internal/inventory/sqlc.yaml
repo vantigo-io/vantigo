@@ -13,6 +13,7 @@ sql:
       - ../db/migrations/00155_inventory_placements.sql
       - ../db/migrations/00163_inventory_lots.sql
       - ../db/migrations/00164_inventory_lot_attachments.sql
+      - ../db/migrations/00165_inventory_lot_counts_transfers.sql
     queries: queries
     gen:
       go:

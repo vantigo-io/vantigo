@@ -181,7 +181,7 @@ func (s *server) GetInventoryMovement(ctx context.Context, req gen.GetInventoryM
 func (s *server) ListInventoryMovements(ctx context.Context, req gen.ListInventoryMovementsRequestObject) (gen.ListInventoryMovementsResponseObject, error) {
 	p := req.Params
 	var f fieldErrors
-	params := store.ListMovementsParams{SiteID: p.SiteId, VariantID: p.VariantId, LocationID: p.LocationId, RowLimit: defaultMovementPage + 1}
+	params := store.ListMovementsParams{SiteID: p.SiteId, VariantID: p.VariantId, LotID: p.LotId, LocationID: p.LocationId, RowLimit: defaultMovementPage + 1}
 	if p.Kind != nil {
 		if !p.Kind.Valid() {
 			f.add("kind", "The kind must be adjustment, move, receipt, count, issue, transfer_out, transfer_in or production")

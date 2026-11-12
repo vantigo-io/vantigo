@@ -38,15 +38,17 @@ func (q *Queries) CancelCount(ctx context.Context, arg CancelCountParams) error 
 }
 
 const countLinePairs = `-- name: CountLinePairs :many
-SELECT variant_id, location_id FROM inventory.count_lines WHERE count_id = $1
+SELECT variant_id, location_id, coalesce(lot_id, 0)::bigint AS lot_id FROM inventory.count_lines WHERE count_id = $1
 `
 
 type CountLinePairsRow struct {
 	VariantID  int32
 	LocationID int64
+	LotID      int64
 }
 
-// CountLinePairs is the (variant, location) pairs a count has lines for.
+// CountLinePairs is the balances — (variant, location, lot) — a count has
+// lines for, a lot of 0 for none.
 func (q *Queries) CountLinePairs(ctx context.Context, countID int64) ([]CountLinePairsRow, error) {
 	rows, err := q.db.Query(ctx, countLinePairs, countID)
 	if err != nil {
@@ -56,7 +58,7 @@ func (q *Queries) CountLinePairs(ctx context.Context, countID int64) ([]CountLin
 	var items []CountLinePairsRow
 	for rows.Next() {
 		var i CountLinePairsRow
-		if err := rows.Scan(&i.VariantID, &i.LocationID); err != nil {
+		if err := rows.Scan(&i.VariantID, &i.LocationID, &i.LotID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -68,14 +70,16 @@ func (q *Queries) CountLinePairs(ctx context.Context, countID int64) ([]CountLin
 }
 
 const countLines = `-- name: CountLines :many
-SELECT cl.id, cl.count_id, cl.variant_id, cl.location_id, cl.expected, cl.counted, cl.entered, cl.added,
-       cl.counted_by_user_id, cl.counted_by_display, cl.counted_at, l.full_code,
-       coalesce((SELECT sum(b.on_hand) FROM inventory.balances b
-                 WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id), 0)::numeric AS current
+SELECT cl.id, cl.count_id, cl.variant_id, cl.location_id, cl.lot_id, cl.expected, cl.counted, cl.entered, cl.added,
+       cl.counted_by_user_id, cl.counted_by_display, cl.counted_at, l.full_code, t.number AS lot_number, t.expiry AS lot_expiry,
+       coalesce((SELECT b.on_hand FROM inventory.balances b
+                 WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id
+                   AND b.lot_id IS NOT DISTINCT FROM cl.lot_id), 0)::numeric AS current
 FROM inventory.count_lines cl
 JOIN inventory.locations l ON l.id = cl.location_id
+LEFT JOIN inventory.lots t ON t.id = cl.lot_id
 WHERE cl.count_id = $1
-ORDER BY l.full_code, cl.variant_id
+ORDER BY l.full_code, cl.variant_id, t.number NULLS FIRST, cl.id
 `
 
 type CountLinesRow struct {
@@ -83,6 +87,7 @@ type CountLinesRow struct {
 	CountID          int64
 	VariantID        int32
 	LocationID       int64
+	LotID            *int64
 	Expected         pgtype.Numeric
 	Counted          pgtype.Numeric
 	Entered          []byte
@@ -91,11 +96,14 @@ type CountLinesRow struct {
 	CountedByDisplay *string
 	CountedAt        *time.Time
 	FullCode         string
+	LotNumber        *string
+	LotExpiry        pgtype.Date
 	Current          pgtype.Numeric
 }
 
-// CountLines is a count's lines with their location's full code and the
-// balance they stand on now (0 when there is none).
+// CountLines is a count's lines with their location's full code, their lot's
+// number and expiry (M69), and the balance they stand on now (0 when there
+// is none).
 func (q *Queries) CountLines(ctx context.Context, countID int64) ([]CountLinesRow, error) {
 	rows, err := q.db.Query(ctx, countLines, countID)
 	if err != nil {
@@ -110,6 +118,7 @@ func (q *Queries) CountLines(ctx context.Context, countID int64) ([]CountLinesRo
 			&i.CountID,
 			&i.VariantID,
 			&i.LocationID,
+			&i.LotID,
 			&i.Expected,
 			&i.Counted,
 			&i.Entered,
@@ -118,6 +127,8 @@ func (q *Queries) CountLines(ctx context.Context, countID int64) ([]CountLinesRo
 			&i.CountedByDisplay,
 			&i.CountedAt,
 			&i.FullCode,
+			&i.LotNumber,
+			&i.LotExpiry,
 			&i.Current,
 		); err != nil {
 			return nil, err
@@ -131,13 +142,12 @@ func (q *Queries) CountLines(ctx context.Context, countID int64) ([]CountLinesRo
 }
 
 const freezeCountLines = `-- name: FreezeCountLines :execrows
-INSERT INTO inventory.count_lines (count_id, variant_id, location_id, expected)
-SELECT $1, b.variant_id, b.location_id, sum(b.on_hand)
+INSERT INTO inventory.count_lines (count_id, variant_id, location_id, lot_id, expected)
+SELECT $1, b.variant_id, b.location_id, b.lot_id, b.on_hand
 FROM inventory.balances b
 JOIN inventory.locations l ON l.id = b.location_id
 WHERE l.id = $2 OR l.ancestors @> ARRAY[$2::bigint]
-GROUP BY b.location_id, b.variant_id
-ORDER BY b.location_id, b.variant_id
+ORDER BY b.location_id, b.variant_id, b.lot_id NULLS FIRST
 `
 
 type FreezeCountLinesParams struct {
@@ -145,9 +155,9 @@ type FreezeCountLinesParams struct {
 	ScopeID int64
 }
 
-// FreezeCountLines writes a line per variant and location in the count's
-// scope, expecting what it holds at this moment, summed over its lots (I17;
-// counts per lot are manufacturing phase 2 L2's M69).
+// FreezeCountLines writes a line per balance in the count's scope — a
+// variant on a location, in a lot for a tracked variant (manufacturing
+// phase 2 M69) — expecting what it holds at this moment (I17).
 func (q *Queries) FreezeCountLines(ctx context.Context, arg FreezeCountLinesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, freezeCountLines, arg.CountID, arg.ScopeID)
 	if err != nil {
@@ -222,8 +232,9 @@ SELECT c.id, c.site_id, c.scope_location_id, c.status, c.note, c.opened_by_user_
        (CASE WHEN c.status = 'counting' THEN (
             SELECT count(*) FROM inventory.count_lines cl
             WHERE cl.count_id = c.id
-              AND coalesce((SELECT sum(b.on_hand) FROM inventory.balances b
-                            WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id), 0) <> cl.expected)
+              AND coalesce((SELECT b.on_hand FROM inventory.balances b
+                            WHERE b.variant_id = cl.variant_id AND b.location_id = cl.location_id
+                              AND b.lot_id IS NOT DISTINCT FROM cl.lot_id), 0) <> cl.expected)
         ELSE 0 END)::int AS moved_lines
 FROM inventory.counts c
 WHERE ($1::text IS NULL OR c.status = $1::text)
@@ -456,13 +467,14 @@ func (q *Queries) TouchCount(ctx context.Context, id int64) error {
 }
 
 const upsertCountLines = `-- name: UpsertCountLines :exec
-INSERT INTO inventory.count_lines (count_id, variant_id, location_id, expected, counted, entered, added,
+INSERT INTO inventory.count_lines (count_id, variant_id, location_id, lot_id, expected, counted, entered, added,
                                    counted_by_user_id, counted_by_display, counted_at)
-SELECT $1, u.variant_id, u.location_id, 0, u.counted, nullif(u.entered, '')::jsonb, true,
+SELECT $1, u.variant_id, u.location_id, nullif(u.lot_id, 0), 0, u.counted, nullif(u.entered, '')::jsonb, true,
        $2, $3, $4::timestamptz
 FROM (SELECT unnest($5::int[]) AS variant_id, unnest($6::bigint[]) AS location_id,
-             unnest($7::numeric[]) AS counted, unnest($8::text[]) AS entered) AS u
-ON CONFLICT (count_id, variant_id, location_id) DO UPDATE
+             unnest($7::bigint[]) AS lot_id,
+             unnest($8::numeric[]) AS counted, unnest($9::text[]) AS entered) AS u
+ON CONFLICT (count_id, variant_id, location_id, lot_id) DO UPDATE
 SET counted = excluded.counted, entered = excluded.entered, counted_by_user_id = excluded.counted_by_user_id,
     counted_by_display = excluded.counted_by_display, counted_at = excluded.counted_at
 `
@@ -474,13 +486,15 @@ type UpsertCountLinesParams struct {
 	CountedAt        time.Time
 	VariantIds       []int32
 	LocationIds      []int64
+	LotIds           []int64
 	Counteds         []pgtype.Numeric
 	Entereds         []string
 }
 
-// UpsertCountLines records counted quantities (I18): a pair with a line is
-// changed, a pair without one gets a line, expected 0 and added. Each change
-// records who counted and when.
+// UpsertCountLines records counted quantities (I18): a balance — (variant,
+// location, lot), a lot of 0 for none — with a line is changed, one without
+// gets a line, expected 0 and added. Each change records who counted and
+// when. The key is NULLS NOT DISTINCT (M69), which the conflict infers.
 func (q *Queries) UpsertCountLines(ctx context.Context, arg UpsertCountLinesParams) error {
 	_, err := q.db.Exec(ctx, upsertCountLines,
 		arg.CountID,
@@ -489,6 +503,7 @@ func (q *Queries) UpsertCountLines(ctx context.Context, arg UpsertCountLinesPara
 		arg.CountedAt,
 		arg.VariantIds,
 		arg.LocationIds,
+		arg.LotIds,
 		arg.Counteds,
 		arg.Entereds,
 	)

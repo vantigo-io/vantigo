@@ -62,7 +62,10 @@ const countOpenLongAfter = 7 * 24 * time.Hour
 //     could receive it (transfers-manage with both views);
 //   - lowStock: one per active site with placements at or below their
 //     reorder point, by site code, the count I58's statement's — to a caller
-//     with both views.
+//     with both views;
+//   - lotsExpired and lotsExpiring: the lots with stock whose expiry has
+//     passed, and those whose expiry falls within 14 days, one item each,
+//     counted (manufacturing phase 2 M72) — to a caller with both views.
 //
 // At most 20 items in all.
 func (s *server) GetInventoryStatsAttention(ctx context.Context, _ gen.GetInventoryStatsAttentionRequestObject) (gen.GetInventoryStatsAttentionResponseObject, error) {
@@ -97,6 +100,13 @@ func (s *server) GetInventoryStatsAttention(ctx context.Context, _ gen.GetInvent
 			return nil, err
 		}
 		items = append(items, low...)
+	}
+	if views && len(items) < maxAttentionItems {
+		lots, err := s.expiringItems(ctx, q, now)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, lots...)
 	}
 	if len(items) > maxAttentionItems {
 		items = items[:maxAttentionItems]

@@ -87,11 +87,14 @@ var labelSheets = map[gen.InventoryLabelLayout]labelSheet{
 // perSheet is how many labels one sheet holds.
 func (l labelSheet) perSheet() int { return l.columns * l.rows }
 
-// label is what one label prints.
+// label is what one label prints: the token as the barcode, the code large
+// below it — a location's full code, a lot's number — and up to two lines
+// under that.
 type label struct {
 	token    string
 	fullCode string
 	name     string
+	extra    string
 }
 
 // labelOf is a location's label.
@@ -108,7 +111,7 @@ func labelOf(l store.InventoryLocation) label {
 func tenths(mm float64) int { return int(math.Round(mm * 10)) }
 
 // layoutLabels lays the labels out on sheets, their pages ready to generate.
-func layoutLabels(labels []label, sheet labelSheet) (core.Maroto, error) {
+func layoutLabels(labels []label, sheet labelSheet, title string) (core.Maroto, error) {
 	fonts, err := fontrepository.New().
 		AddUTF8FontFromBytes(labelFontFamily, fontstyle.Normal, notoSansRegular).
 		AddUTF8FontFromBytes(labelFontFamily, fontstyle.Bold, notoSansBold).
@@ -125,7 +128,7 @@ func layoutLabels(labels []label, sheet labelSheet) (core.Maroto, error) {
 		WithLeftMargin(sheet.left).WithRightMargin(210-sheet.left-rowWidth).
 		WithTopMargin(sheet.top).WithBottomMargin(sheet.bottom).
 		WithCreationDate(labelDate).
-		WithTitle("Location labels", true).
+		WithTitle(title, true).
 		Build()
 	doc := maroto.New(cfg)
 	barcodeWidth := sheet.width * sheet.barcodePercent / 100
@@ -151,9 +154,16 @@ func layoutLabels(labels []label, sheet labelSheet) (core.Maroto, error) {
 							Left: 2, Right: 2,
 						}),
 					)
+					nameTop := 3 + barcodeWidth/5 + 4 + sheet.codeSize*0.3528 + 1
 					if l.name != "" {
 						cell.Add(text.New(l.name, props.Text{
-							Top: 3 + barcodeWidth/5 + 4 + sheet.codeSize*0.3528 + 1, Size: sheet.nameSize, Align: align.Center,
+							Top: nameTop, Size: sheet.nameSize, Align: align.Center,
+							Left: 2, Right: 2,
+						}))
+					}
+					if l.extra != "" {
+						cell.Add(text.New(l.extra, props.Text{
+							Top: nameTop + sheet.nameSize*0.3528 + 1.5, Size: sheet.nameSize, Style: fontstyle.Bold, Align: align.Center,
 							Left: 2, Right: 2,
 						}))
 					}
@@ -168,8 +178,8 @@ func layoutLabels(labels []label, sheet labelSheet) (core.Maroto, error) {
 }
 
 // renderLabels is the labels as a PDF on sheet.
-func renderLabels(labels []label, sheet labelSheet) ([]byte, error) {
-	doc, err := layoutLabels(labels, sheet)
+func renderLabels(labels []label, sheet labelSheet, title string) ([]byte, error) {
+	doc, err := layoutLabels(labels, sheet, title)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +271,7 @@ func (s *server) PrintInventoryLabels(ctx context.Context, req gen.PrintInventor
 	for _, r := range rows {
 		labels = append(labels, labelOf(r))
 	}
-	body, err := renderLabels(labels, sheet)
+	body, err := renderLabels(labels, sheet, "Location labels")
 	if err != nil {
 		return nil, err
 	}

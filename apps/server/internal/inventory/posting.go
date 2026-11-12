@@ -108,6 +108,10 @@ type postOptions struct {
 	// ignore holds and expiry, as does an unbuild.
 	takes           bool
 	expiredOverride bool
+	// lotOrigin is the origin kind the lots this posting makes are named by,
+	// with its movement's id: "movement" when empty, "import" for the
+	// opening-balance import's (M71).
+	lotOrigin string
 }
 
 // maxAPILines is the most lines a movement posted through the API has.
@@ -461,7 +465,8 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 	}
 	if len(created) > 0 {
 		movement := strconv.FormatInt(id, 10)
-		if err := txq.SetLotOrigin(ctx, store.SetLotOriginParams{OriginModule: ptr(lotOriginModule), OriginKind: ptr(lotOriginMovement), OriginID: &movement, Ids: created}); err != nil {
+		kind := cmp.Or(opts.lotOrigin, lotOriginMovement)
+		if err := txq.SetLotOrigin(ctx, store.SetLotOriginParams{OriginModule: ptr(lotOriginModule), OriginKind: &kind, OriginID: &movement, Ids: created}); err != nil {
 			return postResult{}, fmt.Errorf("inventory: name the lots' movement: %w", err)
 		}
 		if err := s.recordLotsCreated(ctx, txq, createdLots, m.poster); err != nil {

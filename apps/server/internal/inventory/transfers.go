@@ -33,6 +33,11 @@ import (
 // snapshotted (I36). The send resolves and snapshots them again. Every write
 // takes the transfer row FOR UPDATE first and checks If-Match against its
 // revision; the sites are taken FOR SHARE after it and must be active.
+//
+// A line carries one lot (manufacturing phase 2 M70): a draft line may name
+// one of its variant's, the send names it for a tracked variant (the draft's,
+// or the send's own), and the receive and the cancel post the same lot. Two
+// lots of a variant travel on two lines.
 
 // The transfer's number series (I36), the Orders pattern.
 const (
@@ -86,6 +91,7 @@ func transferInTransit(status string) bool {
 type draftLine struct {
 	index      int
 	variantID  int32
+	lotID      int64
 	quantity   *big.Rat
 	entry      *entry
 	suggestion []byte
@@ -126,6 +132,7 @@ func (s *server) readDraft(ctx context.Context, in gen.InventoryTransferInput) (
 	for i, l := range in.Lines {
 		line := draftLine{index: i, variantID: l.VariantId}
 		line.quantity, line.entry, line.failCode, line.failText = readEntered(l.Quantity, l.Entered, positiveQuantity)
+		line.lotID = lotIDOf(&f, fmt.Sprintf("lines[%d].lotId", i), l.LotId)
 		if l.Suggestion != nil {
 			raw, err := json.Marshal(l.Suggestion)
 			if err != nil {
@@ -142,6 +149,7 @@ func (s *server) readDraft(ctx context.Context, in gen.InventoryTransferInput) (
 // units, its entry's snapshot, and the variant's SKU and name.
 type resolvedLine struct {
 	variantID  int32
+	lotID      int64
 	sku, name  string
 	quantity   *big.Rat
 	entered    []byte
@@ -151,12 +159,16 @@ type resolvedLine struct {
 
 // resolveDraft judges the lines against the catalog, read before the
 // transaction (I36, I37): each variant known and goods, an entry resolved
-// against its packagings as they are now. Every failing line is answered at
-// once.
+// against its packagings as they are now, a lot named only for a tracked
+// variant and one of its own (M70). Every failing line is answered at once.
 func (s *server) resolveDraft(ctx context.Context, d draft) ([]resolvedLine, error) {
 	ids := make([]int32, 0, len(d.lines))
+	var lotIDs []int64
 	for _, l := range d.lines {
 		ids = append(ids, l.variantID)
+		if l.lotID != 0 {
+			lotIDs = append(lotIDs, l.lotID)
+		}
 	}
 	entries, err := s.catalogVariants(ctx, distinct(ids))
 	if err != nil {
@@ -165,6 +177,16 @@ func (s *server) resolveDraft(ctx context.Context, d draft) ([]resolvedLine, err
 	variants := make(map[int32]contracts.VariantEntry, len(entries))
 	for _, e := range entries {
 		variants[e.ID] = e
+	}
+	lots := map[int64]store.InventoryLot{}
+	if len(lotIDs) > 0 {
+		rows, err := store.New(s.deps.Pool).LotsByIDs(ctx, distinct(lotIDs))
+		if err != nil {
+			return nil, fmt.Errorf("inventory: read the lots of a draft: %w", err)
+		}
+		for _, r := range rows {
+			lots[r.ID] = r
+		}
 	}
 	var failures []lineFailure
 	out := make([]resolvedLine, 0, len(d.lines))
@@ -181,8 +203,14 @@ func (s *server) resolveDraft(ctx context.Context, d draft) ([]resolvedLine, err
 		case v.ProductType != productTypeGoods:
 			failures = append(failures, lineFailure{Index: l.index, Code: codeVariantNotStockable, Detail: fmt.Sprintf("%s is a service; only goods are kept in stock.", v.SKU)})
 			continue
+		case l.lotID != 0 && !tracked(v):
+			failures = append(failures, lineFailure{Index: l.index, Code: codeLotNotAllowed, Detail: fmt.Sprintf("%s is not tracked in lots; the line names none.", v.SKU)})
+			continue
+		case l.lotID != 0 && lots[l.lotID].VariantID != v.ID:
+			failures = append(failures, lineFailure{Index: l.index, Code: codeLotUnknown, Detail: fmt.Sprintf("The variant has no lot with the id %d.", l.lotID)})
+			continue
 		}
-		r := resolvedLine{variantID: v.ID, sku: v.SKU, name: v.ProductName, quantity: l.quantity, suggestion: l.suggestion, lineNo: int32(l.index + 1)}
+		r := resolvedLine{variantID: v.ID, lotID: l.lotID, sku: v.SKU, name: v.ProductName, quantity: l.quantity, suggestion: l.suggestion, lineNo: int32(l.index + 1)}
 		if l.entry != nil {
 			q, snap, code, detail := l.entry.resolve(v)
 			switch {
@@ -218,6 +246,7 @@ func insertDraftLines(ctx context.Context, txq *store.Queries, transferID int64,
 		p.Quantities = append(p.Quantities, q)
 		p.Entereds = append(p.Entereds, string(l.entered))
 		p.Suggestions = append(p.Suggestions, string(l.suggestion))
+		p.LotIds = append(p.LotIds, l.lotID)
 	}
 	if err := txq.InsertTransferLines(ctx, p); err != nil {
 		return fmt.Errorf("inventory: write the lines of transfer %d: %w", transferID, err)
@@ -486,6 +515,7 @@ type transferRead struct {
 	sites       map[int64]store.InventorySite
 	locations   map[int64]store.InventoryLocation
 	variants    map[int32]gen.InventoryVariantRef
+	lots        map[int64]store.InventoryLot
 }
 
 // readTransfer reads a transfer in one snapshot, then its lines' variants
@@ -538,6 +568,22 @@ func (s *server) readTransfer(ctx context.Context, id int64) (transferRead, erro
 		for _, l := range locations {
 			r.locations[l.ID] = l
 		}
+		var lotIDs []int64
+		for _, l := range r.lines {
+			if l.LotID != nil {
+				lotIDs = append(lotIDs, *l.LotID)
+			}
+		}
+		r.lots = map[int64]store.InventoryLot{}
+		if len(lotIDs) > 0 {
+			lots, err := q.LotsByIDs(ctx, distinct(lotIDs))
+			if err != nil {
+				return fmt.Errorf("inventory: read the lots of transfer %d: %w", id, err)
+			}
+			for _, l := range lots {
+				r.lots[l.ID] = l
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -569,6 +615,12 @@ func (r transferRead) variantOf(l store.InventoryTransferLine) gen.InventoryVari
 		unit = *l.Unit
 	}
 	return deletedVariantRef(l.VariantID, l.Sku, l.ProductName, unit)
+}
+
+// lotRefOf is a line's lot as the contract names it.
+func (r transferRead) lotRefOf(id int64) *gen.InventoryLotRef {
+	lot := r.lots[id]
+	return &gen.InventoryLotRef{Id: id, Number: lot.Number, Expiry: dateOf(lot.Expiry)}
 }
 
 // inTransitOf is a line's in transit: sent less received, missing and
@@ -643,6 +695,9 @@ func (r transferRead) answer() gen.InventoryTransfer {
 		}
 		if l.FromLocationID != nil {
 			line.FromLocation = ptr(locationRefOf(r.locations[*l.FromLocationID]))
+		}
+		if l.LotID != nil {
+			line.Lot = r.lotRefOf(*l.LotID)
 		}
 		out.Lines = append(out.Lines, line)
 	}

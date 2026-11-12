@@ -35,7 +35,7 @@ SELECT * FROM inventory.movement_lines WHERE movement_id = @movement_id ORDER BY
 
 -- name: ListMovements :many
 -- ListMovements is the movements newest first (I30), filtered by site, kind,
--- posting time, variant and location subtree (each NULL for any), after the
+-- posting time, variant, lot (M74) and location subtree (each NULL for any), after the
 -- cursor's (posted_at, id).
 SELECT m.id, m.client_request_id, m.site_id, m.kind, m.reason, m.note, m.supplier_name, m.supplier_reference,
        m.posted_by_user_id, m.posted_by_display, m.posted_at, m.count_id,
@@ -47,6 +47,8 @@ WHERE (sqlc.narg(site_id)::bigint IS NULL OR m.site_id = sqlc.narg(site_id)::big
   AND (sqlc.narg(posted_before)::timestamptz IS NULL OR m.posted_at < sqlc.narg(posted_before)::timestamptz)
   AND (sqlc.narg(variant_id)::int IS NULL OR EXISTS (
         SELECT 1 FROM inventory.movement_lines v WHERE v.movement_id = m.id AND v.variant_id = sqlc.narg(variant_id)::int))
+  AND (sqlc.narg(lot_id)::bigint IS NULL OR EXISTS (
+        SELECT 1 FROM inventory.movement_lines t WHERE t.movement_id = m.id AND t.lot_id = sqlc.narg(lot_id)::bigint))
   AND (sqlc.narg(location_id)::bigint IS NULL OR EXISTS (
         SELECT 1 FROM inventory.movement_lines ml
         JOIN inventory.locations l ON l.id = ml.from_location_id OR l.id = ml.to_location_id

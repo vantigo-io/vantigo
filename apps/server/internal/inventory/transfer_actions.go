@@ -383,10 +383,14 @@ func (s *server) send(ctx context.Context, tx pgx.Tx, txq *store.Queries, who ac
 	onTransfer := lineIndex(lines)
 	var f fieldErrors
 	from := map[int64]*int64{}
+	sendLot := map[int64]int64{}
 	ids := make([]int64, 0, len(in.Lines))
-	for _, l := range in.Lines {
+	for i, l := range in.Lines {
 		ids = append(ids, l.LineId)
 		from[l.LineId] = l.FromLocationId
+		if id := lotIDOf(&f, fmt.Sprintf("lines[%d].lotId", i), l.LotId); id != 0 {
+			sendLot[l.LineId] = id
+		}
 	}
 	namedLines(&f, "lines", ids, onTransfer)
 	var to map[int64]int64
@@ -415,10 +419,15 @@ func (s *server) send(ctx context.Context, tx pgx.Tx, txq *store.Queries, who ac
 		}
 	}
 
-	// 5. The transfer_out at the from site, each line from its source.
+	// 5. The transfer_out at the from site, each line from its source, in
+	// its lot — the send's, else the draft's (M70); a tracked variant's line
+	// with none is the engine's lot_required.
 	engine := make([]engineLine, 0, len(lines))
 	for i, l := range lines {
-		line := engineLine{index: i, variantID: l.VariantID, from: from[l.ID]}
+		line := engineLine{index: i, variantID: l.VariantID, from: from[l.ID], lotID: sendLot[l.ID]}
+		if line.lotID == 0 && l.LotID != nil {
+			line.lotID = *l.LotID
+		}
 		if line.from == nil {
 			line.failCode, line.failText = codeFromLocationRequired, fmt.Sprintf("Line %d names no location to send it from.", l.LineNo)
 		}
@@ -477,6 +486,7 @@ func (s *server) send(ctx context.Context, tx pgx.Tx, txq *store.Queries, who ac
 		sent.Quantities = append(sent.Quantities, q)
 		sent.Entereds = append(sent.Entereds, string(l.entered))
 		sent.FromLocationIds = append(sent.FromLocationIds, *l.from)
+		sent.LotIds = append(sent.LotIds, l.lotID)
 		sendAction.add(tl.ID, actionLineSent, l.quantity, *l.from)
 	}
 	if err := txq.SendTransferLines(ctx, sent); err != nil {
@@ -504,7 +514,7 @@ func (s *server) send(ctx context.Context, tx pgx.Tx, txq *store.Queries, who ac
 	receiveLines := make([]engineLine, 0, len(resolved))
 	for _, l := range resolved {
 		dest := to[lines[l.index].ID]
-		receiveLines = append(receiveLines, engineLine{index: l.index, variantID: l.variantID, to: &dest, quantity: l.quantity})
+		receiveLines = append(receiveLines, engineLine{index: l.index, variantID: l.variantID, to: &dest, quantity: l.quantity, lotID: l.lotID})
 	}
 	receiveID, err := reserveAction(ctx, txq)
 	if err != nil {
@@ -668,10 +678,16 @@ func (s *server) receive(ctx context.Context, tx pgx.Tx, txq *store.Queries, who
 			continue
 		}
 		to := l.to
-		engine = append(engine, engineLine{
-			index: i, variantID: lines[onTransfer[l.lineID]].VariantID, to: &to, quantity: l.quantity, entry: l.entry,
+		tl := lines[onTransfer[l.lineID]]
+		line := engineLine{
+			index: i, variantID: tl.VariantID, to: &to, quantity: l.quantity, entry: l.entry,
 			failCode: l.failCode, failText: l.failText,
-		})
+		}
+		// The lot that was sent arrives (M70).
+		if tl.LotID != nil {
+			line.lotID = *tl.LotID
+		}
+		engine = append(engine, line)
 	}
 	if len(engine) == 0 && reason == nil {
 		return nothingToPost()
@@ -861,7 +877,12 @@ func (s *server) cancel(ctx context.Context, tx pgx.Tx, txq *store.Queries, who 
 			continue
 		}
 		back := *l.FromLocationID
-		engine = append(engine, engineLine{index: i, variantID: l.VariantID, to: &back, quantity: sent})
+		line := engineLine{index: i, variantID: l.VariantID, to: &back, quantity: sent}
+		// The lot goes back where it left (M70).
+		if l.LotID != nil {
+			line.lotID = *l.LotID
+		}
+		engine = append(engine, line)
 	}
 	actionID, err := reserveAction(ctx, txq)
 	if err != nil {
