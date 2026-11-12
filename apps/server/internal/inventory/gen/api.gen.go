@@ -1590,6 +1590,9 @@ type InventoryMovement struct {
 	CountId *int64 `json:"countId,omitempty"`
 	Id      int64  `json:"id"`
 
+	// InspectionLots A receipt's lots put under a quarantine hold for inspection (manufacturing phase 2 M100): a lot received into that held stock already is in quarantine as a whole until it is released.
+	InspectionLots *[]int64 `json:"inspectionLots,omitempty"`
+
 	// Kind An open set (design §12): issue is stock taken out for another module's document, such as an order's delivery (orders design O45); transfer_out leaves the from site of a transfer and transfer_in arrives at its to site, or back at the from site when it is cancelled (I39–I44); production is a producing document's consumption of components, lines with only a from, and its output, lines with only a to, within one site (manufacturing design M1); unbuild reverses a production, its consume lines the finished item and its produce lines the components restored (manufacturing phase 2 M123).
 	Kind     InventoryMovementKind   `json:"kind"`
 	Lines    []InventoryMovementLine `json:"lines"`
@@ -1755,7 +1758,7 @@ type InventoryPlacementInput struct {
 	ReorderPoint      *float64 `json:"reorderPoint"`
 }
 
-// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module's document put, which is released there), hold_exists (409: the lot page putting a second active hold of one kind on a lot), lot_dates_invalid (400: a lot's dates stated out of order — an expiry before the production date, or a best-before date after the expiry — on a lot's edit or a receipt or adjustment line's new lot; errors names the field), attachment_too_large and too_many_attachments (400: a lot's file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), lot_invalid (a count line's new lot whose number is not 1–20 characters A–Z, a–z, 0–9 and . _ / -, or whose supplier lot or note is too long) and lot_dates_invalid on a count line (its new lot's dates out of order), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. A request the server could not decode answers a bare 400 with neither.
+// InventoryProblem An RFC 9457 problem with this module's refusal code (inventory design §4). code names the rule that refused and is what a client keys off, never the words: site_code_taken, location_code_taken and full_code_taken (409: the code is in use — a site's in the deployment, a location's among its siblings, or the full code it would make; a bulk create lists every colliding full code in detail), code_invalid (400: not 1–16 characters A–Z and 0–9 after upper-casing, or of the form LOC followed by digits, which labels reserve), depth_exceeded (400: the tree would be more than 8 levels below the root), parent_invalid (400: the parent is in another site, is the location itself or below it, or is archived), bulk_too_large (400: more than 1000 locations), location_has_stock (409: the location or something below it holds stock; detail names the quantity and the number of lines), location_has_history (409: a movement line has named the location or something below it, so it can only be archived), root_location (409: a site's root is archived or deleted with its site, never alone), revision_conflict (409: the If-Match revision has moved on), insufficient_stock (409: a line would take a balance below zero; lines name it), client_request_reused (409: the clientRequestId was posted before with a different body), count_scope_overlaps (409: another count still counting covers part of the scope), count_not_open (409: a write to a posted or cancelled count), count_lines_moved (409: posting would count lines whose balances changed since the count opened; lines name them), location_has_open_count (409: archiving a location with a count still counting in its subtree), labels_too_many (400: more than 1000 labels), transfer_same_site (400: the from and to site are one), site_archived (400: a write names an archived site), hold_not_inventorys (409: the lot page releasing a hold another module's document put, which is released there), hold_exists (409: the lot page putting a second active hold of one kind on a lot), lot_dates_invalid (400: a lot's dates stated out of order — an expiry before the production date, or a best-before date after the expiry — on a lot's edit or a receipt or adjustment line's new lot; errors names the field), attachment_too_large and too_many_attachments (400: a lot's file over 20 MB, or a 21st), attachment_type (415: a file not a PDF, JPEG or PNG), storage_not_configured (503: no object store), transfer_not_draft (409: an edit, delete or send of a transfer that is not a draft), transfer_not_receivable (409: a receive of a draft, received or cancelled transfer), transfer_not_cancellable (409: a cancel of a transfer not sent, or with something received or missing), nothing_to_close (409: a close with nothing outstanding), receive_incomplete (400: a send and receive without a destination for every line), site_has_open_transfers (409: archiving a site that a sent or partly received transfer names), location_in_transit (409: archiving a location a line still in transit was sent from), site_has_transfers (409: deleting a site a transfer names), maximum_below_reorder_point (400: a placement's maximum below its reorder point), placement_empty (400: a placement written with no primary location, reorder point or maximum — remove it instead), placement_location_invalid (400: a primary location archived, or in another site), and a posting's line codes — location_archived, location_not_found, variant_not_found, variant_not_stockable, variant_discontinued, move_crosses_sites, same_location, quantity_invalid, packaging_not_found (an entered packaging the variant does not have), entered_invalid (both or neither of quantity and entered, or a packaging named twice), transfer_over_received (more than the line's outstanding), from_location_required (a send line without a source location), transfer_line_unknown (a line not on the transfer), and the lot rules of manufacturing phase 2 M56–M57: lot_required (a tracked variant's line names no lot), lot_not_allowed (an untracked variant's line names one), lot_unknown (no such lot of the variant), serial_quantity (a serial line's quantity is not 1, or a serial would hold more than 1), serial_first_invalid (a first serial with no trailing digits), lot_dates_differ (a stated date differs from the existing lot's), lot_invalid (a count line's new lot whose number is not 1–20 characters A–Z, a–z, 0–9 and . _ / -, or whose supplier lot or note is too long) and lot_dates_invalid on a count line (its new lot's dates out of order), and the 409s lot_expired (an expired lot taken without the override) and lot_blocked (a lot on hold issued or consumed, or received into while blocked) — with nothing_to_post and too_many_lines (400). A posting checks every line before it writes any and answers all of them at once in lines; a problem about the request as a whole has none. errors carries the field errors of a 400, keyed by the request's camelCase field. inspection_requires_tracking (400: inspect on receipt for a variant that is not tracked, manufacturing phase 2 M100). A request the server could not decode answers a bare 400 with neither.
 type InventoryProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1962,6 +1965,9 @@ type InventorySourceRef struct {
 type InventoryStats struct {
 	// Locations Active locations, roots excluded.
 	Locations int32 `json:"locations"`
+
+	// LotsAwaitingInspection Lots with an active inspection hold (manufacturing phase 2 M100): the inspection queue, to a caller with stock-view.
+	LotsAwaitingInspection *int32 `json:"lotsAwaitingInspection,omitempty"`
 
 	// OpenCounts Counts still counting.
 	OpenCounts int32 `json:"openCounts"`
@@ -2457,6 +2463,23 @@ type InventoryVariantRef struct {
 // InventoryVariantRefTracking How the variant's stock is kept (manufacturing phase 2 M49): none, in lots, or in serials; absent on a deleted variant.
 type InventoryVariantRefTracking string
 
+// InventoryVariantRules A variant's rules in Inventory (manufacturing phase 2 M100). inspectOnReceipt puts every lot a receipt of the variant creates or adds to under a quarantine hold of cause inspection, released on the lot page. revision is 0 while the variant has no rules.
+type InventoryVariantRules struct {
+	InspectOnReceipt bool       `json:"inspectOnReceipt"`
+	Revision         int32      `json:"revision"`
+	UpdatedAt        *time.Time `json:"updatedAt"`
+
+	// UpdatedBy Who posted, as snapshotted when they did.
+	UpdatedBy *InventoryActor `json:"updatedBy,omitempty"`
+	VariantId int32           `json:"variantId"`
+}
+
+// InventoryVariantRulesInput A variant's rules as sent: inspectOnReceipt only for a tracked variant (inspection_requires_tracking), under the revision read (0 when it had none).
+type InventoryVariantRulesInput struct {
+	InspectOnReceipt bool  `json:"inspectOnReceipt"`
+	Revision         int32 `json:"revision"`
+}
+
 // InventoryVariantStock One variant's stock by site (I27).
 type InventoryVariantStock struct {
 	// Sites Sites holding stock, a reservation or incoming of it, by code.
@@ -2836,6 +2859,9 @@ type SendInventoryTransferJSONRequestBody = InventoryTransferSendInput
 // PutInventoryPlacementJSONRequestBody defines body for PutInventoryPlacement for application/json ContentType.
 type PutInventoryPlacementJSONRequestBody = InventoryPlacementInput
 
+// PutInventoryVariantRulesJSONRequestBody defines body for PutInventoryVariantRules for application/json ContentType.
+type PutInventoryVariantRulesJSONRequestBody = InventoryVariantRulesInput
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListInventoryCounts List counts
@@ -3024,6 +3050,12 @@ type ServerInterface interface {
 	// PutInventoryPlacement Set a placement
 	// (PUT /api/v1/inventory/variants/{variantId}/placements/{siteId})
 	PutInventoryPlacement(w http.ResponseWriter, r *http.Request, variantId int32, siteId int64, params PutInventoryPlacementParams)
+	// GetInventoryVariantRules Get a variant's rules
+	// (GET /api/v1/inventory/variants/{variantId}/rules)
+	GetInventoryVariantRules(w http.ResponseWriter, r *http.Request, variantId int32)
+	// PutInventoryVariantRules Set a variant's rules
+	// (PUT /api/v1/inventory/variants/{variantId}/rules)
+	PutInventoryVariantRules(w http.ResponseWriter, r *http.Request, variantId int32)
 	// GetInventoryVariantStock Get a variant's stock
 	// (GET /api/v1/inventory/variants/{variantId}/stock)
 	GetInventoryVariantStock(w http.ResponseWriter, r *http.Request, variantId int32)
@@ -5607,6 +5639,58 @@ func (siw *ServerInterfaceWrapper) PutInventoryPlacement(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetInventoryVariantRules operation middleware
+func (siw *ServerInterfaceWrapper) GetInventoryVariantRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "variantId" -------------
+	var variantId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variantId", r.PathValue("variantId"), &variantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInventoryVariantRules(w, r, variantId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInventoryVariantRules operation middleware
+func (siw *ServerInterfaceWrapper) PutInventoryVariantRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "variantId" -------------
+	var variantId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "variantId", r.PathValue("variantId"), &variantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "variantId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInventoryVariantRules(w, r, variantId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetInventoryVariantStock operation middleware
 func (siw *ServerInterfaceWrapper) GetInventoryVariantStock(w http.ResponseWriter, r *http.Request) {
 
@@ -5815,6 +5899,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants", wrapper.SearchInventoryVariants)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/placements/{siteId}", wrapper.DeleteInventoryPlacement)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/placements/{siteId}", wrapper.PutInventoryPlacement)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/rules", wrapper.GetInventoryVariantRules)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/rules", wrapper.PutInventoryVariantRules)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/inventory/variants/{variantId}/stock", wrapper.GetInventoryVariantStock)
 
 	return m
@@ -10836,6 +10922,157 @@ func (response PutInventoryPlacement503ApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type GetInventoryVariantRulesRequestObject struct {
+	VariantId int32 `json:"variantId"`
+}
+
+type GetInventoryVariantRulesResponseObject interface {
+	VisitGetInventoryVariantRulesResponse(w http.ResponseWriter) error
+}
+
+type GetInventoryVariantRules200JSONResponse InventoryVariantRules
+
+func (response GetInventoryVariantRules200JSONResponse) VisitGetInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryVariantRules401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryVariantRules401JSONResponse) VisitGetInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInventoryVariantRules403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetInventoryVariantRules403JSONResponse) VisitGetInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryVariantRulesRequestObject struct {
+	VariantId int32 `json:"variantId"`
+	Body      *PutInventoryVariantRulesJSONRequestBody
+}
+
+type PutInventoryVariantRulesResponseObject interface {
+	VisitPutInventoryVariantRulesResponse(w http.ResponseWriter) error
+}
+
+type PutInventoryVariantRules200JSONResponse InventoryVariantRules
+
+func (response PutInventoryVariantRules200JSONResponse) VisitPutInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryVariantRules400ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryVariantRules400ApplicationProblemPlusJSONResponse) VisitPutInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryVariantRules401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryVariantRules401JSONResponse) VisitPutInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryVariantRules403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutInventoryVariantRules403JSONResponse) VisitPutInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryVariantRules404Response struct {
+}
+
+func (response PutInventoryVariantRules404Response) VisitPutInventoryVariantRulesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutInventoryVariantRules409ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryVariantRules409ApplicationProblemPlusJSONResponse) VisitPutInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInventoryVariantRules503ApplicationProblemPlusJSONResponse InventoryProblem
+
+func (response PutInventoryVariantRules503ApplicationProblemPlusJSONResponse) VisitPutInventoryVariantRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetInventoryVariantStockRequestObject struct {
 	VariantId int32 `json:"variantId"`
 }
@@ -11096,6 +11333,12 @@ type StrictServerInterface interface {
 	// PutInventoryPlacement Set a placement
 	// (PUT /api/v1/inventory/variants/{variantId}/placements/{siteId})
 	PutInventoryPlacement(ctx context.Context, request PutInventoryPlacementRequestObject) (PutInventoryPlacementResponseObject, error)
+	// GetInventoryVariantRules Get a variant's rules
+	// (GET /api/v1/inventory/variants/{variantId}/rules)
+	GetInventoryVariantRules(ctx context.Context, request GetInventoryVariantRulesRequestObject) (GetInventoryVariantRulesResponseObject, error)
+	// PutInventoryVariantRules Set a variant's rules
+	// (PUT /api/v1/inventory/variants/{variantId}/rules)
+	PutInventoryVariantRules(ctx context.Context, request PutInventoryVariantRulesRequestObject) (PutInventoryVariantRulesResponseObject, error)
 	// GetInventoryVariantStock Get a variant's stock
 	// (GET /api/v1/inventory/variants/{variantId}/stock)
 	GetInventoryVariantStock(ctx context.Context, request GetInventoryVariantStockRequestObject) (GetInventoryVariantStockResponseObject, error)
@@ -12902,6 +13145,65 @@ func (sh *strictHandler) PutInventoryPlacement(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInventoryPlacementResponseObject); ok {
 		if err := validResponse.VisitPutInventoryPlacementResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInventoryVariantRules operation middleware
+func (sh *strictHandler) GetInventoryVariantRules(w http.ResponseWriter, r *http.Request, variantId int32) {
+	var request GetInventoryVariantRulesRequestObject
+
+	request.VariantId = variantId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInventoryVariantRules(ctx, request.(GetInventoryVariantRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInventoryVariantRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInventoryVariantRulesResponseObject); ok {
+		if err := validResponse.VisitGetInventoryVariantRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInventoryVariantRules operation middleware
+func (sh *strictHandler) PutInventoryVariantRules(w http.ResponseWriter, r *http.Request, variantId int32) {
+	var request PutInventoryVariantRulesRequestObject
+
+	request.VariantId = variantId
+
+	var body PutInventoryVariantRulesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInventoryVariantRules(ctx, request.(PutInventoryVariantRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInventoryVariantRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInventoryVariantRulesResponseObject); ok {
+		if err := validResponse.VisitPutInventoryVariantRulesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

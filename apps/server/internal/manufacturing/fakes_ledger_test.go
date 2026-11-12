@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"slices"
 	"strings"
@@ -44,6 +45,10 @@ type ledgerState struct {
 	lotHeld map[lotSpot]*big.Rat
 	nextLot int64
 	ensured [][]contracts.NewLot
+	// holds is each lot's active holds, by source, with their kind
+	// (manufacturing phase 2 M64): HoldLots and ReleaseLotHolds keep them,
+	// and a lot's status is derived from them.
+	holds map[int64]map[contracts.StockSource]string
 }
 
 // fakeLot is a lot of the fake: its variant, number, dates and status.
@@ -109,6 +114,7 @@ func newLedgerState() ledgerState {
 		onHand: map[spot]*big.Rat{}, primary: map[spot]bool{}, reserved: map[lineKey]*big.Rat{},
 		variantOf: map[lineKey]int32{}, posted: map[contracts.StockSource]postedProduction{}, movements: 7000,
 		lots: map[int64]*fakeLot{}, lotHeld: map[lotSpot]*big.Rat{}, nextLot: 5000,
+		holds: map[int64]map[contracts.StockSource]string{},
 	}
 }
 
@@ -406,12 +412,107 @@ func (s *fakeStock) siteLots(ids []int32, site int64) []contracts.StockLot {
 	return out
 }
 
-func (s *fakeStock) HoldLots(context.Context, pgx.Tx, contracts.StockSource, []contracts.LotHold) error {
-	return errNotManufacturing
+// HoldLots puts src's holds on the lots, a lot it holds already left as it
+// is; an unknown lot refuses them all.
+func (s *fakeStock) HoldLots(ctx context.Context, tx pgx.Tx, src contracts.StockSource, holds []contracts.LotHold) error {
+	if tx == nil {
+		panic("HoldLots without a transaction")
+	}
+	if err := src.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, h := range holds {
+		if _, ok := s.lots[h.LotID]; !ok {
+			return &contracts.StockRefusal{Code: contracts.StockLotUnknown, Detail: "No such lot.",
+				Lines: []contracts.StockLineRefusal{{Index: i, Code: contracts.StockLotUnknown, LotID: h.LotID}}}
+		}
+	}
+	for _, h := range holds {
+		if s.holds[h.LotID] == nil {
+			s.holds[h.LotID] = map[contracts.StockSource]string{}
+		}
+		if _, ok := s.holds[h.LotID][src]; !ok {
+			s.holds[h.LotID][src] = h.Kind
+		}
+		s.deriveStatus(h.LotID)
+	}
+	return nil
 }
 
-func (s *fakeStock) ReleaseLotHolds(context.Context, pgx.Tx, contracts.StockSource, []int64, contracts.LotActor) error {
-	return errNotManufacturing
+// ReleaseLotHolds releases src's holds on the lots named, every lot when nil.
+func (s *fakeStock) ReleaseLotHolds(_ context.Context, tx pgx.Tx, src contracts.StockSource, lotIDs []int64, _ contracts.LotActor) error {
+	if tx == nil {
+		panic("ReleaseLotHolds without a transaction")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, by := range s.holds {
+		if lotIDs != nil && !slices.Contains(lotIDs, id) {
+			continue
+		}
+		if _, ok := by[src]; ok {
+			delete(by, src)
+			s.deriveStatus(id)
+		}
+	}
+	return nil
+}
+
+// deriveStatus is a lot's status from its holds: blocked while any is a
+// block, quarantine while any is a quarantine.
+func (s *fakeStock) deriveStatus(id int64) {
+	status := contracts.LotAvailable
+	for _, kind := range s.holds[id] {
+		switch {
+		case kind == "block":
+			status = contracts.LotBlocked
+		case status == contracts.LotAvailable:
+			status = contracts.LotQuarantine
+		}
+	}
+	s.lots[id].status = status
+}
+
+// hold puts a hold of another source on the lot, as a recall or the lot
+// page would.
+func (s *fakeStock) hold(id int64, src contracts.StockSource, kind string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.holds[id] == nil {
+		s.holds[id] = map[contracts.StockSource]string{}
+	}
+	s.holds[id][src] = kind
+	s.deriveStatus(id)
+}
+
+// heldBy is the sources holding the lot, by kind.
+func (s *fakeStock) heldBy(id int64) map[contracts.StockSource]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return maps.Clone(s.holds[id])
+}
+
+// lotStatus is the lot's status.
+func (s *fakeStock) lotStatus(id int64) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lots[id].status
+}
+
+// LotRefs answers the lots named, by id.
+func (s *fakeStock) LotRefs(ctx context.Context, ids []int64) ([]contracts.LotRef, error) {
+	lockedContractCalls.note(ctx, "fake Stock.LotRefs")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []contracts.LotRef
+	for _, id := range ids {
+		if l, ok := s.lots[id]; ok {
+			out = append(out, contracts.LotRef{ID: id, VariantID: l.variant, Number: l.number, Status: l.status})
+		}
+	}
+	return out, nil
 }
 
 // errNoToday is a ledger call without today: the caller must read the

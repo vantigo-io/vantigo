@@ -120,6 +120,25 @@ func (st stock) Lots(ctx context.Context, variantIDs []int32, siteID int64) ([]c
 	return out, nil
 }
 
+// LotRefs answers the lots named, by id (manufacturing phase 2 M99).
+func (st stock) LotRefs(ctx context.Context, lotIDs []int64) ([]contracts.LotRef, error) {
+	if len(lotIDs) > contracts.MaxStockVariants {
+		return nil, fmt.Errorf("inventory: at most %d lots a read", contracts.MaxStockVariants)
+	}
+	if len(lotIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := store.New(st.s.deps.Pool).LotsByIDs(ctx, lotIDs)
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the lots: %w", err)
+	}
+	out := make([]contracts.LotRef, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, contracts.LotRef{ID: r.ID, VariantID: r.VariantID, Number: r.Number, Status: r.Status})
+	}
+	return out, nil
+}
+
 // Sites answers every site that is not archived, by code.
 func (st stock) Sites(ctx context.Context) ([]contracts.StockSite, error) {
 	rows, err := store.New(st.s.deps.Pool).StockSites(ctx)

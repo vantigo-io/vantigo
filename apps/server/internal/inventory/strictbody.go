@@ -197,6 +197,7 @@ var closedSchemas = []string{
 	transferCloseSchema, transferCancelInputSchema,
 	placementInputSchema,
 	lotUpdateSchema, lotHoldInputSchema, lotHoldReleaseSchema, lotBlockInputSchema,
+	variantRulesInputSchema,
 }
 
 // closedItems is, per closed request schema, its array properties whose

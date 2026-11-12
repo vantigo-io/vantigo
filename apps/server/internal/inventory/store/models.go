@@ -297,3 +297,12 @@ type InventoryTransferLine struct {
 	Returned       pgtype.Numeric
 	LotID          *int64
 }
+
+type InventoryVariantRule struct {
+	VariantID        int32
+	InspectOnReceipt bool
+	UpdatedByUserID  *uuid.UUID
+	UpdatedByDisplay *string
+	UpdatedAt        time.Time
+	Revision         int32
+}

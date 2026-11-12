@@ -58,12 +58,13 @@ func sourceOf(m store.InventoryMovement) *gen.InventorySourceRef {
 // snapshot. An unknown id is the 404.
 func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovement, error) {
 	var (
-		m         store.InventoryMovement
-		lines     []store.InventoryMovementLine
-		site      store.InventorySite
-		locations = map[int64]store.InventoryLocation{}
-		transfer  *gen.InventoryTransferRef
-		lots      = map[int32]gen.InventoryLotRef{}
+		m          store.InventoryMovement
+		lines      []store.InventoryMovementLine
+		site       store.InventorySite
+		locations  = map[int64]store.InventoryLocation{}
+		transfer   *gen.InventoryTransferRef
+		lots       = map[int32]gen.InventoryLotRef{}
+		inspection []int64
 	)
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -109,6 +110,11 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 		for _, r := range lotRows {
 			lots[r.LineNo] = gen.InventoryLotRef{Id: r.ID, Number: r.Number, Expiry: dateOf(r.Expiry)}
 		}
+		if m.Kind == string(gen.Receipt) && len(lotRows) > 0 {
+			if inspection, err = q.InspectionLotsOfMovement(ctx, strconv.FormatInt(id, 10)); err != nil {
+				return fmt.Errorf("inventory: read the inspection holds of movement %d: %w", id, err)
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -131,6 +137,9 @@ func (s *server) movementOf(ctx context.Context, id int64) (gen.InventoryMovemen
 		Reason: reasonOf(m.Reason), Note: m.Note, SupplierName: m.SupplierName, SupplierReference: m.SupplierReference,
 		Source: sourceOf(m), PostedBy: posterOf(m.PostedByUserID, m.PostedByDisplay), PostedAt: m.PostedAt, CountId: m.CountID,
 		Transfer: transfer, Lines: make([]gen.InventoryMovementLine, 0, len(lines)),
+	}
+	if len(inspection) > 0 {
+		out.InspectionLots = &inspection
 	}
 	for _, l := range lines {
 		ref, ok := refs[l.VariantID]

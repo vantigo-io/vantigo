@@ -309,6 +309,11 @@ func (f *fakeStock) SiteLocations(context.Context, int64) ([]contracts.StockSite
 	return nil, errors.New("fake stock: orders never lists a site's locations")
 }
 
+// LotRefs is Manufacturing's; Orders never calls it.
+func (f *fakeStock) LotRefs(context.Context, []int64) ([]contracts.LotRef, error) {
+	return nil, errors.New("fake stock: orders never reads lots by id")
+}
+
 // Lots is every lot of the variants holding more than 0 at a location of
 // the site, in FEFO order (manufacturing phase 2 M65).
 func (f *fakeStock) Lots(_ context.Context, ids []int32, site int64) ([]contracts.StockLot, error) {

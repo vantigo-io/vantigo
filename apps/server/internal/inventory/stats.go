@@ -24,14 +24,25 @@ func (s *server) GetInventoryStats(ctx context.Context, _ gen.GetInventoryStatsR
 	if err != nil {
 		return nil, err
 	}
-	row, err := store.New(s.deps.Pool).Stats(ctx, weekStart(s.deps.Clock(), zone))
+	q := store.New(s.deps.Pool)
+	row, err := q.Stats(ctx, weekStart(s.deps.Clock(), zone))
 	if err != nil {
 		return nil, fmt.Errorf("inventory: read the stats: %w", err)
 	}
-	return gen.GetInventoryStats200JSONResponse(gen.InventoryStats{
+	out := gen.InventoryStats{
 		Sites: row.Sites, Locations: row.Locations, StockLines: row.StockLines, ReceiptsThisWeek: row.ReceiptsThisWeek,
 		OpenCounts: row.OpenCounts,
-	}), nil
+	}
+	// The inspection queue (manufacturing phase 2 M100), to a caller who
+	// may see stock.
+	if s.has(ctx, permStockView) {
+		n, err := q.CountLotsAwaitingInspection(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("inventory: count the lots awaiting inspection: %w", err)
+		}
+		out.LotsAwaitingInspection = &n
+	}
+	return gen.GetInventoryStats200JSONResponse(out), nil
 }
 
 // weekStart is the instant the business week of now began: Monday's midnight
