@@ -115,6 +115,11 @@
     "description": "The list on the Expiring page: every lot with stock whose expiry falls within the days chosen (30 unless changed) or has already passed, by expiry, with the days left, the item, the status and what lies of it, filtered by site and status. Export the list as CSV or print the lots' labels."
   },
   {
+    "key": "inventory.home.awaiting-inspection",
+    "route": "/inventory",
+    "description": "The notice on the Inventory home page that links to the lots held for inspection on receipt."
+  },
+  {
     "key": "inventory.home.lookup",
     "route": "/inventory",
     "description": "The field at the top of the Inventory home page: scan or type a location code, a label, a SKU or a barcode and press Enter to open it."
@@ -148,6 +153,11 @@
     "key": "inventory.lot.holds",
     "route": "/inventory/lots/{lotId}",
     "description": "The Holds panel on a lot's page: every hold with its kind, cause, note and source, active ones first. Quarantine or Block puts a hold of the lot page; Release ends one of Inventory's own holds. A hold another module's document put is released there."
+  },
+  {
+    "key": "inventory.lot.report-deviation",
+    "route": "/inventory/lots/{lotId}",
+    "description": "The button on a lot's page that reports a deviation of the lot in Manufacturing, which can put it in quarantine."
   },
   {
     "key": "inventory.lots.list",
@@ -193,6 +203,11 @@
     "key": "inventory.transfers.new",
     "route": "/inventory/transfers",
     "description": "The button on the Transfers page that opens a new transfer's draft: the from and to site, the lines, and the stock available at both sites beside each line."
+  },
+  {
+    "key": "inventory.variant.inspection",
+    "route": "/inventory/variants/{variantId}",
+    "description": "The switch on a tracked variant's page that puts every lot a receipt makes or adds to in quarantine for inspection."
   },
   {
     "key": "invoices.invoice.add-line",
@@ -245,6 +260,11 @@
     "description": "The buttons at the top of a bill of materials: its overview, make it the variant's default, archive or reactivate it."
   },
   {
+    "key": "manufacturing.bom.checks",
+    "route": "/manufacturing/boms/new",
+    "description": "An operation's quality checks: an instruction, pass or fail, a measure with its limits, or a photo, recorded at each work order or on the first piece."
+  },
+  {
     "key": "manufacturing.bom.header",
     "route": "/manufacturing/boms/new",
     "description": "The product variant the bill makes, its code, output quantity, lead time, make to order and note."
@@ -275,6 +295,36 @@
     "description": "The button on the Bills of materials page that opens the editor for a new one."
   },
   {
+    "key": "manufacturing.deviation.close",
+    "route": "/manufacturing/deviations/{deviationId}",
+    "description": "The disposition and closing note that close a deviation; use as is and rework release its holds."
+  },
+  {
+    "key": "manufacturing.deviation.lots",
+    "route": "/manufacturing/deviations/{deviationId}",
+    "description": "The lots the deviation holds in quarantine, each linked to its page in Inventory."
+  },
+  {
+    "key": "manufacturing.deviation.report",
+    "route": "/manufacturing/deviations",
+    "description": "The form that reports a deviation: its title, its description and Put the output in quarantine."
+  },
+  {
+    "key": "manufacturing.deviations.filters",
+    "route": "/manufacturing/deviations",
+    "description": "The deviations list's filters: status and the period it was opened in."
+  },
+  {
+    "key": "manufacturing.deviations.list",
+    "route": "/manufacturing/deviations",
+    "description": "Every deviation, newest first, with its order, product, lots and whether it holds them in quarantine."
+  },
+  {
+    "key": "manufacturing.deviations.report",
+    "route": "/manufacturing/deviations",
+    "description": "The button on the deviations list that reports a new deviation."
+  },
+  {
     "key": "manufacturing.my-work.open-log",
     "route": "/manufacturing/shop-floor/mine",
     "description": "What you are running now, with its timer and a link to the work order."
@@ -293,6 +343,11 @@
     "key": "manufacturing.order.add-log",
     "route": "/manufacturing/orders/{orderId}",
     "description": "The button that opens the dialog for adding a time log someone forgot to record."
+  },
+  {
+    "key": "manufacturing.order.check-results",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "Every check of the order's work orders with its result, who recorded it and the deviation a failure opened."
   },
   {
     "key": "manufacturing.order.children",
@@ -333,6 +388,11 @@
     "key": "manufacturing.order.plan",
     "route": "/manufacturing/orders/{orderId}",
     "description": "Plans the order's unfinished work orders forward on their work centers' calendars, from the requested start or now."
+  },
+  {
+    "key": "manufacturing.order.report-deviation",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The button on a manufacturing order that reports a deviation of it, and can put its output in quarantine."
   },
   {
     "key": "manufacturing.order.short-lines",
@@ -483,6 +543,11 @@
     "key": "manufacturing.work-order.actions",
     "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
     "description": "The large buttons on a work order: Start, Pause, Finish, Register production on the last operation and Report scrap."
+  },
+  {
+    "key": "manufacturing.work-order.checks",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "description": "The work order's checks, first-piece checks first, with large Pass and Fail buttons, a field for a measure and Take photo."
   },
   {
     "key": "manufacturing.work-order.instructions",

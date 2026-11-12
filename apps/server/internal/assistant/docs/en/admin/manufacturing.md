@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: Turning Manufacturing on — the two modules it requires, the migration and the manufacturing schema, granting it to a least-privilege role — the five permissions and what each gives, the sensitive cost permission and who should hold it, who manages manufacturing orders and who registers production, who works on the shop floor and who corrects time logs, who plans the schedule, the roles to build from them; the business time zone the work centers' calendars run in; setting up tablets on the floor — an account per operator, a current browser, keeping the screen awake, the work center each tablet remembers and the network; how to verify it, and what can go wrong.
+description: Turning Manufacturing on — the two modules it requires, the migration and the manufacturing schema, granting it to a least-privilege role — the six permissions and what each gives, the quality permission that closes deviations, the sensitive cost permission and who should hold it, who manages manufacturing orders and who registers production, who works on the shop floor and who corrects time logs, who plans the schedule, the roles to build from them; the business time zone the work centers' calendars run in; setting up tablets on the floor — an account per operator, a current browser, keeping the screen awake, the work center each tablet remembers, the camera and the network; the storage the checks' photos take; how to verify it, and what can go wrong.
 sidebar:
   order: 51
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
   - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
+  - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
 ---
 
 The Manufacturing module (**Produksjon** in Norwegian) describes how the business makes
@@ -92,6 +93,7 @@ beside it.
 | Manage manufacturing orders | `manufacturing:orders-manage` | Creating, changing, confirming, reserving, closing and cancelling manufacturing orders; adding and changing their components; registering a production; everything on the shop floor; correcting a time log and adding a missing one; planning orders on the production schedule and moving their work orders |
 | Work on the shop floor | `manufacturing:shop-floor` | On the shop floor: starting, pausing and finishing work orders, registering a production, reporting scrap, and blocking and unblocking a work center; registering a production on a manufacturing order |
 | See manufacturing costs | `manufacturing:costs-view` | Every cost figure: a work center's machine and labour rates, and setting them; the standard costs, extended values, operation costs and the rolled-up cost in the overview; a manufacturing order's **Cost** panel; the **Production cost** report. Sensitive, and cannot be delegated |
+| Manage quality | `manufacturing:quality-manage` | Closing a deviation with its disposition — which releases the quarantine holds it put on lots, unless it is closed as scrap or return — and releasing the holds of one closed so |
 
 **See manufacturing costs** is sensitive: it shows what each product costs to make and
 what an hour of each machine and of labour costs. Give it to whoever prices and
@@ -109,6 +111,12 @@ who reports what was made need not be able to create, confirm or cancel orders.
 Correcting a time log, or adding a missing one, needs Manage manufacturing orders: an
 operator cannot change their own recorded time. The Assistant takes no action on the shop
 floor, whatever the person's role: an operator clocks in themselves.
+
+Recording a quality check and reporting a deviation are the shop floor's: Work on the shop
+floor or Manage manufacturing orders. Editing the checks of an operation is editing the
+bill of materials. **Manage quality** decides what happens to what a deviation holds:
+give it to the quality manager or the production manager, since closing a deviation as
+*use as is* lets the held lots be delivered again.
 
 A typical set: everyone in production gets Use Manufacturing; operators add Work on the
 shop floor; planners and supervisors add Manage manufacturing orders; whoever keeps the
@@ -143,9 +151,27 @@ that.
    tablet's connection to the server, and a start, a pause or a finish is a request to it:
    on a tablet that is offline it is not recorded. Cover the floor with Wi-Fi where the
    work centers stand.
+7. **Allow the camera.** A photo check opens the tablet's camera through the browser.
+   The first time, the browser asks for leave to use it: allow it for Vantigo's address.
+   Without a camera the operator can pick a picture saved on the tablet instead.
 
 The timer counts on the tablet from when the work started, so a tablet that reconnects
 shows the right time without the server sending it.
+
+## Photos of the checks
+
+A photo check keeps its picture in the installation's [object
+storage](/en/admin/object-storage/) under the scope `manufacturing-quality`. Without
+object storage configured, taking a photo is refused (*storage_not_configured*) and a
+photo check cannot be recorded; every other check works.
+
+Each picture is a JPEG or PNG of at most 10 MB, as the tablet's camera wrote it, less
+what it says about where and when it was taken. A photo is a quality record: it is kept
+as long as the work order, even when its result is recorded again. Count on a few
+megabytes per photo check per work order. A picture uploaded but never recorded on a
+check — the operator took it and left — is removed after a day by the worker
+`manufacturing.object-deletions`, which runs in the worker process with the others and
+retries until the store confirms.
 
 ## Verify
 

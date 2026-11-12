@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/invoices/print_batches.go
   - apps/server/internal/staff/objects.go
   - apps/server/internal/customers/objects.go
+  - apps/server/internal/manufacturing/quality_photos.go
   - apps/server/internal/products/objects.go
 ---
 Object storage is the application port Communications stages and serves attachments
@@ -141,7 +142,9 @@ thumbnail's `<productId>/<uuid>-thumb`, so the physical keys are
 ([Products](/en/reference/products/#images)). Inventory uses the scope `inventory-lots`: a
 lot's file has the relative key `lots/<uuid>`, so its physical key is
 `inventory-lots/lots/<uuid>` — a key that names no lot and is never made from the file's name
-([Inventory](/en/reference/inventory/#a-lots-files)). A scoped store refuses a
+([Inventory](/en/reference/inventory/#a-lots-files)). Manufacturing uses the scope `manufacturing-quality`: a check's photo has the relative
+key `checks/<uuid>`, so its physical key is `manufacturing-quality/checks/<uuid>` — a key
+that names no work order ([Manufacturing](/en/reference/manufacturing/#photos)). A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
 
@@ -231,3 +234,9 @@ the same 503 for an object that cannot be read. See
 Inventory's `GET /lots/{id}/attachments/{attachmentId}` does the same through its
 `inventory-lots`-scoped store, under both of Inventory's views, with the same headers. See
 [Inventory](/en/reference/inventory/#a-lots-files).
+
+Manufacturing's `GET /work-orders/{id}/photos/{photoId}` does the same through its
+`manufacturing-quality`-scoped store, under Use Manufacturing, with the same headers; it
+is shown in place, as a picture. An upload no check's result names after a day is removed
+by the `manufacturing.object-deletions` worker. See
+[Manufacturing](/en/reference/manufacturing/#photos).

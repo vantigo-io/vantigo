@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de fem rettighetene og hva hver gir, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, hvem som planlegger produksjonsplanen, rollene du bygger av dem; virksomhetens tidssone som arbeidsstasjonenes kalendere går i; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, og nettverket; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de seks rettighetene og hva hver gir, kvalitetsrettigheten som lukker avvik, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, hvem som planlegger produksjonsplanen, rollene du bygger av dem; virksomhetens tidssone som arbeidsstasjonenes kalendere går i; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, kameraet og nettverket; lagringen bildene av kontrollene tar; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 51
 sources:
@@ -10,6 +10,7 @@ sources:
   - apps/server/internal/db/migrations/00158_manufacturing_work_orders.sql
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
   - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
+  - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
 ---
 
 Produksjon-modulen (**Manufacturing** på engelsk) beskriver hvordan virksomheten lager
@@ -93,6 +94,7 @@ Ingen andre enn Owner kan bruke appen før en rolle gir rettighetene, under
 | Administrere produksjonsordrer | `manufacturing:orders-manage` | Å opprette, endre, bekrefte, reservere, lukke og kansellere produksjonsordrer; å legge til og endre komponentene deres; å registrere en produksjon; alt i verkstedet; å korrigere en tidsregistrering og legge til en som mangler; å planlegge ordrer i produksjonsplanen og flytte arbeidsordrene deres |
 | Arbeide i verkstedet | `manufacturing:shop-floor` | I verkstedet: å starte, sette på pause og fullføre arbeidsordrer, å registrere en produksjon, å melde svinn, og å blokkere og oppheve blokkeringen av en arbeidsstasjon; å registrere en produksjon på en produksjonsordre |
 | Se produksjonskostnader | `manufacturing:costs-view` | Alle kostnadstall: en arbeidsstasjons maskin- og arbeidssats, og å sette dem; standardkostene, verdiene, operasjonskostnadene og den samlede kostnaden i oversikten; **Kostnad**-panelet på en produksjonsordre; rapporten **Produksjonskostnad**. Sensitiv, og kan ikke delegeres |
+| Administrere kvalitet | `manufacturing:quality-manage` | Å lukke et avvik med disponering — som opphever karantenesperrene det satte på partier, med mindre det lukkes som kassering eller retur — og å oppheve sperrene til et som er lukket slik |
 
 **Se produksjonskostnader** er sensitiv: den viser hva hvert produkt koster å lage, og hva
 en time på hver maskin og en arbeidstime koster. Gi den til dem som priser og kalkulerer —
@@ -111,6 +113,12 @@ kansellere ordrer. Å korrigere en tidsregistrering, eller legge til en som mang
 Administrere produksjonsordrer: en operatør kan ikke endre sin egen registrerte tid.
 Assistenten utfører ingen handlinger i verkstedet, uansett personens rolle: en operatør
 stempler inn selv.
+
+Å registrere en kvalitetskontroll og å melde et avvik hører til verkstedet: Arbeide i
+verkstedet eller Administrere produksjonsordrer. Å endre kontrollene på en operasjon er å
+endre stykklisten. **Administrere kvalitet** bestemmer hva som skjer med det et avvik
+holder: gi den til kvalitetslederen eller produksjonslederen, siden det å lukke et avvik
+som *bruk som den er* lar de holdte partiene leveres igjen.
 
 Et vanlig oppsett: alle i produksjonen får Bruke Produksjon; operatørene får i tillegg
 Arbeide i verkstedet; planleggere og arbeidsledere får i tillegg Administrere
@@ -146,9 +154,27 @@ nettbrettene etter det.
    nettbrettets forbindelse til serveren, og en start, en pause eller en fullføring er en
    forespørsel til den: på et nettbrett uten forbindelse blir den ikke registrert. Dekk
    verkstedet med Wi-Fi der arbeidsstasjonene står.
+7. **Tillat kameraet.** En bildekontroll åpner nettbrettets kamera gjennom nettleseren.
+   Første gang spør nettleseren om lov til å bruke det: tillat det for Vantigos adresse.
+   Uten kamera kan operatøren velge et bilde som er lagret på nettbrettet i stedet.
 
 Tidtakeren teller på nettbrettet fra arbeidet startet, så et nettbrett som kobler seg til
 igjen, viser riktig tid uten at serveren sender den.
+
+## Bilder av kontrollene
+
+En bildekontroll lagrer bildet i installasjonens [objektlagring](/nb/admin/object-storage/)
+under omfanget `manufacturing-quality`. Uten objektlagring satt opp nektes det å ta bilde
+(*storage_not_configured*), og en bildekontroll kan ikke registreres; alle andre
+kontroller virker.
+
+Hvert bilde er en JPEG eller PNG på høyst 10 MB, slik nettbrettets kamera skrev det, uten
+det som står i det om hvor og når det ble tatt. Et bilde er en kvalitetsregistrering: det
+beholdes like lenge som arbeidsordren, også når resultatet registreres på nytt. Regn med
+noen få megabyte per bildekontroll per arbeidsordre. Et bilde som er lastet opp, men aldri
+registrert på en kontroll — operatøren tok det og gikk — fjernes etter et døgn av
+arbeideren `manufacturing.object-deletions`, som går i arbeiderprosessen sammen med de
+andre og prøver igjen til lageret bekrefter.
 
 ## Kontroller
 
