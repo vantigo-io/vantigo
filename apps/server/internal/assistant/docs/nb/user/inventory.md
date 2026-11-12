@@ -1,6 +1,6 @@
 ---
 title: Lager
-description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, partier og serienumre — på varemottak, flyttinger og justeringer, listen Partier, siden for et parti, å sperre et parti og frigi det, filene til et parti, partiene som utløper snart, partietiketter — varetelling, partier medregnet, import av inngående beholdning med eller uten partier, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
+description: Hva som ligger hvor — Lager-appen og sidemenyen, å finne en lokasjon eller en vare ved å skrive eller skanne koden, å opprette et lagersted, å legge til lokasjoner én og én og mange om gangen, å endre, flytte, arkivere og slette dem, å skrive ut lokasjonsetiketter, varemottak, justering og flytting av beholdning med linjeredigeringen, å registrere antall i pakninger, partier og serienumre — på varemottak, flyttinger og justeringer, listen Partier, siden for et parti, å sperre et parti og frigi det, filene til et parti, partiene som utløper snart, partietiketter, å spore et parti begge veier og eksportere sporingen, å blokkere et parti med partiene laget av det ved en tilbakekalling, GS1-128-etiketter — varetelling, partier medregnet, import av inngående beholdning med eller uten partier, overføring av varer mellom lagersteder — utkast, sending, mottak i deler, avslutning med avvik og avbrytelse — listen over overføringer og siden for en overføring, å angi en vares hovedlokasjon, bestillingspunkt og maksbeholdning på et lagersted, listen over lav beholdning — forslagene rundet opp til hele pakninger, å opprette en overføring fra den og å eksportere den — import av påfylling, hva som ligger på en lokasjon, en vares beholdning og bevegelser, listen Bevegelser og siden for en bevegelse, Beholdning-kortet på produktsiden, det ordrene har reservert og det som er disponibelt, hvilke lagersteder som leverer ordrer, kortet på dashbordet, oppfølgingspunktene og hurtighandlingene, og hvem som ser hva.
 sidebar:
   order: 65
 sources:
@@ -357,8 +357,10 @@ varemottak til et blokkert parti.
 etter utløpsdatoen — og **Beholdning**. **Søk** finner et partinummer, et leverandørparti
 eller et varenummer; **Lagersted** teller bare det som ligger der; **Status** og **Årsak**
 snevrer inn til de sperrede partiene, og hvorfor. **Bare med beholdning** er på med mindre
-du vil se partier som ikke lenger har noe. **Last flere** henter neste side. Søket i
-toppfeltet tilbyr **Finn et parti**, som åpner denne listen.
+du vil se partier som ikke lenger har noe. **Last flere** henter neste side. **Spor**
+ytterst på en rad åpner [sporingen](#spor-et-parti) av partiet. Søket i toppfeltet tilbyr
+**Finn et parti**, som åpner denne listen, og **Spor et parti**, som åpner sporingen og
+spør etter partiet.
 
 ### Siden for et parti
 
@@ -368,7 +370,8 @@ leverandørpartiet, når det først ble mottatt, de tre datoene, bevegelsen som 
 det, og merknaden. **Sperringer** lister alle sperringer, de aktive først; **Hvor det
 ligger** lister lagerstedene og lokasjonene som har det; **Bevegelser** bevegelseslinjene,
 nyeste først, hver med lenke — de siste 200; er det flere, sier siden fra, og de eldre
-finnes under **Bevegelser** i sidemenyen; **Filer** filene. Med **Administrere partier** endrer
+finnes under **Bevegelser** i sidemenyen; **Filer** filene. **Spor** øverst åpner
+[sporingen](#spor-et-parti) av partiet. Med **Administrere partier** endrer
 **Rediger** leverandørpartiet, de tre datoene og merknaden; nummeret og varen endres
 aldri, og en ny utløpsdato gjelder fra neste bokføring. Datoene må stå i rekkefølge —
 ingen utløpsdato før produksjonsdatoen, ingen best før-dato etter utløpsdatoen.
@@ -378,11 +381,13 @@ sperrer det eller legger til en fil.
 
 ### Sperr et parti og frigi det
 
-Med **Administrere partier** setter **Karantene** eller **Blokker** på siden for et parti en
-sperring fra partisiden: velg **Årsak** — **Kontroll**, **Avvik**, **Reklamasjon**,
-**Tilbakekalling** eller **Annet** — skriv en **Merknad** og trykk **Sperr**. **Frigi** på en
-av sidens egne sperringer spør *Hvorfor den frigis* og avslutter den; partiet er
-tilgjengelig igjen når ingen sperring er igjen. Siden setter høyst én karantene og én
+Med **Administrere partier** setter **Karantene** på siden for et parti en sperring fra
+partisiden: velg **Årsak** — **Kontroll**, **Avvik**, **Reklamasjon**, **Tilbakekalling**
+eller **Annet** — skriv en **Merknad** og trykk **Sperr**. **Blokker** blokkerer partiet, og
+partiene laget av det sammen med det: se
+[Blokker et parti og partiene laget av det](#blokker-et-parti-og-partiene-laget-av-det).
+**Frigi** på en av sidens egne sperringer spør *Hvorfor den frigis* og avslutter den;
+partiet er tilgjengelig igjen når ingen sperring er igjen. Siden setter høyst én karantene og én
 blokkering: mens dens egen karantene er aktiv, er **Karantene** nedtonet og siden sier
 *Denne siden har allerede satt partiet i karantene*, og tilsvarende for **Blokker** — frigi
 den sperringen for å sette en ny. En sperring som et dokument i en annen modul har satt —
@@ -425,8 +430,72 @@ varenummeret og produktets navn, forkortet til én linje så det aldri går inn 
 utløpsdatoen (*EXP 2026-12-31*), eller best før-datoen (*BB …*) når partiet ikke har noen
 utløpsdato. Et serienummer er et parti for
 seg, så serienumre får en etikett hver. Å skanne en etikett i **Finn lokasjon eller
-vare**, eller på en varetelling, finner partiet. Høyst 1000 etiketter om gangen. Dette er
-etiketter for egne hyller; etiketter med GS1-strekkoder for kunder kommer senere.
+vare**, eller på en varetelling, finner partiet. Høyst 1000 etiketter om gangen.
+
+**Etikett** velger hva etikettene bærer. **Intern** er etiketten over, for egne hyller.
+**GS1-128** skriver ut en etikett som kundenes skannere leser: strekkoden har varens GTIN —
+varens strekkode i [Produkter](/nb/user/products/), når den er en gyldig GTIN-8, -12, -13
+eller -14 —, produksjonsdatoen, utløpsdatoen (eller best før-datoen når det ikke er noen)
+og partinummeret, eller serienummeret, og det samme står i parentes under den:
+*(01)04006381333931(17)261231(10)B1*. En vare uten gyldig GTIN kan ikke få en GS1-etikett:
+partiene får den interne etiketten, merket *No GTIN — not a GS1 label*.
+
+### Spor et parti
+
+**Spor** på siden for et parti, på listen **Partier**, ved et parti funnet i oppslaget, på
+fanen **Partier** på en produksjonsordre og på en leveranse i en ordre åpner sporingen av
+partiet: produksjonene det gikk gjennom og hvor de fører, som et tre.
+
+- **Hvor det gikk** følger partiet framover: partiene laget av det, og partiene laget av
+  dem, hver med hva den brukte av partiet og hva den laget; og hvor hver vei ender — en
+  **leveranse**, med leveranse- og ordrenummer og kunden, en justering eller telling ned,
+  en overføring til et annet lagersted, eller en produksjon som ikke laget noe parti.
+- **Hvor det kom fra** følger det bakover: partiene det ble laget av, ned til
+  **varemottakene**, med leverandøren og leverandørens referanse. **Vis komponentene uten
+  parti** viser også varene en produksjon brukte som ikke holdes i partier.
+
+Hvert parti viser status og hva det har nå, og lenker til siden sin; hver produksjon
+lenker til produksjonsordren. Et parti som nås to ganger — det samme melet i deigen og i
+brødet — vises helt én gang; senere står det *Vist ovenfor*, som hopper dit. Pilen ved et
+parti skjuler det som ligger under. Å ta en ferdigvare fra hverandre (en demontering)
+avslutter veien: ferdigpartiet viser *Demontert av demontering …*, delene det ga tilbake
+*Tilbakeført av demontering …*, og sporingen går ikke fra det ene inn i det andre.
+
+Sporingen følger ti produksjoner dypt og viser høyst 2 000 rader; en større avvises —
+*Sporingen har mer enn 2 000 rader* — så spor et parti lenger ned i treet.
+
+Hvem som fikk partiet, kommer fra Ordre: du ser leveransen, ordren og kundens nummer bare
+om du kan bruke Ordre, og kundens navn bare om du også kan se kunder. Ellers sier
+sporingen *Du kan ikke se ordrene, så en leveranse vises bare som bevegelsen sin*.
+
+**Eksporter CSV** laster ned sporingen som et regneark, én rad per linje i treet — partiet,
+varen, antallet, datoen, dokumentet og leverandøren eller kunden — og **Last ned PDF** som
+et dokument som sier når det ble laget, av hvem og i hvilken retning: det Mattilsynet ber
+om når de vil ha svaret innen timer.
+
+### Blokker et parti og partiene laget av det
+
+Når et parti ikke må gå ut — en tilbakekalling fra leverandøren, en reklamasjon fra en
+kunde — viser **Blokker** på siden for et parti, med **Administrere partier**, først hva
+partiet har nådd: **partiene laget av det, fortsatt på lager**, og hvem det er **levert
+til**. Velg **Årsak** — **Tilbakekalling**, **Reklamasjon** eller **Annet** —, skriv en
+**Merknad**, og la **Blokker også partiene laget av det** være krysset av for å blokkere dem
+også, og trykk **Blokker**.
+
+Blokkeringen settes på partiet og på hvert parti laget av det som fortsatt har
+beholdning, i det øyeblikket den settes: et parti produsert etter at dialogen ble åpnet,
+fanges også, og svaret lister hvert parti som ble blokkert — *Blokkerte 4 partier* — og
+merker et slikt parti *Ny*. Partier som ikke har noe igjen, blokkeres ikke; sporingen og
+leveransene sier hvor de gikk. En blokkering kan settes igjen for å fange partier laget
+siden. En sporing som er for stor, blokkerer ingenting.
+
+**Frigi** på partiets blokkering tilbyr **Frigi også blokkeringene den satte på partiene
+laget av det**, krysset av: den løfter dem alle på en gang. Blokkeringen av et parti kan
+også frigis på partiets egen side. En sperring noe annet har satt — et avviks karantene,
+for eksempel — blir stående.
+
+Å ringe kundene og ta varene tilbake gjøres fortsatt for hånd, ut fra leveranselisten
+sporingen gir.
 
 ## Overfør varer mellom lagersteder
 
@@ -1115,8 +1184,9 @@ en av dem for å åpne [Utløper snart](#utløper-snart).
 | **Overføringer**, siden for en overføring og historikken, **Skriv ut følgeseddel**, overføringer i oppslaget, **Innkommende** og **Utgående** på et lagersted, **Avvik på overføringer** på en vare | ✓ | ✓ | – | – | – | – | – | – |
 | **Ny overføring**, **Rediger**, **Lagre utkast**, **Send …**, **Send og motta …**, **Slett utkast**, **Motta …**, å avslutte med avvik, **Avbryt overføring**; **En overføring har passert forventet ankomst** på dashbordet; **Opprett overføring** på listen over lav beholdning | ✓ | ✓ | – | – | – | – | ✓ | – |
 | **Partier**, siden for et parti med sperringene, hvor det ligger, bevegelsene og filene; partier i oppslaget og **Finn et parti** | ✓ | ✓ | – | – | – | – | – | – |
+| **Spor**, **Spor et parti**, **Eksporter CSV** og **Last ned PDF** der — ordren og kunden på en leveranse krever også Ordre, kundens navn Kunder | ✓ | ✓ | – | – | – | – | – | – |
 | **Utløper snart**, **Eksporter CSV** der, **Skriv ut etiketter** for partier; partiene som utløper og har utløpt på dashbordet | ✓ | ✓ | – | – | – | – | – | – |
-| **Rediger** på et parti, **Karantene**, **Blokker**, **Frigi**, **Legg til fil**, **Fjern** | ✓ | ✓ | – | – | – | – | – | ✓ |
+| **Rediger** på et parti, **Karantene**, **Blokker** med partiene laget av det, **Frigi**, **Legg til fil**, **Fjern** | ✓ | ✓ | – | – | – | – | – | ✓ |
 
 Hver av de andre radene krever hver rettighet den krysser av: knappene som bokfører og
 teller, vises bare for den som har begge visningsrettighetene **og** skriverettigheten.

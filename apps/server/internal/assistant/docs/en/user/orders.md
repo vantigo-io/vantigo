@@ -402,6 +402,11 @@ customer's record of which lots they received. The order's **Deliveries** card l
 lots of each posted delivery and of each draft as chosen so far; a cancelled delivery
 lists none.
 
+If you may see stock in Inventory — both **View locations** and **View stock** — each lot
+on the delivery links to its page there, and **Trace** beside it opens its
+[trace](/en/user/inventory/#trace-a-lot): where the lot came from and who else received
+it. Without them the lots are named without links.
+
 When you post, someone else may have taken a lot meanwhile, or put it on hold. If you did
 not change the lots yourself, they are chosen again from what is there now and the
 delivery is posted with them; the delivery shows the lots it took. If you chose the lots,
