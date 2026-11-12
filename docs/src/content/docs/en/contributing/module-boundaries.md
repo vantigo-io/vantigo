@@ -1133,9 +1133,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     product into a Service — after it has locked the variants `FOR UPDATE` (the one
     variant; every variant of the product, in id order, for the type change) and before
     it writes. `VariantHeld(ctx, tx, variantID, purpose)` is told which write asks —
-    `contracts.VariantHoldDelete` (`delete`) or `contracts.VariantHoldTypeChange`
-    (`type_change`) — because a holder may stop one and not the other: open orders stop a
-    delete, never a change to Service (orders design O30). It answers nil or a
+    `contracts.VariantHoldDelete` (`delete`), `contracts.VariantHoldTypeChange`
+    (`type_change`) or, for a variant `PUT` that changes the variant's tracking mode,
+    `contracts.VariantHoldTrackingChange` (`tracking_change`, manufacturing phase 2 M51)
+    — because a holder may stop one and not another: open orders stop a delete, never a
+    change to Service (orders design O30), and open documents never stop a tracking
+    change. It answers nil or a
     `contracts.VariantHold` whose `Kind` says what holds it: `stock`, a quantity in the
     variant's own unit as a decimal and the number of places it lies in, or
     `open_documents`, the number of open quotes, orders and subscriptions that name it,
@@ -1155,8 +1158,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     collected from every module Compose is given, enabled or not, as rule 8's holders
     are: every schema is migrated whatever `MODULES` says, and stock in a disabled
     module's schema is still stock. Only products calls the slot. Inventory holds a
-    variant by its balances and answers the same for either purpose, stock stopping
-    both. Manufacturing holds one by its active bills of materials, which name it as
+    variant by its balances and answers the same for every purpose, stock stopping
+    all three; a tracking change it refuses is 409 *Tracking held*. Manufacturing holds one by its active bills of materials, which name it as
     their product or on a line, and by its manufacturing orders not done or cancelled,
     which name it as their product or on a component line, and answers
     `open_documents` with their count for the
@@ -1164,9 +1167,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     (manufacturing design M16a), which departs from Orders' O30 on purpose
     ([Products](/en/reference/products/#contracts-for-other-modules),
     [Inventory](/en/reference/inventory/),
-    [Manufacturing](/en/reference/manufacturing/#the-variant-holder)). A second question a variant's write must
-    ask is a method on this holder, not a second slot — the roadmap already plans one,
-    the lot tracking mode that may change only at zero stock.
+    [Manufacturing](/en/reference/manufacturing/#the-variant-holder)). Another question a variant's write must
+    ask is a purpose on this holder, not a second slot: the tracking mode, which may
+    change only while nothing holds the variant, is the third (`tracking_change`).
 21. **One locking read, on the caller's transaction.** Every other contract call is
     made on the provider's pool, with the request's context, **before** the caller opens
     a transaction (rule 8's reason: no in-process lookup under a lock), through an
@@ -1269,30 +1272,52 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     names its document by a `contracts.StockSource{Module, Kind, ID}` — the source
     reference Inventory's movements already hold — and calls, on **its own
     transaction**, `Reserve` (a quantity per document line at a site, checked against
-    the site's available: on hand less what is reserved), `Release` (a line's
+    the site's available: usable on hand — no lot on hold or expired — less what is
+    reserved), `Release` (a line's
     reservation, part of it, or all of the document's), `Issue` (one movement of kind
     `issue`, taking stock off its locations and consuming the lines' reservations,
     idempotent by the document) and `ReservationsFor`. Manufacturing calls two more
     (manufacturing design M2–M3): `ReserveForProduction` (`Reserve` at a site that need
     not fulfil orders) and `Produce` (one movement of kind `production`, consume lines
     from-only and produce lines to-only in one site, consuming the reservations as
-    `Issue` does, idempotent by the production record). Its rules:
+    `Issue` does, idempotent by the production record). Manufacturing phase 2 makes the
+    ledger lot-aware (M67): issue, consume and produce lines name a `LotID` (or an
+    issue or consume line asks for `AutoLot`, Inventory taking the lots FEFO under its
+    own locks, the picks answered in `StockPosted.Picks`); `Issue` and `Produce` answer
+    a `StockPosted`; and three calls join — `EnsureLots` (find or make lots by number
+    before a `Produce`), `HoldLots` and `ReleaseLotHolds` (a document's own holds on
+    lots). Its rules:
     - **The lock order is Products, then the caller, then Inventory.** The caller calls
       `ProductCatalog.LockVariants` (rule 21) first, then locks its own rows, then calls
-      the ledger, which locks Inventory's balances in (variant, location) order and then
-      its reservations. Inventory takes `LockVariants` again for the variants' types,
-      already held; it takes no lock of a location or a site a tree write could hold
-      first, and an issue follows Inventory's own posting order. The caller never locks
-      Inventory's rows another way.
+      the ledger, which locks Inventory's rows in Inventory's order: the lot counter,
+      new lots, the lots named in id order, a movement's header, the locations, the
+      balances in (variant, location, lot) order with no lot first, and then the
+      reservations. A caller's `EnsureLots` runs the first three, its `Produce` the
+      rest; a hold takes the lots `FOR NO KEY UPDATE` in id order. Inventory takes
+      `LockVariants` again for the variants' types, already held; it takes no lock of a
+      location or a site a tree write could hold first, and an issue follows Inventory's
+      own posting order. The caller never locks Inventory's rows another way.
     - **It runs on the caller's `tx`, never on a pool**, writes only Inventory's schema
       with Inventory's own SQL, and never begins, commits or rolls back the
       transaction, as rule 8's holders do. It reads no directory and calls no contract
       but `LockVariants`.
+    - **No ledger call makes a contract call inside the caller's transaction.** What it
+      needs from outside Inventory — today's date in the workspace zone, whether the
+      principal may use an expired lot — the caller reads **on the pool before** it opens
+      its transaction and passes as data: `Today` on `StockIssue` and `StockProduction`,
+      `today` on `Reserve`, `ReserveForProduction` and `EnsureLots`, and
+      `ExpiredOverride`, the caller's `inventory:expired-override`, on an issue and a
+      production (manufacturing phase 2 M62). A zero today is a programming error.
+      Inventory's tests prove every call records no contract call; Orders' and
+      Manufacturing's fake ledgers refuse a call without today.
     - **It refuses only through a typed `*contracts.StockRefusal`**, naming every
       failing line — `insufficient_available`, `insufficient_stock`,
       `site_not_fulfilling`, `variant_not_stocked`, `site_unknown`, `location_unknown`,
-      `document_reused`, and a production's `site_archived`, `quantity_invalid` and
-      `nothing_to_post`. `Reserve`, `ReserveForProduction` and `Release` write nothing
+      `document_reused`, a production's `site_archived`, `quantity_invalid` and
+      `nothing_to_post`, and the lot rules' `lot_required`, `lot_not_allowed`,
+      `lot_unknown`, `serial_quantity`, `lot_expired`, `lot_blocked` and
+      `lot_dates_differ`. Each line carries its `Index` in the call's lines and the
+      `LotID` and `LocationID` it failed at, so the caller maps it to its own row. `Reserve`, `ReserveForProduction` and `Release` write nothing
       when they refuse; after a refusal from `Issue` or `Produce` the caller must roll
       back its transaction, or a savepoint it took before the call, because the posting
       may already have claimed its movement and created balances. Anything else is a
@@ -1300,7 +1325,7 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     - **It is composed whatever `MODULES` says**, as rule 8's holders are: a
       reservation made while Inventory was on is still released by a cancel, an edit or
       a manual marking after it is turned off. Whether to reserve and issue at all the
-      caller reads from `Deps.Stock`, the read of on hand, available, the sites and the
+      caller reads from `Deps.Stock`, the read of on hand, available, the lots, the sites and the
       locations holding a variant (`contracts.Stock`, a single-provider slot set only when
       Inventory is enabled), on the pool and never inside the caller's transaction. Each
       `contracts.StockLocation` that `Stock.Locations` answers carries **`Primary`**

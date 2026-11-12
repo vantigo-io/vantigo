@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the seven permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the eight permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00125_inventory_reservations.sql
   - apps/server/internal/db/migrations/00152_inventory_transfers.sql
   - apps/server/internal/db/migrations/00155_inventory_placements.sql
+  - apps/server/internal/db/migrations/00163_inventory_lots.sql
   - apps/server/internal/contracts/stock.go
   - apps/host/frontend/src/routes/inventory
 ---
@@ -115,10 +116,13 @@ The module fills one many-provider slot, **`Module.VariantReferences`** with a
 - when a `PUT` turns a **Goods** product into a **Service**, for every variant of the
   product in id order.
 
-`VariantHeld(ctx, tx, variantID, purpose)` sums the variant's balances on Products'
-transaction and answers a `VariantHold` of kind `stock`
-— the same for either purpose, since stock stops a delete and a change to Service
-alike: the quantity as the shortest
+- when a variant `PUT` changes the variant's **tracking mode** (manufacturing phase 2
+  M51), for that variant, with the third purpose `tracking_change`.
+
+`VariantHeld(ctx, tx, variantID, purpose)` sums the variant's balances — every lot
+of it — on Products' transaction and answers a `VariantHold` of kind `stock`
+— the same for every purpose, since stock stops a delete, a change to Service and a
+change of the tracking mode alike: the quantity as the shortest
 decimal that says it (`"34"`, `"2.5"`, `"0.125"`) and the number of locations it lies
 on. When it lies nowhere but is [reserved](#reservations-and-issues), it answers kind
 `reserved`: the quantity reserved and, in `Locations`, the number of sites. When it
@@ -145,8 +149,10 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
   as "stock is not kept":
   - `OnHand(ctx, variantIDs, siteID)` — each variant's on hand, in total and per site
     holding it; with `siteID` set, at that site only;
-  - `Available(ctx, variantIDs, siteID)` — on hand less reserved, the same way, per
-    site where the variant lies or is reserved; it may be negative.
+  - `Available(ctx, variantIDs, siteID)` — **usable** on hand less reserved, the same
+    way, per site where the variant lies or is reserved; it may be negative. Usable
+    leaves out the [lots](#lots) on hold and those expired on the workspace's today
+    (manufacturing phase 2 M63); `OnHand` is everything that lies there.
   - `Sites(ctx)` — every site that is not archived, by code, with its id, code, name,
     whether it fulfils orders and whether it is active: what Orders offers as an order's
     site and checks one against;
@@ -160,6 +166,13 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     code, whether it is active and whether it is the root (manufacturing design M2) —
     what Manufacturing offers as a production's from- and to-locations. An unknown site
     has none. `Sites` answers each site's root as `RootLocationID`.
+  - `Lots(ctx, variantIDs, siteID)` — per variant, every [lot](#lots) holding more than
+    0 at an active location of the site, one `StockLot` per lot and location — `LotID`,
+    `Number`, `Serial`, `Expiry`, `BestBefore`, `ReceivedAt`, `LocationID`, `FullCode`,
+    `Quantity`, `Status` — in FEFO order: expiry, none last, then received, then lot id
+    (manufacturing phase 2 M65, M67). A variant with none has no row. The pure
+    `contracts.ProposeLots(rows, quantity, today)` proposes from them as Inventory's
+    AutoLot does, so Orders and Manufacturing propose the same lots.
 
   `OnHand` and `Available` read on the pool in one snapshot, answer every variant asked
   in the order asked (one with nothing at `"0"` and no sites), as exact decimal text,
@@ -169,35 +182,48 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
 - **`Module.StockLedger`** — **`contracts.StockLedger`**, resolved from **every module
   given, enabled or not**, as the holders are, so `Deps.StockLedger` is there even when
   `inventory` is off and a reservation made while it was on is still released. Its
-  six calls run on the caller's transaction and are described under
-  [reservations and issues](#reservations-and-issues) and
-  [production](#production):
-  - `Reserve(ctx, tx, src, siteID, lines []StockLine{VariantID, LineID, Quantity})`;
+  nine calls run on the caller's transaction and are described under
+  [reservations and issues](#reservations-and-issues), [production](#production) and
+  [lots](#lots):
+  - `Reserve(ctx, tx, src, siteID, today, lines []StockLine{VariantID, LineID, Quantity})`
+    — `today` is the business day the caller read on the pool, what expiry is judged
+    on;
   - `Release(ctx, tx, src, releases []StockRelease{LineID, Quantity})` — none releases
     everything `src` holds, a `Quantity` of `""` a line's whole reservation;
   - `Issue(ctx, tx, src, StockIssue{Document, SiteID, Lines []IssueLine{VariantID,
-    LineID, FromLocationID, Quantity}, PostedByUserID, PostedByDisplay}) (movementID,
-    error)`;
+    LineID, FromLocationID, Quantity, LotID, AutoLot, AllowExpired}, PostedByUserID,
+    PostedByDisplay, Today, ExpiredOverride}) (StockPosted{MovementID, Picks}, error)`;
   - `ReservationsFor(ctx, tx, src) ([]Reservation{VariantID, LineID, SiteID, Quantity},
     error)`;
-  - `ReserveForProduction(ctx, tx, src, siteID, lines []StockLine)` — `Reserve` without
-    the *fulfils orders* check;
+  - `ReserveForProduction(ctx, tx, src, siteID, today, lines []StockLine)` — `Reserve`
+    without the *fulfils orders* check;
   - `Produce(ctx, tx, src, StockProduction{Document, SiteID, Consume []ConsumeLine{VariantID,
-    LineID, FromLocationID, Quantity}, Produce []ProduceLine{VariantID, LineID,
-    ToLocationID, Quantity}, PostedByUserID, PostedByDisplay}) (movementID, error)`.
+    LineID, FromLocationID, Quantity, LotID, AutoLot, AllowExpired}, Produce
+    []ProduceLine{VariantID, LineID, ToLocationID, Quantity, LotID}, PostedByUserID,
+    PostedByDisplay, Today, ExpiredOverride, Unbuild}) (StockPosted, error)`;
+  - `EnsureLots(ctx, tx, src, today, lots []NewLot{VariantID, Number, SupplierLot,
+    ProductionDate, BestBefore, Expiry}) ([]lotID, error)`;
+  - `HoldLots(ctx, tx, src, holds []LotHold{LotID, Kind, Cause, Note, By})`;
+  - `ReleaseLotHolds(ctx, tx, src, lotIDs, by LotActor)`.
 
   A document is a `StockSource{Module, Kind, ID}` — `{"orders", "order", 42}`. A
   quantity is decimal text with at most three decimals, more than 0; a bad one is the
   caller's bug, answered as a failure — but by `Produce`, which refuses it
   (`quantity_invalid`). Every refusal is a **`*contracts.StockRefusal`**
   — `Code`, `VariantID`, `LineID` and `Detail` of the first failing line, and `Lines`,
-  every one . `Reserve`, `ReserveForProduction` and
+  every one, each with its **`Index`** in the call's lines (`Produce`'s consume lines,
+  then its produce lines after them), and the **`LotID`** and **`LocationID`** it failed
+  at, so a caller maps a refusal to the exact row when one document line became
+  several ledger lines (manufacturing phase 2 M67). `Reserve`, `ReserveForProduction` and
   `Release` write nothing when they refuse. After a refusal from `Issue` or `Produce`
   the caller must roll back its transaction (or a savepoint it took before the call):
   the posting may already have claimed its movement and created balances. Its codes:
   `insufficient_available`, `insufficient_stock`, `site_not_fulfilling`,
-  `variant_not_stocked`, `site_unknown`, `location_unknown`, `document_reused`, and for
-  a production `site_archived`, `quantity_invalid` and `nothing_to_post`. A production
+  `variant_not_stocked`, `site_unknown`, `location_unknown`, `document_reused`, for
+  a production `site_archived`, `quantity_invalid` and `nothing_to_post`, and the [lot
+  rules](#the-lot-rules)' `lot_required`, `lot_not_allowed`, `lot_unknown`,
+  `serial_quantity`, `lot_expired`, `lot_blocked` and `lot_dates_differ`. A zero
+  `today` or `Today` is a programming error, answered as a failure. A production
   line that would take a balance beyond 99,999,999,999.999 is `quantity_invalid`.
 
 ## The schema
@@ -235,8 +261,8 @@ is an identity from 1001.
   `to_location_id` (either may be null), and `quantity` (`numeric(14,3)`), indexed by
   variant and by each location.
 - **`balances`** — `variant_id`, `location_id`, `on_hand` (`numeric(14,3)`),
-  `updated_at`; the key is `(variant_id, location_id)`. A row reaching zero is deleted,
-  so the table lists only where stock lies.
+  `updated_at`; the key was `(variant_id, location_id)` until `00163` gave it the lot
+  (below). A row reaching zero is deleted, so the table lists only where stock lies.
 - **`events`** — the record of every structural write (I31): `entity_kind` (`site`,
   `location` or, since B, `count`), `entity_id`, `site_id`, `kind`, `payload` (`jsonb`),
   `actor_kind`, `actor_user_id`, `actor_display`, `occurred_at`. Movements are their
@@ -330,6 +356,35 @@ stock.
   the dashboard's count, and `ix_placements_primary_location` on `primary_location_id`,
   which serves clearing the primaries of an archived or deleted location.
 
+`00163_inventory_lots.sql` (manufacturing phase 2 L1a) adds the [lots](#lots):
+
+- **`lots`** — `variant_id`, `number` (1–20 characters `[A-Za-z0-9._/-]`, stored as
+  typed, **unique per variant ignoring case**: `ux_lots_variant_number` on
+  `(variant_id, lower(number))`), `serial` (the variant was serial when the lot was made:
+  history), `supplier_lot` (40), `production_date`, `best_before` and `expiry` (dates),
+  `received_at` (when stock first entered under it, the FIFO key), `origin_module`,
+  `origin_kind`, `origin_id` (the document that made it: `inventory/movement/<id>` for a
+  receipt's or an adjustment's, the caller's source for `EnsureLots`), **`status`**
+  (`available`, `quarantine` or `blocked`, derived from its holds), `note` (2000), the
+  `sku` and `product_name` snapshots, `revision`, the creator and the stamps. Indexed for
+  FEFO on `(variant_id, expiry NULLS LAST, received_at, id)`, by status where not
+  available, by expiry where set and by `lower(number)`. A lot is never deleted.
+- **`lot_holds`** — `lot_id`, `kind` (`quarantine` or `block`), `cause` (`inspection`,
+  `deviation`, `complaint`, `recall` or `other`), `note` (1000), the source
+  `source_module`, `source_kind`, `source_id` of the document that put it, the creator,
+  `created_at`, and `released_at`, the releaser and `release_note`; indexed by lot and
+  by source where active.
+- **`balances.lot_id`** — the primary key `(variant_id, location_id)` is dropped and
+  replaced by **`ux_balances_key` on `(variant_id, location_id, lot_id) NULLS NOT
+  DISTINCT`**: no lot is one key of its own, so two postings to a new (variant,
+  location, no lot) still serialise on one row. Indexed by lot where set.
+- **`movement_lines.lot_id`** (indexed with the movement where set) and
+  **`movement_lines.expired_override`** (`boolean`, false) — an expired lot taken on the
+  poster's [override](#expiry-and-today).
+- The **`counters`** row `lot`, from 1001, for generated numbers.
+
+Its down restores the old key and fails while any balance or line has a lot.
+
 ## Permissions
 
 | Key | Display | Grants |
@@ -341,11 +396,15 @@ stock.
 | `inventory:receipts-manage` | Receive goods | "Post goods receipts, putting delivered goods on the locations of a site." |
 | `inventory:counts-manage` | Count stock | "Open, count, post and cancel stock counts." |
 | `inventory:transfers-manage` | Transfer stock | "Create, send, receive and cancel transfers of stock between sites, and close a transfer's difference." |
+| `inventory:expired-override` | Use expired lots | "Issue or consume a lot past its expiry date, when the lot is chosen by hand on a delivery or a production." |
 
-All seven are in the category "Inventory", **none is sensitive** and all are delegable;
+All eight are in the category "Inventory", **none is sensitive** and all are delegable;
 the Owner holds them through the wildcard. In Norwegian they read *Se lagersteder*,
 *Administrere lagersteder*, *Se beholdning*, *Justere beholdning*, *Motta varer*,
-*Telle varer* and *Overføre varer*. `transfers-manage` came with phase 2 (I63).
+*Telle varer*, *Overføre varer* and *Bruke utgåtte partier*. `transfers-manage` came
+with phase 2 (I63), `expired-override` with manufacturing phase 2 (M68). Inventory
+checks `expired-override` in no ledger call: the caller reads it on the pool before its
+transaction and passes it as `ExpiredOverride` ([expiry](#expiry-and-today)).
 
 Access is **all-of**: an operation's `x-vantigo-access` names every key it needs,
 fully qualified (`permission:inventory:locations-view+inventory:stock-view`), and a
@@ -379,10 +438,11 @@ name, which that key already shows. The design's §5 table put labels under
 `locations-manage`; its contract and §6 say view, and view was kept — printing changes
 nothing.
 
-**`GET /meta`** is the session's: it answers the caller's seven capabilities —
+**`GET /meta`** is the session's: it answers the caller's eight capabilities —
 `canViewLocations`, `canManageLocations`, `canViewStock`, `canAdjust`, `canReceive`,
-`canCount`, `canTransfer` — so the app shows only what works and a caller with none of them learns
-that rather than a 403.
+`canCount`, `canTransfer`, `canOverrideExpired` — and **`today`**, the workspace zone's
+date that a lot's expiry is judged on, so the app shows only what works and a caller with
+none of them learns that rather than a 403.
 
 ## Sites and locations
 
@@ -522,7 +582,7 @@ transfer's number; a send, receive or cancel names its movement.
 Every change of stock is a **movement** (I8): a kind — `adjustment`, `move`,
 `receipt`, `count`, `issue`, posted only through
 [`StockLedger.Issue`](#reservations-and-issues), `transfer_out` and `transfer_in`,
-posted only by a [transfer](#transfers), or `production`, posted only through
+posted only by a [transfer](#transfers), or `production` and `unbuild`, posted only through
 [`StockLedger.Produce`](#production); the set is open — a site, an adjustment's reason, an
 optional note, a receipt's optional supplier and supplier's reference, a count
 movement's `countId`, the poster and the time. **A movement is never edited or deleted**; a mistake is corrected
@@ -625,9 +685,182 @@ judged together first — `entered_invalid`, `packaging_not_found`,
 `location_not_found`, `location_archived`, `move_crosses_sites`, `same_location`,
 `quantity_invalid` — and only when none failed
 are the balances judged, for `insufficient_stock`; after an insufficient line the rest
-are still judged against the balance as the earlier lines left it. The problem is 409
-with the code `insufficient_stock` whenever a line has it, and 400 with the first
-line's code otherwise.
+are still judged against the balance as the earlier lines left it. The [lot
+rules](#the-lot-rules) are judged with the shape's. The problem is 409 with the code of
+the first line about the state of things — `insufficient_stock`, `lot_expired` or
+`lot_blocked` — whenever a line has one, and 400 with the first line's code otherwise.
+
+## Lots
+
+Manufacturing phase 2's delivery L1a ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-12-manufacturing-phase2-design.md),
+decisions M49–M67) makes the ledger lot-aware. A variant's **tracking** is Products'
+(`none`, `lot` or `serial`, answered as `VariantEntry.Tracking` by every catalog read
+and by `LockVariants`); until production records lots, Products refuses any mode but
+`none` ([Products](/en/reference/products/#tracking)), so in this delivery a tracked
+variant exists only in tests. An untracked variant posts exactly as before: its
+balances and lines carry no lot.
+
+### The lot
+
+A **lot** (`inventory.lots`; nb *parti*) is a numbered quantity of one variant. Its
+number is 1–20 characters `A–Z a–z 0–9 . _ / -` (GS1's limit for AI 10 and 21), stored
+as typed and **unique per variant ignoring case**. It has the supplier's lot, a
+production date, a best-before date and an expiry date, the moment stock first entered
+under it (`received_at`, the FIFO key), the document that made it, a note and its
+**status**. `serial` records that the variant was serial when the lot was made; the
+serial rule follows the variant's tracking now. A lot is never deleted.
+
+### The balance key
+
+A balance is per **(variant, location, lot)**, the lot `NULL` for none, under one unique
+index **`NULLS NOT DISTINCT`**: the engine's `INSERT … ON CONFLICT (variant_id,
+location_id, lot_id) DO UPDATE` infers it, so two postings to a new no-lot key still
+serialise on one row (tested). The writes unnest a lot array beside the variants and
+locations, `0` for none, and match with `IS NOT DISTINCT FROM`. A movement line carries
+its lot. Every read that showed a balance per (variant, location) — a location's
+contents, a product's and a variant's stock, `Stock.Locations`, a count's lines — sums
+it over the lots on purpose; the lots themselves are on screen from L1b.
+
+### The lot rules
+
+Judged in the engine after `LockVariants` and after the lots are locked, as line
+failures:
+
+| Case | Code |
+| --- | --- |
+| a tracked variant's line names no lot (and is not `AutoLot`) | `lot_required` (400) |
+| an untracked variant's line names a lot | `lot_not_allowed` (400) |
+| the lot is unknown or another variant's | `lot_unknown` (400) |
+| a serial line's quantity is not 1, a serial set above 1, or a serial that would hold more than 1 over every location | `serial_quantity` (400) |
+| a receipt's first serial ending in no digits | `serial_first_invalid` (400) |
+| a stated date differs from the existing lot's | `lot_dates_differ` (400) |
+| an issue or consume line takes an expired lot without the override | `lot_expired` (409) |
+| an issue or consume line takes a lot on hold; a receipt into a blocked lot | `lot_blocked` (409) |
+
+**Moves, adjustments, counts and transfers ignore holds and expiry**: held stock can be
+moved to a hold shelf, counted or written off. Only an issue and a production's consume
+lines are refused, and an unbuild's consume lines are not. A line of a variant whose
+tracking changed since it was drafted is judged as the variant is now.
+
+**The serial rule is judged under the lot's lock.** Two postings can raise one serial
+lot at two locations at once and each balance alone stays at 1, so a line that
+increases a lot of a serial variant takes the lot `FOR NO KEY UPDATE` and the engine
+sums all the lot's balances, every location, after locking its own: the second posting
+waits for the lot and then sees the first's 1 (tested with two receipts racing, by
+number and by id).
+
+### Receipts, moves and adjustments with lots
+
+The API's lines name lots (M57, M59); the forms gain the lot column in L1b.
+
+- A **receipt** line takes **`lotId`**, an existing lot; or **`lot`** — `{number?,
+  supplierLot?, productionDate?, bestBefore?, expiry?, note?}` — a lot by number, found
+  or made; or, for a serial variant, **`serials`** — `{first, count}` (1–500) or
+  `{numbers: [...]}` — expanded into one line of 1 per serial, numbered by counting up
+  the trailing digits of `first` and keeping their width (`SN0099`, `SN0100`), each a
+  lot by number with the line's `lot` giving their dates. The expansion counts against
+  the 500-line cap; a line's quantity, when given beside serials, must equal their
+  number.
+- A **move** line takes `lotId`: the lot leaves *from* and lands on *to* unchanged.
+- An **adjustment** line takes `lotId`, or `lot` for an increase; a `set` line sets one
+  (location, lot).
+
+**A lot by number.** An empty number generates **`L<n>`** from the counter row `lot`,
+from 1001, allocated in the posting's transaction. A number the variant has names that
+lot: receiving more under a supplier's lot adds to it and **its dates are not changed**.
+Only a date the line **states** is compared — a stated date that differs is
+`lot_dates_differ`, so a typo is seen — and a date left out is not, so an ordinary repeat
+receipt never trips it. **Defaults apply only when the lot is made**: `expiry` is the
+production date when given, else the receipt's day in the workspace zone, plus the
+variant's `expiryDays`; `bestBefore` likewise with `bestBeforeDays`; each only when the
+variant has the offset and the line gives no date. A lot made by a receipt or an
+adjustment names its movement as its origin (`inventory/movement/<id>`). Two receipts
+making one number at once serialise on the unique index; the second reads the first's
+lot once it commits (tested). The movement's lines answer their **`lot`** (`id`,
+`number`, `expiry`) and, when an expired lot was taken on the override,
+`expiredOverride`.
+
+### Expiry and today
+
+A lot is **expired** when its expiry lies before **today**, the workspace zone's date.
+Best-before alone never refuses anything. **No ledger call makes a contract call of its
+own** (rule 24): `StockIssue`, `StockProduction`, `EnsureLots`, `Reserve` and
+`ReserveForProduction` carry **`Today`**, which the caller reads from the business
+calendar on the pool before its transaction, and an issue and a production carry
+**`ExpiredOverride`**, which the caller reads as `inventory:expired-override` on the pool
+the same way — a worker with no request passes false. An issue or consume line takes an
+expired lot only when it carries **`AllowExpired`** (the person chose that lot) **and**
+the call's `ExpiredOverride` is true; the movement line records it
+(`expired_override`). A zero `Today` is a programming error. Inventory's own handlers
+read the zone the same way, before their transactions, and only when a line names a
+lot by number. A test proves that every ledger call made inside another module's
+transaction records no contract call.
+
+### Usable on hand
+
+**Usable** on hand is the balances whose lot is none, plus those of lots with no active
+hold that are not expired today. It is what can be promised: `Reserve` and
+`ReserveForProduction` judge available as usable less reserved, `Stock.Available`
+answers usable less reserved, and the low-stock list reads the same figure; on hand —
+`Stock.OnHand` and every stock page — stays everything that lies there.
+
+**The reserve's lock (M65b).** A serial variant has one balance row per serial, and a
+reserve locks every one of the variant's rows at the site. The test reserving against
+**10,000 serial balances** at one site takes about 23 ms locally, under the design's
+50 ms, so **the row locks were kept**: no (variant, site) advisory lock was built.
+
+### Holds and their status
+
+A lot's restrictions are **holds** (`inventory.lot_holds`), each owned by the document
+that put it — `kind` `quarantine` or `block`, a `cause` (`inspection`, `deviation`,
+`complaint`, `recall`, `other`), a note and the source. The lot's **status is
+derived**: `blocked` while any active hold is a block, else `quarantine` while any is a
+quarantine, else `available`; every hold change rewrites it in its transaction, under
+the lot's `FOR NO KEY UPDATE`, and writes an event (`lot_held`, `lot_released`; a lot's
+creation is `lot_created`). **A release removes only its own hold**: two sources may hold
+one lot, and it is free when neither does. Another module's holds go through
+`StockLedger.HoldLots` and `ReleaseLotHolds` on its own transaction; the lot page's own
+holds are L1b's.
+
+### FEFO and AutoLot
+
+One order everywhere a lot is proposed or listed: **expiry ascending, none last, then
+received, then lot id** — FIFO when no lot expires. **`AutoLot`** on an issue or consume
+line lets Inventory take the lots itself at the line's location, **under its own
+locks**: the candidates are read on the transaction, locked with the named lots and
+their balances, and taken in that order, skipping lots on hold and expired lots — even
+with `AllowExpired`: auto never uses an expired lot — and never splitting a serial. A lot
+that appeared after the candidates were read is not used, and what they do not cover is
+`insufficient_stock`. The lots taken come back in **`StockPosted.Picks`** —
+`{Index, LotID, LocationID, Quantity}` per lot, by the line's index — and a replay
+answers the same picks, read back from its movement's lines.
+`contracts.ProposeLots` is the same order as a pure function for a proposal read on the
+pool.
+
+### Lots of other modules
+
+**`EnsureLots(ctx, tx, src, today, []NewLot)`** finds or creates each lot inside the
+caller's transaction, after its rows and before the `Produce` that uses them, and
+answers the lot ids in the order given; the lots made name `src` as their origin. A lot
+that exists for the variant is answered as is: only the dates the `NewLot` states are
+compared (`lot_dates_differ`), its production date never; a new serial whose number
+holds stock is `serial_quantity`; an untracked variant is `lot_not_allowed`. A
+`ProduceLine` of a tracked variant names such a lot by `LotID`. The production's lines
+are keyed by (variant, line id). After any refusal the caller rolls back.
+
+### The lock order
+
+Inventory's postings take, in order (`posting.go`): the key's read; `LockVariants`;
+**the lot counter**, only to generate a number; **the new lots**, in (variant id,
+lower(number)) order; **every lot named**, AutoLot's candidates included, in id order —
+`FOR SHARE`, or `FOR NO KEY UPDATE` for a serial lot a line increases; then the
+movement's header, the locations `FOR SHARE` and the balances in **(variant, location,
+lot)** order, no lot first. The lots come before the header and the locations for every
+writer, so no posting holds a location and then waits for a lot. A caller's
+`EnsureLots` runs the counter, the new lots and the lot locks; its `Produce` runs the
+rest. A hold or a release takes the lots `FOR NO KEY UPDATE` in id order, then the
+holds. A reserve's `LockSiteBalances` orders as the engine does, no lot first. A test
+races issues, receipts into a lot and holds on it on a pool of four.
 
 ## Entering in packagings
 
@@ -855,9 +1088,13 @@ delivers it with an issue (orders design O45–O47), through
 transaction**: Inventory begins, commits and rolls back nothing. A reservation is held
 by a **source line** — `orders/order/42`, line 7 — at a **site**.
 
-**Available** at a site is its on hand, summed over every location of the site, less
-every reservation there. Across sites it is the sum of the sites'. Only a reserve checks
-it.
+**Available** at a site is its **usable** on hand, summed over every location of the
+site, less every reservation there (manufacturing phase 2 M63): the balances with no
+lot, and those of [lots](#lots) with no active hold that are not expired on the `today`
+the caller passes. Across sites it is the sum of the sites'. Only a reserve checks it;
+`Stock.Available` and the [low-stock list](#the-low-stock-list) read the same figure, on
+the workspace's today. Reservations stay per site, with no lot: a hold put on stock
+already reserved lowers available, which may go negative, and the reservations stay.
 
 - **`Reserve`** refuses, naming every failing line, a site that does not exist
   (`site_unknown`), one archived or not fulfilling orders (`site_not_fulfilling`), a
@@ -929,7 +1166,11 @@ production is its own document, `manufacturing/production/30`.
   posted in parts gives each posting its own record.
 
 The lock order is the issue's: `LockVariants`, the caller's rows, then the engine's
-balances in (variant, location) order, and last the reserving document's reservations.
+lots and balances in (variant, location, lot) order, and last the reserving document's
+reservations. With `Unbuild` the movement is of kind **`unbuild`** and its consume
+lines may take held and expired lots (manufacturing phase 2 M123; Manufacturing's
+unbuild is a later delivery). A produce line of a tracked variant names a lot made by
+[`EnsureLots`](#lots-of-other-modules); a consume line names one, or is `AutoLot`.
 
 ## Transfers
 
@@ -1209,13 +1450,19 @@ same inequality):
 
 ```
 available = onHand − reserved                 onHand over the site's locations,
-                                              reserved at the site
+                                              usable only (no lot held or expired
+                                              today), reserved at the site
 incoming  = Σ inTransit of the transfer lines to the site
 projected = available + incoming
 low       = reorderPoint is set and projected ≤ reorderPoint
 target    = maximum, or reorderPoint + 1 when there is no maximum
 needed    = target − projected, at least 1 when low
 ```
+
+The list, its CSV and the dashboard's count read **usable** on hand (manufacturing phase
+2 M63), on the workspace's today; a site's stock row on the product and variant pages
+still judges on all of it until those pages show what is held (L1b) — the two differ
+only for a tracked variant with stock on hold or expired.
 
 Without a maximum the target is **one above** the reorder point, so filling it takes the
 row off the list; filling *to* the reorder point would leave it low. A placement with no
@@ -1346,17 +1593,19 @@ import row clearing it, and on `clearPrimaries` with the reason; and the import'
 3. **`ProductCatalog.LockVariants`** on the posting's transaction: `FOR SHARE` on the
    sorted distinct variants and their products. Every [entry in
    packagings](#the-entry) is resolved right after, against the packagings it answered;
-   a posting's lines are cloned per attempt, so a rerun resolves afresh.
+   a posting's lines are cloned per attempt, so a rerun resolves afresh. Then, when
+   lines name lots, the lot counter, the new lots and every lot named, in the
+   [lots' order](#the-lock-order), and the [lot rules](#the-lot-rules).
 4. The key is **claimed** by writing the movement's header, `INSERT … ON CONFLICT DO
    NOTHING RETURNING`; a conflict re-reads it, as in step 1.
 5. The locations `FOR SHARE`, in id order. A posting writes nothing to a location, so
    two postings never wait for each other there.
 6. Every line failure found so far is refused at once.
 7. Every balance the posting touches is created at zero where missing **and** locked by
-   **one** `INSERT … ON CONFLICT DO UPDATE … RETURNING`, in (variant, location) order. Two
-   postings to a new pair serialise on the row rather than collide on its key, and a
-   balance a concurrent posting deleted at zero is inserted again by the same statement,
-   so no lock is held across a second attempt.
+   **one** `INSERT … ON CONFLICT DO UPDATE … RETURNING`, in (variant, location, lot)
+   order, no lot first. Two postings to a new key serialise on the row rather than
+   collide on it, and a balance a concurrent posting deleted at zero is inserted again by
+   the same statement, so no lock is held across a second attempt.
 8. The lines are applied in order, the balance checked after each. A count's post
    judges its [moved lines](#posting) here, against the balances just locked.
 9. The lines are written with their snapshots, the balances written, and the zeros
@@ -1638,6 +1887,8 @@ placements import *Invalid import*, as the opening-balance import does.
 | `receive_incomplete` | 400 | A send and receive that names no destination for some line; the detail names their line numbers. |
 | `from_location_required` | 400 (line) | A send's line with no source location; the index is the line's place on the transfer. |
 | `transfer_over_received` | 400 (line) | A receive's line taking more than the line has outstanding; the index is the line's place in the request. |
+| `lot_required`, `lot_not_allowed`, `lot_unknown`, `serial_quantity`, `serial_first_invalid`, `lot_dates_differ` | 400 (line) | The [lot rules](#the-lot-rules) (manufacturing phase 2 M56, M57). |
+| `lot_expired`, `lot_blocked` | 409 (line) | An issue or consume line taking an expired lot without the override, or a lot on hold; a receipt into a blocked lot. The problem's code is the first such line's. |
 | `quantity_invalid` | 400 (line) | A quantity not more than 0 (a `set` or a count below 0), a `change` of 0, more than three decimals, or a line or balance above 99,999,999,999.999; an entry's loose rest out of its rule, an entry coming to 0 where more is needed, or to more than the maximum. |
 | `site_code_taken` | 409 | A site code another site holds. |
 | `location_code_taken` | 409 | A code a sibling holds; a bulk names every colliding full code. |
@@ -1757,8 +2008,14 @@ form's and the pick list's default, the low-stock rule and its rounding to whole
 packagings, the low-stock list and its CSV, *Create transfer* from it, the placements
 import and the `lowStock` item. **Phase 2 is complete.**
 
+**Lots** came with manufacturing phase 2's L1a ([lots](#lots)): the schema, the
+lot-aware key and engine, holds and the derived status, expiry, FEFO and AutoLot,
+usable on hand, and the contracts. The lot screens, attachments, stock per lot and the
+lookup are L1b's; counts, transfers and the import with lots, the expiring list and lot
+labels L2's.
+
 **Later** (phase 1 §11 and phase 2 §11), each waiting for what it names:
-lots, serials and expiry, on a transfer too (Manufacturing); negative stock by a setting
+lots on a count, a transfer and the import (manufacturing phase 2 L2); negative stock by a setting
 (point of sale); purchase orders from the low-stock list and incoming from them
 (Purchasing); a supplier column in the CSV (supplier records, Products phase 5);
 `inventory.transfer.*` and low-stock domain events (a consumer); transfer lines from a
@@ -1770,7 +2027,7 @@ permissions, so only the destination receives (the platform); units beyond packa
 
 The phase keeps what Orders and Manufacturing need (§12): the source reference on every
 movement, null and indexed; the kinds as an open set; lines with no *from* or no *to*;
-balances as rows no read treats as the whole key, so a lot joins it later; lots in
+balances as rows no read treats as the whole key, which let the lot join it; lots in
 Inventory, asked through the same holder; reservations per site, not a column.
 
 ## Endpoints
