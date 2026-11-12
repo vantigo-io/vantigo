@@ -780,7 +780,7 @@ components:
             type: object
         OrdersDeliveryLine:
             additionalProperties: false
-            description: "A delivery's line: one order line, the quantity, and the location it is picked from (null until picked). open is what of the order line is still to deliver outside this delivery; locations, on a draft, are the site's locations holding the variant, by full code."
+            description: "A delivery's line: one order line, the quantity, and the location it is picked from (null until picked). open is what of the order line is still to deliver outside this delivery; locations, on a draft, are the site's locations holding the variant, by full code. A tracked variant's line (tracked) holds its quantity in lots instead, one row per lot and location (manufacturing phase 2 M75), and its fromLocationId stays null; lotChoices, on a draft, are the site's lots of the variant in FEFO order, for Change lot."
             properties:
                 fromLocationCode:
                     maxLength: 100
@@ -796,6 +796,14 @@ components:
                 locations:
                     items:
                         $ref: "#/components/schemas/OrdersStockLocation"
+                    type: array
+                lotChoices:
+                    items:
+                        $ref: "#/components/schemas/OrdersDeliveryLotChoice"
+                    type: array
+                lots:
+                    items:
+                        $ref: "#/components/schemas/OrdersDeliveryLineLot"
                     type: array
                 name:
                     maxLength: 255
@@ -816,10 +824,17 @@ components:
                 quantity:
                     format: double
                     type: number
+                short:
+                    description: "What the lots do not cover of a tracked line's quantity, 0 when they cover it: the page marks the line Short by n, and the post refuses it (picks_mismatch) until the lots add up."
+                    format: double
+                    type: number
                 sku:
                     maxLength: 100
                     nullable: true
                     type: string
+                tracked:
+                    description: "Whether the variant is tracked by lot or serial number: the line is picked by lot."
+                    type: boolean
                 unit:
                     maxLength: 20
                     type: string
@@ -836,15 +851,109 @@ components:
                 - ordered
                 - open
                 - locations
+                - tracked
+                - lots
+                - lotChoices
+                - short
+            type: object
+        OrdersDeliveryLineLot:
+            additionalProperties: false
+            description: "One lot a tracked delivery line takes (manufacturing phase 2 M75): the lot and the location, with the lot's number, expiry and the location's code as they were when picked. chosen is whether a person chose it; proposed picks (FEFO) may be proposed again at the post when stock moved (M65a)."
+            properties:
+                allowExpired:
+                    description: "The person chose this lot although it is expired; honoured only for a poster holding inventory:expired-override."
+                    type: boolean
+                chosen:
+                    type: boolean
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                locationCode:
+                    maxLength: 100
+                    type: string
+                locationId:
+                    format: int64
+                    type: integer
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    maxLength: 20
+                    type: string
+                quantity:
+                    format: double
+                    type: number
+            required:
+                - lotId
+                - lotNumber
+                - expiry
+                - locationId
+                - locationCode
+                - quantity
+                - allowExpired
+                - chosen
+            type: object
+        OrdersDeliveryLotChoice:
+            additionalProperties: false
+            description: "A lot of the variant at a location of the site, as Change lot offers it, in FEFO order (manufacturing phase 2 M65): its expiry and best-before, its status and what lies there."
+            properties:
+                bestBefore:
+                    format: date
+                    nullable: true
+                    type: string
+                expired:
+                    description: "Whether the lot's expiry lies before today in the workspace's zone."
+                    type: boolean
+                expiry:
+                    format: date
+                    nullable: true
+                    type: string
+                fullCode:
+                    maxLength: 100
+                    type: string
+                locationId:
+                    format: int64
+                    type: integer
+                lotId:
+                    format: int64
+                    type: integer
+                lotNumber:
+                    maxLength: 20
+                    type: string
+                quantity:
+                    format: double
+                    type: number
+                status:
+                    enum:
+                        - available
+                        - quarantine
+                        - blocked
+                    type: string
+            required:
+                - lotId
+                - lotNumber
+                - expiry
+                - bestBefore
+                - locationId
+                - fullCode
+                - quantity
+                - status
+                - expired
             type: object
         OrdersDeliveryLineInput:
             additionalProperties: false
-            description: "A draft delivery's line as the editor saves it."
+            description: "A draft delivery's line as the editor saves it. lots are a tracked line's picks as the person chose them (manufacturing phase 2 M77); left out, the line keeps its picks while they still add up to its quantity, and is proposed again (FEFO) otherwise."
             properties:
                 fromLocationId:
                     format: int64
                     nullable: true
                     type: integer
+                lots:
+                    items:
+                        $ref: "#/components/schemas/OrdersDeliveryLotInput"
+                    maxItems: 500
+                    type: array
                 orderLineId:
                     format: int64
                     type: integer
@@ -854,6 +963,28 @@ components:
                     type: number
             required:
                 - orderLineId
+                - quantity
+            type: object
+        OrdersDeliveryLotInput:
+            additionalProperties: false
+            description: "One lot a tracked line takes, as the person chose it: a lot of the site holding the variant at the location (lot_unknown otherwise)."
+            properties:
+                allowExpired:
+                    description: "Use the lot although it is expired (Use expired lot); the post honours it only for a poster holding inventory:expired-override."
+                    type: boolean
+                locationId:
+                    format: int64
+                    type: integer
+                lotId:
+                    format: int64
+                    type: integer
+                quantity:
+                    description: "Greater than 0, at most three decimals."
+                    format: double
+                    type: number
+            required:
+                - lotId
+                - locationId
                 - quantity
             type: object
         OrdersDeliveryPage:
@@ -887,6 +1018,12 @@ components:
                 lines:
                     format: int32
                     type: integer
+                lots:
+                    description: "The lot numbers the delivery takes, once each, in line order (manufacturing phase 2 M79)."
+                    items:
+                        maxLength: 20
+                        type: string
+                    type: array
                 number:
                     format: int64
                     type: integer
@@ -922,6 +1059,7 @@ components:
                 - siteId
                 - status
                 - lines
+                - lots
                 - updatedAt
             type: object
         OrdersDeliveryUpdate:
@@ -1634,6 +1772,9 @@ components:
                     description: "The deployment's currency, a document's when its customer names none (O13)."
                     maxLength: 3
                     type: string
+                canOverrideExpired:
+                    description: "Whether the caller holds inventory:expired-override: a delivery's Use expired lot is offered (manufacturing phase 2 M77)."
+                    type: boolean
                 defaultPaymentTermsDays:
                     format: int32
                     type: integer
@@ -1652,6 +1793,7 @@ components:
                 - quoteValidityDays
                 - defaultPaymentTermsDays
                 - baseCurrency
+                - canOverrideExpired
             type: object
         OrdersOrder:
             additionalProperties: false
@@ -2248,6 +2390,14 @@ components:
                     type: string
                 index:
                     description: "The line's position in the request, from 0."
+                    format: int32
+                    type: integer
+                lotId:
+                    description: "On a delivery's tracked line, the lot the refusal is about (manufacturing phase 2 M78)."
+                    format: int64
+                    type: integer
+                lotIndex:
+                    description: "On a delivery's tracked line, the lot row's position among the line's lots, from 0."
                     format: int32
                     type: integer
             required:
@@ -5298,7 +5448,7 @@ paths:
             x-vantigo-customer-scope:
                 resource: customerId
         put:
-            description: "Saves a draft delivery's lines: quantities and the locations they are picked from (O47). A line names an open goods line of the order, at most what is open (over_delivery), and a location of the site (location_unknown)."
+            description: "Saves a draft delivery's lines: quantities and the locations they are picked from (O47). A line names an open goods line of the order, at most what is open (over_delivery), and a location of the site (location_unknown). A tracked line names its lots instead (manufacturing phase 2 M77): each a lot of the site holding the variant at the location (lot_unknown); an untracked line names none (lot_not_allowed). Lots the person sends are marked chosen; a tracked line sent without lots keeps its picks while they add up to its quantity, and is proposed again otherwise."
             operationId: updateDelivery
             parameters:
                 - in: path
@@ -5325,7 +5475,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Bad Request — field errors, a line's codes: line_not_found, quantity_invalid, over_delivery, location_unknown."
+                    description: "Bad Request — field errors, a line's codes: line_not_found, quantity_invalid, over_delivery, location_unknown, lot_unknown, lot_not_allowed."
                 "401":
                     content:
                         application/json:
@@ -5486,7 +5636,7 @@ paths:
             x-vantigo-access: permission:orders:access
     "/api/v1/orders/deliveries/{id}/post":
         post:
-            description: "Posts a draft delivery (O47): every line needs a location; Inventory issues the stock from the site in one movement, consuming the order lines' reservations; the order lines' delivered quantities grow, the back order is what remains, orders.delivery.posted.v1 is published and the packing slip is stored. Refused for an order on hold (order_on_hold), beyond what is open (over_delivery) or beyond what the location holds (insufficient_stock, naming every short line)."
+            description: "Posts a draft delivery (O47): every line needs a location; Inventory issues the stock from the site in one movement, consuming the order lines' reservations; the order lines' delivered quantities grow, the back order is what remains, orders.delivery.posted.v1 is published and the packing slip is stored. Refused for an order on hold (order_on_hold), beyond what is open (over_delivery) or beyond what the location holds (insufficient_stock, naming every short line). A tracked line issues one ledger line per lot row (manufacturing phase 2 M78): its lots must add up to its quantity (picks_mismatch) and name a lot (lot_required); a lot on hold is refused (lot_blocked), an expired one too unless the row allows it and the poster holds inventory:expired-override (lot_expired). When a refusal of insufficient_stock or lot_blocked falls only on lines whose lots were all proposed, those lines are proposed again once (FEFO) and posted again; the delivery keeps the new lots."
             operationId: postDelivery
             parameters:
                 - in: path
@@ -5513,7 +5663,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Bad Request — a line's codes: location_missing, over_delivery."
+                    description: "Bad Request — a line's codes: location_missing, over_delivery, picks_mismatch, lot_required."
                 "401":
                     content:
                         application/json:
@@ -5533,7 +5683,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: "#/components/schemas/OrdersProblem"
-                    description: "Conflict — version_conflict, delivery_not_draft, order_on_hold, insufficient_stock, location_unknown, site_not_fulfilling, variant_not_stocked."
+                    description: "Conflict — version_conflict, delivery_not_draft, order_on_hold, insufficient_stock, location_unknown, site_not_fulfilling, variant_not_stocked, lot_expired, lot_blocked, lot_unknown, lot_required, lot_not_allowed, serial_quantity."
                 "503":
                     content:
                         application/problem+json:

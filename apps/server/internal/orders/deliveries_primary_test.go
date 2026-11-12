@@ -39,7 +39,7 @@ func TestDelivery_PrimaryLocationFirst(t *testing.T) {
 	m, ok := pdfModels.find("Plukkliste", fmt.Sprintf("Leveranse %d – Ordre %d", d.Number, o.Number), func(m orders.PDFModel) bool {
 		return len(m.Rows) == 1
 	})
-	if !ok || len(m.Rows[0]) < 5 || !strings.HasPrefix(m.Rows[0][4], "OSL-A-02") || !strings.Contains(m.Rows[0][4], ", OSL-A-01") {
+	if !ok || len(m.Rows[0]) < 6 || !strings.HasPrefix(m.Rows[0][5], "OSL-A-02") || !strings.Contains(m.Rows[0][5], ", OSL-A-01") {
 		t.Errorf("pick list %+v, %v; want the holding column primary first", m.Rows, ok)
 	}
 }

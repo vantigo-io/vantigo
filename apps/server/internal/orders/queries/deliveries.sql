@@ -145,3 +145,32 @@ SET status = CASE WHEN EXISTS (SELECT 1 FROM orders.delivery_lines dl WHERE dl.d
     cancelled_at = CASE WHEN EXISTS (SELECT 1 FROM orders.delivery_lines dl WHERE dl.delivery_id = d.id) THEN NULL ELSE sqlc.arg(now)::timestamptz END,
     version = version + 1, updated_at = sqlc.arg(now)
 WHERE d.id = ANY(sqlc.arg(ids)::bigint[]) AND d.status = 'draft';
+
+-- name: InsertDeliveryLineLot :one
+-- InsertDeliveryLineLot writes one pick of a tracked line (manufacturing
+-- phase 2 M75): a lot at a location, with the snapshots the PDFs print.
+INSERT INTO orders.delivery_line_lots (delivery_line_id, lot_id, lot_number, expiry, location_id, location_code, quantity, allow_expired, chosen)
+VALUES (sqlc.arg(delivery_line_id), sqlc.arg(lot_id), sqlc.arg(lot_number), sqlc.narg(expiry), sqlc.arg(location_id),
+        sqlc.arg(location_code), sqlc.arg(quantity), sqlc.arg(allow_expired), sqlc.arg(chosen))
+RETURNING *;
+
+-- name: DeleteDeliveryLineLots :exec
+-- DeleteDeliveryLineLots removes one line's picks: a re-proposal at the post
+-- writes them again (M65a).
+DELETE FROM orders.delivery_line_lots WHERE delivery_line_id = sqlc.arg(delivery_line_id);
+
+-- name: DeliveryLineLotsOf :many
+-- DeliveryLineLotsOf is a delivery's picks, by line, then by the order they
+-- were written in (the proposal's FEFO order, or the person's).
+SELECT ll.* FROM orders.delivery_line_lots ll
+JOIN orders.delivery_lines dl ON dl.id = ll.delivery_line_id
+WHERE dl.delivery_id = sqlc.arg(delivery_id)
+ORDER BY dl.position, ll.id;
+
+-- name: DeliveryLineLotsOfDeliveries :many
+-- DeliveryLineLotsOfDeliveries is the picks of several deliveries: an
+-- order's delivery history.
+SELECT ll.*, dl.delivery_id FROM orders.delivery_line_lots ll
+JOIN orders.delivery_lines dl ON dl.id = ll.delivery_line_id
+WHERE dl.delivery_id = ANY(sqlc.arg(delivery_ids)::bigint[])
+ORDER BY dl.delivery_id, dl.position, ll.id;

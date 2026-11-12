@@ -136,6 +136,17 @@ func (q *Queries) CountDeliveries(ctx context.Context, arg CountDeliveriesParams
 	return column_1, err
 }
 
+const deleteDeliveryLineLots = `-- name: DeleteDeliveryLineLots :exec
+DELETE FROM orders.delivery_line_lots WHERE delivery_line_id = $1
+`
+
+// DeleteDeliveryLineLots removes one line's picks: a re-proposal at the post
+// writes them again (M65a).
+func (q *Queries) DeleteDeliveryLineLots(ctx context.Context, deliveryLineID int64) error {
+	_, err := q.db.Exec(ctx, deleteDeliveryLineLots, deliveryLineID)
+	return err
+}
+
 const deleteDeliveryLines = `-- name: DeleteDeliveryLines :exec
 DELETE FROM orders.delivery_lines WHERE delivery_id = $1
 `
@@ -255,6 +266,101 @@ func (q *Queries) DeliveriesOfOrders(ctx context.Context, orderIds []int64) ([]O
 			&i.CreatedByDisplay,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deliveryLineLotsOf = `-- name: DeliveryLineLotsOf :many
+SELECT ll.id, ll.delivery_line_id, ll.lot_id, ll.lot_number, ll.expiry, ll.location_id, ll.location_code, ll.quantity, ll.allow_expired, ll.chosen FROM orders.delivery_line_lots ll
+JOIN orders.delivery_lines dl ON dl.id = ll.delivery_line_id
+WHERE dl.delivery_id = $1
+ORDER BY dl.position, ll.id
+`
+
+// DeliveryLineLotsOf is a delivery's picks, by line, then by the order they
+// were written in (the proposal's FEFO order, or the person's).
+func (q *Queries) DeliveryLineLotsOf(ctx context.Context, deliveryID int64) ([]OrdersDeliveryLineLot, error) {
+	rows, err := q.db.Query(ctx, deliveryLineLotsOf, deliveryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OrdersDeliveryLineLot
+	for rows.Next() {
+		var i OrdersDeliveryLineLot
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeliveryLineID,
+			&i.LotID,
+			&i.LotNumber,
+			&i.Expiry,
+			&i.LocationID,
+			&i.LocationCode,
+			&i.Quantity,
+			&i.AllowExpired,
+			&i.Chosen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deliveryLineLotsOfDeliveries = `-- name: DeliveryLineLotsOfDeliveries :many
+SELECT ll.id, ll.delivery_line_id, ll.lot_id, ll.lot_number, ll.expiry, ll.location_id, ll.location_code, ll.quantity, ll.allow_expired, ll.chosen, dl.delivery_id FROM orders.delivery_line_lots ll
+JOIN orders.delivery_lines dl ON dl.id = ll.delivery_line_id
+WHERE dl.delivery_id = ANY($1::bigint[])
+ORDER BY dl.delivery_id, dl.position, ll.id
+`
+
+type DeliveryLineLotsOfDeliveriesRow struct {
+	ID             int64
+	DeliveryLineID int64
+	LotID          int64
+	LotNumber      string
+	Expiry         pgtype.Date
+	LocationID     int64
+	LocationCode   string
+	Quantity       pgtype.Numeric
+	AllowExpired   bool
+	Chosen         bool
+	DeliveryID     int64
+}
+
+// DeliveryLineLotsOfDeliveries is the picks of several deliveries: an
+// order's delivery history.
+func (q *Queries) DeliveryLineLotsOfDeliveries(ctx context.Context, deliveryIds []int64) ([]DeliveryLineLotsOfDeliveriesRow, error) {
+	rows, err := q.db.Query(ctx, deliveryLineLotsOfDeliveries, deliveryIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DeliveryLineLotsOfDeliveriesRow
+	for rows.Next() {
+		var i DeliveryLineLotsOfDeliveriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DeliveryLineID,
+			&i.LotID,
+			&i.LotNumber,
+			&i.Expiry,
+			&i.LocationID,
+			&i.LocationCode,
+			&i.Quantity,
+			&i.AllowExpired,
+			&i.Chosen,
+			&i.DeliveryID,
 		); err != nil {
 			return nil, err
 		}
@@ -492,6 +598,55 @@ func (q *Queries) InsertDeliveryLine(ctx context.Context, arg InsertDeliveryLine
 		&i.FromLocationID,
 		&i.FromLocationCode,
 		&i.Quantity,
+	)
+	return i, err
+}
+
+const insertDeliveryLineLot = `-- name: InsertDeliveryLineLot :one
+INSERT INTO orders.delivery_line_lots (delivery_line_id, lot_id, lot_number, expiry, location_id, location_code, quantity, allow_expired, chosen)
+VALUES ($1, $2, $3, $4, $5,
+        $6, $7, $8, $9)
+RETURNING id, delivery_line_id, lot_id, lot_number, expiry, location_id, location_code, quantity, allow_expired, chosen
+`
+
+type InsertDeliveryLineLotParams struct {
+	DeliveryLineID int64
+	LotID          int64
+	LotNumber      string
+	Expiry         pgtype.Date
+	LocationID     int64
+	LocationCode   string
+	Quantity       pgtype.Numeric
+	AllowExpired   bool
+	Chosen         bool
+}
+
+// InsertDeliveryLineLot writes one pick of a tracked line (manufacturing
+// phase 2 M75): a lot at a location, with the snapshots the PDFs print.
+func (q *Queries) InsertDeliveryLineLot(ctx context.Context, arg InsertDeliveryLineLotParams) (OrdersDeliveryLineLot, error) {
+	row := q.db.QueryRow(ctx, insertDeliveryLineLot,
+		arg.DeliveryLineID,
+		arg.LotID,
+		arg.LotNumber,
+		arg.Expiry,
+		arg.LocationID,
+		arg.LocationCode,
+		arg.Quantity,
+		arg.AllowExpired,
+		arg.Chosen,
+	)
+	var i OrdersDeliveryLineLot
+	err := row.Scan(
+		&i.ID,
+		&i.DeliveryLineID,
+		&i.LotID,
+		&i.LotNumber,
+		&i.Expiry,
+		&i.LocationID,
+		&i.LocationCode,
+		&i.Quantity,
+		&i.AllowExpired,
+		&i.Chosen,
 	)
 	return i, err
 }

@@ -8,6 +8,12 @@ package orders
 // remains as back order, and the order's delivery address, and — once a
 // shipment is booked — each shipment's carrier, service and consignment
 // number, as text and Code 128, with its tracking URL as a QR code (O52).
+//
+// A tracked line prints its lots (manufacturing phase 2 M79): the pick list
+// a row per pick, by location, with the lot number and expiry in its Lot
+// column; the packing slip the lot numbers and expiries under the line, so
+// the customer receives the one-step-forward record on paper. Serial numbers
+// are listed and wrapped.
 
 import (
 	"cmp"
@@ -42,7 +48,7 @@ type deliveryLabels struct {
 	date, deliveryAddress, yourRef, customerNumber, contact   string
 	description, location, holding, quantity, ordered         string
 	backOrder, unit, picked, notPicked                        string
-	shipment                                                  string
+	shipment, lot, lots, expires                              string
 }
 
 var deliveryLabelSets = map[string]deliveryLabels{
@@ -51,30 +57,44 @@ var deliveryLabelSets = map[string]deliveryLabels{
 		date: "Dato", deliveryAddress: "Leveringsadresse", yourRef: "Deres ref.", customerNumber: "Kundenr.", contact: "Kontakt",
 		description: "Beskrivelse", location: "Lokasjon", holding: "Lokasjoner med beholdning", quantity: "Antall",
 		ordered: "Bestilt", backOrder: "Restordre", unit: "Enhet", picked: "Plukket", notPicked: "Ikke valgt",
-		shipment: "Sending",
+		shipment: "Sending", lot: "Parti", lots: "Partier", expires: "utløper",
 	},
 	"en": {
 		pickList: "Pick list", packingSlip: "Packing slip", draft: "DRAFT", deliveryNumber: "Delivery %d", orderNumber: "Order %d",
 		date: "Date", deliveryAddress: "Delivery address", yourRef: "Your ref.", customerNumber: "Customer no.", contact: "Contact",
 		description: "Description", location: "Location", holding: "Locations holding stock", quantity: "Quantity",
 		ordered: "Ordered", backOrder: "Back order", unit: "Unit", picked: "Picked", notPicked: "Not chosen",
-		shipment: "Shipment",
+		shipment: "Shipment", lot: "Lot", lots: "Lots", expires: "expires",
 	},
 }
 
 // deliveryPrintable is everything a delivery's PDF is printed from.
 type deliveryPrintable struct {
-	kind      string // docPickList or docPackingSlip
-	d         store.OrdersDelivery
-	o         store.OrdersOrder
-	dlines    []store.OrdersDeliveryLine
-	lines     []store.OrdersLine
+	kind   string // docPickList or docPackingSlip
+	d      store.OrdersDelivery
+	o      store.OrdersOrder
+	dlines []store.OrdersDeliveryLine
+	lines  []store.OrdersLine
+	// picks are the tracked lines' lots, by delivery line (M75).
+	picks     map[int64][]store.OrdersDeliveryLineLot
 	locations map[int32][]contracts.StockLocation
 	seller    contracts.SellerProfile
 	date      time.Time
 	// shipments are the delivery's booked shipments, printed on the packing
 	// slip (O52).
 	shipments []shipmentPrint
+}
+
+// kindLots is a packing slip's row of a line's lots, under the line.
+const kindLots = "lots"
+
+// lotText is a pick's lot as a delivery document prints it: the number and,
+// when it has one, the expiry.
+func lotText(r store.OrdersDeliveryLineLot, l deliveryLabels, lang string) string {
+	if !r.Expiry.Valid {
+		return r.LotNumber
+	}
+	return fmt.Sprintf("%s (%s %s)", r.LotNumber, l.expires, formatDate(r.Expiry.Time, lang))
 }
 
 // shipmentPrint is a booked shipment as a packing slip prints it.
@@ -136,33 +156,57 @@ func buildDeliveryModel(p deliveryPrintable) pdfModel {
 	}
 	qty := func(v *big.Rat) string { return formatDecimal(v, 0, 3, lang) }
 	if p.kind == docPickList {
-		m.header = []string{l.location, l.description, l.quantity, l.unit, l.holding}
-		sorted := slices.Clone(p.dlines)
-		// By the location's full code; the lines not yet picked last.
-		slices.SortStableFunc(sorted, func(a, b store.OrdersDeliveryLine) int {
-			switch {
-			case a.FromLocationCode == nil && b.FromLocationCode == nil:
-				return cmp.Compare(a.Position, b.Position)
-			case a.FromLocationCode == nil:
-				return 1
-			case b.FromLocationCode == nil:
-				return -1
-			}
-			return cmp.Compare(*a.FromLocationCode, *b.FromLocationCode)
-		})
-		for _, dl := range sorted {
+		m.header = []string{l.location, l.description, l.lot, l.quantity, l.unit, l.holding}
+		// A row per line, or per pick of a tracked line, and one for what a
+		// tracked line's picks leave short.
+		type pickRow struct {
+			code     *string
+			position int32
+			cells    []string
+		}
+		var rows []pickRow
+		for _, dl := range p.dlines {
 			ol := byLine[dl.OrderLineID]
 			var holding []string
 			for _, loc := range p.locations[dl.VariantID] {
 				holding = append(holding, loc.FullCode+" ("+qty(mustRat(loc.Quantity))+")")
 			}
-			location := l.notPicked
-			if dl.FromLocationCode != nil {
-				location = *dl.FromLocationCode
+			held := strings.Join(holding, ", ")
+			picks := p.picks[dl.ID]
+			if len(picks) == 0 {
+				location := l.notPicked
+				if dl.FromLocationCode != nil {
+					location = *dl.FromLocationCode
+				}
+				rows = append(rows, pickRow{code: dl.FromLocationCode, position: dl.Position, cells: []string{
+					location, describe(ol), "", qty(ratOrZero(dl.Quantity)), ol.Unit, held,
+				}})
+				continue
 			}
-			m.rows = append(m.rows, pdfRow{kind: kindProduct, cells: []string{
-				location, describe(ol), qty(ratOrZero(dl.Quantity)), ol.Unit, strings.Join(holding, ", "),
-			}})
+			for _, r := range picks {
+				code := r.LocationCode
+				rows = append(rows, pickRow{code: &code, position: dl.Position, cells: []string{
+					code, describe(ol), lotText(r, l, lang), qty(ratOrZero(r.Quantity)), ol.Unit, held,
+				}})
+			}
+			if left := new(big.Rat).Sub(ratOrZero(dl.Quantity), sumRows(picks)); left.Sign() > 0 {
+				rows = append(rows, pickRow{position: dl.Position, cells: []string{l.notPicked, describe(ol), "", qty(left), ol.Unit, held}})
+			}
+		}
+		// By the location's full code; the rows not yet picked last.
+		slices.SortStableFunc(rows, func(a, b pickRow) int {
+			switch {
+			case a.code == nil && b.code == nil:
+				return cmp.Compare(a.position, b.position)
+			case a.code == nil:
+				return 1
+			case b.code == nil:
+				return -1
+			}
+			return cmp.Compare(*a.code, *b.code)
+		})
+		for _, r := range rows {
+			m.rows = append(m.rows, pdfRow{kind: kindProduct, cells: r.cells})
 		}
 	} else {
 		m.header = []string{l.description, l.ordered, l.quantity, l.backOrder, l.unit}
@@ -180,6 +224,25 @@ func buildDeliveryModel(p deliveryPrintable) pdfModel {
 			m.rows = append(m.rows, pdfRow{kind: kindProduct, cells: []string{
 				describe(ol), qty(ratOrZero(ol.Quantity)), qty(ratOrZero(dl.Quantity)), qty(left), ol.Unit,
 			}})
+			// The line's lots under it, each once, with what it takes when
+			// the line takes more than one lot and none is a serial.
+			if picks := p.picks[dl.ID]; len(picks) > 0 {
+				var seen []string
+				for _, r := range picks {
+					text := lotText(r, l, lang)
+					if len(picks) > 1 && ratOrZero(r.Quantity).Cmp(big.NewRat(1, 1)) != 0 {
+						text += " – " + qty(ratOrZero(r.Quantity))
+					}
+					if !slices.Contains(seen, text) {
+						seen = append(seen, text)
+					}
+				}
+				label := l.lot
+				if len(seen) > 1 {
+					label = l.lots
+				}
+				m.rows = append(m.rows, pdfRow{kind: kindLots, cells: []string{label + ": " + strings.Join(seen, ", ")}})
+			}
 		}
 	}
 	m.footer = sp.FooterText
@@ -247,8 +310,8 @@ func renderListPDF(m pdfModel, packingSlip bool) ([]byte, error) {
 	}
 	doc.AddRows(line.NewRow(4))
 	// The pick list leads with the location; the packing slip with the item.
-	sizes := []int{2, 4, 1, 1, 4}
-	numeric := map[int]bool{2: true}
+	sizes := []int{2, 3, 2, 1, 1, 3}
+	numeric := map[int]bool{3: true}
 	if packingSlip {
 		sizes = []int{6, 2, 2, 1, 1}
 		numeric = map[int]bool{1: true, 2: true, 3: true}
@@ -269,6 +332,11 @@ func renderListPDF(m pdfModel, packingSlip bool) ([]byte, error) {
 	}
 	row(m.header, true)
 	for _, r := range m.rows {
+		if r.kind == kindLots {
+			// A line's lots, under it, wrapped across the table.
+			doc.AddAutoRow(col.New(1), text.NewCol(11, r.cells[0], props.Text{Size: 8, Bottom: 1}))
+			continue
+		}
 		row(r.cells, false)
 	}
 	if m.footer != "" {

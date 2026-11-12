@@ -194,6 +194,27 @@ func (e OrdersDeliveryStatus) Valid() bool {
 	}
 }
 
+// Defines values for OrdersDeliveryLotChoiceStatus.
+const (
+	Available  OrdersDeliveryLotChoiceStatus = "available"
+	Blocked    OrdersDeliveryLotChoiceStatus = "blocked"
+	Quarantine OrdersDeliveryLotChoiceStatus = "quarantine"
+)
+
+// Valid indicates whether the value is a known member of the OrdersDeliveryLotChoiceStatus enum.
+func (e OrdersDeliveryLotChoiceStatus) Valid() bool {
+	switch e {
+	case Available:
+		return true
+	case Blocked:
+		return true
+	case Quarantine:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrdersDeliverySummaryStatus.
 const (
 	OrdersDeliverySummaryStatusCancelled OrdersDeliverySummaryStatus = "cancelled"
@@ -1992,29 +2013,80 @@ type OrdersDeliveryInput struct {
 	OrderId int64 `json:"orderId"`
 }
 
-// OrdersDeliveryLine A delivery's line: one order line, the quantity, and the location it is picked from (null until picked). open is what of the order line is still to deliver outside this delivery; locations, on a draft, are the site's locations holding the variant, by full code.
+// OrdersDeliveryLine A delivery's line: one order line, the quantity, and the location it is picked from (null until picked). open is what of the order line is still to deliver outside this delivery; locations, on a draft, are the site's locations holding the variant, by full code. A tracked variant's line (tracked) holds its quantity in lots instead, one row per lot and location (manufacturing phase 2 M75), and its fromLocationId stays null; lotChoices, on a draft, are the site's lots of the variant in FEFO order, for Change lot.
 type OrdersDeliveryLine struct {
-	FromLocationCode *string               `json:"fromLocationCode,omitempty"`
-	FromLocationId   *int64                `json:"fromLocationId,omitempty"`
-	Id               int64                 `json:"id"`
-	Locations        []OrdersStockLocation `json:"locations"`
-	Name             *string               `json:"name,omitempty"`
-	Open             float64               `json:"open"`
-	OrderLineId      int64                 `json:"orderLineId"`
-	Ordered          float64               `json:"ordered"`
-	Position         int32                 `json:"position"`
-	Quantity         float64               `json:"quantity"`
-	Sku              *string               `json:"sku,omitempty"`
-	Unit             string                `json:"unit"`
-	VariantId        int32                 `json:"variantId"`
+	FromLocationCode *string                   `json:"fromLocationCode,omitempty"`
+	FromLocationId   *int64                    `json:"fromLocationId,omitempty"`
+	Id               int64                     `json:"id"`
+	Locations        []OrdersStockLocation     `json:"locations"`
+	LotChoices       []OrdersDeliveryLotChoice `json:"lotChoices"`
+	Lots             []OrdersDeliveryLineLot   `json:"lots"`
+	Name             *string                   `json:"name,omitempty"`
+	Open             float64                   `json:"open"`
+	OrderLineId      int64                     `json:"orderLineId"`
+	Ordered          float64                   `json:"ordered"`
+	Position         int32                     `json:"position"`
+	Quantity         float64                   `json:"quantity"`
+
+	// Short What the lots do not cover of a tracked line's quantity, 0 when they cover it: the page marks the line Short by n, and the post refuses it (picks_mismatch) until the lots add up.
+	Short float64 `json:"short"`
+	Sku   *string `json:"sku,omitempty"`
+
+	// Tracked Whether the variant is tracked by lot or serial number: the line is picked by lot.
+	Tracked   bool   `json:"tracked"`
+	Unit      string `json:"unit"`
+	VariantId int32  `json:"variantId"`
 }
 
-// OrdersDeliveryLineInput A draft delivery's line as the editor saves it.
+// OrdersDeliveryLineInput A draft delivery's line as the editor saves it. lots are a tracked line's picks as the person chose them (manufacturing phase 2 M77); left out, the line keeps its picks while they still add up to its quantity, and is proposed again (FEFO) otherwise.
 type OrdersDeliveryLineInput struct {
-	FromLocationId *int64 `json:"fromLocationId,omitempty"`
-	OrderLineId    int64  `json:"orderLineId"`
+	FromLocationId *int64                    `json:"fromLocationId,omitempty"`
+	Lots           *[]OrdersDeliveryLotInput `json:"lots,omitempty"`
+	OrderLineId    int64                     `json:"orderLineId"`
 
 	// Quantity Greater than 0, at most three decimals, never beyond what is open (over_delivery).
+	Quantity float64 `json:"quantity"`
+}
+
+// OrdersDeliveryLineLot One lot a tracked delivery line takes (manufacturing phase 2 M75): the lot and the location, with the lot's number, expiry and the location's code as they were when picked. chosen is whether a person chose it; proposed picks (FEFO) may be proposed again at the post when stock moved (M65a).
+type OrdersDeliveryLineLot struct {
+	// AllowExpired The person chose this lot although it is expired; honoured only for a poster holding inventory:expired-override.
+	AllowExpired bool                `json:"allowExpired"`
+	Chosen       bool                `json:"chosen"`
+	Expiry       *openapi_types.Date `json:"expiry"`
+	LocationCode string              `json:"locationCode"`
+	LocationId   int64               `json:"locationId"`
+	LotId        int64               `json:"lotId"`
+	LotNumber    string              `json:"lotNumber"`
+	Quantity     float64             `json:"quantity"`
+}
+
+// OrdersDeliveryLotChoice A lot of the variant at a location of the site, as Change lot offers it, in FEFO order (manufacturing phase 2 M65): its expiry and best-before, its status and what lies there.
+type OrdersDeliveryLotChoice struct {
+	BestBefore *openapi_types.Date `json:"bestBefore"`
+
+	// Expired Whether the lot's expiry lies before today in the workspace's zone.
+	Expired    bool                          `json:"expired"`
+	Expiry     *openapi_types.Date           `json:"expiry"`
+	FullCode   string                        `json:"fullCode"`
+	LocationId int64                         `json:"locationId"`
+	LotId      int64                         `json:"lotId"`
+	LotNumber  string                        `json:"lotNumber"`
+	Quantity   float64                       `json:"quantity"`
+	Status     OrdersDeliveryLotChoiceStatus `json:"status"`
+}
+
+// OrdersDeliveryLotChoiceStatus defines model for OrdersDeliveryLotChoice.Status.
+type OrdersDeliveryLotChoiceStatus string
+
+// OrdersDeliveryLotInput One lot a tracked line takes, as the person chose it: a lot of the site holding the variant at the location (lot_unknown otherwise).
+type OrdersDeliveryLotInput struct {
+	// AllowExpired Use the lot although it is expired (Use expired lot); the post honours it only for a poster holding inventory:expired-override.
+	AllowExpired *bool `json:"allowExpired,omitempty"`
+	LocationId   int64 `json:"locationId"`
+	LotId        int64 `json:"lotId"`
+
+	// Quantity Greater than 0, at most three decimals.
 	Quantity float64 `json:"quantity"`
 }
 
@@ -2026,17 +2098,20 @@ type OrdersDeliveryPage struct {
 
 // OrdersDeliverySummary A delivery in a list.
 type OrdersDeliverySummary struct {
-	CustomerId   int32                       `json:"customerId"`
-	CustomerName string                      `json:"customerName"`
-	Id           int64                       `json:"id"`
-	Lines        int32                       `json:"lines"`
-	Number       int64                       `json:"number"`
-	OrderId      int64                       `json:"orderId"`
-	OrderNumber  int64                       `json:"orderNumber"`
-	PostedAt     *time.Time                  `json:"postedAt,omitempty"`
-	SiteId       int64                       `json:"siteId"`
-	Status       OrdersDeliverySummaryStatus `json:"status"`
-	UpdatedAt    time.Time                   `json:"updatedAt"`
+	CustomerId   int32  `json:"customerId"`
+	CustomerName string `json:"customerName"`
+	Id           int64  `json:"id"`
+	Lines        int32  `json:"lines"`
+
+	// Lots The lot numbers the delivery takes, once each, in line order (manufacturing phase 2 M79).
+	Lots        []string                    `json:"lots"`
+	Number      int64                       `json:"number"`
+	OrderId     int64                       `json:"orderId"`
+	OrderNumber int64                       `json:"orderNumber"`
+	PostedAt    *time.Time                  `json:"postedAt,omitempty"`
+	SiteId      int64                       `json:"siteId"`
+	Status      OrdersDeliverySummaryStatus `json:"status"`
+	UpdatedAt   time.Time                   `json:"updatedAt"`
 }
 
 // OrdersDeliverySummaryStatus defines model for OrdersDeliverySummary.Status.
@@ -2397,9 +2472,12 @@ type OrdersMarkSentInput struct {
 // OrdersMeta What the Orders screens need of the settings, under orders:access.
 type OrdersMeta struct {
 	// BaseCurrency The deployment's currency, a document's when its customer names none (O13).
-	BaseCurrency            string `json:"baseCurrency"`
-	DefaultPaymentTermsDays int32  `json:"defaultPaymentTermsDays"`
-	QuoteValidityDays       int32  `json:"quoteValidityDays"`
+	BaseCurrency string `json:"baseCurrency"`
+
+	// CanOverrideExpired Whether the caller holds inventory:expired-override: a delivery's Use expired lot is offered (manufacturing phase 2 M77).
+	CanOverrideExpired      bool  `json:"canOverrideExpired"`
+	DefaultPaymentTermsDays int32 `json:"defaultPaymentTermsDays"`
+	QuoteValidityDays       int32 `json:"quoteValidityDays"`
 
 	// SendingAvailable Whether Send works now: Communications is on and the channel the settings choose can send (O25). False leaves Download and Mark as sent.
 	SendingAvailable bool `json:"sendingAvailable"`
@@ -2663,6 +2741,12 @@ type OrdersProblemLine struct {
 
 	// Index The line's position in the request, from 0.
 	Index int32 `json:"index"`
+
+	// LotId On a delivery's tracked line, the lot the refusal is about (manufacturing phase 2 M78).
+	LotId *int64 `json:"lotId,omitempty"`
+
+	// LotIndex On a delivery's tracked line, the lot row's position among the line's lots, from 0.
+	LotIndex *int32 `json:"lotIndex,omitempty"`
 }
 
 // OrdersQuote A quote (O13, O20). number stays across revisions; revision counts the sends.

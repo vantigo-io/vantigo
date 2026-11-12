@@ -148,6 +148,16 @@ type lineFailure struct {
 	index  int
 	code   string
 	detail string
+	// lot names, on a delivery's tracked line, the lot row the refusal is
+	// about (manufacturing phase 2 M78); nil for the line as a whole.
+	lot *lotFailure
+}
+
+// lotFailure is the lot row of a delivery line a refusal names: its position
+// among the line's lots and the lot.
+type lotFailure struct {
+	index int
+	lotID int64
 }
 
 // linesProblem is a document's refusal naming every failing line, a 400 whose
@@ -155,7 +165,11 @@ type lineFailure struct {
 func linesProblem(title string, failures []lineFailure) gen.OrdersProblem {
 	lines := make([]gen.OrdersProblemLine, 0, len(failures))
 	for _, l := range failures {
-		lines = append(lines, gen.OrdersProblemLine{Index: int32(l.index), Code: l.code, Detail: l.detail})
+		pl := gen.OrdersProblemLine{Index: int32(l.index), Code: l.code, Detail: l.detail}
+		if l.lot != nil {
+			pl.LotIndex, pl.LotId = ptr(int32(l.lot.index)), ptr(l.lot.lotID)
+		}
+		lines = append(lines, pl)
 	}
 	code := ""
 	if len(failures) > 0 {

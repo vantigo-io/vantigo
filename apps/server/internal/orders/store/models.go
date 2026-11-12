@@ -80,6 +80,19 @@ type OrdersDeliveryLine struct {
 	Quantity         pgtype.Numeric
 }
 
+type OrdersDeliveryLineLot struct {
+	ID             int64
+	DeliveryLineID int64
+	LotID          int64
+	LotNumber      string
+	Expiry         pgtype.Date
+	LocationID     int64
+	LocationCode   string
+	Quantity       pgtype.Numeric
+	AllowExpired   bool
+	Chosen         bool
+}
+
 type OrdersDocument struct {
 	ID         int64
 	OwnerKind  string
