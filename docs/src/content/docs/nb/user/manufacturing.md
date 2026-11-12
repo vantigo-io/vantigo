@@ -479,8 +479,9 @@ lenger linjen, bokføres ingenting, og skjemaet sier hvorfor.
 **Ordrens partier.** Fanen **Partier** på ordresiden viser **Partier laget**, med det
 produksjonene la i hvert og hvor mange produksjoner, og **Partier forbrukt** per komponent
 med utløpsdato, forbrukt og svinn. Hvert parti lenker til siden sin i
-[Lager](/nb/user/inventory/). Siden for en arbeidsordre i verkstedet viser det samme under
-**Partier**.
+[Lager](/nb/user/inventory/), og **Spor** ved siden av åpner
+[sporingen](/nb/user/inventory/#spor-et-parti) av det der: partiene laget av det og hvem
+som fikk dem. Siden for en arbeidsordre i verkstedet viser det samme under **Partier**.
 
 ### Lukk en ordre
 

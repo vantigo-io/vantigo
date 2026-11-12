@@ -477,8 +477,9 @@ covers the line, nothing is posted and the form says why.
 **The order's lots.** The order page's **Lots** tab lists the **Lots made**, with what the
 productions put in each and how many productions, and the **Lots consumed** per component
 with their expiry, consumed and scrap. Each lot links to its page in
-[Inventory](/en/user/inventory/). A work order's page on the shop floor shows the same
-under **Lots**.
+[Inventory](/en/user/inventory/), and **Trace** beside it opens its
+[trace](/en/user/inventory/#trace-a-lot) there: the lots made from it and who received
+them. A work order's page on the shop floor shows the same under **Lots**.
 
 ### Close an order
 

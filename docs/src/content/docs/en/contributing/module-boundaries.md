@@ -147,10 +147,14 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `Production` (`contracts.Production`, manufacturing — the manufacturing orders made
    for sales order lines, which variants have a bill of materials, and why make-to-order
    made no order for a sales order's lines, which Orders' order page shows;
-   provider-gated, rule 12; optional, nil when Manufacturing is off) — both
-   resolved from the enabled modules by `withProduction`, after the stock slots, by
-   Compose and `module.Workers` alike, neither provider reading the other while it is
-   built; `modtest.WithSalesOrderLines` and `modtest.WithProduction` preset them —, and `Workforce`
+   provider-gated, rule 12; optional, nil when Manufacturing is off) and
+   `DeliveryTrace` (`contracts.DeliveryTrace`, orders — its posted deliveries with their
+   order and customer id, which Inventory's trace shows as who received a lot;
+   provider-gated, rule 12, refusing with `ErrForbidden`; optional, nil when Orders is
+   off) — all three resolved from the enabled modules by `withProduction`, after the
+   stock slots, by Compose and `module.Workers` alike, no provider reading another while
+   it is built; `modtest.WithSalesOrderLines`, `modtest.WithProduction` and
+   `modtest.WithDeliveryTrace` preset them —, and `Workforce`
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, its own account in an external directory, and how a proposed
@@ -676,6 +680,17 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     figures and states, never a cost. Orders, its consumer, calls it with the request's
     context on the pool, after its own transaction, and checks nothing itself
     ([Manufacturing](/en/reference/manufacturing/#the-two-contracts)).
+    The single-provider `contracts.DeliveryTrace` is provider-gated as well, and is the
+    first to **refuse** rather than answer nothing: Orders, its sole provider, checks
+    `orders:access` against the principal in `ctx` — a request, or `AsUser` — and answers
+    `contracts.ErrForbidden` without it or with neither (manufacturing phase 2 M90), so
+    its consumer can tell *no deliveries* from *not allowed to see them* and say so.
+    `Deliveries` answers posted deliveries with their order's number and the customer's
+    id, never a name. Inventory, its consumer, calls it once per trace with the request's
+    context, on the pool and never inside a transaction, shows a delivery as its movement
+    alone on the refusal, and reads the customers' names through
+    `contracts.CustomerDirectory` only for a caller holding `customers:view`, which it
+    checks itself ([Inventory](/en/reference/inventory/#who-received-it)).
 
     Four single-provider reads are the other class, **consumer-gated**:
     `contracts.ProjectActuals` (Time → Projects), `contracts.Timesheets` (Time →

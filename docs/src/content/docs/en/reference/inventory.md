@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; and their screens (L1b) — the lots list, a lot's page and its edit, the lot page's holds, a lot's files in the inventory-lots storage scope and their deletion worker, stock per lot and held, the lookup's LOT token and lot numbers, and Inventory's live topics; and the rest of Inventory with lots (L2) — counts per lot, a lot on each transfer line, the import's lot columns, the expiring list and its CSV, the lots' attention items and lot labels; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the nine permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; and their screens (L1b) — the lots list, a lot's page and its edit, the lot page's holds, a lot's files in the inventory-lots storage scope and their deletion worker, stock per lot and held, the lookup's LOT token and lot numbers, and Inventory's live topics; and the rest of Inventory with lots (L2) — counts per lot, a lot on each transfer line, the import's lot columns, the expiring list and its CSV, the lots' attention items and lot labels; and traceability (T) — the trace of a lot both ways over its movement lines, unbuilds as reverse edges, who received it through Orders' contracts.DeliveryTrace, its CSV and PDF, the block with its downstream list walked again inside the block, and GS1-128 lot labels; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; the nine permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -105,6 +105,21 @@ write.
 **`contracts.BusinessCalendar`** (`Deps.Calendar`): the workspace's business time zone,
 in which the movement list's [day filters](#movements) and the dashboard's
 [week](#stats) are judged.
+
+**`contracts.DeliveryTrace`** (`Deps.DeliveryTrace`), Orders' read of its posted
+deliveries ([Orders' DeliveryTrace](/en/reference/orders/#who-received-a-lot-deliverytrace)), for the
+[trace](#who-received-it): `Deliveries(ctx, ids)`, called once per trace on the pool with
+the delivery ids of the issues the trace reached, in batches of at most
+`contracts.MaxTracedDeliveries` (1,000). It is **provider-gated** on `orders:access`
+(rule 12): a caller without it is refused with `contracts.ErrForbidden`, which the trace
+answers as `deliveries: hidden` — each delivery its movement alone; a nil slot, Orders
+off, as `unavailable`; any other error fails the trace.
+
+**`contracts.CustomerDirectory`** (`Deps.Directory`): `Customers(ctx, ids)`, the names of
+the customers a trace's deliveries went to — read only when the deliveries are shown and
+the caller holds **`customers:view`**, which Inventory checks itself, since the directory
+is a single-provider read with no gate of its own (manufacturing phase 2 M90, as
+Manufacturing's D1 M43a).
 
 ### Contracts provided
 
@@ -432,7 +447,10 @@ opening balances in the sidebar, the product page's Stock card, the product list
 both views alone; its *Create transfer* is hidden without `transfers-manage`, and
 *Edit placement* and the placements import without `stock-adjust`. **The lots**, a lot's
 page and its files' downloads need both views alone; *Edit*, *Quarantine*, *Block*,
-*Release* and the files' writes are hidden without `lots-manage`. **Seeing a transfer and printing
+*Release* and the files' writes are hidden without `lots-manage`. **The trace**, its CSV and
+its PDF need both views alone; a delivery's order and customer on it need `orders:access`,
+checked by Orders, and the customer's name `customers:view`, checked by Inventory
+([who received it](#who-received-it)). **Seeing a transfer and printing
 its følgeseddel need both views alone**; *New transfer*, *Send*, *Receive* and *Cancel*
 are hidden without `transfers-manage`.
 
@@ -445,7 +463,8 @@ are hidden without `transfers-manage`.
 | Goods receipts | – | – | – | – | ✓ | – | – | – |
 | Counts: list, open, count, post, cancel; the `countOpenLong` item | – | – | – | – | – | ✓ | – | – |
 | Transfers: create, change and delete a draft, send, receive, close, cancel; the `transferOverdue` item | – | – | – | – | – | – | ✓ | – |
-| Lots: change a lot, put and release the lot page's holds, add and remove its files | – | – | – | – | – | – | – | ✓ |
+| The trace, its CSV and its PDF | – | ✓ | – | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Lots: change a lot, put and release the lot page's holds, block a lot with its downstream list, add and remove its files | – | – | – | – | – | – | – | ✓ |
 
 Each column adds to `locations-view`; the write columns assume `stock-view` too.
 **Labels need `locations-view` alone**: a label prints a location's token, code and
@@ -943,7 +962,12 @@ again. It releases only a hold whose source module is Inventory — the lot page
 receipt's inspection (Q): a hold another module's document put is shown with its source
 and released there, **`hold_not_inventorys`** (409). A hold released already answers the
 lot as it is; another lot's hold is the 404. Both need `lots-manage` and answer the lot's
-page.
+page. Since T the release takes **`downstream`**: on the lot page's own **block**, it also
+releases every active block of the same source — `inventory/lot/<id>`, which is what a
+[block with its downstream list](#block-with-the-downstream-list) put on the lots made
+from the lot — every lot taken `FOR NO KEY UPDATE` in id order, each hold with the note
+and its own `lot_released`. Holds of any other source stay; on any other hold
+`downstream` is ignored.
 
 ### A lot's files
 
@@ -1050,6 +1074,119 @@ lot page's — takes the lots `FOR NO KEY UPDATE` in id order, then the holds; a
 lot and a change of its files take the lot the same way. A reserve's `LockSiteBalances`
 orders as the engine does, no lot first. A test
 races issues, receipts into a lot and holds on it on a pool of four.
+
+## Traceability
+
+Manufacturing phase 2's layer T (M87–M94): where a lot went, where it came from, who
+received it, and the recall that blocks it. **No migration**: the graph is read from the
+movement lines that carry a lot, over L1a's indexes.
+
+### The graph
+
+- **Nodes** are lots. **Edges** are production movements: in one movement of kind
+  `production`, every lot on a **consume** line (a line with only a *from*) is a parent of
+  every lot on a **produce** line (only a *to*). A by-product's lot (G) gets the same
+  parents. No genealogy table is kept: the movement lines are the record (R §4).
+- **An unbuild is a reverse edge** (kind `unbuild`, M123): it is shown on both lots as an
+  end — on the finished lot's usage as *Unbuilt by unbuild …*, on a restored component
+  lot's origin as *Returned by unbuild …* — and is **never expanded**: the usage walk does
+  not follow it into the restored lots, the origin walk not into the finished lot, and a
+  [block](#block-with-the-downstream-list) does not cross it.
+- **Ends** are the movements that start or end a lot's path. On the **origin** side: a
+  receipt (with its `supplierName` and `supplierReference`), an adjustment or a count up
+  (the opening-balance import among them), and an unbuild that restored it; a production
+  that made the lot of nothing traced is an end too. On the **usage** side: an issue — a
+  delivery, `source` `orders/delivery/<id>` —, an adjustment or a count down, a
+  `transfer_out`, an unbuild that took it apart, and a production that consumed it but
+  made no lot. A move, which has both a *from* and a *to*, changes nothing of a lot's
+  path and is not read; a `transfer_in` neither.
+
+### The trace
+
+**`GET /trace?lotId&direction=usage|origin&components=tracked|all&maxDepth`** answers the
+tree, read on the pool in **one snapshot** (`REPEATABLE READ`, read-only).
+
+- **`usage`** (the default; *where it went*) follows a lot's consume lines into the lots
+  produced beside them, recursively, with every lot's ends. **`origin`** (*where it came
+  from*) follows a lot's produce lines back to the lots consumed beside them, with their
+  ends. **`components=all`** also lists, on the origin side, the untracked lines each
+  production consumed, as `component` leaves without a lot (summed per variant);
+  `tracked`, the default, lists lots only.
+- **The walk** reads one level at a time: the lines of the level's lots
+  (`ix_movement_lines_lot`), then every line of the productions they cross
+  (`ux_movement_lines_movement_line`), then the next level's lots — two statements a
+  level, at most `maxDepth` levels (1–10, default 10). Then the lots themselves and what
+  each holds now (`ix_balances_lot`).
+- **The tree** is laid out depth first, each node after its parent, keyed by its path
+  (`0`, `0.2`, `0.2.1`), its movements in the order they were posted. **A lot reached
+  twice is expanded once**, where it is first laid out; every later reference carries
+  **`seenAt`**, the first one's key, and no children — so a cycle cannot loop either. A
+  lot at `maxDepth` carries `depthLimit` and is not expanded.
+- **At most 2,000 nodes** (D1 M15a's bound), lots, ends and components together, and at
+  most 2,000 lots found by the walk: beyond it **`trace_too_large`** (400).
+- **Every node** carries its variant as the lines snapshotted it. A **lot** node carries
+  the lot — number, serial, status, dates, supplier lot — with **`quantityIn`** (what was
+  received, produced or adjusted in under it, every movement; a transfer's arrival not)
+  and **`onHand`** (now, every location); a lot or component reached through a production
+  carries its **`edge`**: the movement, when it was posted, its source (the production and
+  its manufacturing order), **`consumed`** (the parent's quantity used in it) and
+  **`produced`** (the made lot's quantity in it). An **end** carries its **`movement`** —
+  id, kind, when, reason, supplier, source — and **`quantity`**, the lot's on it.
+
+### Who received it
+
+The trace's issue ends for Orders' deliveries are read through
+**`contracts.DeliveryTrace`** once per trace (M90). With **`orders:access`** each carries
+its **`delivery`** — the delivery's and the order's ids and numbers, the customer's id,
+when it was posted — and the trace says **`deliveries: shown`**; without it Orders refuses
+with `ErrForbidden` and the trace says **`hidden`**: the delivery is its movement alone,
+`source` `orders/delivery/<id>`. The refusal is explicit, not an empty answer, so
+Inventory never shows *no deliveries* to someone not allowed to see them. Without Orders
+the trace says **`unavailable`**. A customer's **name** is added only when the deliveries
+are shown and the caller holds **`customers:view`** (**`customerNames`**); without it the
+exports print *Customer #<id>*.
+
+### The exports
+
+**`GET /trace.csv`** and **`GET /trace.pdf`** take the trace's parameters and answer the
+same nodes, as `trace-<lot number>-<direction>.csv` and `.pdf`, never cached (M91). The CSV
+has one row per node — `key`, `depth`, `kind`, `lot` (an end's lot is the lot it ends),
+`sku`, `product`, `quantity` (the root's put in, a lot's produced on a usage edge or
+consumed on an origin edge, an end's or a component's own), `unit`, `date` (in the
+workspace's zone), `document` (*Delivery 3001, order 2001*; *Delivery, movement 6001* when
+hidden; *Receipt, movement …, ref …*; *Production 1, manufacturing order 5*; *Unbuild …*),
+`party` (the supplier, or the customer — named only under `customers:view`) and `note`
+(*Already shown at 0.0.0*, *Not traced further: depth limit*) — the house's CSV:
+semicolons, CRLF, a byte-order mark, decimal commas and the formula guard. The PDF is the
+house style — maroto and the labels' Noto Sans — in Norwegian and English together, and
+states the lot, the direction, when it was made and by whom, and when the deliveries were
+hidden or unknown, for an authority's *within hours* answer.
+
+### Block with the downstream list
+
+**`POST /lots/{id}/block`** `{cause: recall|complaint|other, note?, downstream?}` (M92),
+`lots-manage`:
+
+1. The lot is taken **`FOR NO KEY UPDATE`**.
+2. With **`downstream`** (the default), the **usage walk runs again on the block's own
+   transaction**, after that lock: the dialog's summary was a trace read on the pool and
+   may be stale, and a production posted since may have made another lot of it. The walk
+   is the trace's, with its bounds; beyond them **`trace_too_large`** and nothing is
+   blocked.
+3. One **`block`** hold of the lot page — source **`inventory/lot/<id>`**, the cause and
+   note as given — is put on the lot and on **every lot the walk reached that still holds
+   stock**, through the code of `HoldLots`: the lots `FOR NO KEY UPDATE` in id order, a
+   `lot_held` event per lot naming the source, the statuses derived again, the lots' live
+   topics told. A lot already blocked by this source is left as is, so a block may be
+   asked again to catch the lots made since. A lot that holds nothing is not blocked.
+   Nothing crosses an unbuild.
+
+It answers **`InventoryLotBlock`**: the lot's page and **`blocked`**, the lots it holds —
+the lot first (`root`), then the others in id order — which the dialog compares with its
+summary to mark a lot it did not show as new. The lock taken first and the walk's lots
+after it in id order are the block's [lock order](#the-lock-order). The
+[release with `downstream`](#the-lot-pages-holds) undoes it; a hold of any other source
+stays. Recall campaigns — contact logs, returns — are phase 3.
 
 ## Entering in packagings
 
@@ -1265,8 +1402,23 @@ never run into the date below. The labels are
 in the order the ids are given, `copies` (1 by default) of each in a run; a serial is a
 lot of its own, so serials print one label each. At most **1000** labels — `ids` × `copies`
 — else `labels_too_many`; a lot that does not exist is a field error on `ids` with the
-code `lot_unknown`. It needs both views. These are internal labels; GS1-128 labels with
-the item's GTIN are layer T's (M93).
+code `lot_unknown`. It needs both views.
+
+**`format=gs1`** (M93) prints **GS1-128** labels instead, as `gs1-lot-labels-<layout>.pdf`.
+The barcode's element string is **FNC1** — the rune `ñ` (`code128.FNC1`) in the text maroto
+hands boombuler's encoder, which opens the code in set C — then **(01)** the GTIN-14, when
+the variant's barcode (read through the catalog) is a valid GTIN-8, -12, -13 or -14,
+left-padded with zeros and its check digit verified; **(11)** the production date when set;
+**(17)** the expiry when set; **(15)** the best-before when set and there is no expiry; and
+**(10)** the lot number, or **(21)** the serial for a serial lot, **last**, so no separator
+follows it. The fixed-length fields need no FNC1 after them, so the string holds one, at
+its start. Under the barcode the label prints the AIs in brackets —
+*(01)04006381333931(17)261231(10)B1* — then the lot number, the SKU and name and the date
+as the internal label. **Without a valid GTIN** (10) and (21) are not valid, so the lot
+gets the internal label, marked *No GTIN — not a GS1 label*. A lot number of up to 20
+characters always fits (M52). Without the catalog, `dependency_unavailable` (503). ZPL is
+phase 3. A test decodes the bars boombuler draws back to the string, with a table read
+from the encoder's own symbols.
 
 ## The opening-balance import
 
@@ -2174,6 +2326,7 @@ placements import *Invalid import*, as the opening-balance import does.
 | `lot_expired`, `lot_blocked` | 409 (line) | An issue or consume line taking an expired lot without the override, or a lot on hold; a receipt into a blocked lot. The problem's code is the first such line's. |
 | `hold_not_inventorys` | 409 | The lot page releasing a hold another module's document put; it is released there. |
 | `hold_exists` | 409 | The lot page putting a quarantine or a block while its own of that kind is active on the lot. |
+| `trace_too_large` | 400 | A trace, or a block's downstream walk, beyond 2,000 nodes or lots; the block then blocks nothing. |
 | `lot_dates_invalid` | 400 | A lot's dates out of order — an expiry before the production date, or a best-before date after the expiry — on `PUT /lots/{id}` or a receipt or adjustment line's new lot (a field error with the code). |
 | `attachment_too_large`, `too_many_attachments` | 400 | A lot's file over 20 MiB, or a 21st. |
 | `attachment_type` | 415 | A lot's file that is not a PDF, JPEG or PNG, or whose bytes disagree with the type or extension it is sent under. |
@@ -2242,6 +2395,7 @@ The Assistant can point at these controls in a guided tour ([the registry](/en/r
 | `inventory.lots.list` | `/inventory/lots` | The lots list and its filters |
 | `inventory.expiring.list` | `/inventory/expiring` | The expiring list, its filters, Export CSV and Print labels |
 | `inventory.lot.holds` | `/inventory/lots/{lotId}` | A lot's Holds panel: Quarantine, Block and Release |
+| `inventory.trace.tree` | `/inventory/trace` | A lot's trace: its direction, the tree, Export CSV and Download PDF |
 
 ## Enabling and disabling
 
@@ -2307,8 +2461,12 @@ lot's page, its edit and holds, its files and their deletion worker, stock per l
 lookup and Inventory's live topics. L2 brought counts per lot, the lot on transfer
 lines, the import's lot columns, the expiring list with its CSV and attention items, lot
 labels with the `LOT` token and the movements' lot filter. There is no movements CSV for
-M74's lot column to join; the lot page's movements and the filter answer it. GS1-128
-labels are layer T's.
+M74's lot column to join; the lot page's movements and the filter answer it. Layer T
+brought [traceability](#traceability): the trace both ways with its CSV and PDF, who
+received a lot through Orders' `DeliveryTrace`, the block with its downstream list and
+GS1-128 lot labels; the trace is linked from the lot page, the lots list, the lookup,
+Manufacturing's *Lots* tab and Orders' delivery page, and the spotlight's *Trace a lot*
+opens it.
 
 **Later** (phase 1 §11 and phase 2 §11), each waiting for what it names:
 negative stock by a setting
@@ -2392,5 +2550,11 @@ requires, all of them.
 | `POST /transfers/{id}/receive` | `locations-view` + `stock-view` + `transfers-manage` | Receive what arrived, and close the difference; no `If-Match`; 200, a replay too. |
 | `POST /transfers/{id}/cancel` | `locations-view` + `stock-view` + `transfers-manage` | Cancel a sent transfer back to its sources, with `If-Match`; 200, a replay too. |
 | `GET /transfers/{id}/note.pdf` | `locations-view` + `stock-view` | The følgeseddel of a transfer sent or later; a draft's is 404. |
+| `GET /trace` | `locations-view` + `stock-view` | A lot's trace, usage or origin, up to 10 productions and 2,000 nodes. |
+| `GET /trace.csv` | `locations-view` + `stock-view` | The trace as CSV. |
+| `GET /trace.pdf` | `locations-view` + `stock-view` | The trace as a PDF. |
+| `POST /lots/{id}/block` | `locations-view` + `stock-view` + `lots-manage` | Block a lot and the lots made from it still in stock. |
+| `POST /lots/{id}/holds/{holdId}/release` | `locations-view` + `stock-view` + `lots-manage` | Release one of Inventory's holds; with `downstream`, the lot page's block on the lots made from it too. |
+| `GET /lots/labels.pdf` | `locations-view` + `stock-view` | Lot labels, internal or (`format=gs1`) GS1-128. |
 
 Every key is `inventory:`'s; the table leaves the prefix out.

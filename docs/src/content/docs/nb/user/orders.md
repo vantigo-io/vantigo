@@ -398,6 +398,11 @@ over hvilke partier de fikk. Kortet **Leveranser** på ordren viser partiene til
 bokførte leveranse og til hvert utkast slik de er valgt så langt; en kansellert leveranse
 viser ingen.
 
+Kan du se beholdning i Lager — både **Se lagersteder** og **Se beholdning** — lenker hvert
+parti på leveransen til siden sin der, og **Spor** ved siden av åpner
+[sporingen](/nb/user/inventory/#spor-et-parti): hvor partiet kom fra og hvem andre som fikk
+det. Uten dem nevnes partiene uten lenker.
+
 Når du bokfører, kan noen andre ha tatt et parti i mellomtiden, eller sperret det. Har du
 ikke endret partiene selv, velges de på nytt fra det som ligger der nå, og leveransen
 bokføres med dem; leveransen viser partiene den tok. Valgte du partiene selv, eller er det
