@@ -110,7 +110,7 @@ ordre](/nb/user/invoices/#fakturere-ordre)).
 Søkefeltet i toppfeltet (eller hurtigtasten som vises i det) åpner et søk som hopper
 rett til et hvilket som helst skjermbilde du har tilgang til, så du trenger sjelden
 app-velgeren for et skjermbilde du vet navnet på. Det tilbyr også noen hurtighandlinger, som **Nytt tilbud**
-i Ordre for dem som kan lage tilbud, **Finn et parti** i Lager for dem som ser beholdning, **Ny produksjonsordre** i Produksjon for dem som kan opprette ordrer, **Åpne verkstedet** for dem som arbeider der, og **Åpne produksjonsplanen** og **Produksjonsrapporter** for alle som bruker Produksjon.
+i Ordre for dem som kan lage tilbud, **Finn et parti** og **Spor et parti** i Lager for dem som ser beholdning, **Ny produksjonsordre** i Produksjon for dem som kan opprette ordrer, **Åpne verkstedet** for dem som arbeider der, og **Åpne produksjonsplanen** og **Produksjonsrapporter** for alle som bruker Produksjon.
 
 ## Kontoen din
 

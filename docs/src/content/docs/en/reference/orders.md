@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its lots proposed FEFO, chosen and posted per lot, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; make-to-order — contracts.SalesOrderLines for Manufacturing, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve"
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its lots proposed FEFO, chosen and posted per lot, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; who received a lot — contracts.DeliveryTrace for Inventory's trace, provider-gated on orders:access; make-to-order — contracts.SalesOrderLines for Manufacturing, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve"
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -975,6 +975,30 @@ expired on the workspace's today and whether it is a serial number's (`serial`).
   each in line order — a posted delivery's, a draft's as proposed or chosen so far, none
   for a cancelled one — which the order page's deliveries card shows.
 
+### Who received a lot: DeliveryTrace
+
+Orders provides **`contracts.DeliveryTrace`** (`contracts/delivery_trace.go`,
+manufacturing phase 2 M90), the slot `Module.DeliveryTrace`, resolved from the enabled
+modules only, for Inventory's [trace](/en/reference/inventory/#who-received-it).
+`Deliveries(ctx, ids)` answers the **posted** deliveries among the ids, by id: the
+delivery's id and number, its order's id and number, the order's customer **id** — never
+the name — and when it was posted. A draft or a cancelled delivery, or an id that is none,
+is absent. It reads on the pool in one statement and refuses more than
+`contracts.MaxTracedDeliveries` (1,000) ids as a failure.
+
+It is **provider-gated** (module-boundaries rule 12): Orders checks **`orders:access`**
+against the principal in the context — the request's, or the Assistant's `AsUser` — and
+refuses a caller without it, **and a context with no principal**, with
+**`contracts.ErrForbidden`**. Unlike the production read Orders consumes, it refuses
+rather than answering nothing, so Inventory tells *no deliveries* from *not allowed to see
+them* and says so on the trace. Customer names stay Customers' to give: Inventory reads
+them through the customer directory, only for a caller holding `customers:view`.
+
+On the delivery page, each lot of a tracked line links to its page and its trace in
+Inventory when the meta's **`canTraceLots`** says so (M94): Inventory keeps stock and the
+caller holds `inventory:locations-view` and `inventory:stock-view`; otherwise the lots are
+named without links.
+
 ### Back orders
 
 What is not delivered stays open on the order; no back-order document is made. `GET
@@ -1625,8 +1649,10 @@ a bare 400.
 The answer also lists the send channels Communications offers and whether sending is
 available. `GET /meta` gives every holder of `orders:access` what the screens need of it:
 `sendingAvailable`, `quoteValidityDays`, `defaultPaymentTermsDays`, `baseCurrency`,
-`stockKept` — whether Inventory keeps stock — and `canOverrideExpired` — whether the caller
-holds `inventory:expired-override`, which offers a delivery's *Use expired lot*. `GET /sites` lists Inventory's sites that are
+`stockKept` — whether Inventory keeps stock —, `canOverrideExpired` — whether the caller
+holds `inventory:expired-override`, which offers a delivery's *Use expired lot* — and
+`canTraceLots` — whether Inventory keeps stock and the caller holds both of Inventory's
+views, which links a delivery's lots to their page and trace there. `GET /sites` lists Inventory's sites that are
 not archived, through `contracts.Stock`, for the order's and the default site's pickers;
 empty without Inventory.
 
