@@ -468,7 +468,8 @@ proposes them again once from what is in stock and posts.
 **The order's lots.** The order page's **Lots** tab lists the **Lots made**, with what the
 productions put in each and how many productions, and the **Lots consumed** per component
 with their expiry, consumed and scrap. Each lot links to its page in
-[Inventory](/en/user/inventory/).
+[Inventory](/en/user/inventory/). A work order's page on the shop floor shows the same
+under **Lots**.
 
 ### Close an order
 
