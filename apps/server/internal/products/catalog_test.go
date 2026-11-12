@@ -78,7 +78,7 @@ func TestCatalog_VariantResolvesProductFields(t *testing.T) {
 	want := contracts.VariantEntry{
 		ID: variant.Id, ProductID: created.Id, ProductName: "Catalog Widget",
 		SKU: variant.Sku, Unit: variant.Unit, ProductType: "Goods", ProductStatus: "Draft",
-		TaxCategoryID: taxCategoryID,
+		TaxCategoryID: taxCategoryID, Tracking: contracts.TrackingNone,
 	}
 	if got == nil || !reflect.DeepEqual(*got, want) {
 		t.Errorf("Variant = %+v, want %+v", got, want)

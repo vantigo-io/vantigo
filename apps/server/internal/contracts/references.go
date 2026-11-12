@@ -89,6 +89,9 @@ const (
 	VariantHoldDelete VariantHoldPurpose = "delete"
 	// VariantHoldTypeChange is its product's change from Goods to Service.
 	VariantHoldTypeChange VariantHoldPurpose = "type_change"
+	// VariantHoldTrackingChange is a change of the variant's tracking mode
+	// (manufacturing phase 2 M51): any stock, reservation or stock in transit holds it.
+	VariantHoldTrackingChange VariantHoldPurpose = "tracking_change"
 )
 
 // The kinds of VariantHold.

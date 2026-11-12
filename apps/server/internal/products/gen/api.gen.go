@@ -57,6 +57,27 @@ func (e ProductImageUpdateRequestUses) Valid() bool {
 	}
 }
 
+// Defines values for VariantTracking.
+const (
+	Lot    VariantTracking = "lot"
+	None   VariantTracking = "none"
+	Serial VariantTracking = "serial"
+)
+
+// Valid indicates whether the value is a known member of the VariantTracking enum.
+func (e VariantTracking) Valid() bool {
+	switch e {
+	case Lot:
+		return true
+	case None:
+		return true
+	case Serial:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetProductsByIdImagesByImageIdContentParamsSize.
 const (
 	Thumb GetProductsByIdImagesByImageIdContentParamsSize = "thumb"
@@ -294,22 +315,31 @@ type ProductTaxCategoryResponse struct {
 
 // ProductVariantResponse defines model for ProductVariantResponse.
 type ProductVariantResponse struct {
-	Barcode         *string                `json:"barcode,omitempty"`
+	Barcode *string `json:"barcode,omitempty"`
+
+	// BestBeforeDays The days a new lot's best-before date lies after its production or receipt date; null when unset.
+	BestBeforeDays  *int32                 `json:"bestBeforeDays,omitempty"`
 	CreatedAt       time.Time              `json:"createdAt"`
 	EffectivePrices []ProductPriceResponse `json:"effectivePrices"`
-	HeightCm        *float64               `json:"heightCm,omitempty"`
-	Id              int32                  `json:"id"`
-	LengthCm        *float64               `json:"lengthCm,omitempty"`
-	OptionValues    map[string]string      `json:"optionValues"`
+
+	// ExpiryDays The days a new lot's expiry lies after its production or receipt date (manufacturing phase 2 M49); null when unset.
+	ExpiryDays   *int32            `json:"expiryDays,omitempty"`
+	HeightCm     *float64          `json:"heightCm,omitempty"`
+	Id           int32             `json:"id"`
+	LengthCm     *float64          `json:"lengthCm,omitempty"`
+	OptionValues map[string]string `json:"optionValues"`
 
 	// Packagings The variant's packagings, by sort order then id; always sent (optional only because the recorded exchanges of the port predate it).
 	Packagings   *[]ProductPackagingResponse `json:"packagings,omitempty"`
 	Sku          string                      `json:"sku"`
 	StandardCost *float64                    `json:"standardCost,omitempty"`
-	Unit         string                      `json:"unit"`
-	UpdatedAt    time.Time                   `json:"updatedAt"`
-	WeightKg     *float64                    `json:"weightKg,omitempty"`
-	WidthCm      *float64                    `json:"widthCm,omitempty"`
+
+	// Tracking How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
+	Tracking  VariantTracking `json:"tracking"`
+	Unit      string          `json:"unit"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+	WeightKg  *float64        `json:"weightKg,omitempty"`
+	WidthCm   *float64        `json:"widthCm,omitempty"`
 }
 
 // TaxCategoryRequest defines model for TaxCategoryRequest.
@@ -329,17 +359,29 @@ type TaxCategoryResponse struct {
 
 // VariantRequest defines model for VariantRequest.
 type VariantRequest struct {
-	Barcode      *string                `json:"barcode,omitempty"`
+	Barcode *string `json:"barcode,omitempty"`
+
+	// BestBeforeDays The days a new lot's best-before date lies after its production or receipt date, 1–3650; null or absent clears it.
+	BestBeforeDays *int32 `json:"bestBeforeDays,omitempty"`
+
+	// ExpiryDays The days a new lot's expiry lies after its production or receipt date, 1–3650; null or absent clears it.
+	ExpiryDays   *int32                 `json:"expiryDays,omitempty"`
 	HeightCm     *float64               `json:"heightCm,omitempty"`
 	LengthCm     *float64               `json:"lengthCm,omitempty"`
 	OptionValues *map[string]string     `json:"optionValues,omitempty"`
 	Prices       *[]ProductPriceRequest `json:"prices,omitempty"`
 	Sku          string                 `json:"sku"`
 	StandardCost *float64               `json:"standardCost,omitempty"`
-	Unit         *string                `json:"unit,omitempty"`
-	WeightKg     *float64               `json:"weightKg,omitempty"`
-	WidthCm      *float64               `json:"widthCm,omitempty"`
+
+	// Tracking How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
+	Tracking *VariantTracking `json:"tracking,omitempty"`
+	Unit     *string          `json:"unit,omitempty"`
+	WeightKg *float64         `json:"weightKg,omitempty"`
+	WidthCm  *float64         `json:"widthCm,omitempty"`
 }
+
+// VariantTracking How the variant's stock is tracked (manufacturing phase 2 M49): none, in lots, or in serials (lots of at most one). Only a goods product's variant may be tracked. On a create, absent is none; on an update, absent keeps the stored mode. Until production captures lots, a write of any mode but none is refused with 409 *Tracking unavailable*.
+type VariantTracking string
 
 // GetProductsParams defines parameters for GetProducts.
 type GetProductsParams struct {

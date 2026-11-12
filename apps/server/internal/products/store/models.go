@@ -57,19 +57,22 @@ type ProductsProductPrice struct {
 }
 
 type ProductsProductVariant struct {
-	ID           int32
-	ProductID    int32
-	Sku          string
-	Barcode      *string
-	Unit         string
-	StandardCost pgtype.Numeric
-	WeightKg     pgtype.Numeric
-	LengthCm     pgtype.Numeric
-	WidthCm      pgtype.Numeric
-	HeightCm     pgtype.Numeric
-	OptionValues []byte
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID             int32
+	ProductID      int32
+	Sku            string
+	Barcode        *string
+	Unit           string
+	StandardCost   pgtype.Numeric
+	WeightKg       pgtype.Numeric
+	LengthCm       pgtype.Numeric
+	WidthCm        pgtype.Numeric
+	HeightCm       pgtype.Numeric
+	OptionValues   []byte
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 type ProductsTaxCategory struct {

@@ -171,20 +171,20 @@ SELECT EXISTS(SELECT 1 FROM products.products WHERE id = @id);
 -- AddProductVariantEndpoint (one variant onto an existing product).
 INSERT INTO products.product_variants (
     product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm, option_values,
-    created_at, updated_at
+    created_at, updated_at, tracking, expiry_days, best_before_days
 ) VALUES (
     @product_id, @sku, @barcode, @unit, @standard_cost, @weight_kg, @length_cm, @width_cm, @height_cm, @option_values,
-    @now::timestamptz, @now::timestamptz
+    @now::timestamptz, @now::timestamptz, @tracking, sqlc.narg(expiry_days), sqlc.narg(best_before_days)
 )
 RETURNING id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-          option_values, created_at, updated_at;
+          option_values, created_at, updated_at, tracking, expiry_days, best_before_days;
 
 -- name: GetVariantByProductAndID :one
 -- GetVariantByProductAndID is the scoped lookup every variant/price handler
 -- performs first: a variant is always addressed through its product
 -- (UpdateProductVariantEndpoint.cs:23-25, DeleteProductVariantEndpoint.cs:14).
 SELECT id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-       option_values, created_at, updated_at
+       option_values, created_at, updated_at, tracking, expiry_days, best_before_days
 FROM products.product_variants
 WHERE id = @id AND product_id = @product_id;
 
@@ -192,7 +192,7 @@ WHERE id = @id AND product_id = @product_id;
 -- ListVariantsByProduct lists one product's variants, ordered by id
 -- (GetProductVariantsEndpoint.cs:20-24).
 SELECT id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-       option_values, created_at, updated_at
+       option_values, created_at, updated_at, tracking, expiry_days, best_before_days
 FROM products.product_variants
 WHERE product_id = @product_id
 ORDER BY id;
@@ -201,7 +201,7 @@ ORDER BY id;
 -- ListVariantsByProductIDs batch-loads variants for a page of products
 -- (GetProductsEndpoint), ordered by product then id.
 SELECT id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-       option_values, created_at, updated_at
+       option_values, created_at, updated_at, tracking, expiry_days, best_before_days
 FROM products.product_variants
 WHERE product_id = ANY(@product_ids::int[])
 ORDER BY product_id, id;
@@ -257,10 +257,13 @@ SET sku = @sku,
     width_cm = @width_cm,
     height_cm = @height_cm,
     option_values = @option_values,
+    tracking = @tracking,
+    expiry_days = sqlc.narg(expiry_days),
+    best_before_days = sqlc.narg(best_before_days),
     updated_at = @updated_at::timestamptz
 WHERE id = @id
 RETURNING id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-          option_values, created_at, updated_at;
+          option_values, created_at, updated_at, tracking, expiry_days, best_before_days;
 
 -- name: CountOtherVariantsOfProduct :one
 -- CountOtherVariantsOfProduct is DeleteProductVariantEndpoint's last-variant
@@ -486,7 +489,8 @@ ORDER BY day;
 -- name: CatalogVariant :one
 -- CatalogVariant is contracts.ProductCatalog.Variant's lookup.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -496,7 +500,8 @@ WHERE v.id = @id;
 -- CatalogVariants batch-loads the same fields as CatalogVariant for a set of
 -- ids; an id that does not exist is simply absent from the result.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -506,7 +511,8 @@ WHERE v.id = ANY(@ids::int[]);
 -- CatalogVariantsOfProduct is contracts.ProductCatalog.VariantsOfProduct:
 -- every variant of a product in the order the product page lists them.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -517,7 +523,8 @@ ORDER BY v.id;
 -- CatalogLookupCode is contracts.ProductCatalog.LookupCode's variant half: a
 -- SKU equal to the code ignoring case, or a barcode equal to it exactly.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -528,7 +535,8 @@ ORDER BY v.id;
 -- CatalogLookupSKUs is contracts.ProductCatalog.LookupSKUs: every variant
 -- whose SKU, lowercased, is one of the given lowercased SKUs.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -541,7 +549,8 @@ ORDER BY v.id;
 -- products unless include_inactive, whose SKU, product name or barcode
 -- matches the pattern, by SKU.
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -556,7 +565,8 @@ LIMIT @max_rows::int;
 -- the variants and their products, in variant id order, on the caller's
 -- transaction (inventory design I22).
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -581,3 +591,20 @@ SELECT id, sku, unit FROM products.product_variants
 WHERE product_id = @product_id
 ORDER BY id
 FOR UPDATE;
+
+-- name: UntrackVariants :exec
+-- UntrackVariants sets the tracking of the given variants to none: a
+-- product's change to Service, in the same transaction, after every holder has
+-- said the variants hold no stock (manufacturing phase 2 M49).
+UPDATE products.product_variants SET tracking = 'none'
+WHERE id = ANY(@ids::int[]) AND tracking <> 'none';
+
+-- name: VariantTracking :one
+-- VariantTracking is a variant's stored tracking mode and unit, read by its
+-- update after the row is locked FOR UPDATE (manufacturing phase 2 M51).
+SELECT tracking, unit FROM products.product_variants WHERE id = @id;
+
+-- name: GetProductType :one
+-- GetProductType is a variant write's read of its product's type: only a
+-- goods product's variant may be tracked (manufacturing phase 2 M49).
+SELECT type FROM products.products WHERE id = @id;

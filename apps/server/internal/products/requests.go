@@ -144,6 +144,11 @@ type parsedVariant struct {
 	HeightCm     *float64
 	OptionValues map[string]string
 	Prices       []parsedPrice
+	// Tracking is the mode the request names, nil when it names none: none
+	// on a create, the stored mode on an update (manufacturing phase 2 M49).
+	Tracking *string
+	// ExpiryDays and BestBeforeDays are the lot offsets, nil to clear.
+	ExpiryDays, BestBeforeDays *int32
 }
 
 // validateVariantRequest is VariantRequest.Validate (:88-143), writing every
@@ -209,12 +214,36 @@ func validateVariantRequest(prefix string, body gen.VariantRequest, errs map[str
 		optionValues = *body.OptionValues
 	}
 
+	var tracking *string
+	if body.Tracking != nil {
+		if !body.Tracking.Valid() {
+			errs[prefix+"tracking"] = []string{"The tracking must be none, lot or serial."}
+		}
+		t := string(*body.Tracking)
+		tracking = &t
+	}
+	for field, days := range map[string]*int32{"expiryDays": body.ExpiryDays, "bestBeforeDays": body.BestBeforeDays} {
+		if days != nil && (*days < 1 || *days > 3650) {
+			errs[prefix+field] = []string{"The days must be between 1 and 3650."}
+		}
+	}
+
 	return parsedVariant{
 		Sku: sku, Barcode: barcode, Unit: unit,
 		StandardCost: body.StandardCost, WeightKg: body.WeightKg, LengthCm: body.LengthCm,
 		WidthCm: body.WidthCm, HeightCm: body.HeightCm,
 		OptionValues: optionValues, Prices: prices,
+		Tracking: tracking, ExpiryDays: body.ExpiryDays, BestBeforeDays: body.BestBeforeDays,
 	}
+}
+
+// trackingOr is the mode the variant is written with: the request's, else
+// fallback — none on a create, the stored mode on an update.
+func (v parsedVariant) trackingOr(fallback string) string {
+	if v.Tracking != nil {
+		return *v.Tracking
+	}
+	return fallback
 }
 
 // containsPricingData is ProductRequest.ContainsPricingData /

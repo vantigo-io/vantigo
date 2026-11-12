@@ -46,7 +46,8 @@ func (q *Queries) ArchiveProduct(ctx context.Context, arg ArchiveProductParams) 
 
 const catalogLockVariants = `-- name: CatalogLockVariants :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -56,21 +57,24 @@ FOR SHARE OF v, p
 `
 
 type CatalogLockVariantsRow struct {
-	ID            int32
-	ProductID     int32
-	ProductName   string
-	Sku           string
-	Barcode       *string
-	Unit          string
-	ProductType   string
-	ProductStatus string
-	TaxCategoryID int32
-	Description   *string
-	CategoryID    *int32
-	CategoryName  *string
-	OptionValues  []byte
-	WeightKg      pgtype.Numeric
-	StandardCost  pgtype.Numeric
+	ID             int32
+	ProductID      int32
+	ProductName    string
+	Sku            string
+	Barcode        *string
+	Unit           string
+	ProductType    string
+	ProductStatus  string
+	TaxCategoryID  int32
+	Description    *string
+	CategoryID     *int32
+	CategoryName   *string
+	OptionValues   []byte
+	WeightKg       pgtype.Numeric
+	StandardCost   pgtype.Numeric
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 // CatalogLockVariants is contracts.ProductCatalog.LockVariants: FOR SHARE on
@@ -101,6 +105,9 @@ func (q *Queries) CatalogLockVariants(ctx context.Context, ids []int32) ([]Catal
 			&i.OptionValues,
 			&i.WeightKg,
 			&i.StandardCost,
+			&i.Tracking,
+			&i.ExpiryDays,
+			&i.BestBeforeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -114,7 +121,8 @@ func (q *Queries) CatalogLockVariants(ctx context.Context, ids []int32) ([]Catal
 
 const catalogLookupCode = `-- name: CatalogLookupCode :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -123,21 +131,24 @@ ORDER BY v.id
 `
 
 type CatalogLookupCodeRow struct {
-	ID            int32
-	ProductID     int32
-	ProductName   string
-	Sku           string
-	Barcode       *string
-	Unit          string
-	ProductType   string
-	ProductStatus string
-	TaxCategoryID int32
-	Description   *string
-	CategoryID    *int32
-	CategoryName  *string
-	OptionValues  []byte
-	WeightKg      pgtype.Numeric
-	StandardCost  pgtype.Numeric
+	ID             int32
+	ProductID      int32
+	ProductName    string
+	Sku            string
+	Barcode        *string
+	Unit           string
+	ProductType    string
+	ProductStatus  string
+	TaxCategoryID  int32
+	Description    *string
+	CategoryID     *int32
+	CategoryName   *string
+	OptionValues   []byte
+	WeightKg       pgtype.Numeric
+	StandardCost   pgtype.Numeric
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 // CatalogLookupCode is contracts.ProductCatalog.LookupCode's variant half: a
@@ -167,6 +178,9 @@ func (q *Queries) CatalogLookupCode(ctx context.Context, code string) ([]Catalog
 			&i.OptionValues,
 			&i.WeightKg,
 			&i.StandardCost,
+			&i.Tracking,
+			&i.ExpiryDays,
+			&i.BestBeforeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -180,7 +194,8 @@ func (q *Queries) CatalogLookupCode(ctx context.Context, code string) ([]Catalog
 
 const catalogLookupSKUs = `-- name: CatalogLookupSKUs :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -189,21 +204,24 @@ ORDER BY v.id
 `
 
 type CatalogLookupSKUsRow struct {
-	ID            int32
-	ProductID     int32
-	ProductName   string
-	Sku           string
-	Barcode       *string
-	Unit          string
-	ProductType   string
-	ProductStatus string
-	TaxCategoryID int32
-	Description   *string
-	CategoryID    *int32
-	CategoryName  *string
-	OptionValues  []byte
-	WeightKg      pgtype.Numeric
-	StandardCost  pgtype.Numeric
+	ID             int32
+	ProductID      int32
+	ProductName    string
+	Sku            string
+	Barcode        *string
+	Unit           string
+	ProductType    string
+	ProductStatus  string
+	TaxCategoryID  int32
+	Description    *string
+	CategoryID     *int32
+	CategoryName   *string
+	OptionValues   []byte
+	WeightKg       pgtype.Numeric
+	StandardCost   pgtype.Numeric
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 // CatalogLookupSKUs is contracts.ProductCatalog.LookupSKUs: every variant
@@ -233,6 +251,9 @@ func (q *Queries) CatalogLookupSKUs(ctx context.Context, skus []string) ([]Catal
 			&i.OptionValues,
 			&i.WeightKg,
 			&i.StandardCost,
+			&i.Tracking,
+			&i.ExpiryDays,
+			&i.BestBeforeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -246,7 +267,8 @@ func (q *Queries) CatalogLookupSKUs(ctx context.Context, skus []string) ([]Catal
 
 const catalogSearchVariants = `-- name: CatalogSearchVariants :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -265,21 +287,24 @@ type CatalogSearchVariantsParams struct {
 }
 
 type CatalogSearchVariantsRow struct {
-	ID            int32
-	ProductID     int32
-	ProductName   string
-	Sku           string
-	Barcode       *string
-	Unit          string
-	ProductType   string
-	ProductStatus string
-	TaxCategoryID int32
-	Description   *string
-	CategoryID    *int32
-	CategoryName  *string
-	OptionValues  []byte
-	WeightKg      pgtype.Numeric
-	StandardCost  pgtype.Numeric
+	ID             int32
+	ProductID      int32
+	ProductName    string
+	Sku            string
+	Barcode        *string
+	Unit           string
+	ProductType    string
+	ProductStatus  string
+	TaxCategoryID  int32
+	Description    *string
+	CategoryID     *int32
+	CategoryName   *string
+	OptionValues   []byte
+	WeightKg       pgtype.Numeric
+	StandardCost   pgtype.Numeric
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 // CatalogSearchVariants is contracts.ProductCatalog.SearchVariants: variants
@@ -316,6 +341,9 @@ func (q *Queries) CatalogSearchVariants(ctx context.Context, arg CatalogSearchVa
 			&i.OptionValues,
 			&i.WeightKg,
 			&i.StandardCost,
+			&i.Tracking,
+			&i.ExpiryDays,
+			&i.BestBeforeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -330,7 +358,8 @@ func (q *Queries) CatalogSearchVariants(ctx context.Context, arg CatalogSearchVa
 const catalogVariant = `-- name: CatalogVariant :one
 
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -338,21 +367,24 @@ WHERE v.id = $1
 `
 
 type CatalogVariantRow struct {
-	ID            int32
-	ProductID     int32
-	ProductName   string
-	Sku           string
-	Barcode       *string
-	Unit          string
-	ProductType   string
-	ProductStatus string
-	TaxCategoryID int32
-	Description   *string
-	CategoryID    *int32
-	CategoryName  *string
-	OptionValues  []byte
-	WeightKg      pgtype.Numeric
-	StandardCost  pgtype.Numeric
+	ID             int32
+	ProductID      int32
+	ProductName    string
+	Sku            string
+	Barcode        *string
+	Unit           string
+	ProductType    string
+	ProductStatus  string
+	TaxCategoryID  int32
+	Description    *string
+	CategoryID     *int32
+	CategoryName   *string
+	OptionValues   []byte
+	WeightKg       pgtype.Numeric
+	StandardCost   pgtype.Numeric
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 // Catalog (Task 3, contracts.ProductCatalog): the read-only cross-module
@@ -382,13 +414,17 @@ func (q *Queries) CatalogVariant(ctx context.Context, id int32) (CatalogVariantR
 		&i.OptionValues,
 		&i.WeightKg,
 		&i.StandardCost,
+		&i.Tracking,
+		&i.ExpiryDays,
+		&i.BestBeforeDays,
 	)
 	return i, err
 }
 
 const catalogVariants = `-- name: CatalogVariants :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -396,21 +432,24 @@ WHERE v.id = ANY($1::int[])
 `
 
 type CatalogVariantsRow struct {
-	ID            int32
-	ProductID     int32
-	ProductName   string
-	Sku           string
-	Barcode       *string
-	Unit          string
-	ProductType   string
-	ProductStatus string
-	TaxCategoryID int32
-	Description   *string
-	CategoryID    *int32
-	CategoryName  *string
-	OptionValues  []byte
-	WeightKg      pgtype.Numeric
-	StandardCost  pgtype.Numeric
+	ID             int32
+	ProductID      int32
+	ProductName    string
+	Sku            string
+	Barcode        *string
+	Unit           string
+	ProductType    string
+	ProductStatus  string
+	TaxCategoryID  int32
+	Description    *string
+	CategoryID     *int32
+	CategoryName   *string
+	OptionValues   []byte
+	WeightKg       pgtype.Numeric
+	StandardCost   pgtype.Numeric
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 // CatalogVariants batch-loads the same fields as CatalogVariant for a set of
@@ -440,6 +479,9 @@ func (q *Queries) CatalogVariants(ctx context.Context, ids []int32) ([]CatalogVa
 			&i.OptionValues,
 			&i.WeightKg,
 			&i.StandardCost,
+			&i.Tracking,
+			&i.ExpiryDays,
+			&i.BestBeforeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -453,7 +495,8 @@ func (q *Queries) CatalogVariants(ctx context.Context, ids []int32) ([]CatalogVa
 
 const catalogVariantsOfProduct = `-- name: CatalogVariantsOfProduct :many
 SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.barcode, v.unit, p.type AS product_type, p.status AS product_status,
-       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost
+       p.tax_category_id, p.description, p.category_id, pc.name AS category_name, v.option_values, v.weight_kg, v.standard_cost,
+       v.tracking, v.expiry_days, v.best_before_days
 FROM products.product_variants v
 JOIN products.products p ON p.id = v.product_id
 LEFT JOIN products.product_categories pc ON pc.id = p.category_id
@@ -462,21 +505,24 @@ ORDER BY v.id
 `
 
 type CatalogVariantsOfProductRow struct {
-	ID            int32
-	ProductID     int32
-	ProductName   string
-	Sku           string
-	Barcode       *string
-	Unit          string
-	ProductType   string
-	ProductStatus string
-	TaxCategoryID int32
-	Description   *string
-	CategoryID    *int32
-	CategoryName  *string
-	OptionValues  []byte
-	WeightKg      pgtype.Numeric
-	StandardCost  pgtype.Numeric
+	ID             int32
+	ProductID      int32
+	ProductName    string
+	Sku            string
+	Barcode        *string
+	Unit           string
+	ProductType    string
+	ProductStatus  string
+	TaxCategoryID  int32
+	Description    *string
+	CategoryID     *int32
+	CategoryName   *string
+	OptionValues   []byte
+	WeightKg       pgtype.Numeric
+	StandardCost   pgtype.Numeric
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 // CatalogVariantsOfProduct is contracts.ProductCatalog.VariantsOfProduct:
@@ -506,6 +552,9 @@ func (q *Queries) CatalogVariantsOfProduct(ctx context.Context, productID int32)
 			&i.OptionValues,
 			&i.WeightKg,
 			&i.StandardCost,
+			&i.Tracking,
+			&i.ExpiryDays,
+			&i.BestBeforeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -803,6 +852,19 @@ func (q *Queries) GetProductStatus(ctx context.Context, id int32) (string, error
 	return status, err
 }
 
+const getProductType = `-- name: GetProductType :one
+SELECT type FROM products.products WHERE id = $1
+`
+
+// GetProductType is a variant write's read of its product's type: only a
+// goods product's variant may be tracked (manufacturing phase 2 M49).
+func (q *Queries) GetProductType(ctx context.Context, id int32) (string, error) {
+	row := q.db.QueryRow(ctx, getProductType, id)
+	var type_ string
+	err := row.Scan(&type_)
+	return type_, err
+}
+
 const getTaxCategoryRef = `-- name: GetTaxCategoryRef :one
 SELECT id, name, kind, rate FROM products.tax_categories WHERE id = $1
 `
@@ -831,7 +893,7 @@ func (q *Queries) GetTaxCategoryRef(ctx context.Context, id int32) (GetTaxCatego
 
 const getVariantByProductAndID = `-- name: GetVariantByProductAndID :one
 SELECT id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-       option_values, created_at, updated_at
+       option_values, created_at, updated_at, tracking, expiry_days, best_before_days
 FROM products.product_variants
 WHERE id = $1 AND product_id = $2
 `
@@ -861,6 +923,9 @@ func (q *Queries) GetVariantByProductAndID(ctx context.Context, arg GetVariantBy
 		&i.OptionValues,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tracking,
+		&i.ExpiryDays,
+		&i.BestBeforeDays,
 	)
 	return i, err
 }
@@ -976,27 +1041,30 @@ func (q *Queries) InsertProductPrice(ctx context.Context, arg InsertProductPrice
 const insertProductVariant = `-- name: InsertProductVariant :one
 INSERT INTO products.product_variants (
     product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm, option_values,
-    created_at, updated_at
+    created_at, updated_at, tracking, expiry_days, best_before_days
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-    $11::timestamptz, $11::timestamptz
+    $11::timestamptz, $11::timestamptz, $12, $13, $14
 )
 RETURNING id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-          option_values, created_at, updated_at
+          option_values, created_at, updated_at, tracking, expiry_days, best_before_days
 `
 
 type InsertProductVariantParams struct {
-	ProductID    int32
-	Sku          string
-	Barcode      *string
-	Unit         string
-	StandardCost pgtype.Numeric
-	WeightKg     pgtype.Numeric
-	LengthCm     pgtype.Numeric
-	WidthCm      pgtype.Numeric
-	HeightCm     pgtype.Numeric
-	OptionValues []byte
-	Now          time.Time
+	ProductID      int32
+	Sku            string
+	Barcode        *string
+	Unit           string
+	StandardCost   pgtype.Numeric
+	WeightKg       pgtype.Numeric
+	LengthCm       pgtype.Numeric
+	WidthCm        pgtype.Numeric
+	HeightCm       pgtype.Numeric
+	OptionValues   []byte
+	Now            time.Time
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
 }
 
 // InsertProductVariant creates a variant row scoped to product_id. Used both
@@ -1015,6 +1083,9 @@ func (q *Queries) InsertProductVariant(ctx context.Context, arg InsertProductVar
 		arg.HeightCm,
 		arg.OptionValues,
 		arg.Now,
+		arg.Tracking,
+		arg.ExpiryDays,
+		arg.BestBeforeDays,
 	)
 	var i ProductsProductVariant
 	err := row.Scan(
@@ -1031,6 +1102,9 @@ func (q *Queries) InsertProductVariant(ctx context.Context, arg InsertProductVar
 		&i.OptionValues,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tracking,
+		&i.ExpiryDays,
+		&i.BestBeforeDays,
 	)
 	return i, err
 }
@@ -1574,7 +1648,7 @@ func (q *Queries) ListTaxCategoryRefs(ctx context.Context, ids []int32) ([]ListT
 
 const listVariantsByProduct = `-- name: ListVariantsByProduct :many
 SELECT id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-       option_values, created_at, updated_at
+       option_values, created_at, updated_at, tracking, expiry_days, best_before_days
 FROM products.product_variants
 WHERE product_id = $1
 ORDER BY id
@@ -1605,6 +1679,9 @@ func (q *Queries) ListVariantsByProduct(ctx context.Context, productID int32) ([
 			&i.OptionValues,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Tracking,
+			&i.ExpiryDays,
+			&i.BestBeforeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -1618,7 +1695,7 @@ func (q *Queries) ListVariantsByProduct(ctx context.Context, productID int32) ([
 
 const listVariantsByProductIDs = `-- name: ListVariantsByProductIDs :many
 SELECT id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-       option_values, created_at, updated_at
+       option_values, created_at, updated_at, tracking, expiry_days, best_before_days
 FROM products.product_variants
 WHERE product_id = ANY($1::int[])
 ORDER BY product_id, id
@@ -1649,6 +1726,9 @@ func (q *Queries) ListVariantsByProductIDs(ctx context.Context, productIds []int
 			&i.OptionValues,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Tracking,
+			&i.ExpiryDays,
+			&i.BestBeforeDays,
 		); err != nil {
 			return nil, err
 		}
@@ -1926,6 +2006,19 @@ func (q *Queries) TaxCategoryNameExistsExcluding(ctx context.Context, arg TaxCat
 	return exists, err
 }
 
+const untrackVariants = `-- name: UntrackVariants :exec
+UPDATE products.product_variants SET tracking = 'none'
+WHERE id = ANY($1::int[]) AND tracking <> 'none'
+`
+
+// UntrackVariants sets the tracking of the given variants to none: a
+// product's change to Service, in the same transaction, after every holder has
+// said the variants hold no stock (manufacturing phase 2 M49).
+func (q *Queries) UntrackVariants(ctx context.Context, ids []int32) error {
+	_, err := q.db.Exec(ctx, untrackVariants, ids)
+	return err
+}
+
 const updateCategory = `-- name: UpdateCategory :one
 UPDATE products.product_categories
 SET name = $1, parent_id = $2
@@ -2050,24 +2143,30 @@ SET sku = $1,
     width_cm = $7,
     height_cm = $8,
     option_values = $9,
-    updated_at = $10::timestamptz
-WHERE id = $11
+    tracking = $10,
+    expiry_days = $11,
+    best_before_days = $12,
+    updated_at = $13::timestamptz
+WHERE id = $14
 RETURNING id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_cm, width_cm, height_cm,
-          option_values, created_at, updated_at
+          option_values, created_at, updated_at, tracking, expiry_days, best_before_days
 `
 
 type UpdateProductVariantParams struct {
-	Sku          string
-	Barcode      *string
-	Unit         string
-	StandardCost pgtype.Numeric
-	WeightKg     pgtype.Numeric
-	LengthCm     pgtype.Numeric
-	WidthCm      pgtype.Numeric
-	HeightCm     pgtype.Numeric
-	OptionValues []byte
-	UpdatedAt    time.Time
-	ID           int32
+	Sku            string
+	Barcode        *string
+	Unit           string
+	StandardCost   pgtype.Numeric
+	WeightKg       pgtype.Numeric
+	LengthCm       pgtype.Numeric
+	WidthCm        pgtype.Numeric
+	HeightCm       pgtype.Numeric
+	OptionValues   []byte
+	Tracking       string
+	ExpiryDays     *int32
+	BestBeforeDays *int32
+	UpdatedAt      time.Time
+	ID             int32
 }
 
 // UpdateProductVariant applies PUT .../variants/{variantId}'s validated
@@ -2083,6 +2182,9 @@ func (q *Queries) UpdateProductVariant(ctx context.Context, arg UpdateProductVar
 		arg.WidthCm,
 		arg.HeightCm,
 		arg.OptionValues,
+		arg.Tracking,
+		arg.ExpiryDays,
+		arg.BestBeforeDays,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -2101,6 +2203,9 @@ func (q *Queries) UpdateProductVariant(ctx context.Context, arg UpdateProductVar
 		&i.OptionValues,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Tracking,
+		&i.ExpiryDays,
+		&i.BestBeforeDays,
 	)
 	return i, err
 }
@@ -2230,4 +2335,22 @@ func (q *Queries) VariantSkuExistsExcluding(ctx context.Context, arg VariantSkuE
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const variantTracking = `-- name: VariantTracking :one
+SELECT tracking, unit FROM products.product_variants WHERE id = $1
+`
+
+type VariantTrackingRow struct {
+	Tracking string
+	Unit     string
+}
+
+// VariantTracking is a variant's stored tracking mode and unit, read by its
+// update after the row is locked FOR UPDATE (manufacturing phase 2 M51).
+func (q *Queries) VariantTracking(ctx context.Context, id int32) (VariantTrackingRow, error) {
+	row := q.db.QueryRow(ctx, variantTracking, id)
+	var i VariantTrackingRow
+	err := row.Scan(&i.Tracking, &i.Unit)
+	return i, err
 }

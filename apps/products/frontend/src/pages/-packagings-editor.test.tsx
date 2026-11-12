@@ -22,6 +22,7 @@ const variant = (packagings: PackagingResponse[]): VariantResponse => ({
   id: 5,
   sku: "SCREW-1",
   unit: "pcs",
+  tracking: "none",
   optionValues: {},
   effectivePrices: [],
   packagings,

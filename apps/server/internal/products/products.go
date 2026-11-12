@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -325,8 +327,16 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 	}
 
 	parsed, errs := validateProductRequest(body, true, true)
+	for i, v := range parsed.Variants {
+		trackingRequiresGoods(fmt.Sprintf("variants[%d].", i), v.trackingOr(contracts.TrackingNone), parsed.Type, errs)
+	}
 	if len(errs) > 0 {
 		return gen.PostProducts400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid product", errs)), nil
+	}
+	for _, v := range parsed.Variants {
+		if p := trackingUnavailable(v.trackingOr(contracts.TrackingNone)); p != nil {
+			return gen.PostProducts409ApplicationProblemPlusJSONResponse(*p), nil
+		}
 	}
 
 	q := store.New(s.deps.Pool)
@@ -451,6 +461,7 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 				StandardCost: nums.StandardCost, WeightKg: nums.WeightKg,
 				LengthCm: nums.LengthCm, WidthCm: nums.WidthCm, HeightCm: nums.HeightCm,
 				OptionValues: marshalOptionValues(v.OptionValues), Now: now,
+				Tracking: v.trackingOr(contracts.TrackingNone), ExpiryDays: v.ExpiryDays, BestBeforeDays: v.BestBeforeDays,
 			})
 			if err != nil {
 				return err
@@ -643,6 +654,13 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 					refused = productHasStock(v.Sku, hold, v.Unit)
 					return nil
 				}
+			}
+			// Every variant held nothing, so a service's variants are
+			// untracked in the same transaction (manufacturing phase 2 M49).
+			// Only the variants locked above: one added meanwhile was judged
+			// against the product's type when it was written.
+			if err := txq.UntrackVariants(ctx, slices.Collect(maps.Keys(asked))); err != nil {
+				return fmt.Errorf("untrack variants: %w", err)
 			}
 			updated, err = txq.UpdateProduct(ctx, params)
 			if err != nil {
