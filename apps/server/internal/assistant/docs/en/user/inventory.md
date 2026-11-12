@@ -555,9 +555,9 @@ low-stock list.
 
 **Low stock** in the sidebar — *Items at or below their reorder point at each site, and
 what would fill them up.* — lists every item that has run low at an active site. An item
-is **low** at a site when what is **available** there — on hand over all the site's
-locations, less what orders have [reserved](#reserved-and-available) — plus what is
-**incoming** on transfers to the site is at or below its reorder point. Stock already on
+is **low** at a site when what is **available** there — the on hand over all the site's
+locations that may be used, less what orders have
+[reserved](#reserved-and-available) — plus what is **incoming** on transfers to the site is at or below its reorder point. Stock already on
 its way counts: once a transfer bringing enough is sent, the item leaves the list.
 
 Each row shows the **Item**, the **Site** (when the list is not filtered to one),
@@ -823,7 +823,9 @@ Stock card and on an item's stock page you then see *Reserved … · available �
 
 For an item kept in **lots**, available counts only stock that may be used: a lot that is
 on hold — in quarantine or blocked — or past its expiry date stays on hand but is left out
-of available, and so of what a new order can reserve and of the low-stock list. A hold
+of available — on the Stock card, on an item's stock page and in the transfer form's
+columns alike — and so of what a new order can reserve and of the low-stock list. An item
+marked low on its stock page is on the low-stock list. A hold
 put on stock that is already reserved can make available negative; the reservations stay.
 Lot tracking is switched on per item once deliveries and productions can record lots.
 
@@ -841,8 +843,8 @@ Only sites that **fulfil orders** take reservations ([set up a site](#set-up-a-s
 
 **Home** has an **Inventory** card — *Keep track of what lies where* — for everyone with
 either view; press it to open Inventory. With both views the row of figures has an
-Inventory card: **Stock lines**, the number of item-and-location pairs holding stock,
-with this week's receipts beside it (*3 receipts this week*), the week starting on
+Inventory card: **Stock lines**, the number of item-and-location pairs holding stock —
+an item lying in several lots on one location counts once — with this week's receipts beside it (*3 receipts this week*), the week starting on
 Monday.
 
 With **Count stock** and both views, **Needs attention** shows **A count has been open
