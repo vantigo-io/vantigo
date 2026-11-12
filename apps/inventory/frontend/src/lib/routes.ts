@@ -98,6 +98,15 @@ export const lotLinkOptions = (lotId: number) => ({ to: LOT_ROUTE_PATH, params: 
 /** The lots list filtered, as a link. */
 export const lotsLinkOptions = (search: Record<string, string | number> = {}) => ({ to: LOTS_ROUTE_PATH, search });
 
+// Manufacturing phase 2, L2: the lots expiring soon (M72).
+export const EXPIRING_ROUTE_PATH = "/inventory/expiring";
+
+/** The expiring list filtered, as a link. */
+export const expiringLinkOptions = (search: { days?: number; siteId?: number } = {}) => ({
+  to: EXPIRING_ROUTE_PATH,
+  search,
+});
+
 // Manufacturing, delivery 0: a production's source on the movement page (M5).
 
 /**

@@ -41,7 +41,9 @@ const readBytes = (file: File): Promise<ArrayBuffer> =>
  * top. The opening-balance import (I32): a site and a CSV of `location` (full
  * code), `sku` and `quantity`. A dry run answers each row's outcome; Commit,
  * offered only when every row is ok, posts one adjustment, reason Opening
- * balance, of every row — the same file twice is one movement. A template is
+ * balance, of every row — the same file twice is one movement. The file may
+ * carry a tracked item's lot and its dates (manufacturing phase 2 M71), which
+ * the preview shows. A template is
  * offered to start from, for either kind. It needs `inventory:stock-adjust`
  * and both views.
  */
@@ -147,6 +149,8 @@ const OpeningBalancesImport = () => {
 
   const rows = checked?.result.rows ?? [];
   const failing = rows.filter((row) => row.outcome !== "ok").length;
+  // The file names lots: the preview shows them.
+  const withLots = rows.some((row) => row.lot !== undefined && row.lot !== "");
 
   return (
     <>
@@ -235,6 +239,7 @@ const OpeningBalancesImport = () => {
                         <Table.Th>{t("importRow")}</Table.Th>
                         <Table.Th>{t("columnLocation")}</Table.Th>
                         <Table.Th>{t("columnSku")}</Table.Th>
+                        {withLots && <Table.Th>{t("columnLot")}</Table.Th>}
                         <Table.Th ta="right">{t("columnQuantity")}</Table.Th>
                         <Table.Th>{t("importOutcome")}</Table.Th>
                       </Table.Tr>
@@ -249,6 +254,13 @@ const OpeningBalancesImport = () => {
                             </Text>
                           </Table.Td>
                           <Table.Td>{row.sku}</Table.Td>
+                          {withLots && (
+                            <Table.Td>
+                              <Text size="sm" ff="monospace">
+                                {row.lot ?? ""}
+                              </Text>
+                            </Table.Td>
+                          )}
                           <Table.Td ta="right">{row.quantity}</Table.Td>
                           <Table.Td>
                             <Badge variant="light" color={row.outcome === "ok" ? "teal" : "red"}>

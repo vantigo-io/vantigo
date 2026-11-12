@@ -6,13 +6,13 @@ import { useEffect, useRef } from "react";
 import { fefoOrder, type InventoryBalanceLot, usableLot } from "../api/lots";
 import { variantStockQueryOptions } from "../api/stock";
 import { useInventoryFormat } from "../lib/format";
-import { type EditorLine, type LineEditorKind, takesSerials } from "../lib/lines";
+import { type EditorKind, type EditorLine, takesSerials } from "../lib/lines";
 
 /** At most this many serials expand from one receipt line (M57). */
 const MAX_SERIALS = 500;
 
 export interface LotFieldProps {
-  kind: LineEditorKind;
+  kind: EditorKind;
   /** The row's number, for the labels. */
   n: number;
   line: EditorLine;
@@ -30,7 +30,9 @@ export interface LotFieldProps {
  * every one of them, per location. Once a move's or an adjustment's location
  * is chosen the field proposes its first usable lot there in FEFO order, as
  * the server's own proposal would; a lot the row names that does not lie on a
- * newly chosen location gives way to that location's proposal.
+ * newly chosen location gives way to that location's proposal. A transfer's
+ * draft may name one of the variant's lots at its from site, or leave it to
+ * the send, which proposes one at the source location (M70).
  */
 export const LotField = ({ kind, n, line, siteId, onChange }: LotFieldProps) => {
   const { t, quantity, day } = useInventoryFormat();
@@ -43,21 +45,31 @@ export const LotField = ({ kind, n, line, siteId, onChange }: LotFieldProps) => 
   // A receipt offers the lots anywhere at the site, summed; a move or an adjustment the lots on its location.
   const here = new Map<number, InventoryBalanceLot>();
   for (const row of site?.rows ?? []) {
-    if (kind !== "receipt" && row.location.id !== line.locationId) continue;
+    if (kind !== "receipt" && kind !== "transfer" && row.location.id !== line.locationId) continue;
     for (const lot of row.lots ?? []) {
       const seen = here.get(lot.lotId);
       here.set(lot.lotId, seen ? { ...seen, onHand: seen.onHand + lot.onHand } : lot);
     }
   }
   const ordered = fefoOrder([...here.values()], (lot) => lot.lotId);
-  const proposal = kind === "receipt" || line.locationId === null ? undefined : (ordered.find(usableLot) ?? ordered[0]);
+  const proposal =
+    kind === "receipt" || kind === "transfer" || line.locationId === null
+      ? undefined
+      : (ordered.find(usableLot) ?? ordered[0]);
   const lotHere = line.lotId !== undefined && here.has(line.lotId);
   // The proposal fills a row once per location chosen, when its lots are read; a row the person empties stays
   // empty until the location changes, and a new number typed on an adjustment is kept.
   const proposedAt = useRef<number | null>(null);
   const ready = stock.data !== undefined;
   useEffect(() => {
-    if (kind === "receipt" || !ready || line.locationId === null || proposedAt.current === line.locationId) return;
+    if (
+      kind === "receipt" ||
+      kind === "transfer" ||
+      !ready ||
+      line.locationId === null ||
+      proposedAt.current === line.locationId
+    )
+      return;
     proposedAt.current = line.locationId;
     if (lotHere || (line.lotId === undefined && line.lotNumber !== "")) return;
     if (proposal) onChange({ lotId: proposal.lotId, lotNumber: proposal.number });
@@ -139,13 +151,14 @@ export const LotField = ({ kind, n, line, siteId, onChange }: LotFieldProps) => 
       </Group>
     );
 
-  if (kind === "move")
+  if (kind === "move" || kind === "transfer")
     return (
       <Select
         size="xs"
         searchable
+        clearable={kind === "transfer"}
         aria-label={t("lotOfLine", { n })}
-        placeholder={t("lotPickPlaceholder")}
+        placeholder={kind === "transfer" ? t("lotAtSendPlaceholder") : t("lotPickPlaceholder")}
         data={ordered.map((lot) => ({ value: String(lot.lotId), label: label(lot) }))}
         value={line.lotId === undefined ? null : String(line.lotId)}
         onChange={(value) => {

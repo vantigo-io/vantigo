@@ -111,7 +111,7 @@ export interface paths {
         put?: never;
         /**
          * Import opening balances
-         * @description Reads a CSV of location (full code), sku and quantity for one site, at most 5000 rows (I32). A dry run answers each row's outcome; a commit posts one adjustment movement, reason opening_balance, of every row — or, when any row fails, posts nothing and answers the rows with ok false. The same file posted twice to the same site is one movement.
+         * @description Reads a CSV of location (full code), sku and quantity for one site, at most 5000 rows (I32), with the optional columns lot, supplier_lot, production_date, best_before and expiry (manufacturing phase 2 M71; dates as YYYY-MM-DD or DD.MM.YYYY). A tracked variant's row names its lot (lot_required) and an untracked one's none (lot_not_allowed); a serial's row is of quantity 1 (serial_quantity); the lots are found or made by number as a receipt's are, with the import as their origin. A dry run answers each row's outcome; a commit posts one adjustment movement, reason opening_balance, of every row — or, when any row fails, posts nothing and answers the rows with ok false. The same file posted twice to the same site is one movement.
          */
         post: operations["importInventoryOpeningBalances"];
         delete?: never;
@@ -280,6 +280,66 @@ export interface paths {
          * @description The lots (manufacturing phase 2 M60), by variant then number, by cursor. q matches the lot number, the supplier lot or the SKU, ignoring case; holdCause a lot with an active hold of that cause; expiresBefore an expiry before that day. withStock (default true) lists only lots holding more than 0 — at siteId when it is given, where onHand is counted too.
          */
         get: operations["listInventoryLots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/lots/expiring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List lots expiring soon
+         * @description The lots expiring soon (manufacturing phase 2 M72): every lot holding stock — at siteId when it is given — whose expiry falls within days of today in the workspace zone, or has passed, by expiry then number, at most 1000.
+         */
+        get: operations["listInventoryExpiringLots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/lots/expiring.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export lots expiring soon as CSV
+         * @description The expiring list as CSV (M72), with its filter: lot, sku, product, supplier_lot, expiry, best_before, days_left, status, on_hand — every row, unpaged.
+         */
+        get: operations["exportInventoryExpiringLots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/lots/labels.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Print lot labels
+         * @description A PDF of lot labels on Avery L7160 or L7163 sheets (manufacturing phase 2 M73), in the order the ids are given: each carries the lot's LOT token — LOT and its id, which the lookup reads back — as a Code 128 barcode across its top, the lot number large, the SKU and product name, and the expiry, else the best-before date. A serial is a lot of its own, so serials print one label each. These are internal labels; at most 1000 (labels_too_many).
+         */
+        get: operations["printInventoryLotLabels"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1072,7 +1132,7 @@ export interface components {
             /** Format: int64 */
             siteId: number;
         };
-        /** @description One variant on one location in a count: what was expected when it opened, what the balance is now, and what was counted (I17–I19). */
+        /** @description One balance in a count — a variant on one location, in one lot for a tracked variant (manufacturing phase 2 M69): what was expected when it opened, what the balance is now, and what was counted (I17–I19). */
         InventoryCountLine: {
             /** @description The line was added while counting: nothing was expected there. */
             added: boolean;
@@ -1098,11 +1158,12 @@ export interface components {
             /** Format: int64 */
             id: number;
             location: components["schemas"]["InventoryLocationRef"];
+            lot?: components["schemas"]["InventoryLotRef"];
             /** @description The balance changed since the count opened; posting needs acceptMoved (I19). */
             moved: boolean;
             variant: components["schemas"]["InventoryVariantRef"];
         };
-        /** @description A counted quantity of a variant on a location in the count's scope (I18): a line that exists is changed, a pair with no line is added. Exactly one of quantity and entered is given. 0 is a valid count. */
+        /** @description A counted quantity of a variant on a location in the count's scope (I18): a line that exists is changed, a balance with no line is added. Exactly one of quantity and entered is given. 0 is a valid count. A tracked variant's line names its lot (manufacturing phase 2 M69): lotId for one the variant has, or lot to find or make one by number as a receipt does (lot_required, lot_not_allowed, lot_unknown); a serial is counted 0 or 1 (serial_quantity). */
         InventoryCountLineInput: {
             /**
              * Format: double
@@ -1112,6 +1173,9 @@ export interface components {
             entered?: components["schemas"]["InventoryEntered"];
             /** Format: int64 */
             locationId: number;
+            lot?: components["schemas"]["InventoryNewLot"];
+            /** Format: int64 */
+            lotId?: number;
             /** Format: int32 */
             variantId: number;
         };
@@ -1169,7 +1233,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        InventoryImportOutcome: "ok" | "location_not_found" | "variant_not_found" | "variant_not_stockable" | "quantity_invalid";
+        InventoryImportOutcome: "ok" | "location_not_found" | "variant_not_found" | "variant_not_stockable" | "quantity_invalid" | "lot_required" | "lot_not_allowed" | "lot_invalid" | "serial_quantity";
         /** @description The import's answer: every row's outcome, and on a committed import the one movement it posted. */
         InventoryImportResult: {
             /**
@@ -1186,6 +1250,8 @@ export interface components {
             detail?: string;
             /** @description The full code as written. */
             location: string;
+            /** @description The lot number as written, absent when the file has no lot column (manufacturing phase 2 M71). */
+            lot?: string;
             outcome: components["schemas"]["InventoryImportOutcome"];
             /** @description As written. */
             quantity: string;
@@ -1268,6 +1334,22 @@ export interface components {
             /** Format: date-time */
             uploadedAt: string;
             uploadedBy?: components["schemas"]["InventoryActor"];
+        };
+        /** @description The lots expiring soon (manufacturing phase 2 M72): lots holding stock whose expiry falls within the days asked for or has passed, by expiry, at most 1000. */
+        InventoryLotExpiringPage: {
+            lots: components["schemas"]["InventoryLotSummary"][];
+            /** @description More lots match than the 1000 answered. */
+            more: boolean;
+            /**
+             * Format: date
+             * @description Today in the workspace zone, the day the days are counted from.
+             */
+            today: string;
+            /**
+             * Format: date
+             * @description The last expiry day the list reaches.
+             */
+            until: string;
         };
         /** @description One hold on a lot (M64), owned by the document that put it: the lot page's own (inventory/lot/<id>), a receipt's inspection (inventory/movement/<id>), or another module's document, released only there. */
         InventoryLotHold: {
@@ -2019,7 +2101,7 @@ export interface components {
              */
             stockLines: number;
         };
-        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date; lowStock, one per active site with items at or below their reorder point, to a caller with both views, entityId the site's id, count the items and occurredAt the time of the read (I62). */
+        /** @description One thing the dashboard wants a human to look at, in the shape every module's /stats/attention shares: countOpenLong, a count still counting more than 7 days after it opened, to a caller holding inventory:counts-manage with both views, entityId the count's id; transferOverdue, a transfer sent or partly received past its expected arrival, or without one sent more than 7 days ago, to a caller holding inventory:transfers-manage with both views, entityId the transfer's id and occurredAt its expected arrival or sent date; lowStock, one per active site with items at or below their reorder point, to a caller with both views, entityId the site's id, count the items and occurredAt the time of the read (I62); lotsExpiring, the lots with stock whose expiry falls within 14 days, and lotsExpired, the lots with stock whose expiry has passed, each one item to a caller with both views, entityId "lots", count the lots and occurredAt the time of the read (manufacturing phase 2 M72). */
         InventoryStatsAttentionItem: {
             /**
              * Format: int32
@@ -2032,7 +2114,7 @@ export interface components {
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "countOpenLong" | "transferOverdue" | "lowStock";
+            type: "countOpenLong" | "transferOverdue" | "lowStock" | "lotsExpiring" | "lotsExpired";
         };
         /** @enum {string} */
         InventoryStatus: "active" | "archived";
@@ -2200,7 +2282,7 @@ export interface components {
             /** Format: int64 */
             toSiteId: number;
         };
-        /** @description A transfer line (I36, I46): what was asked for and the running totals. inTransit is sent − received − missing − returned, 0 on every line of a received or cancelled transfer. */
+        /** @description A transfer line (I36, I46): what was asked for and the running totals. inTransit is sent − received − missing − returned, 0 on every line of a received or cancelled transfer. A line carries one lot (manufacturing phase 2 M70), and its in transit is of that lot. */
         InventoryTransferLine: {
             entered?: components["schemas"]["InventoryEnteredSnapshot"];
             fromLocation?: components["schemas"]["InventoryLocationRef"];
@@ -2210,6 +2292,7 @@ export interface components {
             inTransit: number;
             /** Format: int32 */
             lineNo: number;
+            lot?: components["schemas"]["InventoryLotRef"];
             /** Format: double */
             missing: number;
             /**
@@ -2226,9 +2309,11 @@ export interface components {
             suggestion?: components["schemas"]["InventoryTransferSuggestion"];
             variant: components["schemas"]["InventoryVariantRef"];
         };
-        /** @description A draft line: a variant and a quantity of it, in its own unit or entered in packagings (I25). Exactly one of quantity and entered is given. A variant may appear on several lines. */
+        /** @description A draft line: a variant and a quantity of it, in its own unit or entered in packagings (I25). Exactly one of quantity and entered is given. A variant may appear on several lines — which is how two lots of it travel: a line names at most one lot (manufacturing phase 2 M70), one of the variant's (lot_unknown), and only for a tracked variant (lot_not_allowed). */
         InventoryTransferLineInput: {
             entered?: components["schemas"]["InventoryEntered"];
+            /** Format: int64 */
+            lotId?: number;
             /**
              * Format: double
              * @description A quantity in the variant's own unit: more than 0, at most 99,999,999,999.999, at most three decimals (I11).
@@ -2282,12 +2367,14 @@ export interface components {
             lines: components["schemas"]["InventoryTransferSendLine"][];
             receive?: components["schemas"]["InventoryTransferSendReceive"];
         };
-        /** @description Where one line is sent from: a location at the from site. A line of the transfer without one is from_location_required. */
+        /** @description Where one line is sent from: a location at the from site. A line of the transfer without one is from_location_required. lotId names the lot sent, replacing the draft's; a tracked variant's line sent with none is lot_required (manufacturing phase 2 M70). */
         InventoryTransferSendLine: {
             /** Format: int64 */
             fromLocationId?: number;
             /** Format: int64 */
             lineId: number;
+            /** Format: int64 */
+            lotId?: number;
         };
         /** @description Send and receive (I43): a destination for every line, or receive_incomplete; everything sent is received in the same transaction. */
         InventoryTransferSendReceive: {
@@ -2842,7 +2929,7 @@ export interface operations {
                     "application/json": components["schemas"]["InventoryImportResult"];
                 };
             };
-            /** @description Bad Request — a file that does not read, a header other than location, sku, quantity, more than 5000 rows, or an unknown site. */
+            /** @description Bad Request — a file that does not read, a header other than location, sku, quantity and the optional lot columns, more than 5000 rows, or an unknown site; on a commit, a lot the engine refuses (lot_dates_differ, serial_quantity), its row named by index. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3489,6 +3576,183 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    listInventoryExpiringLots: {
+        parameters: {
+            query?: {
+                /** @description Expiring within this many days of today (default 30); lots already expired are always listed. */
+                days?: number;
+                /** @description Only stock at this site; onHand is counted here. */
+                siteId?: number;
+                status?: components["schemas"]["InventoryLotStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryLotExpiringPage"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    exportInventoryExpiringLots: {
+        parameters: {
+            query?: {
+                /** @description Expiring within this many days of today (default 30); lots already expired are always listed. */
+                days?: number;
+                /** @description Only stock at this site; onHand is counted here. */
+                siteId?: number;
+                status?: components["schemas"]["InventoryLotStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — served as an attachment named expiring-<today>.csv (YYYY-MM-DD), and never cached. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Products is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+        };
+    };
+    printInventoryLotLabels: {
+        parameters: {
+            query: {
+                /** @description Comma-separated lot ids, at most 1000. */
+                ids: number[];
+                layout?: components["schemas"]["InventoryLabelLayout"];
+                /** @description Labels per lot (default 1); copies × lots is at most 1000. */
+                copies?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Bad Request — field errors, a lot that does not exist, or labels_too_many. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InventoryProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
@@ -4142,6 +4406,8 @@ export interface operations {
                 locationId?: number;
                 /** @description Only those with a line of this variant. */
                 variantId?: number;
+                /** @description Only those with a line of this lot (manufacturing phase 2 M74). */
+                lotId?: number;
                 /** @description Only this kind. */
                 kind?: components["schemas"]["InventoryMovementKind"];
                 /** @description Posted on or after this business day. */

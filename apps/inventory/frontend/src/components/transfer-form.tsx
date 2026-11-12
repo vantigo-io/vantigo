@@ -268,6 +268,7 @@ export const TransferForm = ({
       <LineEditor
         kind="transfer"
         siteId={undefined}
+        lotSiteId={fromSiteId}
         lines={lines}
         onChange={setLines}
         defaultLocationId={null}

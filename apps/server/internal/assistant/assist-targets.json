@@ -110,6 +110,11 @@
     "description": "The button on the Counts page that opens a stock count of a site, or of a location and everything below it."
   },
   {
+    "key": "inventory.expiring.list",
+    "route": "/inventory/expiring",
+    "description": "The list on the Expiring page: every lot with stock whose expiry falls within the days chosen (30 unless changed) or has already passed, by expiry, with the days left, the item, the status and what lies of it, filtered by site and status. Export the list as CSV or print the lots' labels."
+  },
+  {
     "key": "inventory.home.lookup",
     "route": "/inventory",
     "description": "The field at the top of the Inventory home page: scan or type a location code, a label, a SKU or a barcode and press Enter to open it."

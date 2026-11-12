@@ -23,6 +23,7 @@ import {
   IconDownload,
   IconLock,
   IconPencil,
+  IconPrinter,
   IconShieldPause,
   IconTrash,
   IconUpload,
@@ -52,9 +53,11 @@ import {
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { INVENTORY_QUERY_KEY } from "../api/request";
 import { LotStatusBadges } from "../components/lot-status";
+import { PrintLotLabelsDialog } from "../components/print-lot-labels-dialog";
 import { canManageLots } from "../lib/capabilities";
 import { movementKindColor, refusalMessage, useInventoryFormat } from "../lib/format";
 import {
+  countLinkOptions,
   INVENTORY_HOME_ROUTE_PATH,
   LOTS_ROUTE_PATH,
   locationLinkOptions,
@@ -109,6 +112,19 @@ const SourceLink = ({
     return (
       <Anchor size="sm" renderRoot={(props) => <Link {...movementLinkOptions(Number(source.id))} {...props} />}>
         {t("movementById", { id: source.id })}
+      </Anchor>
+    );
+  // A lot the opening-balance import made names the import's movement; one a count line made, the count (M69, M71).
+  if (source.module === "inventory" && source.kind === "import" && /^\d+$/.test(source.id))
+    return (
+      <Anchor size="sm" renderRoot={(props) => <Link {...movementLinkOptions(Number(source.id))} {...props} />}>
+        {t("originImport", { id: source.id })}
+      </Anchor>
+    );
+  if (source.module === "inventory" && source.kind === "count" && /^\d+$/.test(source.id))
+    return (
+      <Anchor size="sm" renderRoot={(props) => <Link {...countLinkOptions(Number(source.id))} {...props} />}>
+        {t("countNumber", { id: source.id })}
       </Anchor>
     );
   return <>{`${moduleLabel(source.module)} · ${source.kind} ${source.id}`}</>;
@@ -545,9 +561,18 @@ export const LotPage = ({ moduleLabel = ownKey }: { moduleLabel?: ModuleLabel })
   const data = lot.data;
   const manage = canManageLots(meta.data);
   const [editing, setEditing] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   return (
     <Stack gap="lg">
+      {data && (
+        <PrintLotLabelsDialog
+          opened={printing}
+          onClose={() => setPrinting(false)}
+          lotIds={[data.id]}
+          name={data.number}
+        />
+      )}
       <PageHeader
         breadcrumbs={[
           { label: t("inventory"), to: INVENTORY_HOME_ROUTE_PATH },
@@ -567,11 +592,17 @@ export const LotPage = ({ moduleLabel = ownKey }: { moduleLabel?: ModuleLabel })
         }
         description={data ? `${data.variant.sku} · ${data.variant.productName}` : undefined}
         actions={
-          data &&
-          manage && (
-            <Button variant="light" leftSection={<IconPencil size={16} />} onClick={() => setEditing(true)}>
-              {t("editLot")}
-            </Button>
+          data && (
+            <Group gap="xs">
+              <Button variant="default" leftSection={<IconPrinter size={16} />} onClick={() => setPrinting(true)}>
+                {t("printLotLabels")}
+              </Button>
+              {manage && (
+                <Button variant="light" leftSection={<IconPencil size={16} />} onClick={() => setEditing(true)}>
+                  {t("editLot")}
+                </Button>
+              )}
+            </Group>
           )
         }
       />

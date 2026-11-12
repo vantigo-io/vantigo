@@ -270,13 +270,18 @@ export const transferLinesBody = (lines: readonly EditorLine[]): InventoryTransf
   lines.map((line) => ({
     variantId: line.variant?.id ?? 0,
     ...amountOf("transfer", line),
+    // A tracked line may name its lot on the draft (M70); else the send proposes one.
+    ...(isTracked(line.variant) && line.lotId !== undefined ? { lotId: line.lotId } : {}),
     ...(line.suggestion ? { suggestion: line.suggestion } : {}),
   }));
 
 /** A saved draft's lines as the editor's rows, packagings as they were entered (I25). */
 export const editorLinesOf = (lines: readonly InventoryTransferLine[]): EditorLine[] =>
   lines.map((line) => {
-    const row = newEditorLine("transfer", null, line.variant);
+    const row = {
+      ...newEditorLine("transfer", null, line.variant),
+      ...(line.lot ? { lotId: line.lot.id, lotNumber: line.lot.number } : {}),
+    };
     if (!line.entered) return { ...row, quantity: line.quantity, suggestion: line.suggestion };
     return {
       ...row,

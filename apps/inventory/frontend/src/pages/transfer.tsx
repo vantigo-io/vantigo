@@ -23,6 +23,7 @@ import { canTransfer, canViewTransfers } from "../lib/capabilities";
 import { useInventoryFormat } from "../lib/format";
 import {
   INVENTORY_HOME_ROUTE_PATH,
+  lotLinkOptions,
   movementLinkOptions,
   receiveTransferLinkOptions,
   siteLinkOptions,
@@ -276,6 +277,7 @@ export const TransferPage = () => {
                   <Table.Tr>
                     <Table.Th>{t("columnSku")}</Table.Th>
                     <Table.Th>{t("columnProduct")}</Table.Th>
+                    <Table.Th>{t("columnLot")}</Table.Th>
                     <Table.Th>{t("columnFrom")}</Table.Th>
                     <Table.Th ta="right">{data.status === "draft" ? t("columnQuantity") : t("columnSent")}</Table.Th>
                     <Table.Th ta="right">{t("columnReceived")}</Table.Th>
@@ -300,6 +302,24 @@ export const TransferPage = () => {
                         )}
                       </Table.Td>
                       <Table.Td>{line.variant.productName}</Table.Td>
+                      <Table.Td>
+                        {line.lot ? (
+                          <Anchor
+                            size="sm"
+                            ff="monospace"
+                            renderRoot={(props) => <Link {...lotLinkOptions(line.lot?.id ?? 0)} {...props} />}
+                          >
+                            {line.lot.number}
+                          </Anchor>
+                        ) : (
+                          "—"
+                        )}
+                        {line.lot?.expiry && (
+                          <Text size="xs" c="dimmed">
+                            {t("lotExpires", { date: day(line.lot.expiry) })}
+                          </Text>
+                        )}
+                      </Table.Td>
                       <Table.Td>
                         <Text size="sm" ff="monospace">
                           {line.fromLocation?.fullCode ?? "—"}

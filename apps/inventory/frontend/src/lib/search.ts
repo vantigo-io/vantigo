@@ -121,6 +121,21 @@ export interface LotsSearch {
 }
 const lotStatusValues = ["available", "quarantine", "blocked"] as const;
 const holdCauseValues = ["inspection", "deviation", "complaint", "recall", "other"] as const;
+/** The expiring list's filters (manufacturing phase 2 M72): days, site and status, in the URL. */
+export interface ExpiringSearch {
+  days?: number;
+  siteId?: number;
+  status?: "available" | "quarantine" | "blocked";
+}
+export const validateExpiringSearch = (search: Record<string, unknown>): ExpiringSearch => {
+  const days = positive(search.days);
+  return {
+    days: days !== undefined && days <= 365 ? days : undefined,
+    siteId: positive(search.siteId),
+    status: lotStatusValues.find((value) => value === search.status),
+  };
+};
+
 export const validateLotsSearch = (search: Record<string, unknown>): LotsSearch => ({
   q: typeof search.q === "string" && search.q !== "" ? search.q : undefined,
   siteId: positive(search.siteId),

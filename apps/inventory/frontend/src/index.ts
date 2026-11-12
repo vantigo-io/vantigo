@@ -23,6 +23,7 @@ export * from "./lib/search";
 export { type StockTotals, type UseStockTotalsOptions, useStockTotals } from "./lib/stock-totals";
 export { CountPage } from "./pages/count";
 export { CountsPage } from "./pages/counts";
+export { ExpiringPage } from "./pages/expiring";
 export { InventoryHomePage } from "./pages/home";
 export { ImportPage } from "./pages/import";
 export { LocationPage } from "./pages/location";

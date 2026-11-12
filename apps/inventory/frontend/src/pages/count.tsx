@@ -37,6 +37,7 @@ import {
 import type { InventoryLocationRef } from "../api/locations";
 import { siteLocationListQueryOptions } from "../api/locations";
 import { lookupQueryOptions } from "../api/lookup";
+import type { InventoryLotRef } from "../api/lots";
 import { inventoryMetaQueryOptions } from "../api/meta";
 import { refusalCodes } from "../api/movements";
 import { refusalCode, refusedLines } from "../api/request";
@@ -54,7 +55,7 @@ import {
   useInventoryFormat,
 } from "../lib/format";
 import { enteredOf, roundQuantity } from "../lib/lines";
-import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH, movementLinkOptions } from "../lib/routes";
+import { COUNTS_ROUTE_PATH, INVENTORY_HOME_ROUTE_PATH, lotLinkOptions, movementLinkOptions } from "../lib/routes";
 
 /** How long the screen waits after the last keystroke before it saves what was counted. */
 const SAVE_DELAY_MS = 800;
@@ -68,13 +69,20 @@ const LINES_OVERSCAN = 10;
 interface Draft {
   counted: number | "";
   packs: Readonly<Record<number, number>>;
+  /** The lot number typed on an added line of a tracked item with no lot yet. */
+  lotNumber?: string;
 }
 
-/** A line of the screen: one the count has, or one the person scanned where nothing was expected (I18). */
+/**
+ * A line of the screen: one the count has, or one the person scanned where nothing was expected (I18). A tracked
+ * item's line is one lot (manufacturing phase 2 M69): the count's lot, a lot scanned, or — on a line the person
+ * added — a lot number typed, found or made when the line is saved.
+ */
 interface Row {
   key: string;
   variant: InventoryVariantRef;
   location: InventoryLocationRef;
+  lot?: InventoryLotRef;
   line?: InventoryCountLine;
 }
 
@@ -83,7 +91,10 @@ type Marks = ReadonlyMap<string, { message: string; detail?: string }>;
 /** Posting waited on a save that failed: the save's error is already on screen. */
 class NotSavedError extends Error {}
 
-const keyOf = (variantId: number, locationId: number) => `${variantId}:${locationId}`;
+const keyOf = (variantId: number, locationId: number, lotId?: number) => `${variantId}:${locationId}:${lotId ?? 0}`;
+
+/** Whether the item is tracked in lots or serials, so its lines name their lot. */
+const trackedRef = (variant: InventoryVariantRef) => variant.tracking !== undefined && variant.tracking !== "none";
 
 /**
  * A saved line as the screen edits it: its packagings and loose rest when it
@@ -111,10 +122,32 @@ const draftTotal = (variant: InventoryVariantRef, draft: Draft): number | "" =>
 const lineInput = (row: Row, draft: Draft): InventoryCountLineInput => ({
   variantId: row.variant.id,
   locationId: row.location.id,
+  ...(row.lot
+    ? { lotId: row.lot.id }
+    : !row.line && trackedRef(row.variant)
+      ? { lot: { number: draft.lotNumber?.trim() ?? "" } }
+      : {}),
   ...(isPackedDraft(draft)
     ? { entered: enteredOf(draft.packs, draft.counted) }
     : { counted: roundQuantity(Number(draft.counted)) }),
 });
+
+/** A line's lot: its number, linked to the lot's page, and its expiry. */
+const LotText = ({ lot }: { lot: InventoryLotRef }) => {
+  const { t, day } = useInventoryFormat();
+  return (
+    <Stack gap={0}>
+      <Anchor size="sm" ff="monospace" renderRoot={(props) => <Link {...lotLinkOptions(lot.id)} {...props} />}>
+        {lot.number}
+      </Anchor>
+      {lot.expiry && (
+        <Text size="xs" c="dimmed">
+          {t("lotExpires", { date: day(lot.expiry) })}
+        </Text>
+      )}
+    </Stack>
+  );
+};
 
 const Fact = ({ label, children }: { label: string; children: ReactNode }) => (
   <div>
@@ -174,13 +207,17 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
   const rows = useMemo(() => {
     const known = new Map<string, Row>(
       lines.map((line) => {
-        const key = keyOf(line.variant.id, line.location.id);
-        return [key, { key, variant: line.variant, location: line.location, line }];
+        const key = keyOf(line.variant.id, line.location.id, line.lot?.id);
+        return [key, { key, variant: line.variant, location: line.location, lot: line.lot, line }];
       }),
     );
     for (const row of added) if (!known.has(row.key)) known.set(row.key, row);
+    // A tracked item's lots sit together under it, a row per lot, by number.
     return [...known.values()].sort(
-      (a, b) => a.location.fullCode.localeCompare(b.location.fullCode) || a.variant.sku.localeCompare(b.variant.sku),
+      (a, b) =>
+        a.location.fullCode.localeCompare(b.location.fullCode) ||
+        a.variant.sku.localeCompare(b.variant.sku) ||
+        (a.lot?.number ?? "").localeCompare(b.lot?.number ?? ""),
     );
   }, [lines, added]);
 
@@ -203,12 +240,15 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
   const saveNow = useCallback(async (): Promise<boolean> => {
     const emptied = new Set<string>();
     const pending = [...draftsRef.current].filter(([key, draft]) => {
+      // An added line of a tracked item waits for its lot number.
+      if (key.endsWith(":new") && !draft.lotNumber?.trim()) return false;
       if (draft.counted !== "" || isPackedDraft(draft)) return true;
       // A field emptied cannot uncount a line: it goes back to what was saved.
       emptied.add(key);
       return false;
     });
-    if (emptied.size > 0) forget((key, draft) => emptied.has(key) && draft.counted === "" && !isPackedDraft(draft));
+    if (emptied.size > 0)
+      forget((key, draft) => emptied.has(key) && draft.counted === "" && !isPackedDraft(draft) && !draft.lotNumber);
     if (pending.length === 0) return true;
     const byKey = new Map(rows.map((row) => [row.key, row]));
     setSaving(true);
@@ -226,6 +266,8 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
           if (!cached || answer.revision >= cached.revision) queryClient.setQueryData(countKey, answer);
           const saved = new Map(batch);
           forget((key, draft) => saved.get(key) === draft);
+          // A line added under a typed lot number comes back saved under its lot: the saved line stands in for it.
+          setAdded((now) => now.filter((row) => !(row.key.endsWith(":new") && saved.has(row.key))));
           setMarks(new Map());
         } catch (error) {
           const failing = refusedLines(error);
@@ -315,7 +357,9 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
         setOnlyCurrent(true);
         return;
       }
-      const variant = matches.find((match) => match.kind === "variant")?.variant;
+      // A lot's label (LOT<id>) or number names its item and its lot (M69).
+      const lotMatch = matches.find((match) => match.kind === "lot" && match.variant);
+      const variant = lotMatch?.variant ?? matches.find((match) => match.kind === "variant")?.variant;
       if (!variant) {
         keep();
         setScanError(t("scanNothing", { code }));
@@ -326,8 +370,15 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
         setScanError(t("scanLocationFirst"));
         return;
       }
-      const key = keyOf(variant.id, current.id);
-      const row = rows.find((one) => one.key === key) ?? { key, variant, location: current };
+      // A tracked item scanned by its own code: its first lot here, else a new line whose lot is typed.
+      const lot =
+        lotMatch?.lot ??
+        (trackedRef(variant)
+          ? rows.find((one) => one.variant.id === variant.id && one.location.id === current.id && one.lot)?.lot
+          : undefined);
+      const key =
+        trackedRef(variant) && !lot ? `${variant.id}:${current.id}:new` : keyOf(variant.id, current.id, lot?.id);
+      const row = rows.find((one) => one.key === key) ?? { key, variant, location: current, lot };
       if (!rows.some((one) => one.key === key)) setAdded((now) => [...now, row]);
       const packaging = variant.packagings?.find((one) => one.barcode === code);
       if (packaging)
@@ -514,6 +565,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                       <Table.Th>{t("columnLocation")}</Table.Th>
                       <Table.Th>{t("columnSku")}</Table.Th>
                       <Table.Th>{t("columnProduct")}</Table.Th>
+                      <Table.Th>{t("columnLot")}</Table.Th>
                       <Table.Th ta="right">{t("columnExpected")}</Table.Th>
                       <Table.Th ta="right">{t("columnCurrent")}</Table.Th>
                       <Table.Th>{t("columnCounted")}</Table.Th>
@@ -523,7 +575,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                   <Table.Tbody ref={setLinesBody}>
                     {spaceAbove > 0 && (
                       <tr>
-                        <td colSpan={7} style={{ height: spaceAbove, padding: 0, border: 0 }} />
+                        <td colSpan={8} style={{ height: spaceAbove, padding: 0, border: 0 }} />
                       </tr>
                     )}
                     {drawn.map((item) => {
@@ -532,7 +584,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                       const total = draftTotal(row.variant, draft);
                       const now = row.line?.current ?? 0;
                       const packagings = row.variant.packagings ?? [];
-                      const label = `${row.location.fullCode} ${row.variant.sku}`;
+                      const label = [row.location.fullCode, row.variant.sku, row.lot?.number].filter(Boolean).join(" ");
                       const problem = marks.get(row.key);
                       return (
                         <Table.Tr
@@ -582,6 +634,25 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                             )}
                           </Table.Td>
                           <Table.Td>{row.variant.productName}</Table.Td>
+                          <Table.Td>
+                            {row.lot ? (
+                              <LotText lot={row.lot} />
+                            ) : !row.line && trackedRef(row.variant) ? (
+                              <TextInput
+                                size="xs"
+                                w={140}
+                                maxLength={20}
+                                aria-label={t("countLotNumberOf", { line: label })}
+                                placeholder={t("countLotNumber")}
+                                value={draft.lotNumber ?? ""}
+                                onChange={(event) => edit(row, { lotNumber: event.currentTarget.value })}
+                              />
+                            ) : (
+                              <Text size="sm" c="dimmed">
+                                —
+                              </Text>
+                            )}
+                          </Table.Td>
                           <Table.Td ta="right">
                             <Quantity value={row.line?.expected ?? 0} unit={row.variant.unit} packagings={packagings} />
                           </Table.Td>
@@ -641,7 +712,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                     })}
                     {spaceBelow > 0 && (
                       <tr>
-                        <td colSpan={7} style={{ height: spaceBelow, padding: 0, border: 0 }} />
+                        <td colSpan={8} style={{ height: spaceBelow, padding: 0, border: 0 }} />
                       </tr>
                     )}
                   </Table.Tbody>
@@ -674,6 +745,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                       <Table.Tr>
                         <Table.Th>{t("columnLocation")}</Table.Th>
                         <Table.Th>{t("columnSku")}</Table.Th>
+                        <Table.Th>{t("columnLot")}</Table.Th>
                         <Table.Th ta="right">{t("columnCurrent")}</Table.Th>
                         <Table.Th ta="right">{t("columnCounted")}</Table.Th>
                         <Table.Th ta="right">{t("columnDifference")}</Table.Th>
@@ -688,6 +760,7 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                             </Text>
                           </Table.Td>
                           <Table.Td>{row.variant.sku}</Table.Td>
+                          <Table.Td>{row.lot?.number ?? draftOf(row).lotNumber ?? ""}</Table.Td>
                           <Table.Td ta="right">{quantity(now, row.variant.unit)}</Table.Td>
                           <Table.Td ta="right">{quantity(counted ?? 0, row.variant.unit)}</Table.Td>
                           <Table.Td ta="right" c={difference > 0 ? "teal" : "red"}>
@@ -714,7 +787,8 @@ const CountingScreen = ({ count, savesRef }: { count: InventoryCount; savesRef: 
                     <Text span ff="monospace">
                       {line.location.fullCode}
                     </Text>{" "}
-                    {line.variant.sku}:{" "}
+                    {line.variant.sku}
+                    {line.lot ? ` ${line.lot.number}` : ""}:{" "}
                     {t("movedFromTo", {
                       expected: quantity(line.expected, line.variant.unit),
                       current: quantity(line.current, line.variant.unit),
@@ -793,6 +867,7 @@ const ClosedCount = ({ count }: { count: InventoryCount }) => {
               <Table.Tr>
                 <Table.Th>{t("columnLocation")}</Table.Th>
                 <Table.Th>{t("columnSku")}</Table.Th>
+                <Table.Th>{t("columnLot")}</Table.Th>
                 <Table.Th ta="right">{t("columnExpected")}</Table.Th>
                 <Table.Th ta="right">{t("columnCounted")}</Table.Th>
               </Table.Tr>
@@ -806,6 +881,7 @@ const ClosedCount = ({ count }: { count: InventoryCount }) => {
                     </Text>
                   </Table.Td>
                   <Table.Td>{line.variant.sku}</Table.Td>
+                  <Table.Td>{line.lot ? <LotText lot={line.lot} /> : null}</Table.Td>
                   <Table.Td ta="right">{quantity(line.expected, line.variant.unit)}</Table.Td>
                   <Table.Td ta="right">
                     {line.counted === undefined ? (

@@ -89,7 +89,9 @@ describe("the opening-balance import (I32)", () => {
     renderRoute("/inventory/import");
     await userEvent.click(await screen.findByRole("button", { name: "Download template" }));
     expect(createObjectURL).toHaveBeenCalledTimes(1);
-    expect(await createObjectURL.mock.calls[0][0].text()).toBe("location,sku,quantity\n");
+    expect(await createObjectURL.mock.calls[0][0].text()).toBe(
+      "location,sku,quantity,lot,supplier_lot,production_date,best_before,expiry\n",
+    );
   });
 
   it("tells a caller without Adjust stock instead of offering the upload", async () => {

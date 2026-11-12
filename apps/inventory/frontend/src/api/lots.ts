@@ -13,6 +13,8 @@ export type InventoryLotHoldInput = Schemas["InventoryLotHoldInput"];
 export type InventoryLotUpdate = Schemas["InventoryLotUpdate"];
 export type InventoryLotAttachment = Schemas["InventoryLotAttachment"];
 export type InventoryBalanceLot = Schemas["InventoryBalanceLot"];
+export type InventoryLotRef = Schemas["InventoryLotRef"];
+export type InventoryLotExpiringPage = Schemas["InventoryLotExpiringPage"];
 export type InventoryLotHoldCause = InventoryLotHoldInput["cause"];
 export type InventoryLotHoldKind = InventoryLotHoldInput["kind"];
 
@@ -143,3 +145,46 @@ export const fefoOrder = <T extends FefoKeys>(lots: readonly T[], idOf: (lot: T)
 /** Whether a lot's stock can be taken: no hold and not expired (M63). */
 export const usableLot = (lot: Pick<InventoryLotSummary, "status" | "expired">) =>
   lot.status === "available" && !lot.expired;
+
+/** The expiring list's filter (M72): within how many days, at which site, of which status. */
+export interface ExpiringFilter {
+  days?: number;
+  siteId?: number;
+  status?: InventoryLotStatus;
+}
+
+/** The expiring list's default reach, in days, as the server's. */
+export const DEFAULT_EXPIRING_DAYS = 30;
+
+/** The lots expiring soon (manufacturing phase 2 M72): stock expiring within the days or already expired. */
+export const expiringLotsQueryOptions = (filter: ExpiringFilter = {}, live = false) =>
+  queryOptions({
+    queryKey: [INVENTORY_QUERY_KEY, "lots", "expiring", filter],
+    queryFn: ({ signal }) =>
+      request<InventoryLotExpiringPage>(`/api/v1/inventory/lots/expiring${queryString({ ...filter })}`, { signal }),
+    refetchInterval: live ? false : LOTS_POLL_MS,
+  });
+
+/** The expiring list as CSV, with the list's filter. */
+export const exportExpiringLots = async (filter: ExpiringFilter): Promise<Blob> => {
+  const response = await fetch(appUrl(`/api/v1/inventory/lots/expiring.csv${queryString({ ...filter })}`), {
+    credentials: "include",
+  });
+  if (response.status === 401) await handleUnauthorized();
+  if (!response.ok) throw await refusalOf(response);
+  return response.blob();
+};
+
+/**
+ * A PDF of lot labels (M73), in the order of the ids: each the lot's LOT token as a Code 128 barcode, its
+ * number, its item and its expiry. Copies of each, at most 1000 labels in all.
+ */
+export const printLotLabels = async (ids: readonly number[], layout: "l7160" | "l7163", copies = 1): Promise<Blob> => {
+  const response = await fetch(
+    appUrl(`/api/v1/inventory/lots/labels.pdf${queryString({ ids: ids.join(","), layout, copies })}`),
+    { credentials: "include" },
+  );
+  if (response.status === 401) await handleUnauthorized();
+  if (!response.ok) throw await refusalOf(response);
+  return response.blob();
+};
