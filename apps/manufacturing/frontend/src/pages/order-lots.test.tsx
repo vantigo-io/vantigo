@@ -233,7 +233,10 @@ describe("the order's Lots tab", () => {
     expect(await screen.findByRole("link", { name: "MO-12" })).toHaveAttribute("href", "/inventory/lots/900");
     expect(screen.getByRole("link", { name: "B-OLD" })).toHaveAttribute("href", "/inventory/lots/501");
     expect(screen.getByText("Lots made")).toBeInTheDocument();
-    // The link goes through the router, not a reload.
+    // Each lot links its trace (manufacturing phase 2 M94), on where it went.
+    expect(screen.getByRole("link", { name: "Trace lot MO-12" })).toHaveAttribute("href", "/inventory/trace?lotId=900");
+    expect(screen.getByRole("link", { name: "Trace lot B-OLD" })).toHaveAttribute("href", "/inventory/trace?lotId=501");
+    // The links go through the router, not a reload.
     await userEvent.click(screen.getByRole("link", { name: "B-OLD" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/inventory/lots/501"));
   });

@@ -1,4 +1,4 @@
-import { Alert, Anchor, Badge, Stack, Table, Text, Title } from "@mantine/core";
+import { Alert, Anchor, Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -7,21 +7,34 @@ import { type ManufacturingOrder, orderLotsQueryOptions } from "../api/orders";
 import { refusalMessage, useManufacturingFormat } from "../lib/format";
 
 /**
- * A lot's number linked to its page in Inventory, through the host's router
- * (no reload, under the deployment's base path); its id when no number was
- * kept.
+ * A lot's number linked to its page in Inventory — its id when no number was kept — and *Trace*, which opens
+ * where the lot went: who received the lot made, and what else the lot consumed went into. Both go through the
+ * host's router (no reload, under the deployment's base path).
  */
-const LotLink = ({ lotId, number }: { lotId: number; number: string }) => (
-  <Anchor size="sm" renderRoot={(props) => <Link to={`/inventory/lots/${lotId}` as never} {...props} />}>
-    {number || `#${lotId}`}
-  </Anchor>
-);
+const LotLink = ({ lotId, number }: { lotId: number; number: string }) => {
+  const { t } = useManufacturingFormat();
+  return (
+    <Group gap="xs" wrap="nowrap" component="span">
+      <Anchor size="sm" renderRoot={(props) => <Link to={`/inventory/lots/${lotId}` as never} {...props} />}>
+        {number || `#${lotId}`}
+      </Anchor>
+      <Anchor
+        size="xs"
+        c="dimmed"
+        renderRoot={(props) => <Link to={"/inventory/trace" as never} search={{ lotId } as never} {...props} />}
+        aria-label={t("traceLotOf", { number: number || `#${lotId}` })}
+      >
+        {t("traceLot")}
+      </Anchor>
+    </Group>
+  );
+};
 
 /**
  * The order's lots (manufacturing phase 2 M83), on the order page's Lots tab
  * and the work order's page: the lots its productions put the output in, and
  * per component line the lots they took, each linked to its page in
- * Inventory.
+ * Inventory and to its trace there (M94).
  */
 export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id"> & { variant: { unit: string } } }) => {
   const { t, quantity, day } = useManufacturingFormat();
