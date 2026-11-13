@@ -112,14 +112,17 @@ export const expiringLinkOptions = (search: { days?: number; siteId?: number } =
 /**
  * Where a movement's source opens in another module, when it has a page
  * there: a production's manufacturing order, whose id the movement keeps as
- * its source line id (manufacturing design M5). Undefined for any other
- * source, and when the backend does not mount Manufacturing — no injected
- * list (the Vite dev server) means every module.
+ * its source line id (manufacturing design M5), and an unbuild's list
+ * (manufacturing phase 2 M123). Undefined for any other source, and when the
+ * backend does not mount Manufacturing — no injected list (the Vite dev
+ * server) means every module.
  */
 export const sourceHref = (
   source: InventoryMovement["source"],
   enabled: readonly string[] | undefined = appConfig().modules,
 ): string | undefined => {
+  if (source?.module === "manufacturing" && source.kind === "unbuild")
+    return enabled && !enabled.includes("manufacturing") ? undefined : "/manufacturing/unbuilds";
   if (
     source?.module !== "manufacturing" ||
     source.kind !== "production" ||
