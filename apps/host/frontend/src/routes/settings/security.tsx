@@ -21,6 +21,8 @@ import {
 } from "../../api/account";
 import { sessionQueryKey } from "../../api/auth";
 import { MfaEnrolmentNotice } from "../../components/mfa-enrolment-notice";
+import { StationPinSection } from "../../components/station-credentials";
+import { enabledModuleKeys } from "../../lib/enabled-modules";
 import { isOidcError, message, mfaKey, notify, passkeyKey } from "./-helpers";
 import { ReauthModal } from "./-reauth-modal";
 
@@ -326,6 +328,8 @@ const SecurityPage = () => {
     <Stack gap="xl">
       <PageHeader title={t("security")} description={t("securityDescription")} />
       <SecurityForm />
+      {/* The PIN a person switches in with at a shop-floor station (manufacturing phase 2 M132). */}
+      {enabledModuleKeys().includes("manufacturing") && <StationPinSection />}
     </Stack>
   );
 };

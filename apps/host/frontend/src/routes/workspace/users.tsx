@@ -65,6 +65,7 @@ import {
 } from "../../api/users";
 import { DirectoryMatches } from "../../components/directory/directory-matches";
 import { DirectoryPicker } from "../../components/directory/directory-picker";
+import { OperatorCredentialsSection } from "../../components/station-credentials";
 import { translateHostRole } from "../../i18n";
 import { enabledModuleKeys } from "../../lib/enabled-modules";
 import "../../i18n";
@@ -845,6 +846,10 @@ const UsersPage = () => {
             )}
             {/* The assistant's per-person switch (Assistant design S8): it saves on its own, under its own version. */}
             {editing && assistantOn && <AssistantPersonSwitch userId={editing.id} />}
+            {/* The person's station PIN and badge (manufacturing phase 2 M132): cleared and enrolled here. */}
+            {editing && enabledModuleKeys().includes("manufacturing") && (
+              <OperatorCredentialsSection userId={editing.id} />
+            )}
             {!editing && mode === "initial" && (
               <PasswordInput
                 label={t("admin.initialPassword")}

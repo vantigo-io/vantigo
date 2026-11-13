@@ -29,6 +29,7 @@ import {
   IconClipboardList,
   IconClock,
   IconClockExclamation,
+  IconDeviceTablet,
   IconFileDollar,
   IconFileImport,
   IconFileInvoice,
@@ -790,6 +791,15 @@ export const areas: readonly AreaDefinition[] = [
             to: "/workspace/roles",
             icon: IconShieldCheck,
             capability: "authorization",
+          },
+          // The shared shop-floor stations (manufacturing phase 2 M129): registered, paired and
+          // revoked behind identity:manage, while Manufacturing is on.
+          {
+            label: "navigation.stations",
+            to: "/workspace/stations",
+            icon: IconDeviceTablet,
+            module: "manufacturing",
+            requiredPermissions: ["identity:manage"],
           },
         ],
       },

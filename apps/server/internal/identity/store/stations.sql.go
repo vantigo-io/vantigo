@@ -711,7 +711,7 @@ type RecordOperatorFailureParams struct {
 }
 
 // RecordOperatorFailure counts one more consecutive failure of a user at a
-// station; a run whose first failure is over an hour old starts again.
+// station; only a success (DeleteOperatorBackoff) ends the run.
 func (q *Queries) RecordOperatorFailure(ctx context.Context, arg RecordOperatorFailureParams) (IdentityOperatorBackoff, error) {
 	row := q.db.QueryRow(ctx, recordOperatorFailure, arg.StationID, arg.UserID, arg.Now)
 	var i IdentityOperatorBackoff

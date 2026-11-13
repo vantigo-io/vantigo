@@ -899,14 +899,15 @@ describe("the administration areas", () => {
       for (const item of area.navSections.flatMap((section) => section.items)) {
         expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
         // An area belongs to no module; only an entry a module provides, Entra's, Google's and Orders'
-        // Shipping Integrations pages and the Assistant's, names its module. Connections names the
-        // providers' modules in `modules`.
+        // Shipping Integrations pages, the Assistant's and Manufacturing's Stations, names its module.
+        // Connections names the providers' modules in `modules`.
         const owner: Record<string, string> = {
           "/workspace/entra": "entra",
           "/workspace/google": "google",
           "/workspace/meta": "meta",
           "/workspace/shipping": "orders",
           "/workspace/assistant": "assistant",
+          "/workspace/stations": "manufacturing",
         };
         expect(item.module).toBe(owner[item.to]);
       }

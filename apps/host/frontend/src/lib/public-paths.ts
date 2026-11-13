@@ -17,6 +17,9 @@ export const publicPaths = new Set([
   // anonymous, and the only pages the public host serves.
   "/pay",
   "/rsvp",
+  // A shared shop-floor station (manufacturing phase 2 M140): a paired device,
+  // never a person's session.
+  "/station",
 ]);
 
 /** A browser pathname with the runtime base path taken off: `/vantigo/pay` is `/pay` under `/vantigo/`. */
@@ -29,5 +32,8 @@ export const appPathname = (pathname: string): string => {
 /**
  * The paths the public host serves (D14): there not even the account's
  * language is asked for, since every request must be on the host's allowlist.
+ * A shared station's page is one too, though the app host serves it: every
+ * request it makes must be one open to stations (manufacturing phase 2 M135),
+ * so it asks for no session, account or maintenance status.
  */
-export const sessionlessPaths = new Set(["/pay", "/rsvp"]);
+export const sessionlessPaths = new Set(["/pay", "/rsvp", "/station"]);
