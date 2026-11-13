@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -52,8 +54,10 @@ func suggestions(t *testing.T, c *modtest.Client, site int64) map[int32]gen.Manu
 // TestReplenishment_Projection is M107 through the worker: usable on hand,
 // reserved and incoming from Inventory; an open order's output counted and
 // its components' unreserved demand subtracted; a manual draft not counted;
-// a make-to-order order's output and its sales line both left out;
-// unreserved sales demand subtracted; the quantity rounded to the multiple.
+// a make-to-order order's output left out and its sales line counted less
+// what the order still makes — what it produced already is on hand, so it
+// stays demand; unreserved sales demand subtracted; the quantity rounded to
+// the multiple.
 func TestReplenishment_Projection(t *testing.T) {
 	t.Parallel()
 	h, lines := mtoHarness(t)
@@ -65,10 +69,11 @@ func TestReplenishment_Projection(t *testing.T) {
 	confirmOrder(t, c, createOrder(t, c, orderInput(varBike, "3")))
 	// A manual draft is no supply.
 	createOrder(t, c, orderInput(varBike, "100"))
-	// A make-to-order order of 50 for sales line 901: neither its output nor
-	// the line's demand counts.
+	// A make-to-order order of 50 for sales line 901, 20 produced: its
+	// output is no supply, and the line's 50 counts less the 30 it still
+	// makes — the 20 produced are in on hand, promised to the line.
 	mto := confirmOrder(t, c, createOrder(t, c, orderInput(varBike, "50"))).Order
-	h.Exec(t, `UPDATE manufacturing.orders SET origin_kind = 'sales_order', origin_order_id = 90, origin_line_id = 901 WHERE id = $1`, mto.Id)
+	h.Exec(t, `UPDATE manufacturing.orders SET origin_kind = 'sales_order', origin_order_id = 90, origin_line_id = 901, produced = 20 WHERE id = $1`, mto.Id)
 	lines.seedUnreserved(siteMain,
 		contracts.UnreservedDemand{OrderID: 90, LineID: 901, VariantID: varBike, Quantity: "50"},
 		contracts.UnreservedDemand{OrderID: 91, LineID: 902, VariantID: varBike, Quantity: "4"},
@@ -84,9 +89,9 @@ func TestReplenishment_Projection(t *testing.T) {
 	}
 	got := suggestions(t, c, siteMain)
 	bike, wheel := got[varBike], got[varWheel]
-	// 30 − 25 + 2 + 3 − 0 − 4 = 6; 40 − 6 = 34, rounded up to 35.
-	if bike.Kind != gen.Make || bike.Quantity != "35" || bike.Reason.Projected != "6" || bike.Reason.InProduction != "3" ||
-		bike.Reason.NeededBySales != "4" || bike.Reason.NeededByProduction != "0" || bike.BomId == nil {
+	// 30 − 25 + 2 + 3 − 0 − (20 + 4) = −14; 40 + 14 = 54, rounded up to 55.
+	if bike.Kind != gen.Make || bike.Quantity != "55" || bike.Reason.Projected != "-14" || bike.Reason.InProduction != "3" ||
+		bike.Reason.NeededBySales != "24" || bike.Reason.NeededByProduction != "0" || bike.BomId == nil {
 		t.Errorf("bike = %+v", bike)
 	}
 	// The open orders' wheels — the make-to-order one's too, which still
@@ -162,8 +167,203 @@ func TestReplenishment_AutoCreateOnce(t *testing.T) {
 		t.Errorf("reorder orders = %d, want still 1", n)
 	}
 	c = h.SignIn(t, planner...)
-	if s := suggestions(t, c, siteMain)[varBike]; !s.ReorderOpen || s.Quantity != "20" {
+	s := suggestions(t, c, siteMain)[varBike]
+	if !s.ReorderOpen || s.Quantity != "20" {
 		t.Errorf("suggestion = %+v", s)
+	}
+	// A person's create is refused too while the draft is open.
+	var result gen.ManufacturingSuggestionOrdersResult
+	c.Do(http.MethodPost, suggestionsPath+"/orders", gen.ManufacturingSuggestionOrdersInput{
+		Items: []gen.ManufacturingSuggestionOrderItem{{SuggestionId: s.Id}}}).JSON(&result)
+	if len(result.Made) != 0 || len(result.Failed) != 1 || result.Failed[0].Code != "reorder_open" {
+		t.Errorf("create with a reorder open = %+v", result)
+	}
+}
+
+// setAutoCreate turns automatic creation of the bicycle at the main site on.
+func setAutoCreate(t *testing.T, c *modtest.Client) {
+	t.Helper()
+	res := c.Do(http.MethodPut, "/api/v1/manufacturing/replenishment/rules/101/1", gen.ManufacturingReplenishmentRuleInput{AutoCreate: true})
+	mustStatus(t, res, http.StatusOK, "set the rule")
+}
+
+// TestReplenishment_AutoCreateRace is M111's one order per variant against
+// a race: an order from a suggestion made between the run's reads and its
+// transaction is seen under LockVariants, so the run makes none and marks
+// its suggestion instead; and two runs at once make one order between them.
+func TestReplenishment_AutoCreateRace(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	bikeBom(t, c)
+	setAutoCreate(t, c)
+	h.stock.setPlacements(siteMain, contracts.StockPlacement{VariantID: varBike, ReorderPoint: "10", Maximum: "20", OnHand: "0", Reserved: "0", Incoming: "0"})
+
+	// The window: the run's create reads the site's locations, then a
+	// person's reorder order lands before its transaction.
+	var made int64
+	h.stock.onSiteLocationsOnce(func() {
+		o := createOrder(t, c, orderInput(varBike, "5"))
+		h.Exec(t, `UPDATE manufacturing.orders SET origin_kind = 'reorder' WHERE id = $1`, o.Id)
+		made = o.Id
+	})
+	runReplenishment(t, h)
+	if made == 0 {
+		t.Fatal("the window never opened")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.orders WHERE origin_kind = 'reorder'`); n != 1 {
+		t.Errorf("reorder orders = %d, want only the person's", n)
+	}
+	if s := suggestions(t, c, siteMain)[varBike]; s.Status != gen.ManufacturingSuggestionStatusOpen || !s.ReorderOpen {
+		t.Errorf("suggestion = %+v, want open and marked", s)
+	}
+
+	// Two runs at once, with no order open: one order between them.
+	h.Exec(t, `UPDATE manufacturing.orders SET status = 'cancelled' WHERE id = $1`, made)
+	h.Exec(t, `INSERT INTO manufacturing.replenishment_runs (kind, requested_at) VALUES ('manual', $1), ('manual', $1)`, h.Now())
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Go(func() { _, errs[i] = manufacturing.ReplenishmentCycle(context.Background(), h.Deps()) })
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			t.Fatalf("ReplenishmentCycle: %v", err)
+		}
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.orders WHERE origin_kind = 'reorder' AND status = 'draft'`); n != 1 {
+		t.Errorf("drafts made by two runs at once = %d, want 1", n)
+	}
+}
+
+// TestReplenishment_ReorderDraftComponents is M107 over a draft from a
+// suggestion: it is supply, and what it will consume — its BoM's lines
+// scaled to its quantity, with the scrap — is component demand.
+func TestReplenishment_ReorderDraftComponents(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	bikeBom(t, c)
+	d := createOrder(t, c, orderInput(varBike, "10"))
+	h.Exec(t, `UPDATE manufacturing.orders SET origin_kind = 'reorder' WHERE id = $1`, d.Id)
+	h.stock.setPlacements(siteMain,
+		contracts.StockPlacement{VariantID: varBike, ReorderPoint: "1", OnHand: "100", Reserved: "0", Incoming: "0"},
+		contracts.StockPlacement{VariantID: varWheel, ReorderPoint: "10", OnHand: "12", Reserved: "0", Incoming: "0"},
+		contracts.StockPlacement{VariantID: varBolt, ReorderPoint: "10", OnHand: "40", Reserved: "0", Incoming: "0"},
+	)
+	runReplenishment(t, h)
+	got := suggestions(t, c, siteMain)
+	// Wheels 2 × 10 = 20: 12 − 20 = −8, buy 19. Bolts 3 × 10 × 1.1 = 33:
+	// 40 − 33 = 7, buy 4.
+	if w := got[varWheel]; w.Quantity != "19" || w.Reason.NeededByProduction != "20" {
+		t.Errorf("wheel = %+v", w)
+	}
+	if b := got[varBolt]; b.Quantity != "4" || b.Reason.NeededByProduction != "33" {
+		t.Errorf("bolt = %+v", b)
+	}
+	if _, ok := got[varBike]; ok {
+		t.Errorf("the bicycle, 100 + 10 on hand and in production, was suggested")
+	}
+}
+
+// TestReplenishment_Sites is M109 over the sites: an archived site's open
+// suggestions are superseded by the next run and no longer counted; a site
+// whose read fails fails the run, naming it, while the others are judged.
+func TestReplenishment_Sites(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	bikeBom(t, c)
+	low := contracts.StockPlacement{VariantID: varBike, ReorderPoint: "10", OnHand: "0", Reserved: "0", Incoming: "0"}
+	h.stock.setPlacements(siteBranch, low)
+	h.stock.setPlacements(siteMain, low)
+	runReplenishment(t, h)
+	var stats gen.ManufacturingStats
+	c.Do(http.MethodGet, base+"/stats", nil).JSON(&stats)
+	if stats.SuggestionsToMake != 2 {
+		t.Fatalf("suggestions to make = %d, want 2", stats.SuggestionsToMake)
+	}
+
+	h.stock.archiveSite(siteBranch)
+	c.Do(http.MethodGet, base+"/stats", nil).JSON(&stats)
+	if stats.SuggestionsToMake != 1 {
+		t.Errorf("suggestions to make with the branch archived = %d, want 1", stats.SuggestionsToMake)
+	}
+	h.Exec(t, `INSERT INTO manufacturing.replenishment_runs (kind, requested_at) VALUES ('manual', $1)`, h.Now())
+	runReplenishment(t, h)
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.suggestions WHERE status = 'open' AND site_id = $1`, siteBranch); n != 0 {
+		t.Errorf("open suggestions at the archived branch = %d", n)
+	}
+
+	// A failing site: the run fails naming it; the others are judged.
+	h2 := newHarness(t)
+	c2 := h2.SignIn(t, planner...)
+	h2.stock.setPlacements(siteMain, contracts.StockPlacement{VariantID: varWheel, ReorderPoint: "10", OnHand: "0", Reserved: "0", Incoming: "0"})
+	h2.stock.failPlacements(siteBranch)
+	if n := runReplenishment(t, h2); n != 0 {
+		t.Errorf("runs finished = %d, want the run failed", n)
+	}
+	if s := suggestions(t, c2, siteMain)[varWheel]; s.Quantity != "11" {
+		t.Errorf("the main site's suggestion = %+v", s)
+	}
+	var runs gen.ManufacturingReplenishmentRunList
+	c2.Do(http.MethodGet, runsPath, nil).JSON(&runs)
+	if len(runs.Items) == 0 || runs.Items[0].Status != gen.ManufacturingReplenishmentRunStatusFailed || runs.Items[0].Suggestions != 1 ||
+		runs.Items[0].Error == nil || !strings.Contains(*runs.Items[0].Error, "site BRANCH") || strings.Contains(*runs.Items[0].Error, "MAIN") {
+		t.Errorf("runs = %+v", runs.Items)
+	}
+}
+
+// TestReplenishment_LostClaim is M109's lease: a run claimed again while it
+// runs — its lease ran out and another worker took it — stops before the
+// next site and finishes nothing; the new claim is the one to finish it.
+func TestReplenishment_LostClaim(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.stock.setPlacements(siteMain, contracts.StockPlacement{VariantID: varWheel, ReorderPoint: "10", OnHand: "0", Reserved: "0", Incoming: "0"})
+	// A person's run, claimed before the night's.
+	h.Exec(t, `INSERT INTO manufacturing.replenishment_runs (kind, requested_at) VALUES ('manual', $1)`, h.Now().Add(-time.Hour))
+	// BRANCH is judged first; meanwhile another worker claims the run.
+	var once sync.Once
+	h.stock.onPlacements(func(site int64) {
+		if site == siteBranch {
+			once.Do(func() {
+				h.Exec(t, `UPDATE manufacturing.replenishment_runs SET attempts = attempts + 1 WHERE kind = 'manual'`)
+			})
+		}
+	})
+	runReplenishment(t, h)
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.replenishment_runs WHERE kind = 'manual' AND status = 'running' AND finished_at IS NULL`); n != 1 {
+		t.Errorf("the reclaimed run is not left running for its new claim")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.suggestions s JOIN manufacturing.replenishment_runs r ON r.id = s.run_id
+		WHERE r.kind = 'manual'`); n != 0 {
+		t.Errorf("suggestions of the lost run = %d, want none: it stops before the next site", n)
+	}
+}
+
+// TestReplenishment_RunNowPerSite is M109's one a minute, per site: a run
+// of one site is not answered with one of every site, or of another.
+func TestReplenishment_RunNowPerSite(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, planner...)
+	start := func(site *int64) gen.ManufacturingReplenishmentRun {
+		var run gen.ManufacturingReplenishmentRun
+		res := c.Do(http.MethodPost, runsPath, gen.ManufacturingReplenishmentRunInput{SiteId: site})
+		mustStatus(t, res, http.StatusAccepted, "run now")
+		res.JSON(&run)
+		return run
+	}
+	main, branch := siteMain, siteBranch
+	first := start(&main)
+	every := start(nil)
+	again := start(&main)
+	other := start(&branch)
+	if first.Id != again.Id || every.Id == first.Id || other.Id == first.Id || other.Id == every.Id ||
+		every.SiteId != nil || other.SiteId == nil || *other.SiteId != siteBranch {
+		t.Errorf("runs = %+v, %+v, %+v, %+v", first, every, again, other)
 	}
 }
 
@@ -206,6 +406,14 @@ func TestReplenishment_CreateAndDismiss(t *testing.T) {
 		Items: []gen.ManufacturingSuggestionOrderItem{{SuggestionId: bike.Id}}}).JSON(&result)
 	if len(result.Made) != 0 || len(result.Failed) != 1 || result.Failed[0].Code != "suggestion_not_open" {
 		t.Errorf("second create = %+v", result)
+	}
+
+	zero := "0"
+	res = c.Do(http.MethodPost, suggestionsPath+"/orders", gen.ManufacturingSuggestionOrdersInput{
+		Items: []gen.ManufacturingSuggestionOrderItem{{SuggestionId: wheel.Id}, {SuggestionId: bike.Id, Quantity: &zero}}})
+	if p := expectRefusal(t, res, http.StatusBadRequest, "quantity_invalid", "a quantity of 0"); p.Errors == nil ||
+		(*p.Errors)["items[1].quantity"] == nil {
+		t.Errorf("errors = %+v, want items[1].quantity", p.Errors)
 	}
 
 	dismiss := pathOf(suggestionsPath, wheel.Id, "dismiss")

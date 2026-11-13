@@ -37,8 +37,8 @@ CREATE INDEX ix_replenishment_runs_requested ON manufacturing.replenishment_runs
 -- keeps the figures the sentence is made of. A run replaces the site's open
 -- suggestions (superseded); one acted on — done with the order made, or
 -- dismissed — is kept. One open suggestion per (site, variant). acted_by is
--- identity's user, opaque here, with the display as it was; none when the
--- nightly run created the order itself.
+-- identity's user, opaque here, with the display as it was; when a run
+-- created the order itself the user is null and the display "System".
 CREATE TABLE manufacturing.suggestions (
     id                bigint         GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     run_id            bigint         NOT NULL REFERENCES manufacturing.replenishment_runs (id) ON DELETE CASCADE,

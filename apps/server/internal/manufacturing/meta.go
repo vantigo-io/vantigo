@@ -59,9 +59,19 @@ func (s *server) GetManufacturingStats(ctx context.Context, _ gen.GetManufacturi
 	if err != nil {
 		return nil, err
 	}
-	suggestions, err := q.CountOpenMakeSuggestions(ctx)
-	if err != nil {
-		return nil, err
+	var suggestions int32
+	if s.deps.Stock != nil {
+		sites, err := s.activeSites(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]int64, 0, len(sites))
+		for _, site := range sites {
+			ids = append(ids, site.ID)
+		}
+		if suggestions, err = q.CountOpenMakeSuggestions(ctx, ids); err != nil {
+			return nil, err
+		}
 	}
 	return gen.GetManufacturingStats200JSONResponse{
 		ActiveWorkCenters: stats.ActiveWorkCenters, BlockedWorkCenters: stats.BlockedWorkCenters, ActiveBoms: stats.ActiveBoms,

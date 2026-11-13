@@ -9,11 +9,12 @@ package manufacturing
 //
 //	projected = usable onHand − reserved + incoming   (Stock.Placements)
 //	          + Σ supply orders' remaining             (open, and reorder drafts; MTO left out)
-//	          − Σ open orders' unreserved component demand
-//	          − Σ unreserved open sales demand          (SalesOrderLines.Unreserved, MTO lines left out)
+//	          − Σ open orders' and reorder drafts' unreserved component demand
+//	          − Σ unreserved open sales demand          (SalesOrderLines.Unreserved, less what MTO still makes for the line)
 //
 // The worker keeps the lease-worker rules: a run is claimed by one statement
-// that moves its lease on, every contract is read on the pool holding no
+// that moves its lease on, renewed before each site and finished only by the
+// claim that ran it, every contract is read on the pool holding no
 // connection, and only then one transaction per site replaces the site's
 // open suggestions — so it runs on a pool of one. It is no event handler
 // (rule 23).
@@ -27,6 +28,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -74,6 +76,7 @@ const (
 	eventSuggestionsReady = "suggestions.changed"
 
 	codeSuggestionNotOpen = "suggestion_not_open" // 409
+	codeReorderOpen       = "reorder_open"        // 409
 
 	suggestionTitle = "No order was made from the suggestion"
 )
@@ -148,6 +151,8 @@ func judgeSuggestion(variantID int32, p projection, bom *store.ManufacturingBom,
 		target = p.maximum
 	}
 	needed := new(big.Rat).Sub(target, projected)
+	// At least 1, as Inventory's rule (judgeLow) has it, whatever the unit:
+	// a variant counted in decimals gets the true quantity above 1 only.
 	if one := big.NewRat(1, 1); needed.Cmp(one) < 0 {
 		needed = one
 	}
@@ -274,22 +279,30 @@ func (w *replenishmentWorker) RunCycle(ctx context.Context) (int, error) {
 		}
 		if run.Attempts > replenishmentMaxAttempts {
 			msg := "The run was claimed too often without finishing."
-			if err := w.finish(ctx, run.ID, runFailed, runTally{}, &msg); err != nil {
+			if err := w.finish(ctx, run, runFailed, runTally{}, &msg); err != nil {
 				return finished, err
 			}
 			continue
 		}
 		tally, err := s.runReplenishment(ctx, run)
+		if errors.Is(err, errRunLost) {
+			s.logger().WarnContext(ctx, "manufacturing: a replenishment run was claimed again before it finished",
+				"worker", replenishmentWorkerName, "run", run.ID)
+			continue
+		}
 		if err != nil {
+			if ctx.Err() != nil {
+				return finished, ctx.Err()
+			}
 			s.logger().WarnContext(ctx, "manufacturing: a replenishment run failed", "worker", replenishmentWorkerName,
 				"run", run.ID, "error", err.Error())
 			msg := err.Error()
-			if ferr := w.finish(ctx, run.ID, runFailed, tally, &msg); ferr != nil {
+			if ferr := w.finish(ctx, run, runFailed, tally, &msg); ferr != nil {
 				return finished, ferr
 			}
 			continue
 		}
-		if err := w.finish(ctx, run.ID, runDone, tally, nil); err != nil {
+		if err := w.finish(ctx, run, runDone, tally, nil); err != nil {
 			return finished, err
 		}
 		finished++
@@ -303,15 +316,31 @@ type runTally struct {
 	salesCounted        bool
 }
 
-func (w *replenishmentWorker) finish(ctx context.Context, id int64, status string, t runTally, msg *string) error {
-	return store.New(w.s.deps.Pool).FinishRun(ctx, store.FinishRunParams{
-		ID: id, Status: status, Now: w.s.deps.Clock(), Suggestions: t.suggestions, OrdersCreated: t.orders,
-		SalesCounted: t.salesCounted, Error: msg,
+// finish records the run's end by the claim that ran it; a run claimed
+// again since is the new claim's to finish, and is left as it is.
+func (w *replenishmentWorker) finish(ctx context.Context, run store.ManufacturingReplenishmentRun, status string, t runTally, msg *string) error {
+	n, err := store.New(w.s.deps.Pool).FinishRun(ctx, store.FinishRunParams{
+		ID: run.ID, Attempts: run.Attempts, Status: status, Now: w.s.deps.Clock(), Suggestions: t.suggestions,
+		OrdersCreated: t.orders, SalesCounted: t.salesCounted, Error: msg,
 	})
+	if err != nil {
+		return fmt.Errorf("manufacturing: finish replenishment run %d: %w", run.ID, err)
+	}
+	if n == 0 {
+		w.s.logger().WarnContext(ctx, "manufacturing: a replenishment run was claimed again before it finished",
+			"worker", replenishmentWorkerName, "run", run.ID)
+	}
+	return nil
 }
 
+// errRunLost is a run another worker claimed after its lease ran out.
+var errRunLost = errors.New("manufacturing: the replenishment run was claimed again")
+
 // runReplenishment is one run over its sites: each active site, or the one
-// it was asked for.
+// it was asked for. It first supersedes the open suggestions of every site
+// no longer active, and renews the run's lease before each site. A site
+// that fails is recorded and the others still run; the run then fails,
+// naming each failed site, with what the others did tallied.
 func (s *server) runReplenishment(ctx context.Context, run store.ManufacturingReplenishmentRun) (runTally, error) {
 	t := runTally{salesCounted: s.deps.SalesOrderLines != nil}
 	sites, err := s.activeSites(ctx)
@@ -322,16 +351,42 @@ func (s *server) runReplenishment(ctx context.Context, run store.ManufacturingRe
 	if err != nil {
 		return t, err
 	}
+	pool := store.New(s.deps.Pool)
+	active := make([]int64, 0, len(sites))
+	for _, site := range sites {
+		active = append(active, site.ID)
+	}
+	if err := pool.SupersedeSuggestionsNotAt(ctx, active); err != nil {
+		return t, fmt.Errorf("manufacturing: supersede the suggestions of inactive sites: %w", err)
+	}
+	var failed []string
 	for _, site := range sites {
 		if run.SiteID != nil && *run.SiteID != site.ID {
 			continue
+		}
+		at := s.deps.Clock()
+		renewed, err := pool.RenewRunLease(ctx, store.RenewRunLeaseParams{ID: run.ID, Attempts: run.Attempts,
+			LeaseUntil: at.Add(replenishmentLease)})
+		if err != nil {
+			return t, fmt.Errorf("manufacturing: renew the lease of replenishment run %d: %w", run.ID, err)
+		}
+		if renewed == 0 {
+			return t, errRunLost
 		}
 		n, made, err := s.replenishSite(ctx, run.ID, site.ID, today)
 		t.suggestions += n
 		t.orders += made
 		if err != nil {
-			return t, fmt.Errorf("site %s: %w", site.Code, err)
+			if ctx.Err() != nil {
+				return t, ctx.Err()
+			}
+			s.logger().WarnContext(ctx, "manufacturing: replenishment of a site failed", "worker", replenishmentWorkerName,
+				"run", run.ID, "site", site.Code, "error", err.Error())
+			failed = append(failed, fmt.Sprintf("site %s: %s", site.Code, err.Error()))
 		}
+	}
+	if len(failed) > 0 {
+		return t, errors.New(strings.Join(failed, "; "))
 	}
 	return t, nil
 }
@@ -353,9 +408,16 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 		variantIDs = append(variantIDs, p.VariantID)
 	}
 	pool := store.New(s.deps.Pool)
-	served, err := pool.LinesServedByMto(ctx)
+	mto, err := pool.MtoRemainingByLine(ctx)
 	if err != nil {
 		return 0, 0, err
+	}
+	// What make-to-order still makes for a line is left out of supply, so
+	// it is taken off the line's demand; what it has produced is on hand
+	// and stays the line's demand.
+	mtoLeft := make(map[int64]*big.Rat, len(mto))
+	for _, r := range mto {
+		mtoLeft[r.LineID] = textRat(r.Remaining)
 	}
 	sales := map[int32]*big.Rat{}
 	demand, err := s.unreservedDemand(ctx, variantIDs, siteID)
@@ -363,9 +425,13 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 		return 0, 0, err
 	}
 	for _, d := range demand {
-		if !slices.Contains(served, d.LineID) {
-			sumBy(sales, d.VariantID, textRat(d.Quantity))
+		q := textRat(d.Quantity)
+		if left := mtoLeft[d.LineID]; left != nil && q != nil {
+			if q = new(big.Rat).Sub(q, left); q.Sign() <= 0 {
+				continue
+			}
 		}
+		sumBy(sales, d.VariantID, q)
 	}
 	supply, components := map[int32]*big.Rat{}, map[int32]*big.Rat{}
 	supplyRows, err := pool.SupplyAtSite(ctx, siteID)
@@ -390,9 +456,13 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 	for _, b := range boms {
 		bomOf[b.VariantID] = b
 	}
-	reorderOpen, err := pool.OpenReorderVariantsAt(ctx, siteID)
+	reorderRows, err := pool.OpenReorderVariantsAt(ctx, siteID)
 	if err != nil {
 		return 0, 0, err
+	}
+	reorderOpen := make(map[int32]bool, len(reorderRows))
+	for _, v := range reorderRows {
+		reorderOpen[v] = true
 	}
 	var plans []suggestionPlan
 	for _, p := range placements {
@@ -437,7 +507,7 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 			id, err := txq.InsertSuggestion(ctx, store.InsertSuggestionParams{
 				RunID: runID, SiteID: siteID, VariantID: p.variantID, Sku: e.SKU, ProductName: e.ProductName, Kind: p.kind,
 				Quantity: numeric(p.quantity, quantityPlaces), NeedBy: dateValue(p.needBy), Reason: reason, BomID: p.bomID,
-				ReorderOpen: slices.Contains(reorderOpen, p.variantID), Now: at,
+				ReorderOpen: reorderOpen[p.variantID], Now: at,
 			})
 			if err != nil {
 				return err
@@ -469,24 +539,30 @@ func (s *server) clearSuggestions(ctx context.Context, siteID int64) error {
 
 // autoCreate makes, as the system, the orders the site's rules ask for
 // (M111): a make suggestion of a variant whose rule creates automatically,
-// never one with an order from an earlier suggestion still open or a draft.
-// A refusal is logged and leaves the suggestion open.
+// never one with an order from an earlier suggestion still open or a draft
+// — skipped here as read on the pool, and refused reorder_open by
+// orderFromSuggestion when one was made since. A refusal is logged and
+// leaves the suggestion open.
 func (s *server) autoCreate(ctx context.Context, siteID int64, plans []suggestionPlan, inserted map[int32]int64,
-	reorderOpen []int32, today time.Time) (int32, error) {
-	rules, err := store.New(s.deps.Pool).RulesAt(ctx, siteID)
-	if err != nil || len(rules) == 0 {
+	reorderOpen map[int32]bool, today time.Time) (int32, error) {
+	rows, err := store.New(s.deps.Pool).RulesAt(ctx, siteID)
+	if err != nil || len(rows) == 0 {
 		return 0, err
+	}
+	rules := make(map[int32]store.ManufacturingReplenishmentRule, len(rows))
+	for _, r := range rows {
+		rules[r.VariantID] = r
 	}
 	var made int32
 	for _, p := range plans {
-		if p.kind != kindMake || slices.Contains(reorderOpen, p.variantID) {
+		if p.kind != kindMake || reorderOpen[p.variantID] {
 			continue
 		}
-		i := slices.IndexFunc(rules, func(r store.ManufacturingReplenishmentRule) bool { return r.VariantID == p.variantID })
-		if i < 0 {
+		rule, ok := rules[p.variantID]
+		if !ok {
 			continue
 		}
-		_, failure, err := s.orderFromSuggestion(ctx, inserted[p.variantID], nil, rules[i].AutoConfirm, systemActor, today)
+		_, failure, err := s.orderFromSuggestion(ctx, inserted[p.variantID], nil, rule.AutoConfirm, systemActor, today)
 		if err != nil {
 			return made, err
 		}
@@ -545,9 +621,12 @@ var errSuggestionTaken = errors.New("manufacturing: the suggestion is no longer 
 // reorder, at the suggestion's site, for quantity (the suggestion's when
 // nil), due on its need-by date, from the variant's default active BoM —
 // confirmed too when confirm. Judged on the pool first, then in one
-// transaction: LockVariants, the suggestion FOR UPDATE, the order's insert
-// and its confirm, the suggestion done. A rule's refusal is the failure
-// answered, nothing written.
+// transaction: LockVariants, the suggestion FOR UPDATE, no order from a
+// suggestion of the variant still open or a draft at the site (else the
+// suggestion is marked reorder_open and the failure is reorder_open), the
+// order's insert and its confirm, the suggestion done. Under LockVariants two
+// creations of one variant run one after the other, so the second sees the
+// first's order. A rule's refusal is the failure answered, nothing written.
 func (s *server) orderFromSuggestion(ctx context.Context, id int64, quantity *big.Rat, confirm bool, who actor,
 	today time.Time) (*gen.ManufacturingSuggestionMade, *gen.ManufacturingSuggestionFailure, error) {
 	fail := func(code, detail string) (*gen.ManufacturingSuggestionMade, *gen.ManufacturingSuggestionFailure, error) {
@@ -589,6 +668,7 @@ func (s *server) orderFromSuggestion(ctx context.Context, id int64, quantity *bi
 		return refused(err)
 	}
 	var made gen.ManufacturingSuggestionMade
+	var reorderOpen bool
 	for attempt := 1; ; attempt++ {
 		components, err := bomVariants(ctx, store.New(s.deps.Pool), b.ID)
 		if err != nil {
@@ -596,6 +676,7 @@ func (s *server) orderFromSuggestion(ctx context.Context, id int64, quantity *bi
 		}
 		ids := lockedVariants(sg.VariantID, components)
 		err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+			reorderOpen = false
 			locked, err := s.lockVariants(ctx, tx, ids)
 			if err != nil {
 				return err
@@ -609,6 +690,17 @@ func (s *server) orderFromSuggestion(ctx context.Context, id int64, quantity *bi
 			}
 			if cur.Status != suggestionOpen {
 				return errSuggestionTaken
+			}
+			open, err := txq.HasOpenReorder(ctx, store.HasOpenReorderParams{VariantID: sg.VariantID, SiteID: sg.SiteID})
+			if err != nil {
+				return err
+			}
+			if open {
+				reorderOpen = true
+				if err := txq.MarkSuggestionReorderOpen(ctx, id); err != nil {
+					return err
+				}
+				return notifySuggestions(ctx, tx, sg.SiteID)
 			}
 			bom, err := txq.GetBom(ctx, b.ID)
 			if err != nil {
@@ -656,6 +748,9 @@ func (s *server) orderFromSuggestion(ctx context.Context, id int64, quantity *bi
 		}
 		if err != nil {
 			return refused(err)
+		}
+		if reorderOpen {
+			return fail(codeReorderOpen, "An order from an earlier suggestion of the variant is still open or a draft at the site.")
 		}
 		return &made, nil, nil
 	}
@@ -780,7 +875,7 @@ func (s *server) CreateManufacturingOrdersFromSuggestions(ctx context.Context, r
 		seen[it.SuggestionId] = true
 		if it.Quantity != nil {
 			q, msg := parsePositive(*it.Quantity, quantityPlaces, maxQuantity)
-			f.addCoded("quantity", codeQuantityInvalid, msg)
+			f.addCoded(fmt.Sprintf("items[%d].quantity", i), codeQuantityInvalid, msg)
 			quantities[i] = q
 		}
 	}
@@ -862,7 +957,9 @@ func (s *server) DismissManufacturingSuggestion(ctx context.Context, req gen.Dis
 }
 
 // StartManufacturingReplenishmentRun asks for a run now (M109): at most one
-// a minute — a run asked for less than a minute ago is answered instead.
+// a minute per site, and one a minute of every site — a run of the same
+// site, or of every site, asked for less than a minute ago is answered
+// instead.
 func (s *server) StartManufacturingReplenishmentRun(ctx context.Context, req gen.StartManufacturingReplenishmentRunRequestObject) (gen.StartManufacturingReplenishmentRunResponseObject, error) {
 	var siteID *int64
 	if req.Body != nil {
@@ -893,7 +990,7 @@ func (s *server) StartManufacturingReplenishmentRun(ctx context.Context, req gen
 			return err
 		}
 		now := s.deps.Clock()
-		recent, err := txq.RecentManualRun(ctx, now.Add(-runEvery))
+		recent, err := txq.RecentManualRun(ctx, store.RecentManualRunParams{Since: now.Add(-runEvery), SiteID: siteID})
 		if err == nil {
 			run = recent
 			return nil
