@@ -2,6 +2,7 @@ package manufacturing_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -12,6 +13,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/live"
 
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -643,4 +647,60 @@ func TestRouting_EditKeepsTheGraph(t *testing.T) {
 	u.Operations[0] = after(u.Operations[0], strconv.FormatInt(got.Operations[1].Id, 10))
 	u.Operations[1].DependsOn = nil // absent: the one before by sequence
 	expectRefusal(t, c.Do(http.MethodPut, bomPath(b.Id), u), http.StatusBadRequest, "operation_cycle", "a then b then a")
+}
+
+// TestRouting_GroupWorkLive is §17 for groups: a group work order started at
+// one member is heard on every member's work center topic, since it leaves
+// each one's Group work.
+func TestRouting_GroupWorkLive(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	f := newGroupFloor(t, c, 100)
+	bikeWith(t, c, atGroup("a", 10, f.group.Id, "1"))
+	_, wos := confirmedBike(t, c, "10")
+	ctx, cancel := context.WithCancel(context.Background())
+	conn, err := pgx.ConnectConfig(ctx, h.Pool().Config().ConnConfig.Copy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, "LISTEN "+live.Channel); err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan liveEvent, 32)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			n, err := conn.WaitForNotification(ctx)
+			if err != nil {
+				return
+			}
+			var e liveEvent
+			if json.Unmarshal([]byte(n.Payload), &e) == nil && e.T != "" {
+				events <- e
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+		_ = conn.Close(context.Background())
+	})
+	m2 := f.m2.Id
+	act(t, c, wos[0].Id, "start", gen.ManufacturingStartInput{WorkCenterId: &m2})
+	want := map[liveEvent]bool{}
+	for _, id := range []int64{f.m1.Id, f.m2.Id} {
+		center := strconv.FormatInt(id, 10)
+		want[liveEvent{T: "manufacturing.work-center:" + center, K: "work-center.changed", ID: center}] = true
+	}
+	deadline := time.After(10 * time.Second)
+	for len(want) > 0 {
+		select {
+		case e := <-events:
+			delete(want, e)
+		case <-deadline:
+			t.Fatalf("live events missing: %v", want)
+		}
+	}
 }

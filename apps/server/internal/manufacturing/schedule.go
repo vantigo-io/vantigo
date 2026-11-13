@@ -539,6 +539,10 @@ func (p *planner) apply(ctx context.Context, txq *store.Queries, pl orderPlan, n
 			return store.ManufacturingOrder{}, err
 		}
 		notes.workOrder(w.ID, w.OrderID, w.WorkCenterID)
+		// Planned, a group work order leaves the members' Group work (M119).
+		if err := notes.groupWork(ctx, txq, w); err != nil {
+			return store.ManufacturingOrder{}, err
+		}
 		p.booked[x.center] = book(p.booked[x.center], x.pieces)
 	}
 	o, err := txq.SetOrderPlan(ctx, store.SetOrderPlanParams{ID: pl.order.ID, PlannedStart: pl.start, PlannedFinish: pl.finish, Now: p.now})
@@ -951,6 +955,10 @@ func (s *server) UnplanManufacturingOrder(ctx context.Context, req gen.UnplanMan
 					return err
 				}
 				notes.workOrder(w.ID, w.OrderID, w.WorkCenterID)
+			}
+			// Unplanned, a group work order with no log is Group work again (M119).
+			if err := notes.groupWork(ctx, txq, open...); err != nil {
+				return err
 			}
 			if _, err := txq.SetOrderPlan(ctx, store.SetOrderPlanParams{ID: o.ID, Now: now}); err != nil {
 				return err
