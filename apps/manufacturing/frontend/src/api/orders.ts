@@ -283,6 +283,17 @@ export const unbuildsQueryOptions = (filter: { orderId?: number; page?: number }
 export const createUnbuild = (input: ManufacturingUnbuildInput) =>
   send<ManufacturingUnbuild>("/api/v1/manufacturing/unbuilds", json("POST", input));
 
+/** One unbuild with what it restored (M123). */
+export const unbuildQueryOptions = (unbuildId: number) =>
+  queryOptions({
+    queryKey: [MANUFACTURING_QUERY_KEY, "unbuild", unbuildId],
+    queryFn: ({ signal }) => request<ManufacturingUnbuild>(`/api/v1/manufacturing/unbuilds/${unbuildId}`, { signal }),
+  });
+
+/** Releases the quarantine an unbuild of a held lot put on what it restored (M123); its own holds only. */
+export const releaseUnbuild = (unbuildId: number) =>
+  send<ManufacturingUnbuild>(`/api/v1/manufacturing/unbuilds/${unbuildId}/release`, { method: "POST" });
+
 /**
  * Listens to the orders' live topics (M25) and refetches on an event: the
  * list's keyless `manufacturing.orders`, or one order's

@@ -6,7 +6,7 @@ import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/f
 import { useState } from "react";
 import { unbuildsQueryOptions } from "../api/orders";
 import { useManufacturingFormat } from "../lib/format";
-import { MANUFACTURING_HOME_ROUTE_PATH, orderLinkOptions } from "../lib/routes";
+import { MANUFACTURING_HOME_ROUTE_PATH, orderLinkOptions, unbuildLinkOptions } from "../lib/routes";
 
 /** A page of the unbuilds list. */
 const UNBUILD_PAGE_SIZE = 50;
@@ -14,8 +14,8 @@ const UNBUILD_PAGE_SIZE = 50;
 /**
  * The unbuilds (manufacturing phase 2 M123; nb Demonteringer), newest first:
  * what each took apart — the order and the lot when it came from one — and
- * what it restored, into which lots. An unbuild is made from a done order's
- * page.
+ * what it restored, into which lots, each linked to its page. An unbuild is
+ * made from a done order's page.
  */
 export const UnbuildsPage = () => {
   const { t, quantity, stamp } = useManufacturingFormat();
@@ -55,7 +55,19 @@ export const UnbuildsPage = () => {
                   <Table.Tbody>
                     {list.data.items.map((unbuild) => (
                       <Table.Tr key={unbuild.id}>
-                        <Table.Td>{unbuild.number}</Table.Td>
+                        <Table.Td>
+                          <Anchor
+                            size="sm"
+                            renderRoot={(props) => <Link {...unbuildLinkOptions(unbuild.id)} {...props} />}
+                          >
+                            {unbuild.number}
+                          </Anchor>
+                          {unbuild.quarantined && unbuild.releasedAt === null && (
+                            <Text size="xs" c="orange">
+                              {t("unbuildQuarantined")}
+                            </Text>
+                          )}
+                        </Table.Td>
                         <Table.Td>
                           <Text size="sm">{unbuild.variant.sku}</Text>
                           {unbuild.lotNumber && (

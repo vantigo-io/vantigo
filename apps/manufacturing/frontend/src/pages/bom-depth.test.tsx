@@ -133,12 +133,38 @@ describe("the order's by-products, split and unbuild", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Unbuild" }));
     expect(await within(dialog).findByText("BOARD · 4 pcs")).toBeInTheDocument();
     const [post] = sent(fetchMock, "POST", /\/unbuilds$/);
-    expect(post.body).toMatchObject({ orderId: 5, quantity: "1", lotId: 900 });
+    // Taken from the order's output location; put where the server puts it
+    // when no component location is chosen.
+    expect(post.body).toMatchObject({ orderId: 5, quantity: "1", lotId: 900, fromLocationId: 10 });
+    expect(post.body).not.toHaveProperty("toLocationId");
+  });
+
+  it("asks for no lot of a product the catalog does not track, whatever lots the order made", async () => {
+    const order = orderFixture({ status: "done", produced: "10" });
+    stubManufacturingApi({
+      meta: { canManageOrders: true },
+      orders: [order],
+      orderLots: {
+        5: {
+          outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "10", productions: 1, unbuilt: "0" }],
+          components: [],
+          byProducts: [],
+          tracking: "none",
+        },
+      },
+    });
+    renderRoute("/manufacturing/orders/5");
+    await userEvent.click(await screen.findByRole("button", { name: "Unbuild" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByRole("combobox", { name: "Take from" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox", { name: "Lot" })).not.toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText("Quantity"), "2");
+    expect(within(dialog).getByRole("button", { name: "Unbuild" })).toBeEnabled();
   });
 });
 
 describe("merge and the unbuilds list", () => {
-  it("merges the chosen orders with the revisions read again", async () => {
+  it("merges the chosen orders with the revisions the list showed", async () => {
     const fetchMock = stubManufacturingApi({
       meta: { canManageOrders: true },
       orders: [orderFixture(), orderFixture({ id: 6, number: "MO-13", revision: 7 })],
@@ -159,6 +185,20 @@ describe("merge and the unbuilds list", () => {
         { id: 6, revision: 7 },
       ],
     });
+  });
+
+  it("forgets the chosen orders when the filter changes", async () => {
+    stubManufacturingApi({
+      meta: { canManageOrders: true },
+      orders: [orderFixture(), orderFixture({ id: 6, number: "MO-13", revision: 7 })],
+    });
+    const { router } = renderRoute("/manufacturing/orders");
+    await userEvent.click(await screen.findByLabelText("Choose MO-12 to merge"));
+    await userEvent.click(screen.getByLabelText("Choose MO-13 to merge"));
+    expect(screen.getByRole("button", { name: "Merge 2" })).toBeInTheDocument();
+    await router.navigate({ to: "/manufacturing/orders", search: { q: "MO" } });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Merge 2" })).not.toBeInTheDocument());
+    expect(await screen.findByLabelText("Choose MO-12 to merge")).not.toBeChecked();
   });
 
   it("lists the unbuilds with what each restored", async () => {
@@ -191,8 +231,72 @@ describe("merge and the unbuilds list", () => {
       ],
     });
     renderRoute("/manufacturing/unbuilds");
-    expect(await screen.findByText("UB-1")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "UB-1" })).toHaveAttribute("href", "/manufacturing/unbuilds/1");
     expect(screen.getByText("By the bill of materials")).toBeInTheDocument();
     expect(screen.getByText("BOARD · 8 pcs")).toBeInTheDocument();
+  });
+});
+
+describe("the unbuild's page", () => {
+  const held: ManufacturingUnbuild = {
+    id: 1,
+    number: "UB-1",
+    orderId: 5,
+    orderNumber: "MO-12",
+    bomId: 7,
+    variant: ref(1, "TABLE"),
+    quantity: "1",
+    lotId: 900,
+    lotNumber: "MO-12",
+    siteId: 1,
+    fromLocationId: 10,
+    toLocationId: 11,
+    movementId: 3,
+    note: "Recalled",
+    clientRequestId: "x",
+    postedByUserId: null,
+    postedByDisplay: "Kari",
+    postedAt: "2026-11-11T09:00:00Z",
+    lines: [{ variant: ref(2, "BOARD"), quantity: "4", lotId: 501, lotNumber: "B-1" }],
+    quarantined: true,
+    releasedAt: null,
+    releasedByDisplay: null,
+  };
+
+  it("shows what it restored, and releases its quarantine for a quality manager", async () => {
+    const fetchMock = stubManufacturingApi({
+      meta: { canManageQuality: true },
+      unbuilds: [held],
+      write: (method, path) =>
+        method === "POST" && path === "/unbuilds/1/release"
+          ? jsonResponse(200, { ...held, releasedAt: "2026-11-12T09:00:00Z", releasedByDisplay: "Per" })
+          : undefined,
+    });
+    renderRoute("/manufacturing/unbuilds/1");
+    expect(await screen.findByText("UB-1 · TABLE")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "MO-12" })).toHaveAttribute("href", "/manufacturing/orders/5");
+    expect(await screen.findByText("OSL-A1")).toBeInTheDocument();
+    expect(screen.getByText("B-1")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Release the quarantine" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/unbuilds\/1\/release$/)).toHaveLength(1));
+  });
+
+  it("offers no release without quality-manage, nor once released", async () => {
+    stubManufacturingApi({
+      meta: { canManageQuality: false },
+      unbuilds: [
+        held,
+        { ...held, id: 2, number: "UB-2", releasedAt: "2026-11-12T09:00:00Z", releasedByDisplay: "Per" },
+      ],
+    });
+    renderRoute("/manufacturing/unbuilds/1");
+    expect(await screen.findByText("UB-1 · TABLE")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Release the quarantine" })).not.toBeInTheDocument();
+  });
+
+  it("says when there is no such unbuild", async () => {
+    stubManufacturingApi();
+    renderRoute("/manufacturing/unbuilds/9");
+    expect(await screen.findByText("There is no such unbuild.")).toBeInTheDocument();
   });
 });

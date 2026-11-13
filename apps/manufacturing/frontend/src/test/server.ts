@@ -653,6 +653,11 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       const items = server.unbuilds ?? [];
       return Promise.resolve(jsonResponse(200, { items, total: items.length, page: 1, pageSize: 50 }));
     }
+    const unbuild = /^\/unbuilds\/(\d+)$/.exec(path);
+    if (unbuild) {
+      const found = (server.unbuilds ?? []).find((one) => one.id === Number(unbuild[1]));
+      return Promise.resolve(found ? jsonResponse(200, found) : manufacturingProblem(404, undefined));
+    }
     if (path === "/orders") {
       const items = orders.map(orderSummaryOf);
       return Promise.resolve(jsonResponse(200, { items, total: items.length, page: 1, pageSize: 50 }));

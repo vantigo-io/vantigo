@@ -34,6 +34,7 @@ export { ReportsPage } from "./pages/reports";
 export { SchedulePage } from "./pages/schedule";
 export { ShopFloorPage, ShopFloorWorkCenterPage } from "./pages/shop-floor";
 export { SuggestionsPage } from "./pages/suggestions";
+export { UnbuildPage } from "./pages/unbuild";
 export { UnbuildsPage } from "./pages/unbuilds";
 export { NewWorkCenterPage, WorkCenterPage } from "./pages/work-center";
 export { WorkCentersPage } from "./pages/work-centers";

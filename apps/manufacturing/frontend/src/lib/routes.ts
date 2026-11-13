@@ -46,8 +46,14 @@ export const DEVIATIONS_ROUTE_PATH = "/manufacturing/deviations";
 export const DEVIATION_ROUTE_PATH = "/manufacturing/deviations/$deviationId";
 /** The replenishment suggestions, under the manufacturing orders (manufacturing phase 2 M111). */
 export const SUGGESTIONS_ROUTE_PATH = "/manufacturing/suggestions";
-/** The unbuilds (manufacturing phase 2 M123). */
+/** The unbuilds (manufacturing phase 2 M123), and one unbuild's page. */
 export const UNBUILDS_ROUTE_PATH = "/manufacturing/unbuilds";
+export const UNBUILD_ROUTE_PATH = "/manufacturing/unbuilds/$unbuildId";
+
+export const unbuildLinkOptions = (unbuildId: number) => ({
+  to: UNBUILD_ROUTE_PATH,
+  params: { unbuildId: String(unbuildId) },
+});
 
 export const deviationLinkOptions = (deviationId: number) => ({
   to: DEVIATION_ROUTE_PATH,
