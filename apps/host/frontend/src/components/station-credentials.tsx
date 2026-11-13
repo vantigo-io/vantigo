@@ -68,6 +68,11 @@ export const StationPinSection = () => {
             ? t("stations.pinIsSet", { when: formatters.formatDate(state.data.setAt, { dateStyle: "medium" }) })
             : t("stations.pinNotSet")}
         </Text>
+        {state.data?.needsReenrolment && (
+          <Text size="sm" c="orange">
+            {t("stations.pinNeedsReenrolment")}
+          </Text>
+        )}
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -115,25 +120,35 @@ export const OperatorCredentialsSection = ({ userId }: { userId: string }) => {
   const key = operatorCredentialsQueryKey(userId);
   const state = useQuery({ queryKey: key, queryFn: () => readOperatorCredentials(userId) });
   const [badge, setBadge] = useState("");
+  const [password, setPassword] = useState("");
   const after = (title: string) => async () => {
     setBadge("");
+    setPassword("");
     notifications.show({ color: "teal", title, message: "" });
     await queryClient.invalidateQueries({ queryKey: key });
   };
-  const fail = (error: unknown) =>
+  const fail = (error: unknown) => {
+    const code = (error as { code?: string }).code;
     notifications.show({
       color: "red",
       title: t("stations.operatorSection"),
       message:
-        (error as { code?: string }).code === "badge_taken" ? t("stations.badgeTaken") : (error as Error).message,
+        code === "badge_unavailable"
+          ? t("stations.badgeUnavailable")
+          : code === "reauthentication_required"
+            ? t("stations.reauth")
+            : code === "invalid_credentials"
+              ? t("stations.pinWrongPassword")
+              : (error as Error).message,
     });
+  };
   const clear = useMutation({
     mutationFn: () => clearPin(userId),
     onSuccess: after(t("stations.pinCleared")),
     onError: fail,
   });
   const enrol = useMutation({
-    mutationFn: () => enrolBadge(userId, badge),
+    mutationFn: () => enrolBadge(userId, badge, password || undefined),
     onSuccess: after(t("stations.badgeSaved")),
     onError: fail,
   });
@@ -149,8 +164,12 @@ export const OperatorCredentialsSection = ({ userId }: { userId: string }) => {
         {t("stations.operatorSection")}
       </Text>
       <Group gap="sm">
-        <Badge variant="light" color={state.data.hasPin ? "teal" : "gray"}>
-          {state.data.hasPin ? t("stations.hasPin") : t("stations.noPin")}
+        <Badge variant="light" color={state.data.pinNeedsReenrolment ? "orange" : state.data.hasPin ? "teal" : "gray"}>
+          {state.data.pinNeedsReenrolment
+            ? t("stations.needsReenrolment")
+            : state.data.hasPin
+              ? t("stations.hasPin")
+              : t("stations.noPin")}
         </Badge>
         {state.data.hasPin && (
           <Button
@@ -163,8 +182,15 @@ export const OperatorCredentialsSection = ({ userId }: { userId: string }) => {
             {t("stations.clearPin")}
           </Button>
         )}
-        <Badge variant="light" color={state.data.hasBadge ? "teal" : "gray"}>
-          {state.data.hasBadge ? t("stations.hasBadge") : t("stations.noBadge")}
+        <Badge
+          variant="light"
+          color={state.data.badgeNeedsReenrolment ? "orange" : state.data.hasBadge ? "teal" : "gray"}
+        >
+          {state.data.badgeNeedsReenrolment
+            ? t("stations.needsReenrolment")
+            : state.data.hasBadge
+              ? t("stations.hasBadge")
+              : t("stations.noBadge")}
         </Badge>
         {state.data.hasBadge && (
           <Button size="compact-sm" variant="subtle" color="red" loading={drop.isPending} onClick={() => drop.mutate()}>
@@ -187,6 +213,12 @@ export const OperatorCredentialsSection = ({ userId }: { userId: string }) => {
               if (badge.trim()) enrol.mutate();
             }
           }}
+        />
+        <PasswordInput
+          label={t("stations.currentPassword")}
+          description={t("stations.currentPasswordHint")}
+          value={password}
+          onChange={(event) => setPassword(event.currentTarget.value)}
         />
         <Button variant="default" loading={enrol.isPending} disabled={!badge.trim()} onClick={() => enrol.mutate()}>
           {t("stations.enrolBadge")}

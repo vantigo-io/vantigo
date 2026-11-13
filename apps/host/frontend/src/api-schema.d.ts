@@ -1611,7 +1611,7 @@ export interface paths {
         put?: never;
         /**
          * Switch an operator in at this station
-         * @description Switches an operator in with the station cookie (M133): a user and their PIN, or a badge (and, while the station requires it, the badge's holder's PIN as well). Ten failed attempts in five minutes close the station for the rest of the window; from the fifth consecutive failure for one person at this station each attempt waits, 30 seconds doubling to 15 minutes. Success answers an operator token for the Authorization header (Station <token>), which the page keeps in memory only. Signing in a person already signed in here replaces their session. Audited operator_signed_in or operator_sign_in_failed.
+         * @description Switches an operator in with the station cookie (M133): a user and their PIN, or a badge (and, while the station requires it, the badge's holder's PIN as well). Thirty attempts in five minutes, and ten failed ones, close the station for the rest of the window (an attempt refused for a person in backoff counts on neither); attempts for one person at one station are taken one at a time, a second one at once answering 429; from the fifth consecutive failure for one person at this station each attempt waits, 30 seconds doubling to 15 minutes, and a run an hour past its last failure starts again. A PIN or badge enrolled under an earlier version of the installation's key does not verify. Success answers an operator token for the Authorization header (Station <token>), which the page keeps in memory only. Signing in a person already signed in here replaces their session. Audited operator_signed_in or operator_sign_in_failed.
          */
         post: operations["postIdentityStationOperators"];
         delete?: never;
@@ -1651,7 +1651,7 @@ export interface paths {
         put?: never;
         /**
          * Pair this browser as a station
-         * @description Pairs this browser as a shared shop-floor station with the one-time code an administrator issued (M129). The code is spent; a 256-bit station token is minted, its hash stored, and the vantigo.station cookie set for 90 days. A session cookie on the request is signed out in the same answer, so a station browser never holds both. Ten attempts per address in 15 minutes. Audited station_paired.
+         * @description Pairs this browser as a shared shop-floor station with the one-time code an administrator issued (M129). The code is spent; a 256-bit station token is minted, its hash stored, and the vantigo.station cookie set for 90 days. A session cookie on the request is signed out in the same answer, so a station browser never holds both. A code tried from an address outside the station's network allowlist is refused as an invalid one. Ten attempts per address in 15 minutes, and 60 an hour across the installation. Audited station_paired; a refused attempt is audited station_pairing_failed.
          */
         post: operations["postIdentityStationPair"];
         delete?: never;
@@ -1675,7 +1675,7 @@ export interface paths {
         put?: never;
         /**
          * Register a shop-floor station
-         * @description Registers a shared shop-floor station (M129) and answers a one-time pairing code: eight characters of Crockford base32, valid 15 minutes, stored only as a hash. Audited station_registered.
+         * @description Registers a shared shop-floor station (M129) and answers a one-time pairing code: eight characters of Crockford base32, valid 15 minutes, stored only as a hash. A station that takes a badge alone (requirePinWithBadge false) needs the current password unless the session signed in within the last 10 minutes, and the holders of identity:manage are mailed. Audited station_registered.
          */
         post: operations["postIdentityStations"];
         delete?: never;
@@ -1694,10 +1694,50 @@ export interface paths {
         get?: never;
         /**
          * Change a shop-floor station
-         * @description Changes a station's name, idle timeout, badge rule and network allowlist. A changed allowlist is audited station_networks_changed and applies to the next request.
+         * @description Changes a station's name, idle timeout, badge rule and network allowlist, audited station_changed with the settings before and after; a changed allowlist is audited station_networks_changed as well and applies to the next request. Making the station take a badge alone (requirePinWithBadge false) needs the current password unless the session signed in within the last 10 minutes, and mails the holders of identity:manage.
          */
         put: operations["putIdentityStationsById"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/stations/{id}/backoff/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset a person's sign-in backoff at a station
+         * @description Resets a person's run of failed sign-ins at a station (M133), so their next attempt there is verified at once. Audited operator_backoff_reset.
+         */
+        delete: operations["deleteIdentityStationsByIdBackoffByUserId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/stations/{id}/operators/{sessionId}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End an operator's session at a station
+         * @description Ends an operator's session at a station (M136) from Workspace › Stations, as Switch out on the station does. Time logs left running keep running. Audited operator_signed_out with the reason ended_by_admin.
+         */
+        post: operations["postIdentityStationsByIdOperatorsBySessionIdEnd"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1805,7 +1845,7 @@ export interface paths {
         get?: never;
         /**
          * Enrol a person's badge
-         * @description Enrols the code a keyboard-wedge card reader types for a person (M132), stored as an HMAC under a key from APP_SECRET. Replaces the person's badge. Audited badge_enrolled.
+         * @description Enrols the code a keyboard-wedge card reader types for a person who holds manufacturing:shop-floor (M132), stored as an HMAC under a key from APP_SECRET. Replaces the person's badge and ends their operator sessions at every station. Needs the current password unless the session signed in within the last 10 minutes; the person is mailed that a badge was enrolled for them. Audited badge_enrolled.
          */
         put: operations["putIdentityUsersByIdBadge"];
         post?: never;
@@ -2817,6 +2857,8 @@ export interface components {
             pin: string;
         };
         AccountPinResponse: {
+            /** @description The PIN was set under an earlier version of the installation's key and no longer verifies; set it again. */
+            needsReenrolment: boolean;
             set: boolean;
             /** Format: date-time */
             setAt: string | null;
@@ -2824,12 +2866,18 @@ export interface components {
         BadgeRequest: {
             /** @description The code the card reader types, 4 to 128 characters. */
             badge: string;
+            /** @description The administrator's own password; not needed when their session signed in within the last 10 minutes. */
+            currentPassword?: string | null;
         };
         OperatorCredentials: {
             /** Format: date-time */
             badgeSetAt: string | null;
+            /** @description The badge was enrolled under an earlier version of the installation's key and no longer verifies; enrol it again. */
+            badgeNeedsReenrolment: boolean;
             hasBadge: boolean;
             hasPin: boolean;
+            /** @description The PIN was set under an earlier version of the installation's key and no longer verifies; the person sets it again. */
+            pinNeedsReenrolment: boolean;
             /** Format: date-time */
             pinSetAt: string | null;
         };
@@ -2843,6 +2891,8 @@ export interface components {
             alertedAt: string | null;
             /** @description The networks (CIDR) station requests may come from; null for any. */
             allowedNetworks: string[] | null;
+            /** @description The people with a run of failed sign-ins here that has not yet decayed (an hour after its last failure), each of which an administrator may reset. */
+            backoff: components["schemas"]["StationBackoff"][];
             /** Format: date-time */
             createdAt: string;
             /** Format: uuid */
@@ -2862,6 +2912,20 @@ export interface components {
             state: components["schemas"]["StationState"];
             /** Format: date-time */
             tokenExpiresAt: string | null;
+        };
+        /** @description A person's run of consecutive failed sign-ins at a station (M133). */
+        StationBackoff: {
+            displayName: string;
+            failures: number;
+            /** Format: date-time */
+            lastFailureAt: string;
+            /**
+             * Format: date-time
+             * @description Until when the person's attempts here are refused without verifying; null before the fifth failure.
+             */
+            nextAttemptAt: string | null;
+            /** Format: uuid */
+            userId: string;
         };
         StationList: {
             items: components["schemas"]["Station"][];
@@ -2924,6 +2988,8 @@ export interface components {
         StationRequest: {
             /** @description Networks in CIDR notation (192.168.10.0/24) or single addresses; null or empty for any. */
             allowedNetworks?: string[] | null;
+            /** @description The administrator's own password, needed to make a station take a badge alone (requirePinWithBadge false) unless their session signed in within the last 10 minutes. */
+            currentPassword?: string | null;
             /** @description 1 to 60; 5 when left out. */
             idleMinutes?: number | null;
             name: string;
@@ -10220,7 +10286,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Unauthorized */
+            /** @description Unauthorized — also invalid_credentials, a wrong current password. */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10229,8 +10295,17 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — also reauthentication_required: the change needs the current password, the session having signed in more than 10 minutes ago. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — rate_limited, too many wrong current passwords. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10274,6 +10349,65 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
+            /** @description Unauthorized — also invalid_credentials, a wrong current password. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — also reauthentication_required: the change needs the current password, the session having signed in more than 10 minutes ago. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests — rate_limited, too many wrong current passwords. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityStationsByIdBackoffByUserId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station. */
+                id: string;
+                /** @description The person. */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -10292,7 +10426,57 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Not Found */
+            /** @description Not Found — the station, or no run of failures for the person at it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityStationsByIdOperatorsBySessionIdEnd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station. */
+                id: string;
+                /** @description The operator session. */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — operator_session_unknown: not an active session of this station. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -10546,7 +10730,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Bad Request */
+            /** @description Bad Request — invalid_request, also for a person who does not hold manufacturing:shop-floor. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -10555,7 +10739,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Unauthorized */
+            /** @description Unauthorized — also invalid_credentials, a wrong current password. */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -10564,7 +10748,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Forbidden */
+            /** @description Forbidden — also reauthentication_required: the change needs the current password, the session having signed in more than 10 minutes ago. */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -10582,9 +10766,19 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — badge_taken: the card is another person's. */
+            /** @description Conflict — badge_unavailable: the card cannot be enrolled; the answer does not say why. */
             409: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {

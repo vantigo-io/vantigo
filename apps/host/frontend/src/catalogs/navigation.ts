@@ -226,7 +226,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "navigation.google": "Google Workspace",
   "navigation.meta": "Meta",
   "navigation.shipping": "Frakt",
-  "navigation.stations": "Stasjoner",
+  "navigation.stations": "Nettbrettstasjoner",
   "navigation.meteringPoints": "Målepunkter",
   "navigation.meteringPoint": "Målepunkt",
   "navigation.prices": "Priser",
