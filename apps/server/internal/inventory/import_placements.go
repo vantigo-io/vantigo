@@ -41,7 +41,8 @@ import (
 
 // placementImportColumns are the header's five names, as
 // fileimport.HeaderKey reads them; placementImportMultiple is the sixth a
-// header may add (M105), a file without it clearing every row's multiple.
+// header may add (M105). A file without it leaves every placement's multiple
+// as it is, and a placement it creates has none.
 var placementImportColumns = []string{"sku", "site", "primarylocation", "reorderpoint", "maximum"}
 
 const placementImportMultiple = "multiple"
@@ -131,7 +132,7 @@ func (s *server) ImportInventoryPlacements(ctx context.Context, req gen.ImportIn
 	replay := false
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		var err error
-		done, replay, err = s.commitPlacements(ctx, txq, who, writes, len(file.Rows), hashKey, digest)
+		done, replay, err = s.commitPlacements(ctx, txq, who, writes, !withMultiple, len(file.Rows), hashKey, digest)
 		return err
 	})
 	if status, p, ok := answerOf(err); ok && status == http.StatusBadRequest {
@@ -171,7 +172,7 @@ type importOutcome struct {
 //  4. the placements, the writes sorted by (variant, site): the removals,
 //     then the upsert, each with its placement_set or placement_cleared
 //     event, and the import's one placements_imported event.
-func (s *server) commitPlacements(ctx context.Context, txq *store.Queries, who actor, writes []placementWrite, fileRows int, hashKey int64, digest string) (importOutcome, bool, error) {
+func (s *server) commitPlacements(ctx context.Context, txq *store.Queries, who actor, writes []placementWrite, keepMultiple bool, fileRows int, hashKey int64, digest string) (importOutcome, bool, error) {
 	var out importOutcome
 	if err := txq.LockPlacementImports(ctx, placementImportLockKey); err != nil {
 		return out, false, fmt.Errorf("inventory: lock the placement imports: %w", err)
@@ -278,8 +279,15 @@ func (s *server) commitPlacements(ctx context.Context, txq *store.Queries, who a
 		out.Cleared = int32(len(removed))
 	}
 	if len(sets) > 0 {
-		params := store.UpsertPlacementsParams{UpdatedByUserID: who.UserID, UpdatedByDisplay: &who.Display, Now: s.deps.Clock()}
-		for _, w := range sets {
+		params := store.UpsertPlacementsParams{UpdatedByUserID: who.UserID, UpdatedByDisplay: &who.Display, Now: s.deps.Clock(),
+			KeepMultiple: keepMultiple}
+		for i, w := range sets {
+			if keepMultiple {
+				// The event's fields compare what the placement keeps.
+				if was, ok := before[siteKey{w.variantID, w.siteID}]; ok {
+					sets[i].multiple = optionalRat(was.Multiple)
+				}
+			}
 			reorderPoint, err := optionalNumeric(w.reorderPoint)
 			if err != nil {
 				return out, false, err

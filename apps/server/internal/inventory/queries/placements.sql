@@ -205,7 +205,9 @@ WHERE p.variant_id = u.variant_id AND (p.sku <> u.sku OR p.product_name <> u.pro
 -- UpsertPlacements is the placements import's commit (I61): each row sets
 -- all four fields, last wins, bumping the revision of one already there.
 -- The arrays are read row by row; a primary location of 0 is none, and a
--- null reorder point or maximum clears it. Rows clearing all three go to
+-- null reorder point, maximum or multiple clears it — but with keep_multiple
+-- (a file without the multiple column, M105) every placement already there
+-- keeps its multiple and a new one has none. Rows clearing all three go to
 -- DeletePlacementsOf instead.
 INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, multiple, sku, product_name,
                                   updated_by_user_id, updated_by_display, updated_at)
@@ -217,7 +219,9 @@ FROM (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@site_ids::bigint
              unnest(@multiples::numeric[]) AS multiple, unnest(@skus::text[]) AS sku, unnest(@product_names::text[]) AS product_name) AS u
 ON CONFLICT (variant_id, site_id) DO UPDATE
 SET primary_location_id = excluded.primary_location_id, reorder_point = excluded.reorder_point,
-    maximum = excluded.maximum, multiple = excluded.multiple, sku = excluded.sku, product_name = excluded.product_name,
+    maximum = excluded.maximum,
+    multiple = CASE WHEN @keep_multiple::bool THEN inventory.placements.multiple ELSE excluded.multiple END,
+    sku = excluded.sku, product_name = excluded.product_name,
     updated_by_user_id = excluded.updated_by_user_id, updated_by_display = excluded.updated_by_display,
     revision = inventory.placements.revision + 1, updated_at = excluded.updated_at;
 

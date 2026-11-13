@@ -617,6 +617,21 @@ func (s *fakeStock) ReservationsFor(_ context.Context, _ pgx.Tx, src contracts.S
 	return out, nil
 }
 
+// ReservationsForSources is ReservationsFor of each source.
+func (s *fakeStock) ReservationsForSources(ctx context.Context, tx pgx.Tx, srcs []contracts.StockSource) ([]contracts.SourceReservation, error) {
+	var out []contracts.SourceReservation
+	for _, src := range slices.Compact(slices.Clone(srcs)) {
+		rs, err := s.ReservationsFor(ctx, tx, src)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rs {
+			out = append(out, contracts.SourceReservation{Source: src, Reservation: r})
+		}
+	}
+	return out, nil
+}
+
 // Produce posts a production: each consume line off its location (refused
 // when the location does not hold it, naming every failing line), consuming
 // the line's reservation, each produce line onto its location; idempotent by

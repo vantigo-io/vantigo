@@ -339,8 +339,14 @@ type StockLedger interface {
 	// (StockLotExpired). It answers the movement and the lots AutoLot took.
 	Issue(ctx context.Context, tx pgx.Tx, src StockSource, issue StockIssue) (StockPosted, error)
 	// ReservationsFor is every reservation the document holds, by line id
-	// then site id.
+	// then site id. It takes no lock, so a caller may read it in a read-only
+	// transaction (Orders' SalesOrderLines.Unreserved does).
 	ReservationsFor(ctx context.Context, tx pgx.Tx, src StockSource) ([]Reservation, error)
+	// ReservationsForSources is ReservationsFor of many documents in one
+	// read (manufacturing phase 2 M107a): every reservation each source holds,
+	// by source id, line id then site id, a source named twice answered once.
+	// It takes no lock either. More than MaxStockSources sources is a failure.
+	ReservationsForSources(ctx context.Context, tx pgx.Tx, srcs []StockSource) ([]SourceReservation, error)
 	// ReserveForProduction is Reserve without the check that the site
 	// fulfils orders (manufacturing design M3): a plant that sells nothing
 	// still reserves its components. Every other check stays — the variant is
@@ -562,6 +568,17 @@ type Reservation struct {
 	SiteID    int64
 	Quantity  string
 }
+
+// SourceReservation is one reservation as ReservationsForSources answers
+// it: the document that holds it beside the reservation.
+type SourceReservation struct {
+	Source StockSource
+	Reservation
+}
+
+// MaxStockSources is the most documents one ReservationsForSources read
+// names.
+const MaxStockSources = 1000
 
 // The codes a StockRefusal carries.
 const (

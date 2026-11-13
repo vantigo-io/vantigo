@@ -56,10 +56,22 @@ ORDER BY id
 FOR UPDATE;
 
 -- name: SourceReservations :many
--- SourceReservations is every reservation of the document.
+-- SourceReservations is every reservation of the document. It must stay
+-- lock-free: StockLedger.ReservationsFor answers it to a caller's read-only
+-- transaction (Orders' SalesOrderLines.Unreserved).
 SELECT * FROM inventory.reservations
 WHERE source_module = @source_module AND source_kind = @source_kind AND source_id = @source_id
 ORDER BY id;
+
+-- name: ReservationsOfSources :many
+-- ReservationsOfSources is every reservation of the documents given, the
+-- arrays read row by row, by id (StockLedger.ReservationsForSources). It
+-- must stay lock-free, as SourceReservations.
+SELECT r.* FROM inventory.reservations r
+JOIN (SELECT DISTINCT unnest(@source_modules::text[]) AS source_module, unnest(@source_kinds::text[]) AS source_kind,
+             unnest(@source_ids::text[]) AS source_id) AS s
+  ON r.source_module = s.source_module AND r.source_kind = s.source_kind AND r.source_id = s.source_id
+ORDER BY r.id;
 
 -- name: SetReservations :exec
 -- SetReservations writes the quantities a release or an issue left.

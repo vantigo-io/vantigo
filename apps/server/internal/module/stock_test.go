@@ -60,6 +60,10 @@ func (fakeStockLedger) ReservationsFor(context.Context, pgx.Tx, contracts.StockS
 	return nil, nil
 }
 
+func (fakeStockLedger) ReservationsForSources(context.Context, pgx.Tx, []contracts.StockSource) ([]contracts.SourceReservation, error) {
+	return nil, nil
+}
+
 func (fakeStockLedger) ReserveForProduction(context.Context, pgx.Tx, contracts.StockSource, int64, time.Time, []contracts.StockLine) error {
 	return nil
 }

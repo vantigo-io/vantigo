@@ -536,6 +536,21 @@ func (f *fakeStock) ReservationsFor(ctx context.Context, _ pgx.Tx, src contracts
 	return out, nil
 }
 
+// ReservationsForSources is ReservationsFor of each source.
+func (f *fakeStock) ReservationsForSources(ctx context.Context, tx pgx.Tx, srcs []contracts.StockSource) ([]contracts.SourceReservation, error) {
+	var out []contracts.SourceReservation
+	for _, src := range slices.Compact(slices.Clone(srcs)) {
+		rs, err := f.ReservationsFor(ctx, tx, src)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rs {
+			out = append(out, contracts.SourceReservation{Source: src, Reservation: r})
+		}
+	}
+	return out, nil
+}
+
 // ReserveForProduction and Produce are Manufacturing's; Orders never calls
 // them, so the fake refuses to be called.
 func (f *fakeStock) ReserveForProduction(context.Context, pgx.Tx, contracts.StockSource, int64, time.Time, []contracts.StockLine) error {
