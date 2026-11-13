@@ -8,6 +8,7 @@ import {
   Modal,
   SimpleGrid,
   Stack,
+  Table,
   Tabs,
   Text,
   Timeline,
@@ -16,6 +17,7 @@ import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
   IconAlertTriangle,
+  IconArrowsSplit,
   IconCalendarEvent,
   IconCalendarOff,
   IconCheck,
@@ -24,6 +26,7 @@ import {
   IconHierarchy,
   IconLock,
   IconPencil,
+  IconPuzzle,
   IconX,
   IconZoomExclamation,
 } from "@tabler/icons-react";
@@ -57,6 +60,8 @@ import { OrderComponents } from "../components/order-components";
 import { OrderForm } from "../components/order-form";
 import { OrderLots } from "../components/order-lots";
 import { ProductionDialog } from "../components/production-dialog";
+import { SplitDialog } from "../components/split-dialog";
+import { UnbuildDialog } from "../components/unbuild-dialog";
 import { WorkOrdersPanel } from "../components/work-orders-panel";
 import { useRecordActions } from "../lib/actions";
 import { canManageOrders, canRegisterProduction } from "../lib/capabilities";
@@ -223,6 +228,8 @@ export const OrderPage = () => {
   const [closing, setClosing] = useState(false);
   const [makingChildren, setMakingChildren] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [splitting, setSplitting] = useState(false);
+  const [unbuilding, setUnbuilding] = useState(false);
   const [busy, setBusy] = useState(false);
   const manage = canManageOrders(meta.data);
   const produce = canRegisterProduction(meta.data);
@@ -428,6 +435,28 @@ export const OrderPage = () => {
                   {t("closeOrder")}
                 </Button>
               )}
+              {manage &&
+                (data.status === "draft" || data.status === "confirmed") &&
+                compareDecimal(data.produced, "0") === 0 && (
+                  <Button
+                    variant="default"
+                    leftSection={<IconArrowsSplit size={16} />}
+                    data-assist="manufacturing.order.split"
+                    onClick={() => setSplitting(true)}
+                  >
+                    {t("splitOrder")}
+                  </Button>
+                )}
+              {manage && data.status === "done" && compareDecimal(data.produced, data.unbuilt) > 0 && (
+                <Button
+                  variant="default"
+                  leftSection={<IconPuzzle size={16} />}
+                  data-assist="manufacturing.order.unbuild"
+                  onClick={() => setUnbuilding(true)}
+                >
+                  {t("unbuild")}
+                </Button>
+              )}
               {canCancel && compareDecimal(data.produced, "0") === 0 && (
                 <Button variant="default" color="red" leftSection={<IconX size={16} />} onClick={() => cancel(data)}>
                   {t("cancelOrder")}
@@ -492,6 +521,11 @@ export const OrderPage = () => {
                     {t("outputScrapValue", { quantity: quantity(data.outputScrap, data.variant.unit) })}
                   </Text>
                 )}
+                {compareDecimal(data.unbuilt, "0") > 0 && (
+                  <Text size="xs" c="dimmed">
+                    {t("unbuiltValue", { quantity: quantity(data.unbuilt, data.variant.unit) })}
+                  </Text>
+                )}
               </Fact>
               <Fact label={t("dueDate")}>{data.dueDate ? day(data.dueDate) : "—"}</Fact>
               <Fact label={t("plannedDates")}>
@@ -554,6 +588,34 @@ export const OrderPage = () => {
                   </Group>
                 </Fact>
               )}
+              {data.splitFrom && (
+                <Fact label={t("splitFrom")}>
+                  <OrderLinkAnchor id={data.splitFrom.id} number={data.splitFrom.number} />
+                </Fact>
+              )}
+              {data.splitParts.length > 0 && (
+                <Fact label={t("splitParts")}>
+                  <Group gap="xs">
+                    {data.splitParts.map((link) => (
+                      <OrderLinkAnchor key={link.id} id={link.id} number={link.number} />
+                    ))}
+                  </Group>
+                </Fact>
+              )}
+              {data.mergedInto && (
+                <Fact label={t("mergedInto")}>
+                  <OrderLinkAnchor id={data.mergedInto.id} number={data.mergedInto.number} />
+                </Fact>
+              )}
+              {data.mergedFrom.length > 0 && (
+                <Fact label={t("mergedFrom")}>
+                  <Group gap="xs">
+                    {data.mergedFrom.map((link) => (
+                      <OrderLinkAnchor key={link.id} id={link.id} number={link.number} />
+                    ))}
+                  </Group>
+                </Fact>
+              )}
               {data.closedAt && <Fact label={t("closedAt")}>{stamp(data.closedAt)}</Fact>}
             </SimpleGrid>
             {data.note && (
@@ -562,6 +624,37 @@ export const OrderPage = () => {
               </Text>
             )}
           </PageSection>
+          {data.outputs.length > 0 && (
+            <PageSection title={t("byProducts")}>
+              <Table.ScrollContainer minWidth={480}>
+                <Table data-assist="manufacturing.order.byproducts">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t("byProduct")}</Table.Th>
+                      <Table.Th ta="right">{t("expected")}</Table.Th>
+                      <Table.Th ta="right">{t("produced")}</Table.Th>
+                      <Table.Th ta="right">{t("costShare")}</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {data.outputs.map((output) => (
+                      <Table.Tr key={output.id ?? output.variant.id}>
+                        <Table.Td>
+                          <Text size="sm">{output.variant.sku}</Text>
+                          <Text size="xs" c="dimmed">
+                            {output.variant.productName}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td ta="right">{quantity(output.expected, output.variant.unit)}</Table.Td>
+                        <Table.Td ta="right">{quantity(output.produced, output.variant.unit)}</Table.Td>
+                        <Table.Td ta="right">{`${output.costShare} %`}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </PageSection>
+          )}
           {data.cost && <CostPanel cost={data.cost} currency={meta.data?.currency} />}
           {data.status === "draft" ? (
             <OrderComponents
@@ -615,6 +708,8 @@ export const OrderPage = () => {
           <CloseDialog order={data} opened={closing} onClose={() => setClosing(false)} />
           <ChildrenDialog order={data} opened={makingChildren} onClose={() => setMakingChildren(false)} />
           <DeviationDialog opened={reporting} onClose={() => setReporting(false)} orderId={data.id} />
+          <SplitDialog order={data} opened={splitting} onClose={() => setSplitting(false)} />
+          <UnbuildDialog order={data} opened={unbuilding} onClose={() => setUnbuilding(false)} />
         </>
       )}
     </Stack>

@@ -246,6 +246,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/orders/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge manufacturing orders
+         * @description Merges orders (manufacturing phase 2 M125): of the same variant, BoM and site, all drafts or all confirmed, with no production and no time log, and the same origin — all manual, all reorder, or all made for the same sales order line or parent; mixing them is merge_mismatch. The one with the lowest number survives with the summed quantity and the earliest due date; the others are cancelled naming it. Every order is unplanned; confirmed ones release their reservations, and the survivor's lines and work orders are taken again for the summed quantity and reserved.
+         */
+        post: operations["mergeManufacturingOrders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/orders/{id}": {
         parameters: {
             query?: never;
@@ -504,6 +524,26 @@ export interface paths {
          * @description Reserve now: tries every line's unreserved requirement again, in two passes (M20a).
          */
         post: operations["reserveManufacturingOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/orders/{id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split a manufacturing order
+         * @description Splits a draft or confirmed order with no production and no time log (order_has_work) into 2–20 quantities summing to its own (split_sum). The order keeps the first; each other part is a new order numbered as a backorder, naming it as split from, with the same BoM, origin, due date and locations. A planned order is unplanned and every part starts unplanned. A confirmed order releases its reservations; its lines, by-products and work orders are taken for each part's quantity (expected minutes recomputed, M126) and every part reserves again (manufacturing phase 2 M124).
+         */
+        post: operations["splitManufacturingOrder"];
         delete?: never;
         options?: never;
         head?: never;
@@ -943,6 +983,50 @@ export interface paths {
          * @description A supervisor's correction of a log's times, quantity and note, kept in the order's timeline (M29, M29a). A log still open is closed at endedAt.
          */
         patch: operations["correctManufacturingTimeLog"];
+        trace?: never;
+    };
+    "/api/v1/manufacturing/unbuilds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List unbuilds
+         * @description A page of unbuilds (manufacturing phase 2 M123), newest first; of one order with orderId.
+         */
+        get: operations["listManufacturingUnbuilds"];
+        put?: never;
+        /**
+         * Unbuild finished goods
+         * @description Takes finished goods apart (manufacturing phase 2 M123) and posts one Inventory movement of kind unbuild: the finished item consumed, the components restored. The consumed lot may be held or expired — taking a recalled item apart is how it is dealt with — and when it holds an active hold, Inventory quarantines every lot the unbuild restores to. The order's cost is not recomputed. Sent again with its clientRequestId it posts nothing more and answers 200.
+         */
+        post: operations["createManufacturingUnbuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/unbuilds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an unbuild
+         * @description One unbuild with what it restored (M123), for its page and the movement page's source.
+         */
+        get: operations["getManufacturingUnbuild"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/manufacturing/variants": {
@@ -1458,6 +1542,8 @@ export interface components {
             operations: components["schemas"]["ManufacturingBomOperation"][];
             /** @description Exact decimal, more than 0, at most three decimals. */
             outputQuantity: string;
+            /** @description The by-products (manufacturing phase 2 M120), at most 20. */
+            outputs: components["schemas"]["ManufacturingBomOutput"][];
             /** Format: int32 */
             revision: number;
             /**
@@ -1490,6 +1576,8 @@ export interface components {
             operations: components["schemas"]["ManufacturingBomOperationInput"][];
             /** @description Exact decimal, more than 0, at most three decimals. */
             outputQuantity: string;
+            /** @description The by-products (manufacturing phase 2 M120), at most 20; an update that leaves it out removes them. */
+            outputs?: components["schemas"]["ManufacturingBomOutputInput"][];
             /**
              * Format: int32
              * @description A goods variant (variant_not_goods), never changed after.
@@ -1607,6 +1695,29 @@ export interface components {
              */
             workCenterId?: number;
         };
+        /** @description A by-product of a BoM (manufacturing phase 2 M120): another goods variant its operations make, per the BoM's output quantity, carrying costShare percent of the order's cost. */
+        ManufacturingBomOutput: {
+            /** @description Percent of the order's cost the by-product carries, 0–100 with at most two decimals; the main product takes the rest. */
+            costShare: string;
+            /** Format: int64 */
+            id: number;
+            /** @description Made per the BoM's output quantity, exact decimal, more than 0. */
+            quantity: string;
+            /** Format: int32 */
+            sortOrder: number;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description A by-product of a BoM (M120): goods, never the BoM's own variant (output_is_product) nor one of its components (output_is_component); the shares of a BoM sum to at most 100 (cost_share_over). */
+        ManufacturingBomOutputInput: {
+            /** @description Percent of the order's cost, 0–100, at most two decimals; default 0. */
+            costShare?: string;
+            /** @description Exact decimal, more than 0, at most three decimals, per the BoM's output quantity. */
+            quantity: string;
+            /** Format: int32 */
+            sortOrder?: number;
+            /** Format: int32 */
+            variantId: number;
+        };
         /** @description A BoM exploded at a quantity, up to 10 levels and 2000 nodes. */
         ManufacturingBomOverview: {
             /** Format: int64 */
@@ -1661,6 +1772,8 @@ export interface components {
             operations: components["schemas"]["ManufacturingBomOperationInput"][];
             /** @description Exact decimal, more than 0, at most three decimals. */
             outputQuantity: string;
+            /** @description The by-products (manufacturing phase 2 M120), at most 20; an update that leaves it out removes them. */
+            outputs?: components["schemas"]["ManufacturingBomOutputInput"][];
             /**
              * Format: int32
              * @description The revision the client read (revision_conflict).
@@ -1825,6 +1938,18 @@ export interface components {
             required: string;
             /** Format: int32 */
             revision: number;
+        };
+        /** @description A by-product's part of an order's cost (manufacturing phase 2 M122): costShare percent of the estimate and of the actual; its cost per unit is its part ÷ its produced quantity. One that produced nothing has no cost per unit: its share moves to the main product (notProduced), and actual is the part it would have had. */
+        ManufacturingByproductCost: {
+            actual: string | null;
+            costPerUnit: string | null;
+            costShare: string;
+            estimate: string | null;
+            notProduced: boolean;
+            /** Format: int64 */
+            outputId: number;
+            produced: string;
+            variant: components["schemas"]["ManufacturingVariantRef"];
         };
         /** @description The actual against the estimate, per part (M41): amount = actual − estimate, both as rounded; percent of the estimate, half-up to one decimal, null when the estimate is 0. */
         ManufacturingCostDeviation: {
@@ -2051,6 +2176,14 @@ export interface components {
             lateByDays: number | null;
             /** @description The lot pattern of the order's BoM, kept at confirm (manufacturing phase 2 M80); a draft shows the default. */
             lotPattern: string;
+            /** @description The orders merged into this one (M125). */
+            mergedFrom: components["schemas"]["ManufacturingOrderLink"][];
+            mergedInto: components["schemas"]["ManufacturingOrderLink"] | null;
+            /**
+             * Format: int64
+             * @description The order this one was merged into, cancelled (manufacturing phase 2 M125).
+             */
+            mergedIntoId: number | null;
             note: string;
             /** @description MO-<n>, or MO-<n>-<suffix> for a backorder (M17b). */
             number: string;
@@ -2059,6 +2192,8 @@ export interface components {
             outputLocationId: number;
             /** @description Finished units produced and discarded (M22a). */
             outputScrap: string;
+            /** @description The by-products (manufacturing phase 2 M121). */
+            outputs: components["schemas"]["ManufacturingOrderOutput"][];
             /** @description produced − quantity when more was produced, else 0 (M23). */
             overrun: string;
             parent: components["schemas"]["ManufacturingOrderLink"] | null;
@@ -2094,7 +2229,17 @@ export interface components {
             revision: number;
             /** Format: int64 */
             siteId: number;
+            splitFrom: components["schemas"]["ManufacturingOrderLink"] | null;
+            /**
+             * Format: int64
+             * @description The order this one was split from (manufacturing phase 2 M124).
+             */
+            splitFromId: number | null;
+            /** @description The orders split from this one (M124). */
+            splitParts: components["schemas"]["ManufacturingOrderLink"][];
             status: components["schemas"]["ManufacturingOrderStatus"];
+            /** @description What unbuilds took apart of its output, exact decimal (manufacturing phase 2 M123). */
+            unbuilt: string;
             /** Format: date-time */
             updatedAt: string;
             variant: components["schemas"]["ManufacturingVariantRef"];
@@ -2166,13 +2311,17 @@ export interface components {
             actual: components["schemas"]["ManufacturingCostParts"] | null;
             /** @description The actual was fixed at close (M41). */
             actualFixed: boolean;
-            /** @description At close: the actual total ÷ the good output (output scrap excluded), half-up to two decimals; null before close or when nothing good was produced. */
+            /** @description The by-products' parts (M122); the main product carries the rest. */
+            byProducts: components["schemas"]["ManufacturingByproductCost"][];
+            /** @description At close: the main product's part of the actual (the total less the by-products' parts, M122) ÷ the good output (output scrap excluded), half-up to two decimals; null before close or when nothing good was produced. */
             costPerUnit: string | null;
             deviation: components["schemas"]["ManufacturingCostDeviation"] | null;
             /** @description The downtime on the order's work orders by reason (M40), listed and never charged. */
             downtime: components["schemas"]["ManufacturingDowntimeMinutes"][];
             /** @description Fixed at confirm (M39): Σ required × standard cost, Σ expected hours × the machine rate, Σ expected hours × the labour rate for one operator. Null on a draft. */
             estimate: components["schemas"]["ManufacturingCostParts"] | null;
+            /** @description The actual total less the parts of the by-products that produced something, half-up to two decimals; null on a draft. */
+            mainActual: string | null;
         };
         /** @description One event of an order's timeline (M26). */
         ManufacturingOrderEvent: {
@@ -2190,10 +2339,10 @@ export interface components {
             };
         };
         /**
-         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44); check_recorded a check's result at one of its work orders, deviation_opened and deviation_closed a deviation of it (manufacturing phase 2 M97, M99).
+         * @description What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44); check_recorded a check's result at one of its work orders, deviation_opened and deviation_closed a deviation of it (manufacturing phase 2 M97, M99); split and split_from, merged and merged_into the orders a split or a merge made or took, unbuilt an unbuild of its output (M128).
          * @enum {string}
          */
-        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added" | "planned" | "unplanned" | "rescheduled" | "children_created" | "origin_cancelled" | "check_recorded" | "deviation_opened" | "deviation_closed";
+        ManufacturingOrderEventKind: "created" | "updated" | "confirmed" | "reserved" | "production_posted" | "line_added" | "line_changed" | "closed" | "cancelled" | "backorder_created" | "time_log_corrected" | "time_log_added" | "planned" | "unplanned" | "rescheduled" | "children_created" | "origin_cancelled" | "check_recorded" | "deviation_opened" | "deviation_closed" | "split" | "split_from" | "merged" | "merged_into" | "unbuilt";
         /** @description An order's timeline, oldest first. */
         ManufacturingOrderEventList: {
             items: components["schemas"]["ManufacturingOrderEvent"][];
@@ -2266,6 +2415,8 @@ export interface components {
         };
         /** @description The lots an order's productions made and consumed (manufacturing phase 2 M83), for the order page's Lots tab. */
         ManufacturingOrderLots: {
+            /** @description The lots the productions put by-products in (M121). */
+            byProducts: components["schemas"]["ManufacturingProductionByproduct"][];
             components: components["schemas"]["ManufacturingOrderComponentLots"][];
             outputs: components["schemas"]["ManufacturingOrderOutputLot"][];
         };
@@ -2302,6 +2453,19 @@ export interface components {
             /** @description Exact decimal. */
             quantity: string;
             serial: boolean;
+            /** @description What unbuilds of the order took apart of the lot (M123). */
+            unbuilt: string;
+        };
+        /** @description A by-product of an order (manufacturing phase 2 M121): snapshotted from its BoM at confirm, with what its productions made; on a draft it follows the BoM and has no id. */
+        ManufacturingOrderOutput: {
+            costShare: string;
+            /** @description quantity × the order's quantity ÷ the BoM's output quantity, half-up to three decimals. */
+            expected: string;
+            /** Format: int64 */
+            id: number | null;
+            produced: string;
+            tracking: components["schemas"]["ManufacturingTracking"];
+            variant: components["schemas"]["ManufacturingVariantRef"];
         };
         /** @description One page of the list. */
         ManufacturingOrderPage: {
@@ -2413,6 +2577,35 @@ export interface components {
              */
             siteId: number;
         };
+        /** @description A split (manufacturing phase 2 M124): 2–20 quantities summing to the order's (split_sum), the first kept by the order. */
+        ManufacturingOrderSplitInput: {
+            quantities: string[];
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @description The order after a split, its new parts, and the lines left short when they reserved again. */
+        ManufacturingOrderSplitResult: {
+            order: components["schemas"]["ManufacturingOrder"];
+            parts: components["schemas"]["ManufacturingOrderLink"][];
+            shortLines: components["schemas"]["ManufacturingShortLine"][];
+        };
+        /** @description A merge (manufacturing phase 2 M125): 2–20 orders, each with the revision the client read. */
+        ManufacturingOrderMergeInput: {
+            orders: components["schemas"]["ManufacturingOrderMergeItem"][];
+        };
+        /** @description One order of a merge. */
+        ManufacturingOrderMergeItem: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int32 */
+            revision: number;
+        };
+        /** @description The surviving order after a merge, the orders merged into it, and its lines left short when it reserved again. */
+        ManufacturingOrderMergeResult: {
+            merged: components["schemas"]["ManufacturingOrderLink"][];
+            order: components["schemas"]["ManufacturingOrder"];
+            shortLines: components["schemas"]["ManufacturingShortLine"][];
+        };
         /**
          * @description A warning on an order: variant_discontinued — its product or a component is of a Discontinued product.
          * @enum {string}
@@ -2512,7 +2705,7 @@ export interface components {
          * @enum {string}
          */
         ManufacturingPriority: "normal" | "urgent";
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_order (400: dependsOn names an operation that does not come before it by sequence, itself included, M112), operation_unjoined (400: an operation other than the last by sequence that no operation depends on, at its own dependsOn, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119), work_order_is_output (409: Register quantity on the output work order, M116), quantity_over_order (400: Register quantity past the order's quantity, M116), work_center_group_empty (409: a confirm of an order whose operation targets a group with no active work center, M118). */
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_order (400: dependsOn names an operation that does not come before it by sequence, itself included, M112), operation_unjoined (400: an operation other than the last by sequence that no operation depends on, at its own dependsOn, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119), work_order_is_output (409: Register quantity on the output work order, M116), quantity_over_order (400: Register quantity past the order's quantity, M116), work_center_group_empty (409: a confirm of an order whose operation targets a group with no active work center, M118), output_is_product (400: a by-product that is the BoM's own variant, M120), output_is_component (400: a by-product that is one of the BoM's components, M120), cost_share_over (400: by-products' shares summing to more than 100, M120), unbuild_too_much (400: an unbuild of more than the order, or the lot, has left to take apart, M123), split_sum (400: a split's quantities that do not sum to the order's, M124), merge_mismatch (400: a merge of orders of another variant, BoM, site, state or origin, M125), order_has_work (409: a split or a merge of an order with a production or a time log, M124). */
         ManufacturingProblem: {
             /** @description checks_incomplete only: every check with no result that stops it (M98). */
             checks?: components["schemas"]["ManufacturingMissingCheck"][];
@@ -2563,6 +2756,8 @@ export interface components {
         };
         /** @description A production posted against an order (M22). */
         ManufacturingProduction: {
+            /** @description The by-products it made (M121). */
+            byProducts: components["schemas"]["ManufacturingProductionByproduct"][];
             clientRequestId: string;
             /** Format: int64 */
             id: number;
@@ -2589,6 +2784,16 @@ export interface components {
             /** Format: int64 */
             toLocationId: number;
         };
+        /** @description What a production made of one of its order's by-products (manufacturing phase 2 M121), in one lot or, untracked, without one. */
+        ManufacturingProductionByproduct: {
+            /** Format: int64 */
+            lotId: number | null;
+            lotNumber: string | null;
+            /** Format: int64 */
+            outputId: number;
+            quantity: string;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
         /** @description One product's done orders and their totals. */
         ManufacturingProductionCostGroup: {
             orders: components["schemas"]["ManufacturingProductionCostRow"][];
@@ -2597,6 +2802,8 @@ export interface components {
         };
         /** @description The production cost report (M42): the done orders closed in the period, grouped by product. */
         ManufacturingProductionCostReport: {
+            /** @description The by-products of the orders (M122), by order then by-product. */
+            byProducts: components["schemas"]["ManufacturingProductionCostByproduct"][];
             /** Format: date */
             from: string;
             groups: components["schemas"]["ManufacturingProductionCostGroup"][];
@@ -2604,6 +2811,19 @@ export interface components {
             siteId: number | null;
             /** Format: date */
             to: string;
+        };
+        /** @description One by-product of a done order in the production cost report (manufacturing phase 2 M122). */
+        ManufacturingProductionCostByproduct: {
+            /** @description Its part of the actual; for one not produced, the part it would have had. */
+            actual: string;
+            costPerUnit: string | null;
+            costShare: string;
+            notProduced: boolean;
+            number: string;
+            /** Format: int64 */
+            orderId: number;
+            produced: string;
+            variant: components["schemas"]["ManufacturingVariantRef"];
         };
         /** @description One done order's cost, as fixed at close (M41). */
         ManufacturingProductionCostRow: {
@@ -2637,6 +2857,7 @@ export interface components {
         };
         /** @description The production dialog's prefill (M22a). */
         ManufacturingProductionDraft: {
+            byProducts: components["schemas"]["ManufacturingProductionDraftByproduct"][];
             lines: components["schemas"]["ManufacturingProductionDraftLine"][];
             output: components["schemas"]["ManufacturingProductionDraftOutput"];
             /** @description The output scrap asked for. */
@@ -2667,6 +2888,19 @@ export interface components {
             tracking: components["schemas"]["ManufacturingTracking"];
             variant: components["schemas"]["ManufacturingVariantRef"];
         };
+        /** @description A by-product's prefill (M121). */
+        ManufacturingProductionDraftByproduct: {
+            expected: string;
+            /** @description For a lot-tracked by-product, the number the order's pattern renders today for it; null otherwise. */
+            lotNumber: string | null;
+            /** Format: int64 */
+            outputId: number;
+            produced: string;
+            /** @description expected × quantity ÷ the order's quantity, half-up to three decimals. */
+            proposed: string;
+            tracking: components["schemas"]["ManufacturingTracking"];
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
         /** @description What a production of the draft's quantity makes (manufacturing phase 2 M80, M81). For a lot-tracked product, lotNumber is the number the order's pattern renders today — {N} shown as the next the counter hands out — and expiry and bestBefore the dates the variant's offsets give from today; for a serial product, serialFirst is the first default serial, continuing from the order's serials so far. */
         ManufacturingProductionDraftOutput: {
             /** Format: date */
@@ -2692,6 +2926,8 @@ export interface components {
             /** @description Finished units produced and discarded, exact decimal, 0 or more; default 0. */
             outputScrap?: string;
             outputSerials?: components["schemas"]["ManufacturingOutputSerialsInput"] | null;
+            /** @description The by-products made (M121), each at most once; one left out makes nothing. The production dialog prefills each proportionally to the good quantity. */
+            outputs?: components["schemas"]["ManufacturingProductionOutputInput"][];
             /** @description Good output, exact decimal, 0 or more; 0 only with consumption, scrap or output scrap. */
             quantity: string;
             /**
@@ -2699,6 +2935,17 @@ export interface components {
              * @description Where the output is put; default the order's output location.
              */
             toLocationId?: number | null;
+        };
+        /** @description What a production makes of one by-product (manufacturing phase 2 M121), put at the order's output location; a lot-tracked one goes into the lot named, else the order's pattern rendered for it. */
+        ManufacturingProductionOutputInput: {
+            lot?: components["schemas"]["ManufacturingOutputLotInput"] | null;
+            /**
+             * Format: int64
+             * @description The order's by-product (order_outputs id).
+             */
+            outputId: number;
+            /** @description Exact decimal, 0 or more, at most three decimals. */
+            quantity: string;
         };
         /** @description One component line of a production. */
         ManufacturingProductionLine: {
@@ -3412,6 +3659,97 @@ export interface components {
          * @enum {string}
          */
         ManufacturingTracking: "none" | "lot" | "serial";
+        /** @description An unbuild (manufacturing phase 2 M123), numbered UB-<n>: finished goods taken apart, from a done order's productions or by a BoM, posted to Inventory as one movement of kind unbuild. */
+        ManufacturingUnbuild: {
+            /** Format: int64 */
+            bomId: number;
+            clientRequestId: string;
+            /** Format: int64 */
+            fromLocationId: number;
+            /** Format: int64 */
+            id: number;
+            lines: components["schemas"]["ManufacturingUnbuildLine"][];
+            /**
+             * Format: int64
+             * @description The finished lot taken apart; null for an untracked product.
+             */
+            lotId: number | null;
+            lotNumber: string | null;
+            /** Format: int64 */
+            movementId: number | null;
+            note: string;
+            /** @description UB-<n>. */
+            number: string;
+            /** Format: int64 */
+            orderId: number | null;
+            orderNumber: string | null;
+            /** Format: date-time */
+            postedAt: string;
+            postedByDisplay: string;
+            /** Format: uuid */
+            postedByUserId: string | null;
+            quantity: string;
+            /** Format: int64 */
+            siteId: number;
+            /** Format: int64 */
+            toLocationId: number;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description A free-standing unbuild's lot for a tracked component (M123): an existing lot (lotId) or a new one (lot). */
+        ManufacturingUnbuildComponentInput: {
+            lot?: components["schemas"]["ManufacturingOutputLotInput"] | null;
+            /** Format: int64 */
+            lotId?: number | null;
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description An unbuild (M123). From a done order (orderId): for a tracked product the finished lot (lotId) chosen from those the order made, at most what that lot received from the order's productions less what was unbuilt from it (unbuild_too_much); it restores only what the productions that made the lot consumed, proportionally. Free-standing (bomId): the BoM's lines without scrap for the quantity; a tracked component needs its lot in components (lot_required). */
+        ManufacturingUnbuildInput: {
+            /** Format: int64 */
+            bomId?: number | null;
+            clientRequestId: string;
+            components?: components["schemas"]["ManufacturingUnbuildComponentInput"][];
+            /**
+             * Format: int64
+             * @description Where the finished goods are taken from; default the order's output location, else the site's root.
+             */
+            fromLocationId?: number | null;
+            /** Format: int64 */
+            lotId?: number | null;
+            note?: string;
+            /** Format: int64 */
+            orderId?: number | null;
+            /** @description Exact decimal, more than 0, at most three decimals. */
+            quantity: string;
+            /**
+             * Format: int64
+             * @description A free-standing unbuild's site; default the BoM's work centers' site, else the first active site.
+             */
+            siteId?: number | null;
+            /**
+             * Format: int64
+             * @description Where the components are put; default the order's component location, else the site's root.
+             */
+            toLocationId?: number | null;
+        };
+        /** @description A component an unbuild restored. */
+        ManufacturingUnbuildLine: {
+            /** Format: int64 */
+            lotId: number | null;
+            lotNumber: string | null;
+            quantity: string;
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description A page of unbuilds, newest first. */
+        ManufacturingUnbuildList: {
+            items: components["schemas"]["ManufacturingUnbuild"][];
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            pageSize: number;
+            /** Format: int32 */
+            total: number;
+        };
         /** @description The work-center utilisation report (M42): per work center and ISO week, the days of the week inside the period. */
         ManufacturingUtilisationReport: {
             /** Format: date */
@@ -4963,6 +5301,82 @@ export interface operations {
             };
         };
     };
+    mergeManufacturingOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingOrderMergeInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrderMergeResult"];
+                };
+            };
+            /** @description Bad Request — field errors; merge_mismatch. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — an order named is not one. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open (done or cancelled), order_has_work (a production or a time log). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
     getManufacturingOrder: {
         parameters: {
             query?: never;
@@ -5919,6 +6333,84 @@ export interface operations {
                 content?: never;
             };
             /** @description Conflict — revision_conflict, order_not_open; Inventory's site_archived and variant_not_stocked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    splitManufacturingOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingOrderSplitInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingOrderSplitResult"];
+                };
+            };
+            /** @description Bad Request — field errors; quantity_invalid, split_sum. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such manufacturing order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, order_not_open (done or cancelled), order_has_work (a production or a time log). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7189,6 +7681,207 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["ManufacturingProblem"];
                 };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    listManufacturingUnbuilds: {
+        parameters: {
+            query?: {
+                orderId?: number;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingUnbuildList"];
+                };
+            };
+            /** @description Bad Request — page 1–100000, pageSize 1–200. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    createManufacturingUnbuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingUnbuildInput"];
+            };
+        };
+        responses: {
+            /** @description OK — the replay of an unbuild posted before with this clientRequestId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingUnbuild"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingUnbuild"];
+                };
+            };
+            /** @description Bad Request — field errors; quantity_invalid, unbuild_too_much, lot_required (the finished lot of a tracked product, or a tracked component's lot), lot_not_of_order (a lot the order did not make), bom_required, location_unknown, site_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such order or BoM. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open (an unbuild from an order that is not done), client_request_reused, and Inventory's refusals passed through (insufficient_stock, lot_unknown, lot_not_allowed, lot_required, lot_dates_differ). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    getManufacturingUnbuild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingUnbuild"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such unbuild. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
             503: {

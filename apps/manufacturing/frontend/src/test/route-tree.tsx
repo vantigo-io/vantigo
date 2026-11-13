@@ -29,6 +29,7 @@ import {
   SHOP_FLOOR_ROUTE_PATH,
   SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
   SUGGESTIONS_ROUTE_PATH,
+  UNBUILDS_ROUTE_PATH,
   WORK_CENTER_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
   WORK_ORDER_ROUTE_PATH,
@@ -54,6 +55,7 @@ import { ReportsPage } from "../pages/reports";
 import { SchedulePage } from "../pages/schedule";
 import { ShopFloorPage, ShopFloorWorkCenterPage } from "../pages/shop-floor";
 import { SuggestionsPage } from "../pages/suggestions";
+import { UnbuildsPage } from "../pages/unbuilds";
 import { NewWorkCenterPage, WorkCenterPage } from "../pages/work-center";
 import { WorkCentersPage } from "../pages/work-centers";
 import { WorkOrderPage } from "../pages/work-order";
@@ -93,6 +95,7 @@ export const makeRouteTree = () => {
     route(DEVIATIONS_ROUTE_PATH, DeviationsPage, validateDeviationsSearch),
     route(DEVIATION_ROUTE_PATH, DeviationPage),
     route(SUGGESTIONS_ROUTE_PATH, SuggestionsPage),
+    route(UNBUILDS_ROUTE_PATH, UnbuildsPage),
   ]);
 };
 

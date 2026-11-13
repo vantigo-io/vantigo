@@ -4,11 +4,12 @@ import { manufacturingNavItems, visibleManufacturingNavItems } from "./navigatio
 const keys = (permissions: string[] | undefined) => visibleManufacturingNavItems(permissions).map((item) => item.key);
 
 describe("the sidebar entries", () => {
-  it("are M7's six, the suggestions (phase 2 M111) and the deviations (M99), in order", () => {
+  it("are M7's six, the suggestions (phase 2 M111), the unbuilds (M123) and the deviations (M99), in order", () => {
     expect(manufacturingNavItems.map((item) => [item.key, item.to])).toEqual([
       ["overview", "/manufacturing"],
       ["orders", "/manufacturing/orders"],
       ["suggestions", "/manufacturing/suggestions"],
+      ["unbuilds", "/manufacturing/unbuilds"],
       ["shopFloor", "/manufacturing/shop-floor"],
       ["schedule", "/manufacturing/schedule"],
       ["deviations", "/manufacturing/deviations"],
@@ -22,6 +23,7 @@ describe("the sidebar entries", () => {
       "overview",
       "orders",
       "suggestions",
+      "unbuilds",
       "shopFloor",
       "schedule",
       "deviations",
@@ -32,6 +34,7 @@ describe("the sidebar entries", () => {
       "overview",
       "orders",
       "suggestions",
+      "unbuilds",
       "shopFloor",
       "schedule",
       "deviations",

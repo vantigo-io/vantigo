@@ -874,5 +874,101 @@
       "en": "The switches on a default bill of materials that let the nightly run create, and confirm, its suggested orders per site.",
       "nb": "Bryterne på en standard stykkliste som lar nattkjøringen opprette, og bekrefte, de foreslåtte ordrene per lagersted."
     }
+  },
+  {
+    "key": "manufacturing.bom.outputs",
+    "route": "/manufacturing/boms/new",
+    "label": {
+      "en": "By-products",
+      "nb": "Biprodukter"
+    },
+    "description": {
+      "en": "The By-products section of the bill of materials editor: what the operations make beside the product, with each one's share of the cost.",
+      "nb": "Biprodukter-delen i stykklisteredigeringen: det operasjonene lager i tillegg til produktet, med hvert biprodukts kostnadsandel."
+    }
+  },
+  {
+    "key": "manufacturing.order.byproducts",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "By-products",
+      "nb": "Biprodukter"
+    },
+    "description": {
+      "en": "The by-products of the manufacturing order: what is expected and what its productions made of each.",
+      "nb": "Biproduktene til produksjonsordren: hva som er forventet, og hva produksjonene har laget av hvert."
+    }
+  },
+  {
+    "key": "manufacturing.order.cost-split",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Cost split over the by-products",
+      "nb": "Kostnaden fordelt på biproduktene"
+    },
+    "description": {
+      "en": "In the cost panel, each by-product's share of the cost and its cost per unit, and what the product carries.",
+      "nb": "I kostnadspanelet: hvert biprodukts andel av kostnaden og kostnad per enhet, og hva produktet bærer."
+    }
+  },
+  {
+    "key": "manufacturing.production.byproducts",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "By-products in Register production",
+      "nb": "Biprodukter i Registrer produksjon"
+    },
+    "description": {
+      "en": "The by-products table of the Register production dialog: the quantity made of each, and its lot.",
+      "nb": "Biprodukttabellen i dialogen Registrer produksjon: antallet som er laget av hvert, og partiet."
+    }
+  },
+  {
+    "key": "manufacturing.order.split",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Split",
+      "nb": "Del opp"
+    },
+    "description": {
+      "en": "The button on a draft or confirmed manufacturing order that splits it into parts.",
+      "nb": "Knappen på en kladd eller bekreftet produksjonsordre som deler den opp i deler."
+    }
+  },
+  {
+    "key": "manufacturing.order.unbuild",
+    "route": "/manufacturing/orders/{orderId}",
+    "label": {
+      "en": "Unbuild",
+      "nb": "Demonter"
+    },
+    "description": {
+      "en": "The button on a done manufacturing order that takes what it made apart.",
+      "nb": "Knappen på en ferdig produksjonsordre som tar fra hverandre det den laget."
+    }
+  },
+  {
+    "key": "manufacturing.orders.merge",
+    "route": "/manufacturing/orders",
+    "label": {
+      "en": "Merge",
+      "nb": "Slå sammen"
+    },
+    "description": {
+      "en": "The button on the manufacturing orders list that merges the orders chosen with their checkboxes.",
+      "nb": "Knappen i listen over produksjonsordrer som slår sammen ordrene som er valgt med avkrysningsboksene."
+    }
+  },
+  {
+    "key": "manufacturing.unbuilds.list",
+    "route": "/manufacturing/unbuilds",
+    "label": {
+      "en": "Unbuilds",
+      "nb": "Demonteringer"
+    },
+    "description": {
+      "en": "The list of unbuilds: what each took apart and what it restored.",
+      "nb": "Listen over demonteringer: hva hver tok fra hverandre, og hva den ga tilbake."
+    }
   }
 ]

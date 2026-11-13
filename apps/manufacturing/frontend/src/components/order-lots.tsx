@@ -52,7 +52,9 @@ export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id"> & {
       </Alert>
     );
   const { outputs, components } = lots.data;
-  if (outputs.length === 0 && components.length === 0) return <Text c="dimmed">{t("noLots")}</Text>;
+  const byProducts = lots.data.byProducts ?? [];
+  if (outputs.length === 0 && components.length === 0 && byProducts.length === 0)
+    return <Text c="dimmed">{t("noLots")}</Text>;
   return (
     <Stack gap="lg">
       {outputs.length > 0 && (
@@ -65,6 +67,7 @@ export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id"> & {
                   <Table.Th>{t("lotColumn")}</Table.Th>
                   <Table.Th>{t("lotQuantity")}</Table.Th>
                   <Table.Th>{t("lotProductions")}</Table.Th>
+                  <Table.Th>{t("lotUnbuilt")}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -80,6 +83,37 @@ export const OrderLots = ({ order }: { order: Pick<ManufacturingOrder, "id"> & {
                     </Table.Td>
                     <Table.Td>{quantity(lot.quantity, order.variant.unit)}</Table.Td>
                     <Table.Td>{lot.productions}</Table.Td>
+                    <Table.Td>{/[1-9]/.test(lot.unbuilt) ? quantity(lot.unbuilt, order.variant.unit) : "—"}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Stack>
+      )}
+      {byProducts.length > 0 && (
+        <Stack gap="xs">
+          <Title order={5}>{t("byProductLots")}</Title>
+          <Table.ScrollContainer minWidth={420}>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("byProduct")}</Table.Th>
+                  <Table.Th>{t("lotColumn")}</Table.Th>
+                  <Table.Th>{t("lotQuantity")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {byProducts.map((row, index) => (
+                  // A by-product's lot may take several productions' output: each row is one production's.
+                  <Table.Tr key={`${row.outputId}-${row.lotId ?? 0}-${index}`}>
+                    <Table.Td>{row.variant.sku}</Table.Td>
+                    <Table.Td>
+                      {row.lotId !== null && (
+                        <LotLink lotId={row.lotId} number={row.lotNumber ?? ""} canTrace={canTrace} />
+                      )}
+                    </Table.Td>
+                    <Table.Td>{quantity(row.quantity, row.variant.unit)}</Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>

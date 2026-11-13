@@ -8,6 +8,7 @@ import type {
   ManufacturingOrderSummary,
   ManufacturingProductionDraft,
   ManufacturingSalesOrderLine,
+  ManufacturingUnbuild,
 } from "../api/orders";
 import type { ManufacturingPerson } from "../api/people";
 import type { ManufacturingDeviation } from "../api/quality";
@@ -108,6 +109,7 @@ export const bomFixture = (patch: Partial<ManufacturingBom> = {}): Manufacturing
     leadTimeDays: 0,
     note: "",
     lotPattern: "{MO}",
+    outputs: [],
     status: "active",
     revision: 3,
     siteId: 1,
@@ -182,6 +184,14 @@ export const orderFixture = (patch: Partial<ManufacturingOrder> = {}): Manufactu
     bomCode: "Rev B",
     bomOutputQuantity: "1",
     lotPattern: "{MO}",
+    outputs: [],
+    splitFromId: null,
+    splitFrom: null,
+    mergedIntoId: null,
+    mergedInto: null,
+    splitParts: [],
+    mergedFrom: [],
+    unbuilt: "0",
     quantity: "10",
     produced: "0",
     outputScrap: "0",
@@ -270,6 +280,7 @@ export const draftFor = (order: ManufacturingOrder, query: URLSearchParams): Man
     quantity,
     outputScrap,
     toLocationId: order.outputLocationId,
+    byProducts: [],
     output: {
       tracking: "none",
       lotPattern: order.lotPattern,
@@ -468,6 +479,8 @@ export interface ManufacturingServer {
   groupWork?: Record<number, ManufacturingWorkOrder[]>;
   /** The work center groups (M117); none when absent. */
   groups?: ManufacturingWorkCenterGroup[];
+  /** The unbuilds (manufacturing phase 2 M123), newest first; none when absent. */
+  unbuilds?: ManufacturingUnbuild[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -635,6 +648,10 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       const found = server.salesOrderLines?.[Number(salesOrderLine[1])];
       return Promise.resolve(found ? jsonResponse(200, found) : manufacturingProblem(404, undefined));
     }
+    if (path === "/unbuilds") {
+      const items = server.unbuilds ?? [];
+      return Promise.resolve(jsonResponse(200, { items, total: items.length, page: 1, pageSize: 50 }));
+    }
     if (path === "/orders") {
       const items = orders.map(orderSummaryOf);
       return Promise.resolve(jsonResponse(200, { items, total: items.length, page: 1, pageSize: 50 }));
@@ -645,7 +662,9 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       if (!found) return Promise.resolve(manufacturingProblem(404, undefined));
       if (order[2] === "/events") return Promise.resolve(jsonResponse(200, { items: server.events ?? [] }));
       if (order[2] === "/lots")
-        return Promise.resolve(jsonResponse(200, server.orderLots?.[found.id] ?? { outputs: [], components: [] }));
+        return Promise.resolve(
+          jsonResponse(200, server.orderLots?.[found.id] ?? { outputs: [], components: [], byProducts: [] }),
+        );
       if (order[2] === "/production-draft") {
         const draft = draftFor(found, url.searchParams);
         return Promise.resolve(jsonResponse(200, server.draft ? server.draft(draft) : draft));

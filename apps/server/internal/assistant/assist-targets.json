@@ -290,6 +290,11 @@
     "description": "The operations in sequence: each one's work center, setup, minutes per cycle and instructions for the shop floor."
   },
   {
+    "key": "manufacturing.bom.outputs",
+    "route": "/manufacturing/boms/new",
+    "description": "The By-products section of the bill of materials editor: what the operations make beside the product, with each one's share of the cost."
+  },
+  {
     "key": "manufacturing.bom.replenishment",
     "route": "/manufacturing/boms/{bomId}",
     "description": "The switches on a default bill of materials that let the nightly run create, and confirm, its suggested orders per site."
@@ -360,6 +365,11 @@
     "description": "The button that opens the dialog for adding a time log someone forgot to record."
   },
   {
+    "key": "manufacturing.order.byproducts",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The by-products of the manufacturing order: what is expected and what its productions made of each."
+  },
+  {
     "key": "manufacturing.order.check-results",
     "route": "/manufacturing/orders/{orderId}",
     "description": "Every check of the order's work orders with its result, who recorded it and the deviation a failure opened."
@@ -378,6 +388,11 @@
     "key": "manufacturing.order.cost",
     "route": "/manufacturing/orders/{orderId}",
     "description": "The order's estimate, actual cost and deviation per part, the cost per unit once closed and the downtime by reason. Shown only to someone who may see costs."
+  },
+  {
+    "key": "manufacturing.order.cost-split",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "In the cost panel, each by-product's share of the cost and its cost per unit, and what the product carries."
   },
   {
     "key": "manufacturing.order.facts",
@@ -415,9 +430,19 @@
     "description": "The notice on a manufacturing order naming the components the site could not reserve, with Reserve now."
   },
   {
+    "key": "manufacturing.order.split",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The button on a draft or confirmed manufacturing order that splits it into parts."
+  },
+  {
     "key": "manufacturing.order.time-logs",
     "route": "/manufacturing/orders/{orderId}",
     "description": "Every time log on the order, with Correct for a supervisor."
+  },
+  {
+    "key": "manufacturing.order.unbuild",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The button on a done manufacturing order that takes what it made apart."
   },
   {
     "key": "manufacturing.order.work-orders",
@@ -438,6 +463,11 @@
     "key": "manufacturing.orders.list",
     "route": "/manufacturing/orders",
     "description": "The list of manufacturing orders with their status, reservation status, due date and responsible."
+  },
+  {
+    "key": "manufacturing.orders.merge",
+    "route": "/manufacturing/orders",
+    "description": "The button on the manufacturing orders list that merges the orders chosen with their checkboxes."
   },
   {
     "key": "manufacturing.orders.new",
@@ -468,6 +498,11 @@
     "key": "manufacturing.overview.reports",
     "route": "/manufacturing",
     "description": "Opens the reports: production cost, work-center utilisation and time deviation."
+  },
+  {
+    "key": "manufacturing.production.byproducts",
+    "route": "/manufacturing/orders/{orderId}",
+    "description": "The by-products table of the Register production dialog: the quantity made of each, and its lot."
   },
   {
     "key": "manufacturing.reports.download",
@@ -538,6 +573,11 @@
     "key": "manufacturing.suggestions.run",
     "route": "/manufacturing/suggestions",
     "description": "The button on the suggestions page that runs replenishment at once instead of waiting for the night."
+  },
+  {
+    "key": "manufacturing.unbuilds.list",
+    "route": "/manufacturing/unbuilds",
+    "description": "The list of unbuilds: what each took apart and what it restored."
   },
   {
     "key": "manufacturing.work-center.actions",

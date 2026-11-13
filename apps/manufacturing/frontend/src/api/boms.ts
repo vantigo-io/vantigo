@@ -17,10 +17,13 @@ export type ManufacturingBomOverview = Schemas["ManufacturingBomOverview"];
 export type ManufacturingOverviewNode = Schemas["ManufacturingOverviewNode"];
 export type ManufacturingOverviewOperation = Schemas["ManufacturingOverviewOperation"];
 export type ManufacturingRolledUpCost = Schemas["ManufacturingRolledUpCost"];
+export type ManufacturingBomOutputInput = Schemas["ManufacturingBomOutputInput"];
 
 /** At most this many lines and operations per BoM (M11, M12). */
 export const MAX_BOM_LINES = 200;
 export const MAX_BOM_OPERATIONS = 50;
+/** At most this many by-products per BoM (manufacturing phase 2 M120). */
+export const MAX_BOM_OUTPUTS = 20;
 /** A page of the BoM list. */
 export const BOM_PAGE_SIZE = 50;
 

@@ -93,6 +93,61 @@ export const CostPanel = ({ cost, currency = "NOK" }: CostPanelProps) => {
             )}
           </Stack>
         )}
+        {(cost.byProducts ?? []).length > 0 && (
+          <Stack gap={4} data-assist="manufacturing.order.cost-split">
+            <Text size="sm" fw={500}>
+              {t("costSplit")}
+            </Text>
+            <Table.ScrollContainer minWidth={560}>
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("byProduct")}</Table.Th>
+                    <Table.Th ta="right">{t("costShare")}</Table.Th>
+                    <Table.Th ta="right">{t("costEstimate")}</Table.Th>
+                    <Table.Th ta="right">{t("costActual")}</Table.Th>
+                    <Table.Th ta="right">{t("costPerUnit")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {cost.byProducts.map((part) => (
+                    <Table.Tr key={part.outputId}>
+                      <Table.Td>{part.variant.sku}</Table.Td>
+                      <Table.Td ta="right">{`${decimal(part.costShare)} %`}</Table.Td>
+                      <Table.Td ta="right">{part.estimate ? money(part.estimate, currency) : "—"}</Table.Td>
+                      <Table.Td ta="right">{part.actual ? money(part.actual, currency) : "—"}</Table.Td>
+                      <Table.Td ta="right">
+                        {part.notProduced ? (
+                          <Text size="sm" c="dimmed" component="span">
+                            {t("notProduced")}
+                          </Text>
+                        ) : part.costPerUnit ? (
+                          money(part.costPerUnit, currency)
+                        ) : (
+                          "—"
+                        )}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                  {cost.mainActual && (
+                    <Table.Tr fw={600}>
+                      <Table.Td>{t("mainProduct")}</Table.Td>
+                      <Table.Td />
+                      <Table.Td />
+                      <Table.Td ta="right">{money(cost.mainActual, currency)}</Table.Td>
+                      <Table.Td ta="right">{cost.costPerUnit ? money(cost.costPerUnit, currency) : "—"}</Table.Td>
+                    </Table.Tr>
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+            {cost.byProducts.some((part) => part.notProduced) && (
+              <Text size="xs" c="dimmed">
+                {t("notProducedHint")}
+              </Text>
+            )}
+          </Stack>
+        )}
         {cost.costPerUnit !== null && (
           <Group gap="xs">
             <Text size="sm" c="dimmed">
