@@ -1023,7 +1023,8 @@ endepunktene krever `identity:manage`.
 Etter 90 dager svarer nettbrettstasjonen `station_unknown` og viser tilkoblingsskjemaet igjen: velg
 **Ny koblingskode** på nettbrettstasjonens rad og koble den til på nytt (revidert som
 `station_repaired`). En ny kode erstatter tokenet, så den nettleseren som hadde det gamle,
-er ikke lenger nettbrettstasjonen. Til den nye koden er brukt, er en nettbrettstasjon i bruk fortsatt
+er ikke lenger nettbrettstasjonen: forespørslene derfra er `401 station_unknown`, og
+direktekoblingen lukkes ved neste minutts kontroll. Til den nye koden er brukt, er en nettbrettstasjon i bruk fortsatt
 **Tilkoblet**, merket **Ny kode venter**: tokenet virker til koden erstatter det.
 
 ### Endre en nettbrettstasjon
@@ -1120,6 +1121,8 @@ PIN-kode eller et kort; nettbrettstasjonen viser navn og initialer og ikke noe m
   fast hash for en ukjent person og en uten PIN-kode, med de samme oppslagene for en person
   som ikke finnes, slik at tiden ikke skiller dem bedre enn svaret gjør. Revideres som
   `operator_sign_in_failed` med nettbrettstasjonen og personen som ble valgt, aldri PIN-koden.
+  Forsøk som avvises mens en person har ventetid, revideres også, men bare de fem første i
+  løpet av et kvarter per nettbrettstasjon og person.
 - **Varsel:** hver tiende feil på rad for én person, og når nettbrettstasjonens grense nås, skrives
   `operator_backoff` til revisjonsloggen, og de som har `identity:manage`, får e-post
   gjennom systemets e-post — **høyst én gang i timen per nettbrettstasjon**. Nettbrettstasjonslisten merker
