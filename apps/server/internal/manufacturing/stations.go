@@ -165,7 +165,9 @@ func (s *server) GetManufacturingStationWorkCenters(ctx context.Context, req gen
 
 // PutManufacturingStationWorkCenters replaces the work centers a station
 // serves, in one transaction; an id that names no work center is
-// work_center_unknown.
+// work_center_unknown, and a station Identity does not know (StationKnown)
+// is 404. A change is recorded with its actor and the centers before and
+// after (station_work_center_changes).
 // (PUT /api/v1/manufacturing/stations/{stationId}/work-centers)
 func (s *server) PutManufacturingStationWorkCenters(ctx context.Context, req gen.PutManufacturingStationWorkCentersRequestObject) (gen.PutManufacturingStationWorkCentersResponseObject, error) {
 	var ids []int64
@@ -179,7 +181,25 @@ func (s *server) PutManufacturingStationWorkCenters(ctx context.Context, req gen
 		return gen.PutManufacturingStationWorkCenters400ApplicationProblemPlusJSONResponse(invalid(title, fieldErrorsOf("workCenterIds", "",
 			fmt.Sprintf("At most %d work centers.", maxStationWorkCenters)))), nil
 	}
-	err := s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
+	stations, ok := s.deps.Access.(contracts.StationAccess)
+	if !ok {
+		return gen.PutManufacturingStationWorkCenters404Response{}, nil
+	}
+	known, err := stations.StationKnown(ctx, req.StationId)
+	if err != nil {
+		return nil, err
+	}
+	if !known {
+		return gen.PutManufacturingStationWorkCenters404Response{}, nil
+	}
+	who, err := s.actorOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ids == nil {
+		ids = []int64{}
+	}
+	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		n, err := txq.CountWorkCenters(ctx, ids)
 		if err != nil {
 			return err
@@ -187,13 +207,27 @@ func (s *server) PutManufacturingStationWorkCenters(ctx context.Context, req gen
 		if int(n) != len(ids) {
 			return refuseField(title, "workCenterIds", codeWorkCenterUnknown, "A work center is not known.")
 		}
+		before, err := txq.StationWorkCenterIDs(ctx, req.StationId)
+		if err != nil {
+			return err
+		}
+		if before == nil {
+			before = []int64{}
+		}
+		if slices.Equal(before, ids) {
+			return nil
+		}
 		if err := txq.DeleteStationWorkCenters(ctx, req.StationId); err != nil {
 			return err
 		}
-		if len(ids) == 0 {
-			return nil
+		if len(ids) > 0 {
+			if err := txq.InsertStationWorkCenters(ctx, store.InsertStationWorkCentersParams{StationID: req.StationId, WorkCenterIds: ids}); err != nil {
+				return err
+			}
 		}
-		return txq.InsertStationWorkCenters(ctx, store.InsertStationWorkCentersParams{StationID: req.StationId, WorkCenterIds: ids})
+		return txq.InsertStationWorkCenterChange(ctx, store.InsertStationWorkCenterChangeParams{
+			StationID: req.StationId, BeforeIds: before, AfterIds: ids, ActorUserID: who.id, ActorDisplay: who.display, Now: s.deps.Clock(),
+		})
 	})
 	if err != nil {
 		return answer(err, answers[gen.PutManufacturingStationWorkCentersResponseObject]{
@@ -201,9 +235,6 @@ func (s *server) PutManufacturingStationWorkCenters(ctx context.Context, req gen
 				return gen.PutManufacturingStationWorkCenters400ApplicationProblemPlusJSONResponse(p)
 			},
 		})
-	}
-	if ids == nil {
-		ids = []int64{}
 	}
 	return gen.PutManufacturingStationWorkCenters200JSONResponse{WorkCenterIds: ids}, nil
 }

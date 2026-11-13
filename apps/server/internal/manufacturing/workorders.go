@@ -1072,6 +1072,7 @@ func (s *server) BlockManufacturingWorkCenter(ctx context.Context, req gen.Block
 			if _, err := txq.InsertTimeLog(ctx, store.InsertTimeLogParams{
 				WorkOrderID: l.WorkOrderID, WorkCenterID: center.ID, UserID: l.UserID, UserDisplay: l.UserDisplay, Kind: logDowntime,
 				Reason: &reason, Note: note, NoteBy: who.id, NoteByDisplay: who.display, StartedAt: now,
+				StationID: l.StationID, // the device the operator's own log was running at (M137)
 			}); err != nil {
 				return err
 			}

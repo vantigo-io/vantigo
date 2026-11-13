@@ -61,8 +61,8 @@ func (h *harness) atStation(t *testing.T, permissions ...string) atStation {
 	h.Exec(t, `INSERT INTO identity.stations (id, name, token_hash, token_expires_at, paired_at, created_at)
 	           VALUES ($1, 'Station', $2, $3, $4, $4)`, station, cookieHash, now.Add(90*24*time.Hour), now)
 	token, tokenHash := stationToken(t)
-	h.Exec(t, `INSERT INTO identity.station_operator_sessions (id, station_id, user_id, token_hash, started_at, last_activity_at)
-	           VALUES ($1, $2, $3, $4, $5, $5)`, uuid.New(), station, user, tokenHash, now)
+	h.Exec(t, `INSERT INTO identity.station_operator_sessions (id, station_id, user_id, user_display, token_hash, started_at, last_activity_at)
+	           VALUES ($1, $2, $3, 'Operator', $4, $5, $5)`, uuid.New(), station, user, tokenHash, now)
 	c := h.Client(t)
 	c.SetCookie("vantigo.station", cookie)
 	return atStation{Client: c, station: station, user: user, token: token}
@@ -350,5 +350,56 @@ func TestStation_ThePagesAllowedSetIsTheContracts(t *testing.T) {
 	})
 	if got, want := byID(file["identity"]), byID(stations); !slices.Equal(got, want) {
 		t.Errorf("the page's Identity operations = %v\nthe station endpoints = %v", got, want)
+	}
+}
+
+// TestStation_ReviewFixes holds the review's findings on Manufacturing's side
+// of the stations: a station Identity does not know cannot be given work
+// centers, every change of them is recorded with its actor, a group's work
+// order reaches another member's station only until it starts, and an
+// operator's downtime on a block carries the station their log ran at.
+func TestStation_ReviewFixes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin := h.SignIn(t, everything...)
+	f := newFloor(t, h, admin)
+	_, wos := openOrder(t, admin, "1")
+	op := h.atStation(t, everything...)
+
+	if res := admin.Do(http.MethodPut, base+"/stations/"+uuid.NewString()+"/work-centers", gen.ManufacturingStationWorkCenters{WorkCenterIds: []int64{f.saw.Id}}); res.Status != http.StatusNotFound {
+		t.Fatalf("an unknown station: %d %s", res.Status, res.Body)
+	}
+	serve(t, admin, op.station, f.paint.Id)
+	serve(t, admin, op.station, f.paint.Id) // the same again changes nothing
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.station_work_center_changes WHERE station_id = $1`, op.station); n != 1 {
+		t.Fatalf("%d changes recorded, want 1", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.station_work_center_changes
+	    WHERE station_id = $1 AND actor_user_id IS NOT NULL AND actor_display <> '' AND before_ids = '{}' AND after_ids = $2`, op.station, []int64{f.paint.Id}); n != 1 {
+		t.Fatal("the change does not name its actor and the centers before and after")
+	}
+
+	// The SAW work order targets a group of SAW and PAINT: the PAINT station
+	// reaches it while it has not started, and not once it runs.
+	var group int64
+	if err := h.Pool().QueryRow(context.Background(), `INSERT INTO manufacturing.work_center_groups (code, name, site_id, created_at, updated_at)
+	    SELECT 'SP', 'Saw or paint', site_id, now(), now() FROM manufacturing.work_centers WHERE id = $1 RETURNING id`, f.saw.Id).Scan(&group); err != nil {
+		t.Fatal(err)
+	}
+	h.Exec(t, `INSERT INTO manufacturing.work_center_group_members (group_id, work_center_id) VALUES ($1, $2), ($1, $3)`, group, f.saw.Id, f.paint.Id)
+	h.Exec(t, `UPDATE manufacturing.work_orders SET work_center_group_id = $1 WHERE id = $2`, group, wos[0].Id)
+	mustStatus(t, op.do(http.MethodGet, workOrderPath(wos[0].Id), nil), http.StatusOK, "a group's work order not started")
+
+	// Started at SAW by an operator of a SAW station, then blocked from a
+	// person's browser: the operator's downtime log carries their station.
+	sawOp := h.atStation(t, everything...)
+	serve(t, admin, sawOp.station, f.saw.Id)
+	mustStatus(t, sawOp.do(http.MethodPost, workOrderPath(wos[0].Id, "start"), gen.ManufacturingStartInput{WorkCenterId: &f.saw.Id}), http.StatusOK, "start at SAW")
+	if res := op.do(http.MethodGet, workOrderPath(wos[0].Id), nil); res.Status != http.StatusForbidden || refusalCode(res) != "station_scope" {
+		t.Fatalf("the PAINT station reading a group's work order running at SAW: %d %s", res.Status, res.Body)
+	}
+	mustStatus(t, admin.Do(http.MethodPost, workCenterPath(f.saw.Id, "block"), gen.ManufacturingBlockInput{Reason: gen.Breakdown}), http.StatusOK, "block")
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.time_logs WHERE user_id = $1 AND kind = 'downtime' AND station_id = $2`, sawOp.user, sawOp.station); n != 1 {
+		t.Fatalf("%d downtime logs of the operator at their station, want 1", n)
 	}
 }

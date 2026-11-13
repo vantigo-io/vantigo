@@ -12,6 +12,10 @@ INSERT INTO manufacturing.station_work_centers (station_id, work_center_id)
 SELECT @station_id, unnest(@work_center_ids::bigint[])
 ON CONFLICT DO NOTHING;
 
+-- name: InsertStationWorkCenterChange :exec
+INSERT INTO manufacturing.station_work_center_changes (station_id, before_ids, after_ids, actor_user_id, actor_display, changed_at)
+VALUES (@station_id, @before_ids::bigint[], @after_ids::bigint[], @actor_user_id, @actor_display, @now);
+
 -- name: CountWorkCenters :one
 SELECT count(*)::integer FROM manufacturing.work_centers WHERE id = ANY(@ids::bigint[]);
 
@@ -24,15 +28,15 @@ SELECT EXISTS (
 -- name: StationServesWorkOrder :one
 -- StationServesWorkOrder reports whether a work order is at one of the
 -- station's centers or — a group's work order (manufacturing phase 2 M119)
--- not yet fixed at a member — whether one of its group's members is. With
--- fixed_only the group does not count: an action on a started work order is
--- judged where it runs.
+-- not yet started, so not yet fixed at a member — whether one of its group's
+-- members is. With fixed_only the group does not count: an action on a
+-- started work order is judged where it runs.
 SELECT EXISTS (
     SELECT 1 FROM manufacturing.work_orders w
     WHERE w.id = @work_order_id
       AND (EXISTS (SELECT 1 FROM manufacturing.station_work_centers s
                    WHERE s.station_id = @station_id AND s.work_center_id = w.work_center_id)
-           OR (NOT @fixed_only::boolean AND w.work_center_group_id IS NOT NULL AND EXISTS (
+           OR (NOT @fixed_only::boolean AND w.work_center_group_id IS NOT NULL AND w.status IN ('pending', 'ready') AND EXISTS (
                    SELECT 1 FROM manufacturing.work_center_group_members m
                    JOIN manufacturing.station_work_centers s ON s.work_center_id = m.work_center_id AND s.station_id = @station_id
                    WHERE m.group_id = w.work_center_group_id)))
