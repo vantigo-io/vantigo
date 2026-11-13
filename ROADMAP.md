@@ -1040,8 +1040,13 @@ What the design deferred, each waiting for what is named:
   the ledger, released only by their own close; inspection on receipt in Inventory
   ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#quality),
   [Inventory](docs/src/content/docs/en/reference/inventory.md#inspection-on-receipt)).
-- **Operation dependencies (parallel operations).**
-- **Alternative work centers, a drag to another center, overlap.**
+- **Routing upgrades (built, F)**: a BoM's operations as a graph — Depends on, parallel
+  branches and joins, a cycle refused — readying and planning by it; a send-ahead quantity
+  passed on with Register quantity so a successor overlaps its predecessor; work center
+  groups, the planner choosing the member that finishes first, Group work on the floor,
+  a drag to another member's row, the member's figures and expected minutes taken again
+  until a time log fixes it
+  ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#routing)).
 - **Auto-computed standard times**, reading delivery D's time deviation.
 - **Replenishment suggestions (built, R)**: projected stock per placed variant and site —
   usable on hand, reserved and incoming from Inventory, open orders and reorder drafts as
