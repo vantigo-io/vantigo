@@ -482,9 +482,12 @@ func allocationAmount(quantity, unitPrice, discountPercent *big.Rat) *big.Rat {
 
 // notInvoiceable is why an order line cannot be invoiced now, or "": it must
 // be a priced product line with a VAT code, invoiced on order or on delivery
-// (O48), of a confirmed order not on hold.
+// (O48), of a confirmed order not on hold, and not a kit's child line — its
+// kit line is invoiced for it (manufacturing phase 2 M145).
 func notInvoiceable(o store.OrdersOrder, l store.OrdersLine) string {
 	switch {
+	case l.ParentLineID != nil:
+		return fmt.Sprintf("Line %d is a component of a kit; the kit's line is invoiced.", l.Position)
 	case !pricedKind(l.Kind) || !l.Quantity.Valid || !l.UnitPrice.Valid || l.VatCodeID == nil:
 		return fmt.Sprintf("Line %d is not a priced product or shipping line.", l.Position)
 	case l.InvoicePolicy != policyOnOrder && l.InvoicePolicy != policyOnDelivery:

@@ -121,13 +121,15 @@ ORDER BY at, id;
 -- done. done is confirmed with every product line satisfied: cancelled and
 -- invoiced cover what was ordered (and so do cancelled and the larger of
 -- delivered and invoiced) — an order whose remainder was cancelled whole is
--- done, while one delivered and not invoiced waits for its invoice.
+-- done, while one delivered and not invoiced waits for its invoice. A kit's
+-- child line is invoiced as its kit (manufacturing phase 2 M145): only
+-- cancelled and the larger of delivered and invoiced must cover it.
 SELECT sqlc.embed(o), ((o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))))::boolean AS done FROM orders.orders o
 WHERE (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(customer_id))
   AND (cardinality(sqlc.arg(statuses)::text[]) = 0 OR o.status = ANY(sqlc.arg(statuses)::text[]))
@@ -139,14 +141,14 @@ WHERE (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(cust
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
   AND (sqlc.narg(done)::boolean IS NULL OR (o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = sqlc.narg(done)::boolean)
   AND (NOT sqlc.arg(to_deliver)::boolean OR (o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
@@ -170,14 +172,14 @@ WHERE (sqlc.narg(customer_id)::integer IS NULL OR o.customer_id = sqlc.narg(cust
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
   AND (sqlc.narg(done)::boolean IS NULL OR (o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = sqlc.narg(done)::boolean)
   AND (NOT sqlc.arg(to_deliver)::boolean OR (o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
@@ -218,7 +220,8 @@ ORDER BY t.currency;
 -- DeliveredNotInvoicedSums is a customer's confirmed orders with a delivered
 -- quantity not yet invoiced, and its net value, per currency (O31a): what is
 -- delivered less what the invoices' issues stamped (O38); a draft invoice's
--- allocation is not invoiced yet.
+-- allocation is not invoiced yet. A kit's child line is invoiced as its kit
+-- (manufacturing phase 2 M145) and is left out.
 SELECT t.currency::text AS currency, count(*)::integer AS documents, coalesce(sum(t.amount), 0)::numeric(14,2) AS amount
 FROM (
     SELECT o.id, o.currency,
@@ -226,7 +229,7 @@ FROM (
     FROM orders.orders o
     JOIN orders.lines l ON l.owner_kind = 'order' AND l.owner_id = o.id
     WHERE o.customer_id = sqlc.arg(customer_id) AND o.status = 'confirmed' AND l.kind = 'product'
-      AND l.quantity > 0 AND l.qty_delivered > l.qty_invoiced
+      AND l.quantity > 0 AND l.qty_delivered > l.qty_invoiced AND l.parent_line_id IS NULL
     GROUP BY o.id, o.currency
 ) t
 GROUP BY t.currency

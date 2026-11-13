@@ -149,6 +149,10 @@ type pricedLine struct {
 	// phase 2 M145); nil on every other line.
 	kit    *int
 	perKit *big.Rat
+	// input is the index of the request's line this line came from — a kit's
+	// child line its kit's (atInputs) — on an order's create, save and
+	// accept.
+	input int
 }
 
 // pricedLineOf is a stored line as it would be written again, unchanged:

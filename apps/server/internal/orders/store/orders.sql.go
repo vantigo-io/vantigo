@@ -211,14 +211,14 @@ WHERE ($1::integer IS NULL OR o.customer_id = $1)
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
   AND ($7::boolean IS NULL OR (o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = $7::boolean)
   AND (NOT $8::boolean OR (o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
@@ -278,7 +278,7 @@ FROM (
     FROM orders.orders o
     JOIN orders.lines l ON l.owner_kind = 'order' AND l.owner_id = o.id
     WHERE o.customer_id = $1 AND o.status = 'confirmed' AND l.kind = 'product'
-      AND l.quantity > 0 AND l.qty_delivered > l.qty_invoiced
+      AND l.quantity > 0 AND l.qty_delivered > l.qty_invoiced AND l.parent_line_id IS NULL
     GROUP BY o.id, o.currency
 ) t
 GROUP BY t.currency
@@ -294,7 +294,8 @@ type DeliveredNotInvoicedSumsRow struct {
 // DeliveredNotInvoicedSums is a customer's confirmed orders with a delivered
 // quantity not yet invoiced, and its net value, per currency (O31a): what is
 // delivered less what the invoices' issues stamped (O38); a draft invoice's
-// allocation is not invoiced yet.
+// allocation is not invoiced yet. A kit's child line is invoiced as its kit
+// (manufacturing phase 2 M145) and is left out.
 func (q *Queries) DeliveredNotInvoicedSums(ctx context.Context, customerID int32) ([]DeliveredNotInvoicedSumsRow, error) {
 	rows, err := q.db.Query(ctx, deliveredNotInvoicedSums, customerID)
 	if err != nil {
@@ -364,7 +365,7 @@ SELECT o.id, o.number, o.status, o.on_hold, o.hold_reason, o.locked, o.version, 
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))))::boolean AS done FROM orders.orders o
 WHERE ($1::integer IS NULL OR o.customer_id = $1)
   AND (cardinality($2::text[]) = 0 OR o.status = ANY($2::text[]))
@@ -376,14 +377,14 @@ WHERE ($1::integer IS NULL OR o.customer_id = $1)
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
   AND ($7::boolean IS NULL OR (o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL)
        AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                    AND l.kind = 'product' AND l.quantity IS NOT NULL
-                   AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                   AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                         OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity))) = $7::boolean)
   AND (NOT $8::boolean OR (o.status = 'confirmed'
        AND EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
@@ -421,7 +422,9 @@ type ListOrdersRow struct {
 // done. done is confirmed with every product line satisfied: cancelled and
 // invoiced cover what was ordered (and so do cancelled and the larger of
 // delivered and invoiced) — an order whose remainder was cancelled whole is
-// done, while one delivered and not invoiced waits for its invoice.
+// done, while one delivered and not invoiced waits for its invoice. A kit's
+// child line is invoiced as its kit (manufacturing phase 2 M145): only
+// cancelled and the larger of delivered and invoiced must cover it.
 func (q *Queries) ListOrders(ctx context.Context, arg ListOrdersParams) ([]ListOrdersRow, error) {
 	rows, err := q.db.Query(ctx, listOrders,
 		arg.CustomerID,

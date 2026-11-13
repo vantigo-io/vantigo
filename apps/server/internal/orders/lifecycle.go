@@ -217,7 +217,9 @@ func (s *server) ConfirmSalesOrder(ctx context.Context, req gen.ConfirmSalesOrde
 		return nil
 	})
 	if err != nil {
-		return answer(err, resp)
+		// A refused line is named by its row in the editor, which holds a
+		// kit and not its children (M145).
+		return answer(atTopLevel(err, lines), resp)
 	}
 	afterOrderConfirmed(ctx, s, confirmed, printed)
 	if err := s.withStockFigures(ctx, &out); err != nil {
@@ -478,7 +480,10 @@ func (s *server) CancelSalesOrder(ctx context.Context, req gen.CancelSalesOrderR
 // what each line holds reserved beyond what is still open released, the
 // lines with nothing left to deliver taken out of the draft deliveries and a
 // draft left with no line cancelled (O46, O47), and
-// orders.sales_order.changed.v1 published; otherwise nothing is written.
+// orders.sales_order.changed.v1 published; otherwise nothing is written. A
+// kit's component delivered beyond the whole kits left on the order is logged
+// delivered_beyond_kits with the excess: it was delivered and is never
+// invoiced, the kit carrying the price (manufacturing phase 2 M145).
 func (s *server) CancelSalesOrderRemaining(ctx context.Context, req gen.CancelSalesOrderRemainingRequestObject) (gen.CancelSalesOrderRemainingResponseObject, error) {
 	out, err := s.changeOrder(ctx, req.Id, req.Body.Version, req.Body.ExpectedUpdatedAt, true,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, o store.OrdersOrder, lines []store.OrdersLine) (store.OrdersOrder, []changeAction, error) {
@@ -517,6 +522,7 @@ func (s *server) CancelSalesOrderRemaining(ctx context.Context, req gen.CancelSa
 			if len(actions) == 0 {
 				return o, nil, nil
 			}
+			actions = append(actions, beyondKits(lines)...)
 			// What a line holds beyond what is still open is released, and the
 			// draft deliveries let go of the lines with nothing left to deliver
 			// — a draft left with no line is cancelled (O18, O46, O47). A line
