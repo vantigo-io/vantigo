@@ -67,6 +67,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    (rule 4) — `internal/shipping` — the carrier port, Orders' and a later webshop's,
    with its Bring adapter `internal/shipping/bring`; interfaces, values and the adapter
    only, no SQL ([Shipping carriers](/en/contributing/shipping-carriers/)) —
+   `internal/bankfeed` — the bank feed port, Invoices' and a later Expenses', with its
+   Folio adapter `internal/bankfeed/folio`; interfaces, values and the adapter only, no
+   SQL ([Bank feeds](/en/contributing/bank-feeds/)) —
    `internal/fileimport` — the reader of an uploaded import file
    (encoding, separator, quoting, the formula guard, header keys), shared by the
    Customers and Energy imports; no SQL, each module keeps its own imports, worker
@@ -75,8 +78,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    shared by Invoices and Orders
    ([The document arithmetic](/en/contributing/platform-packages/#the-document-arithmetic)) —
    …) and its own subpackages, never another module's.
-   `internal/payments/vipps/vippstest` and `internal/shipping/bring/bringtest`, the
-   adapters' fakes, are imported by tests only.
+   `internal/payments/vipps/vippstest`, `internal/shipping/bring/bringtest` and
+   `internal/bankfeed/folio/foliotest`, the adapters' fakes, are imported by tests only.
 
    `internal/mail` is such a platform import, and a module that sends mail goes through
    its guarded path (`mail.SendOutbound`, or the test seam `Deps.SMTPSend`).

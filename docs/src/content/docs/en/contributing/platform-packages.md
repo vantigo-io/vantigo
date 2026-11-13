@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint and its station path, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the bank feed port with its Folio adapter, the public-holiday calendar, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint and its station path, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document.
 sidebar:
   order: 5
 sources:
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/ai
   - apps/server/internal/operations
   - apps/server/internal/payments
+  - apps/server/internal/bankfeed
   - apps/server/internal/holidays
   - apps/server/internal/imagemeta
   - apps/server/internal/directoryaddress
@@ -20,7 +21,7 @@ sources:
 A module may import the platform but never another module (see
 [Module boundaries](/en/contributing/module-boundaries/)). This page describes the
 platform packages a module reaches for when it holds something it must not store in
-clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it counts days
+clear, when it sends a mail of its own, when it asks an AI model for something, when it takes a payment, when it reads a bank account's transactions, when it counts days
 around the public holidays, when it stores a picture people will see, when it makes an address for an account in a directory, when it tells other modules what happened to one of its own rows, and when it computes a sales document's amounts.
 
 ## The secrets box
@@ -447,6 +448,63 @@ with) and a QR. With `VIPPS_TEST_WEBHOOK_URL` — a public https URL
 forwarded to `VIPPS_TEST_WEBHOOK_LISTEN` (default `127.0.0.1:8089`) — it also registers
 a webhook, captures one signed callback, verifies it, writes it as the fixture and
 deletes the registration.
+
+## The bank feed port
+
+[`apps/server/internal/bankfeed`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/bankfeed)
+is the port between a module and a bank that answers an account's transactions
+through an API, shaped like [the payments port](#the-payments-port): interfaces and
+values only, no SQL — the consumer keeps its connections, accounts and lines in its own
+schema (module boundaries rule 4) — importing nothing but the standard library and
+`internal/buildinfo`, which `TestBankfeed_Purity` and depguard's `platform` list
+enforce. Invoices is to be its first consumer; nothing imports it yet.
+[Bank feeds](/en/contributing/bank-feeds/) describes Folio's adapter and how to add a
+bank.
+
+### The interface
+
+`bankfeed.Feed` is one bank credential: `Verify`, the cheapest authenticated call for a
+settings page; `Accounts`, the accounts the credential can read, each with its number,
+name and kind (`operational`, `tax`, `savings`, `earmarks`, `card`, or `other` for a
+kind the adapter does not know); and `Transactions(ctx, account, from, to)`, the booked
+transactions of one account over a range of days, both inclusive.
+
+A `bankfeed.Transaction` carries the bank's id, the booking day at UTC midnight, the
+amount in minor units — unsigned — with its currency, a `Direction`, a `Kind`, the KID,
+the remittance text, the debtor's name and account, and `Raw`, the bytes the bank sent
+for that transaction, which the consumer stores as the documentation of what it books
+from it. The adapter cuts nothing: lengths are the consumer's to enforce.
+
+### Direction and kind: the adapter decides, the module judges
+
+**The adapter decides** which way the money went and what moved it, because only the
+adapter knows how its bank says so. `Direction` is `credit` (money in), `debit` (money
+out) or `unknown` — a transaction the adapter cannot place, which the consumer must
+refuse, never guess at. `Kind` is `transfer` (a giro or KID payment), `card` (a card
+purchase) or `internal` (between two accounts of the same customer).
+
+**The module judges** what a line means: which transactions it keeps, which it only
+counts, and when a batch is refused.
+
+### Errors
+
+An adapter answers two typed errors: `ErrUnauthorized` (a 401 or 403: the bank refused
+the credential) and `*ErrRateLimited{RetryAfter}` (a 429, with the wait the bank named,
+zero when it named none). Anything else — a transport failure, a timeout, a 5xx, a
+redirect, an answer past the size bound or one that does not decode — is a plain error:
+the read failed and nothing was learnt.
+
+**An adapter never retries.** A read has no side effect, so the consumer's next cycle
+reads again; an adapter neither repeats a call nor caches an answer.
+
+### Testing against it
+
+`internal/bankfeed/folio/foliotest` is an `httptest` TLS Folio for every suite that
+reads a bank feed: the accounts a test sets, the transactions it adds filtered by the
+range asked for, 401 for any other key, and `Fail` per operation with a status and
+`Retry-After`, a reset connection, a redirect, a body of the test's own or one past the
+size bound. A harness passes its `Transport()` as the module's HTTP transport. Only
+tests import it: depguard's `test-fakes` rule refuses it in any other file.
 
 ## The holidays
 

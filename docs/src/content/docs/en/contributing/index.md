@@ -31,6 +31,9 @@ The pages here cover the rules a change is held to:
 - [Shipping carriers](/en/contributing/shipping-carriers/) — the carrier port
   `internal/shipping`, its Bring adapter and fake, the live test, and how to add a
   carrier.
+- [Bank feeds](/en/contributing/bank-feeds/) — the bank feed port `internal/bankfeed`,
+  Folio's adapter and how it reads a transaction's direction, the fake and the
+  hand-written fixtures, and how to add a bank.
 - [Platform packages](/en/contributing/platform-packages/) — the packages every module
   may use: the secrets box that seals and MACs values under keys derived from
   `APP_SECRET`, the purposes convention, and what rotating `APP_SECRET` costs; and the
