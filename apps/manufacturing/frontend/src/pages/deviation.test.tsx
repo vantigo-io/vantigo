@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { ManufacturingDeviation } from "../api/quality";
@@ -80,6 +80,18 @@ describe("a deviation (manufacturing phase 2 M99)", () => {
     renderRoute("/manufacturing/deviations/7");
     expect(await screen.findByText("MO-12")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Close the deviation" })).toBeNull();
+  });
+
+  it("opens the report dialog from ?new=1 only for whoever may report", async () => {
+    stubManufacturingApi({ meta: {}, deviations: [deviation()] });
+    renderRoute("/manufacturing/deviations?new=1");
+    expect(await screen.findByRole("link", { name: "DEV-7" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Report a deviation" })).toBeNull();
+    cleanup();
+
+    stubManufacturingApi({ meta: { canWorkShopFloor: true }, deviations: [deviation()] });
+    renderRoute("/manufacturing/deviations?new=1");
+    expect(await screen.findByRole("dialog", { name: "Report a deviation" })).toBeInTheDocument();
   });
 
   it("lists the open deviations", async () => {

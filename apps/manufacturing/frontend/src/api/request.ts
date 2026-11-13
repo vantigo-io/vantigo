@@ -134,6 +134,8 @@ export const refusalCodes = [
   "checks_incomplete",
   "check_not_open",
   "deviation_closed",
+  "lot_not_of_order",
+  "lots_view_required",
   "attachment_too_large",
   "attachment_type",
   "storage_not_configured",

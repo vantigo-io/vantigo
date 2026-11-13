@@ -1,6 +1,6 @@
-import { Anchor, Badge, Button, Group, Paper, SimpleGrid, Stack, Text, TextInput } from "@mantine/core";
+import { ActionIcon, Anchor, Badge, Button, Group, Paper, SimpleGrid, Stack, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconCamera, IconCheck, IconX } from "@tabler/icons-react";
+import { IconCamera, IconCheck, IconPlusMinus, IconX } from "@tabler/icons-react";
 import { Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
@@ -13,6 +13,8 @@ import {
 } from "../api/quality";
 import { isMeasure } from "../lib/bom-body";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
+import { resizePhoto } from "../lib/photo";
+import { toggleSign } from "../lib/quality";
 import { deviationLinkOptions } from "../lib/routes";
 import { Markdown } from "./markdown";
 
@@ -76,7 +78,8 @@ const CheckRow = ({
     if (!file) return;
     setBusy(true);
     try {
-      const photo = await uploadCheckPhoto(workOrderId, file);
+      // Drawn down to 2560 px first: a camera's picture is several megabytes.
+      const photo = await uploadCheckPhoto(workOrderId, await resizePhoto(file));
       await record({ photoId: photo.id });
     } catch (error) {
       notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
@@ -165,6 +168,18 @@ const CheckRow = ({
                 value={value}
                 onChange={(event) => setValue(event.currentTarget.value)}
                 error={value.trim() !== "" && !isMeasure(value) ? t("problem_measure") : undefined}
+                rightSectionWidth={64}
+                rightSection={
+                  // A tablet's decimal keypad has no minus: the sign is a button.
+                  <ActionIcon
+                    size={48}
+                    variant="light"
+                    aria-label={t("checkToggleSign")}
+                    onClick={() => setValue(toggleSign)}
+                  >
+                    <IconPlusMinus size={24} />
+                  </ActionIcon>
+                }
               />
             )}
             <TextInput
