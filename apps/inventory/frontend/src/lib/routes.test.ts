@@ -9,6 +9,12 @@ describe("sourceHref", () => {
     expect(sourceHref(production, undefined)).toBe("/manufacturing/orders/5");
   });
 
+  it("links an unbuild to Manufacturing's unbuilds (manufacturing phase 2 M123)", () => {
+    const unbuild = { module: "manufacturing", kind: "unbuild", id: "4", lineId: "4" };
+    expect(sourceHref(unbuild, ["inventory", "manufacturing"])).toBe("/manufacturing/unbuilds");
+    expect(sourceHref(unbuild, ["inventory"])).toBeUndefined();
+  });
+
   it("links nothing when Manufacturing is not mounted, or for another source", () => {
     expect(sourceHref(production, ["inventory"])).toBeUndefined();
     expect(sourceHref({ ...production, lineId: undefined }, undefined)).toBeUndefined();
