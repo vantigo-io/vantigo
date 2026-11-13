@@ -1,6 +1,7 @@
 # Accounting — the ledger, sales and purchases that post themselves, VAT, SAF-T, bank (phase 1)
 
-This spec builds on the research `docs/superpowers/research/2026-11-14-accounting-module.md`
+Revision 2, 2026-11-14, after a critic review. **§13 amends earlier decisions and wins
+where they differ**; it also lists what changed. This spec builds on the research `docs/superpowers/research/2026-11-14-accounting-module.md`
 ("R"). It does not reopen the owner's answers in R §10, and it takes the defaults of R §9
 except where §1 says otherwise. Decisions are numbered A*n*. The implementation plan is
 `docs/superpowers/plans/2026-11-14-accounting-plan.md`. Abbreviations:
@@ -531,3 +532,169 @@ streams and the `SalesJournal` provider; Expenses gains two events and the
 - **Stock valuation**: Inventory carries no cost; until then stock is a period-end
   voucher (R §9.6).
 - **Fixed assets and the VAT adjustment rules; payroll.**
+
+## 13. Revision 2 — the critic review
+
+A review against the code returned *revise*: the spec had assumed the source tables are
+append-only, and they are not. Each amendment names the decision it changes.
+
+### R1 — A fact log orders what is not a document (A12)
+
+- **Documents** are read in `number` order. The number comes from a counter row held to
+  commit, so numbers become visible in order and a cursor on them never skips. Delivery 0
+  confirms that every issue path takes that counter.
+- **Payments, charge payments, removals and write-offs** have no such order: ids are
+  handed out before commit, and a removal is an update. Invoices gains
+  `invoices.journal_facts`: `seq`, `kind` (`payment`, `payment_removed`, `charge_payment`,
+  `charge_payment_removed`, `write_off`, `write_off_undone`), the row it is about, the
+  business date. It is append-only. Rows are written by **deferred constraint triggers**
+  on those tables, and `seq` is taken from `invoices.counters('journal')` **at commit**, so
+  the counter is held for an instant and a bank line paying several invoices cannot
+  deadlock on it.
+- `SalesJournal.Payments` and `Charges` become one `Facts(after seq, limit)`.
+- Waivers are not facts: a waiver posts nothing.
+
+### R2 — Expenses needs the same, with occurrences (A20)
+
+- Expenses can unapprove an entry and undo a reimbursement, and trips are approved per
+  claim. `expenses.journal_facts` records `approved`, `unapproved`, `reimbursed`,
+  `reimbursement_undone`, for an entry or a claim, sequenced the same way. The events are
+  `expenses.entry.*` and `expenses.claim.*`.
+- A voucher's `source_part` is the fact's `seq`, so approve, unapprove, approve gives three
+  vouchers: the cost, its reversal, the cost again.
+- **An entry not in NOK** is not posted by itself, since no rate is stored. It waits under
+  *Needs attention*, where the amount in NOK is entered, normally from the bank statement.
+- The voucher is dated the entry's date; a reimbursement its own date.
+- **A category rule carries `vat_deductible`.** VAT is inferred and deducted only for a
+  category that allows it (mval. § 8-3 forbids it for entertainment and welfare).
+- **Expenses' own `supplier_invoice` kind is not posted by itself.** It has a free-text
+  supplier and no payment. An approved one waits under *Needs attention* with *Make a
+  supplier invoice*, which opens a draft (A18) with its figures and attachment.
+
+### R3 — Zero is not a posting (A4, A13)
+
+Exempt summaries have a VAT of zero, and a line may be free. Zero lines are left out; the
+tax code rides on the base posting. A document whose every line is zero posts no voucher,
+and the cursor moves on.
+
+### R4 — Write-offs that balance (A16)
+
+- **Without the VAT correction:** debit `bad_debt` for the whole open amount.
+- **With it:** the open amount is split over the invoice's VAT summaries in proportion;
+  each share's VAT is debited to that code's VAT account, the rest to `bad_debt`. The tax
+  postings carry the original code and the specification `tapPåKrav`, which the return
+  has a line for (A23).
+- **The undo is always allowed.** Invoices cannot see the ledger's lock and does not need
+  to: the reversing voucher follows A8.
+- **Money that arrives after a write-off** is registered in Invoices as a payment of kind
+  *recovered*, allowed up to the amount written off. It credits `bad_debt`, and turns the
+  VAT correction back in the same proportion.
+
+### R5 — Open items that can always be settled (A9, A10, A19, A25, A28)
+
+- An open item carries `source_document_id` when it stands for a document in Invoices, so
+  a later payment finds it. The opening form fills it for invoices read from `OpenAt`.
+- A posting on receivables or payables that names no item lands on **the party's
+  unallocated item**, one per party and kind.
+- `POST /accounting/open-items/{id}/settlements`: a receipt, a payment or a refund against
+  any item, with a date and a bank account. It is how an imported balance is paid, how a
+  credit balance is refunded, and what *Code it* uses when the line belongs to a party.
+  For an item with a `source_document_id` it is refused: that payment belongs in
+  Invoices.
+- A payment registered after activation for an invoice in the books is always posted; a
+  date before `books_start` is booked on `books_start`.
+
+### R6 — Lines remember what they were (A12, A14)
+
+Invoice lines carry no line kind, tax category or project today. Delivery 0 snapshots
+`line_kind`, `tax_category_id` and `project_id` on each line at issue. Lines issued
+before that fall back to the default for their tax code.
+
+### R7 — A request, a lease, no transaction held across a read (A12)
+
+- A handler cannot wake a worker, and may not read a contract on its delivery
+  transaction. It upserts `accounting.catchup_requests(stream)`.
+- Worker `accounting.catchup` runs every 15 seconds: it claims a stream's lease in one
+  short transaction; reads the contract with **no transaction open**; posts each fact in
+  its own transaction, which also advances the cursor; releases the lease. With no
+  request it still sweeps every five minutes.
+- Nothing runs until Accounting is set up (R12).
+
+### R8 — Purchases in another currency (A18)
+
+- A supplier invoice has `currency`, `exchange_rate` and the total in NOK; the form
+  proposes nothing and the person enters the rate or the NOK total. Postings carry the
+  currency amount beside the NOK amount.
+- A payment is entered in NOK as the bank took it. The difference to the item goes to the
+  new roles `currency_gain` or `currency_loss`.
+- **Import of goods:** the VAT base is the customs declaration's, not the invoice's. It
+  is a manual journal with the import codes, and the user guide shows the entry. The
+  supplier invoice itself is coded without VAT treatment.
+
+### R9 — Charges (A13)
+
+Fees, compensation and interest are not turnover: they post with code **7**, which the
+return leaves out, not code 6. Compensation credits `charge_income` as the reminder fee
+does. A removed charge payment posts the reversal.
+
+### R10 — The lock is read under a lock (A8, A22)
+
+- The posting trigger reads `settings` `FOR SHARE`; moving the lock, closing and
+  reopening a term take it `FOR UPDATE`.
+- **Close** needs the lock to be before the term's end, and says so otherwise; the
+  settlement voucher is posted first, then the lock moves.
+- **Reopen** moves the lock back to the day before the term's start of settlement, then
+  posts the reversal on the term's last day. A8's limit reads: not behind the last term
+  that is *filed*.
+- Close also refuses when the VAT accounts' movement in the term differs from the
+  return's VAT, which a manual posting straight onto a VAT account causes; the screen
+  lists the postings.
+- `vat_term` in settings decides whether there are terms. When it disagrees with the
+  seller's VAT registration in Invoices, the Overview says so.
+
+### R11 — Vipps, and what Invoices already imports (A13, A27, A28)
+
+- **Vipps** pays out net of its fees. Reconciliation gains the suggestion *Vipps payout*:
+  the line's amount from `clearing_vipps` to the bank, the remainder of the clearing
+  balance up to that day to the new role `payment_fees`, shown before it is posted.
+- **Invoices keeps its own imports** (OCR giro, camt.054, and the feed): they register
+  customer payments. Accounting's statement is the account's whole movement. A statement
+  line with a KID, or one that sums a batch, is never coded here as income: its
+  suggestions are the payments' postings, and when there are none, a link to Invoices'
+  exception queue.
+- A manual or Vipps payment names no receiving account: it posts to `bank` or
+  `clearing_vipps`. A removal is dated the business day of its timestamp, in the
+  workspace's business time zone.
+
+### R12 — Setting up (A2, A3)
+
+Every known module is on by default, so an upgrade switches Accounting on. It does
+nothing until a person with `accounting:close` completes **Set up the books**:
+`books_start`, the fiscal year, the VAT term, and the chart (the default, or a SAF-T
+file). That writes the settings row and seeds accounts, tax codes and roles. Before it,
+the handlers and workers return at once and the app shows only the setup.
+
+### R13 — Smaller amendments
+
+- **The source index** (A4) is partial, `WHERE source_module IS NOT NULL`, and
+  `source_part` is `NOT NULL DEFAULT ''`: nulls would let a duplicate through.
+- **Deferred constraint triggers** are new to this repository. The balance check is one;
+  a second refuses a voucher with no postings.
+- **The department dimension is dropped from this phase** (A4, A11, A24). Departments are
+  Staff's, with no contract to read them. Project is the one dimension, through the
+  Projects contract; `department_id` is not created.
+- **Names in the default chart** (A3) follow Skatteetaten's published næringsspesifikasjon
+  list, which carries a Norwegian and an English name per four-digit code. The grouping
+  is then the account's own number by default.
+- **The balance sheet** shows *Result for the year, not yet closed* as a computed line in
+  equity; `year_result` is used by the year-end closing in phase 3.
+- **Copy a voucher** opens the journal form with a posted manual voucher's lines, for the
+  monthly entries (pay from a payroll system, rent) a ledger without payroll needs.
+- **Brønnøysund** (A17): the client and the entity decoding move to `srv/brreg` without
+  Customers' generated types; the feed worker and the registry records stay.
+
+### What the review suggested and this revision keeps anyway
+
+The VAT return's XML, the SAF-T import and the CSV statement were proposed as cuts. They
+stay: the XML is what phase 2 submits, the import is how a company arrives from Fiken or
+Tripletex, and the smaller banks export only CSV.
