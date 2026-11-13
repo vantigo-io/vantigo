@@ -45,9 +45,9 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The station path (manufacturing phase 2 §17): a handshake with the
 	// station cookie and no session cookie is a station's.
 	if stations, ok := h.opts.Access.(contracts.StationAccess); ok {
-		station, isStation, err := stations.CheckStation(r)
+		station, pairing, isStation, err := stations.CheckStation(r)
 		if isStation {
-			h.serveStation(w, r, station, err)
+			h.serveStation(w, r, station, pairing, err)
 			return
 		}
 	}
@@ -99,7 +99,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // connect rate limit and the per-replica socket cap kept per station. The
 // socket may subscribe only to the topics marked Station, which decide by the
 // station's work centers; it announces no presence.
-func (h *Hub) serveStation(w http.ResponseWriter, r *http.Request, station uuid.UUID, err error) {
+func (h *Hub) serveStation(w http.ResponseWriter, r *http.Request, station uuid.UUID, pairing []byte, err error) {
 	if err != nil {
 		if errors.Is(err, contracts.ErrUnauthenticated) || errors.Is(err, contracts.ErrForbidden) {
 			h.opts.Access.Reject(w, r, sessionRule, err)
@@ -119,7 +119,7 @@ func (h *Hub) serveStation(w http.ResponseWriter, r *http.Request, station uuid.
 			return
 		}
 	}
-	c, attachErr := h.attachStation(station, httpx.ClientIP(r))
+	c, attachErr := h.attachStation(station, pairing, httpx.ClientIP(r))
 	if errors.Is(attachErr, errHubClosed) {
 		httpx.WriteProblem(w, r, http.StatusServiceUnavailable, "The server is shutting down.")
 		return

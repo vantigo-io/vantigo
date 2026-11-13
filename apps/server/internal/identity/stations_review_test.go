@@ -266,11 +266,32 @@ func TestStation_AllowlistOnPairingAndOnTheSocket(t *testing.T) {
 
 	// The socket's re-check holds the handshake's address to the allowlist.
 	ctx := context.Background()
-	if live, err := h.access.StationLive(ctx, p.Station.ID, "10.1.2.3"); err != nil || !live {
+	pairing := h.stationPairing(t, p.Station.ID)
+	if live, err := h.access.StationLive(ctx, p.Station.ID, pairing, "10.1.2.3"); err != nil || !live {
 		t.Fatalf("inside: %v %v", live, err)
 	}
-	if live, err := h.access.StationLive(ctx, p.Station.ID, "192.168.1.1"); err != nil || live {
+	if live, err := h.access.StationLive(ctx, p.Station.ID, pairing, "192.168.1.1"); err != nil || live {
 		t.Fatalf("outside: %v %v", live, err)
+	}
+
+	// Paired again in another browser, the socket of the first one ends: its
+	// pairing is no longer the station's.
+	r := owner.do(http.MethodPost, stationsPath+"/"+p.Station.ID.String()+"/pairing", nil)
+	if r.status != http.StatusOK {
+		t.Fatalf("a new code: %d %s", r.status, r.body)
+	}
+	var again stationPairing
+	r.json(&again)
+	other := h.client(t)
+	other.ip = "10.1.2.4"
+	if r := other.do(http.MethodPost, stationPath+"/pair", map[string]any{"code": again.PairingCode}); r.status != http.StatusOK {
+		t.Fatalf("pairing again: %d %s", r.status, r.body)
+	}
+	if live, err := h.access.StationLive(ctx, p.Station.ID, pairing, "10.1.2.3"); err != nil || live {
+		t.Fatalf("the old pairing after pairing again: %v %v", live, err)
+	}
+	if live, err := h.access.StationLive(ctx, p.Station.ID, h.stationPairing(t, p.Station.ID), "10.1.2.3"); err != nil || !live {
+		t.Fatalf("the new pairing: %v %v", live, err)
 	}
 }
 
@@ -523,7 +544,8 @@ func TestStation_TheSocketsHandshakeJudgesASessionCookieAsHTTPDoes(t *testing.T)
 		r := httptest.NewRequest(http.MethodGet, "/api/v1/live", nil)
 		r.AddCookie(&http.Cookie{Name: identity.StationCookieName, Value: station.cookie(identity.StationCookieName)})
 		r.AddCookie(&http.Cookie{Name: identity.SessionCookieName, Value: session})
-		return h.access.CheckStation(r)
+		id, _, isStation, err := h.access.CheckStation(r)
+		return id, isStation, err
 	}
 
 	// A live session beside the station's cookie makes the handshake a person's.

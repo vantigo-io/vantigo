@@ -1,6 +1,7 @@
 package live
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -27,21 +28,21 @@ type stationAccess struct {
 	seen     map[uuid.UUID]string // the address the last re-check was given
 }
 
-func (a *stationAccess) CheckStation(r *http.Request) (uuid.UUID, bool, error) {
+func (a *stationAccess) CheckStation(r *http.Request) (uuid.UUID, []byte, bool, error) {
 	c, err := r.Cookie("station")
 	if err != nil {
-		return uuid.Nil, false, nil
+		return uuid.Nil, nil, false, nil
 	}
 	if _, err := r.Cookie("session"); err == nil {
-		return uuid.Nil, false, nil
+		return uuid.Nil, nil, false, nil
 	}
 	id, err := uuid.Parse(c.Value)
 	a.smu.Lock()
 	defer a.smu.Unlock()
 	if err != nil || !a.stations[id] {
-		return uuid.Nil, true, contracts.ErrUnauthenticated
+		return uuid.Nil, nil, true, contracts.ErrUnauthenticated
 	}
-	return id, true, nil
+	return id, id[:], true, nil
 }
 
 func (a *stationAccess) StationKnown(_ context.Context, id uuid.UUID) (bool, error) {
@@ -51,11 +52,11 @@ func (a *stationAccess) StationKnown(_ context.Context, id uuid.UUID) (bool, err
 	return ok, nil
 }
 
-func (a *stationAccess) StationLive(_ context.Context, id uuid.UUID, ip string) (bool, error) {
+func (a *stationAccess) StationLive(_ context.Context, id uuid.UUID, pairing []byte, ip string) (bool, error) {
 	a.smu.Lock()
 	defer a.smu.Unlock()
 	a.seen[id] = ip
-	return a.stations[id] && (a.allowed[id] == "" || a.allowed[id] == ip), nil
+	return a.stations[id] && bytes.Equal(pairing, id[:]) && (a.allowed[id] == "" || a.allowed[id] == ip), nil
 }
 
 // stationRegistry serves alpha.list (people only) and alpha.center, which a

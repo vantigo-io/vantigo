@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net/http"
@@ -216,29 +217,31 @@ func addressAllowed(networks []netip.Prefix, ip string) bool {
 // session cookie beside the station's is judged as the HTTP path judges it
 // (liveSessionCookie): a live session makes the handshake a person's, a dead
 // one does not.
-func (a *Access) CheckStation(r *http.Request) (uuid.UUID, bool, error) {
+func (a *Access) CheckStation(r *http.Request) (uuid.UUID, []byte, bool, error) {
 	if _, ok := stationTokenFrom(r); !ok {
-		return uuid.Nil, false, nil
+		return uuid.Nil, nil, false, nil
 	}
 	now := a.now()
 	live, err := a.liveSessionCookie(r.Context(), r, now)
 	if err != nil {
-		return uuid.Nil, true, err
+		return uuid.Nil, nil, true, err
 	}
 	if live {
-		return uuid.Nil, false, nil
+		return uuid.Nil, nil, false, nil
 	}
 	st, err := a.resolveStation(r.Context(), r, now)
 	if err != nil {
-		return uuid.Nil, true, err
+		return uuid.Nil, nil, true, err
 	}
-	return st.ID, true, nil
+	return st.ID, st.TokenHash, true, nil
 }
 
 // StationLive is contracts.StationAccess's re-check: the station is still
-// paired, unrevoked and within its 90 days, and ip, the address of the
-// socket's handshake, is still inside its network allowlist.
-func (a *Access) StationLive(ctx context.Context, stationID uuid.UUID, ip string) (bool, error) {
+// paired by the pairing the handshake's cookie named (its token's hash: a
+// station paired again has another, and the old browser's socket ends),
+// unrevoked and within its 90 days, and ip, the address of the socket's
+// handshake, is still inside its network allowlist.
+func (a *Access) StationLive(ctx context.Context, stationID uuid.UUID, pairing []byte, ip string) (bool, error) {
 	st, err := a.q.GetStation(ctx, stationID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
@@ -246,7 +249,10 @@ func (a *Access) StationLive(ctx context.Context, stationID uuid.UUID, ip string
 	if err != nil {
 		return false, fmt.Errorf("identity: read whether the station is live: %w", err)
 	}
-	return stationLive(st, a.now()) && addressAllowed(st.AllowedNetworks, ip), nil
+	if !stationLive(st, a.now()) || subtle.ConstantTimeCompare(st.TokenHash, pairing) != 1 {
+		return false, nil
+	}
+	return addressAllowed(st.AllowedNetworks, ip), nil
 }
 
 // StationKnown is contracts.StationAccess's question of a station id: one is

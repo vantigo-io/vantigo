@@ -227,12 +227,16 @@ type StationAccess interface {
 	// false, with no error, when r is not a station's handshake — no station
 	// cookie, or a session cookie beside it, which makes it a person's. A
 	// station that is unknown, revoked, expired or reached from outside its
-	// network allowlist is ErrUnauthenticated, for Access.Reject.
-	CheckStation(r *http.Request) (stationID uuid.UUID, isStation bool, err error)
-	// StationLive reports whether the station is still paired, unrevoked and
-	// unexpired, and ip — the address the socket's handshake came from — still
-	// inside its network allowlist, for the socket's 60-second re-check.
-	StationLive(ctx context.Context, stationID uuid.UUID, ip string) (bool, error)
+	// network allowlist is ErrUnauthenticated, for Access.Reject. pairing names
+	// the pairing the cookie belongs to, opaque to the caller, which hands it
+	// back to StationLive: a station paired again is another pairing.
+	CheckStation(r *http.Request) (stationID uuid.UUID, pairing []byte, isStation bool, err error)
+	// StationLive reports whether the station is still paired — by the
+	// pairing CheckStation answered, so a socket of the browser a station was
+	// paired away from ends — unrevoked and unexpired, and ip — the address
+	// the socket's handshake came from — still inside its network allowlist,
+	// for the socket's 60-second re-check.
+	StationLive(ctx context.Context, stationID uuid.UUID, pairing []byte, ip string) (bool, error)
 	// StationKnown reports whether a station of that id is registered, in
 	// use or not: what a module that keeps settings per station checks an id
 	// against before it keeps one.
