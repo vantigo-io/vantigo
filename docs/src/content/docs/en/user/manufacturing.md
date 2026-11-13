@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — archiving, reactivating and deleting one, and grouping interchangeable work centers; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers or work center groups with their instructions, what each operation depends on and its send-ahead quantity, and which operation consumes a line, and its by-products with their share of the cost — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it, splitting it, merging orders, unbuilding what a done order made and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, Group work, registering a quantity passed on, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, operations side by side and after a send-ahead quantity, the member of a group a work order is planned at, moving a work order by dragging it — to another member's row too — or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, its split over the by-products, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; replenishment suggestions — what is projected, what is suggested to make or buy and by when, creating draft or confirmed orders from them, dismissing one, running it now, exporting the buy suggestions and automatic creation on a bill of materials; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — archiving, reactivating and deleting one, and grouping interchangeable work centers; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers or work center groups with their instructions, what each operation depends on and its send-ahead quantity, and which operation consumes a line, and its by-products with their share of the cost — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it, splitting it, merging orders, unbuilding what a done order made and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, Group work, registering a quantity passed on, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning, and working at a shared station with your PIN or badge; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, operations side by side and after a send-ahead quantity, the member of a group a work order is planned at, moving a work order by dragging it — to another member's row too — or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, its split over the by-products, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; replenishment suggestions — what is projected, what is suggested to make or buy and by when, creating draft or confirmed orders from them, dismissing one, running it now, exporting the buy suggestions and automatic creation on a bill of materials; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -742,7 +742,8 @@ when.
 The **Shop floor** (`/manufacturing/shop-floor`) is where operators work. It is laid out
 for a tablet at the work center: large buttons, no hovering, readable at arm's length.
 You work as the person signed in, so each operator signs in with their own account;
-switching operator means switching account.
+switching operator means switching account — or, on a tablet set up as a
+[shared station](#work-at-a-shared-station), switching in with your PIN or badge.
 
 Working on the shop floor needs **Work on the shop floor** (`manufacturing:shop-floor`),
 or **Manage manufacturing orders**, beside Use Manufacturing. With Use Manufacturing alone
@@ -954,6 +955,35 @@ Time is not ended by itself at the end of the day. When your time has run for mo
 stopped working, or ask a supervisor to [correct the time](#correct-a-time-log). A work
 order also names the others whose time has run that long, and the order's time logs mark
 such a log **Over 12 h**.
+
+### Work at a shared station
+
+A tablet several people share can be set up as a **station**: it stays paired to the
+workspace, and each of you switches in at it with your own PIN or badge, so what you do is
+recorded as you — and at that station. Set your PIN under **Settings → Security → Station
+PIN** first; ask an administrator for a badge.
+
+1. Tap **Switch in** in the bar at the top. Scan your badge, or choose your name and enter
+   your six-digit PIN. A station that asks for the PIN with a badge asks for it after the
+   scan.
+2. Your name appears as a **chip** in the bar. Up to ten people can be switched in at once;
+   tap your chip to work as yourself. The shop floor below is the active person's.
+3. Choose one of the station's **work centers**, then a work order in its queue, and work
+   as on any tablet: Start, Pause, Finish, Register quantity or production, Report scrap,
+   Report a deviation and the checks. **Back** goes back up.
+4. When you leave, tap **Switch out** beside your chip. A station also switches you out
+   after its idle time — it warns 30 seconds before, with **Stay signed in** — and after 12
+   hours.
+
+What a station shows is the shop floor of its own work centers and nothing more, whoever is
+switched in: no costs, no order lots or other pages, no product images. Reloading the page
+forgets who was switched in on this tablet; the chips stay, so close them with **Switch
+out**. Time left running keeps running when you are switched out, as in your own browser.
+
+Several wrong PINs in a row make the station wait before it tries yours again, from 30
+seconds up to 15 minutes, at that station only. If the station says *This browser is signed
+in to Vantigo*, someone signed in here as themselves: sign out to use it as the station
+again.
 
 ## The production schedule
 

@@ -111,7 +111,8 @@ for those who may make quotes, Inventory's **Find a lot** and **Trace a lot** fo
 ## Your account
 
 The avatar menu at the top right leads to **Settings**, with your profile (name,
-language), your security (password, multi-factor authentication, passkeys) and, while
+language), your security (password, multi-factor authentication, passkeys and, while
+Manufacturing is on, the PIN you use at a shop-floor station) and, while
 your organisation runs a module you can connect an account of yours through —
 Microsoft Entra ID or Google Workspace — your **Connections**: your own Outlook or
 Google account, connected once ([Connections](/en/user/connections/)).
@@ -119,7 +120,8 @@ Google account, connected once ([Connections](/en/user/connections/)).
 built into the Vantigo you are using, so it always describes the version you have.
 
 If you are an owner of the workspace, the same menu leads to **Workspace
-administration**: users, invitations, and roles and access. A system administrator
+administration**: users, invitations, roles and access and, while Manufacturing is on, the
+shop floor's **Stations**. A system administrator
 additionally sees **System administration**.
 
 Signing in, invitations, passwords, multi-factor authentication and passkeys are covered in [Getting started](/en/user/getting-started/); users, invitations and roles in [Workspace administration](/en/user/workspace-administration/).

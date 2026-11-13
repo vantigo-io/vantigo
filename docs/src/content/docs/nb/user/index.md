@@ -115,7 +115,8 @@ i Ordre for dem som kan lage tilbud, **Finn et parti** og **Spor et parti** i La
 ## Kontoen din
 
 Avatar-menyen øverst til høyre fører til **Innstillinger**, med profilen din (navn,
-språk), sikkerheten din (passord, tofaktorautentisering, passnøkler) og, så lenge
+språk), sikkerheten din (passord, tofaktorautentisering, passnøkler og, når Produksjon er
+på, PIN-koden du bruker på en stasjon i verkstedet) og, så lenge
 organisasjonen kjører en modul du kan koble en konto av deg gjennom —
 Microsoft Entra ID eller Google Workspace — **Tilkoblinger**: din egen Outlook eller
 Google-konto, koblet til én gang ([Tilkoblinger](/nb/user/connections/)).
@@ -123,7 +124,8 @@ Google-konto, koblet til én gang ([Tilkoblinger](/nb/user/connections/)).
 bygget inn i den Vantigo-en du bruker, så den beskriver alltid versjonen du har.
 
 Er du eier av arbeidsområdet, fører den samme menyen til **Administrasjon av
-arbeidsområdet**: brukere, invitasjoner, og roller og tilgang. En systemadministrator
+arbeidsområdet**: brukere, invitasjoner, roller og tilgang og, når Produksjon er på,
+verkstedets **Stasjoner**. En systemadministrator
 ser i tillegg **Systemadministrasjon**.
 
 Innlogging, invitasjoner, passord, tofaktorautentisering og passnøkler er dekket i [Kom i gang](/nb/user/getting-started/); brukere, invitasjoner og roller i [Administrasjon av arbeidsområdet](/nb/user/workspace-administration/).

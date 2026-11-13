@@ -1,6 +1,6 @@
 ---
 title: "Identitet, autentisering og utrulling"
-description: "Lokale kontoer, brukere Ansatte styrer, kontoene Ansatte kunngjør og rollene Ansatte kan gi, OIDC-leverandøren for arbeidsstyrken og SCIM, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
+description: "Lokale kontoer, brukere Ansatte styrer, kontoene Ansatte kunngjør og rollene Ansatte kan gi, delte stasjoner i verkstedet med tilkobling, PIN-koder, kort og ventetid, OIDC-leverandøren for arbeidsstyrken og SCIM, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
 sidebar:
   order: 20
 sources:
@@ -11,6 +11,9 @@ sources:
   - apps/server/internal/db/migrations/00102_identity_assistant_grants.sql
   - apps/server/internal/db/migrations/00141_identity_agent_users.sql
   - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
+  - apps/server/internal/db/migrations/00174_identity_stations.sql
+  - apps/server/internal/live/handler.go
+  - apps/server/internal/module/router.go
 ---
 Vantigo autentiserer nettleser-SPA-en og API-et på samme opprinnelse med en
 applikasjonsinformasjonskapsel utstedt av identitetsmodulen. API-et svarer med
@@ -51,8 +54,9 @@ per feil.
 | `vantigo.2fa` | Billetten for en ventende tofaktorinnlogging, 5 minutter | `HttpOnly`, `SameSite=Strict` |
 | `vantigo.oidc` | OIDC-state, nonce og PKCE-verifikator, forseglet | `HttpOnly`, `SameSite=Lax` |
 | `vantigo.identity.external` | Den validerte eksterne identiteten mellom tilbakekall og fullføring, forseglet | `HttpOnly`, `SameSite=Lax` |
+| `vantigo.station` | Tokenet til en delt stasjon i verkstedet, 90 dager (se [Stasjoner i verkstedet](#stasjoner-i-verkstedet)) | `HttpOnly`, `SameSite=Strict`, begrenset til basisbanen |
 
-Alle fire er `Secure` nøyaktig når `APP_URL` er en https-opprinnelse (en
+Alle fem er `Secure` nøyaktig når `APP_URL` er en https-opprinnelse (en
 `Secure`-informasjonskapsel når aldri fram til en http-opprinnelse). De to
 OIDC-informasjonskapslene er `SameSite=Lax` med vilje: leverandørens omdirigering
 tilbake er en toppnivånavigasjon fra et annet nettsted, som `Lax` slipper gjennom og
@@ -969,10 +973,150 @@ tilgangskontrollen.
 | `InvitationAcceptance` | 20 / minutt | Validering og aksept av invitasjon |
 | `UserManagement` | 30 / minutt | Eiers brukeradministrasjon, å ta inn brukere under Ansatte og ansattrollene |
 | `OwnerAvatarRead` | 300 / minutt | Lesing av eieres avatarer |
+| `StationPairing` | 10 / 15 minutter | Tilkobling av en stasjon med en kode |
+| `station-operator-sign-in` | 10 feil / 5 minutter | Mislykkede operatørpålogginger på én stasjon, nøkkel stasjonen; svarer uten `Retry-After` |
 
-Alle policyer unntatt `login-attempts` bruker klientadressen som nøkkel, og det er
+Alle policyer unntatt `login-attempts` og `station-operator-sign-in` bruker klientadressen som nøkkel, og det er
 derfor `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` betyr noe bak en proxy: setter du
 dem feil, deler alle forespørsler én bøtte, eller en klient velger sin egen.
+
+## Stasjoner i verkstedet
+
+En **stasjon** er et delt nettbrett i verkstedet (Produksjon, fase 2). Den er en registrert
+**enhet**, aldri en person: med informasjonskapselen alene kan den bare vise hvem som kan
+logge på, logge operatører på og av, og lytte etter direkteoppdateringer for sine egne
+arbeidsstasjoner. Hver modulforespørsel den gjør er en **operatørs** — en person som logget
+på stasjonen med PIN-kode eller kort — og når bare verkstedet i Produksjon. Stasjonene står
+under **Administrer arbeidsområde → Stasjoner** når Produksjon er slått på; siden og
+endepunktene krever `identity:manage`.
+
+### Registrer og koble til en stasjon
+
+1. Under **Administrer arbeidsområde → Stasjoner** velger du **Registrer en stasjon**: et
+   navn, tidsavbruddet ved inaktivitet (5 minutter som standard, 1 til 60), om et kort også
+   krever eierens PIN-kode, en valgfri liste over tillatte nettverk og, for den som har
+   `manufacturing:boms-manage`, arbeidsstasjonene den betjener. Revideres som
+   `station_registered`.
+2. Svaret er en **koblingskode**: åtte tegn i Crockford base32, gyldig i **15 minutter**,
+   vist én gang og lagret bare som en SHA-256-hash.
+3. Åpne `/station` under `APP_URL` på nettbrettet og skriv inn koden. Tilkoblingen bruker
+   den opp, lager et 256-biters stasjonstoken, lagrer hashen og setter informasjonskapselen
+   `vantigo.station` i **90 dager**. Tilkobling er hastighetsbegrenset per adresse
+   (`StationPairing`). Revideres som `station_paired`.
+4. **En nettleser er en stasjon eller en persons, aldri begge.** Er noen logget inn i
+   Vantigo i nettleseren som kobles til, avsluttes den økten og informasjonskapselen
+   fjernes i samme svar (revidert som `station_session_signed_out`). Logger en person seg
+   senere inn på nettbrettet, avviser stasjonen hver forespørsel med
+   `409 station_has_session`, og siden ber dem logge ut: til de gjør det, er nettbrettet
+   deres nettleser.
+
+Etter 90 dager svarer stasjonen `station_unknown` og viser tilkoblingsskjemaet igjen: velg
+**Ny koblingskode** på stasjonens rad og koble den til på nytt (revidert som
+`station_repaired`). En ny kode erstatter tokenet, så den nettleseren som hadde det gamle,
+er ikke lenger stasjonen.
+
+### Tilbakekall en stasjon
+
+**Tilbakekall** fjerner stasjonens token og en eventuell kode og avslutter alle
+operatørøkter på den i én transaksjon (revidert som `station_revoked`). Den aller neste
+forespørselen med den gamle informasjonskapselen er `401 station_unknown`, og stasjonens
+direktekobling lukkes ved neste kontroll hvert minutt. Tidsregistreringer som står åpne,
+fortsetter: en arbeidsleder retter dem som alle andre. En tilbakekalt stasjon tas i bruk
+igjen med en ny koblingskode.
+
+### Tillatte nettverk
+
+**Tillatte nettverk** binder en stasjon til adressene den kan brukes fra: én adresse eller
+ett CIDR-nettverk per linje (`192.168.10.0/24`), høyst 50. Hver stasjonsforespørsel fra en
+annen adresse er `station_unknown`. Adressen er klientens slik hastighetsbegrenseren
+leser den bak proxyen, så `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` må være riktige før
+en slik liste betyr noe. En endring revideres som `station_networks_changed`.
+
+### PIN-koder og kort
+
+- **En PIN-kode** er seks sifre, satt av personen selv under **Innstillinger → Sikkerhet →
+  PIN-kode for stasjoner** med nåværende passord eller innen ti minutter etter innlogging.
+  Ett siffer gjentatt og stigende eller synkende rekker (`123456`) avvises. Den hashes med
+  **argon2id med passordparametrene over en HMAC-SHA-256 av PIN-koden** under en nøkkel
+  utledet fra `APP_SECRET` (en *pepper*), slik at tabellen alene ikke kan gjennomsøkes over
+  PIN-kodens million verdier. En administrator kan **fjerne** en PIN-kode på brukerens side,
+  aldri sette eller lese den. Revideres som `pin_set`, `pin_disabled` (personen) og
+  `pin_cleared` (en administrator).
+- **Et kort** er koden en kortleser som skriver som et tastatur, sender. En administrator
+  registrerer det ved å skanne kortet inn i feltet på brukerens side; det lagres som en HMAC
+  under en egen nøkkel utledet fra `APP_SECRET`, unik per person. Revideres som
+  `badge_enrolled` og `badge_cleared`.
+- **Et kort krever også PIN-koden som standard** (*Krev PIN-kode sammen med kort*), så et
+  funnet kort er ikke nok. Slås det av, logger et kort alene eieren på den stasjonen — bare
+  egnet for en kortterminal i et kontrollert område.
+- Ingen av dem er noen gang en innloggingslegitimasjon: innlogging, MFA, passnøkler og
+  enkel pålogging leser dem aldri. Roteres `APP_SECRET`, blir alle PIN-koder og kort
+  ubrukelige: personene setter PIN-kodene sine på nytt, og kortene registreres på nytt.
+
+### Operatørpålogging, ventetid og varsler
+
+De som kan logge på, er alle aktive personer med `manufacturing:shop-floor` som har en
+PIN-kode eller et kort; stasjonen viser navn og initialer og ikke noe mer.
+
+- **Ti mislykkede pålogginger på fem minutter** stenger stasjonen for pålogging resten av
+  vinduet (`429`, uten `Retry-After`).
+- **Økende ventetid per (stasjon, person), aldri en utestengning:** fra den femte feilen
+  på rad for én person på én stasjon venter neste forsøk 30 sekunder, doblet for hver
+  videre feil opp til 15 minutter. Et forsøk før det avvises uten å bli kontrollert. Et
+  vellykket forsøk nullstiller det, og samme person på en annen stasjon bremses ikke.
+  Ingen ved et nettbrett kan stenge en kollega ute fra verkstedet.
+- Alle feil gir det samme `401 operator_sign_in_failed`, og PIN-koden kontrolleres mot en
+  fast hash for en ukjent person, en uten PIN-kode og en som venter, slik at tiden ikke
+  skiller dem bedre enn svaret gjør. Revideres som `operator_sign_in_failed` med stasjonen
+  og personen som ble valgt, aldri PIN-koden.
+- **Varsel:** hver tiende feil på rad for én person, og når stasjonens grense nås, skrives
+  `operator_backoff` til revisjonsloggen, og de som har `identity:manage`, får e-post
+  gjennom systemets e-post — **høyst én gang i timen per stasjon**. Stasjonslisten merker
+  stasjonen.
+- Høyst **ti** operatører er pålogget en stasjon samtidig (`too_many_operators`); logger
+  noen som allerede er pålogget, på igjen, erstattes økten deres.
+
+### Operatørøkter og hva de når
+
+En operatørs forespørsler har stasjonens informasjonskapsel og `Authorization: Station
+<token>`; siden holder tokenet bare i minnet, så en ny innlasting ber operatørene logge på
+igjen. En økt avsluttes når operatøren **logges av** (med stasjonens informasjonskapsel
+alene, så en brikke kan lukkes etter en innlasting), etter stasjonens **tidsavbrudd ved
+inaktivitet** målt med serverens klokke, etter **12 timer**, når personen ikke lenger kan
+handle (deaktivert, ventende, deaktivert av katalogen), når stasjonen tilbakekalles eller
+kobles til på nytt, og når samme person logger på igjen. Et token kopiert til en annen
+stasjons nettleser er `401 operator_session_ended`. Revideres som `operator_signed_in` og
+`operator_signed_out` med årsaken.
+
+Det en operatør kan gjøre, begrenses på tre måter:
+
+- **Bare operasjoner merket for stasjoner.** Ruteren svarer en stasjons operatør bare for
+  operasjoner der kontrakten har `x-vantigo-station: allowed` (verkstedet i Produksjon);
+  enhver annen operasjon er `403 station_scope`. En tilgangskontroll gjort utenfor
+  ruteren — en egen handler, et plattformendepunkt, dokumentasjonen — behandler
+  stasjonslegitimasjon som ingen anroper i det hele tatt.
+- **Bare verkstedets tillatelser.** Operatørens tillatelser snittes med
+  `manufacturing:access` og `manufacturing:shop-floor`: en eier på en stasjon har de to og
+  ikke noe mer, og ingen kostnader vises.
+- **Bare stasjonens arbeidsstasjoner**, som Produksjon kontrollerer ved hver forespørsel.
+
+### Forespørsler på tvers av nettsteder
+
+Stasjonens informasjonskapsel er `SameSite=Strict`, og operatørforespørsler har tokenet i
+en header et skjema fra et annet nettsted ikke kan sende, så stasjoner trenger ikke noe
+CSRF-token. Endepunktene som tar informasjonskapselen alene (pålogging, avlogging,
+tilkobling), er POST-forespørsler som avvises på tvers av nettsteder av den samme
+`CrossOriginProtection` som alle andre usikre forespørsler; direktekoblingens håndtrykk
+kontrollerer opprinnelsen slik det gjør for en person.
+
+### Hva som revideres
+
+`station_registered`, `station_paired`, `station_repaired`, `station_revoked`,
+`station_networks_changed`, `station_session_signed_out`, `pin_set`, `pin_disabled`,
+`pin_cleared`, `badge_enrolled`, `badge_cleared`, `operator_signed_in`,
+`operator_sign_in_failed`, `operator_backoff` og `operator_signed_out`, hver i
+autorisasjonsrevisjonsloggen ved siden av endringen den beskriver. Sletting av en bruker
+sletter PIN-kode, kort og operatørøkter sammen med brukeren.
 
 ## URL-er for invitasjon og gjenoppretting
 
@@ -1096,7 +1240,8 @@ mål som SMTP. Tokenet sladdes overalt der konfigurasjonen skrives ut.
 `APP_SECRET` er nøkkelmaterialet for hele prosessen: minst 32 byte, som hver nøkkel
 prosessen bruker utledes fra med HKDF-SHA256 — én utledet nøkkel per formål — og brukes
 som AES-256-GCM (CSRF- og informasjonskapselforsegling, OIDC-state, kryptering av
-TOTP-hemmeligheter, OIDC-klienthemmeligheten, kanalpassord i Kommunikasjon).
+TOTP-hemmeligheter, OIDC-klienthemmeligheten, kanalpassord i Kommunikasjon) eller som en
+HMAC-nøkkel (stasjonenes PIN-pepper og kortkoder).
 Formålsstrengen bindes inn som ekstra autentiserte data, slik at en verdi forseglet for
 ett formål ikke kan åpnes under et annet, og en nøkkel-id-byte gir rom for et
 framtidig rotasjonsopplegg.

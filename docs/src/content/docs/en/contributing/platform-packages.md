@@ -1,6 +1,6 @@
 ---
 title: Platform packages
-description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document.
+description: The packages under the server's internal/ that every module may use — the secrets box that seals and MACs values under keys derived from APP_SECRET, the mail package's outbound message, its calendar part and its rendering as MIME, its reading of a received message and the sanitising of its HTML, the AI client with its model-per-task seam and its chat, the operations dispatcher the assistant calls the API through, the payments port with its Vipps MobilePay adapter, the public-holiday calendar, the image metadata stripper, the address rule a directory provider makes an account's address by, and live updates — the topics a module serves, notifying on the transaction that writes, the endpoint and its station path, presence and the limits, and the binary frames and document topics that carry a collaboratively edited document.
 sidebar:
   order: 5
 sources:
@@ -720,8 +720,8 @@ handler answers before upgrading:
 | `405` | not a `GET` |
 | `400` | `v` is not `1` |
 | `403` | the origin is not the application's: `Sec-Fetch-Site` must be `same-origin`, or `Origin` must equal the application origin; a missing `Origin` is refused |
-| `401` | no session, answered by `Access.Reject` |
-| `429` | more than 30 handshakes a minute for the person (`live.connect`) |
+| `401` | no session, answered by `Access.Reject`; on the station path, `station_unknown` |
+| `429` | more than 30 handshakes a minute for the person, or the station (`live.connect`) |
 | `503` | the process is shutting down |
 
 The origin is checked by the handler itself because `CrossOriginProtection` lets every
@@ -732,6 +732,28 @@ JSON text frames, and binary frames for a document topic (below): `sub`, `unsub`
 `reason`), `degraded` and `pong` from the server. `unavailable` is a transient server error
 while authorising; the client retries the topic with backoff from 2 s to 60 s. A denial
 never reveals existence: a missing key and a key the person may not see are both `forbidden`.
+
+### Stations
+
+A shared shop-floor station (manufacturing phase 2 §17) cannot send its operator's token on a
+socket — a browser WebSocket sets no `Authorization` — so the handler has a **station path**:
+when the hub's `Access` also implements `contracts.StationAccess`, a handshake carrying the
+station cookie and no session cookie is resolved by `CheckStation(r)` into the station (a
+revoked, expired, unknown station or an address outside its allowlist is `401
+station_unknown`), and the socket belongs to the station, whichever operator is active.
+
+- **Only topics marked `Station: true`** admit a station; every other topic refuses it before
+  its `Authorize` runs. A station topic's `Authorize` reads `live.StationID(ctx)` instead of a
+  person's permission (there is no `contracts.AsUser` on its context) and decides which keys
+  the station may hear — Manufacturing's work-center and work-order topics, for the
+  station's own work centers. `live.AuthorizeStation` runs one as the hub does, for a module's
+  test.
+- **The 60-second re-check** asks `StationLive(ctx, stationID)` instead of a session: a
+  revoked or expired station closes the socket with `4401`, and every subscription is
+  authorised again against the current work centers.
+- **No presence** is announced from a station's socket, and it writes no document.
+- **The limits are per station**: the connect rate limit is keyed by the station, and the
+  sockets-per-person bound counts the station's sockets.
 
 ### The listener, `degraded` and `resync`
 

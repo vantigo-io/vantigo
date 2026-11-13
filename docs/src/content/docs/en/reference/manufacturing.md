@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; routing — operations as a graph with dependsOn, only on earlier operations and every branch joining the last, readying and planning by the graph, the send-ahead quantity and Register quantity, work center groups, the member planning or the shop floor chooses, its re-snapshot and when it is fixed, and the drags between members; BoM depth — by-products with their cost share, their snapshot, production and lots and the cost split, unbuilds from a chosen lot or by a BoM with the reverse movement and the quarantine of what a held lot restores, and the split and merge of orders under the schedule's locks; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; routing — operations as a graph with dependsOn, only on earlier operations and every branch joining the last, readying and planning by the graph, the send-ahead quantity and Register quantity, work center groups, the member planning or the shop floor chooses, its re-snapshot and when it is fixed, and the drags between members; BoM depth — by-products with their cost share, their snapshot, production and lots and the cost split, unbuilds from a chosen lot or by a BoM with the reverse movement and the quarantine of what a held lot restores, and the split and merge of orders under the schedule's locks; shared shop-floor stations — the operations open to them, the station's work centers checked before every handler, the lists cut down, the station recorded on what is done there and the live topics a station hears; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -16,6 +16,7 @@ sources:
   - apps/server/internal/db/migrations/00171_manufacturing_replenishment.sql
   - apps/server/internal/db/migrations/00172_manufacturing_routing.sql
   - apps/server/internal/db/migrations/00173_manufacturing_bom_depth.sql
+  - apps/server/internal/db/migrations/00175_manufacturing_stations.sql
   - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/events_manufacturing.go
   - apps/host/frontend/src/routes/manufacturing
@@ -2295,6 +2296,84 @@ its number, the `client_request_id` unique, `quarantined` and the release's
 `orders.merged_into_id`, and the amended `ux_orders_origin_line`. The `unbuild` counter
 row is made by its first use.
 
+## Shared stations
+
+A **station** is a shared tablet Identity pairs and signs operators in at (manufacturing
+phase 2 M129–M143; the credential side is
+[Shop-floor stations](/en/admin/authentication/#shop-floor-stations)). Identity owns the
+station; this module knows only its id, from the principal's `Via` (`Kind` `station`,
+`StationID`).
+
+### The operations open to stations
+
+An operation is reachable from a station only when its contract carries
+`x-vantigo-station: allowed` (M135); the router refuses every other one with `403
+station_scope` before the handler, and the operator's permissions are intersected with
+`manufacturing:access` and `manufacturing:shop-floor`, so `HasPermission` inside a handler
+answers no other key (no `costs-view`: no cost reaches a station). The marked operations:
+
+- reads: `listManufacturingWorkCenters`, `getManufacturingWorkCenterQueue`,
+  `getManufacturingWorkOrder`, `getManufacturingMyWork`, `getManufacturingProductionDraft`,
+  `getManufacturingMeta`;
+- actions: `startManufacturingWorkOrder`, `pauseManufacturingWorkOrder`,
+  `finishManufacturingWorkOrder`, `registerManufacturingWorkOrderQuantity`,
+  `postManufacturingProduction`, `reportManufacturingWorkOrderScrap`,
+  `blockManufacturingWorkCenter`, `unblockManufacturingWorkCenter`;
+- quality: `recordManufacturingCheckResult`, `uploadManufacturingCheckPhoto`,
+  `createManufacturingDeviation`.
+
+The station page's own list of what it may request,
+`apps/manufacturing/frontend/src/station-operations.json`, is held to this set (and to
+Identity's station endpoints) by a server test, and the page's test fails on any request
+outside it. The production draft carries each tracked component's site lots, so the lot
+picker never calls Inventory; the page shows no product image and no other page's link.
+
+### The station's work centers
+
+`manufacturing.station_work_centers (station_id, work_center_id)` holds the work centers a
+station serves, read and replaced with `GET`/`PUT /stations/{stationId}/work-centers`
+(`boms-manage` to replace; an unknown work center is `work_center_unknown`; at most 100). A
+station that serves none reaches none.
+
+The module's strict middleware judges every station request **before its handler**
+(M131), by what the request names, and answers `403 station_scope` (a problem) when it is
+outside the station's centers:
+
+| Request | Judged by |
+| --- | --- |
+| The queue, a block, an unblock | The work center named |
+| A work order read | Its work center, or for a group's work order not yet fixed a member of its group |
+| A start | The member named (and the work order reachable), else the work order's work center |
+| Pause, finish, register quantity, scrap, a check result, a photo | The work order's work center |
+| The production draft, a production | The order's last work order that is not cancelled |
+| A deviation | The work order it names, which a station must name |
+| The work centers, My work, the meta | Nothing: the lists are cut down to the station's centers |
+
+An id that names nothing is `station_scope` too, so a station learns nothing of what lies
+outside its centers; any request type the middleware does not know is refused.
+
+### What is recorded
+
+`time_logs`, `productions`, `check_results` and `deviations` carry `station_id`: the station
+a start, a block's downtime log, a production, a result or a deviation was made at, `null`
+from a person's own browser. The operator is the principal's user, as anywhere; one open log
+per user holds across stations and the user's own browser.
+
+### Live
+
+The topics `manufacturing.work-center` and `manufacturing.work-order` are marked for
+stations: a station's socket (the live hub's station path, opened with the station cookie
+alone) may subscribe to a work center it serves and a work order at one of them, decided
+from `station_work_centers` instead of a person's permission; every other topic refuses a
+station. The minute's re-check authorises the subscriptions again against the current work
+centers.
+
+### The data model of stations
+
+Migration `00175_manufacturing_stations`: `station_work_centers` (no foreign key to Identity's
+`stations`, one schema per module) and `station_id` on `time_logs`, `productions`,
+`check_results` and `deviations`.
+
 ## The variant holder
 
 The module fills the many-provider slot **`Module.VariantReferences`** with a
@@ -2389,6 +2468,7 @@ bodies are strict: an unknown property is a 400.
 | `quantity_short` | 409 | Close of less than the quantity without `backorder` (M23) |
 | `client_request_reused` | 409 | A production's `clientRequestId` sent before with another body (M22a) |
 | `shop_floor_required` | 403 | Registering a production, a shop-floor action (start, pause, finish, scrap) or a block or unblock without `manufacturing:shop-floor` or `manufacturing:orders-manage` (M33) |
+| `station_scope` | 403 | A station's operator at an operation not open to stations (the platform's), or at a work center, a work order or an order's production that is not the station's (M131, M135) |
 | `work_center_blocked` | 409 | A start at a blocked work center (M30), or a drag of a group work order to a blocked member (M119) |
 | `work_order_pending` | 409 | A start without `force`, or a finish, of a work order an earlier one has not finished (M27, M29a) |
 | `work_order_closed` | 409 | A start or finish of a work order that is done or cancelled; a finish again without the production it posted (M29) |
@@ -2466,6 +2546,8 @@ every order write may answer 503 `dependency_unavailable`.
 | Operation | Permission | Answers |
 | --- | --- | --- |
 | `GET /meta` (`getManufacturingMeta`) | access | 200 — the caller's abilities (`canTraceLots` among them) and the currency |
+| `GET /stations/{stationId}/work-centers` (`getManufacturingStationWorkCenters`) | access; never the Assistant | 200 the work center ids a station serves |
+| `PUT /stations/{stationId}/work-centers` (`putManufacturingStationWorkCenters`) | boms-manage; never the Assistant | 200; 400 `work_center_unknown`, more than 100 |
 | `GET /stats` (`getManufacturingStats`) | access | 200 — active and blocked work centers, active BoMs; orders to start today, in progress and late; the business calendar's `today` |
 | `GET /sites` (`listManufacturingSites`) | access | 200 — Inventory's active sites: `id`, `code`, `name`, `rootLocationId` |
 | `GET /variants` (`searchManufacturingVariants`) | access | 200 — goods variants of active products matching `q`, each with `hasBom`; `limit` clamped to 1–50, default 20 |
