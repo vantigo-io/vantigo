@@ -159,6 +159,12 @@ export const manufacturingCatalog = {
     leadTimeDaysHint: "Used when there are no operations.",
     makeDefault: "Make default",
     makeDefaultHint: "The variant's first bill of materials becomes its default anyway.",
+    bomKind: "Kind",
+    bomKind_normal: "Manufactured",
+    bomKind_kit: "Kit",
+    bomKindNormalHint: "Made by a manufacturing order from its components, through its operations.",
+    bomKindKitHint:
+      "Sold as its components: on a sales order the kit's line gets a line per component, which is reserved, picked and delivered. A kit has no operations and no by-products, and is never made. Chosen when the bill is created.",
     makeToOrder: "Make to order",
     makeToOrderHint:
       "Made for each sales order rather than to stock: when a sales order with this product is confirmed, a confirmed manufacturing order is made for its line, for the line's open quantity, due on its delivery date. This must be the product's default bill of materials.",
@@ -1044,6 +1050,8 @@ export const manufacturingCatalog = {
     "refusal.unbuild_has_byproducts":
       "The order's productions made by-products, so it is not taken apart from the order. Unbuild by the bill of materials instead.",
     "refusal.unbuild_not_quarantined": "The unbuild quarantined nothing.",
+    "refusal.kit_not_manufactured":
+      "A kit is never made: it has no operations or by-products, is not made to order, and gets no manufacturing order.",
     unbuildFrom: "Take from",
     unbuildTo: "Put the components at",
     unbuildToHint: "Where the restored components go.",
@@ -1213,6 +1221,12 @@ export const manufacturingCatalog = {
     leadTimeDaysHint: "Brukes når det ikke er noen operasjoner.",
     makeDefault: "Gjør til standard",
     makeDefaultHint: "Variantens første stykkliste blir standard uansett.",
+    bomKind: "Type",
+    bomKind_normal: "Produsert",
+    bomKind_kit: "Sett",
+    bomKindNormalHint: "Lages av en produksjonsordre fra komponentene, gjennom operasjonene.",
+    bomKindKitHint:
+      "Selges som komponentene: på en salgsordre får settets linje en linje per komponent, som reserveres, plukkes og leveres. Et sett har ingen operasjoner og ingen biprodukter, og lages aldri. Velges når stykklisten opprettes.",
     makeToOrder: "Produser mot ordre",
     makeToOrderHint:
       "Lages for hver salgsordre i stedet for til lager: når en salgsordre med dette produktet bekreftes, lages en bekreftet produksjonsordre for linjen, for linjens åpne antall, med forfall på leveringsdatoen. Dette må være produktets standard stykkliste.",
@@ -2100,6 +2114,8 @@ export const manufacturingCatalog = {
     "refusal.unbuild_has_byproducts":
       "Ordrens produksjoner laget biprodukter, så den demonteres ikke fra ordren. Demonter etter stykklisten i stedet.",
     "refusal.unbuild_not_quarantined": "Demonteringen satte ingenting i karantene.",
+    "refusal.kit_not_manufactured":
+      "Et sett lages aldri: det har ingen operasjoner eller biprodukter, produseres ikke mot ordre og får ingen produksjonsordre.",
     unbuildFrom: "Ta fra",
     unbuildTo: "Legg komponentene på",
     unbuildToHint: "Hvor komponentene som kommer tilbake, legges.",

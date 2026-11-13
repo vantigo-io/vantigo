@@ -175,6 +175,11 @@ export const BomsPage = () => {
                                 {t("makeToOrder")}
                               </Badge>
                             )}
+                            {bom.kind === "kit" && (
+                              <Badge variant="light" color="teal">
+                                {t("bomKind_kit")}
+                              </Badge>
+                            )}
                           </Group>
                         </Table.Td>
                         <Table.Td>{stamp(bom.updatedAt)}</Table.Td>

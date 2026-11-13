@@ -29,6 +29,7 @@ const savedBom = (): ManufacturingBom => ({
   id: 7,
   variant: variant(1, "TABLE"),
   code: "Rev B",
+  kind: "normal",
   outputQuantity: "1",
   isDefault: true,
   makeToOrder: false,

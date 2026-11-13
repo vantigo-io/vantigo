@@ -1,6 +1,7 @@
 import type {
   ManufacturingBom,
   ManufacturingBomInput,
+  ManufacturingBomKind,
   ManufacturingBomLineInput,
   ManufacturingBomOperationInput,
   ManufacturingBomOutputInput,
@@ -26,6 +27,11 @@ import { addDecimal, compareDecimal, isDecimal, isPositiveDecimal, normalizeDeci
 /** The fields of the BoM itself, as the editor holds them. */
 export interface BomHeader {
   variant?: ManufacturingVariantRef;
+  /**
+   * A kit (manufacturing phase 2 M144) has lines only: no operations, no
+   * by-products, never made to order. Chosen on create, fixed once saved.
+   */
+  kind: ManufacturingBomKind;
   code: string;
   outputQuantity: string;
   /** Asked only on create; an existing BoM becomes the default through Make default. */
@@ -185,6 +191,7 @@ export const newLine = (lines: readonly EditorLine[], variant?: ManufacturingVar
 export const emptyEditor = (variant?: ManufacturingVariantRef): BomEditorState => ({
   header: {
     variant,
+    kind: "normal",
     code: "",
     outputQuantity: "1",
     isDefault: false,
@@ -202,6 +209,7 @@ export const emptyEditor = (variant?: ManufacturingVariantRef): BomEditorState =
 export const editorOf = (bom: ManufacturingBom): BomEditorState => ({
   header: {
     variant: bom.variant,
+    kind: bom.kind,
     code: bom.code ?? "",
     outputQuantity: bom.outputQuantity,
     isDefault: bom.isDefault,
@@ -345,18 +353,21 @@ const lineBody = (line: EditorLine, index: number, operationKeys: ReadonlySet<st
 });
 
 const shared = (state: BomEditorState) => {
-  const keys = new Set(state.operations.map((operation) => operation.key));
+  // A kit sends its lines alone: what the editor may still hold of the
+  // rest is not a kit's (M144).
+  const kit = state.header.kind === "kit";
+  const keys = new Set(kit ? [] : state.operations.map((operation) => operation.key));
   return {
     code: state.header.code.trim() === "" ? null : state.header.code.trim(),
     outputQuantity: normalizeDecimal(state.header.outputQuantity),
-    makeToOrder: state.header.makeToOrder,
+    makeToOrder: kit ? false : state.header.makeToOrder,
     leadTimeDays: state.header.leadTimeDays === "" ? 0 : state.header.leadTimeDays,
     note: state.header.note.trim(),
     lotPattern: state.header.lotPattern.trim() === "" ? "{MO}" : state.header.lotPattern.trim(),
-    operations: state.operations.map((operation, index) => operationBody(operation, index, keys)),
+    operations: kit ? [] : state.operations.map((operation, index) => operationBody(operation, index, keys)),
     lines: state.lines.map((line, index) => lineBody(line, index, keys)),
     // Always sent: an update without them removes them (M120).
-    outputs: state.outputs.map(
+    outputs: (kit ? [] : state.outputs).map(
       (output, index): ManufacturingBomOutputInput => ({
         variantId: output.variant?.id ?? 0,
         quantity: normalizeDecimal(output.quantity),
@@ -378,6 +389,7 @@ export const outputShareTotal = (outputs: readonly EditorOutput[]): string =>
 /** A new BoM's request: the variant, and whether it becomes its variant's default. */
 export const bomCreateBody = (state: BomEditorState): ManufacturingBomInput => ({
   variantId: state.header.variant?.id ?? 0,
+  kind: state.header.kind,
   ...shared(state),
   isDefault: state.header.isDefault,
 });
@@ -394,7 +406,9 @@ export const bomUpdateBody = (state: BomEditorState, revision: number): Manufact
  * two are shown the same way. Empty when the BoM can be sent; the server
  * judges the rest — goods, the site (M10–M14).
  */
-export const editorProblems = (state: BomEditorState): Record<string, string> => {
+export const editorProblems = (edited: BomEditorState): Record<string, string> => {
+  // A kit's operations and by-products are not sent, so not judged (M144).
+  const state = edited.header.kind === "kit" ? { ...edited, operations: [], outputs: [] } : edited;
   const problems: Record<string, string> = {};
   if (!state.header.variant) problems.variantId = "required";
   if (!isDecimal(state.header.outputQuantity) || !isPositiveDecimal(state.header.outputQuantity))

@@ -70,6 +70,11 @@ export const BomPage = () => {
                   {t("default")}
                 </Badge>
               )}
+              {data.kind === "kit" && (
+                <Badge variant="light" color="teal">
+                  {t("bomKind_kit")}
+                </Badge>
+              )}
             </Group>
           ) : (
             name

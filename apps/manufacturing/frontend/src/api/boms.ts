@@ -18,6 +18,8 @@ export type ManufacturingOverviewNode = Schemas["ManufacturingOverviewNode"];
 export type ManufacturingOverviewOperation = Schemas["ManufacturingOverviewOperation"];
 export type ManufacturingRolledUpCost = Schemas["ManufacturingRolledUpCost"];
 export type ManufacturingBomOutputInput = Schemas["ManufacturingBomOutputInput"];
+/** What a BoM is (manufacturing phase 2 M144): made by a manufacturing order, or a kit sold as its components. */
+export type ManufacturingBomKind = Schemas["ManufacturingBomKind"];
 
 /** At most this many lines and operations per BoM (M11, M12). */
 export const MAX_BOM_LINES = 200;

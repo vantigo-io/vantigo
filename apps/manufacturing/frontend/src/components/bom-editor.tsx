@@ -94,6 +94,8 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
   const [lineCodes, setLineCodes] = useState<Record<number, string>>({});
   const [problem, setProblem] = useState<string>();
   const readOnly = !canManageBoms(meta.data) || bom?.status === "archived";
+  // A kit (manufacturing phase 2 M144) has lines only.
+  const kit = state.header.kind === "kit";
 
   const setHeader = (patch: Partial<BomEditorState["header"]>) =>
     setState((current) => ({ ...current, header: { ...current.header, ...patch } }));
@@ -199,6 +201,18 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
               onChange={(variant) => setHeader({ variant })}
               error={errors.variantId}
             />
+            <Select
+              label={t("bomKind")}
+              description={t(kit ? "bomKindKitHint" : "bomKindNormalHint")}
+              data={[
+                { value: "normal", label: t("bomKind_normal") },
+                { value: "kit", label: t("bomKind_kit") },
+              ]}
+              allowDeselect={false}
+              disabled={!!bom || readOnly}
+              value={state.header.kind}
+              onChange={(kind) => kind && setHeader({ kind: kind as BomEditorState["header"]["kind"] })}
+            />
             <TextInput
               label={t("bomCode")}
               description={t("bomCodeHint")}
@@ -225,17 +239,19 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
               onChange={(event) => setHeader({ outputQuantity: event.currentTarget.value })}
               error={errors.outputQuantity}
             />
-            <NumberInput
-              label={t("leadTimeDays")}
-              description={t("leadTimeDaysHint")}
-              min={0}
-              allowDecimal={false}
-              allowNegative={false}
-              disabled={readOnly}
-              value={state.header.leadTimeDays}
-              onChange={(next) => setHeader({ leadTimeDays: typeof next === "number" ? next : "" })}
-              error={errors.leadTimeDays}
-            />
+            {!kit && (
+              <NumberInput
+                label={t("leadTimeDays")}
+                description={t("leadTimeDaysHint")}
+                min={0}
+                allowDecimal={false}
+                allowNegative={false}
+                disabled={readOnly}
+                value={state.header.leadTimeDays}
+                onChange={(next) => setHeader({ leadTimeDays: typeof next === "number" ? next : "" })}
+                error={errors.leadTimeDays}
+              />
+            )}
           </SimpleGrid>
           <Group gap="xl">
             {!bom && (
@@ -247,21 +263,25 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
                 onChange={(event) => setHeader({ isDefault: event.currentTarget.checked })}
               />
             )}
-            <Switch
-              label={t("makeToOrder")}
-              description={t("makeToOrderHint")}
-              disabled={readOnly}
-              checked={state.header.makeToOrder}
-              onChange={(event) => setHeader({ makeToOrder: event.currentTarget.checked })}
-            />
+            {!kit && (
+              <Switch
+                label={t("makeToOrder")}
+                description={t("makeToOrderHint")}
+                disabled={readOnly}
+                checked={state.header.makeToOrder}
+                onChange={(event) => setHeader({ makeToOrder: event.currentTarget.checked })}
+              />
+            )}
           </Group>
-          <LotPatternInput
-            value={state.header.lotPattern}
-            sku={state.header.variant?.sku ?? ""}
-            disabled={readOnly}
-            error={errors.lotPattern}
-            onChange={(lotPattern) => setHeader({ lotPattern })}
-          />
+          {!kit && (
+            <LotPatternInput
+              value={state.header.lotPattern}
+              sku={state.header.variant?.sku ?? ""}
+              disabled={readOnly}
+              error={errors.lotPattern}
+              onChange={(lotPattern) => setHeader({ lotPattern })}
+            />
+          )}
           <Textarea
             label={t("note")}
             maxLength={2000}
@@ -274,225 +294,227 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
         </Stack>
       </PageSection>
 
-      <PageSection
-        title={t("operations")}
-        actions={
-          !readOnly && (
-            <Button
-              variant="light"
-              size="xs"
-              leftSection={<IconPlus size={14} />}
-              disabled={state.operations.length >= MAX_BOM_OPERATIONS}
-              onClick={() =>
-                setState((current) => ({
-                  ...current,
-                  operations: [...current.operations, newOperation(current.operations)],
-                }))
-              }
-            >
-              {t("addOperation")}
-            </Button>
-          )
-        }
-      >
-        <Stack gap="xs" data-assist="manufacturing.bom.operations">
-          {state.operations.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              {t("noOperations")}
-            </Text>
-          ) : (
-            <Table.ScrollContainer minWidth={900}>
-              <Table verticalSpacing="xs">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th w={90}>{t("sequence")}</Table.Th>
-                    <Table.Th>{t("operationName")}</Table.Th>
-                    <Table.Th>{t("workCenter")}</Table.Th>
-                    <Table.Th w={130}>{t("setupMinutes")}</Table.Th>
-                    <Table.Th w={130}>{t("minutesPerCycle")}</Table.Th>
-                    {!readOnly && <Table.Th w={40} />}
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {state.operations.map((operation, index) => {
-                    const at = `operations[${index}]`;
-                    const row = t("operationRow", { number: index + 1 });
-                    return [
-                      <Table.Tr key={operation.key}>
-                        <Table.Td>
-                          <NumberInput
-                            aria-label={`${row}: ${t("sequence")}`}
-                            min={0}
-                            allowDecimal={false}
-                            allowNegative={false}
-                            disabled={readOnly}
-                            value={operation.sequence}
-                            onChange={(next) =>
-                              setOperation(operation.key, { sequence: typeof next === "number" ? next : "" })
-                            }
-                            error={errors[`${at}.sequence`]}
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <TextInput
-                            aria-label={`${row}: ${t("operationName")}`}
-                            maxLength={200}
-                            disabled={readOnly}
-                            value={operation.name}
-                            onChange={(event) => setOperation(operation.key, { name: event.currentTarget.value })}
-                            error={errors[`${at}.name`]}
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <Select
-                            aria-label={`${row}: ${t("workCenter")}`}
-                            searchable
-                            disabled={readOnly}
-                            data={centerOptions}
-                            value={targetOf(operation)}
-                            onChange={(next) => setOperation(operation.key, targetPatch(next))}
-                            error={errors[`${at}.workCenterId`] ?? errors[`${at}.workCenterGroupId`]}
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <TextInput
-                            aria-label={`${row}: ${t("setupMinutes")}`}
-                            placeholder={t("workCenterSetup")}
-                            inputMode="decimal"
-                            disabled={readOnly}
-                            value={operation.setupMinutes}
-                            onChange={(event) =>
-                              setOperation(operation.key, { setupMinutes: event.currentTarget.value })
-                            }
-                            error={errors[`${at}.setupMinutes`]}
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <TextInput
-                            aria-label={`${row}: ${t("minutesPerCycle")}`}
-                            inputMode="decimal"
-                            disabled={readOnly}
-                            value={operation.minutesPerCycle}
-                            onChange={(event) =>
-                              setOperation(operation.key, { minutesPerCycle: event.currentTarget.value })
-                            }
-                            error={errors[`${at}.minutesPerCycle`]}
-                          />
-                        </Table.Td>
-                        {!readOnly && (
-                          <Table.Td>
-                            <ActionIcon
-                              variant="subtle"
-                              color="red"
-                              aria-label={t("removeOperation", { number: index + 1 })}
-                              onClick={() => setState((current) => removeOperation(current, operation.key))}
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </Table.Td>
-                        )}
-                      </Table.Tr>,
-                      <Table.Tr key={`${operation.key}-graph`}>
-                        <Table.Td />
-                        <Table.Td colSpan={2}>
-                          <MultiSelect
-                            aria-label={`${row}: ${t("dependsOn")}`}
-                            label={t("dependsOn")}
-                            placeholder={operation.dependsOn.length === 0 ? t("dependsOnNone") : undefined}
-                            clearable
-                            disabled={readOnly}
-                            // Only operations earlier by sequence (M112); one chosen before a sequence changed stays shown, marked.
-                            data={operationOptions.filter(
-                              (option) =>
-                                option.value !== operation.key &&
-                                (option.sequence < operationOptions[index].sequence ||
-                                  operation.dependsOn.includes(option.value)),
-                            )}
-                            value={operation.dependsOn}
-                            onChange={(dependsOn) => setOperation(operation.key, { dependsOn })}
-                            error={errors[`${at}.dependsOn`]}
-                          />
-                        </Table.Td>
-                        <Table.Td colSpan={readOnly ? 2 : 3}>
-                          <TextInput
-                            aria-label={`${row}: ${t("sendAheadQuantity")}`}
-                            label={t("sendAheadQuantity")}
-                            description={t("sendAheadHint")}
-                            inputMode="decimal"
-                            disabled={readOnly}
-                            value={operation.sendAheadQuantity}
-                            onChange={(event) =>
-                              setOperation(operation.key, { sendAheadQuantity: event.currentTarget.value })
-                            }
-                            error={errors[`${at}.sendAheadQuantity`]}
-                          />
-                        </Table.Td>
-                      </Table.Tr>,
-                      <Table.Tr key={`${operation.key}-instructions`}>
-                        <Table.Td />
-                        <Table.Td colSpan={readOnly ? 4 : 5}>
-                          <Textarea
-                            aria-label={`${row}: ${t("instructions")}`}
-                            placeholder={t("instructionsHint")}
-                            rows={1}
-                            maxLength={20_000}
-                            disabled={readOnly}
-                            value={operation.instructions}
-                            onChange={(event) =>
-                              setOperation(operation.key, { instructions: event.currentTarget.value })
-                            }
-                            error={errors[`${at}.instructions`]}
-                          />
-                        </Table.Td>
-                      </Table.Tr>,
-                      <Table.Tr key={`${operation.key}-checks`}>
-                        <Table.Td />
-                        <Table.Td colSpan={readOnly ? 4 : 5}>
-                          <CheckTemplates
-                            row={row}
-                            at={at}
-                            checks={operation.checks}
-                            readOnly={readOnly}
-                            errors={errors}
-                            onChange={(checks) => setOperation(operation.key, { checks })}
-                          />
-                        </Table.Td>
-                      </Table.Tr>,
-                    ];
-                  })}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          )}
-          {state.operations.length > 1 && (
-            <Stack gap={4} data-assist="manufacturing.bom.graph">
-              <Text size="sm" fw={600}>
-                {t("operationGraph")}
+      {!kit && (
+        <PageSection
+          title={t("operations")}
+          actions={
+            !readOnly && (
+              <Button
+                variant="light"
+                size="xs"
+                leftSection={<IconPlus size={14} />}
+                disabled={state.operations.length >= MAX_BOM_OPERATIONS}
+                onClick={() =>
+                  setState((current) => ({
+                    ...current,
+                    operations: [...current.operations, newOperation(current.operations)],
+                  }))
+                }
+              >
+                {t("addOperation")}
+              </Button>
+            )
+          }
+        >
+          <Stack gap="xs" data-assist="manufacturing.bom.operations">
+            {state.operations.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                {t("noOperations")}
               </Text>
-              {levels === null ? (
-                <Text size="sm" c="red">
-                  {t("operationGraphCycle")}
+            ) : (
+              <Table.ScrollContainer minWidth={900}>
+                <Table verticalSpacing="xs">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th w={90}>{t("sequence")}</Table.Th>
+                      <Table.Th>{t("operationName")}</Table.Th>
+                      <Table.Th>{t("workCenter")}</Table.Th>
+                      <Table.Th w={130}>{t("setupMinutes")}</Table.Th>
+                      <Table.Th w={130}>{t("minutesPerCycle")}</Table.Th>
+                      {!readOnly && <Table.Th w={40} />}
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {state.operations.map((operation, index) => {
+                      const at = `operations[${index}]`;
+                      const row = t("operationRow", { number: index + 1 });
+                      return [
+                        <Table.Tr key={operation.key}>
+                          <Table.Td>
+                            <NumberInput
+                              aria-label={`${row}: ${t("sequence")}`}
+                              min={0}
+                              allowDecimal={false}
+                              allowNegative={false}
+                              disabled={readOnly}
+                              value={operation.sequence}
+                              onChange={(next) =>
+                                setOperation(operation.key, { sequence: typeof next === "number" ? next : "" })
+                              }
+                              error={errors[`${at}.sequence`]}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <TextInput
+                              aria-label={`${row}: ${t("operationName")}`}
+                              maxLength={200}
+                              disabled={readOnly}
+                              value={operation.name}
+                              onChange={(event) => setOperation(operation.key, { name: event.currentTarget.value })}
+                              error={errors[`${at}.name`]}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <Select
+                              aria-label={`${row}: ${t("workCenter")}`}
+                              searchable
+                              disabled={readOnly}
+                              data={centerOptions}
+                              value={targetOf(operation)}
+                              onChange={(next) => setOperation(operation.key, targetPatch(next))}
+                              error={errors[`${at}.workCenterId`] ?? errors[`${at}.workCenterGroupId`]}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <TextInput
+                              aria-label={`${row}: ${t("setupMinutes")}`}
+                              placeholder={t("workCenterSetup")}
+                              inputMode="decimal"
+                              disabled={readOnly}
+                              value={operation.setupMinutes}
+                              onChange={(event) =>
+                                setOperation(operation.key, { setupMinutes: event.currentTarget.value })
+                              }
+                              error={errors[`${at}.setupMinutes`]}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <TextInput
+                              aria-label={`${row}: ${t("minutesPerCycle")}`}
+                              inputMode="decimal"
+                              disabled={readOnly}
+                              value={operation.minutesPerCycle}
+                              onChange={(event) =>
+                                setOperation(operation.key, { minutesPerCycle: event.currentTarget.value })
+                              }
+                              error={errors[`${at}.minutesPerCycle`]}
+                            />
+                          </Table.Td>
+                          {!readOnly && (
+                            <Table.Td>
+                              <ActionIcon
+                                variant="subtle"
+                                color="red"
+                                aria-label={t("removeOperation", { number: index + 1 })}
+                                onClick={() => setState((current) => removeOperation(current, operation.key))}
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Table.Td>
+                          )}
+                        </Table.Tr>,
+                        <Table.Tr key={`${operation.key}-graph`}>
+                          <Table.Td />
+                          <Table.Td colSpan={2}>
+                            <MultiSelect
+                              aria-label={`${row}: ${t("dependsOn")}`}
+                              label={t("dependsOn")}
+                              placeholder={operation.dependsOn.length === 0 ? t("dependsOnNone") : undefined}
+                              clearable
+                              disabled={readOnly}
+                              // Only operations earlier by sequence (M112); one chosen before a sequence changed stays shown, marked.
+                              data={operationOptions.filter(
+                                (option) =>
+                                  option.value !== operation.key &&
+                                  (option.sequence < operationOptions[index].sequence ||
+                                    operation.dependsOn.includes(option.value)),
+                              )}
+                              value={operation.dependsOn}
+                              onChange={(dependsOn) => setOperation(operation.key, { dependsOn })}
+                              error={errors[`${at}.dependsOn`]}
+                            />
+                          </Table.Td>
+                          <Table.Td colSpan={readOnly ? 2 : 3}>
+                            <TextInput
+                              aria-label={`${row}: ${t("sendAheadQuantity")}`}
+                              label={t("sendAheadQuantity")}
+                              description={t("sendAheadHint")}
+                              inputMode="decimal"
+                              disabled={readOnly}
+                              value={operation.sendAheadQuantity}
+                              onChange={(event) =>
+                                setOperation(operation.key, { sendAheadQuantity: event.currentTarget.value })
+                              }
+                              error={errors[`${at}.sendAheadQuantity`]}
+                            />
+                          </Table.Td>
+                        </Table.Tr>,
+                        <Table.Tr key={`${operation.key}-instructions`}>
+                          <Table.Td />
+                          <Table.Td colSpan={readOnly ? 4 : 5}>
+                            <Textarea
+                              aria-label={`${row}: ${t("instructions")}`}
+                              placeholder={t("instructionsHint")}
+                              rows={1}
+                              maxLength={20_000}
+                              disabled={readOnly}
+                              value={operation.instructions}
+                              onChange={(event) =>
+                                setOperation(operation.key, { instructions: event.currentTarget.value })
+                              }
+                              error={errors[`${at}.instructions`]}
+                            />
+                          </Table.Td>
+                        </Table.Tr>,
+                        <Table.Tr key={`${operation.key}-checks`}>
+                          <Table.Td />
+                          <Table.Td colSpan={readOnly ? 4 : 5}>
+                            <CheckTemplates
+                              row={row}
+                              at={at}
+                              checks={operation.checks}
+                              readOnly={readOnly}
+                              errors={errors}
+                              onChange={(checks) => setOperation(operation.key, { checks })}
+                            />
+                          </Table.Td>
+                        </Table.Tr>,
+                      ];
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+            {state.operations.length > 1 && (
+              <Stack gap={4} data-assist="manufacturing.bom.graph">
+                <Text size="sm" fw={600}>
+                  {t("operationGraph")}
                 </Text>
-              ) : (
-                <>
-                  <List size="sm" type="ordered">
-                    {levels.map((level, index) => (
-                      <List.Item key={level.map((operation) => operation.key).join("+")}>
-                        {`${t("operationGraphLevel", { number: index + 1 })}: ${level
-                          .map((operation) => operation.name || t("unnamedOperation"))
-                          .join(" · ")}`}
-                      </List.Item>
-                    ))}
-                  </List>
-                  <Text size="xs" c="dimmed">
-                    {t("operationGraphHint")}
+                {levels === null ? (
+                  <Text size="sm" c="red">
+                    {t("operationGraphCycle")}
                   </Text>
-                </>
-              )}
-            </Stack>
-          )}
-        </Stack>
-      </PageSection>
+                ) : (
+                  <>
+                    <List size="sm" type="ordered">
+                      {levels.map((level, index) => (
+                        <List.Item key={level.map((operation) => operation.key).join("+")}>
+                          {`${t("operationGraphLevel", { number: index + 1 })}: ${level
+                            .map((operation) => operation.name || t("unnamedOperation"))
+                            .join(" · ")}`}
+                        </List.Item>
+                      ))}
+                    </List>
+                    <Text size="xs" c="dimmed">
+                      {t("operationGraphHint")}
+                    </Text>
+                  </>
+                )}
+              </Stack>
+            )}
+          </Stack>
+        </PageSection>
+      )}
 
       <PageSection
         title={t("components")}
@@ -635,117 +657,119 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
         </Stack>
       </PageSection>
 
-      <PageSection
-        title={t("byProducts")}
-        actions={
-          !readOnly && (
-            <Button
-              variant="light"
-              size="xs"
-              leftSection={<IconPlus size={14} />}
-              disabled={state.outputs.length >= MAX_BOM_OUTPUTS}
-              onClick={() => setState((current) => ({ ...current, outputs: [...current.outputs, newOutput()] }))}
-            >
-              {t("addByproduct")}
-            </Button>
-          )
-        }
-      >
-        <Stack gap="xs" data-assist="manufacturing.bom.outputs">
-          <Text size="sm" c="dimmed">
-            {t("byProductsHint")}
-          </Text>
-          {state.outputs.length > 0 && (
-            <Table.ScrollContainer minWidth={700}>
-              <Table verticalSpacing="xs">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("byProduct")}</Table.Th>
-                    <Table.Th w={140}>{t("quantity")}</Table.Th>
-                    <Table.Th w={140}>{t("costShare")}</Table.Th>
-                    {!readOnly && <Table.Th w={40} />}
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {state.outputs.map((output, index) => {
-                    const at = `outputs[${index}]`;
-                    const row = t("byProductRow", { number: index + 1 });
-                    return (
-                      <Table.Tr key={output.rowKey}>
-                        <Table.Td>
-                          <VariantPicker
-                            compact
-                            label={`${row}: ${t("byProduct")}`}
-                            disabled={readOnly}
-                            value={output.variant}
-                            onChange={(variant) => setOutput(output.rowKey, { variant })}
-                            error={errors[`${at}.variantId`]}
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <TextInput
-                            aria-label={`${row}: ${t("quantity")}`}
-                            inputMode="decimal"
-                            disabled={readOnly}
-                            value={output.quantity}
-                            rightSection={
-                              output.variant ? (
-                                <Text size="xs" c="dimmed">
-                                  {output.variant.unit}
-                                </Text>
-                              ) : undefined
-                            }
-                            onChange={(event) => setOutput(output.rowKey, { quantity: event.currentTarget.value })}
-                            error={errors[`${at}.quantity`]}
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <TextInput
-                            aria-label={`${row}: ${t("costShare")}`}
-                            placeholder={t("noCostShare")}
-                            inputMode="decimal"
-                            disabled={readOnly}
-                            value={output.costShare}
-                            rightSection={
-                              <Text size="xs" c="dimmed">
-                                %
-                              </Text>
-                            }
-                            onChange={(event) => setOutput(output.rowKey, { costShare: event.currentTarget.value })}
-                            error={errors[`${at}.costShare`]}
-                          />
-                        </Table.Td>
-                        {!readOnly && (
-                          <Table.Td>
-                            <ActionIcon
-                              variant="subtle"
-                              color="red"
-                              aria-label={t("removeByproduct", { number: index + 1 })}
-                              onClick={() =>
-                                setState((current) => ({
-                                  ...current,
-                                  outputs: current.outputs.filter((one) => one.rowKey !== output.rowKey),
-                                }))
-                              }
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
-                          </Table.Td>
-                        )}
-                      </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          )}
-          {state.outputs.length > 0 && (
-            <Text size="sm" c={errors.outputs ? "red" : "dimmed"}>
-              {errors.outputs ?? t("mainProductShare", { share: subtractShare(outputShareTotal(state.outputs)) })}
+      {!kit && (
+        <PageSection
+          title={t("byProducts")}
+          actions={
+            !readOnly && (
+              <Button
+                variant="light"
+                size="xs"
+                leftSection={<IconPlus size={14} />}
+                disabled={state.outputs.length >= MAX_BOM_OUTPUTS}
+                onClick={() => setState((current) => ({ ...current, outputs: [...current.outputs, newOutput()] }))}
+              >
+                {t("addByproduct")}
+              </Button>
+            )
+          }
+        >
+          <Stack gap="xs" data-assist="manufacturing.bom.outputs">
+            <Text size="sm" c="dimmed">
+              {t("byProductsHint")}
             </Text>
-          )}
-        </Stack>
-      </PageSection>
+            {state.outputs.length > 0 && (
+              <Table.ScrollContainer minWidth={700}>
+                <Table verticalSpacing="xs">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t("byProduct")}</Table.Th>
+                      <Table.Th w={140}>{t("quantity")}</Table.Th>
+                      <Table.Th w={140}>{t("costShare")}</Table.Th>
+                      {!readOnly && <Table.Th w={40} />}
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {state.outputs.map((output, index) => {
+                      const at = `outputs[${index}]`;
+                      const row = t("byProductRow", { number: index + 1 });
+                      return (
+                        <Table.Tr key={output.rowKey}>
+                          <Table.Td>
+                            <VariantPicker
+                              compact
+                              label={`${row}: ${t("byProduct")}`}
+                              disabled={readOnly}
+                              value={output.variant}
+                              onChange={(variant) => setOutput(output.rowKey, { variant })}
+                              error={errors[`${at}.variantId`]}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <TextInput
+                              aria-label={`${row}: ${t("quantity")}`}
+                              inputMode="decimal"
+                              disabled={readOnly}
+                              value={output.quantity}
+                              rightSection={
+                                output.variant ? (
+                                  <Text size="xs" c="dimmed">
+                                    {output.variant.unit}
+                                  </Text>
+                                ) : undefined
+                              }
+                              onChange={(event) => setOutput(output.rowKey, { quantity: event.currentTarget.value })}
+                              error={errors[`${at}.quantity`]}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <TextInput
+                              aria-label={`${row}: ${t("costShare")}`}
+                              placeholder={t("noCostShare")}
+                              inputMode="decimal"
+                              disabled={readOnly}
+                              value={output.costShare}
+                              rightSection={
+                                <Text size="xs" c="dimmed">
+                                  %
+                                </Text>
+                              }
+                              onChange={(event) => setOutput(output.rowKey, { costShare: event.currentTarget.value })}
+                              error={errors[`${at}.costShare`]}
+                            />
+                          </Table.Td>
+                          {!readOnly && (
+                            <Table.Td>
+                              <ActionIcon
+                                variant="subtle"
+                                color="red"
+                                aria-label={t("removeByproduct", { number: index + 1 })}
+                                onClick={() =>
+                                  setState((current) => ({
+                                    ...current,
+                                    outputs: current.outputs.filter((one) => one.rowKey !== output.rowKey),
+                                  }))
+                                }
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Table.Td>
+                          )}
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+            {state.outputs.length > 0 && (
+              <Text size="sm" c={errors.outputs ? "red" : "dimmed"}>
+                {errors.outputs ?? t("mainProductShare", { share: subtractShare(outputShareTotal(state.outputs)) })}
+              </Text>
+            )}
+          </Stack>
+        </PageSection>
+      )}
 
       {problem && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotSave")}>
