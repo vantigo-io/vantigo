@@ -129,6 +129,12 @@ func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principa
 
 	ctx := r.Context()
 	now := a.now()
+	// Station credentials take precedence: a request presenting an operator
+	// token is judged as a station's only, never by a session cookie it also
+	// carries (manufacturing phase 2 M134).
+	if isStationRequest(r) {
+		return a.checkStation(ctx, r, rule, now)
+	}
 	s, ok, err := a.authenticate(ctx, r, now)
 	if err != nil {
 		return contracts.Principal{}, err
@@ -214,7 +220,9 @@ func (a *Access) evaluate(ctx context.Context, p contracts.Principal, sub subjec
 	}
 }
 
-// Reject answers a failed Check: 403 forbidden when the caller is signed in
+// Reject answers a failed Check: a station's refusal with its own status and
+// code (station_unknown, operator_session_ended, station_has_session,
+// station_scope), 403 forbidden when the caller is signed in
 // but a requirement failed, else 401 unauthenticated, both as
 // AuthErrorResponse, as .NET's cookie events answer every module
 // (EA/AuthServiceCollectionExtensions.cs:114-125). A 401 to a request that
@@ -226,11 +234,22 @@ func (a *Access) Reject(w http.ResponseWriter, r *http.Request, rule contracts.R
 		scimUnauthorized(w)
 		return
 	}
+	var station *stationRefusal
+	if errors.As(err, &station) {
+		authError(w, station.status, station.code, station.message, nil)
+		return
+	}
+	if errors.Is(err, contracts.ErrStationScope) {
+		authError(w, http.StatusForbidden, "station_scope", stationScopeMessage, nil)
+		return
+	}
 	if errors.Is(err, contracts.ErrForbidden) {
 		authError(w, http.StatusForbidden, "forbidden", forbiddenMessage, nil)
 		return
 	}
-	if _, ok := sessionTokenFrom(r); ok {
+	// A station request's 401 is about the station's credentials, never the
+	// session cookie the browser may also hold.
+	if _, ok := sessionTokenFrom(r); ok && !isStationRequest(r) {
 		a.clearSessionCookie(w)
 	}
 	authError(w, http.StatusUnauthorized, "unauthenticated", unauthenticatedMessage, nil)

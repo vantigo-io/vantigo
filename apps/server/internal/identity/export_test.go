@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"time"
 
@@ -78,4 +79,26 @@ func IssueInvitationForTest(ctx context.Context, pool *pgxpool.Pool, email strin
 		return err
 	})
 	return inv.ID, token, err
+}
+
+// The shared stations' names and helpers (manufacturing phase 2 M129–M143),
+// for the station tests.
+const StationCookieName = stationCookieName
+
+var (
+	ValidatePIN          = validatePIN
+	NormalizePairingCode = normalizePairingCode
+	BackoffAfter         = backoffAfter
+	VerifyPassword       = verifyPassword
+)
+
+// PepperPIN is the PIN as the installation's box peppers it before argon2id.
+func PepperPIN(box interface {
+	MAC(string, []byte) ([]byte, error)
+}, pin string) (string, error) {
+	mac, err := box.MAC(pinPepperPurpose, []byte(pin))
+	if err != nil {
+		return "", err
+	}
+	return base64.RawStdEncoding.EncodeToString(mac), nil
 }

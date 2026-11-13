@@ -248,6 +248,17 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		r.problems = append(r.problems, fmt.Sprintf("module: %s (%s): x-vantigo-access %q is invalid: %v", pattern, op.OperationID, access, err))
 		return
 	}
+	// Every operation the router mounts may meet a station's credentials: one
+	// marked x-vantigo-station: allowed admits its operator, any other refuses
+	// it with 403 station_scope once Check has resolved it (M135).
+	rule.Station = contracts.StationOutOfScope
+	if v, present := op.Extensions[contracts.StationExtension]; present {
+		if v != contracts.StationExtensionAllowed {
+			r.problems = append(r.problems, fmt.Sprintf("module: %s (%s): %s %v must be %q", pattern, op.OperationID, contracts.StationExtension, v, contracts.StationExtensionAllowed))
+			return
+		}
+		rule.Station = contracts.StationAllowed
+	}
 	if rule.Kind == contracts.RulePermission {
 		for _, key := range rule.Names {
 			if _, ok := r.opts.Catalog[key]; !ok {
@@ -278,7 +289,9 @@ func (r *Router) bodyLimit(operationID string) int64 {
 }
 
 // wrap orders the checks: rate limit (if opts.Limits names op's
-// operationId) before Access.Check, Access.Reject on
+// operationId) before Access.Check — with rule.Station saying whether the
+// operation is open to a shared station's operator, so Check refuses one
+// with ErrStationScope where it is not (M135) — Access.Reject on
 // ErrUnauthenticated/ErrForbidden, httpx.WriteError on any other Access
 // error, then the body cap, and finally h with the Principal attached to
 // the request context.
@@ -311,6 +324,12 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 				return
 			}
 			httpx.WriteError(w, req, err)
+			return
+		}
+		// Check refuses a station's operator outside the station scope itself;
+		// this holds the line should any Access answer one anyway.
+		if _, station := p.Station(); station && rule.Station != contracts.StationAllowed {
+			r.opts.Access.Reject(w, req, rule, contracts.ErrStationScope)
 			return
 		}
 

@@ -48,6 +48,11 @@ type Topic struct {
 	// it. It returns nil or ErrForbidden; any other error is read as
 	// forbidden too.
 	Authorize func(ctx context.Context, key string) error
+	// Station says whether a shared shop-floor station's socket may subscribe
+	// (manufacturing phase 2 §17). A station's socket carries no person: its
+	// Authorize gets StationID in the context and no contracts.AsUser, and a
+	// topic without Station refuses every station before Authorize runs.
+	Station bool
 	// Doc, when set, makes the topic a document's (K26): binary frames for it
 	// are stored and relayed through the module's DocStore, and the hub
 	// answers doc_sync, acks and the rest of the document protocol. Nil for

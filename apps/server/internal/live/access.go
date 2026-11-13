@@ -31,6 +31,18 @@ func HasPermission(ctx context.Context, keys ...string) bool {
 	return contracts.HasPermissions(ctx, a, keys...)
 }
 
+// stationContextKey carries the station a station socket's Authorize is asked
+// for.
+type stationContextKey struct{}
+
+// StationID is the shared shop-floor station a Topic's Authorize is asked for
+// (manufacturing phase 2 §17), and false for a person's socket. A topic marked
+// Station decides from it which keys the station may hear.
+func StationID(ctx context.Context) (uuid.UUID, bool) {
+	id, ok := ctx.Value(stationContextKey{}).(uuid.UUID)
+	return id, ok && id != uuid.Nil
+}
+
 // cycleAccess is an Access whose UserHolds answers are remembered for its
 // lifetime: one subscription, or one re-check of a connection.
 type cycleAccess struct {

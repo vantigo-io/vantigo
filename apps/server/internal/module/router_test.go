@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -833,4 +834,75 @@ func (f *fakeAccess) UserSatisfies(context.Context, uuid.UUID, contracts.Rule) (
 
 func (f *fakeAccess) SessionLive(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
 	return uuid.Nil, false, nil
+}
+
+// stationContract has an operation open to stations, one that is not, and
+// one whose x-vantigo-station is not "allowed" (manufacturing phase 2 M135).
+const stationContract = `
+openapi: 3.0.3
+info:
+  title: Test
+  version: "1"
+paths:
+  /api/v1/x/open:
+    get:
+      operationId: getOpen
+      x-vantigo-access: session
+      x-vantigo-station: allowed
+      responses:
+        "204": { description: ok }
+  /api/v1/x/closed:
+    get:
+      operationId: getClosed
+      x-vantigo-access: session
+      responses:
+        "204": { description: ok }
+`
+
+// wrap tells Check whether the operation is open to a station's operator,
+// and refuses one with station_scope should Check answer one where it is not.
+func TestRouter_StationScope(t *testing.T) {
+	station := contracts.Principal{UserID: uuid.New(), Via: &contracts.Via{Kind: contracts.ViaStation, StationID: uuid.New()}}
+	access := &fakeAccess{check: func(*http.Request, contracts.Rule) (contracts.Principal, error) { return station, nil }}
+	r := NewRouter(RouterOptions{Doc: loadDoc(t, stationContract), Access: access})
+	reached := 0
+	r.HandleFunc("GET /api/v1/x/open", func(w http.ResponseWriter, _ *http.Request) { reached++; w.WriteHeader(http.StatusNoContent) })
+	r.HandleFunc("GET /api/v1/x/closed", func(w http.ResponseWriter, _ *http.Request) { reached++; w.WriteHeader(http.StatusNoContent) })
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/x/open", nil))
+	if rec.Code != http.StatusNoContent || access.checked[0].Station != contracts.StationAllowed {
+		t.Fatalf("open: %d, rule %+v", rec.Code, access.checked[0])
+	}
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/x/closed", nil))
+	if rec.Code != http.StatusForbidden || access.checked[1].Station != contracts.StationOutOfScope {
+		t.Fatalf("closed: %d, rule %+v", rec.Code, access.checked[1])
+	}
+	if len(access.rejected) != 1 || !errors.Is(access.rejected[0].err, contracts.ErrStationScope) {
+		t.Fatalf("rejections = %+v, want one station_scope", access.rejected)
+	}
+	if reached != 1 {
+		t.Fatalf("handlers reached %d times, want 1", reached)
+	}
+
+	bad := NewRouter(RouterOptions{Doc: loadDoc(t, `
+openapi: 3.0.3
+info: {title: Test, version: "1"}
+paths:
+  /api/v1/x/bad:
+    get:
+      operationId: getBad
+      x-vantigo-access: session
+      x-vantigo-station: sometimes
+      responses:
+        "204": { description: ok }
+`), Access: access})
+	bad.HandleFunc("GET /api/v1/x/bad", noopHandler)
+	if err := bad.Err(); err == nil || !strings.Contains(err.Error(), "x-vantigo-station") {
+		t.Fatalf("Err() = %v, want the x-vantigo-station problem", err)
+	}
 }

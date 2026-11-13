@@ -81,7 +81,34 @@ var ruleGrammar = regexp.MustCompile(`^(anonymous|session|scim|permission:[a-z]+
 type Rule struct {
 	Kind  RuleKind
 	Names []string
+	// Station says whether Check may answer a shared shop-floor station's
+	// operator (manufacturing phase 2 M134, M135). Only the router's wrap sets
+	// it, from the operation's x-vantigo-station; the zero value refuses
+	// station credentials as unauthenticated, so a handler's own Check, a
+	// platform endpoint or the docs handler never admits a station.
+	Station StationMode
 }
+
+// StationMode is Rule.Station.
+type StationMode uint8
+
+const (
+	// StationRefused: station credentials are not a caller at all (401).
+	StationRefused StationMode = iota
+	// StationOutOfScope: the router's operation is not open to stations; a
+	// valid station's operator is ErrStationScope (403 station_scope).
+	StationOutOfScope
+	// StationAllowed: the operation is marked x-vantigo-station: allowed; a
+	// station's operator is answered with the permissions intersected.
+	StationAllowed
+)
+
+// StationExtension is the operation extension that opens an operation to a
+// shared station's operators; its one value is StationExtensionAllowed.
+const (
+	StationExtension        = "x-vantigo-station"
+	StationExtensionAllowed = "allowed"
+)
 
 // ParseRule parses s. It accepts exactly what internal/openapi.AccessRule
 // accepts; it does not itself require Names to be sorted or unique, since

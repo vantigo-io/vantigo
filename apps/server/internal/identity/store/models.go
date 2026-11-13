@@ -5,6 +5,7 @@
 package store
 
 import (
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -174,6 +175,15 @@ type IdentityOperationalEvent struct {
 	OccurredAt time.Time
 }
 
+type IdentityOperatorBackoff struct {
+	StationID      uuid.UUID
+	UserID         uuid.UUID
+	Failures       int32
+	FirstFailureAt time.Time
+	LastFailureAt  time.Time
+	NextAttemptAt  *time.Time
+}
+
 type IdentityPasskey struct {
 	CredentialID   []byte
 	UserID         uuid.UUID
@@ -289,6 +299,37 @@ type IdentitySsoSetting struct {
 	UpdatedByUserID         *uuid.UUID
 }
 
+type IdentityStation struct {
+	ID                  uuid.UUID
+	Name                string
+	TokenHash           []byte
+	TokenExpiresAt      *time.Time
+	PairedAt            *time.Time
+	PairingHash         []byte
+	PairingExpiresAt    *time.Time
+	IdleMinutes         int32
+	RequirePinWithBadge bool
+	AllowedNetworks     []netip.Prefix
+	CreatedBy           *uuid.UUID
+	CreatedAt           time.Time
+	LastSeenAt          *time.Time
+	LastSeenIp          *string
+	AlertedAt           *time.Time
+	RevokedAt           *time.Time
+	RevokedBy           *uuid.UUID
+}
+
+type IdentityStationOperatorSession struct {
+	ID             uuid.UUID
+	StationID      uuid.UUID
+	UserID         uuid.UUID
+	TokenHash      []byte
+	StartedAt      time.Time
+	LastActivityAt time.Time
+	EndedAt        *time.Time
+	EndReason      *string
+}
+
 type IdentitySystemSetting struct {
 	ID                 int16
 	MaintenanceEnabled bool
@@ -326,6 +367,19 @@ type IdentityUser struct {
 	TimeZone            *string
 	ProvisioningRolesAt *time.Time
 	Kind                string
+}
+
+type IdentityUserBadge struct {
+	UserID    uuid.UUID
+	BadgeHash []byte
+	SetAt     time.Time
+	SetBy     *uuid.UUID
+}
+
+type IdentityUserPin struct {
+	UserID  uuid.UUID
+	PinHash string
+	SetAt   time.Time
 }
 
 type IdentityUserRole struct {

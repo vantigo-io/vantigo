@@ -291,6 +291,33 @@ func (e SsoOidcSettingsRequestProvider) Valid() bool {
 	}
 }
 
+// Defines values for StationState.
+const (
+	Expired  StationState = "expired"
+	Paired   StationState = "paired"
+	Pairing  StationState = "pairing"
+	Revoked  StationState = "revoked"
+	Unpaired StationState = "unpaired"
+)
+
+// Valid indicates whether the value is a known member of the StationState enum.
+func (e StationState) Valid() bool {
+	switch e {
+	case Expired:
+		return true
+	case Paired:
+		return true
+	case Pairing:
+		return true
+	case Revoked:
+		return true
+	case Unpaired:
+		return true
+	default:
+		return false
+	}
+}
+
 // AccessGroupRequest defines model for AccessGroupRequest.
 type AccessGroupRequest struct {
 	ConcurrencyStamp *string `json:"concurrencyStamp,omitempty"`
@@ -350,6 +377,21 @@ type AccessUserResponseKind string
 type AccountPasswordRequest struct {
 	CurrentPassword *string `json:"currentPassword"`
 	NewPassword     *string `json:"newPassword"`
+}
+
+// AccountPinRequest defines model for AccountPinRequest.
+type AccountPinRequest struct {
+	// CurrentPassword The caller's password; not needed when the session signed in within the last 10 minutes.
+	CurrentPassword *string `json:"currentPassword,omitempty"`
+
+	// Pin Six digits, not all one digit and not an ascending or descending run.
+	Pin string `json:"pin"`
+}
+
+// AccountPinResponse defines model for AccountPinResponse.
+type AccountPinResponse struct {
+	Set   bool       `json:"set"`
+	SetAt *time.Time `json:"setAt"`
 }
 
 // AccountProfileRequest defines model for AccountProfileRequest.
@@ -507,6 +549,12 @@ type AuthorizationAuditEvent struct {
 type AvatarResponse struct {
 	Uploaded bool   `json:"uploaded"`
 	Url      string `json:"url"`
+}
+
+// BadgeRequest defines model for BadgeRequest.
+type BadgeRequest struct {
+	// Badge The code the card reader types, 4 to 128 characters.
+	Badge string `json:"badge"`
 }
 
 // BootstrapRequest defines model for BootstrapRequest.
@@ -706,6 +754,14 @@ type OidcProviderResponse struct {
 // OidcProvidersResponse defines model for OidcProvidersResponse.
 type OidcProvidersResponse struct {
 	Oidc *OidcProviderResponse `json:"oidc"`
+}
+
+// OperatorCredentials defines model for OperatorCredentials.
+type OperatorCredentials struct {
+	BadgeSetAt *time.Time `json:"badgeSetAt"`
+	HasBadge   bool       `json:"hasBadge"`
+	HasPin     bool       `json:"hasPin"`
+	PinSetAt   *time.Time `json:"pinSetAt"`
 }
 
 // OwnerSsoLink How a user stands to the configured workforce OIDC provider: linked (a link exists under its issuer, so the user signs in through it), expected (an Owner announced the directory account the user holds, and the link is made at the user's next sign-in through the provider or the provider's SCIM push), or none. The announced keys are sent while expected.
@@ -1420,6 +1476,126 @@ type SsoSettings struct {
 	Version int32 `json:"version"`
 }
 
+// Station A shared shop-floor station (manufacturing phase 2 M129).
+type Station struct {
+	ActiveOperators []StationOperatorSession `json:"activeOperators"`
+
+	// AlertedAt The last time failed operator sign-ins here mailed the administrators.
+	AlertedAt *time.Time `json:"alertedAt"`
+
+	// AllowedNetworks The networks (CIDR) station requests may come from; null for any.
+	AllowedNetworks     *[]string          `json:"allowedNetworks"`
+	CreatedAt           time.Time          `json:"createdAt"`
+	Id                  openapi_types.UUID `json:"id"`
+	IdleMinutes         int                `json:"idleMinutes"`
+	LastSeenAt          *time.Time         `json:"lastSeenAt"`
+	LastSeenIp          *string            `json:"lastSeenIp"`
+	Name                string             `json:"name"`
+	PairedAt            *time.Time         `json:"pairedAt"`
+	PairingExpiresAt    *time.Time         `json:"pairingExpiresAt"`
+	RequirePinWithBadge bool               `json:"requirePinWithBadge"`
+	RevokedAt           *time.Time         `json:"revokedAt"`
+	State               StationState       `json:"state"`
+	TokenExpiresAt      *time.Time         `json:"tokenExpiresAt"`
+}
+
+// StationList defines model for StationList.
+type StationList struct {
+	Items []Station `json:"items"`
+}
+
+// StationOperator defines model for StationOperator.
+type StationOperator struct {
+	DisplayName string             `json:"displayName"`
+	Initials    string             `json:"initials"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
+// StationOperatorCandidate defines model for StationOperatorCandidate.
+type StationOperatorCandidate struct {
+	DisplayName string             `json:"displayName"`
+	HasBadge    bool               `json:"hasBadge"`
+	HasPin      bool               `json:"hasPin"`
+	Initials    string             `json:"initials"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
+// StationOperatorCandidateList defines model for StationOperatorCandidateList.
+type StationOperatorCandidateList struct {
+	Items []StationOperatorCandidate `json:"items"`
+}
+
+// StationOperatorSession defines model for StationOperatorSession.
+type StationOperatorSession struct {
+	DisplayName    string             `json:"displayName"`
+	Initials       string             `json:"initials"`
+	LastActivityAt time.Time          `json:"lastActivityAt"`
+	SessionId      openapi_types.UUID `json:"sessionId"`
+	StartedAt      time.Time          `json:"startedAt"`
+	UserId         openapi_types.UUID `json:"userId"`
+}
+
+// StationOperatorSignIn defines model for StationOperatorSignIn.
+type StationOperatorSignIn struct {
+	Operator  StationOperator    `json:"operator"`
+	SessionId openapi_types.UUID `json:"sessionId"`
+	StartedAt time.Time          `json:"startedAt"`
+
+	// Token The operator token, sent as Authorization Station <token> with each request the operator makes. Kept in memory only.
+	Token string `json:"token"`
+}
+
+// StationOperatorSignInRequest defines model for StationOperatorSignInRequest.
+type StationOperatorSignInRequest struct {
+	Badge  *string             `json:"badge,omitempty"`
+	Pin    *string             `json:"pin,omitempty"`
+	UserId *openapi_types.UUID `json:"userId,omitempty"`
+}
+
+// StationPairRequest defines model for StationPairRequest.
+type StationPairRequest struct {
+	// Code The eight-character pairing code an administrator issued.
+	Code string `json:"code"`
+}
+
+// StationPairing defines model for StationPairing.
+type StationPairing struct {
+	// PairingCode The one-time code, shown once.
+	PairingCode      string    `json:"pairingCode"`
+	PairingExpiresAt time.Time `json:"pairingExpiresAt"`
+
+	// Station A shared shop-floor station (manufacturing phase 2 M129).
+	Station Station `json:"station"`
+}
+
+// StationRequest defines model for StationRequest.
+type StationRequest struct {
+	// AllowedNetworks Networks in CIDR notation (192.168.10.0/24) or single addresses; null or empty for any.
+	AllowedNetworks *[]string `json:"allowedNetworks,omitempty"`
+
+	// IdleMinutes 1 to 60; 5 when left out.
+	IdleMinutes *int   `json:"idleMinutes,omitempty"`
+	Name        string `json:"name"`
+
+	// RequirePinWithBadge Whether a badge needs its holder's PIN too; true when left out.
+	RequirePinWithBadge *bool `json:"requirePinWithBadge,omitempty"`
+}
+
+// StationSelf The station this browser is paired as, as the station itself reads it.
+type StationSelf struct {
+	Id                  openapi_types.UUID       `json:"id"`
+	IdleMinutes         int                      `json:"idleMinutes"`
+	Name                string                   `json:"name"`
+	Operators           []StationOperatorSession `json:"operators"`
+	RequirePinWithBadge bool                     `json:"requirePinWithBadge"`
+
+	// TimeZone The workspace's business time zone.
+	TimeZone string `json:"timeZone"`
+}
+
+// StationState defines model for StationState.
+type StationState string
+
 // SystemMaintenanceRequest defines model for SystemMaintenanceRequest.
 type SystemMaintenanceRequest struct {
 	Enabled *bool   `json:"enabled,omitempty"`
@@ -1562,6 +1738,9 @@ type DeleteIdentityAccountPasskeysByCredentialIdJSONBody = PasskeyRemoveRequest
 
 // PostIdentityAccountPasswordJSONBody defines parameters for PostIdentityAccountPassword.
 type PostIdentityAccountPasswordJSONBody = AccountPasswordRequest
+
+// PutIdentityAccountPinJSONBody defines parameters for PutIdentityAccountPin.
+type PutIdentityAccountPinJSONBody = AccountPinRequest
 
 // PatchIdentityAccountProfileJSONBody defines parameters for PatchIdentityAccountProfile.
 type PatchIdentityAccountProfileJSONBody = AccountProfileRequest
@@ -1735,8 +1914,23 @@ type PutIdentityScimV2UsersByIdParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
 }
 
+// PostIdentityStationOperatorsJSONBody defines parameters for PostIdentityStationOperators.
+type PostIdentityStationOperatorsJSONBody = StationOperatorSignInRequest
+
+// PostIdentityStationPairJSONBody defines parameters for PostIdentityStationPair.
+type PostIdentityStationPairJSONBody = StationPairRequest
+
+// PostIdentityStationsJSONBody defines parameters for PostIdentityStations.
+type PostIdentityStationsJSONBody = StationRequest
+
+// PutIdentityStationsByIdJSONBody defines parameters for PutIdentityStationsById.
+type PutIdentityStationsByIdJSONBody = StationRequest
+
 // PutIdentitySystemMaintenanceJSONBody defines parameters for PutIdentitySystemMaintenance.
 type PutIdentitySystemMaintenanceJSONBody = SystemMaintenanceRequest
+
+// PutIdentityUsersByIdBadgeJSONBody defines parameters for PutIdentityUsersByIdBadge.
+type PutIdentityUsersByIdBadgeJSONBody = BadgeRequest
 
 // PostIdentityAccessDelegationsJSONRequestBody defines body for PostIdentityAccessDelegations for application/json ContentType.
 type PostIdentityAccessDelegationsJSONRequestBody = PostIdentityAccessDelegationsJSONBody
@@ -1821,6 +2015,9 @@ type DeleteIdentityAccountPasskeysByCredentialIdJSONRequestBody = DeleteIdentity
 
 // PostIdentityAccountPasswordJSONRequestBody defines body for PostIdentityAccountPassword for application/json ContentType.
 type PostIdentityAccountPasswordJSONRequestBody = PostIdentityAccountPasswordJSONBody
+
+// PutIdentityAccountPinJSONRequestBody defines body for PutIdentityAccountPin for application/json ContentType.
+type PutIdentityAccountPinJSONRequestBody = PutIdentityAccountPinJSONBody
 
 // PatchIdentityAccountProfileJSONRequestBody defines body for PatchIdentityAccountProfile for application/json ContentType.
 type PatchIdentityAccountProfileJSONRequestBody = PatchIdentityAccountProfileJSONBody
@@ -1921,8 +2118,23 @@ type PatchIdentityScimV2UsersByIdApplicationScimPlusJSONRequestBody = ScimPatchR
 // PutIdentityScimV2UsersByIdApplicationScimPlusJSONRequestBody defines body for PutIdentityScimV2UsersById for application/scim+json ContentType.
 type PutIdentityScimV2UsersByIdApplicationScimPlusJSONRequestBody = ScimUserWriteRequest
 
+// PostIdentityStationOperatorsJSONRequestBody defines body for PostIdentityStationOperators for application/json ContentType.
+type PostIdentityStationOperatorsJSONRequestBody = PostIdentityStationOperatorsJSONBody
+
+// PostIdentityStationPairJSONRequestBody defines body for PostIdentityStationPair for application/json ContentType.
+type PostIdentityStationPairJSONRequestBody = PostIdentityStationPairJSONBody
+
+// PostIdentityStationsJSONRequestBody defines body for PostIdentityStations for application/json ContentType.
+type PostIdentityStationsJSONRequestBody = PostIdentityStationsJSONBody
+
+// PutIdentityStationsByIdJSONRequestBody defines body for PutIdentityStationsById for application/json ContentType.
+type PutIdentityStationsByIdJSONRequestBody = PutIdentityStationsByIdJSONBody
+
 // PutIdentitySystemMaintenanceJSONRequestBody defines body for PutIdentitySystemMaintenance for application/json ContentType.
 type PutIdentitySystemMaintenanceJSONRequestBody = PutIdentitySystemMaintenanceJSONBody
+
+// PutIdentityUsersByIdBadgeJSONRequestBody defines body for PutIdentityUsersByIdBadge for application/json ContentType.
+type PutIdentityUsersByIdBadgeJSONRequestBody = PutIdentityUsersByIdBadgeJSONBody
 
 // AsExternalRef0AuthErrorResponse returns the union data inside the PostIdentityAccessRoles403JSONResponseBody as a externalRef0.AuthErrorResponse
 func (t PostIdentityAccessRoles403JSONResponseBody) AsExternalRef0AuthErrorResponse() (externalRef0.AuthErrorResponse, error) {
@@ -2365,6 +2577,15 @@ type ServerInterface interface {
 	// PostIdentityAccountPassword Change the caller's password
 	// (POST /api/v1/identity/account/password)
 	PostIdentityAccountPassword(w http.ResponseWriter, r *http.Request)
+	// DeleteIdentityAccountPin Remove the caller's operator PIN
+	// (DELETE /api/v1/identity/account/pin)
+	DeleteIdentityAccountPin(w http.ResponseWriter, r *http.Request)
+	// GetIdentityAccountPin Tell whether the caller has an operator PIN
+	// (GET /api/v1/identity/account/pin)
+	GetIdentityAccountPin(w http.ResponseWriter, r *http.Request)
+	// PutIdentityAccountPin Set the caller's operator PIN
+	// (PUT /api/v1/identity/account/pin)
+	PutIdentityAccountPin(w http.ResponseWriter, r *http.Request)
 	// PatchIdentityAccountProfile Update parts of the caller's profile
 	// (PATCH /api/v1/identity/account/profile)
 	PatchIdentityAccountProfile(w http.ResponseWriter, r *http.Request)
@@ -2587,6 +2808,36 @@ type ServerInterface interface {
 	// GetIdentitySession Get the authenticated browser session
 	// (GET /api/v1/identity/session)
 	GetIdentitySession(w http.ResponseWriter, r *http.Request)
+	// GetIdentityStation Read this station
+	// (GET /api/v1/identity/station)
+	GetIdentityStation(w http.ResponseWriter, r *http.Request)
+	// GetIdentityStationOperators List who may switch in at this station
+	// (GET /api/v1/identity/station/operators)
+	GetIdentityStationOperators(w http.ResponseWriter, r *http.Request)
+	// PostIdentityStationOperators Switch an operator in at this station
+	// (POST /api/v1/identity/station/operators)
+	PostIdentityStationOperators(w http.ResponseWriter, r *http.Request)
+	// PostIdentityStationOperatorsBySessionIdEnd Switch an operator out at this station
+	// (POST /api/v1/identity/station/operators/{sessionId}/end)
+	PostIdentityStationOperatorsBySessionIdEnd(w http.ResponseWriter, r *http.Request, sessionId openapi_types.UUID)
+	// PostIdentityStationPair Pair this browser as a station
+	// (POST /api/v1/identity/station/pair)
+	PostIdentityStationPair(w http.ResponseWriter, r *http.Request)
+	// GetIdentityStations List the shop-floor stations
+	// (GET /api/v1/identity/stations)
+	GetIdentityStations(w http.ResponseWriter, r *http.Request)
+	// PostIdentityStations Register a shop-floor station
+	// (POST /api/v1/identity/stations)
+	PostIdentityStations(w http.ResponseWriter, r *http.Request)
+	// PutIdentityStationsById Change a shop-floor station
+	// (PUT /api/v1/identity/stations/{id})
+	PutIdentityStationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PostIdentityStationsByIdPairing Issue a new pairing code for a station
+	// (POST /api/v1/identity/stations/{id}/pairing)
+	PostIdentityStationsByIdPairing(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PostIdentityStationsByIdRevoke Revoke a shop-floor station
+	// (POST /api/v1/identity/stations/{id}/revoke)
+	PostIdentityStationsByIdRevoke(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// PutIdentitySystemMaintenance Update system maintenance mode
 	// (PUT /api/v1/identity/system/maintenance)
 	PutIdentitySystemMaintenance(w http.ResponseWriter, r *http.Request)
@@ -2596,6 +2847,18 @@ type ServerInterface interface {
 	// PostIdentitySystemUsersByUserIdSessionsRevoke Revoke every session for an account
 	// (POST /api/v1/identity/system/users/{userId}/sessions/revoke)
 	PostIdentitySystemUsersByUserIdSessionsRevoke(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
+	// DeleteIdentityUsersByIdBadge Remove a person's badge
+	// (DELETE /api/v1/identity/users/{id}/badge)
+	DeleteIdentityUsersByIdBadge(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// PutIdentityUsersByIdBadge Enrol a person's badge
+	// (PUT /api/v1/identity/users/{id}/badge)
+	PutIdentityUsersByIdBadge(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// GetIdentityUsersByIdOperatorCredentials Tell whether a person has a PIN or a badge
+	// (GET /api/v1/identity/users/{id}/operator-credentials)
+	GetIdentityUsersByIdOperatorCredentials(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// DeleteIdentityUsersByIdPin Clear a person's PIN
+	// (DELETE /api/v1/identity/users/{id}/pin)
+	DeleteIdentityUsersByIdPin(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3458,6 +3721,48 @@ func (siw *ServerInterfaceWrapper) PostIdentityAccountPassword(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentityAccountPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteIdentityAccountPin operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentityAccountPin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentityAccountPin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityAccountPin operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityAccountPin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityAccountPin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityAccountPin operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityAccountPin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityAccountPin(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5199,6 +5504,194 @@ func (siw *ServerInterfaceWrapper) GetIdentitySession(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetIdentityStation operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityStation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityStation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityStationOperators operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityStationOperators(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityStationOperators(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityStationOperators operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityStationOperators(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityStationOperators(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityStationOperatorsBySessionIdEnd operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityStationOperatorsBySessionIdEnd(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sessionId" -------------
+	var sessionId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sessionId", r.PathValue("sessionId"), &sessionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityStationOperatorsBySessionIdEnd(w, r, sessionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityStationPair operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityStationPair(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityStationPair(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityStations operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityStations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityStations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityStations operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityStations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityStations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityStationsById operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityStationsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityStationsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityStationsByIdPairing operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityStationsByIdPairing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityStationsByIdPairing(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostIdentityStationsByIdRevoke operation middleware
+func (siw *ServerInterfaceWrapper) PostIdentityStationsByIdRevoke(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostIdentityStationsByIdRevoke(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutIdentitySystemMaintenance operation middleware
 func (siw *ServerInterfaceWrapper) PutIdentitySystemMaintenance(w http.ResponseWriter, r *http.Request) {
 
@@ -5244,6 +5737,110 @@ func (siw *ServerInterfaceWrapper) PostIdentitySystemUsersByUserIdSessionsRevoke
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostIdentitySystemUsersByUserIdSessionsRevoke(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteIdentityUsersByIdBadge operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentityUsersByIdBadge(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentityUsersByIdBadge(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutIdentityUsersByIdBadge operation middleware
+func (siw *ServerInterfaceWrapper) PutIdentityUsersByIdBadge(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutIdentityUsersByIdBadge(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetIdentityUsersByIdOperatorCredentials operation middleware
+func (siw *ServerInterfaceWrapper) GetIdentityUsersByIdOperatorCredentials(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIdentityUsersByIdOperatorCredentials(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteIdentityUsersByIdPin operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIdentityUsersByIdPin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIdentityUsersByIdPin(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5416,6 +6013,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/account/passkeys/begin", wrapper.PostIdentityAccountPasskeysBegin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/account/passkeys/complete", wrapper.PostIdentityAccountPasskeysComplete)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/account/password", wrapper.PostIdentityAccountPassword)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/account/pin", wrapper.DeleteIdentityAccountPin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/account/pin", wrapper.GetIdentityAccountPin)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/account/pin", wrapper.PutIdentityAccountPin)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/identity/account/profile", wrapper.PatchIdentityAccountProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/account/profile", wrapper.PutIdentityAccountProfile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/account/sessions/revoke", wrapper.PostIdentityAccountSessionsRevoke)
@@ -5490,9 +6090,23 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/identity/scim/v2/Users/{id}", wrapper.PatchIdentityScimV2UsersById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/scim/v2/Users/{id}", wrapper.PutIdentityScimV2UsersById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/session", wrapper.GetIdentitySession)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/station", wrapper.GetIdentityStation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/station/operators", wrapper.GetIdentityStationOperators)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/station/operators", wrapper.PostIdentityStationOperators)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/station/operators/{sessionId}/end", wrapper.PostIdentityStationOperatorsBySessionIdEnd)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/station/pair", wrapper.PostIdentityStationPair)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/stations", wrapper.GetIdentityStations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/stations", wrapper.PostIdentityStations)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/stations/{id}", wrapper.PutIdentityStationsById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/stations/{id}/pairing", wrapper.PostIdentityStationsByIdPairing)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/stations/{id}/revoke", wrapper.PostIdentityStationsByIdRevoke)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/system/maintenance", wrapper.PutIdentitySystemMaintenance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/system/status", wrapper.GetIdentitySystemStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/identity/system/users/{userId}/sessions/revoke", wrapper.PostIdentitySystemUsersByUserIdSessionsRevoke)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/users/{id}/badge", wrapper.DeleteIdentityUsersByIdBadge)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/identity/users/{id}/badge", wrapper.PutIdentityUsersByIdBadge)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/identity/users/{id}/operator-credentials", wrapper.GetIdentityUsersByIdOperatorCredentials)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/identity/users/{id}/pin", wrapper.DeleteIdentityUsersByIdPin)
 
 	return m
 }
@@ -8813,6 +9427,180 @@ type PostIdentityAccountPassword429JSONResponse struct {
 }
 
 func (response PostIdentityAccountPassword429JSONResponse) VisitPostIdentityAccountPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityAccountPinRequestObject struct {
+}
+
+type DeleteIdentityAccountPinResponseObject interface {
+	VisitDeleteIdentityAccountPinResponse(w http.ResponseWriter) error
+}
+
+type DeleteIdentityAccountPin204Response struct {
+}
+
+func (response DeleteIdentityAccountPin204Response) VisitDeleteIdentityAccountPinResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteIdentityAccountPin401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityAccountPin401JSONResponse) VisitDeleteIdentityAccountPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityAccountPin403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityAccountPin403JSONResponse) VisitDeleteIdentityAccountPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityAccountPinRequestObject struct {
+}
+
+type GetIdentityAccountPinResponseObject interface {
+	VisitGetIdentityAccountPinResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityAccountPin200JSONResponse AccountPinResponse
+
+func (response GetIdentityAccountPin200JSONResponse) VisitGetIdentityAccountPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityAccountPin401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityAccountPin401JSONResponse) VisitGetIdentityAccountPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityAccountPin403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityAccountPin403JSONResponse) VisitGetIdentityAccountPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountPinRequestObject struct {
+	Body *PutIdentityAccountPinJSONRequestBody
+}
+
+type PutIdentityAccountPinResponseObject interface {
+	VisitPutIdentityAccountPinResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityAccountPin204Response struct {
+}
+
+func (response PutIdentityAccountPin204Response) VisitPutIdentityAccountPinResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PutIdentityAccountPin400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityAccountPin400JSONResponse) VisitPutIdentityAccountPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountPin401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityAccountPin401JSONResponse) VisitPutIdentityAccountPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountPin403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityAccountPin403JSONResponse) VisitPutIdentityAccountPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityAccountPin429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PutIdentityAccountPin429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PutIdentityAccountPin429ResponseHeaders
+}
+
+func (response PutIdentityAccountPin429JSONResponse) VisitPutIdentityAccountPinResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -14914,6 +15702,630 @@ func (response GetIdentitySession401JSONResponse) VisitGetIdentitySessionRespons
 	return err
 }
 
+type GetIdentityStationRequestObject struct {
+}
+
+type GetIdentityStationResponseObject interface {
+	VisitGetIdentityStationResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityStation200JSONResponse StationSelf
+
+func (response GetIdentityStation200JSONResponse) VisitGetIdentityStationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityStation401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityStation401JSONResponse) VisitGetIdentityStationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityStation409JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityStation409JSONResponse) VisitGetIdentityStationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityStationOperatorsRequestObject struct {
+}
+
+type GetIdentityStationOperatorsResponseObject interface {
+	VisitGetIdentityStationOperatorsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityStationOperators200JSONResponse StationOperatorCandidateList
+
+func (response GetIdentityStationOperators200JSONResponse) VisitGetIdentityStationOperatorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityStationOperators401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityStationOperators401JSONResponse) VisitGetIdentityStationOperatorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityStationOperators409JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityStationOperators409JSONResponse) VisitGetIdentityStationOperatorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationOperatorsRequestObject struct {
+	Body *PostIdentityStationOperatorsJSONRequestBody
+}
+
+type PostIdentityStationOperatorsResponseObject interface {
+	VisitPostIdentityStationOperatorsResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityStationOperators200JSONResponse StationOperatorSignIn
+
+func (response PostIdentityStationOperators200JSONResponse) VisitPostIdentityStationOperatorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationOperators400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationOperators400JSONResponse) VisitPostIdentityStationOperatorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationOperators401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationOperators401JSONResponse) VisitPostIdentityStationOperatorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationOperators409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationOperators409JSONResponse) VisitPostIdentityStationOperatorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationOperators429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityStationOperators429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityStationOperators429ResponseHeaders
+}
+
+func (response PostIdentityStationOperators429JSONResponse) VisitPostIdentityStationOperatorsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationOperatorsBySessionIdEndRequestObject struct {
+	SessionId openapi_types.UUID `json:"sessionId"`
+}
+
+type PostIdentityStationOperatorsBySessionIdEndResponseObject interface {
+	VisitPostIdentityStationOperatorsBySessionIdEndResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityStationOperatorsBySessionIdEnd204Response struct {
+}
+
+func (response PostIdentityStationOperatorsBySessionIdEnd204Response) VisitPostIdentityStationOperatorsBySessionIdEndResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PostIdentityStationOperatorsBySessionIdEnd401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationOperatorsBySessionIdEnd401JSONResponse) VisitPostIdentityStationOperatorsBySessionIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationOperatorsBySessionIdEnd404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationOperatorsBySessionIdEnd404JSONResponse) VisitPostIdentityStationOperatorsBySessionIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationOperatorsBySessionIdEnd409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationOperatorsBySessionIdEnd409JSONResponse) VisitPostIdentityStationOperatorsBySessionIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationPairRequestObject struct {
+	Body *PostIdentityStationPairJSONRequestBody
+}
+
+type PostIdentityStationPairResponseObject interface {
+	VisitPostIdentityStationPairResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityStationPair200JSONResponse StationSelf
+
+func (response PostIdentityStationPair200JSONResponse) VisitPostIdentityStationPairResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationPair400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationPair400JSONResponse) VisitPostIdentityStationPairResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationPair429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostIdentityStationPair429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostIdentityStationPair429ResponseHeaders
+}
+
+func (response PostIdentityStationPair429JSONResponse) VisitPostIdentityStationPairResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityStationsRequestObject struct {
+}
+
+type GetIdentityStationsResponseObject interface {
+	VisitGetIdentityStationsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityStations200JSONResponse StationList
+
+func (response GetIdentityStations200JSONResponse) VisitGetIdentityStationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityStations401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityStations401JSONResponse) VisitGetIdentityStationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityStations403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityStations403JSONResponse) VisitGetIdentityStationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsRequestObject struct {
+	Body *PostIdentityStationsJSONRequestBody
+}
+
+type PostIdentityStationsResponseObject interface {
+	VisitPostIdentityStationsResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityStations200JSONResponse StationPairing
+
+func (response PostIdentityStations200JSONResponse) VisitPostIdentityStationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStations400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStations400JSONResponse) VisitPostIdentityStationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStations401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStations401JSONResponse) VisitPostIdentityStationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStations403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStations403JSONResponse) VisitPostIdentityStationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityStationsByIdRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PutIdentityStationsByIdJSONRequestBody
+}
+
+type PutIdentityStationsByIdResponseObject interface {
+	VisitPutIdentityStationsByIdResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityStationsById200JSONResponse Station
+
+func (response PutIdentityStationsById200JSONResponse) VisitPutIdentityStationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityStationsById400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityStationsById400JSONResponse) VisitPutIdentityStationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityStationsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityStationsById401JSONResponse) VisitPutIdentityStationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityStationsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityStationsById403JSONResponse) VisitPutIdentityStationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityStationsById404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityStationsById404JSONResponse) VisitPutIdentityStationsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsByIdPairingRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type PostIdentityStationsByIdPairingResponseObject interface {
+	VisitPostIdentityStationsByIdPairingResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityStationsByIdPairing200JSONResponse StationPairing
+
+func (response PostIdentityStationsByIdPairing200JSONResponse) VisitPostIdentityStationsByIdPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsByIdPairing401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationsByIdPairing401JSONResponse) VisitPostIdentityStationsByIdPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsByIdPairing403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationsByIdPairing403JSONResponse) VisitPostIdentityStationsByIdPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsByIdPairing404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationsByIdPairing404JSONResponse) VisitPostIdentityStationsByIdPairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsByIdRevokeRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type PostIdentityStationsByIdRevokeResponseObject interface {
+	VisitPostIdentityStationsByIdRevokeResponse(w http.ResponseWriter) error
+}
+
+type PostIdentityStationsByIdRevoke200JSONResponse Station
+
+func (response PostIdentityStationsByIdRevoke200JSONResponse) VisitPostIdentityStationsByIdRevokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsByIdRevoke401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationsByIdRevoke401JSONResponse) VisitPostIdentityStationsByIdRevokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsByIdRevoke403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationsByIdRevoke403JSONResponse) VisitPostIdentityStationsByIdRevokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostIdentityStationsByIdRevoke404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostIdentityStationsByIdRevoke404JSONResponse) VisitPostIdentityStationsByIdRevokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutIdentitySystemMaintenanceRequestObject struct {
 	Body *PutIdentitySystemMaintenanceJSONRequestBody
 }
@@ -15063,6 +16475,273 @@ func (response PostIdentitySystemUsersByUserIdSessionsRevoke404JSONResponse) Vis
 	return err
 }
 
+type DeleteIdentityUsersByIdBadgeRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteIdentityUsersByIdBadgeResponseObject interface {
+	VisitDeleteIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error
+}
+
+type DeleteIdentityUsersByIdBadge204Response struct {
+}
+
+func (response DeleteIdentityUsersByIdBadge204Response) VisitDeleteIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteIdentityUsersByIdBadge401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityUsersByIdBadge401JSONResponse) VisitDeleteIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityUsersByIdBadge403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityUsersByIdBadge403JSONResponse) VisitDeleteIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityUsersByIdBadge404JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityUsersByIdBadge404JSONResponse) VisitDeleteIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityUsersByIdBadgeRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *PutIdentityUsersByIdBadgeJSONRequestBody
+}
+
+type PutIdentityUsersByIdBadgeResponseObject interface {
+	VisitPutIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error
+}
+
+type PutIdentityUsersByIdBadge204Response struct {
+}
+
+func (response PutIdentityUsersByIdBadge204Response) VisitPutIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PutIdentityUsersByIdBadge400JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityUsersByIdBadge400JSONResponse) VisitPutIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityUsersByIdBadge401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityUsersByIdBadge401JSONResponse) VisitPutIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityUsersByIdBadge403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityUsersByIdBadge403JSONResponse) VisitPutIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityUsersByIdBadge404JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityUsersByIdBadge404JSONResponse) VisitPutIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutIdentityUsersByIdBadge409JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutIdentityUsersByIdBadge409JSONResponse) VisitPutIdentityUsersByIdBadgeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityUsersByIdOperatorCredentialsRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetIdentityUsersByIdOperatorCredentialsResponseObject interface {
+	VisitGetIdentityUsersByIdOperatorCredentialsResponse(w http.ResponseWriter) error
+}
+
+type GetIdentityUsersByIdOperatorCredentials200JSONResponse OperatorCredentials
+
+func (response GetIdentityUsersByIdOperatorCredentials200JSONResponse) VisitGetIdentityUsersByIdOperatorCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityUsersByIdOperatorCredentials401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityUsersByIdOperatorCredentials401JSONResponse) VisitGetIdentityUsersByIdOperatorCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityUsersByIdOperatorCredentials403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityUsersByIdOperatorCredentials403JSONResponse) VisitGetIdentityUsersByIdOperatorCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetIdentityUsersByIdOperatorCredentials404JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetIdentityUsersByIdOperatorCredentials404JSONResponse) VisitGetIdentityUsersByIdOperatorCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityUsersByIdPinRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteIdentityUsersByIdPinResponseObject interface {
+	VisitDeleteIdentityUsersByIdPinResponse(w http.ResponseWriter) error
+}
+
+type DeleteIdentityUsersByIdPin204Response struct {
+}
+
+func (response DeleteIdentityUsersByIdPin204Response) VisitDeleteIdentityUsersByIdPinResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteIdentityUsersByIdPin401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityUsersByIdPin401JSONResponse) VisitDeleteIdentityUsersByIdPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityUsersByIdPin403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityUsersByIdPin403JSONResponse) VisitDeleteIdentityUsersByIdPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteIdentityUsersByIdPin404JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteIdentityUsersByIdPin404JSONResponse) VisitDeleteIdentityUsersByIdPinResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetIdentityAccessAudit List the authorization audit events
@@ -15194,6 +16873,15 @@ type StrictServerInterface interface {
 	// PostIdentityAccountPassword Change the caller's password
 	// (POST /api/v1/identity/account/password)
 	PostIdentityAccountPassword(ctx context.Context, request PostIdentityAccountPasswordRequestObject) (PostIdentityAccountPasswordResponseObject, error)
+	// DeleteIdentityAccountPin Remove the caller's operator PIN
+	// (DELETE /api/v1/identity/account/pin)
+	DeleteIdentityAccountPin(ctx context.Context, request DeleteIdentityAccountPinRequestObject) (DeleteIdentityAccountPinResponseObject, error)
+	// GetIdentityAccountPin Tell whether the caller has an operator PIN
+	// (GET /api/v1/identity/account/pin)
+	GetIdentityAccountPin(ctx context.Context, request GetIdentityAccountPinRequestObject) (GetIdentityAccountPinResponseObject, error)
+	// PutIdentityAccountPin Set the caller's operator PIN
+	// (PUT /api/v1/identity/account/pin)
+	PutIdentityAccountPin(ctx context.Context, request PutIdentityAccountPinRequestObject) (PutIdentityAccountPinResponseObject, error)
 	// PatchIdentityAccountProfile Update parts of the caller's profile
 	// (PATCH /api/v1/identity/account/profile)
 	PatchIdentityAccountProfile(ctx context.Context, request PatchIdentityAccountProfileRequestObject) (PatchIdentityAccountProfileResponseObject, error)
@@ -15416,6 +17104,36 @@ type StrictServerInterface interface {
 	// GetIdentitySession Get the authenticated browser session
 	// (GET /api/v1/identity/session)
 	GetIdentitySession(ctx context.Context, request GetIdentitySessionRequestObject) (GetIdentitySessionResponseObject, error)
+	// GetIdentityStation Read this station
+	// (GET /api/v1/identity/station)
+	GetIdentityStation(ctx context.Context, request GetIdentityStationRequestObject) (GetIdentityStationResponseObject, error)
+	// GetIdentityStationOperators List who may switch in at this station
+	// (GET /api/v1/identity/station/operators)
+	GetIdentityStationOperators(ctx context.Context, request GetIdentityStationOperatorsRequestObject) (GetIdentityStationOperatorsResponseObject, error)
+	// PostIdentityStationOperators Switch an operator in at this station
+	// (POST /api/v1/identity/station/operators)
+	PostIdentityStationOperators(ctx context.Context, request PostIdentityStationOperatorsRequestObject) (PostIdentityStationOperatorsResponseObject, error)
+	// PostIdentityStationOperatorsBySessionIdEnd Switch an operator out at this station
+	// (POST /api/v1/identity/station/operators/{sessionId}/end)
+	PostIdentityStationOperatorsBySessionIdEnd(ctx context.Context, request PostIdentityStationOperatorsBySessionIdEndRequestObject) (PostIdentityStationOperatorsBySessionIdEndResponseObject, error)
+	// PostIdentityStationPair Pair this browser as a station
+	// (POST /api/v1/identity/station/pair)
+	PostIdentityStationPair(ctx context.Context, request PostIdentityStationPairRequestObject) (PostIdentityStationPairResponseObject, error)
+	// GetIdentityStations List the shop-floor stations
+	// (GET /api/v1/identity/stations)
+	GetIdentityStations(ctx context.Context, request GetIdentityStationsRequestObject) (GetIdentityStationsResponseObject, error)
+	// PostIdentityStations Register a shop-floor station
+	// (POST /api/v1/identity/stations)
+	PostIdentityStations(ctx context.Context, request PostIdentityStationsRequestObject) (PostIdentityStationsResponseObject, error)
+	// PutIdentityStationsById Change a shop-floor station
+	// (PUT /api/v1/identity/stations/{id})
+	PutIdentityStationsById(ctx context.Context, request PutIdentityStationsByIdRequestObject) (PutIdentityStationsByIdResponseObject, error)
+	// PostIdentityStationsByIdPairing Issue a new pairing code for a station
+	// (POST /api/v1/identity/stations/{id}/pairing)
+	PostIdentityStationsByIdPairing(ctx context.Context, request PostIdentityStationsByIdPairingRequestObject) (PostIdentityStationsByIdPairingResponseObject, error)
+	// PostIdentityStationsByIdRevoke Revoke a shop-floor station
+	// (POST /api/v1/identity/stations/{id}/revoke)
+	PostIdentityStationsByIdRevoke(ctx context.Context, request PostIdentityStationsByIdRevokeRequestObject) (PostIdentityStationsByIdRevokeResponseObject, error)
 	// PutIdentitySystemMaintenance Update system maintenance mode
 	// (PUT /api/v1/identity/system/maintenance)
 	PutIdentitySystemMaintenance(ctx context.Context, request PutIdentitySystemMaintenanceRequestObject) (PutIdentitySystemMaintenanceResponseObject, error)
@@ -15425,6 +17143,18 @@ type StrictServerInterface interface {
 	// PostIdentitySystemUsersByUserIdSessionsRevoke Revoke every session for an account
 	// (POST /api/v1/identity/system/users/{userId}/sessions/revoke)
 	PostIdentitySystemUsersByUserIdSessionsRevoke(ctx context.Context, request PostIdentitySystemUsersByUserIdSessionsRevokeRequestObject) (PostIdentitySystemUsersByUserIdSessionsRevokeResponseObject, error)
+	// DeleteIdentityUsersByIdBadge Remove a person's badge
+	// (DELETE /api/v1/identity/users/{id}/badge)
+	DeleteIdentityUsersByIdBadge(ctx context.Context, request DeleteIdentityUsersByIdBadgeRequestObject) (DeleteIdentityUsersByIdBadgeResponseObject, error)
+	// PutIdentityUsersByIdBadge Enrol a person's badge
+	// (PUT /api/v1/identity/users/{id}/badge)
+	PutIdentityUsersByIdBadge(ctx context.Context, request PutIdentityUsersByIdBadgeRequestObject) (PutIdentityUsersByIdBadgeResponseObject, error)
+	// GetIdentityUsersByIdOperatorCredentials Tell whether a person has a PIN or a badge
+	// (GET /api/v1/identity/users/{id}/operator-credentials)
+	GetIdentityUsersByIdOperatorCredentials(ctx context.Context, request GetIdentityUsersByIdOperatorCredentialsRequestObject) (GetIdentityUsersByIdOperatorCredentialsResponseObject, error)
+	// DeleteIdentityUsersByIdPin Clear a person's PIN
+	// (DELETE /api/v1/identity/users/{id}/pin)
+	DeleteIdentityUsersByIdPin(ctx context.Context, request DeleteIdentityUsersByIdPinRequestObject) (DeleteIdentityUsersByIdPinResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -16805,6 +18535,88 @@ func (sh *strictHandler) PostIdentityAccountPassword(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentityAccountPasswordResponseObject); ok {
 		if err := validResponse.VisitPostIdentityAccountPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIdentityAccountPin operation middleware
+func (sh *strictHandler) DeleteIdentityAccountPin(w http.ResponseWriter, r *http.Request) {
+	var request DeleteIdentityAccountPinRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIdentityAccountPin(ctx, request.(DeleteIdentityAccountPinRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIdentityAccountPin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIdentityAccountPinResponseObject); ok {
+		if err := validResponse.VisitDeleteIdentityAccountPinResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityAccountPin operation middleware
+func (sh *strictHandler) GetIdentityAccountPin(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityAccountPinRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityAccountPin(ctx, request.(GetIdentityAccountPinRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityAccountPin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityAccountPinResponseObject); ok {
+		if err := validResponse.VisitGetIdentityAccountPinResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityAccountPin operation middleware
+func (sh *strictHandler) PutIdentityAccountPin(w http.ResponseWriter, r *http.Request) {
+	var request PutIdentityAccountPinRequestObject
+
+	var body PutIdentityAccountPinJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityAccountPin(ctx, request.(PutIdentityAccountPinRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityAccountPin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityAccountPinResponseObject); ok {
+		if err := validResponse.VisitPutIdentityAccountPinResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -18984,6 +20796,294 @@ func (sh *strictHandler) GetIdentitySession(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// GetIdentityStation operation middleware
+func (sh *strictHandler) GetIdentityStation(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityStationRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityStation(ctx, request.(GetIdentityStationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityStation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityStationResponseObject); ok {
+		if err := validResponse.VisitGetIdentityStationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityStationOperators operation middleware
+func (sh *strictHandler) GetIdentityStationOperators(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityStationOperatorsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityStationOperators(ctx, request.(GetIdentityStationOperatorsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityStationOperators")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityStationOperatorsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityStationOperatorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityStationOperators operation middleware
+func (sh *strictHandler) PostIdentityStationOperators(w http.ResponseWriter, r *http.Request) {
+	var request PostIdentityStationOperatorsRequestObject
+
+	var body PostIdentityStationOperatorsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityStationOperators(ctx, request.(PostIdentityStationOperatorsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityStationOperators")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityStationOperatorsResponseObject); ok {
+		if err := validResponse.VisitPostIdentityStationOperatorsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityStationOperatorsBySessionIdEnd operation middleware
+func (sh *strictHandler) PostIdentityStationOperatorsBySessionIdEnd(w http.ResponseWriter, r *http.Request, sessionId openapi_types.UUID) {
+	var request PostIdentityStationOperatorsBySessionIdEndRequestObject
+
+	request.SessionId = sessionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityStationOperatorsBySessionIdEnd(ctx, request.(PostIdentityStationOperatorsBySessionIdEndRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityStationOperatorsBySessionIdEnd")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityStationOperatorsBySessionIdEndResponseObject); ok {
+		if err := validResponse.VisitPostIdentityStationOperatorsBySessionIdEndResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityStationPair operation middleware
+func (sh *strictHandler) PostIdentityStationPair(w http.ResponseWriter, r *http.Request) {
+	var request PostIdentityStationPairRequestObject
+
+	var body PostIdentityStationPairJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityStationPair(ctx, request.(PostIdentityStationPairRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityStationPair")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityStationPairResponseObject); ok {
+		if err := validResponse.VisitPostIdentityStationPairResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityStations operation middleware
+func (sh *strictHandler) GetIdentityStations(w http.ResponseWriter, r *http.Request) {
+	var request GetIdentityStationsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityStations(ctx, request.(GetIdentityStationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityStations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityStationsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityStationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityStations operation middleware
+func (sh *strictHandler) PostIdentityStations(w http.ResponseWriter, r *http.Request) {
+	var request PostIdentityStationsRequestObject
+
+	var body PostIdentityStationsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityStations(ctx, request.(PostIdentityStationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityStations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityStationsResponseObject); ok {
+		if err := validResponse.VisitPostIdentityStationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityStationsById operation middleware
+func (sh *strictHandler) PutIdentityStationsById(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PutIdentityStationsByIdRequestObject
+
+	request.Id = id
+
+	var body PutIdentityStationsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityStationsById(ctx, request.(PutIdentityStationsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityStationsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityStationsByIdResponseObject); ok {
+		if err := validResponse.VisitPutIdentityStationsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityStationsByIdPairing operation middleware
+func (sh *strictHandler) PostIdentityStationsByIdPairing(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityStationsByIdPairingRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityStationsByIdPairing(ctx, request.(PostIdentityStationsByIdPairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityStationsByIdPairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityStationsByIdPairingResponseObject); ok {
+		if err := validResponse.VisitPostIdentityStationsByIdPairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostIdentityStationsByIdRevoke operation middleware
+func (sh *strictHandler) PostIdentityStationsByIdRevoke(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PostIdentityStationsByIdRevokeRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostIdentityStationsByIdRevoke(ctx, request.(PostIdentityStationsByIdRevokeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostIdentityStationsByIdRevoke")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostIdentityStationsByIdRevokeResponseObject); ok {
+		if err := validResponse.VisitPostIdentityStationsByIdRevokeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PutIdentitySystemMaintenance operation middleware
 func (sh *strictHandler) PutIdentitySystemMaintenance(w http.ResponseWriter, r *http.Request) {
 	var request PutIdentitySystemMaintenanceRequestObject
@@ -19061,6 +21161,120 @@ func (sh *strictHandler) PostIdentitySystemUsersByUserIdSessionsRevoke(w http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostIdentitySystemUsersByUserIdSessionsRevokeResponseObject); ok {
 		if err := validResponse.VisitPostIdentitySystemUsersByUserIdSessionsRevokeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIdentityUsersByIdBadge operation middleware
+func (sh *strictHandler) DeleteIdentityUsersByIdBadge(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteIdentityUsersByIdBadgeRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIdentityUsersByIdBadge(ctx, request.(DeleteIdentityUsersByIdBadgeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIdentityUsersByIdBadge")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIdentityUsersByIdBadgeResponseObject); ok {
+		if err := validResponse.VisitDeleteIdentityUsersByIdBadgeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutIdentityUsersByIdBadge operation middleware
+func (sh *strictHandler) PutIdentityUsersByIdBadge(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request PutIdentityUsersByIdBadgeRequestObject
+
+	request.Id = id
+
+	var body PutIdentityUsersByIdBadgeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutIdentityUsersByIdBadge(ctx, request.(PutIdentityUsersByIdBadgeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutIdentityUsersByIdBadge")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutIdentityUsersByIdBadgeResponseObject); ok {
+		if err := validResponse.VisitPutIdentityUsersByIdBadgeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetIdentityUsersByIdOperatorCredentials operation middleware
+func (sh *strictHandler) GetIdentityUsersByIdOperatorCredentials(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetIdentityUsersByIdOperatorCredentialsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetIdentityUsersByIdOperatorCredentials(ctx, request.(GetIdentityUsersByIdOperatorCredentialsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetIdentityUsersByIdOperatorCredentials")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetIdentityUsersByIdOperatorCredentialsResponseObject); ok {
+		if err := validResponse.VisitGetIdentityUsersByIdOperatorCredentialsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIdentityUsersByIdPin operation middleware
+func (sh *strictHandler) DeleteIdentityUsersByIdPin(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteIdentityUsersByIdPinRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIdentityUsersByIdPin(ctx, request.(DeleteIdentityUsersByIdPinRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIdentityUsersByIdPin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIdentityUsersByIdPinResponseObject); ok {
+		if err := validResponse.VisitDeleteIdentityUsersByIdPinResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

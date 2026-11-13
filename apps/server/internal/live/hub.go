@@ -293,9 +293,12 @@ func (h *Hub) shutdown() {
 	h.pubMu.Unlock()
 }
 
-// client is one socket as the hub sees it.
+// client is one socket as the hub sees it. A station's socket (§17) has the
+// station's id as station, and as user too, so the per-user bounds and the
+// connect rate limit are kept per station; it has no session.
 type client struct {
 	user, session uuid.UUID
+	station       uuid.UUID
 	send          chan []byte
 
 	mu        sync.Mutex // serialises enqueue's drain and records overflows
@@ -335,6 +338,15 @@ func (c *client) isClosed() bool {
 // closed, or the user has reached the per-replica limit. A socket that
 // arrives while the listener is down is told so at once.
 func (h *Hub) attach(user, session uuid.UUID) (*client, error) {
+	return h.attachClient(user, session, uuid.Nil)
+}
+
+// attachStation registers a station's socket (§17): keyed by the station.
+func (h *Hub) attachStation(station uuid.UUID) (*client, error) {
+	return h.attachClient(station, uuid.Nil, station)
+}
+
+func (h *Hub) attachClient(user, session, station uuid.UUID) (*client, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
@@ -343,7 +355,7 @@ func (h *Hub) attach(user, session uuid.UUID) (*client, error) {
 	if h.perUser[user] >= h.limits.connsPerUser {
 		return nil, errTooManyClients
 	}
-	c := &client{user: user, session: session, send: make(chan []byte, h.limits.queue), done: make(chan struct{}), subs: map[string]struct{}{}, docs: map[string]*docSub{}}
+	c := &client{user: user, session: session, station: station, send: make(chan []byte, h.limits.queue), done: make(chan struct{}), subs: map[string]struct{}{}, docs: map[string]*docSub{}}
 	h.clients[c] = struct{}{}
 	h.perUser[user]++
 	h.wg.Add(1) // detach's Done: Wait waits for every socket
@@ -519,6 +531,10 @@ func (h *Hub) subscribe(ctx context.Context, c *client, topic string) {
 		h.deny(c, topic, "limit")
 		return
 	}
+	if c.station != uuid.Nil && !t.Station {
+		h.deny(c, topic, "forbidden")
+		return
+	}
 	if err := h.authorize(ctx, newCycleAccess(h.opts.Access), c, t, key); err != nil {
 		// ErrForbidden is the person's answer; anything else (a database
 		// error, a timeout) is the hub's, and the client may try again.
@@ -611,7 +627,27 @@ func (h *Hub) authorize(ctx context.Context, access *cycleAccess, c *client, t T
 			err = ErrForbidden
 		}
 	}()
+	if c.station != uuid.Nil {
+		if !t.Station {
+			return ErrForbidden
+		}
+		return authorizeStation(ctx, access, c.station, t, key)
+	}
 	return authorizeThrough(ctx, access, c.user, t, key)
+}
+
+// AuthorizeStation runs t's Authorize for a station's socket as the hub runs
+// it (§17): with StationID in the context and no person; a topic not marked
+// Station refuses. A module's test uses it to prove its station topics.
+func AuthorizeStation(ctx context.Context, access contracts.Access, stationID uuid.UUID, t Topic, key string) error {
+	if !t.Station {
+		return ErrForbidden
+	}
+	return authorizeStation(ctx, newCycleAccess(access), stationID, t, key)
+}
+
+func authorizeStation(ctx context.Context, access *cycleAccess, stationID uuid.UUID, t Topic, key string) error {
+	return t.Authorize(context.WithValue(withAccess(ctx, access), stationContextKey{}, stationID), key)
 }
 
 // Authorize runs t's Authorize for userID with key as the hub runs it on a
@@ -631,14 +667,33 @@ func authorizeThrough(ctx context.Context, access *cycleAccess, userID uuid.UUID
 // that now answers ErrForbidden is dropped with denied. A failure to read is
 // logged and changes nothing until the next cycle.
 func (h *Hub) recheck(ctx context.Context, c *client) {
-	user, ok, err := h.opts.Access.SessionLive(ctx, c.session)
-	if err != nil {
-		h.logger.Warn("live: could not re-check a socket's session", "error", err)
-		return
-	}
-	if !ok || user != c.user {
-		c.close(CloseSessionEnded, "session ended")
-		return
+	if c.station != uuid.Nil {
+		// A station's socket re-checks the station: revoked or expired, it
+		// closes with 4401 (§17).
+		stations, ok := h.opts.Access.(contracts.StationAccess)
+		if !ok {
+			c.close(CloseSessionEnded, "station ended")
+			return
+		}
+		live, err := stations.StationLive(ctx, c.station)
+		if err != nil {
+			h.logger.Warn("live: could not re-check a station's socket", "error", err)
+			return
+		}
+		if !live {
+			c.close(CloseSessionEnded, "station ended")
+			return
+		}
+	} else {
+		user, ok, err := h.opts.Access.SessionLive(ctx, c.session)
+		if err != nil {
+			h.logger.Warn("live: could not re-check a socket's session", "error", err)
+			return
+		}
+		if !ok || user != c.user {
+			c.close(CloseSessionEnded, "session ended")
+			return
+		}
 	}
 	h.mu.Lock()
 	topics := make([]string, 0, len(c.subs))

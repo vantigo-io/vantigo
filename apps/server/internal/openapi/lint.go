@@ -34,6 +34,12 @@ var assistantRefusedPolicies = []string{"Owner", "OwnerManagement", "Authorizati
 // dispatcher enforces it for an agent's run.
 const CustomerScopeExtension = "x-vantigo-customer-scope"
 
+// StationExtension opens an operation to a shared shop-floor station's
+// operators (manufacturing phase 2 M135). Its only value is "allowed", and only
+// an operation whose access rule is a permission of Manufacturing's may carry
+// it: a station acts within manufacturing:access and manufacturing:shop-floor.
+const StationExtension = "x-vantigo-station"
+
 // Problem is one structural rule an operation breaks.
 type Problem struct {
 	OperationID string
@@ -67,6 +73,13 @@ func Lint(doc *openapi3.T) []Problem {
 				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %v must be one of %s", where, AssistantExtension, value, strings.Join(AssistantModes, ", "))})
 			case mode != "never" && assistantNeverCallable(access):
 				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %s is not possible behind x-vantigo-access %q: an assistant is never admitted to it", where, AssistantExtension, mode, access)})
+			}
+		}
+		if value, present := op.Op.Extensions[StationExtension]; present {
+			if mode, _ := value.(string); mode != "allowed" {
+				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s %v must be allowed", where, StationExtension, value)})
+			} else if !strings.HasPrefix(access, "permission:") || !onlyManufacturing(access) {
+				problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: %s is only for an operation behind permission:manufacturing:…, not %q", where, StationExtension, access)})
 			}
 		}
 		if value, present := op.Op.Extensions[CustomerScopeExtension]; present {
@@ -110,6 +123,17 @@ func customerScopeProblem(op operation, value any) string {
 		}
 	}
 	return fmt.Sprintf("param %q is not a path or query parameter of the operation", name)
+}
+
+// onlyManufacturing reports whether every key of a permission: rule is one of
+// Manufacturing's.
+func onlyManufacturing(access string) bool {
+	for _, key := range strings.Split(strings.TrimPrefix(access, "permission:"), "+") {
+		if !strings.HasPrefix(key, "manufacturing:") {
+			return false
+		}
+	}
+	return true
 }
 
 // assistantNeverCallable reports whether an assistant grant is refused the

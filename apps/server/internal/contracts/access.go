@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -37,13 +38,28 @@ type Via struct {
 	AgentID    uuid.UUID
 	CustomerID *int32
 	ApprovedBy *uuid.UUID
+	// StationID is set for a "station" Via: the shared shop-floor station the
+	// operator signed in at (manufacturing phase 2 M134). The principal is the
+	// operator, with the operator session as SessionID.
+	StationID uuid.UUID
 }
 
-// ViaAssistant is Via.Kind of an assistant grant, ViaAgent of an agent grant.
+// ViaAssistant is Via.Kind of an assistant grant, ViaAgent of an agent grant,
+// ViaStation of an operator signed in at a shared shop-floor station.
 const (
 	ViaAssistant = "assistant"
 	ViaAgent     = "agent"
+	ViaStation   = "station"
 )
+
+// Station reports the station the principal acts at, and whether it is a
+// station's operator at all (Via.Kind ViaStation).
+func (p Principal) Station() (uuid.UUID, bool) {
+	if p.Via == nil || p.Via.Kind != ViaStation {
+		return uuid.Nil, false
+	}
+	return p.Via.StationID, true
+}
 
 // principalContextKey is unexported so only this package can set or read the
 // context value.
@@ -159,7 +175,17 @@ func HasPermissions(ctx context.Context, a Access, keys ...string) bool {
 		return false
 	}
 	if r, ok := RequestFrom(ctx); ok {
-		_, err := a.Check(r, Rule{Kind: RulePermission, Names: keys})
+		rule := Rule{Kind: RulePermission, Names: keys}
+		// A station's operator reached the handler only through the router's
+		// wrap, for an operation open to stations (WithPrincipal is set by
+		// nothing else on a request); the handler's own question is asked with
+		// the same leave, and Check still intersects the keys (M134).
+		if p, ok := PrincipalFrom(ctx); ok {
+			if _, station := p.Station(); station {
+				rule.Station = StationAllowed
+			}
+		}
+		_, err := a.Check(r, rule)
 		return err == nil
 	}
 	if userID, ok := AsUserFrom(ctx); ok {
@@ -172,7 +198,27 @@ func HasPermissions(ctx context.Context, a Access, keys ...string) bool {
 var (
 	ErrUnauthenticated = errors.New("unauthenticated")
 	ErrForbidden       = errors.New("forbidden")
+	// ErrStationScope is a station's operator refused an operation that is not
+	// open to stations, or a work center that is not the station's: 403
+	// station_scope (manufacturing phase 2 M131, M135). It is an ErrForbidden.
+	ErrStationScope = fmt.Errorf("%w: station_scope", ErrForbidden)
 )
+
+// StationAccess is what the live hub asks of identity for a shared station's
+// socket (manufacturing phase 2 §17), which carries the station cookie and no
+// operator: a browser WebSocket cannot set Authorization. identity's Access
+// implements it beside Access; the hub finds it by a type assertion.
+type StationAccess interface {
+	// CheckStation resolves the station cookie of a handshake. It answers
+	// false, with no error, when r is not a station's handshake — no station
+	// cookie, or a session cookie beside it, which makes it a person's. A
+	// station that is unknown, revoked, expired or reached from outside its
+	// network allowlist is ErrUnauthenticated, for Access.Reject.
+	CheckStation(r *http.Request) (stationID uuid.UUID, isStation bool, err error)
+	// StationLive reports whether the station is still paired, unrevoked and
+	// unexpired, for the socket's 60-second re-check.
+	StationLive(ctx context.Context, stationID uuid.UUID) (bool, error)
+}
 
 // Access authenticates a request and evaluates an access rule. Identity
 // implements it; every module's router uses it.
