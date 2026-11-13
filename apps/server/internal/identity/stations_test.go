@@ -129,6 +129,17 @@ func (h *harness) stationRequest(station *client, token string, extra ...*http.C
 	return r
 }
 
+// stationPairing is what CheckStation answers for the station's cookie: the
+// hash of its token.
+func (h *harness) stationPairing(t *testing.T, id uuid.UUID) []byte {
+	t.Helper()
+	var hash []byte
+	if err := h.pool.QueryRow(context.Background(), `SELECT token_hash FROM identity.stations WHERE id = $1`, id).Scan(&hash); err != nil {
+		t.Fatalf("read the station's pairing: %v", err)
+	}
+	return hash
+}
+
 var allowedRule = contracts.Rule{Kind: contracts.RulePermission, Names: []string{"manufacturing:access"}, Station: contracts.StationAllowed}
 
 func stationCode(err error, w *httptest.ResponseRecorder) string {
@@ -671,7 +682,7 @@ func TestStation_RevokeTakesEffectAtOnce(t *testing.T) {
 	if n := h.count(t, `SELECT count(*) FROM identity.station_operator_sessions WHERE station_id = $1 AND ended_at IS NULL`, p.Station.ID); n != 0 {
 		t.Fatalf("%d operator sessions still open after revoke", n)
 	}
-	live, err := h.access.StationLive(context.Background(), p.Station.ID, "")
+	live, err := h.access.StationLive(context.Background(), p.Station.ID, nil, "")
 	if err != nil || live {
 		t.Fatalf("StationLive after revoke = %v %v", live, err)
 	}

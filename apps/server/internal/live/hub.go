@@ -300,6 +300,7 @@ type client struct {
 	user, session uuid.UUID
 	station       uuid.UUID
 	stationIP     string // the address a station's handshake came from, for the re-check's allowlist
+	stationPair   []byte // the pairing a station's handshake named, for the re-check: paired again, the socket ends
 	send          chan []byte
 
 	mu        sync.Mutex // serialises enqueue's drain and records overflows
@@ -339,16 +340,16 @@ func (c *client) isClosed() bool {
 // closed, or the user has reached the per-replica limit. A socket that
 // arrives while the listener is down is told so at once.
 func (h *Hub) attach(user, session uuid.UUID) (*client, error) {
-	return h.attachClient(user, session, uuid.Nil, "")
+	return h.attachClient(user, session, uuid.Nil, nil, "")
 }
 
 // attachStation registers a station's socket (§17): keyed by the station,
-// with the address its handshake came from.
-func (h *Hub) attachStation(station uuid.UUID, ip string) (*client, error) {
-	return h.attachClient(station, uuid.Nil, station, ip)
+// with the pairing and the address its handshake came from.
+func (h *Hub) attachStation(station uuid.UUID, pairing []byte, ip string) (*client, error) {
+	return h.attachClient(station, uuid.Nil, station, pairing, ip)
 }
 
-func (h *Hub) attachClient(user, session, station uuid.UUID, stationIP string) (*client, error) {
+func (h *Hub) attachClient(user, session, station uuid.UUID, stationPair []byte, stationIP string) (*client, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.closed {
@@ -357,7 +358,7 @@ func (h *Hub) attachClient(user, session, station uuid.UUID, stationIP string) (
 	if h.perUser[user] >= h.limits.connsPerUser {
 		return nil, errTooManyClients
 	}
-	c := &client{user: user, session: session, station: station, stationIP: stationIP, send: make(chan []byte, h.limits.queue), done: make(chan struct{}), subs: map[string]struct{}{}, docs: map[string]*docSub{}}
+	c := &client{user: user, session: session, station: station, stationPair: stationPair, stationIP: stationIP, send: make(chan []byte, h.limits.queue), done: make(chan struct{}), subs: map[string]struct{}{}, docs: map[string]*docSub{}}
 	h.clients[c] = struct{}{}
 	h.perUser[user]++
 	h.wg.Add(1) // detach's Done: Wait waits for every socket
@@ -670,15 +671,16 @@ func authorizeThrough(ctx context.Context, access *cycleAccess, userID uuid.UUID
 // logged and changes nothing until the next cycle.
 func (h *Hub) recheck(ctx context.Context, c *client) {
 	if c.station != uuid.Nil {
-		// A station's socket re-checks the station: revoked, expired, or its
-		// handshake's address no longer inside its network allowlist, it
+		// A station's socket re-checks the station: revoked, expired, paired
+		// again in another browser, or its handshake's address no longer
+		// inside its network allowlist, it
 		// closes with 4401 (§17).
 		stations, ok := h.opts.Access.(contracts.StationAccess)
 		if !ok {
 			c.close(CloseSessionEnded, "station ended")
 			return
 		}
-		live, err := stations.StationLive(ctx, c.station, c.stationIP)
+		live, err := stations.StationLive(ctx, c.station, c.stationPair, c.stationIP)
 		if err != nil {
 			h.logger.Warn("live: could not re-check a station's socket", "error", err)
 			return

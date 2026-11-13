@@ -985,7 +985,8 @@ page and its endpoints need `identity:manage`.
 After 90 days the station answers `station_unknown` and shows the pairing form again:
 choose **New pairing code** on the station's row and pair it once more (audited
 `station_repaired`). Pairing with a new code replaces the token, so whichever browser held
-the old one is no longer the station. Until the new code is used, a station in use stays
+the old one is no longer the station: its requests are `401 station_unknown`, and its
+live socket closes at its next minute's re-check. Until the new code is used, a station in use stays
 **Paired**, marked **New code waiting**: its token works until the code replaces it.
 
 ### Change a station
@@ -1077,7 +1078,8 @@ or a badge; the station lists their names and initials and nothing more.
   a fixed dummy hash for an unknown person and one without a PIN, with the same reads made
   for a person who does not exist, so the time taken tells them apart no better than the
   answer does. Audited `operator_sign_in_failed` with the station and the person chosen,
-  never the PIN.
+  never the PIN. Attempts refused while a person is in backoff are audited too, but only
+  the first five in a quarter of an hour per station and person.
 - **Alert:** every tenth consecutive failure for one person, and the station's limit
   tripping, write `operator_backoff` to the audit trail and mail the holders of
   `identity:manage` through the system mail — **at most once an hour per station**. The

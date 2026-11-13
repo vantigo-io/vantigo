@@ -106,6 +106,19 @@ var policyStationSignIn = ratelimit.Policy{
 	NoRetryAfter: true,
 }
 
+// policyStationRefusals bounds the audit of attempts refused for a person in
+// backoff: the first five in a quarter of an hour per station and person are
+// written, the rest are refused the same and leave no row. Those attempts
+// count on no other limit, so without it a station's cookie could fill the
+// audit log.
+var policyStationRefusals = ratelimit.Policy{
+	Name:         "station-operator-refusals",
+	Limit:        5,
+	Window:       15 * time.Minute,
+	Message:      authRateLimitMessage,
+	NoRetryAfter: true,
+}
+
 // policyStationAttempts limits every operator sign-in a station verifies,
 // failed or not: thirty in five minutes. Its hit is taken before the
 // verification, atomically, so parallel attempts cannot verify more than the
@@ -1540,8 +1553,14 @@ func auditOperatorFailed(ctx context.Context, q *store.Queries, r *http.Request,
 
 // operatorRefused audits an attempt refused for a person in backoff, on its
 // own transaction: it counts on neither of the station's limits and does not
-// lengthen the backoff.
+// lengthen the backoff. Only the first few in a window are written
+// (policyStationRefusals).
 func (s *server) operatorRefused(ctx context.Context, r *http.Request, st store.IdentityStation, userID uuid.UUID, failures int32, now time.Time) error {
+	if d, err := s.deps.Limiter.Hit(ctx, policyStationRefusals, st.ID.String()+":"+userID.String()); err != nil {
+		return fmt.Errorf("identity: station refusals limit: %w", err)
+	} else if !d.Allowed {
+		return nil
+	}
 	return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		return auditOperatorFailed(ctx, store.New(tx), r, st, userID, failures, now)
 	})
