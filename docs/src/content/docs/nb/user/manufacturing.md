@@ -207,9 +207,10 @@ operasjon. Hver har:
 - **Karantene ved avvik**: når kontrollen avvises, setter avviket den oppretter det ordren
   lager på vent — se [Avvik](#avvik).
 
-Kontrollene lagres med stykklisten. En produksjonsordre får kontrollene til operasjonene
-sine når den bekreftes: å endre stykklisten etterpå endrer ikke kontrollene til en ordre
-som allerede er bekreftet.
+Kontrollene lagres med stykklisten slik redigeringen viser dem: å fjerne en kontroll,
+eller alle kontrollene på en operasjon, og lagre, sletter den fra stykklisten. En
+produksjonsordre får kontrollene til operasjonene sine når den bekreftes: å endre
+stykklisten etterpå endrer ikke kontrollene til en ordre som allerede er bekreftet.
 
 ### Det en stykkliste ikke kan
 
@@ -520,6 +521,11 @@ Velg **Lukk** på en bekreftet eller påbegynt ordre når arbeidet er ferdig. De
 fortsatt er reservert for den, frigjøres, og ordren er **Ferdig**. Tid som fortsatt løper
 på arbeidsordrene, avsluttes, og arbeidsordrene som ikke er ferdige, kanselleres.
 
+Når noe godt er produsert, lukkes ordren bare når hver
+[kvalitetskontroll](#registrer-kontrollene) på arbeidsordrene har et resultat:
+*Kontroller mangler* navngir dem som mangler, så de kan registreres først. En avvist
+kontroll er et resultat.
+
 Når mindre enn antallet ble produsert, blir du spurt om du vil **opprette en restordre**:
 
 - **Ja** oppretter en ny ordre for resten — antallet minus det som ble produsert — med
@@ -703,12 +709,14 @@ knappene:
 
 - en instruks: **Utført**;
 - godkjent eller avvist: **Godkjent** eller **Avvist**;
-- en måling: skriv verdien i **Målt verdi** — nettbrettet viser talltastaturet — og velg
-  **Registrer**. Resultatet, **Godkjent** eller **Avvist**, er Vantigos, vurdert mot
+- en måling: skriv verdien i **Målt verdi** — nettbrettet viser talltastaturet, og
+  knappen **±** ved feltet gjør verdien negativ, siden tastaturet ikke har minus — og
+  velg **Registrer**. Resultatet, **Godkjent** eller **Avvist**, er Vantigos, vurdert mot
   grensene;
-- et bilde: **Ta bilde** åpner kameraet; bildet lagres med resultatet. En JPEG eller PNG
-  på høyst 10 MB; det kameraet skriver inn i et bilde om hvor og når det ble tatt,
-  fjernes før det lagres.
+- et bilde: **Ta bilde** åpner kameraet; bildet lagres med resultatet. Et stort bilde
+  gjøres mindre på nettbrettet før det sendes — høyst 2560 piksler på den lengste siden,
+  som JPEG. En JPEG eller PNG på høyst 10 MB; det kameraet skriver inn i et bilde om hvor
+  og når det ble tatt, fjernes før det lagres.
 
 En **Merknad** er valgfri på hver kontroll. Å registrere en kontroll på nytt erstatter
 resultatet; det forrige beholdes, med hvem som registrerte det og når. Ingenting kan
@@ -717,16 +725,20 @@ registreres på en arbeidsordre som er ferdig eller kansellert.
 Det kontrollene stopper:
 
 - **Ferdig** nektes mens en kontroll på arbeidsordren, av begge slag, mangler resultat:
-  *Kontroller mangler*.
+  *Kontroller mangler*, med kontrollene navngitt.
 - **Registrer produksjon** — på ordresiden eller på den siste operasjonen — nektes mens
   en kontroll på en tidligere operasjon mangler resultat, eller en kontroll for **første
   stykk** på den siste operasjonen mangler et. Avvisningen navngir kontrollene. Å bare
   melde svinn stoppes ikke.
+- **Lukk** på ordresiden nektes, når noe godt er produsert, mens en kontroll på ordrens
+  arbeidsordrer mangler resultat.
 - Å starte stoppes aldri.
 
 **Avvist** stopper ingenting: det oppretter straks et avvik, navngitt på kontrollen —
 **DEV-12**, for eksempel — som en arbeidsleder tar stilling til. Når kontrollen har
-**Karantene ved avvik**, setter avviket det ordren lager i karantene.
+**Karantene ved avvik**, setter avviket det ordren lager i karantene. Avvises den samme
+kontrollen igjen mens avviket er åpent, opprettes ikke et nytt: den nye målingen legges
+til det åpne avviket, og kontrollen viser til det.
 
 Ordresidens fane **Arbeidsordrer** viser hver kontroll under **Kontrollresultater**, med
 resultatet, hvem som registrerte det og når, og avviket en avvisning opprettet.
@@ -736,7 +748,9 @@ resultatet, hvem som registrerte det og når, og avviket en avvisning opprettet.
 Velg **Meld avvik** på en arbeidsordre, på ordresiden, i listen **Avvik** eller på siden
 til et parti i Lager. Oppgi **Tittel**, en **Beskrivelse** om du vil, og kryss av for
 **Sett produksjonen i karantene** for å holde det ordren har laget — se [Avvik](#avvik).
-Å melde avvik krever samme rettighet som verkstedet.
+Å melde avvik krever samme rettighet som verkstedet; på et parti også Lagers rettigheter
+til å se lagersteder og beholdning. Et avvik på en ordre som navngir et parti, må navngi
+et parti ordren har laget eller brukt.
 
 ### Meld svinn
 

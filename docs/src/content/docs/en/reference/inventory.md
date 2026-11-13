@@ -997,8 +997,11 @@ is in quarantine until it is released, an earlier receipt's accepted quantity wi
 lot is one quantity. The movement answers **`inspectionLots`**, the lots its receipt put
 on hold, and the screen says so. Moves, adjustments, counts, transfers and imports are not
 receipts and put none. The hold is Inventory's, so the lot page releases it
-(`lots-manage`). The lots list's `status=quarantine&holdCause=inspection` is the
-inspection queue, and `GET /stats` counts it as `lotsAwaitingInspection`.
+(`lots-manage`). The inspection queue is every lot with an active inspection hold,
+whatever its status (a recall's block on top makes it `blocked`) or stock: `GET /stats`
+counts it as `lotsAwaitingInspection`, and the home page's link opens the lots list with
+`holdCause=inspection&stock=all` — the same predicate. A reservation of the item stays
+while the lot is held; a delivery's FEFO proposal and AutoLot skip the held lot.
 
 ### A lot's files
 

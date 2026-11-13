@@ -165,10 +165,14 @@ storage](/en/admin/object-storage/) under the scope `manufacturing-quality`. Wit
 object storage configured, taking a photo is refused (*storage_not_configured*) and a
 photo check cannot be recorded; every other check works.
 
-Each picture is a JPEG or PNG of at most 10 MB, as the tablet's camera wrote it, less
-what it says about where and when it was taken. A photo is a quality record: it is kept
-as long as the work order, even when its result is recorded again. Count on a few
-megabytes per photo check per work order. A picture uploaded but never recorded on a
+Each picture is a JPEG or PNG of at most 10 MB, less what it says about where and when
+it was taken. The shop floor makes a large picture smaller before it sends it — at most
+2560 pixels on its longest side, as a JPEG — so most photos are well under that. The
+upload is the one Manufacturing request allowed past the platform's 1 MB body cap: a
+reverse proxy in front of Vantigo must let a request of a little over 10 MB through to
+`/api/v1/manufacturing/work-orders/*/photos`, or a large photo is refused there. A photo
+is a quality record: it is kept as long as the work order, even when its result is
+recorded again. Count on a megabyte or so per photo check per work order. A picture uploaded but never recorded on a
 check — the operator took it and left — is removed after a day by the worker
 `manufacturing.object-deletions`, which runs in the worker process with the others and
 retries until the store confirms.
