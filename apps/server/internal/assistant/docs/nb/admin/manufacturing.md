@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de seks rettighetene og hva hver gir, kvalitetsrettigheten som lukker avvik, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, hvem som planlegger produksjonsplanen, rollene du bygger av dem; virksomhetens tidssone som arbeidsstasjonenes kalendere går i; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, kameraet og nettverket; lagringen bildene av kontrollene tar; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de seks rettighetene og hva hver gir, kvalitetsrettigheten som lukker avvik, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, hvem som planlegger produksjonsplanen, rollene du bygger av dem; virksomhetens tidssone som arbeidsstasjonenes kalendere går i; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, kameraet og nettverket; lagringen bildene av kontrollene tar; den nattlige påfyllingsjobben og automatisk oppretting, av som standard; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 51
 sources:
@@ -11,6 +11,8 @@ sources:
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
   - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
   - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
+  - apps/server/internal/db/migrations/00171_manufacturing_replenishment.sql
+  - apps/server/internal/manufacturing/replenishment.go
 ---
 
 Produksjon-modulen (**Manufacturing** på engelsk) beskriver hvordan virksomheten lager
@@ -64,7 +66,7 @@ den brukes, står i [Produksjon](/nb/user/manufacturing/), og hver regel i
 
 3. **Produksjon**-flisen vises for alle med `manufacturing:access`.
 
-Modulen har ingen egne innstillinger. Den starter to bakgrunnsjobber, og ingen av dem
+Modulen har ingen egne innstillinger. Den starter sine bakgrunnsjobber, og ingen av dem
 trenger noe oppsett:
 
 - `manufacturing-erasure`, som én gang i døgnet tømmer fritekstnotatene på
@@ -79,6 +81,18 @@ trenger noe oppsett:
   arbeidsprosess for å gi den de bekreftede ordrene; med Ordre av lager den ingen, og alt
   annet i Produksjon virker som før. Forespørsler som fortsetter å feile, blir stående
   som `failed` i `manufacturing.mto_requests` med den siste feilen, etter åtte forsøk.
+- `manufacturing.replenishment`, påfyllingsjobben: hver natt **kl. 02.00 i virksomhetens
+  tidssone** (**Innstillinger for arbeidsområdet**), og hver gang noen trykker **Kjør nå**
+  på **Forslag**, erstatter den hvert aktive lagersteds forslag om hva som bør produseres
+  eller kjøpes ([påfylling](/en/reference/manufacturing/#replenishment)). Den leser
+  bestillingspunktene, maksbeholdningene og multiplumene som er satt på påfyllinger i
+  Lager, og, med Ordre slått på, salgsordrenes ureserverte etterspørsel — uten Ordre sier
+  siden *Salgsordrer er ikke regnet med*. En kjøring er leaset, så to arbeidsprosesser
+  kjører aldri én to ganger, og en kjøring der arbeideren stoppet, tas opp igjen etter ti
+  minutter. Kjøringene beholdes i 90 dager i `manufacturing.replenishment_runs`.
+
+Migreringen `00171_manufacturing_replenishment.sql` legger kjøringene, forslagene og
+reglene for automatisk oppretting til i skjemaet.
 
 ## Gi folk tilgang
 
@@ -181,6 +195,26 @@ registrert på en kontroll — operatøren tok det og gikk — fjernes etter et 
 arbeideren `manufacturing.object-deletions`, som går i arbeiderprosessen sammen med de
 andre og prøver igjen til lageret bekrefter.
 
+## Automatisk påfylling
+
+Automatisk oppretting er **av** overalt til noen slår den på, per produkt og lagersted,
+under **Automatisk påfylling** på produktets standardstykkliste (det krever Administrere
+produksjonsordrer). Når den er på, oppretter nattkjøringen selv produksjonsordren et
+forslag ber om — som utkast, eller også bekreftet med **Bekreft også** — uten at noen ser
+på den først. Slå den bare på for produkter med jevn etterspørsel, og gi Administrere
+produksjonsordrer til dem som skal avgjøre det.
+
+Kjøringen oppretter aldri en ordre til for et produkt mens en fra et tidligere forslag
+fortsatt er et utkast eller åpen på lagerstedet. For å se hva den gjorde, les de nyeste
+kjøringene som databaseeier:
+
+```sql
+SELECT kind, site_id, status, requested_at, finished_at, suggestions, orders_created, sales_counted, error
+FROM manufacturing.replenishment_runs
+ORDER BY requested_at DESC
+LIMIT 10;
+```
+
 ## Kontroller
 
 1. Som en med Administrere stykklister og arbeidsstasjoner åpner du **Produksjon** →
@@ -215,6 +249,11 @@ andre og prøver igjen til lageret bekrefter.
     bekrefter en salgsordre med det i Ordre. Innen et minutt lister
     **Produksjonsordrer** en bekreftet ordre med opphav **Salgsordre** og salgsordrens
     nummer, og salgsordrens linje viser den.
+12. Gi produktet et bestillingspunkt i Lager som er høyere enn det som er på lager på
+    lagerstedet. Åpne **Produksjon** → **Forslag** og velg **Kjør nå**: innen et minutt
+    er produktet listet som **Produsere** med begrunnelsen. Kryss det av og velg
+    **Opprett utkast**: et utkast med opphav **Forslag** listes under
+    **Produksjonsordrer**.
 
 ### Se nærmere på produksjon mot ordre
 
@@ -271,3 +310,9 @@ WHERE sales_order_id = <salgsordrens id>;
 | En produksjon nektes for beholdning | Lagerstedet har ikke nok av en komponent, eller lagerstedet er arkivert i Lager | Ta imot eller flytt varene, gjenåpne lagerstedet, eller rett med en justering i Lager |
 | En bekreftet salgsordre får ingen produksjonsordre | Produktets standard stykkliste er ikke **Produser mot ordre**, Ordre eller arbeidsprosessen kjører ikke, linjen har allerede en ordre, eller stykklisten har ingen operasjoner og salgsordren navngir ikke noe lagersted | Merk stykklisten, start arbeidsprosessene, gi salgsordren et lagersted; grunnen for hver linje som ble utelatt, står i `manufacturing.mto_requests.reasons` |
 | `permission denied for table mto_requests` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00160` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |
+| **Forslag** er tom | Ingen påfylling i Lager har et bestillingspunkt, ingenting er lavt, eller ingen kjøring er gjort | Sett bestillingspunkter; velg **Kjør nå** |
+| **Forslag** sier *Ikke kjørt ennå* etter en natt | Ingen arbeidsprosess kjører | Start arbeidsprosessen ([Installasjon](/nb/admin/installation/)) |
+| **Forslag** sier *Salgsordrer er ikke regnet med* | Ordre er ikke slått på | Slå på Ordre, eller godta at etterspørselen fra salg holdes utenfor |
+| En kjøring i `replenishment_runs` er `failed` | `error` sier hvorfor — Lager svarer ikke, eller et lagersted har mer enn 5000 påfyllinger med bestillingspunkt | Rett årsaken; neste kjøring lager forslagene på nytt |
+| Automatisk oppretting laget ingen ordre | En ordre fra et tidligere forslag for produktet er fortsatt et utkast eller åpen, eller ordren ble nektet (logget av `manufacturing.replenishment`) | Fullfør eller kanseller den forrige ordren; les arbeiderens logg |
+| `permission denied for table suggestions` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00171` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |

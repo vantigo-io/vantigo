@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, moving a work order by dragging it or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, moving a work order by dragging it or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; replenishment suggestions — what is projected, what is suggested to make or buy and by when, creating draft or confirmed orders from them, dismissing one, running it now, exporting the buy suggestions and automatic creation on a bill of materials; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -35,8 +35,9 @@ The **Manufacturing** tile is shown to everyone with **Use Manufacturing**
 
 | Area in the sidebar | What it holds |
 | --- | --- |
-| **Overview** | **Reports** in its header; **Orders to start today**, **Orders in progress** and **Late orders**, and the orders late or due this week; **Active work centers**, **Blocked work centers** and **Active bills of materials**: how many there are |
+| **Overview** | **Reports** in its header; **Orders to start today**, **Orders in progress** and **Late orders**, and the orders late or due this week; **Active work centers**, **Blocked work centers**, **Active bills of materials** and **Suggestions to make**: how many there are |
 | **Manufacturing orders** | Every open manufacturing order, with its number, product, quantity, site, due date and reservation status |
+| **Suggestions** | What to make or buy so that stock stays above each product's reorder point, site by site, with the reason and the date it is needed by |
 | **Shop floor** | The work centers' queues, where operators start, pause and finish work orders, and **My work** |
 | **Production schedule** | The board: each work center's planned work orders, day by day, with its load, and the orders still to plan |
 | **Deviations** | What went wrong: every deviation, open ones first in view, with its order, product and lots, and whether it holds them in quarantine |
@@ -1028,6 +1029,71 @@ After **Scrap** or **Return**, write off what is left with an
 [adjustment](/en/user/inventory/) in Inventory, or return it, then choose **Release its
 holds** on the deviation.
 
+## Replenishment suggestions
+
+**Suggestions** (under **Manufacturing orders** in the sidebar) tells you what to make, or
+buy, before a product runs short. It works from the **reorder point**, the **maximum** and
+the **multiple** set on the product's placement at a site in Inventory — see
+[Set an item's primary location and reorder point](/en/user/inventory/#set-an-items-primary-location-and-reorder-point) — and only products with a reorder point there
+are judged.
+
+For each such product and site, Manufacturing works out the **projected** stock: what is
+usable on hand (held and expired lots left out), less what is reserved, plus what is on
+its way there by transfer, plus what open manufacturing orders — and the drafts made from
+earlier suggestions — will still make of it, less what open orders still need of it as a
+component and have not reserved, less what open sales orders still need of it and have
+not reserved. An order made to order for a sales order is left out, and so is the sales
+order line it is made for: the two cancel out.
+
+When the projected stock is at or below the reorder point, the product is suggested:
+
+- **Make** when it has a default active bill of materials, **Buy** when it has none.
+- The **quantity** fills up to the maximum — or to one above the reorder point when there
+  is no maximum — rounded up to a whole number of the multiple when one is set.
+- **Need by** is today when what is on hand, less what is reserved, is already at or below
+  the reorder point; otherwise today plus the bill of materials' lead time, in business
+  days. A buy suggestion is needed today.
+- The **reason** says it in figures: *Projected 6 is at or below the reorder point 20:
+  usable on hand 30, reserved 25, incoming 2, in production 3, needed by production 0,
+  needed by sales orders 4.* What sales orders need is only ever a sum: no customer or
+  order is named.
+
+The suggestions are made every night at 02:00, in the business's own time zone, and each
+night's replace the last. **Run now** makes them at once (at most once a minute); the
+page shows when they were last made. When Orders is not in use, **Sales orders not
+counted** says that sales demand is left out.
+
+### Make orders from suggestions
+
+1. Open **Suggestions**. Each site has its own table, the make rows first.
+2. Tick the rows to make. Change a **quantity** if you want another.
+3. Choose **Create draft MOs** to get drafts to look over, or **Create and confirm** to
+   confirm them at once, reserving their components as **Confirm** does — a shortage
+   does not stop it.
+
+Each row becomes one manufacturing order, of origin **Suggestion**, at the suggestion's
+site, due on its need-by date, from the product's default bill of materials. A row whose
+order could not be made says why. Creating orders needs **Manage manufacturing orders**.
+
+**Dismiss** hides a suggestion until the next run, which suggests it again if it is still
+needed. Buy rows cannot be made into orders — there is no purchasing in Vantigo yet — but
+**Export buy suggestions** downloads them as a CSV file to order from.
+
+### Automatic creation
+
+On a product's default bill of materials, **Automatic replenishment** lists every active
+site with two switches, both off by default:
+
+- **Create automatically** — the nightly run creates the suggested manufacturing order
+  itself, as a draft.
+- **Confirm too** — and confirms it.
+
+The nightly run never creates a second order while one from an earlier suggestion of the
+product is still a draft or open at the site; the suggestion is then listed with *An MO
+from an earlier suggestion is open*. Orders made this way are created by nobody in
+particular, so the page warns before you turn it on. Setting it needs **Manage
+manufacturing orders**.
+
 ## Deleting a product a bill of materials uses
 
 Products refuses to delete a variant, or to turn its product into a service, while an
@@ -1067,6 +1133,8 @@ cannot be delegated.
 | **Create sub-assembly orders**, and **Create manufacturing order** on a sales order's line | ✓ | ✓ | – |
 | **Deviations**, a deviation, an order's **Check results** | ✓ | – | – |
 | Recording a check, **Take photo**, **Report a deviation** | ✓ | either | either |
+| **Suggestions**, a BoM's **Automatic replenishment** | ✓ | – | – |
+| **Create draft MOs**, **Create and confirm**, **Dismiss**, **Run now**, the automatic replenishment switches | ✓ | ✓ | – |
 
 Registering a production, and every action on the shop floor, needs Use Manufacturing and
 either of the other two. Closing a deviation and **Release its holds** need **Manage

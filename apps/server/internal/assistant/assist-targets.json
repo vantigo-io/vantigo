@@ -170,6 +170,11 @@
     "description": "The list on the Low stock page: every item at or below its reorder point at a site, filtered by site and searched by SKU or name, with what is available and incoming, the suggested quantity and how it was rounded up to whole packagings, and what other sites have. Choose rows at one site to create a transfer to it, or export the list as CSV."
   },
   {
+    "key": "inventory.placement.multiple",
+    "route": "/inventory/variants/{variantId}",
+    "description": "The placement's multiple: a suggestion is rounded up to a whole number of it, such as a batch size."
+  },
+  {
     "key": "inventory.site.bulk-add",
     "route": "/inventory/sites/{siteId}",
     "description": "The button on a site's page that creates a grid of locations at once, such as aisles, racks and shelves."
@@ -278,6 +283,11 @@
     "key": "manufacturing.bom.operations",
     "route": "/manufacturing/boms/new",
     "description": "The operations in sequence: each one's work center, setup, minutes per cycle and instructions for the shop floor."
+  },
+  {
+    "key": "manufacturing.bom.replenishment",
+    "route": "/manufacturing/boms/{bomId}",
+    "description": "The switches on a default bill of materials that let the nightly run create, and confirm, its suggested orders per site."
   },
   {
     "key": "manufacturing.bom.save",
@@ -503,6 +513,21 @@
     "key": "manufacturing.shop-floor.queue",
     "route": "/manufacturing/shop-floor/work-centers/{workCenterId}",
     "description": "The work orders waiting, running or paused at the work center, with what remains and who runs each."
+  },
+  {
+    "key": "manufacturing.suggestions.actions",
+    "route": "/manufacturing/suggestions",
+    "description": "The buttons that create draft or confirmed manufacturing orders from the selected suggestions."
+  },
+  {
+    "key": "manufacturing.suggestions.list",
+    "route": "/manufacturing/suggestions",
+    "description": "A site's suggestions to make or buy, with the projected stock, the quantity, the need-by date and the reason."
+  },
+  {
+    "key": "manufacturing.suggestions.run",
+    "route": "/manufacturing/suggestions",
+    "description": "The button on the suggestions page that runs replenishment at once instead of waiting for the night."
   },
   {
     "key": "manufacturing.work-center.actions",
