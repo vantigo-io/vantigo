@@ -179,8 +179,8 @@ medlem blir stående i gruppen, men det planlegges ikke lenger arbeid ved det.
      planleggingen og verkstedet velger medlemmet (se
      [Grupper arbeidsstasjoner som kan erstatte hverandre](#grupper-arbeidsstasjoner-som-kan-erstatte-hverandre)).
      Alle operasjonene i én stykkliste må være på arbeidsstasjoner på **samme lagersted**;
-   - **Avhenger av**, operasjonene den kjøres etter. En ny operasjon avhenger av den som ble
-     lagt til før den; tøm feltet for en som kan starte med en gang, eller velg to eller
+   - **Avhenger av**, operasjonene den kjøres etter — bare operasjoner før den i
+     **Rekkef.** tilbys. En ny operasjon avhenger av den som ble lagt til før den; tøm feltet for en som kan starte med en gang, eller velg to eller
      flere for en som venter på flere. Operasjoner som avhenger av den samme, kjøres side om
      side;
    - **Overføringsantall**, valgfritt: hvor mange godkjente enheter operasjonen sender
@@ -211,9 +211,11 @@ la til i samme redigering, før noen av dem er lagret.
 
 Under operasjonene viser **Rekkefølgen på operasjonene** dem i trinn: trinn 1 er det som
 kan starte med en gang, hvert neste trinn det som kjøres etter trinnene før, og
-operasjonene på samme trinn kjøres side om side. Operasjoner som avhenger av hverandre i
-en sirkel, nektes — redigeringsvinduet sier fra før det sender, og serveren navngir
-sirkelen. Fjerner du en operasjon andre avhang av, avhenger de av det den avhang av, så
+operasjonene på samme trinn kjøres side om side. Hver gren må føre til den siste
+operasjonen, den som lager produktet: en operasjon som ingen senere operasjon avhenger av,
+nektes — *Ingen operasjon kjøres etter denne* — med mindre den er den siste. En operasjon
+som avhenger av en som ikke ligger før den i rekkefølgen, nektes også. Redigeringsvinduet
+markerer begge under **Avhenger av** før det sender. Fjerner du en operasjon andre avhang av, avhenger de av det den avhang av, så
 rekkefølgen blir stående.
 
 **Å redigere** en stykkliste lagrer linjene og operasjonene slik du ser dem, i én
@@ -417,7 +419,10 @@ På et utkast velger du **Bekreft**. Å bekrefte:
 - oppretter en **arbeidsordre** for hver operasjon i stykklisten, på arbeidsstasjonen
   sin, med instruksjonene og de forventede minuttene. Den første operasjonen er klar til
   å startes i [verkstedet](#verkstedet); de andre venter på tur. En ordre der stykklisten
-  ikke har operasjoner, har ingen arbeidsordrer.
+  ikke har operasjoner, har ingen arbeidsordrer. En operasjon som bruker en
+  arbeidsstasjonsgruppe, får gruppens første aktive medlem; når ingen av gruppens
+  arbeidsstasjoner er aktive, blir ordren ikke bekreftet — aktiver en igjen, eller legg en
+  til i gruppen, først.
 
 Når lagerstedet ikke har nok av en komponent, blir ordren bekreftet likevel: linjene som
 ikke kunne reserveres, blir stående ureservert, og siden navngir hver av dem med mengden
@@ -709,7 +714,9 @@ Flere operatører kan arbeide på én arbeidsordre samtidig, hver med sin egen t
 ### Start en arbeidsordre utenfor rekkefølgen
 
 Operasjonene kjøres i rekkefølgen stykklisten gir: en arbeidsordre **Venter** til hver
-operasjon den avhenger av er ferdig. Når du
+operasjon den avhenger av er ferdig. Bare operasjonene den avhenger av direkte teller:
+starter du en utenfor rekkefølgen og fullfører den, blir operasjonen etter den **Klar**
+selv om en operasjon før den du startet fortsatt er åpen. Når du
 velger **Start** på den, får du beskjed om at *En tidligere operasjon er ikke ferdig*. Når
 arbeidet overlapper i praksis, velger du **Start likevel**: arbeidet starter som vanlig,
 og tidsregistreringen merkes **Utenfor rekkefølge**, så arbeidslederen ser det.
@@ -717,14 +724,16 @@ og tidsregistreringen merkes **Utenfor rekkefølge**, så arbeidslederen ser det
 
 ### Gruppearbeid
 
-Når arbeidsstasjonen er med i en arbeidsstasjonsgruppe, viser siden også **Gruppearbeid**:
+Når arbeidsstasjonen er et aktivt medlem av en arbeidsstasjonsgruppe, viser siden også
+**Gruppearbeid**:
 gruppens arbeidsordrer som er klare, og som ingen medlemmer har tatt ennå — ingen er
 planlagt, og det er ikke registrert tid på dem. De samme arbeidsordrene vises på siden
 til hvert medlem. Velg **Start her** for å ta en: den flyttes til denne arbeidsstasjonen,
 med denne arbeidsstasjonens rigging, effektivitet og satser, og tiden din starter. Fra da
 av vises den bare i **Kø** for denne arbeidsstasjonen. Har et annet medlem tatt den et
 øyeblikk før deg, får du beskjed om at arbeidsordren er tatt ved en annen
-arbeidsstasjon, og listen leses på nytt.
+arbeidsstasjon, og listen leses på nytt. Når gruppen er arkivert, blir arbeidsordrene ved
+medlemmet de har, og vises i **Kø** for den arbeidsstasjonen.
 
 ### Send et antall videre
 
@@ -735,7 +744,8 @@ sender videre, og velger **Registrer antall**. Ingenting bokføres på lager —
 produksjonen på den siste operasjonen gjør det. Arbeidsordren viser **Sendt videre**, for
 eksempel *4 stk av 10 stk sendt videre før neste kan starte*, og de neste operasjonene blir
 **Klar** så snart antallet er nådd. Arbeidsordrens førstestykkekontroller må være
-registrert først. Sender du samme registrering to ganger, registreres den én gang.
+registrert først. Alle antallene som registreres på en arbeidsordre, kan til sammen ikke
+overstige ordrens antall. Sender du samme registrering to ganger, registreres den én gang.
 
 ### Bytt til en annen arbeidsordre
 
@@ -950,13 +960,15 @@ er i din egen tidssone, og den tilbyr også å åpne ordren.
 Arbeidsordren får den første ledige tiden fra tidspunktet du valgte — fra nå, hvis det er
 passert. Arbeidsordrene som avhenger av den, direkte eller lenger ut, følger etter bare når
 de ellers ville startet for tidlig — før den er ferdig, eller før overføringsantallet er
-nådd; arbeidsordrer i andre ordrer flyttes aldri.
+nådd. En som flyttes, går utenom dem som blir stående, så to aldri deler en
+arbeidsstasjon samtidig; arbeidsordrer i andre ordrer flyttes aldri.
 
 En arbeidsordre i en arbeidsstasjonsgruppe der medlemmet ikke er fast ennå, kan også dras
 opp eller ned til raden til et annet medlem, eller flyttes dit med **Arbeidsstasjon** i
-**Flytt … til …**: den kjøres da ved det medlemmet, med tallene derfra. Andre rader nektes.
-Når det er registrert tid på arbeidsordren, blir den ved medlemmet sitt, og en flytting til
-en annen rad nektes.
+**Flytt … til …**: den kjøres da ved det medlemmet, med tallene derfra. Andre rader nektes,
+og det samme gjør et medlem som er **blokkert** — raden tilbys ikke. Når det er registrert
+tid på arbeidsordren, eller når gruppen er arkivert, blir den ved medlemmet sitt, og en
+flytting til en annen rad nektes.
 
 ## Kostnaden for en ordre
 
