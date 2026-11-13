@@ -937,9 +937,14 @@ restarts** rather than per process. The limit is applied before the access check
 | `UserManagement` | 30 / minute | Owner user management, adoption for Staff and the employee roles |
 | `OwnerAvatarRead` | 300 / minute | Owner avatar reads |
 | `StationPairing` | 10 / 15 minutes | Pairing a station with a code |
+| `StationPairingGlobal` | 60 / hour | Pairing attempts across the installation, whatever their addresses |
+| `StationOperatorSignIn` | 120 / minute | Operator sign-ins from one address, before any work (a site's tablets may share an address) |
+| `station-operator-attempts` | 30 / 5 minutes | Operator sign-ins one station verifies, failed or not, keyed by the station; taken before the PIN is checked; answers without `Retry-After` |
 | `station-operator-sign-in` | 10 failures / 5 minutes | Failed operator sign-ins at one station, keyed by the station; answers without `Retry-After` |
+| `BadgeEnrolment` | 60 / 15 minutes | Enrolling badges |
 
-Every policy except `login-attempts` and `station-operator-sign-in` keys on the client address, which is why
+Every policy except `login-attempts`, `StationPairingGlobal`, `station-operator-attempts` and
+`station-operator-sign-in` keys on the client address, which is why
 `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` matter behind a proxy: get them
 wrong and every request shares one bucket, or a client picks its own.
 
@@ -958,13 +963,19 @@ page and its endpoints need `identity:manage`.
 1. Under **Workspace admin → Stations**, choose **Register a station**: a name, the idle
    timeout (5 minutes by default, 1 to 60), whether a badge needs its holder's PIN too,
    an optional network allowlist and, for someone who holds `manufacturing:boms-manage`,
-   the work centers it serves. Audited `station_registered`.
+   the work centers it serves (without that permission the field is shown, not changed).
+   Audited `station_registered`. If the work centers cannot be saved, the station is saved
+   all the same and its code is shown; the page says the work centers were not saved, and
+   they are set by editing the station.
 2. The answer is a **pairing code**: eight characters of Crockford base32, valid **15
    minutes**, shown once and stored only as a SHA-256 hash.
 3. On the tablet, open `/station` under `APP_URL` and enter the code. Pairing spends it,
    mints a 256-bit station token, stores its hash, and sets the `vantigo.station` cookie
-   for **90 days**. Pairing is rate limited per address (`StationPairing`). Audited
-   `station_paired`.
+   for **90 days**. Pairing is rate limited per address (`StationPairing`) and across the
+   installation (`StationPairingGlobal`). A code tried from an address outside the
+   station's [network allowlist](#the-network-allowlist) is refused as an invalid one.
+   Audited `station_paired`; every refused attempt is audited `station_pairing_failed` with
+   the address it came from.
 4. **A browser is a station or a person's, never both.** If someone is signed in to
    Vantigo in the browser that pairs, that session is ended and its cookie cleared in the
    same answer (audited `station_session_signed_out`). If a person later signs in on the
@@ -974,7 +985,22 @@ page and its endpoints need `identity:manage`.
 After 90 days the station answers `station_unknown` and shows the pairing form again:
 choose **New pairing code** on the station's row and pair it once more (audited
 `station_repaired`). Pairing with a new code replaces the token, so whichever browser held
-the old one is no longer the station.
+the old one is no longer the station. Until the new code is used, a station in use stays
+**Paired**, marked **New code waiting**: its token works until the code replaces it.
+
+### Change a station
+
+**Edit** on the station's row changes its name, idle timeout, badge rule, allowlist and
+work centers. Every change is audited `station_changed` with the settings before and after;
+a changed allowlist is audited `station_networks_changed` as well. If the station's work
+centers cannot be read when the form opens, saving is blocked rather than taking them for
+none. A change of the work centers is recorded by Manufacturing with who made it (see
+[Manufacturing's reference](/en/reference/manufacturing/#the-stations-work-centers)).
+
+**Turning off *Require the PIN with a badge*** — on a new station or an existing one —
+needs your current password unless you signed in within the last ten minutes
+(`403 reauthentication_required` otherwise), and mails every holder of `identity:manage`
+that the station now takes a badge alone.
 
 ### Revoke a station
 
@@ -988,7 +1014,9 @@ A revoked station is put back to use with a new pairing code.
 
 **Allowed networks** pins a station to the addresses it may be used from: one address or
 CIDR network per line (`192.168.10.0/24`), at most 50. Every station request from any other
-address is `station_unknown`. The address is the client's as the rate limiter resolves it
+address is `station_unknown`, pairing from one is refused, and the station's live socket is
+closed at its next minute's re-check once the address it connected from is no longer
+inside the list. The address is the client's as the rate limiter resolves it
 behind the proxy, so `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` must be right before an
 allowlist means anything. A change is audited `station_networks_changed`.
 
@@ -1002,32 +1030,54 @@ allowlist means anything. A change is audited `station_networks_changed`.
   values. An administrator can **clear** a PIN on the user's page, never set or read one.
   Audited `pin_set`, `pin_disabled` (the person) and `pin_cleared` (an administrator).
 - **A badge** is the code a keyboard-wedge card reader types. An administrator enrols it
-  by scanning the card into the field on the user's page; it is stored as an HMAC under
-  its own key derived from `APP_SECRET`, unique per person. Audited `badge_enrolled` and
-  `badge_cleared`.
+  by scanning the card into the field on the user's page, only for a person who holds
+  `manufacturing:shop-floor`, and with their own current password unless they signed in
+  within the last ten minutes. It is stored as an HMAC under its own key derived from
+  `APP_SECRET`, unique per person. A card that cannot be enrolled is one
+  `409 badge_unavailable`, which does not say whose it is. The person is mailed that a badge
+  was enrolled for them. Enrolling is rate limited per address (`BadgeEnrolment`). Audited
+  `badge_enrolled` and `badge_cleared`.
+- **A wrong current password** given to set a PIN, enrol a badge or make a station take a
+  badge alone counts on `login-attempts`, keyed on the account rather than an email and an
+  address: ten wrong in a minute and the next is `429`.
+- **A PIN or a badge set or cleared** — by the person or an administrator — ends the
+  person's operator sessions at every station at once and clears their failed sign-ins
+  everywhere.
 - **A badge needs the PIN too by default** (*Require the PIN with a badge*), so a found
   card is not enough. Turning it off makes a card alone sign its holder in at that station
   — suitable only for a card-only terminal in a controlled area.
 - Neither is ever a sign-in credential: sign-in, MFA, passkeys and single sign-on never
-  read them. Rotating `APP_SECRET` makes every PIN and badge unusable: people set their
-  PINs again and badges are enrolled again.
+  read them.
+- **Key version and re-enrolment.** Each PIN and badge is stored with the version of the
+  derived key it was made under. One of an older version never verifies; the user's page
+  shows it as **Needs re-enrolment**, and the person's **Settings → Security** tells them
+  to set their PIN again. Rotating `APP_SECRET` makes every PIN and badge unusable without
+  that mark: after a rotation, people set their PINs again and badges are enrolled again.
 
 ### Operator sign-in, backoff and alerts
 
 Who may switch in is every active person holding `manufacturing:shop-floor` who has a PIN
 or a badge; the station lists their names and initials and nothing more.
 
-- **Ten failed sign-ins in five minutes** close the station to sign-ins for the rest of the
-  window (`429`, no `Retry-After`).
+- **Thirty sign-ins in five minutes, and ten failed ones,** close the station to sign-ins
+  for the rest of the window (`429`, no `Retry-After`). The thirty are counted before the PIN
+  is checked, so however many attempts arrive at once, no more than thirty are checked.
+- **One at a time per person:** attempts for one person at one station are taken in turn,
+  so each sees the backoff the one before it left. The server checks at most six PINs at
+  once; an attempt that finds no room within two seconds is `429`.
 - **Escalating backoff per (station, person), never a lock-out:** from the fifth
   consecutive failure for one person at one station, the next attempt waits 30 seconds,
   doubling with each further failure up to 15 minutes. An attempt before then is refused
-  without being checked. A success clears it, and the same person at another station is not
-  slowed. Nobody at a tablet can lock a colleague out of the floor.
+  without being checked, and counts on neither of the station's limits. A success clears
+  it, a run whose last failure is an hour old starts again, and the same person at another
+  station is not slowed. Nobody at a tablet can lock a colleague out of the floor.
+- **Reset a person's backoff:** the station's row lists the people with a run of failures
+  there; **Reset** clears one at once (audited `operator_backoff_reset`).
 - Every failure gives the same `401 operator_sign_in_failed`, and the PIN is checked against
-  a fixed dummy hash for an unknown person, one without a PIN and one in backoff, so the
-  time taken tells them apart no better than the answer does. Audited
-  `operator_sign_in_failed` with the station and the person chosen, never the PIN.
+  a fixed dummy hash for an unknown person and one without a PIN, with the same reads made
+  for a person who does not exist, so the time taken tells them apart no better than the
+  answer does. Audited `operator_sign_in_failed` with the station and the person chosen,
+  never the PIN.
 - **Alert:** every tenth consecutive failure for one person, and the station's limit
   tripping, write `operator_backoff` to the audit trail and mail the holders of
   `identity:manage` through the system mail — **at most once an hour per station**. The
@@ -1039,13 +1089,34 @@ or a badge; the station lists their names and initials and nothing more.
 
 An operator's requests carry the station cookie and `Authorization: Station <token>`; the
 page holds the token in memory only, so a reload asks the operators to switch in again. A
-session ends when the operator is **switched out** (with the station cookie alone, so a
-chip can be closed after a reload), after the station's **idle timeout** measured by the
-server's clock, after **12 hours**, when the person may no longer act (disabled, pending,
-deactivated by the directory), when the station is revoked or re-paired, and when the same
-person signs in again. A token copied to another station's browser is
-`401 operator_session_ended`. Audited `operator_signed_in` and `operator_signed_out` with
-the reason.
+session ends, with its reason:
+
+| Reason | When |
+| --- | --- |
+| `switched_out` | **Switch out** on the station (the station cookie alone, so a chip can be closed after a reload) |
+| `ended_by_admin` | **End** beside the operator on the station's row under Workspace admin → Stations |
+| `idle` | The station's **idle timeout** passed, by the server's clock, without a request with the operator's token |
+| `expired` | **12 hours** after the sign-in, however active |
+| `user_inactive` | The person may no longer act (disabled, pending, deactivated by the directory, deleted or erased) or no longer holds `manufacturing:shop-floor` — found at their next request, a read included |
+| `credentials_changed` | The person's PIN or badge was set or cleared |
+| `signed_out` | The person's sessions were signed out: a password reset or change, signing out everywhere, a disable |
+| `revoked`, `replaced` | The station was revoked or paired again, or the same person signed in again here |
+
+Every ending is audited `operator_signed_out` with its reason — those the server finds
+when the next sign-in tidies the station up as well. A token copied to another station's
+browser is `401 operator_session_ended`. The station page's idle warning follows the last
+request answered for the operator; live updates refetch with the active operator's token,
+so a station that shows changes keeps that operator signed in, and a tap on the screen
+near the timeout sends a request that does too.
+
+### Who can act as whom at a tablet
+
+Every operator signed in at a station has a chip in its bar, and **anyone standing at the
+tablet can tap any chip and act as that person** until they are switched out or their idle
+timeout passes. The PIN proves who switched in, not who is at the screen afterwards. Keep
+idle timeouts **short** — a few minutes — on stations where people walk away, ask operators
+to switch out when they leave, and use **End** on the station's row to sign someone out
+from your own desk.
 
 What an operator may do is cut down three ways:
 
@@ -1056,7 +1127,9 @@ What an operator may do is cut down three ways:
   credentials as no caller at all.
 - **Only the shop floor's permissions.** The operator's permissions are intersected with
   `manufacturing:access` and `manufacturing:shop-floor`: an Owner at a station holds those
-  two and nothing more, and no cost is shown.
+  two and nothing more, and no cost is shown. An operator must hold **both** for every
+  request, reads included: a person whose role loses `manufacturing:shop-floor` is signed
+  out at their next request.
 - **Only the station's work centers**, which Manufacturing checks on every request.
 
 ### Cross-site requests
@@ -1069,12 +1142,17 @@ the origin as it does for a person.
 
 ### What is audited
 
-`station_registered`, `station_paired`, `station_repaired`, `station_revoked`,
-`station_networks_changed`, `station_session_signed_out`, `pin_set`, `pin_disabled`,
-`pin_cleared`, `badge_enrolled`, `badge_cleared`, `operator_signed_in`,
-`operator_sign_in_failed`, `operator_backoff` and `operator_signed_out`, each in the
-authorization audit trail beside the change it describes. Erasing a user deletes their PIN,
-badge and operator sessions with the user.
+`station_registered`, `station_paired`, `station_pairing_failed`, `station_repaired`,
+`station_revoked`, `station_changed`, `station_networks_changed`,
+`station_session_signed_out`, `pin_set`, `pin_disabled`, `pin_cleared`, `badge_enrolled`,
+`badge_cleared`, `operator_signed_in`, `operator_sign_in_failed`, `operator_backoff`,
+`operator_backoff_reset` and `operator_signed_out` (with its reason), each in the
+authorization audit trail beside the change it describes.
+
+Deleting or erasing a user deletes their PIN and badge and ends their operator sessions;
+the sessions' rows stay as the stations' history, without a token and without the user.
+A deleted user's sessions keep the name they had; an erased user's name is replaced by
+`[erased]`.
 
 ## Invitation and recovery URLs
 

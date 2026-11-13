@@ -971,9 +971,13 @@ PIN** first; ask an administrator for a badge.
 3. Choose one of the station's **work centers**, then a work order in its queue, and work
    as on any tablet: Start, Pause, Finish, Register quantity or production, Report scrap,
    Report a deviation and the checks. **Back** goes back up.
-4. When you leave, tap **Switch out** beside your chip. A station also switches you out
-   after its idle time — it warns 30 seconds before, with **Stay signed in** — and after 12
-   hours.
+4. When you leave, tap **Switch out** beside your chip. Anyone at the tablet can tap your
+   chip and work as you until you do. A station also switches you out after its idle time —
+   it warns 30 seconds before, with **Stay signed in**; working on the screen and the live
+   updates of what you are looking at keep you signed in — and after 12 hours.
+5. A chip that says **Signed out** is someone the station has signed out — idle, ended by an
+   administrator, their PIN or badge changed, or no longer allowed on the shop floor. Tap
+   **Dismiss** to put it away; they switch in again to go on.
 
 What a station shows is the shop floor of its own work centers and nothing more, whoever is
 switched in: no costs, no order lots or other pages, no product images. Reloading the page
