@@ -213,6 +213,32 @@ reserved at and delivered from — from the Orders settings' **Default site**. C
 the order's header while the order is a draft; a confirmed order's site can be changed to
 another site until it has a delivery, and its reservations move with it.
 
+## Sell a kit
+
+When [Manufacturing](/en/user/manufacturing/#make-a-kit) is on, a product whose default
+bill of materials is a **kit** is sold as one line and delivered as its components.
+
+1. Add the kit's product to the order as any product line, at its quantity and price.
+2. Save. Under the kit's line the order shows a line per component — its quantity, the
+   kit's times how many one kit holds, and how many one kit holds. The components are
+   copied onto the order when the kit's line is added: a later change of the kit in
+   Manufacturing does not reach it.
+3. Change the kit's quantity and save: its components follow. Remove the kit's line and
+   they go with it. The components are not edited themselves.
+
+The kit's line carries the price; its components are priced 0, are not invoiced on their
+own and are not printed with prices on the order confirmation. Each component is
+reserved, picked — with its lots, when it is kept in lots — and delivered like any goods
+line; the kit itself never is. On a confirmed order at a site the kit's **Available** is
+how many kits its components make of what is available: the least, over its components,
+of what is available of each divided by how many one kit holds. The kit counts as
+delivered the whole kits its components' deliveries make, and is offered to invoice
+alone; its invoice covers its components. The pick list prints the components only; the
+packing slip prints the kit with its components under it.
+
+Without Manufacturing, a kit's product is sold as an ordinary goods line, reserved and
+delivered itself.
+
 ## Confirm an order
 
 **Confirm** on a draft order freezes its customer details and prices, stores the order
