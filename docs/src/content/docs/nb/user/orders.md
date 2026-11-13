@@ -210,6 +210,32 @@ reserveres på og leveres fra — fra **Standard lagersted** i innstillingene fo
 det i ordrehodet mens ordren er et utkast; på en bekreftet ordre kan lagerstedet byttes til
 et annet til ordren har en leveranse, og reservasjonene flyttes med.
 
+## Selg et sett
+
+Når [Produksjon](/nb/user/manufacturing/#lag-et-sett) er på, selges et produkt med et
+**sett** som standardstykkliste som én linje og leveres som komponentene.
+
+1. Legg settets produkt til på ordren som enhver produktlinje, med antall og pris.
+2. Lagre. Under settets linje viser ordren en linje per komponent — antallet, settets
+   ganger hvor mange ett sett holder, og hvor mange ett sett holder. Komponentene kopieres
+   til ordren når settets linje legges til: en senere endring av settet i Produksjon når
+   den ikke.
+3. Endre settets antall og lagre: komponentene følger med. Fjern settets linje, så går de
+   med den. Komponentene redigeres ikke selv.
+
+Settets linje bærer prisen; komponentene har pris 0, faktureres ikke for seg og skrives
+ikke ut med priser på ordrebekreftelsen. Hver komponent reserveres, plukkes — med partier,
+når den holdes i partier — og leveres som enhver varelinje; selve settet gjør aldri det.
+På en bekreftet ordre med lagersted er settets **Disponibelt** hvor mange sett
+komponentene gir av det som er disponibelt: det minste, over komponentene, av det som er
+disponibelt av hver delt på hvor mange ett sett holder. Settet regnes som levert med de hele
+settene komponentenes leveranser gir, og tilbys fakturert alene; fakturaen dekker
+komponentene. Plukklisten skriver bare ut komponentene; pakkseddelen skriver ut settet med
+komponentene under.
+
+Uten Produksjon selges et setts produkt som en vanlig varelinje, som reserveres og leveres
+selv.
+
 ## Bekreft en ordre
 
 **Bekreft** på et ordreutkast låser kundeopplysningene og prisene, lagrer
