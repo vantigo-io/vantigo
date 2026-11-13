@@ -188,16 +188,21 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
     (line) => line.kind === "product" && (line.quantity ?? 0) - line.qtyCancelled - line.qtyDelivered > 0,
   );
   // A goods line at the site holds less than it has open: Reserve now (O46).
+  // A kit line reserves nothing — its children do (manufacturing phase 2 M145).
+  const kits = new Set(order.lines.flatMap((line) => (line.parentLineId == null ? [] : [line.parentLineId])));
   const unreserved = order.lines.some(
-    (line) => line.deliveryMethod === "delivery" && remainingToDeliver(line) > (line.qtyReserved ?? 0),
+    (line) =>
+      line.deliveryMethod === "delivery" && !kits.has(line.id) && remainingToDeliver(line) > (line.qtyReserved ?? 0),
   );
   const openToShip = order.lines.some((line) => line.deliveryMethod === "delivery" && remainingToDeliver(line) > 0);
   // What draft invoices hold of the order, and what is left to invoice on
-  // order (O36): ordered − cancelled − invoiced − draft-allocated.
+  // order (O36): ordered − cancelled − invoiced − draft-allocated. A kit's
+  // child line is invoiced as its kit (manufacturing phase 2 M145).
   const inDraftInvoice = order.lines.some((line) => line.qtyDraftAllocated > 0);
   const openToInvoice = order.lines.some(
     (line) =>
       line.kind === "product" &&
+      line.parentLineId == null &&
       line.invoicePolicy === "order" &&
       (line.quantity ?? 0) - line.qtyCancelled - line.qtyInvoiced - line.qtyDraftAllocated > 0,
   );
@@ -320,7 +325,8 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
       // Not enough at the site: say which lines, and offer to confirm without reserving (O46).
       onError: (error) => {
         if (name !== "confirm" || refusalCode(error) !== "insufficient_available") return;
-        setShortfall(refusedLines(error).map((line) => line.index));
+        // A row is the editor's: a kit's short child is named on its kit (M145).
+        setShortfall([...new Set(refusedLines(error).map((line) => line.index))]);
         setDialog("shortfall");
       },
     });
@@ -711,7 +717,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
           <Stack gap="xs">
             <Text size="sm">{t("shortfallHint")}</Text>
             {shortfall.map((index) => {
-              const shown = order.lines[index];
+              const shown = order.lines.filter((line) => line.parentLineId == null)[index];
               return (
                 <Text size="sm" key={index} data-testid="shortfall-line">
                   {t("shortfallLine", {

@@ -2,8 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { Order } from "../api/types";
-import { commonAnswers, fakeServer, jsonResponse } from "../test/api";
-import { line, order, settings } from "../test/fixtures";
+import { commonAnswers, fakeServer, jsonResponse, refusal } from "../test/api";
+import { line, meta, order, settings } from "../test/fixtures";
 import { renderRoute } from "../test/render";
 
 // A kit line's child lines (manufacturing phase 2 M145, M146): shown under
@@ -62,5 +62,74 @@ describe("an order's kit lines", () => {
     const body = fake.sent("PUT", url)?.body as { lines: Record<string, unknown>[] };
     expect(body.lines).toHaveLength(1);
     expect(body.lines[0]).toMatchObject({ id: 5001, quantity: 3 });
+  });
+
+  it("offers no Reserve now for a kit line, whose children hold the reservations", async () => {
+    const atSite: Order = { ...kitOrder(), siteId: 1 };
+    atSite.lines = atSite.lines.map((l) => (l.id === 5001 ? { ...l, qtyReserved: 0 } : l));
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url === url) return jsonResponse(200, atSite);
+      if (call.method === "GET" && call.url === `${url}/changes`) return jsonResponse(200, { items: [] });
+      if (call.method === "GET" && call.url === "/api/v1/orders/sites")
+        return jsonResponse(200, { items: [{ id: 1, code: "OSL", name: "Oslo", fulfilsOrders: true, active: true }] });
+      if (call.method === "GET" && call.url.startsWith("/api/v1/orders/deliveries?"))
+        return jsonResponse(200, { items: [], total: 0 });
+      return commonAnswers(call, settings(), meta({ stockKept: true }));
+    });
+    renderRoute("/orders/orders/2001");
+
+    await screen.findByTestId("kit-child-row");
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Site" })).toHaveValue("OSL · Oslo"));
+    expect(screen.queryByRole("button", { name: "Reserve now" })).not.toBeInTheDocument();
+  });
+
+  it("offers a kit delivered by delivery documents as its children in Register delivered", async () => {
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url === url) return jsonResponse(200, kitOrder());
+      if (call.method === "GET" && call.url === `${url}/changes`) return jsonResponse(200, { items: [] });
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/2001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Register delivered" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Quantity for Hylle")).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Quantity for Verktøysett")).not.toBeInTheDocument();
+  });
+
+  it("offers a kit marked by hand without its children in Register delivered", async () => {
+    const byHand = kitOrder();
+    byHand.lines = byHand.lines.map((l) => ({ ...l, deliveryMethod: "manual" as const }));
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url === url) return jsonResponse(200, byHand);
+      if (call.method === "GET" && call.url === `${url}/changes`) return jsonResponse(200, { items: [] });
+      return commonAnswers(call, settings());
+    });
+    renderRoute("/orders/orders/2001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Register delivered" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Quantity for Verktøysett")).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Quantity for Hylle")).not.toBeInTheDocument();
+  });
+
+  it("names a kit's short child on the kit's row when the confirm is short", async () => {
+    const draft: Order = { ...kitOrder(), status: "draft", confirmedAt: null, siteId: 1 };
+    fakeServer((call) => {
+      if (call.method === "GET" && call.url === url) return jsonResponse(200, draft);
+      if (call.method === "GET" && call.url === `${url}/changes`) return jsonResponse(200, { items: [] });
+      if (call.method === "GET" && call.url === "/api/v1/orders/sites")
+        return jsonResponse(200, { items: [{ id: 1, code: "OSL", name: "Oslo", fulfilsOrders: true, active: true }] });
+      if (call.method === "POST" && call.url === `${url}/confirm`)
+        return refusal(409, "insufficient_available", {
+          lines: [{ index: 0, code: "insufficient_available", detail: "1 available." }],
+        });
+      return commonAnswers(call, settings(), meta({ stockKept: true }));
+    });
+    renderRoute("/orders/orders/2001");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    const dialog = await screen.findByRole("dialog", { name: "Not enough available" });
+    expect(within(dialog).getByTestId("shortfall-line")).toHaveTextContent("Line 1: Verktøysett (available 3)");
   });
 });

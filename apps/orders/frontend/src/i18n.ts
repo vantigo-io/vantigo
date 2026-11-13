@@ -386,6 +386,7 @@ export const ordersCatalog = {
     "changeAction.unlocked": "Unlocked",
     "changeAction.delivered_marked": "Registered delivered",
     "changeAction.delivered_undone": "Delivery taken back",
+    "changeAction.delivered_beyond_kits": "Delivered beyond whole kits, not invoiced",
 
     // The customer page's tab
     summaryOpenQuotes: "Open quotes",
@@ -1362,6 +1363,7 @@ export const ordersCatalog = {
     "changeAction.unlocked": "Låst opp",
     "changeAction.delivered_marked": "Registrert levert",
     "changeAction.delivered_undone": "Levering tatt tilbake",
+    "changeAction.delivered_beyond_kits": "Levert utover hele sett, ikke fakturert",
 
     summaryOpenQuotes: "Åpne tilbud",
     summaryNotDelivered: "Bestilt, ikke levert",
