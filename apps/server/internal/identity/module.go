@@ -126,10 +126,14 @@ var limits = map[string]ratelimit.Policy{
 
 	// Shared shop-floor stations (manufacturing phase 2 M129, M132): pairing
 	// per address; setting a PIN, which may verify the current password, as
-	// the second factor's endpoints are. The operator sign-in's limit is per
-	// station and counts failures only (policyStationSignIn, stations.go).
-	"postIdentityStationPair": policyStationPairing,
-	"putIdentityAccountPin":   policyMfa,
+	// the second factor's endpoints are; enrolling badges per address. The
+	// operator sign-in is limited per address here, before any work, and per
+	// station in the handler (policyStationAttempts, policyStationSignIn,
+	// stations.go).
+	"postIdentityStationPair":      policyStationPairing,
+	"putIdentityAccountPin":        policyMfa,
+	"postIdentityStationOperators": policyStationOperatorsIP,
+	"putIdentityUsersByIdBadge":    policyBadgeEnrolment,
 }
 
 // Module is identity as a platform module: its contract mounted under

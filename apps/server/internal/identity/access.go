@@ -16,6 +16,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -37,7 +38,10 @@ const maxUserAgentLength = 512
 type Access struct {
 	cfg *config.Config
 	q   *store.Queries
-	now func() time.Time
+	// pool begins the transactions Access writes in itself: an operator
+	// session it ends, with its audit.
+	pool db.TxBeginner
+	now  func() time.Time
 	// sso is the single sign-on settings through their 20-second cache:
 	// whether SCIM is on, its token digests, and the OIDC provider. The
 	// server reads it too, and the import evicts it.
@@ -76,7 +80,7 @@ var _ contracts.Access = (*Access)(nil)
 //	deps.Access = a
 //	handler, err := module.Compose(deps, identity.Module(a))
 func NewAccess(d module.Deps) *Access {
-	return &Access{cfg: d.Config, q: store.New(d.Pool), now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets)}
+	return &Access{cfg: d.Config, q: store.New(d.Pool), pool: d.Pool, now: d.Clock, sso: newSSOSettingsReader(d.Pool, d.Clock, d.Secrets)}
 }
 
 // Check evaluates rule for r. The scim rule admits a request that presents
@@ -274,19 +278,28 @@ func (a *Access) UserHolds(ctx context.Context, userID uuid.UUID, keys ...string
 	if len(keys) == 0 {
 		return false, nil
 	}
-	now := a.now()
 	sso, err := a.sso.get(ctx)
 	if err != nil {
 		return false, fmt.Errorf("identity: read whether the user may act: %w", err)
 	}
-	mayAct, err := a.q.UserMayAct(ctx, store.UserMayActParams{UserID: userID, Now: now, ScimEnabled: sso.SCIM != nil})
+	return userHoldsOn(ctx, a.q, sso.SCIM != nil, userID, a.now(), keys...)
+}
+
+// userHoldsOn is UserHolds on q at now, for a caller that already holds a
+// transaction (an operator's sign-in, which must not wait for a second
+// connection while it holds one) and has read whether SCIM is on.
+func userHoldsOn(ctx context.Context, q *store.Queries, scimEnabled bool, userID uuid.UUID, now time.Time, keys ...string) (bool, error) {
+	if len(keys) == 0 {
+		return false, nil
+	}
+	mayAct, err := q.UserMayAct(ctx, store.UserMayActParams{UserID: userID, Now: now, ScimEnabled: scimEnabled})
 	if err != nil {
 		return false, fmt.Errorf("identity: read whether the user may act: %w", err)
 	}
 	if !mayAct {
 		return false, nil
 	}
-	owner, err := a.q.UserHasRoleByName(ctx, store.UserHasRoleByNameParams{UserID: userID, Name: RoleOwner})
+	owner, err := q.UserHasRoleByName(ctx, store.UserHasRoleByNameParams{UserID: userID, Name: RoleOwner})
 	if err != nil {
 		return false, fmt.Errorf("identity: read user's roles: %w", err)
 	}
@@ -294,7 +307,7 @@ func (a *Access) UserHolds(ctx context.Context, userID uuid.UUID, keys ...string
 		return true, nil
 	}
 	for _, key := range keys {
-		ok, err := a.q.EffectivePermissionForUser(ctx, store.EffectivePermissionForUserParams{
+		ok, err := q.EffectivePermissionForUser(ctx, store.EffectivePermissionForUserParams{
 			UserID:        userID,
 			PermissionKey: key,
 			Now:           now,
@@ -649,7 +662,16 @@ func (a *Access) revokeOtherSessions(ctx context.Context, q *store.Queries, user
 	if err := q.RevokeUserSessionsExcept(ctx, store.RevokeUserSessionsExceptParams{UserID: userID, Keep: keep, Now: a.now()}); err != nil {
 		return fmt.Errorf("identity: revoke other sessions: %w", err)
 	}
-	return nil
+	return a.signOutOperator(ctx, q, userID)
+}
+
+// signOutOperator ends the person's operator sessions at shared stations
+// with their sessions (manufacturing phase 2 M136): whatever signs a person
+// out everywhere — a password reset or change, a disable, signing out
+// everywhere — signs them out at every station too, on the same transaction.
+func (a *Access) signOutOperator(ctx context.Context, q *store.Queries, userID uuid.UUID) error {
+	r, _ := contracts.RequestFrom(ctx)
+	return endUserOperatorSessions(ctx, q, r, principalUser(ctx), userID, endSignedOut, a.now())
 }
 
 // revokeAllSessions ends every live session of userID, the caller's
@@ -658,7 +680,7 @@ func (a *Access) revokeAllSessions(ctx context.Context, q *store.Queries, userID
 	if err := q.RevokeUserSessions(ctx, store.RevokeUserSessionsParams{UserID: userID, Now: a.now()}); err != nil {
 		return fmt.Errorf("identity: revoke sessions: %w", err)
 	}
-	return nil
+	return a.signOutOperator(ctx, q, userID)
 }
 
 // rotateSecurityStamp does what rotating .NET's security stamp did beyond

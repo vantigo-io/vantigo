@@ -2319,6 +2319,9 @@ components:
             type: object
         AccountPinResponse:
             properties:
+                needsReenrolment:
+                    description: The PIN was set under an earlier version of the installation's key and no longer verifies; set it again.
+                    type: boolean
                 set:
                     type: boolean
                 setAt:
@@ -2328,11 +2331,16 @@ components:
             required:
                 - set
                 - setAt
+                - needsReenrolment
             type: object
         BadgeRequest:
             properties:
                 badge:
                     description: The code the card reader types, 4 to 128 characters.
+                    type: string
+                currentPassword:
+                    description: The administrator's own password; not needed when their session signed in within the last 10 minutes.
+                    nullable: true
                     type: string
             required:
                 - badge
@@ -2343,9 +2351,15 @@ components:
                     format: date-time
                     nullable: true
                     type: string
+                badgeNeedsReenrolment:
+                    description: The badge was enrolled under an earlier version of the installation's key and no longer verifies; enrol it again.
+                    type: boolean
                 hasBadge:
                     type: boolean
                 hasPin:
+                    type: boolean
+                pinNeedsReenrolment:
+                    description: The PIN was set under an earlier version of the installation's key and no longer verifies; the person sets it again.
                     type: boolean
                 pinSetAt:
                     format: date-time
@@ -2354,8 +2368,10 @@ components:
             required:
                 - hasPin
                 - pinSetAt
+                - pinNeedsReenrolment
                 - hasBadge
                 - badgeSetAt
+                - badgeNeedsReenrolment
             type: object
         Station:
             description: A shared shop-floor station (manufacturing phase 2 M129).
@@ -2374,6 +2390,11 @@ components:
                     items:
                         type: string
                     nullable: true
+                    type: array
+                backoff:
+                    description: The people with a run of failed sign-ins here that has not yet decayed (an hour after its last failure), each of which an administrator may reset.
+                    items:
+                        $ref: '#/components/schemas/StationBackoff'
                     type: array
                 createdAt:
                     format: date-time
@@ -2428,6 +2449,32 @@ components:
                 - revokedAt
                 - alertedAt
                 - activeOperators
+                - backoff
+            type: object
+        StationBackoff:
+            description: A person's run of consecutive failed sign-ins at a station (M133).
+            properties:
+                displayName:
+                    type: string
+                failures:
+                    type: integer
+                lastFailureAt:
+                    format: date-time
+                    type: string
+                nextAttemptAt:
+                    description: Until when the person's attempts here are refused without verifying; null before the fifth failure.
+                    format: date-time
+                    nullable: true
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - failures
+                - lastFailureAt
+                - nextAttemptAt
             type: object
         StationList:
             properties:
@@ -2571,6 +2618,10 @@ components:
                     maxItems: 50
                     nullable: true
                     type: array
+                currentPassword:
+                    description: The administrator's own password, needed to make a station take a badge alone (requirePinWithBadge false) unless their session signed in within the last 10 minutes.
+                    nullable: true
+                    type: string
                 idleMinutes:
                     description: 1 to 60; 5 when left out.
                     nullable: true
@@ -8182,7 +8233,7 @@ paths:
             x-vantigo-access: anonymous
             x-vantigo-assistant: never
         post:
-            description: 'Switches an operator in with the station cookie (M133): a user and their PIN, or a badge (and, while the station requires it, the badge''s holder''s PIN as well). Ten failed attempts in five minutes close the station for the rest of the window; from the fifth consecutive failure for one person at this station each attempt waits, 30 seconds doubling to 15 minutes. Success answers an operator token for the Authorization header (Station <token>), which the page keeps in memory only. Signing in a person already signed in here replaces their session. Audited operator_signed_in or operator_sign_in_failed.'
+            description: 'Switches an operator in with the station cookie (M133): a user and their PIN, or a badge (and, while the station requires it, the badge''s holder''s PIN as well). Thirty attempts in five minutes, and ten failed ones, close the station for the rest of the window (an attempt refused for a person in backoff counts on neither); attempts for one person at one station are taken one at a time, a second one at once answering 429; from the fifth consecutive failure for one person at this station each attempt waits, 30 seconds doubling to 15 minutes, and a run an hour past its last failure starts again. A PIN or badge enrolled under an earlier version of the installation''s key does not verify. Success answers an operator token for the Authorization header (Station <token>), which the page keeps in memory only. Signing in a person already signed in here replaces their session. Audited operator_signed_in or operator_sign_in_failed.'
             operationId: postIdentityStationOperators
             requestBody:
                 content:
@@ -8271,7 +8322,7 @@ paths:
             x-vantigo-assistant: never
     /api/v1/identity/station/pair:
         post:
-            description: Pairs this browser as a shared shop-floor station with the one-time code an administrator issued (M129). The code is spent; a 256-bit station token is minted, its hash stored, and the vantigo.station cookie set for 90 days. A session cookie on the request is signed out in the same answer, so a station browser never holds both. Ten attempts per address in 15 minutes. Audited station_paired.
+            description: Pairs this browser as a shared shop-floor station with the one-time code an administrator issued (M129). The code is spent; a 256-bit station token is minted, its hash stored, and the vantigo.station cookie set for 90 days. A session cookie on the request is signed out in the same answer, so a station browser never holds both. A code tried from an address outside the station's network allowlist is refused as an invalid one. Ten attempts per address in 15 minutes, and 60 an hour across the installation. Audited station_paired; a refused attempt is audited station_pairing_failed.
             operationId: postIdentityStationPair
             requestBody:
                 content:
@@ -8337,7 +8388,7 @@ paths:
             x-vantigo-access: permission:identity:manage
             x-vantigo-assistant: never
         post:
-            description: 'Registers a shared shop-floor station (M129) and answers a one-time pairing code: eight characters of Crockford base32, valid 15 minutes, stored only as a hash. Audited station_registered.'
+            description: 'Registers a shared shop-floor station (M129) and answers a one-time pairing code: eight characters of Crockford base32, valid 15 minutes, stored only as a hash. A station that takes a badge alone (requirePinWithBadge false) needs the current password unless the session signed in within the last 10 minutes, and the holders of identity:manage are mailed. Audited station_registered.'
             operationId: postIdentityStations
             requestBody:
                 content:
@@ -8364,13 +8415,19 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Unauthorized
+                    description: Unauthorized — also invalid_credentials, a wrong current password.
                 "403":
                     content:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: 'Forbidden — also reauthentication_required: the change needs the current password, the session having signed in more than 10 minutes ago.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — rate_limited, too many wrong current passwords.
             summary: Register a shop-floor station
             tags:
                 - Shop-floor stations
@@ -8378,7 +8435,7 @@ paths:
             x-vantigo-assistant: never
     /api/v1/identity/stations/{id}:
         put:
-            description: Changes a station's name, idle timeout, badge rule and network allowlist. A changed allowlist is audited station_networks_changed and applies to the next request.
+            description: Changes a station's name, idle timeout, badge rule and network allowlist, audited station_changed with the settings before and after; a changed allowlist is audited station_networks_changed as well and applies to the next request. Making the station take a badge alone (requirePinWithBadge false) needs the current password unless the session signed in within the last 10 minutes, and mails the holders of identity:manage.
             operationId: putIdentityStationsById
             parameters:
                 - description: The station.
@@ -8413,6 +8470,57 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized — also invalid_credentials, a wrong current password.
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden — also reauthentication_required: the change needs the current password, the session having signed in more than 10 minutes ago.'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — rate_limited, too many wrong current passwords.
+            summary: Change a shop-floor station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+    /api/v1/identity/stations/{id}/backoff/{userId}:
+        delete:
+            description: Resets a person's run of failed sign-ins at a station (M133), so their next attempt there is verified at once. Audited operator_backoff_reset.
+            operationId: deleteIdentityStationsByIdBackoffByUserId
+            parameters:
+                - description: The station.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The person.
+                  in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Unauthorized
                 "403":
                     content:
@@ -8425,8 +8533,53 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Not Found
-            summary: Change a shop-floor station
+                    description: Not Found — the station, or no run of failures for the person at it.
+            summary: Reset a person's sign-in backoff at a station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+    /api/v1/identity/stations/{id}/operators/{sessionId}/end:
+        post:
+            description: Ends an operator's session at a station (M136) from Workspace › Stations, as Switch out on the station does. Time logs left running keep running. Audited operator_signed_out with the reason ended_by_admin.
+            operationId: postIdentityStationsByIdOperatorsBySessionIdEnd
+            parameters:
+                - description: The station.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - description: The operator session.
+                  in: path
+                  name: sessionId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — operator_session_unknown: not an active session of this station.'
+            summary: End an operator's session at a station
             tags:
                 - Shop-floor stations
             x-vantigo-access: permission:identity:manage
@@ -8646,7 +8799,7 @@ paths:
             x-vantigo-access: permission:identity:manage
             x-vantigo-assistant: never
         put:
-            description: Enrols the code a keyboard-wedge card reader types for a person (M132), stored as an HMAC under a key from APP_SECRET. Replaces the person's badge. Audited badge_enrolled.
+            description: Enrols the code a keyboard-wedge card reader types for a person who holds manufacturing:shop-floor (M132), stored as an HMAC under a key from APP_SECRET. Replaces the person's badge and ends their operator sessions at every station. Needs the current password unless the session signed in within the last 10 minutes; the person is mailed that a badge was enrolled for them. Audited badge_enrolled.
             operationId: putIdentityUsersByIdBadge
             parameters:
                 - description: The person.
@@ -8671,19 +8824,19 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Bad Request
+                    description: Bad Request — invalid_request, also for a person who does not hold manufacturing:shop-floor.
                 "401":
                     content:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Unauthorized
+                    description: Unauthorized — also invalid_credentials, a wrong current password.
                 "403":
                     content:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden
+                    description: 'Forbidden — also reauthentication_required: the change needs the current password, the session having signed in more than 10 minutes ago.'
                 "404":
                     content:
                         application/json:
@@ -8695,7 +8848,17 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: 'Conflict — badge_taken: the card is another person''s.'
+                    description: 'Conflict — badge_unavailable: the card cannot be enrolled; the answer does not say why.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Enrol a person's badge
             tags:
                 - Shop-floor stations

@@ -947,6 +947,17 @@ func (p *provisioning) Erase(ctx context.Context, actor contracts.Actor, userID 
 		if err := q.DeleteUserCreatedDelegations(ctx, userID); err != nil {
 			return err
 		}
+		// The operator sessions stay as the stations' history (manufacturing
+		// phase 2 M141): ended, without a token, and — once the user row is
+		// gone — without a user, naming no one.
+		if err := endUserOperatorSessions(ctx, q, nil, nil, userID, endUserInactive, now); err != nil {
+			return err
+		}
+		if err := q.PseudonymiseUserOperatorSessions(ctx, store.PseudonymiseUserOperatorSessionsParams{
+			UserID: &userID, Display: erasedAuditPlaceholder,
+		}); err != nil {
+			return err
+		}
 		if err := q.DeleteUser(ctx, userID); err != nil {
 			return err
 		}
