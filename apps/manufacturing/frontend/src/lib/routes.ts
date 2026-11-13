@@ -44,6 +44,9 @@ export const workOrderLinkOptions = (workOrderId: number) => ({
 /** The deviations list, under the overview (manufacturing phase 2 M99). */
 export const DEVIATIONS_ROUTE_PATH = "/manufacturing/deviations";
 export const DEVIATION_ROUTE_PATH = "/manufacturing/deviations/$deviationId";
+/** The replenishment suggestions, under the manufacturing orders (manufacturing phase 2 M111). */
+export const SUGGESTIONS_ROUTE_PATH = "/manufacturing/suggestions";
+
 export const deviationLinkOptions = (deviationId: number) => ({
   to: DEVIATION_ROUTE_PATH,
   params: { deviationId: String(deviationId) },

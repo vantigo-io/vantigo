@@ -778,5 +778,53 @@
       "en": "The lots the deviation holds in quarantine, each linked to its page in Inventory.",
       "nb": "Partiene avviket holder i karantene, hver lenket til siden i Lager."
     }
+  },
+  {
+    "key": "manufacturing.suggestions.run",
+    "route": "/manufacturing/suggestions",
+    "label": {
+      "en": "Run now",
+      "nb": "Kjør nå"
+    },
+    "description": {
+      "en": "The button on the suggestions page that runs replenishment at once instead of waiting for the night.",
+      "nb": "Knappen på forslagssiden som kjører påfyllingen med en gang i stedet for å vente til natten."
+    }
+  },
+  {
+    "key": "manufacturing.suggestions.actions",
+    "route": "/manufacturing/suggestions",
+    "label": {
+      "en": "Create from suggestions",
+      "nb": "Opprett fra forslag"
+    },
+    "description": {
+      "en": "The buttons that create draft or confirmed manufacturing orders from the selected suggestions.",
+      "nb": "Knappene som oppretter utkast eller bekreftede produksjonsordrer fra de valgte forslagene."
+    }
+  },
+  {
+    "key": "manufacturing.suggestions.list",
+    "route": "/manufacturing/suggestions",
+    "label": {
+      "en": "Suggestions",
+      "nb": "Forslag"
+    },
+    "description": {
+      "en": "A site's suggestions to make or buy, with the projected stock, the quantity, the need-by date and the reason.",
+      "nb": "Et lagersteds forslag om å produsere eller kjøpe, med fremskrevet beholdning, antall, dato det trengs og begrunnelse."
+    }
+  },
+  {
+    "key": "manufacturing.bom.replenishment",
+    "route": "/manufacturing/boms/{bomId}",
+    "label": {
+      "en": "Automatic replenishment",
+      "nb": "Automatisk påfylling"
+    },
+    "description": {
+      "en": "The switches on a default bill of materials that let the nightly run create, and confirm, its suggested orders per site.",
+      "nb": "Bryterne på en standard stykkliste som lar nattkjøringen opprette, og bekrefte, de foreslåtte ordrene per lagersted."
+    }
   }
 ]

@@ -139,6 +139,7 @@ export const refusalCodes = [
   "attachment_too_large",
   "attachment_type",
   "storage_not_configured",
+  "suggestion_not_open",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 
