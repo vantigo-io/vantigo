@@ -16,6 +16,7 @@ sql:
       - ../db/migrations/00171_manufacturing_replenishment.sql
       - ../db/migrations/00172_manufacturing_routing.sql
       - ../db/migrations/00173_manufacturing_bom_depth.sql
+      - ../db/migrations/00175_manufacturing_stations.sql
     queries: queries
     gen:
       go:

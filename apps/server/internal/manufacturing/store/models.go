@@ -102,6 +102,7 @@ type ManufacturingCheckResult struct {
 	UserDisplay      string
 	RecordedAt       time.Time
 	SupersededBy     *int64
+	StationID        *uuid.UUID
 }
 
 type ManufacturingCounter struct {
@@ -132,6 +133,7 @@ type ManufacturingDeviation struct {
 	ClosedAt        *time.Time
 	ClosingNote     *string
 	Revision        int32
+	StationID       *uuid.UUID
 }
 
 type ManufacturingDeviationLot struct {
@@ -257,6 +259,7 @@ type ManufacturingProduction struct {
 	PostedByUserID  *uuid.UUID
 	PostedByDisplay string
 	PostedAt        time.Time
+	StationID       *uuid.UUID
 }
 
 type ManufacturingProductionByproduct struct {
@@ -325,6 +328,11 @@ type ManufacturingReplenishmentRun struct {
 	Error              *string
 }
 
+type ManufacturingStationWorkCenter struct {
+	StationID    uuid.UUID
+	WorkCenterID int64
+}
+
 type ManufacturingSuggestion struct {
 	ID             int64
 	RunID          int64
@@ -364,6 +372,7 @@ type ManufacturingTimeLog struct {
 	CorrectedAt        *time.Time
 	NoteBy             *uuid.UUID
 	NoteByDisplay      string
+	StationID          *uuid.UUID
 }
 
 type ManufacturingUnbuild struct {

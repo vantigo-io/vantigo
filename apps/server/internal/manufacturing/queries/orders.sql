@@ -112,9 +112,9 @@ UPDATE manufacturing.order_components SET consumed = consumed + @consumed, scrap
 -- name: InsertProduction :one
 INSERT INTO manufacturing.productions (
     order_id, client_request_id, request_hash, quantity, output_scrap, to_location_id,
-    posted_by_user_id, posted_by_display, posted_at)
+    posted_by_user_id, posted_by_display, posted_at, station_id)
 VALUES (@order_id, @client_request_id, @request_hash, @quantity, @output_scrap, @to_location_id,
-        @posted_by_user_id, @posted_by_display, @now)
+        @posted_by_user_id, @posted_by_display, @now, sqlc.narg(station_id))
 RETURNING *;
 
 -- name: SetProductionMovement :exec

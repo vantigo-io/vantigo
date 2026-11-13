@@ -456,7 +456,8 @@ func (s *server) RecordManufacturingCheckResult(ctx context.Context, req gen.Rec
 			}
 		}
 		recorded, err := txq.InsertCheckResult(ctx, store.InsertCheckResultParams{WorkOrderCheckID: c.ID, Result: result,
-			Value: measureNumeric(reading), Note: note, PhotoID: in.PhotoId, UserID: who.id, UserDisplay: who.display, Now: now})
+			Value: measureNumeric(reading), Note: note, PhotoID: in.PhotoId, UserID: who.id, UserDisplay: who.display, Now: now,
+			StationID: stationOf(ctx)})
 		if err != nil {
 			return err
 		}

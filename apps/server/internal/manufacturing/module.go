@@ -126,7 +126,10 @@ func mount(d module.Deps) (http.Handler, error) {
 		Doc: d.Doc, Access: d.Access, Limiter: d.Limiter, Limits: limits, Catalog: d.Catalog,
 		BodyLimits: bodyLimits,
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
+	srv := newServer(d)
+	// A station's operator is held to the station's work centers before any
+	// handler runs (manufacturing phase 2 M131).
+	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{srv.stationScope}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

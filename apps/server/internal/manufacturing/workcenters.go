@@ -335,9 +335,17 @@ func (s *server) ListManufacturingWorkCenters(ctx context.Context, req gen.ListM
 	if err != nil {
 		return nil, err
 	}
+	// A station's operator sees the station's work centers only (M131).
+	served, atStation, err := s.stationCenters(ctx)
+	if err != nil {
+		return nil, err
+	}
 	costs := s.has(ctx, permCostsView)
 	items := make([]gen.ManufacturingWorkCenter, 0, len(rows))
 	for _, w := range rows {
+		if atStation && !slices.Contains(served, w.ID) {
+			continue
+		}
 		items = append(items, workCenterOf(w, sites, costs))
 	}
 	return gen.ListManufacturingWorkCenters200JSONResponse{Items: items}, nil

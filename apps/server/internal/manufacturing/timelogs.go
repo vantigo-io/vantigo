@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -386,6 +387,15 @@ func (s *server) GetManufacturingMyWork(ctx context.Context, req gen.GetManufact
 				return gen.GetManufacturingMyWork503ApplicationProblemPlusJSONResponse(p)
 			},
 		})
+	}
+	// A station's operator sees their work at the station's work centers
+	// only (M131); the open log itself is theirs wherever it runs.
+	served, atStation, err := s.stationCenters(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if atStation {
+		items = slices.DeleteFunc(items, func(w gen.ManufacturingWorkOrder) bool { return !slices.Contains(served, w.WorkCenter.Id) })
 	}
 	out := gen.GetManufacturingMyWork200JSONResponse{Today: items}
 	if mine != nil {

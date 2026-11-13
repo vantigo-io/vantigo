@@ -701,6 +701,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 	p, err := txq.InsertProduction(ctx, store.InsertProductionParams{
 		OrderID: o.ID, ClientRequestID: in.ClientRequestId, RequestHash: v.hash, Quantity: numeric(v.quantity, quantityPlaces),
 		OutputScrap: numeric(v.outputScrap, quantityPlaces), ToLocationID: to, PostedByUserID: who.id, PostedByDisplay: who.display, Now: at,
+		StationID: stationOf(ctx),
 	})
 	if err != nil {
 		return 0, err
