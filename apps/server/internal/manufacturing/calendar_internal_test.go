@@ -209,6 +209,48 @@ func TestReschedule_MovesOverlappingSuccessors(t *testing.T) {
 	wantPieces(t, got[0].pieces, span{at(2026, 3, 2, 7, 0), at(2026, 3, 2, 9, 0)})
 }
 
+// TestReschedule_SuccessorsKeepClearOfEachOther is M36 with two successors
+// at one center: the one that moves goes around the one that stays, and a
+// successor the moved work order lands on moves.
+func TestReschedule_SuccessorsKeepClearOfEachOther(t *testing.T) {
+	t.Parallel()
+	cals := map[int64]workCalendar{1: testCalendar(t, weekdays(iv("07:00", "15:00"))), 2: testCalendar(t, weekdays(iv("07:00", "15:00")))}
+	now := at(2026, time.March, 2, 6, 0)
+	target, s1, s2 := work(1, 1, time.Hour), work(2, 2, 2*time.Hour, 1), work(3, 2, time.Hour, 1)
+	planned := func(w planWork, start, finish time.Time) placement {
+		return placement{id: w.id, center: w.options[0].center, pieces: []span{{start, finish}}, start: start, finish: finish, option: w.options[0]}
+	}
+	existing := map[int64]placement{
+		1: planned(target, at(2026, 3, 2, 8, 0), at(2026, 3, 2, 9, 0)),
+		2: planned(s1, at(2026, 3, 2, 9, 0), at(2026, 3, 2, 11, 0)),
+		3: planned(s2, at(2026, 3, 2, 12, 0), at(2026, 3, 2, 13, 0)),
+	}
+	works := map[int64]planWork{1: target, 2: s1, 3: s2}
+	got, _, ok := reschedule(cals, nil, target, target.options[0], []planWork{s1, s2}, existing, works, at(2026, 3, 2, 10, 0), now)
+	if !ok || len(got) != 2 {
+		t.Fatalf("placements %v", got)
+	}
+	wantPieces(t, got[0].pieces, span{at(2026, 3, 2, 10, 0), at(2026, 3, 2, 11, 0)})
+	// S2 keeps 12:00–13:00, so S1 runs 11:00–12:00 and 13:00–14:00.
+	wantPieces(t, got[1].pieces, span{at(2026, 3, 2, 11, 0), at(2026, 3, 2, 12, 0)}, span{at(2026, 3, 2, 13, 0), at(2026, 3, 2, 14, 0)})
+
+	// A send-ahead successor at the target's own center that the target
+	// lands on moves, though its bounds hold.
+	ahead := work(1, 2, time.Hour)
+	ahead.sendAhead = big.NewRat(1, 1)
+	ahead.aheadMet = true
+	next := work(2, 2, time.Hour, 1)
+	existing = map[int64]placement{2: planned(next, at(2026, 3, 2, 10, 0), at(2026, 3, 2, 11, 0))}
+	works = map[int64]planWork{1: ahead, 2: next}
+	got, _, ok = reschedule(cals, nil, ahead, ahead.options[0], []planWork{next}, existing, works, at(2026, 3, 2, 10, 0), now)
+	if !ok || len(got) != 2 {
+		t.Fatalf("placements %v", got)
+	}
+	if overlapsAny(got[0].pieces, got[1].pieces) {
+		t.Errorf("the target %v overlaps its successor %v", got[0].pieces, got[1].pieces)
+	}
+}
+
 // work is a planWork at center needing need there, after preds, with a
 // minute a cycle at full efficiency.
 func work(id, center int64, need time.Duration, preds ...int64) planWork {

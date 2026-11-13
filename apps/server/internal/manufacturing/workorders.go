@@ -91,6 +91,15 @@ func snapshotWorkOrders(ctx context.Context, txq *store.Queries, o store.Manufac
 	if err != nil {
 		return nil, err
 	}
+	// A group operation snapshots its first active member; a group with none
+	// has nowhere to run (manufacturing phase 2 M118).
+	for _, op := range ops {
+		if op.WorkCenterGroupID != nil && op.WorkCenterStatus != statusActive {
+			return nil, conflict(codeWorkCenterGroupEmpty, "The work center group has no active work center",
+				fmt.Sprintf("Operation %s targets work center group %s, and none of its work centers is active. Reactivate one or add one to the group.",
+					op.Name, deref(op.GroupCode)))
+		}
+	}
 	hasPred := map[int64]bool{}
 	for _, e := range edges {
 		hasPred[e.OperationID] = true
@@ -419,7 +428,8 @@ func (s *server) StartManufacturingWorkOrder(ctx context.Context, req gen.StartM
 
 // startAtMember moves a group work order to the member it is started at, from
 // a stale or a current Group work list (manufacturing phase 2 M119): a center
-// that is not an active member of its group is work_center_not_in_group; once a time log exists, or
+// that is not an active member of its group, or any other center once the
+// group is archived, is work_center_not_in_group; once a time log exists, or
 // the work order is planned at its member, the member is fixed
 // (work_order_member_fixed, naming it). Otherwise the member's figures are
 // taken again (M118).
@@ -428,7 +438,7 @@ func startAtMember(ctx context.Context, txq *store.Queries, w store.Manufacturin
 	if w.WorkCenterGroupID == nil {
 		return w, notInGroup(title)
 	}
-	members, err := groupMembers(ctx, txq, []int64{*w.WorkCenterGroupID})
+	members, err := choosableMembers(ctx, txq, []int64{*w.WorkCenterGroupID})
 	if err != nil {
 		return w, err
 	}
@@ -708,8 +718,10 @@ func replayQuantity(r store.ManufacturingWorkOrderQuantity, workOrderID int64, q
 // RegisterManufacturingWorkOrderQuantity is Register quantity (manufacturing
 // phase 2 M116): good units the work order passes on to its successors, which
 // posts nothing to stock. Each successor whose send-ahead quantity is now
-// reached is readied (M114). The work order's first-piece checks must have
-// their results first (M98). Sent again with its clientRequestId it registers
+// reached is readied (M114). The output work order — the last that is not
+// cancelled — passes nothing on (work_order_is_output), and what a work order
+// has passed on stays within the order's quantity (quantity_over_order). The
+// work order's first-piece checks must have their results first (M98). Sent again with its clientRequestId it registers
 // nothing more.
 func (s *server) RegisterManufacturingWorkOrderQuantity(ctx context.Context, req gen.RegisterManufacturingWorkOrderQuantityRequestObject) (gen.RegisterManufacturingWorkOrderQuantityResponseObject, error) {
 	const title = "The quantity was not registered"
@@ -755,6 +767,22 @@ func (s *server) RegisterManufacturingWorkOrderQuantity(ctx context.Context, req
 			case workOrderPending:
 				return conflict(codeWorkOrderPending, "The work order is not ready",
 					"A work order this one depends on is not finished, and this one was not started. Nothing is passed on from it yet.")
+			}
+			all, err := txq.WorkOrdersOfOrder(ctx, w.OrderID)
+			if err != nil {
+				return err
+			}
+			if i := slices.IndexFunc(all, func(x store.ManufacturingWorkOrder) bool { return x.ID == w.ID }); i >= 0 &&
+				!slices.ContainsFunc(all[i+1:], func(x store.ManufacturingWorkOrder) bool { return x.Status != workOrderCancelled }) {
+				return conflict(codeWorkOrderIsOutput, "The work order makes the output",
+					"The last work order passes nothing on: its good units are a production. Register a production instead.")
+			}
+			if total := new(big.Rat).Add(ratOrZero(w.QuantityDone), quantity); total.Cmp(ratOrZero(lo.order.Quantity)) > 0 {
+				var f fieldErrors
+				f.addCoded("quantity", codeQuantityOverOrder, fmt.Sprintf("At most %s more: the work order has passed on %s of the order's %s",
+					numericText(numeric(new(big.Rat).Sub(ratOrZero(lo.order.Quantity), ratOrZero(w.QuantityDone)), quantityPlaces), quantityPlaces),
+					numericText(w.QuantityDone, quantityPlaces), numericText(lo.order.Quantity, quantityPlaces)))
+				return refuseInvalid(title, f)
 			}
 			missing, err := txq.MissingChecksOfWorkOrders(ctx, store.MissingChecksOfWorkOrdersParams{WorkOrderIds: []int64{w.ID},
 				Frequencies: []string{frequencyFirstPiece}})
