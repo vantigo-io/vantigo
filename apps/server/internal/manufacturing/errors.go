@@ -98,6 +98,9 @@ const (
 	codeUnbuildByproducts = "unbuild_has_byproducts"  // 409
 	codeUnbuildNotHeld    = "unbuild_not_quarantined" // 409
 
+	// Kits (manufacturing phase 2 M144).
+	codeKitNotManufactured = "kit_not_manufactured" // 400
+
 	// A line's codes (ManufacturingProblemLine.code), each also a problem's
 	// own code when it is the first failing line's or a field's.
 	codeVariantNotGoods     = "variant_not_goods"
@@ -126,6 +129,7 @@ var refusalCodes = []string{
 	codeWorkOrderIsOutput, codeQuantityOverOrder, codeWorkCenterGroupEmpty,
 	codeOutputIsProduct, codeOutputIsComponent, codeCostShareOver, codeUnbuildTooMuch, codeSplitSum, codeMergeMismatch, codeOrderHasWork,
 	codeOrderHasOpenParts, codeUnbuildByproducts, codeUnbuildNotHeld,
+	codeKitNotManufactured,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

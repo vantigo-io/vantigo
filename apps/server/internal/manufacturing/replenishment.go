@@ -454,7 +454,11 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 	}
 	bomOf := map[int32]store.ManufacturingBom{}
 	for _, b := range boms {
-		bomOf[b.VariantID] = b
+		// A kit is never made (manufacturing phase 2 M144): its variant is
+		// suggested as one with no BoM.
+		if b.Kind != kindKit {
+			bomOf[b.VariantID] = b
+		}
 	}
 	reorderRows, err := pool.OpenReorderVariantsAt(ctx, siteID)
 	if err != nil {

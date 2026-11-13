@@ -97,6 +97,9 @@ func Module() module.Module {
 		// What is being made for sales order lines (M46a), resolved from the
 		// enabled modules only.
 		Production: newProduction,
+		// Orders' ungated read of the kits' components (manufacturing phase
+		// 2 M145), resolved from the enabled modules only.
+		KitStructure: newKitStructure,
 	}
 }
 
