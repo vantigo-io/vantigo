@@ -255,6 +255,56 @@ type ManufacturingProductionOutput struct {
 	Quantity     pgtype.Numeric
 }
 
+type ManufacturingReplenishmentRule struct {
+	VariantID        int32
+	SiteID           int64
+	AutoCreate       bool
+	AutoConfirm      bool
+	UpdatedByUserID  *uuid.UUID
+	UpdatedByDisplay *string
+	UpdatedAt        time.Time
+}
+
+type ManufacturingReplenishmentRun struct {
+	ID                 int64
+	SiteID             *int64
+	Kind               string
+	NightlyFor         pgtype.Date
+	Status             string
+	RequestedAt        time.Time
+	RequestedByUserID  *uuid.UUID
+	RequestedByDisplay *string
+	StartedAt          *time.Time
+	FinishedAt         *time.Time
+	LeaseUntil         *time.Time
+	Attempts           int32
+	Suggestions        int32
+	OrdersCreated      int32
+	SalesCounted       bool
+	Error              *string
+}
+
+type ManufacturingSuggestion struct {
+	ID             int64
+	RunID          int64
+	SiteID         int64
+	VariantID      int32
+	Sku            string
+	ProductName    string
+	Kind           string
+	Quantity       pgtype.Numeric
+	NeedBy         pgtype.Date
+	Reason         []byte
+	BomID          *int64
+	Status         string
+	ReorderOpen    bool
+	OrderID        *int64
+	ActedByUserID  *uuid.UUID
+	ActedByDisplay *string
+	ActedAt        *time.Time
+	CreatedAt      time.Time
+}
+
 type ManufacturingTimeLog struct {
 	ID                 int64
 	WorkOrderID        *int64

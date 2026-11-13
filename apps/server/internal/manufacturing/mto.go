@@ -1006,7 +1006,7 @@ func (s *server) childDueDate(ctx context.Context, parent store.ManufacturingOrd
 // caller who also holds orders:access. A read that fails is logged and the
 // name left out.
 func (s *server) withOrigin(ctx context.Context, out *gen.ManufacturingOrder) {
-	if out.Origin.Kind != gen.SalesOrder || out.Origin.LineId == nil || s.deps.SalesOrderLines == nil ||
+	if out.Origin.Kind != gen.ManufacturingOriginSalesOrder || out.Origin.LineId == nil || s.deps.SalesOrderLines == nil ||
 		s.deps.Directory == nil || !s.has(ctx, "orders:access") {
 		return
 	}
