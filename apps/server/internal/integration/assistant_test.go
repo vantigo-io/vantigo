@@ -201,8 +201,10 @@ var markedByHand = map[string]string{
 	// M97): an agent neither measures nor photographs, and a photo is a file
 	// it never fetches.
 	"recordManufacturingCheckResult": "never",
-	"uploadManufacturingCheckPhoto":  "never",
-	"getManufacturingCheckPhoto":     "never",
+	// Register quantity is the station's too (manufacturing phase 2 M116).
+	"registerManufacturingWorkOrderQuantity": "never",
+	"uploadManufacturingCheckPhoto":          "never",
+	"getManufacturingCheckPhoto":             "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
