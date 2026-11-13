@@ -2218,6 +2218,16 @@ operations are exercised.
     `README.md` and `CONTRIBUTING.md`, and the [installation
     guide's](/en/admin/installation/#database-roles) `GRANT` lines.
 
+**The public site**
+
+14. Give the app its page on <https://vantigo.io>. The marketing site is another
+    repository, [vantigo-io/vantigo-landing](https://github.com/vantigo-io/vantigo-landing),
+    with one page per app (`/apps/<name>`) written from the user guide pages of step 12:
+    what the app is about, what it solves and how. Follow *Adding an app* in that
+    repository's `AGENTS.md`, and open its pull request alongside this one. No test
+    here can see that repository; its own `mise run apps:check` compares the apps it
+    shows with the user guide and names a missing one.
+
 The lists above are enumerated by tests that run against the module's base branch. A
 module's pull request is checked against the `main` it was opened from, so when another
 pull request has touched one of these registries since, rebase onto the latest `main`
