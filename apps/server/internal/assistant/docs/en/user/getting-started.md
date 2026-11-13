@@ -227,8 +227,10 @@ While Manufacturing is on and you work on the shop floor, **Settings → Securit
 **Station PIN** card: the six digits you switch in with at a shared station on the floor.
 Enter a **New PIN** and, unless you signed in within the last ten minutes, your **Current
 password**, and choose **Set PIN**. One digit repeated and runs such as `123456` are
-refused. **Remove PIN** takes it away. The PIN never signs you in to Vantigo itself; an
-administrator can clear it, but never see or set it.
+refused. **Remove PIN** takes it away. Setting or removing your PIN — and changing your
+password or signing out everywhere — signs you out at every station. The PIN never signs
+you in to Vantigo itself; an administrator can clear it, but never see or set it. If the
+card says your PIN no longer works, set it again.
 
 ## Sign out
 

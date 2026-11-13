@@ -12,15 +12,15 @@ sources:
 Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
-**Invitasjoner**, **Roller og tilgang** og, når Produksjon er på, **Stasjoner**, og, under **Integrasjoner**, **Microsoft Entra ID**,
+**Invitasjoner**, **Roller og tilgang** og, når Produksjon er på, **Nettbrettstasjoner**, og, under **Integrasjoner**, **Microsoft Entra ID**,
 **Google Workspace**, **Meta**, **Frakt** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
 rolleadministrasjon til, ser bare **Roller og tilgang**, både i avatar-menyen og i
 sidemenyen; den som har `entra:manage`, `google:manage` eller `orders:carriers-manage` uten å være eier, ser bare
 **Integrasjoner**
-([nedenfor](#integrasjoner)); og den som har `identity:manage`, ser **Stasjoner**
-([nedenfor](#stasjoner-i-verkstedet)). Den siste aktive eieren kan aldri degraderes, deaktiveres
+([nedenfor](#integrasjoner)); og den som har `identity:manage`, ser **Nettbrettstasjoner**
+([nedenfor](#nettbrettstasjoner-i-verkstedet)). Den siste aktive eieren kan aldri degraderes, deaktiveres
 eller slettes, så arbeidsområdet har alltid én.
 
 ## Les oversikten
@@ -104,7 +104,7 @@ Handlingsmenyen på en rad (de tre prikkene) tilbyr:
 Mens modulen Assistent er på, har dialogen **Rediger bruker** også bryteren **Har assistenten**,
 som gjelder når assistenten er satt til *Per person* ([Assistent](#assistent)).
 
-Når Produksjon er på, viser dialogen også personens **Stasjon i verkstedet**: om de **Har
+Når Produksjon er på, viser dialogen også personens **Nettbrettstasjon i verkstedet**: om de **Har
 PIN-kode** — **Fjern PIN-kode** fjerner den; bare personen selv setter en — og om de **Har
 kort**. For å registrere et kort setter du markøren i **Kort**, skanner kortet med leseren og
 velger **Registrer kort**; **Fjern kort** tar det bort. Et kort som allerede er registrert på
@@ -113,29 +113,47 @@ en annen, avvises.
 Å tilbakestille en annen administrators tofaktorautentisering tilbys ikke i dette
 skjermbildet; det finnes i API-et for en eier hvis egen økt er MFA-bekreftet.
 
-## Stasjoner i verkstedet
+## Nettbrettstasjoner i verkstedet
 
-**Stasjoner** viser de delte nettbrettene i verkstedet der operatører logger på med PIN-kode
-eller kort ([arbeid på en stasjon](/nb/user/manufacturing/#arbeid-på-en-delt-stasjon)). Den
-krever `identity:manage` og finnes når Produksjon er på. Hver rad viser stasjonens
-**Tilstand** (*Venter på tilkobling*, *Tilkoblet*, *Tilkoblingen er utløpt*, *Ikke tilkoblet*
-eller *Tilbakekalt*), når den var **Sist aktiv** med adressen, hvem som er **Pålogget**, og
+**Nettbrettstasjoner** viser de delte nettbrettene i verkstedet der operatører logger på med PIN-kode
+eller kort ([arbeid på en nettbrettstasjon](/nb/user/manufacturing/#arbeid-på-en-delt-nettbrettstasjon)). Den
+krever `identity:manage` og finnes når Produksjon er på. Hver rad viser nettbrettstasjonens
+**Tilstand** (*Venter på tilkobling*, *Tilkoblet* — med *Ny kode venter* mens en ny
+koblingskode ikke er brukt — *Tilkoblingen er utløpt*, *Ikke tilkoblet* eller
+*Tilbakekalt*), når den var **Sist aktiv** med adressen, hvem som er **Pålogget**, og
 **Mislykkede pålogginger** når gjentatte feil PIN-koder eller kort der sendte e-post til
 administratorene.
 
-1. Velg **Registrer en stasjon** og gi den et **Navn**. Sett **Tidsavbrudd ved
-   inaktivitet**, om den skal **Krev PIN-kode sammen med kort** (på, med mindre bare kort
-   brukes i et kontrollert område), **Tillatte nettverk** den kan brukes fra (tomt for alle)
-   og **Arbeidsstasjoner** den betjener — det siste krever Administrere stykklister og
-   arbeidsstasjoner.
+1. Velg **Registrer en nettbrettstasjon** og gi den et **Navn**. Sett **Tidsavbrudd ved
+   inaktivitet** (hold det kort: den som står ved nettbrettet, kan trykke på brikken til en
+   pålogget person og arbeide som dem til da), om den skal **Krev PIN-kode sammen med kort**
+   (på, med mindre bare kort brukes i et kontrollert område), **Tillatte nettverk** den kan
+   brukes fra (tomt for alle) og **Arbeidsstasjoner** den betjener — å endre dem krever
+   Administrere stykklister og arbeidsstasjoner; uten det viser feltet dem bare.
 2. Velg **Lagre**. **Koblingskoden** vises én gang: åpne adressen som vises på nettbrettet, og
-   skriv inn koden innen 15 minutter.
-3. For å endre en stasjon velger du **Rediger** i radens meny. **Ny koblingskode** kobler den
+   skriv inn koden innen 15 minutter. Kunne ikke arbeidsstasjonene lagres, vises koden
+   likevel, og en melding sier fra: rediger nettbrettstasjonen for å sette dem.
+3. For å endre en nettbrettstasjon velger du **Rediger** i radens meny. **Ny koblingskode** kobler den
    til på nytt — etter 90 dager, eller på et nytt nettbrett — og **Tilbakekall** stopper den
-   med en gang og logger av alle som er pålogget der.
+   med en gang og logger av alle som er pålogget der. Kan ikke arbeidsstasjonene leses, sier
+   skjemaet det og lagrer ikke; lukk det og prøv igjen.
+4. Å slå av **Krev PIN-kode sammen med kort** ber om **Nåværende passord** med mindre du
+   logget inn for under ti minutter siden, og administratorene får e-post.
+5. Ved hver person som er **Pålogget**, logger **Avslutt** dem av den nettbrettstasjonen med en gang.
+   En person med flere mislykkede pålogginger på rad der vises med hvor mange; **Nullstill**
+   lar dem prøve igjen med en gang.
+
+På en brukers dialog viser **Nettbrettstasjon i verkstedet** om de har PIN-kode og kort — *Må
+registreres på nytt* når en av dem ikke lenger virker og må settes igjen. **Fjern PIN-kode**
+fjerner PIN-koden. For å registrere et kort skanner du kortet inn i **Kort**, legger til
+**Nåværende passord** med mindre du logget inn for under ti minutter siden, og velger
+**Registrer kort**: et kort kan bare registreres for en som kan arbeide i verkstedet,
+personen får e-post om det, og et kort som ikke kan registreres, avvises uten at det sies
+hvorfor. Å sette eller fjerne en PIN-kode eller et kort logger personen av på alle
+nettbrettstasjoner.
 
 Administratorens detaljer — tokenet, ventetiden og varslene — står under
-[Stasjoner i verkstedet](/nb/admin/authentication/#stasjoner-i-verkstedet).
+[Nettbrettstasjoner i verkstedet](/nb/admin/authentication/#nettbrettstasjoner-i-verkstedet).
 
 ## Deaktiver, aktiver eller slett en bruker
 
