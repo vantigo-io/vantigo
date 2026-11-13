@@ -125,9 +125,13 @@ interface BarProps {
   onDrop: (bar: ManufacturingScheduleBar, start: number, workCenterId?: number) => void;
 }
 
-/** The work center of the board row under a point, from its `data-schedule-row`. */
-const rowAt = (x: number, y: number): number | undefined => {
+/**
+ * The work center of the board row under a point, from its `data-schedule-row`;
+ * the dragged bar itself, which follows the pointer, is looked through.
+ */
+const rowAt = (x: number, y: number, dragged: Element): number | undefined => {
   for (const element of document.elementsFromPoint?.(x, y) ?? []) {
+    if (dragged.contains(element)) continue;
     const row = (element as HTMLElement).closest?.("[data-schedule-row]");
     if (row) return Number(row.getAttribute("data-schedule-row"));
   }
@@ -185,7 +189,9 @@ const Bar = ({ bar, centerId, windows, canMove, onOpen, onDrop }: BarProps) => {
     dragged.current = true;
     setDelta(null);
     setLift(0);
-    const member = crossRows ? droppedMember(bar, centerId, rowAt(event.clientX, event.clientY)) : undefined;
+    const member = crossRows
+      ? droppedMember(bar, centerId, rowAt(event.clientX, event.clientY, event.currentTarget))
+      : undefined;
     onDrop(bar, workOrderStart(bar, draggedStart(bar, (event.clientX - current.x) / current.width, windows)), member);
   };
   const click = () => {

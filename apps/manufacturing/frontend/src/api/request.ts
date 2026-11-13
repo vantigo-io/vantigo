@@ -140,11 +140,15 @@ export const refusalCodes = [
   "attachment_type",
   "storage_not_configured",
   "suggestion_not_open",
-  "operation_cycle",
+  "operation_order",
+  "operation_unjoined",
   "operation_unknown",
   "work_center_not_in_group",
   "work_order_started",
   "work_order_member_fixed",
+  "work_order_is_output",
+  "quantity_over_order",
+  "work_center_group_empty",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 

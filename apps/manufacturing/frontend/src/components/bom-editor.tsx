@@ -164,10 +164,10 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
         ? { workCenterId: null, workCenterGroupId: Number(value.slice(2)) }
         : { workCenterId: Number(value.slice(2)), workCenterGroupId: null };
   const levels = operationLevels(state.operations);
-  const operationOptions = state.operations.map((operation, index) => ({
-    value: operation.key,
-    label: `${operation.sequence === "" ? (index + 1) * 10 : operation.sequence} · ${operation.name || t("unnamedOperation")}`,
-  }));
+  const operationOptions = state.operations.map((operation, index) => {
+    const sequence = operation.sequence === "" ? (index + 1) * 10 : operation.sequence;
+    return { value: operation.key, sequence, label: `${sequence} · ${operation.name || t("unnamedOperation")}` };
+  });
 
   return (
     <Stack gap="lg">
@@ -384,7 +384,13 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
                             placeholder={operation.dependsOn.length === 0 ? t("dependsOnNone") : undefined}
                             clearable
                             disabled={readOnly}
-                            data={operationOptions.filter((option) => option.value !== operation.key)}
+                            // Only operations earlier by sequence (M112); one chosen before a sequence changed stays shown, marked.
+                            data={operationOptions.filter(
+                              (option) =>
+                                option.value !== operation.key &&
+                                (option.sequence < operationOptions[index].sequence ||
+                                  operation.dependsOn.includes(option.value)),
+                            )}
                             value={operation.dependsOn}
                             onChange={(dependsOn) => setOperation(operation.key, { dependsOn })}
                             error={errors[`${at}.dependsOn`]}

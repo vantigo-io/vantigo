@@ -347,7 +347,7 @@ export const bomUpdateBody = (state: BomEditorState, revision: number): Manufact
  * What the editor can tell before it sends, keyed by the same camelCase
  * paths the server answers field errors with (`lines[2].quantity`), so the
  * two are shown the same way. Empty when the BoM can be sent; the server
- * judges the rest — goods, cycles, the site (M10–M14).
+ * judges the rest — goods, the site (M10–M14).
  */
 export const editorProblems = (state: BomEditorState): Record<string, string> => {
   const problems: Record<string, string> = {};
@@ -379,7 +379,23 @@ export const editorProblems = (state: BomEditorState): Record<string, string> =>
       if (check.min.trim() === "" && check.max.trim() === "") problems[`${path}.min`] = "limits";
     });
   });
-  if (state.operations.length > 0 && operationLevels(state.operations) === null) problems.operations = "cycle";
+  // The graph's rules (M112): only operations earlier by sequence, and every branch leads to the last.
+  const sequenceOf = (operation: EditorOperation, index: number) =>
+    operation.sequence === "" ? (index + 1) * 10 : operation.sequence;
+  const sequences = new Map(state.operations.map((operation, index) => [operation.key, sequenceOf(operation, index)]));
+  const last = state.operations.reduce<string | undefined>(
+    (found, operation, index) =>
+      found === undefined || sequenceOf(operation, index) > (sequences.get(found) ?? 0) ? operation.key : found,
+    undefined,
+  );
+  const joined = new Set(state.operations.flatMap((operation) => operation.dependsOn));
+  state.operations.forEach((operation, index) => {
+    const at = `operations[${index}].dependsOn`;
+    const own = sequenceOf(operation, index);
+    if (operation.dependsOn.some((key) => key !== operation.key && (sequences.get(key) ?? -Infinity) >= own))
+      problems[at] = "order";
+    else if (operation.key !== last && !joined.has(operation.key)) problems[at] = "unjoined";
+  });
   state.lines.forEach((line, index) => {
     const at = `lines[${index}]`;
     if (!line.variant) problems[`${at}.variantId`] = "required";
@@ -397,7 +413,8 @@ export const editorProblems = (state: BomEditorState): Record<string, string> =>
  * The operations' graph in levels (M112), for the editor's preview: the
  * first level is what can start at once, each next one what runs after the
  * levels before it — operations of one level run side by side. Null when
- * the operations depend on each other in a circle (operation_cycle).
+ * the operations, while being edited, depend on each other in a circle —
+ * which editorProblems marks as operation_order.
  */
 export const operationLevels = (operations: readonly EditorOperation[]): EditorOperation[][] | null => {
   const keys = new Set(operations.map((operation) => operation.key));

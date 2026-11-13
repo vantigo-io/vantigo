@@ -123,9 +123,20 @@ describe("the operations' graph (manufacturing phase 2 M112, M116, M118)", () =>
     const diamond = [op("a", 10, []), op("b", 20, ["a"]), op("c", 30, ["a"]), op("d", 40, ["b", "c"])];
     expect(operationLevels(diamond)?.map((level) => level.map((one) => one.key))).toEqual([["a"], ["b", "c"], ["d"]]);
     expect(operationLevels([op("a", 10, ["b"]), op("b", 20, ["a"])])).toBeNull();
+    expect(editorProblems({ ...emptyEditor(variant(1, "T")), operations: diamond })).not.toHaveProperty(
+      "operations[3].dependsOn",
+    );
+  });
+
+  it("allows only earlier operations, and every branch must lead to the last", () => {
+    const editor = { ...emptyEditor(variant(1, "T")) };
+    expect(editorProblems({ ...editor, operations: [op("a", 10, ["b"]), op("b", 20, [])] })).toHaveProperty(
+      "operations[0].dependsOn",
+      "order",
+    );
     expect(
-      editorProblems({ ...emptyEditor(variant(1, "T")), operations: [op("a", 10, ["b"]), op("b", 20, ["a"])] }),
-    ).toHaveProperty("operations", "cycle");
+      editorProblems({ ...editor, operations: [op("a", 10, []), op("b", 20, ["a"]), op("c", 30, ["a"])] }),
+    ).toHaveProperty("operations[1].dependsOn", "unjoined");
   });
 
   it("keeps the order when an operation in the middle is removed", () => {
