@@ -384,7 +384,9 @@ active, **Quarantine** is greyed out and the page says *This page has the lot in
 quarantine already*, and likewise **Block** — release that hold to put a new one. A hold
 put by another module's document — a manufacturing deviation, say — shows *Put by
 Manufacturing, released there*: it is released on that document, not here, and it does
-not stop the page putting its own.
+not stop the page putting its own. A quarantine put by an unbuild of a held lot names
+*An unbuild of a held lot*, which opens the unbuild in Manufacturing, where it is
+released.
 
 ### Inspect on receipt
 
@@ -484,8 +486,9 @@ Each lot shows its status and what it holds now, and links to its page; each pro
 links to its manufacturing order. A lot reached twice — the same flour in the dough and
 in the bread — is shown in full once; later it says *Already shown above*, which jumps
 there, opening a folded branch on the way. The arrow beside a lot folds what lies under it. Taking a finished item apart
-(an unbuild) ends the path: the finished lot shows *Unbuilt by unbuild …*, the parts it
-gave back *Returned by unbuild …*, and the trace does not go from one into the other.
+(an unbuild) ends the path: the finished lot shows *Unbuilt*, the parts it gave back
+*Returned by an unbuild*, each with a link **Unbuild** to the unbuild in Manufacturing,
+and the trace does not go from one into the other.
 
 The trace follows ten productions deep; a lot at the tenth says *Not traced further: the
 depth limit* when more was made from it. It shows at most 2,000 lots and 20,000

@@ -107,7 +107,7 @@ status, not its availability, which only the order page computes
 | `manufacturing:orders-manage` | Manage manufacturing orders / Administrere produksjonsordrer | Create, update, confirm, reserve, close, cancel, split and merge manufacturing orders; unbuild finished goods; add and change their component lines; register a production; every shop-floor action; correct a time log and add a missing one; plan, plan all, unplan and reschedule, and set an order's requested start | no | yes |
 | `manufacturing:shop-floor` | Work on the shop floor / Arbeide i verkstedet | Register a production; start, pause and finish a work order, report scrap, block and unblock a work center | no | yes |
 | `manufacturing:costs-view` | See manufacturing costs / Se produksjonskostnader | Every cost field in a response — an order's `cost` among them — writing a work center's rates, and the production-cost report | **yes** | **no** |
-| `manufacturing:quality-manage` | Manage quality / Administrere kvalitet | Close a deviation, which releases its own holds unless it is closed as scrap or return, and release the holds of one closed so (M102) | no | yes |
+| `manufacturing:quality-manage` | Manage quality / Administrere kvalitet | Close a deviation, which releases its own holds unless it is closed as scrap or return, and release the holds of one closed so (M102); release the quarantine an unbuild of a held lot put on what it restored (M123) | no | yes |
 
 Every read is checked against `manufacturing:access`; every write of a work center or a
 BoM against `manufacturing:access` **and** `manufacturing:boms-manage`, and every write
@@ -842,7 +842,8 @@ fixed at its own confirm.
 while **nothing** has been produced, consumed or scrapped — **409**
 `order_has_production` otherwise — releases every reservation, ends every open time log of
 its work orders at now and cancels every work order that is not `done` (M29a). A done or
-cancelled order is `order_not_open`. The number is kept.
+cancelled order is `order_not_open`; an order split into parts that are still open is
+**409** `order_has_open_parts` ([split](#split-and-merge)). The number is kept.
 
 ### History
 
@@ -2137,24 +2138,31 @@ location** — never the production's `toLocationId` — and, for a lot-tracked 
 named by `lot.number` or the order's pattern rendered for the by-product's SKU, found or
 made by `EnsureLots` at step 7a with the counted-number skips the product's lot has. A
 by-product tracked by serial number is **400** `serial_quantity`; `lot` on an untracked
-one `lot_not_allowed`. The order's quarantining deviations hold the by-products' lots
-as they hold the product's (M99). `order_outputs` ids are their own table's, so one may
+one `lot_not_allowed`; a bad `lot.number` or `lot.supplierLot` is a field error at
+`outputs[i].lot.number` or `outputs[i].lot.supplierLot`. Every output's lot — the
+product's and the by-products' — is found or made before any is held; then the order's
+quarantining deviations hold the by-products' lots with the product's (M99). Inventory's
+refusal of a by-product's produce line answers a line with its `outputId` and its index
+in the request's `outputs`, never a component line whose id it shares. `order_outputs` ids are their own table's, so one may
 equal the order's id or a component line's: produce lines are keyed by (variant, line
 id). `production_byproducts` keeps what each production made of each by-product, with
 its lot; the production answers `byProducts`, the order's lots `byProducts` (those with a
 lot), and the production draft `byProducts`, each proposed as its expected × the
 quantity ÷ the order's quantity, with a lot-tracked one's previewed number.
 
-**The cost split** (M122). At close the exact actual total is split: each by-product
-carries `costShare` % of it, and its cost per unit is that part ÷ its produced quantity;
-the product carries the rest, and the order's `costPerUnit` is the rest ÷ the good output.
+**The cost split** (M122). At close the actual total is split: each by-product carries
+`costShare` % of it, rounded half-up to two decimals once, and its cost per unit is that
+part ÷ its produced quantity; the product carries the rounded total less the parts the
+produced by-products carry, so the parts shown sum to the total shown, and the order's
+`costPerUnit` is the product's part ÷ the good output.
 A by-product that produced nothing has no cost per unit — `notProduced` — and its share
 stays with the product; its `actual` is the part it would have had. The estimate is split
 by the same shares. The order's cost answers `byProducts` (`estimate`, `actual`,
 `costPerUnit` once fixed, `notProduced`) and `mainActual`; the split is fixed with the
 actual at close. The production-cost report answers `byProducts`, one row per by-product
 of each order, and a product's cost per unit over its orders is their main parts ÷ their
-good output.
+good output. Its CSV adds the by-products as a section of their own after an empty row,
+with its own header: `byProductOrder;sku;product;costShare;produced;actual;costPerUnit;notProduced`.
 
 ### Unbuilds
 
@@ -2163,24 +2171,32 @@ An **unbuild** (`unbuilds`, numbered **UB-<n>** from the counter row `unbuild`; 
 (`orderId`) or a BoM (`bomId`) — exactly one — the `quantity`, a `clientRequestId` and
 optionally a `note`, the locations and, free-standing, a `siteId`:
 
-- **From a done order** (otherwise 409 `order_not_open`): its BoM, product and site. For a
-  tracked product `lotId` is required (`lot_required`) and must be a lot the order's
-  productions made (`lot_not_of_order`); the quantity is at most what that lot received
-  from them less what was unbuilt from it, or for an untracked product the order's good
-  output less what was unbuilt (`unbuild_too_much`, 400). It restores only what the
-  **productions that put output in the chosen lot** consumed (scrap left out), each
-  production in proportion to what it put in the lot: per production, its consumption
-  per component and lot × the quantity × what it put in the lot ÷ (what they put there
-  together × its own good output). Each component's figure is rounded half-up to three
-  decimals, each lot's part too but the last, which takes the remainder. A component goes
-  back into the lot it was taken from; an untracked one without a lot. An untracked
+- **From a done order** (otherwise 409 `order_not_open`): its BoM, product and site. An
+  order whose productions made any of its by-products is refused, **409**
+  `unbuild_has_byproducts`: what its consumption made was not the product alone, so no
+  share of it is the product's to restore; such goods are taken apart free-standing, by
+  the BoM. For a tracked product `lotId` is required (`lot_required`) and must be a lot
+  the order's productions made (`lot_not_of_order`); the quantity is at most what that
+  lot received from them less what was unbuilt from it, or for an untracked product the
+  order's good output less what was unbuilt (`unbuild_too_much`, 400). It restores only
+  what the **productions that put output in the chosen lot** consumed (scrap left out),
+  each production in proportion to what it put in the lot: per production, its
+  consumption per component and lot × the quantity × what it put in the lot ÷ (what they
+  put there together × what its consumption made — its good output **and its output
+  scrap**). Each component's figure is rounded half-up to three decimals, each lot's part
+  too but the last, which takes the remainder. A component goes back into the lot it was
+  taken from; an untracked one without a lot. A serial component is restored whole: an
+  unbuild that would restore a fraction of a serial is **400** `serial_quantity` at
+  `quantity`, naming the component and the serial — unbuild whole units. An untracked
   product's unbuild restores from every production of the order.
 - **Free-standing, by a BoM**: the BoM's lines without scrap for the quantity, half-up to
   three decimals, one line per variant. A tracked component needs `components[]` naming
   its lot — an existing `lotId` of the variant, or a new `lot` with its `number` —
-  else `lot_required`; an untracked one names none (`lot_not_allowed`). A tracked product
-  needs `lotId`. The site is `siteId`, else the BoM's work centers', else the first
-  active one.
+  else `lot_required`; an untracked one names none (`lot_not_allowed`); an entry for a
+  variant the BoM does not have is a field error at `components[i].variantId`. A tracked
+  product needs `lotId` — any lot of the product, an order's included: a free-standing
+  unbuild is not held to that order's limit, nor counted in its `unbuilt`. The site is
+  `siteId`, else the BoM's work centers', else the first active one.
 
 The finished goods are taken from `fromLocationId` (default the order's output location,
 else the site's root) and the components put on `toLocationId` (default the order's
@@ -2196,19 +2212,33 @@ may take a held or expired lot; when the lot taken holds an active hold, Invento
 quarantines every lot restored to, in the same `Produce` (see
 [Inventory](/en/reference/inventory/#production)). The trace treats the movement as a
 reverse edge, never expanded, and the block does not cross it (M88). Inventory's refusals
-pass through as 409. A `clientRequestId` sent again with the same body answers the first
-unbuild, 200; with another, 409 `client_request_reused`.
+pass through as 409. A deadlock is retried once, as a production's is; a second is 409
+`revision_conflict`. A `clientRequestId` sent again with the same body answers the first
+unbuild, 200; with another, 409 `client_request_reused`. The unbuild snapshots the
+product's SKU, name and unit, answered when the catalog no longer has it.
+
+**The quarantine and its release.** Inventory answers the lots it quarantined; the
+unbuild records it (`quarantined`). The holds are the unbuild's own, on the whole of each
+lot restored to — restored stock mixes with what the lot held before, and the hold is a
+lot's. `POST /unbuilds/{id}/release` (manufacturing:quality-manage, as a deviation's
+holds) releases them once the lots are inspected: `LockVariants` on the components
+restored into lots, the unbuild `FOR UPDATE`, then `ReleaseLotHolds` of the document
+`manufacturing/unbuild/<id>` — a hold of any other source stays. It records
+`releasedAt` and `releasedByDisplay`; a release done already answers the unbuild as it
+is, and an unbuild that quarantined nothing is 409 `unbuild_not_quarantined`.
 
 The order's cost is not recomputed. The order answers `unbuilt`, and its lots each
-output lot's `unbuilt`; its timeline gains `unbuilt`. `GET /unbuilds` pages them newest
-first, of one order with `orderId`; `GET /unbuilds/{id}` answers one with its `lines`.
+output lot's `unbuilt` and the product's `tracking` as the catalog has it now, for the
+unbuild dialog; its timeline gains `unbuilt`. `GET /unbuilds` pages them newest first, of
+one order with `orderId`; `GET /unbuilds/{id}` answers one with its `lines`.
 
 ### Split and merge
 
 **Split** (`POST /orders/{id}/split`, M124) takes `quantities`, 2–20, each more than 0,
 summing to the order's quantity (`split_sum`, 400), under the order's `revision`. The
-order must be a draft or confirmed with no production and no time log — in progress, or
-either, is 409 `order_has_work`; done or cancelled `order_not_open`. The order keeps the
+order must be a draft or confirmed with no production, no time log and no registered
+quantity (Register quantity, M116) — in progress, or any of them, is 409
+`order_has_work`; done or cancelled `order_not_open`. The order keeps the
 first quantity; each other is a new order numbered as a backorder of its root (MO-12-2,
 MO-12-3) with `split_from_id` set, the same BoM, origin, due date, requested start,
 locations, priority, responsible, note and lot pattern. The original is unplanned — its
@@ -2218,22 +2248,27 @@ split by the quantities (each part half-up to three decimals, the last the remai
 its work orders' expected minutes recomputed for its quantity (M126), each part gets
 copies of the lines, by-products, work orders with their graph and checks — their
 expected minutes for the part's — its estimate, and is confirmed; then the original and
-every part reserve again, two-pass. A draft's parts are drafts. The answer is the order,
-its `parts` and the lines left short.
+every part reserve again, two-pass. A draft's parts are drafts, and each part's work
+orders notify their own groups' work centers. The answer is the order, its `parts` and
+the lines left short. The original is not cancelled while a part split from it is open
+(**409** `order_has_open_parts`): the parts are numbered from it and carry its promise.
 
 **Merge** (`POST /orders/merge`, M125) takes 2–20 `orders`, each `{id, revision}`. Each
-must be a draft or confirmed with no production and no time log (`order_has_work`,
-`order_not_open`); all of one variant, BoM and site, all drafts or all confirmed, and of
+must be a draft or confirmed with no production, no time log and no registered quantity
+(`order_has_work`, `order_not_open`); all of one variant, BoM and site, all drafts or all confirmed, and of
 the **same origin** — all `manual`, all `reorder`, all for the same sales order line, or
 all children of the same parent — else **400** `merge_mismatch`: mixing a make-to-order
 order with a manual one is refused, so neither promise is lost. The one with the lowest
 number (then suffix) survives with the summed quantity and the earliest due date; the
 others end their work orders and are `cancelled` with `merged_into_id`. Every order is
 unplanned. Confirmed ones release their reservations; the survivor gains each merged
-order's lines — a BoM line added to its own of the same variant and operation, an added
-line or one it has not as a line of its own — and by-products, its work orders' expected
+order's lines — the n-th BoM line of a variant and operation, by sort order, added to
+its own n-th of the same, an added line or one it has not as a line of its own — and
+by-products, its work orders' expected
 minutes are recomputed and its estimate fixed again, and it reserves again. The answer is
-the survivor, the `merged` and the lines left short.
+the survivor, the `merged` and the lines left short. The order list answers each order's
+`revision`, which a merge chosen from the list sends: an order changed since the list was
+read is `revision_conflict`.
 
 **The locks** (M127). Both run through `withScheduledOrders`: the schedule's advisory
 lock of every work center of every order involved — the members of a group work order's
@@ -2254,8 +2289,9 @@ The order answers `splitFromId` and `splitFrom`, `mergedIntoId` and `mergedInto`
 ### The data model of BoM depth
 
 Migration `00173_manufacturing_bom_depth`: `bom_outputs`, `order_outputs`,
-`production_byproducts`, `unbuilds` (with the chosen `lot_id` and its number, the
-`client_request_id` unique), `unbuild_lines`, `orders.split_from_id` and
+`production_byproducts`, `unbuilds` (with the product's snapshot, the chosen `lot_id` and
+its number, the `client_request_id` unique, `quarantined` and the release's
+`released_at`, `released_by_user_id` and `released_by_display`), `unbuild_lines`, `orders.split_from_id` and
 `orders.merged_into_id`, and the amended `ux_orders_origin_line`. The `unbuild` counter
 row is made by its first use.
 
@@ -2398,7 +2434,10 @@ bodies are strict: an unknown property is a 400.
 | `unbuild_too_much` | 400 | An unbuild of more than the order — or the chosen lot — has left to take apart (M123) |
 | `split_sum` | 400 | A split's quantities that do not sum to the order's (M124) |
 | `merge_mismatch` | 400 | A merge of orders of another variant, BoM or site, of drafts with confirmed orders, or of different origins (M125) |
-| `order_has_work` | 409 | A split or a merge of an order in progress, or with a production or a time log (M124, M125) |
+| `order_has_work` | 409 | A split or a merge of an order in progress, or with a production, a time log or a registered quantity (M124, M125) |
+| `order_has_open_parts` | 409 | A cancel of an order split into parts that are still open (M124) |
+| `unbuild_has_byproducts` | 409 | An unbuild from an order whose productions made by-products (M123) |
+| `unbuild_not_quarantined` | 409 | A release of an unbuild that quarantined nothing (M123) |
 | `attachment_too_large` | 400 | A photo over 10 MB |
 | `attachment_type` | 415 | A photo that is not a JPEG or PNG by its own bytes |
 | `storage_not_configured` | 503 | A photo with no object store configured |
@@ -2468,14 +2507,15 @@ every order write may answer 503 `dependency_unavailable`.
 | `PUT /orders/{id}/components/{componentId}` (`updateManufacturingOrderComponent`) | orders-manage | 200 the order and its `shortLines`; 400 `required_below_used`, `quantity_invalid`; 404; 409 `order_not_open` |
 | `GET /orders/{id}/production-draft` (`getManufacturingProductionDraft`) | access | 200 [the prefill](#productions) with the lots proposed and offered and the output's lot ([lots on productions](#lots-on-productions)); 400 `quantity_invalid`; 404; 409 `order_not_open` |
 | `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`, `lot_pattern_invalid`, `picks_mismatch`, `serial_quantity`, `lot_not_allowed`, `lot_dates_differ`, `lot_exists`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `checks_incomplete`, `consumption_differs`, `client_request_reused`, `revision_conflict` (two deadlocks, or lots that kept moving), Inventory's refusals |
-| `GET /orders/{id}/lots` (`getManufacturingOrderLots`) | access | 200 [the lots made and consumed](#lots-on-productions); 404 |
+| `GET /orders/{id}/lots` (`getManufacturingOrderLots`) | access | 200 [the lots made and consumed](#lots-on-productions), with the product's `tracking`; 404; 503 the catalog |
 | `POST /orders/{id}/close` (`closeManufacturingOrder`) | orders-manage | 200 `{order, backorder, shortLines}`; 404; 409 `order_not_open`, `checks_incomplete`, `quantity_short` |
-| `POST /orders/{id}/cancel` (`cancelManufacturingOrder`) | orders-manage | 200; 404; 409 `order_not_open`, `order_has_production` |
+| `POST /orders/{id}/cancel` (`cancelManufacturingOrder`) | orders-manage | 200; 404; 409 `order_not_open`, `order_has_production`, `order_has_open_parts` |
 | `POST /orders/{id}/split` (`splitManufacturingOrder`) | orders-manage | 200 `{order, parts, shortLines}` ([split](#split-and-merge)); 400 fields, `quantity_invalid`, `split_sum`; 404; 409 `order_has_work`, `order_not_open`, `revision_conflict`, Inventory's refusals |
 | `POST /orders/merge` (`mergeManufacturingOrders`) | orders-manage | 200 `{order, merged, shortLines}` ([merge](#split-and-merge)); 400 fields, `merge_mismatch`; 404; 409 `order_has_work`, `order_not_open`, `revision_conflict`, Inventory's refusals |
 | `GET /unbuilds` (`listManufacturingUnbuilds`) | access | 200 a page of [unbuilds](#unbuilds), newest first; `orderId`, `page`, `pageSize`; 400 the paging out of range |
-| `POST /unbuilds` (`createManufacturingUnbuild`) | orders-manage | 201 the unbuild; 200 a replay; 400 fields, `quantity_invalid`, `unbuild_too_much`, `lot_required`, `lot_not_of_order`, `lot_not_allowed`, `lot_unknown`, `serial_quantity`, `location_unknown`, `site_unknown`; 404; 409 `order_not_open`, `client_request_reused`, Inventory's refusals |
+| `POST /unbuilds` (`createManufacturingUnbuild`) | orders-manage | 201 the unbuild; 200 a replay; 400 fields, `quantity_invalid`, `unbuild_too_much`, `lot_required`, `lot_not_of_order`, `lot_not_allowed`, `lot_unknown`, `serial_quantity`, `location_unknown`, `site_unknown`; 404; 409 `order_not_open`, `unbuild_has_byproducts`, `client_request_reused`, `revision_conflict`, Inventory's refusals |
 | `GET /unbuilds/{id}` (`getManufacturingUnbuild`) | access | 200 one unbuild with its lines; 404 |
+| `POST /unbuilds/{id}/release` (`releaseManufacturingUnbuild`) | quality-manage | 200 the unbuild, its [quarantine released](#unbuilds); 404; 409 `unbuild_not_quarantined` |
 | `GET /orders/{id}/events` (`listManufacturingOrderEvents`) | access | 200 [the history](#history), oldest first; 404 |
 | `GET /productions/{id}` (`getManufacturingProduction`) | access | 200 one production with its lines; 404 |
 | `GET /orders/{id}/work-orders` (`listManufacturingOrderWorkOrders`) | access | 200 the order's [work orders](#work-orders) by sequence; 404 |
