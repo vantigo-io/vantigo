@@ -43,6 +43,7 @@ const qualityStorageScope = "manufacturing-quality"
 // The bounds and codes of a photo (M97).
 const (
 	maxPhotoBytes        = 10 * 1024 * 1024
+	maxPhotoRequestBytes = maxPhotoBytes + 64*1024
 	photoFormField       = "file"
 	photoTitle           = "The photo was not kept"
 	photoPolicy          = "default-src 'none'; sandbox"
@@ -370,8 +371,12 @@ func (w *objectDeletionsWorker) RunCycle(ctx context.Context) (int, error) {
 				return err
 			}
 			for _, p := range stale {
-				if err := txq.DeleteCheckPhoto(ctx, p.ID); err != nil {
+				deleted, err := txq.DeleteUnattachedCheckPhoto(ctx, p.ID)
+				if err != nil {
 					return err
+				}
+				if deleted == 0 {
+					continue
 				}
 				if err := txq.InsertObjectDeletion(ctx, store.InsertObjectDeletionParams{ObjectKey: p.ObjectKey, Now: now}); err != nil {
 					return err

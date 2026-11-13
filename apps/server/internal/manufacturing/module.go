@@ -100,6 +100,14 @@ func Module() module.Module {
 	}
 }
 
+// bodyLimits raises the router's request-body cap for a check's photo — the
+// file at most 10 MiB (M97) and room for the multipart framing around it, the
+// margin Inventory's lot files leave; every other operation keeps the
+// platform default (1 MiB).
+var bodyLimits = map[string]int64{
+	"uploadManufacturingCheckPhoto": maxPhotoRequestBytes,
+}
+
 // mount builds the module's handler. It refuses to mount without the product
 // catalog or Inventory's stock: config makes manufacturing without products
 // or inventory impossible (M6), and a nil contract would fail every BoM and
@@ -116,6 +124,7 @@ func mount(d module.Deps) (http.Handler, error) {
 	}
 	router := module.NewRouter(module.RouterOptions{
 		Doc: d.Doc, Access: d.Access, Limiter: d.Limiter, Limits: limits, Catalog: d.Catalog,
+		BodyLimits: bodyLimits,
 	})
 	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),

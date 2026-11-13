@@ -3,6 +3,7 @@ package manufacturing_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"image"
 	"image/color"
@@ -11,6 +12,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
+	"github.com/vantigo-io/vantigo/server/internal/manufacturing/store"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 )
@@ -174,12 +177,26 @@ func TestQuality_Gates(t *testing.T) {
 	}
 	res := c.Do(http.MethodPost, orderPath(o.Id, "productions"), jamProduction("q3", "1"))
 	mustStatus(t, res, http.StatusCreated, "a production after the first piece")
+	// With good output the order closes only when every check of its work
+	// orders has a result: the seal has none.
+	no := false
+	p = expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "close"), gen.ManufacturingCloseInput{Revision: getOrder(t, c, o.Id).Revision, Backorder: &no}),
+		http.StatusConflict, "checks_incomplete", "a close before the seal")
+	if p.Checks == nil || len(*p.Checks) != 1 || (*p.Checks)[0].Title != "Seal" || (*p.Checks)[0].WorkOrderId != fill.Id {
+		t.Fatalf("missing checks at close = %+v", p.Checks)
+	}
 	// The seal (each work order) stops only the fill's finish.
 	expectRefusal(t, c.Do(http.MethodPost, workOrderPath(fill.Id, "finish"), nil), http.StatusConflict, "checks_incomplete", "finish before the seal")
-	recordCheck(t, c, fill.Id, checksOf(fill)[1].Id, gen.ManufacturingCheckResultInput{Result: result(gen.ManufacturingCheckResultValuePass)})
+	// A value sent with a pass/fail check is not kept: it is a measure's.
+	v = recordCheck(t, c, fill.Id, checksOf(fill)[1].Id, gen.ManufacturingCheckResultInput{Result: result(gen.ManufacturingCheckResultValuePass), Value: str("5")})
+	if r := checksOf(v.WorkOrder)[1].Result; r == nil || r.Value != nil {
+		t.Fatalf("the seal's result = %+v", r)
+	}
 	act(t, c, fill.Id, "finish", nil)
 	expectRefusal(t, c.Do(http.MethodPost, workOrderPath(fill.Id, "checks", fmt.Sprint(checksOf(fill)[1].Id), "result"),
 		gen.ManufacturingCheckResultInput{Result: result(gen.ManufacturingCheckResultValuePass)}), http.StatusConflict, "check_not_open", "a result on a done work order")
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "close"), gen.ManufacturingCloseInput{Revision: getOrder(t, c, o.Id).Revision, Backorder: &no}),
+		http.StatusOK, "a close with every check recorded")
 }
 
 // TestQuality_FirstPieceFailureHoldsLaterLots is M99 and §19: a first-piece
@@ -204,6 +221,18 @@ func TestQuality_FirstPieceFailureHoldsLaterLots(t *testing.T) {
 	if !d.Quarantine || d.Status != gen.ManufacturingQualityDeviationStatusOpen || len(d.Lots) != 0 || d.Order == nil || d.Order.Id != o.Id ||
 		d.WorkOrderId == nil || *d.WorkOrderId != fill.Id || !strings.Contains(d.Description, "97.5 g") {
 		t.Fatalf("deviation = %+v", d)
+	}
+	// The same check failing again while its deviation is open adds to it.
+	v = recordCheck(t, c, fill.Id, checksOf(fill)[0].Id, gen.ManufacturingCheckResultInput{Value: str("97.25")})
+	if again := checksOf(v.WorkOrder)[0].Result; again == nil || again.DeviationId == nil || *again.DeviationId != d.Id {
+		t.Fatalf("the second fail = %+v", again)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM manufacturing.deviations WHERE order_id = $1`, o.Id); n != 1 {
+		t.Fatalf("deviations of the order = %d", n)
+	}
+	if again := deviationOf(t, c, d.Id); !strings.Contains(again.Description, "Failed again") || !strings.Contains(again.Description, "97.25 g") ||
+		again.Revision != d.Revision+1 {
+		t.Fatalf("the deviation after the second fail = %+v", again)
 	}
 	// A fail does not block: the first piece has a result.
 	res := c.Do(http.MethodPost, orderPath(o.Id, "productions"), jamProduction("held", "2"))
@@ -315,8 +344,12 @@ func TestQuality_CloseReleasesOnlyItsOwn(t *testing.T) {
 func TestQuality_DeviationFromLot(t *testing.T) {
 	t.Parallel()
 	h := lotHarness(t)
-	c := h.SignIn(t, quality...)
+	blind := h.SignIn(t, quality...)
+	c := h.SignIn(t, append(slices.Clone(quality), "inventory:locations-view", "inventory:stock-view")...)
 	lot := h.stock.receiveLot(varBerry, "B-9", locMainA1, "5", h.Now(), nil)
+	// A lot is Inventory's: reporting on one needs its views.
+	expectRefusal(t, blind.Do(http.MethodPost, base+"/deviations", gen.ManufacturingQualityDeviationInput{Title: "Bad", LotId: &lot}),
+		http.StatusForbidden, "lots_view_required", "a lot without Inventory's views")
 	expectRefusal(t, c.Do(http.MethodPost, base+"/deviations", gen.ManufacturingQualityDeviationInput{Title: "Bad", LotId: ptrInt64(999999)}),
 		http.StatusBadRequest, "", "an unknown lot")
 	res := c.Do(http.MethodPost, base+"/deviations", gen.ManufacturingQualityDeviationInput{Title: "Mouldy berries", LotId: &lot, Quarantine: ptrBool(true)})
@@ -338,6 +371,20 @@ func TestQuality_DeviationFromLot(t *testing.T) {
 	if !locked {
 		t.Errorf("the lot's variant was not locked: %+v", h.catalog.lockCalls())
 	}
+
+	// Named with an order, the lot is one the order made or consumed.
+	qualityFloor(t, h, c)
+	o := confirmOrder(t, c, createOrder(t, c, orderInput(varJam, "4"))).Order
+	wos := workOrdersOf(t, c, o.Id)
+	recordCheck(t, c, wos[0].Id, checksOf(wos[0])[0].Id, gen.ManufacturingCheckResultInput{})
+	recordCheck(t, c, wos[1].Id, checksOf(wos[1])[0].Id, gen.ManufacturingCheckResultInput{Value: str("100")})
+	res = c.Do(http.MethodPost, orderPath(o.Id, "productions"), jamProduction("p1", "2"))
+	mustStatus(t, res, http.StatusCreated, "production")
+	made := productionOf(t, res).OutputLots[0].LotId
+	expectRefusal(t, c.Do(http.MethodPost, base+"/deviations", gen.ManufacturingQualityDeviationInput{Title: "Mixed up", OrderId: &o.Id, LotId: &lot}),
+		http.StatusBadRequest, "lot_not_of_order", "a lot the order did not make or consume")
+	mustStatus(t, c.Do(http.MethodPost, base+"/deviations", gen.ManufacturingQualityDeviationInput{Title: "Label smudged", OrderId: &o.Id, LotId: &made}),
+		http.StatusCreated, "the order's own lot")
 }
 
 func ptrInt64(v int64) *int64 { return &v }
@@ -461,6 +508,20 @@ func testPNG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// noisePNG is a size×size PNG of noise, which does not compress.
+func noisePNG(t *testing.T, size int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
+	if _, err := rand.Read(img.Pix); err != nil {
+		t.Fatalf("noise: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	return buf.Bytes()
+}
+
 // TestQuality_Photos is M97's photos: a photo check refused without one
 // (photo_required) and recorded with one; a text file refused; the photo
 // served; an upload no result names removed after a day by the
@@ -499,7 +560,24 @@ func TestQuality_Photos(t *testing.T) {
 	if r := checksOf(v.WorkOrder)[0].Result; r == nil || r.PhotoId == nil || *r.PhotoId != kept.Id || r.Result != gen.ManufacturingCheckResultValueDone {
 		t.Fatalf("result = %+v", r)
 	}
-	res := c.Do(http.MethodGet, fmt.Sprintf("%s/%d", photos, kept.Id), nil)
+	// A photo a result names is never deleted, judged by the delete itself.
+	if n, err := store.New(h.Pool()).DeleteUnattachedCheckPhoto(t.Context(), kept.Id); err != nil || n != 0 {
+		t.Fatalf("delete a named photo = %d, %v", n, err)
+	}
+	// A camera's photo is larger than the platform's 1 MiB cap: the upload
+	// has its own (10 MiB and the framing).
+	large := noisePNG(t, 640)
+	if len(large) <= 1<<20 {
+		t.Fatalf("the large photo is %d bytes", len(large))
+	}
+	res := c.Do(http.MethodPost, photos, nil, photoForm(t, "image/png", large))
+	mustStatus(t, res, http.StatusCreated, "upload a photo over 1 MiB")
+	var big gen.ManufacturingCheckPhoto
+	res.JSON(&big)
+	if big.SizeBytes <= 1<<20 {
+		t.Errorf("kept %d bytes", big.SizeBytes)
+	}
+	res = c.Do(http.MethodGet, fmt.Sprintf("%s/%d", photos, kept.Id), nil)
 	mustStatus(t, res, http.StatusOK, "the photo")
 	if !bytes.Equal(res.Body, picture) || res.Header("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("served %d bytes", len(res.Body))
@@ -529,8 +607,8 @@ func TestQuality_Photos(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	if n, err := cycle.RunCycle(ctx); err != nil || n != 1 {
-		t.Fatalf("RunCycle = %d, %v; want 1 removed", n, err)
+	if n, err := cycle.RunCycle(ctx); err != nil || n != 2 {
+		t.Fatalf("RunCycle = %d, %v; want 2 removed", n, err)
 	}
 	if objects.count() != 1 || h.Count(t, `SELECT count(*) FROM manufacturing.check_photos WHERE id = $1`, stray.Id) != 0 ||
 		h.Count(t, `SELECT count(*) FROM manufacturing.object_deletions`) != 0 {

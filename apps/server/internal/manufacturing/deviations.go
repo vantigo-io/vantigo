@@ -538,6 +538,12 @@ func (s *server) CreateManufacturingDeviation(ctx context.Context, req gen.Creat
 		}
 	}
 	if in.LotId != nil {
+		// A lot is Inventory's: reporting on one needs what its lot page
+		// does (M99).
+		if !contracts.HasPermissions(ctx, s.deps.Access, permInventoryLocationsView, permInventoryStockView) {
+			return answer(refuse(problem(http.StatusForbidden, codeLotsViewRequired, "The lot is not yours to see",
+				"Reporting a deviation on a lot needs inventory:locations-view and inventory:stock-view.")), createDeviationAnswers())
+		}
 		refs, err := s.lotRefs(ctx, []int64{*in.LotId})
 		if err != nil {
 			return answer(err, createDeviationAnswers())
@@ -570,6 +576,16 @@ func (s *server) CreateManufacturingDeviation(ctx context.Context, req gen.Creat
 			}
 			if o.Status == orderDraft {
 				return refuseField(deviationTitle, "orderId", "", "A draft order has no work to deviate from; confirm it first")
+			}
+			// With both, the lot is one the order made or consumed.
+			if d.lotID != nil {
+				ofOrder, err := txq.LotOfOrder(ctx, store.LotOfOrderParams{OrderID: o.ID, LotID: *d.lotID})
+				if err != nil {
+					return err
+				}
+				if !ofOrder {
+					return refuseField(deviationTitle, "lotId", codeLotNotOfOrder, "The lot is not one the order made or consumed")
+				}
 			}
 		}
 		return open(ctx, tx, txq)
