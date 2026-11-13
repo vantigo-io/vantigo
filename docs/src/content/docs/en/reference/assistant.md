@@ -365,7 +365,7 @@ default site, and since D adding and estimating a shipping line, shipping a deli
 booking, the freight markup, and Integrations › Shipping's Add carrier account and Verify, and since
 Manufacturing's delivery E a goods line's Create manufacturing order
 ([Orders](/en/reference/orders/#assistant-tour-targets)) — as `@vantigo/manufacturing-ui` exports its
-fifty-five — the overview's cards, New bill of materials, New manufacturing order and the orders due,
+seventy-three — the overview's cards, New bill of materials, New manufacturing order and the orders due,
 the orders' list, filters and New manufacturing order, an order's form, facts, actions, short lines,
 components, Add component and history, the work centers' list and New work center, a
 work center's form, weekly pattern, save, closures and actions, the bills of materials' list and New bill of
@@ -375,7 +375,8 @@ floor's work center picker, a work center's queue and Block and Unblock, a work 
 Finish, its timer, who is here and its instructions, and My work's running log, and since delivery D an
 order's Plan and Cost, the production schedule's site, board, bars, Unscheduled and Plan all, the overview's
 Reports, and the reports' filters and Download CSV, and since delivery E an order's Create sub-assembly
-orders, and since phase 2's layer M an order's Lots tab
+orders, and since phase 2's layer M an order's Lots tab, and since F a BoM's order of the operations, the
+work center groups, a work center's Group work and a work order's Register quantity
 ([Manufacturing](/en/reference/manufacturing/)) — and the host's `assist-targets.ts` collects them.
 
 ## Claude and preserved thinking
