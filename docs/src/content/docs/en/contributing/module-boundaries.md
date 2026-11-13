@@ -1363,6 +1363,39 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     Compose and Workers resolve both slots by one helper, `withStock`, after the product
     catalog ([Inventory](/en/reference/inventory/#reservations-and-issues)).
 
+25. **A station is answered only to the router, for the operations it marks.** A shared
+    shop-floor station (manufacturing phase 2 M129–M143) is a device whose operators sign in
+    with a PIN or a badge; their requests carry the station's cookie and `Authorization:
+    Station <token>`. The rules that keep such a principal small:
+    - **`x-vantigo-station: allowed`** opens an operation to a station's operator. The OpenAPI
+      lint accepts no other value, and the extension only behind a `permission:` rule naming
+      Manufacturing's keys alone. A module that wants an operation on the station page marks
+      it, and the station page's allowed set
+      (`apps/manufacturing/frontend/src/station-operations.json`) gains it, which a server test
+      holds to the contracts.
+    - **`Rule.Station`** is how the router tells `Access.Check` what the operation allows:
+      `wrap` sets `StationAllowed` for a marked operation and `StationOutOfScope` for every
+      other, where `Check` answers a valid operator with `contracts.ErrStationScope` (403
+      `station_scope`). The zero value, `StationRefused`, is what every other caller passes —
+      a handler's own `Check`, a platform endpoint, the documentation handler, the live
+      socket's session path — and there station credentials are no caller at all (401).
+      Station credentials take precedence: a request presenting an operator token is judged
+      as a station's only, never by a session cookie it also carries, and refuses while a
+      live one is present (`station_has_session`).
+    - **The principal is the operator**, with `Via{Kind: contracts.ViaStation, StationID}` —
+      `Principal.Station()` answers it — the operator session as `SessionID`, no second
+      factor, and the permissions intersected with `manufacturing:access` and
+      `manufacturing:shop-floor`. `contracts.HasPermission` inside a handler the router
+      admitted a station to asks with the same leave and the same intersection; nothing else
+      answers a station.
+    - **The module enforces its own scope.** Identity knows no work center: Manufacturing
+      checks, before every handler, that a station request names only the station's work
+      centers ([Shared stations](/en/reference/manufacturing/#shared-stations)), and refuses a
+      request type it does not know.
+    - **The live socket has its own station path**, through `contracts.StationAccess`
+      (`CheckStation`, `StationLive`), which identity's `Access` implements beside
+      `contracts.Access` ([Live updates](/en/contributing/platform-packages/#stations)).
+
 ## The AI platform
 
 AI is a platform provider, like mail: the provider, its key and the models the plan allows are

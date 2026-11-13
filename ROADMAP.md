@@ -1065,6 +1065,14 @@ What the design deferred, each waiting for what is named:
   parts and merging orders of one origin, unplanned under the schedule's locks and
   reserved again
   ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#bom-depth)).
+- **Shared shop-floor stations (built, S)**: a tablet paired once as a station (a
+  one-time code, a 90-day token, an optional network allowlist, revoked at once), operators
+  switching in with a peppered PIN or a badge under a per-station limit and a per-person
+  backoff that never locks anyone out, the station's requests admitted only to the
+  operations marked for it, at its own work centers, with the shop-floor permissions alone,
+  its own live path, and the station recorded on what is done there
+  ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#shared-stations),
+  [Shop-floor stations](docs/src/content/docs/en/admin/authentication.md#shop-floor-stations)).
 - **Kits.**
 - **Following a sales order's changed quantity** (`orders.sales_order.changed`), which
   make-to-order does not in phase 1, and **reserving a sub-assembly's output to its
@@ -1073,7 +1081,6 @@ What the design deferred, each waiting for what is named:
 ### Later
 
 - **Subcontracted operations** wait for Purchasing.
-- **A shared tablet with an operator PIN** waits for an identity feature (a second credential).
 - **Rotating shift patterns** wait for demand.
 - **Writing the rolled-up cost to the standard cost** waits for Products (a write contract).
 - **Feeding work-order time into Time** waits for Time without a project, or a project per manufacturing order.

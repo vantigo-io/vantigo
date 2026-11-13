@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: Turning Manufacturing on — the two modules it requires, the migration and the manufacturing schema, granting it to a least-privilege role — the six permissions and what each gives, the quality permission that closes deviations, the sensitive cost permission and who should hold it, who manages manufacturing orders and who registers production, who works on the shop floor and who corrects time logs, who plans the schedule, the roles to build from them; the business time zone the work centers' calendars run in; setting up tablets on the floor — an account per operator, a current browser, keeping the screen awake, the work center each tablet remembers, the camera and the network; the storage the checks' photos take; the nightly replenishment job and automatic creation, off by default; how to verify it, and what can go wrong.
+description: Turning Manufacturing on — the two modules it requires, the migration and the manufacturing schema, granting it to a least-privilege role — the six permissions and what each gives, the quality permission that closes deviations, the sensitive cost permission and who should hold it, who manages manufacturing orders and who registers production, who works on the shop floor and who corrects time logs, who plans the schedule, the roles to build from them; the business time zone the work centers' calendars run in; setting up tablets on the floor — an account per operator, a current browser, keeping the screen awake, the work center each tablet remembers, the camera and the network; shared stations where operators switch in with a PIN or a badge, the work centers a station serves and what it may do; the storage the checks' photos take; the nightly replenishment job and automatic creation, off by default; how to verify it, and what can go wrong.
 sidebar:
   order: 51
 sources:
@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
   - apps/server/internal/db/migrations/00171_manufacturing_replenishment.sql
   - apps/server/internal/manufacturing/replenishment.go
+  - apps/server/internal/db/migrations/00175_manufacturing_stations.sql
 ---
 
 The Manufacturing module (**Produksjon** in Norwegian) describes how the business makes
@@ -148,11 +149,10 @@ The shop floor (**Manufacturing** → **Shop floor**) is built for a tablet at e
 center. Every action is recorded as the person signed in, so set the tablets up for
 that.
 
-1. **Give every operator their own account.** The operator is the signed-in user, and
-   switching operator means switching account: signing out and in again. There is no
-   shared tablet with a PIN per operator in this version. Do not let a shift share one
-   account — the time logs, the productions and the order's history would all name that
-   account.
+1. **Give every operator their own account.** The operator is the signed-in user, or,
+   on a [shared station](#shared-stations), the person who switched in there. Do not let a
+   shift share one account — the time logs, the productions and the order's history would
+   all name that account.
 2. **Grant the roles.** Give each operator Use Manufacturing (`manufacturing:access`) and
    Work on the shop floor (`manufacturing:shop-floor`), and nothing more unless they also
    plan. Supervisors who correct time need Manage manufacturing orders.
@@ -176,6 +176,33 @@ that.
 
 The timer counts on the tablet from when the work started, so a tablet that reconnects
 shows the right time without the server sending it.
+
+### Shared stations
+
+A tablet several operators share is better set up as a **station** than signed in as one
+of them: the station is paired once, and each operator switches in at it with a six-digit
+PIN or a badge, so every start, production and check names the person who did it — and
+the station it was done at. The administrator's side (pairing, the 90-day token, revoking,
+the network allowlist, PINs, badges, the backoff and the alerts) is described under
+[Shop-floor stations](/en/admin/authentication/#shop-floor-stations).
+
+1. **Register the station** under **Workspace admin → Stations** (`identity:manage`) and
+   choose the **work centers** it serves (`manufacturing:boms-manage`). A station that
+   serves none reaches none: its shop floor opens on its work centers and every request its
+   operators make that names a work center, a work order or an order's production is checked
+   against them (`403 station_scope` otherwise).
+2. **Pair the tablet**: open `/station` on it and enter the pairing code.
+3. **Give each operator a PIN or a badge.** People set their own PIN under **Settings →
+   Security → Station PIN**; an administrator enrols badges on **Workspace admin → Users**.
+   Who may switch in is whoever holds Work on the shop floor (`manufacturing:shop-floor`) and
+   has one.
+4. **Keep the station a station.** A person who signs in to Vantigo on the tablet makes it
+   their own browser until they sign out; the station page says so and refuses to work.
+
+At a station an operator holds Use Manufacturing and Work on the shop floor and nothing
+more, whatever their roles elsewhere — an Owner included — so no cost is shown there, and
+the order's lots, its other pages and the product images are left out. Time logs,
+productions, check results and deviations record the station they were made at.
 
 ## Photos of the checks
 

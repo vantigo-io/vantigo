@@ -1,6 +1,6 @@
 ---
 title: Kom i gang
-description: Godta en invitasjon, logg inn, profilen og sikkerhetsinnstillingene dine, og logg ut.
+description: Godta en invitasjon, logg inn, profilen og sikkerhetsinnstillingene dine, PIN-koden for stasjoner i verkstedet, og logg ut.
 sidebar:
   order: 1
 sources:
@@ -224,6 +224,15 @@ For å fjerne en velger du **Fjern** ved siden av den. Dialogen **Fjern passnøk
 advarer om at det ikke kan angres, og ber om nåværende passord. En fjernet
 passnøkkel kan ikke lenger logge deg inn; legg den til på nytt om du trenger den
 igjen.
+
+## Sett en PIN-kode for stasjoner i verkstedet
+
+Når Produksjon er på og du arbeider i verkstedet, har **Innstillinger → Sikkerhet** kortet
+**PIN-kode for stasjoner**: de seks sifrene du logger på en delt stasjon i verkstedet med.
+Skriv inn en **Ny PIN-kode** og, med mindre du logget inn for under ti minutter siden,
+**Nåværende passord**, og velg **Sett PIN-kode**. Ett siffer gjentatt og rekker som `123456`
+avvises. **Fjern PIN-kode** tar den bort. PIN-koden logger deg aldri inn i selve Vantigo; en
+administrator kan fjerne den, men aldri se eller sette den.
 
 ## Logg ut
 
