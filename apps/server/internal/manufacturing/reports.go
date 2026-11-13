@@ -210,6 +210,15 @@ func productionCostCSV(r gen.ManufacturingProductionCostReport) []byte {
 				csvOptional(o.DeviationPercent), csvOptional(o.CostPerUnit)})
 		}
 	}
+	// The by-products' parts of the actual (manufacturing phase 2 M122), as a
+	// section of their own after an empty row, with its own header.
+	if len(r.ByProducts) > 0 {
+		rows = append(rows, []string{}, []string{"byProductOrder", "sku", "product", "costShare", "produced", "actual", "costPerUnit", "notProduced"})
+		for _, b := range r.ByProducts {
+			rows = append(rows, []string{b.Number, b.Variant.Sku, b.Variant.ProductName, csvDecimal(b.CostShare), csvDecimal(b.Produced),
+				csvDecimal(b.Actual), csvOptional(b.CostPerUnit), strconv.FormatBool(b.NotProduced)})
+		}
+	}
 	return csvFile(header, rows)
 }
 

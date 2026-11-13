@@ -663,7 +663,10 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       if (order[2] === "/events") return Promise.resolve(jsonResponse(200, { items: server.events ?? [] }));
       if (order[2] === "/lots")
         return Promise.resolve(
-          jsonResponse(200, server.orderLots?.[found.id] ?? { outputs: [], components: [], byProducts: [] }),
+          jsonResponse(
+            200,
+            server.orderLots?.[found.id] ?? { outputs: [], components: [], byProducts: [], tracking: "none" },
+          ),
         );
       if (order[2] === "/production-draft") {
         const draft = draftFor(found, url.searchParams);

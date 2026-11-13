@@ -635,10 +635,43 @@ func (s *fakeStock) ReservationsForSources(ctx context.Context, tx pgx.Tx, srcs 
 // Produce posts a production: each consume line off its location (refused
 // when the location does not hold it, naming every failing line), consuming
 // the line's reservation, each produce line onto its location; idempotent by
-// the document.
+// the document. An unbuild of a held lot quarantines the lots it restores
+// to under its document, as Inventory does (manufacturing phase 2 M123).
 func (s *fakeStock) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (contracts.StockPosted, error) {
 	movement, picks, err := s.produce(ctx, tx, src, p)
-	return contracts.StockPosted{MovementID: movement, Picks: picks}, err
+	if err != nil || !p.Unbuild {
+		return contracts.StockPosted{MovementID: movement, Picks: picks}, err
+	}
+	s.mu.Lock()
+	held := false
+	for _, c := range p.Consume {
+		if lot := s.lots[c.LotID]; lot != nil && lot.status != contracts.LotAvailable {
+			held = true
+		}
+	}
+	var restored []int64
+	for _, pr := range p.Produce {
+		if pr.LotID != 0 && !slices.Contains(restored, pr.LotID) {
+			restored = append(restored, pr.LotID)
+		}
+	}
+	s.mu.Unlock()
+	if !held || len(restored) == 0 {
+		return contracts.StockPosted{MovementID: movement, Picks: picks}, nil
+	}
+	slices.Sort(restored)
+	holds := make([]contracts.LotHold, 0, len(restored))
+	for _, id := range restored {
+		holds = append(holds, contracts.LotHold{LotID: id, Kind: "quarantine", Cause: "recall"})
+	}
+	doc := p.Document
+	if doc.IsZero() {
+		doc = src
+	}
+	if err := s.HoldLots(ctx, tx, doc, holds); err != nil {
+		return contracts.StockPosted{}, err
+	}
+	return contracts.StockPosted{MovementID: movement, Picks: picks, Quarantined: restored}, nil
 }
 
 func (s *fakeStock) produce(ctx context.Context, tx pgx.Tx, src contracts.StockSource, p contracts.StockProduction) (int64, []contracts.StockPick, error) {

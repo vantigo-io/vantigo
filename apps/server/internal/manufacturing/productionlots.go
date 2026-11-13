@@ -184,8 +184,9 @@ func judgeLotRows(f *fieldErrors, at string, in gen.ManufacturingProductionLineI
 	return rows, proposed
 }
 
-// judgeOutputLot is the output lot's shape (M80).
-func judgeOutputLot(f *fieldErrors, prefix string, in *gen.ManufacturingOutputLotInput) *outputLotValues {
+// judgeOutputLot is the output lot's shape (M80), its errors at prefix and
+// field: a production's outputLot, a by-product's or a component's lot.
+func judgeOutputLot(f *fieldErrors, prefix, field string, in *gen.ManufacturingOutputLotInput) *outputLotValues {
 	if in == nil {
 		return nil
 	}
@@ -193,13 +194,13 @@ func judgeOutputLot(f *fieldErrors, prefix string, in *gen.ManufacturingOutputLo
 	if in.Number != nil {
 		v.number = strings.TrimSpace(*in.Number)
 		if v.number != "" && !lotNumberPattern.MatchString(v.number) {
-			f.add(prefix+"outputLot.number", "1–20 characters A–Z, a–z, 0–9 and . _ / -")
+			f.add(prefix+field+".number", "1–20 characters A–Z, a–z, 0–9 and . _ / -")
 		}
 	}
 	if in.SupplierLot != nil {
 		v.supplierLot = strings.TrimSpace(*in.SupplierLot)
 		if len([]rune(v.supplierLot)) > maxSupplierLot {
-			f.add(prefix+"outputLot.supplierLot", "At most 40 characters")
+			f.add(prefix+field+".supplierLot", "At most 40 characters")
 		}
 	}
 	return v
@@ -839,8 +840,10 @@ func (s *server) GetManufacturingOrderLots(ctx context.Context, req gen.GetManuf
 	var rows []store.ManufacturingProductionLineLot
 	var byRows []store.ProductionByproductsRow
 	var unbuilt []store.UnbuiltOfOrdersRow
+	var mo store.ManufacturingOrder
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
-		if _, err := q.GetOrder(ctx, req.Id); noRows(err) {
+		var err error
+		if mo, err = q.GetOrder(ctx, req.Id); noRows(err) {
 			return notFound()
 		} else if err != nil {
 			return err
@@ -871,6 +874,16 @@ func (s *server) GetManufacturingOrderLots(ctx context.Context, req gen.GetManuf
 	if err != nil {
 		return nil, err
 	}
+	// The product's tracking, from the catalog after the snapshot (M123).
+	entries, err := s.catalogVariants(ctx, []int32{mo.VariantID})
+	if err != nil {
+		return answer(err, answers[gen.GetManufacturingOrderLotsResponseObject]{
+			unavailable: func(p gen.ManufacturingProblem) gen.GetManufacturingOrderLotsResponseObject {
+				return gen.GetManufacturingOrderLots503ApplicationProblemPlusJSONResponse(p)
+			},
+		})
+	}
+	out.Tracking = trackingOf(entries[mo.VariantID])
 	made := map[int64]int{}
 	for _, o := range outputs {
 		i, ok := made[o.LotID]

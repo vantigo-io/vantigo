@@ -60,12 +60,16 @@ FROM manufacturing.production_byproducts p JOIN manufacturing.order_outputs x ON
 WHERE p.production_id = ANY(@production_ids::bigint[])
 ORDER BY p.production_id, x.sort_order, x.id, p.id;
 
--- name: CountLogsOfOrder :one
--- CountLogsOfOrder is how many time logs the order's work orders have: a split
--- or a merge refuses an order with one (M124, M125).
-SELECT count(*)::int FROM manufacturing.time_logs l
-JOIN manufacturing.work_orders w ON w.id = l.work_order_id
-WHERE w.order_id = @order_id;
+-- name: CountWorkOfOrder :one
+-- CountWorkOfOrder is how many time logs and registered quantities the
+-- order's work orders have: a split or a merge refuses an order with one
+-- (M124, M125).
+SELECT ((SELECT count(*) FROM manufacturing.time_logs l
+         JOIN manufacturing.work_orders w ON w.id = l.work_order_id
+         WHERE w.order_id = @order_id)
+      + (SELECT count(*) FROM manufacturing.work_order_quantities q
+         JOIN manufacturing.work_orders w ON w.id = q.work_order_id
+         WHERE w.order_id = @order_id))::int AS work;
 
 -- name: SetOrderQuantityAndDue :one
 -- SetOrderQuantityAndDue is a split's or a merge's new quantity and due date
@@ -112,21 +116,33 @@ ON CONFLICT (counter_name) DO UPDATE SET next_value = manufacturing.counters.nex
 RETURNING (next_value - 1)::bigint AS number;
 
 -- name: InsertUnbuild :one
-INSERT INTO manufacturing.unbuilds (number, order_id, bom_id, variant_id, quantity, lot_id, lot_number, site_id, from_location_id,
-                                    to_location_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id, request_hash)
-VALUES (@number, sqlc.narg(order_id), @bom_id, @variant_id, @quantity, sqlc.narg(lot_id), sqlc.narg(lot_number), @site_id, @from_location_id,
-        @to_location_id, @note, @posted_by_user_id, @posted_by_display, @now, @client_request_id, @request_hash)
+INSERT INTO manufacturing.unbuilds (number, order_id, bom_id, variant_id, sku, product_name, unit, quantity, lot_id, lot_number, site_id,
+                                    from_location_id, to_location_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id,
+                                    request_hash)
+VALUES (@number, sqlc.narg(order_id), @bom_id, @variant_id, @sku, @product_name, @unit, @quantity, sqlc.narg(lot_id), sqlc.narg(lot_number),
+        @site_id, @from_location_id, @to_location_id, @note, @posted_by_user_id, @posted_by_display, @now, @client_request_id, @request_hash)
 RETURNING *;
 
 -- name: SetUnbuildMovement :exec
-UPDATE manufacturing.unbuilds SET movement_id = @movement_id WHERE id = @id;
+-- SetUnbuildMovement records the unbuild's movement, and whether Inventory
+-- quarantined what it restored (M123).
+UPDATE manufacturing.unbuilds SET movement_id = @movement_id, quarantined = @quarantined WHERE id = @id;
+
+-- name: GetUnbuildForUpdate :one
+SELECT * FROM manufacturing.unbuilds WHERE id = @id FOR UPDATE;
+
+-- name: MarkUnbuildReleased :exec
+-- MarkUnbuildReleased records the release of the unbuild's quarantine (M123).
+UPDATE manufacturing.unbuilds
+SET released_at = @now::timestamptz, released_by_user_id = sqlc.narg(released_by_user_id), released_by_display = @released_by_display
+WHERE id = @id;
 
 -- name: InsertUnbuildLine :exec
 INSERT INTO manufacturing.unbuild_lines (unbuild_id, line_no, variant_id, sku, product_name, unit, quantity, lot_id, lot_number)
 VALUES (@unbuild_id, @line_no, @variant_id, @sku, @product_name, @unit, @quantity, sqlc.narg(lot_id), sqlc.narg(lot_number));
 
 -- name: GetUnbuild :one
-SELECT u.*, o.number AS order_number, o.suffix AS order_suffix
+SELECT sqlc.embed(u), o.number AS order_number, o.suffix AS order_suffix
 FROM manufacturing.unbuilds u LEFT JOIN manufacturing.orders o ON o.id = u.order_id
 WHERE u.id = @id;
 
@@ -139,7 +155,7 @@ SELECT * FROM manufacturing.unbuild_lines WHERE unbuild_id = ANY(@unbuild_ids::b
 -- name: ListUnbuilds :many
 -- ListUnbuilds is a page of unbuilds, of one order when order_id is set,
 -- newest first, with the filtered total.
-SELECT u.*, o.number AS order_number, o.suffix AS order_suffix, count(*) OVER ()::int AS total
+SELECT sqlc.embed(u), o.number AS order_number, o.suffix AS order_suffix, count(*) OVER ()::int AS total
 FROM manufacturing.unbuilds u LEFT JOIN manufacturing.orders o ON o.id = u.order_id
 WHERE sqlc.narg(order_id)::bigint IS NULL OR u.order_id = sqlc.narg(order_id)
 ORDER BY u.posted_at DESC, u.id DESC
@@ -156,16 +172,18 @@ ORDER BY order_id, lot_id;
 
 -- name: OrderProductionsOfLot :many
 -- OrderProductionsOfLot is the order's productions that put good output into
--- the lot, each with what it put there and its own good quantity (M123).
-SELECT p.id, p.quantity AS production_quantity, po.quantity AS lot_quantity
+-- the lot, each with what it put there and what its consumption made — its
+-- good quantity and its output scrap (M123).
+SELECT p.id, (p.quantity + p.output_scrap)::numeric(14, 3) AS production_quantity, po.quantity AS lot_quantity
 FROM manufacturing.productions p
 JOIN manufacturing.production_outputs po ON po.production_id = p.id
 WHERE p.order_id = @order_id AND po.lot_id = @lot_id
 ORDER BY p.id;
 
 -- name: OrderProductionsGood :many
--- OrderProductionsGood is every production of the order with good output.
-SELECT p.id, p.quantity AS production_quantity, p.quantity AS lot_quantity
+-- OrderProductionsGood is every production of the order with good output,
+-- with what its consumption made: its good quantity and its output scrap.
+SELECT p.id, (p.quantity + p.output_scrap)::numeric(14, 3) AS production_quantity, p.quantity AS lot_quantity
 FROM manufacturing.productions p
 WHERE p.order_id = @order_id AND p.quantity > 0
 ORDER BY p.id;
@@ -182,3 +200,14 @@ JOIN manufacturing.order_components c ON c.id = l.component_id
 LEFT JOIN manufacturing.production_line_lots ll ON ll.production_id = l.production_id AND ll.component_id = l.component_id
 WHERE l.production_id = ANY(@production_ids::bigint[])
 ORDER BY c.sort_order, c.id, l.production_id, ll.lot_number, ll.location_id;
+
+-- name: OrderMadeByproducts :one
+-- OrderMadeByproducts reports whether the order's productions made any of its
+-- by-products: an unbuild from such an order is refused (M123).
+SELECT EXISTS (SELECT 1 FROM manufacturing.order_outputs WHERE order_id = @order_id AND produced > 0)::bool AS made;
+
+-- name: CountOpenSplitParts :one
+-- CountOpenSplitParts is how many parts split from the order are still open:
+-- the original is not cancelled while one is (M124).
+SELECT count(*)::int FROM manufacturing.orders
+WHERE split_from_id = @order_id::bigint AND status NOT IN ('done', 'cancelled');

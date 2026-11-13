@@ -103,6 +103,9 @@ describe("the order's by-products, split and unbuild", () => {
       postedByDisplay: "Kari",
       postedAt: "2026-11-11T09:00:00Z",
       lines: [{ variant: ref(2, "BOARD"), quantity: "4", lotId: null, lotNumber: null }],
+      quarantined: false,
+      releasedAt: null,
+      releasedByDisplay: null,
     };
     const fetchMock = stubManufacturingApi({
       meta: { canManageOrders: true },
@@ -112,6 +115,7 @@ describe("the order's by-products, split and unbuild", () => {
           outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "10", productions: 1, unbuilt: "8" }],
           components: [],
           byProducts: [],
+          tracking: "lot",
         },
       },
       write: (method, path) => (method === "POST" && path === "/unbuilds" ? jsonResponse(201, unbuild) : undefined),
@@ -180,6 +184,9 @@ describe("merge and the unbuilds list", () => {
           postedByDisplay: "Kari",
           postedAt: "2026-11-11T09:00:00Z",
           lines: [{ variant: ref(2, "BOARD"), quantity: "8", lotId: null, lotNumber: null }],
+          quarantined: false,
+          releasedAt: null,
+          releasedByDisplay: null,
         },
       ],
     });

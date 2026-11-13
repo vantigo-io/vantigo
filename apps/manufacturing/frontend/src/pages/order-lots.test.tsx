@@ -211,6 +211,7 @@ describe("the order's Lots tab", () => {
       meta: { canTraceLots: true },
       orderLots: {
         5: {
+          tracking: "lot",
           byProducts: [],
           outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "6", productions: 2, unbuilt: "0" }],
           components: [
@@ -248,6 +249,7 @@ describe("the order's Lots tab", () => {
       meta: { canTraceLots: false },
       orderLots: {
         5: {
+          tracking: "lot",
           byProducts: [],
           outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "6", productions: 2, unbuilt: "0" }],
           components: [],
@@ -276,6 +278,7 @@ describe("the work order's lots", () => {
       meta: { canWorkShopFloor: true, canTraceLots: true },
       orderLots: {
         5: {
+          tracking: "lot",
           byProducts: [],
           outputs: [{ lotId: 900, lotNumber: "MO-12", serial: false, quantity: "6", productions: 1, unbuilt: "0" }],
           components: [],

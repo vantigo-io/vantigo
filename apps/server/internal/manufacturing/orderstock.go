@@ -911,7 +911,9 @@ func cancelAnswers() answers[gen.CancelManufacturingOrderResponseObject] {
 // CancelManufacturingOrder cancels an order while nothing has been produced
 // or consumed (order_has_production otherwise), ending the open logs of its
 // work orders and cancelling them (M29a), and releasing every reservation
-// (M19). It keeps its number.
+// (M19). It keeps its number. An order split into parts that are still open
+// is not cancelled (order_has_open_parts, manufacturing phase 2 M124): the
+// parts are numbered from it and carry its promise.
 func (s *server) CancelManufacturingOrder(ctx context.Context, req gen.CancelManufacturingOrderRequestObject) (gen.CancelManufacturingOrderResponseObject, error) {
 	who, err := s.actorOf(ctx)
 	if err != nil {
@@ -940,6 +942,14 @@ func (s *server) CancelManufacturingOrder(ctx context.Context, req gen.CancelMan
 		if used {
 			return conflict(codeOrderHasProduction, "The manufacturing order has production",
 				"Something was produced or consumed on this order, so it cannot be cancelled. Close it instead.")
+		}
+		parts, err := txq.CountOpenSplitParts(ctx, o.ID)
+		if err != nil {
+			return err
+		}
+		if parts > 0 {
+			return conflict(codeOrderHasOpenParts, "The manufacturing order has open parts",
+				fmt.Sprintf("%d order(s) split from this one are still open. Cancel or finish them first.", parts))
 		}
 		notes := newNotices()
 		at := s.deps.Clock()

@@ -66,15 +66,16 @@ type storedByProduct struct {
 }
 
 // splitCost splits a cost total over the by-products and the main product
-// (M122): each by-product carries its share percent of it, exact; one that
-// produced nothing has no cost per unit and its share stays with the main
-// product, which takes what the others do not.
+// (M122): each by-product carries its share percent of it, rounded to the
+// amount's places; one that produced nothing has no cost per unit and its
+// share stays with the main product, which takes the rounded total less what
+// the others carry, so the parts sum to the total as shown.
 func splitCost(total *big.Rat, outputs []store.ManufacturingOrderOutput) (*big.Rat, []storedByProduct) {
-	main := new(big.Rat).Set(total)
+	main := roundPlaces(total, amountPlaces)
 	parts := make([]storedByProduct, 0, len(outputs))
 	for _, x := range outputs {
 		part := new(big.Rat).Mul(total, ratOrZero(x.CostShare))
-		part.Quo(part, hundred)
+		part = roundPlaces(part.Quo(part, hundred), amountPlaces)
 		produced := ratOrZero(x.Produced)
 		p := storedByProduct{OutputID: x.ID, VariantID: x.VariantID, Share: numericText(x.CostShare, percentPlaces), Amount: amountText(part),
 			Produced: text(produced, quantityPlaces)}

@@ -8,9 +8,19 @@ package manufacturing
 // From a done order, for a tracked product the person chooses the finished
 // lot, and the unbuild restores only what the productions that put output in
 // that lot consumed, proportionally within them: the lots they took, never
-// those of a production that made another lot. An untracked product's unbuild
-// restores from all the order's productions. A free-standing unbuild restores
-// a BoM's lines without scrap, a tracked component into a lot named.
+// those of a production that made another lot. A production's consumption
+// made its good output and its output scrap, so a unit taken apart restores
+// what one of them consumed. An untracked product's unbuild restores from all
+// the order's productions. An order whose productions made by-products is
+// not taken apart from the order (unbuild_has_byproducts): what its
+// consumption made is not the product alone. A free-standing unbuild restores
+// a BoM's lines without scrap, a tracked component into a lot named; it may
+// take apart any lot of the product, an order's included, outside that
+// order's limit.
+//
+// An unbuild of a held lot quarantines what it restores (Inventory's Produce
+// does it); the unbuild records it, and a quality manager releases those
+// holds from the unbuild (ReleaseManufacturingUnbuild).
 //
 // The lock order: LockVariants on the product and every component, the order
 // FOR UPDATE (an unbuild from one), the counter, the unbuild's rows,
@@ -70,6 +80,7 @@ type unbuildValues struct {
 	from, to        *int64
 	note            string
 	components      map[int32]unbuildComponent
+	componentsIn    *[]gen.ManufacturingUnbuildComponentInput
 	hash            string
 }
 
@@ -77,7 +88,7 @@ type unbuildValues struct {
 func (s *server) judgeUnbuild(ctx context.Context, in gen.ManufacturingUnbuildInput) (unbuildValues, error) {
 	f := s.unknownProperties(ctx, unbuildInputSchema)
 	v := unbuildValues{clientRequestID: in.ClientRequestId, orderID: in.OrderId, bomID: in.BomId, lotID: in.LotId, siteID: in.SiteId,
-		from: in.FromLocationId, to: in.ToLocationId, components: map[int32]unbuildComponent{}}
+		from: in.FromLocationId, to: in.ToLocationId, components: map[int32]unbuildComponent{}, componentsIn: in.Components}
 	if n := utf8.RuneCountInString(in.ClientRequestId); n < 1 || n > maxClientRequestIDRunes {
 		f.add("clientRequestId", "1–100 characters")
 	}
@@ -112,7 +123,7 @@ func (s *server) judgeUnbuild(ctx context.Context, in gen.ManufacturingUnbuildIn
 			case c.LotId != nil:
 				uc.lotID = *c.LotId
 			case c.Lot != nil:
-				uc.lot = judgeOutputLot(&f, at, c.Lot)
+				uc.lot = judgeOutputLot(&f, at, "lot", c.Lot)
 				if uc.lot != nil && uc.lot.number == "" {
 					f.add(at+"lot.number", "A new lot needs its number")
 				}
@@ -185,8 +196,9 @@ func roundRestore(parts []restoredPart) []restoredPart {
 // planFromOrder is what an unbuild of quantity from the order restores
 // (M123): from the productions that put output in the lot (every production
 // with good output for lot 0), each production's consumption × quantity ×
-// what it put there ÷ (what they put there together × its own good output),
-// per component and the lot it took.
+// what it put there ÷ (what they put there together × what its consumption
+// made: its good output and its output scrap), per component and the lot it
+// took.
 func planFromOrder(ctx context.Context, q *store.Queries, orderID, lotID int64, quantity *big.Rat) ([]restoreLine, error) {
 	type prod struct{ quantity, lot *big.Rat }
 	prods := map[int64]prod{}
@@ -314,6 +326,15 @@ func (s *server) prepareUnbuild(ctx context.Context, v unbuildValues) (*prepared
 		if o.Status != orderDone {
 			return nil, conflict(codeOrderNotOpen, "The manufacturing order is not done",
 				fmt.Sprintf("The order is %s; an unbuild takes apart what a done order made.", o.Status))
+		}
+		made, err := pool.OrderMadeByproducts(ctx, o.ID)
+		if err != nil {
+			return nil, err
+		}
+		if made {
+			return nil, conflict(codeUnbuildByproducts, "The order made by-products",
+				fmt.Sprintf("%s's productions made by-products, so what they consumed did not make the product alone. Unbuild it by its bill of materials instead.",
+					orderNumber(o.Number, o.Suffix)))
 		}
 		prep.order, prep.variantID, prep.siteID = &o, o.VariantID, o.SiteID
 		if prep.bom, err = pool.GetBom(ctx, o.BomID); err != nil {
@@ -487,12 +508,24 @@ func (s *server) CreateManufacturingUnbuild(ctx context.Context, req gen.CreateM
 	if err != nil {
 		return answer(err, unbuildAnswers())
 	}
+	// Once more when PostgreSQL chose it as a deadlock's victim, as a
+	// production is (M86); a second deadlock is revision_conflict.
 	var id int64
-	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
-		var err error
-		id, err = s.postUnbuild(ctx, tx, txq, prep)
-		return err
-	})
+	for attempt := 0; ; attempt++ {
+		err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+			var err error
+			id, err = s.postUnbuild(ctx, tx, txq, prep)
+			return err
+		})
+		if !isDeadlock(err) {
+			break
+		}
+		if attempt > 0 {
+			err = conflict(codeRevisionConflict, "Revision conflict",
+				"The unbuild met another write on the same lots twice. Nothing was changed; try again.")
+			break
+		}
+	}
 	if errors.Is(err, errUnbuildReplay) || db.IsUniqueViolation(err, unbuildUniqueIndex) {
 		u, rerr := pool.UnbuildByClientRequest(ctx, v.clientRequestID)
 		if rerr != nil {
@@ -538,11 +571,24 @@ func (s *server) postUnbuild(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 			return 0, err
 		}
 		plan = planFromBom(prep.bom, lines, v.quantity)
+		inPlan := map[int32]bool{}
 		for _, l := range plan {
 			if _, ok := locked[l.variantID]; !ok {
 				return 0, conflict(codeRevisionConflict, "Revision conflict",
 					"The bill of materials changed while the unbuild was being posted. Try again.")
 			}
+			inPlan[l.variantID] = true
+		}
+		var cf fieldErrors
+		if v.componentsIn != nil {
+			for i, c := range *v.componentsIn {
+				if !inPlan[c.VariantId] {
+					cf.add(fmt.Sprintf("components[%d].variantId", i), "Not a component of the bill of materials")
+				}
+			}
+		}
+		if cf.failed() {
+			return 0, refuseInvalid(unbuildTitle, cf)
 		}
 	}
 	if _, err := txq.UnbuildByClientRequest(ctx, v.clientRequestID); err == nil {
@@ -573,6 +619,14 @@ func (s *server) postUnbuild(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		}
 		l.sku, l.name, l.unit = e.SKU, e.ProductName, e.Unit
 		if prep.order != nil {
+			// A serial component is restored a whole unit per serial: a
+			// partial unbuild that would restore a fraction of one is refused
+			// before Inventory sees it.
+			if e.Tracking == contracts.TrackingSerial && l.lotID != 0 && l.quantity.Cmp(big.NewRat(1, 1)) != 0 {
+				return 0, refuseField(unbuildTitle, "quantity", codeSerialQuantity,
+					fmt.Sprintf("%s is tracked by serial number; this unbuild would restore %s of serial %s. Unbuild whole units.", e.SKU,
+						text(l.quantity, quantityPlaces), l.lotNumber))
+			}
 			continue
 		}
 		c, named := v.components[l.variantID]
@@ -606,8 +660,8 @@ func (s *server) postUnbuild(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		return 0, err
 	}
 	at := s.deps.Clock()
-	params := store.InsertUnbuildParams{Number: number, OrderID: v.orderID, BomID: prep.bom.ID, VariantID: prep.variantID,
-		Quantity: numeric(v.quantity, quantityPlaces), SiteID: prep.siteID, FromLocationID: prep.from, ToLocationID: prep.to, Note: v.note,
+	params := store.InsertUnbuildParams{Number: number, OrderID: v.orderID, BomID: prep.bom.ID, VariantID: prep.variantID, Sku: product.SKU,
+		ProductName: product.ProductName, Unit: product.Unit, Quantity: numeric(v.quantity, quantityPlaces), SiteID: prep.siteID, FromLocationID: prep.from, ToLocationID: prep.to, Note: v.note,
 		PostedByUserID: prep.who.id, PostedByDisplay: prep.who.display, Now: at, ClientRequestID: v.clientRequestID, RequestHash: v.hash}
 	if v.lotID != nil {
 		params.LotID, params.LotNumber = v.lotID, &lotNumber
@@ -650,7 +704,8 @@ func (s *server) postUnbuild(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 		}
 		return 0, fmt.Errorf("manufacturing: post unbuild %d: %w", u.ID, err)
 	}
-	if err := txq.SetUnbuildMovement(ctx, store.SetUnbuildMovementParams{ID: u.ID, MovementID: &posted.MovementID}); err != nil {
+	if err := txq.SetUnbuildMovement(ctx, store.SetUnbuildMovementParams{ID: u.ID, MovementID: &posted.MovementID,
+		Quarantined: len(posted.Quarantined) > 0}); err != nil {
 		return 0, err
 	}
 	for i, l := range plan {
@@ -830,7 +885,12 @@ func (s *server) unbuildsAnswer(ctx context.Context, q *store.Queries, rows []un
 			Variant: refOf(entries, r.VariantID, costs), Quantity: numericText(r.Quantity, quantityPlaces), LotId: r.LotID, LotNumber: r.LotNumber,
 			SiteId: r.SiteID, FromLocationId: r.FromLocationID, ToLocationId: r.ToLocationID, MovementId: r.MovementID, Note: r.Note,
 			ClientRequestId: r.ClientRequestID, PostedByUserId: r.PostedByUserID, PostedByDisplay: r.PostedByDisplay, PostedAt: r.PostedAt,
-			Lines: byUnbuild[r.ID]}
+			Lines: byUnbuild[r.ID], Quarantined: r.Quarantined, ReleasedAt: r.ReleasedAt, ReleasedByDisplay: r.ReleasedByDisplay}
+		// The product as the unbuild was posted when the catalog no longer
+		// has it.
+		if u.Variant.Sku == "" {
+			u.Variant.Sku, u.Variant.ProductName, u.Variant.Unit = r.Sku, r.ProductName, r.Unit
+		}
 		if u.Lines == nil {
 			u.Lines = []gen.ManufacturingUnbuildLine{}
 		}
@@ -862,10 +922,7 @@ func (s *server) unbuildAnswer(ctx context.Context, id int64) (gen.Manufacturing
 	if err != nil {
 		return gen.ManufacturingUnbuild{}, err
 	}
-	row := unbuildRow{ManufacturingUnbuild: store.ManufacturingUnbuild{ID: r.ID, Number: r.Number, OrderID: r.OrderID, BomID: r.BomID,
-		VariantID: r.VariantID, Quantity: r.Quantity, LotID: r.LotID, LotNumber: r.LotNumber, SiteID: r.SiteID, FromLocationID: r.FromLocationID,
-		ToLocationID: r.ToLocationID, MovementID: r.MovementID, Note: r.Note, PostedByUserID: r.PostedByUserID, PostedByDisplay: r.PostedByDisplay,
-		PostedAt: r.PostedAt, ClientRequestID: r.ClientRequestID, RequestHash: r.RequestHash}, orderNumber: orderNumberOf(r.OrderNumber, r.OrderSuffix)}
+	row := unbuildRow{ManufacturingUnbuild: r.ManufacturingUnbuild, orderNumber: orderNumberOf(r.OrderNumber, r.OrderSuffix)}
 	out, err := s.unbuildsAnswer(ctx, q, []unbuildRow{row})
 	if err != nil {
 		return gen.ManufacturingUnbuild{}, err
@@ -916,10 +973,7 @@ func (s *server) ListManufacturingUnbuilds(ctx context.Context, req gen.ListManu
 	list := make([]unbuildRow, 0, len(rows))
 	for _, r := range rows {
 		out.Total = r.Total
-		list = append(list, unbuildRow{ManufacturingUnbuild: store.ManufacturingUnbuild{ID: r.ID, Number: r.Number, OrderID: r.OrderID, BomID: r.BomID,
-			VariantID: r.VariantID, Quantity: r.Quantity, LotID: r.LotID, LotNumber: r.LotNumber, SiteID: r.SiteID, FromLocationID: r.FromLocationID,
-			ToLocationID: r.ToLocationID, MovementID: r.MovementID, Note: r.Note, PostedByUserID: r.PostedByUserID, PostedByDisplay: r.PostedByDisplay,
-			PostedAt: r.PostedAt, ClientRequestID: r.ClientRequestID, RequestHash: r.RequestHash}, orderNumber: orderNumberOf(r.OrderNumber, r.OrderSuffix)})
+		list = append(list, unbuildRow{ManufacturingUnbuild: r.ManufacturingUnbuild, orderNumber: orderNumberOf(r.OrderNumber, r.OrderSuffix)})
 	}
 	items, err := s.unbuildsAnswer(ctx, q, list)
 	if err != nil {
@@ -927,4 +981,88 @@ func (s *server) ListManufacturingUnbuilds(ctx context.Context, req gen.ListManu
 	}
 	out.Items = items
 	return out, nil
+}
+
+// ReleaseManufacturingUnbuild releases the quarantine an unbuild of a held
+// lot put on the lots it restored (M123), through the ledger: only the
+// unbuild's own holds go. The lock order: LockVariants on the components it
+// restored into lots, the unbuild FOR UPDATE, then the ledger. A release done
+// already answers the unbuild as it is.
+func (s *server) ReleaseManufacturingUnbuild(ctx context.Context, req gen.ReleaseManufacturingUnbuildRequestObject) (gen.ReleaseManufacturingUnbuildResponseObject, error) {
+	reply := answers[gen.ReleaseManufacturingUnbuildResponseObject]{
+		notFound: func() gen.ReleaseManufacturingUnbuildResponseObject {
+			return gen.ReleaseManufacturingUnbuild404Response{}
+		},
+		conflict: func(p gen.ManufacturingProblem) gen.ReleaseManufacturingUnbuildResponseObject {
+			return gen.ReleaseManufacturingUnbuild409ApplicationProblemPlusJSONResponse(p)
+		},
+		unavailable: func(p gen.ManufacturingProblem) gen.ReleaseManufacturingUnbuildResponseObject {
+			return gen.ReleaseManufacturingUnbuild503ApplicationProblemPlusJSONResponse(p)
+		},
+	}
+	pool := store.New(s.deps.Pool)
+	if _, err := pool.GetUnbuild(ctx, req.Id); noRows(err) {
+		return gen.ReleaseManufacturingUnbuild404Response{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	lines, err := pool.UnbuildLines(ctx, []int64{req.Id})
+	if err != nil {
+		return nil, err
+	}
+	var variants []int32
+	for _, l := range lines {
+		if l.LotID != nil {
+			variants = append(variants, l.VariantID)
+		}
+	}
+	who, err := s.actorOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
+		if len(variants) > 0 {
+			if _, err := s.lockVariants(ctx, tx, dedupe(variants)); err != nil {
+				return err
+			}
+		}
+		u, err := txq.GetUnbuildForUpdate(ctx, req.Id)
+		if err != nil {
+			return err
+		}
+		switch {
+		case !u.Quarantined:
+			return conflict(codeUnbuildNotHeld, "The unbuild quarantined nothing",
+				"The lot taken apart was not held, so nothing the unbuild restored was quarantined.")
+		case u.ReleasedAt != nil:
+			return nil
+		}
+		ledger, err := s.ledger()
+		if err != nil {
+			return err
+		}
+		if err := ledger.ReleaseLotHolds(ctx, tx, unbuildSource(u.ID), nil, contracts.LotActor{UserID: who.id, Display: who.display}); err != nil {
+			var r *contracts.StockRefusal
+			if errors.As(err, &r) {
+				return stockRefusal(r, nil)
+			}
+			return fmt.Errorf("manufacturing: release the holds of unbuild %d: %w", u.ID, err)
+		}
+		if err := txq.MarkUnbuildReleased(ctx, store.MarkUnbuildReleasedParams{ID: u.ID, Now: s.deps.Clock(), ReleasedByUserID: who.id,
+			ReleasedByDisplay: &who.display}); err != nil {
+			return err
+		}
+		if u.OrderID != nil {
+			return notifyOrder(ctx, tx, *u.OrderID)
+		}
+		return nil
+	})
+	if err != nil {
+		return answer(err, reply)
+	}
+	out, err := s.unbuildAnswer(ctx, req.Id)
+	if err != nil {
+		return answer(err, reply)
+	}
+	return gen.ReleaseManufacturingUnbuild200JSONResponse(out), nil
 }

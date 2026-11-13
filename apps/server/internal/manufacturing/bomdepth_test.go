@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -150,6 +153,12 @@ func TestBomDepth_ByproductsCostAndLots(t *testing.T) {
 	bad.ClientRequestId = "bad"
 	bad.Outputs = &[]gen.ManufacturingProductionOutputInput{{OutputId: 999999, Quantity: "1"}}
 	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), bad), http.StatusBadRequest, "", "a by-product of another order")
+	// A by-product's bad lot number is refused at its own field.
+	bad.Outputs = &[]gen.ManufacturingProductionOutputInput{{OutputId: *pulpOut.Id, Quantity: "1", Lot: &gen.ManufacturingOutputLotInput{Number: str("no spaces")}}}
+	lp := expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), bad), http.StatusBadRequest, "", "a by-product's bad lot number")
+	if lp.Errors == nil || len((*lp.Errors)["outputs[0].lot.number"]) != 1 {
+		t.Errorf("a by-product's bad lot number's errors = %+v", lp.Errors)
+	}
 	p := produce(t, c, o, post)
 	if len(p.ByProducts) != 1 || p.ByProducts[0].OutputId != *pulpOut.Id || p.ByProducts[0].Quantity != "2" || p.ByProducts[0].LotNumber == nil ||
 		*p.ByProducts[0].LotNumber != o.Number {
@@ -214,6 +223,17 @@ func TestBomDepth_ByproductsCostAndLots(t *testing.T) {
 		len(report.Groups) != 1 || report.Groups[0].Totals.CostPerUnit == nil || *report.Groups[0].Totals.CostPerUnit != "270.90" {
 		t.Errorf("report = %+v", report)
 	}
+	// The CSV carries the by-products as a section of their own.
+	res = c.Do(http.MethodGet, base+"/reports/production-cost?from=2026-09-01&to=2026-12-31&format=csv", nil)
+	mustStatus(t, res, http.StatusOK, "report as CSV")
+	if body := string(res.Body); !strings.Contains(body, "byProductOrder;sku;product;costShare;produced;actual;costPerUnit;notProduced") ||
+		!strings.Contains(body, o.Number+";PULP-1;Pulp;10;2;120,40;60,20;false") {
+		t.Errorf("CSV = %s", body)
+	}
+	// What its consumption made was not the bicycle alone: the order is not
+	// taken apart, the BoM may be.
+	expectRefusal(t, c.Do(http.MethodPost, unbuildsPath, gen.ManufacturingUnbuildInput{ClientRequestId: "by", OrderId: &o.Id, Quantity: "1"}),
+		http.StatusConflict, "unbuild_has_byproducts", "an unbuild of an order that made by-products")
 }
 
 // TestBomDepth_ByproductCostWithNothingProduced is M122's edge: an order
@@ -356,6 +376,9 @@ func TestBomDepth_UnbuildRestoresOnlyTheChosenLotsProductions(t *testing.T) {
 	res = c.Do(http.MethodGet, orderPath(o.Id, "lots"), nil)
 	mustStatus(t, res, http.StatusOK, "lots")
 	res.JSON(&lots)
+	if lots.Tracking != gen.Lot {
+		t.Errorf("the jam's tracking = %s", lots.Tracking)
+	}
 	for _, l := range lots.Outputs {
 		want := "0"
 		if l.LotId == f.j1 {
@@ -378,6 +401,16 @@ func TestBomDepth_UnbuildRestoresOnlyTheChosenLotsProductions(t *testing.T) {
 		t.Errorf("get = %+v", got)
 	}
 	mustStatus(t, c.Do(http.MethodGet, pathOf(unbuildsPath, 999999), nil), http.StatusNotFound, "an unknown unbuild")
+	// The product is snapshotted as posted; a lot that was not held
+	// quarantined nothing, so there is nothing to release.
+	if got := modtest.One[string](t, f.h.Harness, `SELECT sku || ' ' || product_name || ' ' || unit FROM manufacturing.unbuilds WHERE id = $1`, u.Id); got != "JAM-1 Jam pcs" {
+		t.Errorf("the unbuild's product snapshot = %q", got)
+	}
+	if u.Quarantined || u.ReleasedAt != nil {
+		t.Errorf("an unbuild of an available lot = %+v", u)
+	}
+	expectRefusal(t, f.h.SignIn(t, quality...).Do(http.MethodPost, pathOf(unbuildsPath, u.Id)+"/release", nil), http.StatusConflict,
+		"unbuild_not_quarantined", "a release of an unbuild that quarantined nothing")
 	var kinds []string
 	rows, err := f.h.Pool().Query(context.Background(), `SELECT kind FROM manufacturing.order_events WHERE order_id = $1 AND kind = 'unbuilt'`, o.Id)
 	if err != nil {
@@ -412,8 +445,86 @@ func TestBomDepth_UnbuildOfAHeldLot(t *testing.T) {
 	f.h.stock.hold(f.j2, contracts.StockSource{Module: "inventory", Kind: "recall", ID: 1}, "block")
 	res := f.c.Do(http.MethodPost, unbuildsPath, gen.ManufacturingUnbuildInput{ClientRequestId: "held", OrderId: &f.o.Id, Quantity: "2", LotId: &f.j2})
 	mustStatus(t, res, http.StatusCreated, "unbuild a blocked lot")
-	if u := unbuildOf(t, res); len(u.Lines) != 2 || u.Lines[0].LotId == nil || *u.Lines[0].LotId != f.b2 || u.Lines[0].Quantity != "4" {
-		t.Errorf("unbuild of the blocked lot = %+v", u)
+	u := unbuildOf(t, res)
+	if len(u.Lines) != 2 || u.Lines[0].LotId == nil || *u.Lines[0].LotId != f.b2 || u.Lines[0].Quantity != "4" || !u.Quarantined || u.ReleasedAt != nil {
+		t.Fatalf("unbuild of the blocked lot = %+v", u)
+	}
+	// The berries came back quarantined by the unbuild; a quality manager
+	// releases its holds, and only its own.
+	if got := f.h.stock.lotStatus(f.b2); got != contracts.LotQuarantine {
+		t.Fatalf("the restored lot is %s", got)
+	}
+	release := pathOf(unbuildsPath, u.Id) + "/release"
+	mustStatus(t, f.c.Do(http.MethodPost, release, nil), http.StatusForbidden, "a release without quality-manage")
+	mustStatus(t, f.h.SignIn(t, quality...).Do(http.MethodPost, pathOf(unbuildsPath, 999999)+"/release", nil), http.StatusNotFound, "an unknown unbuild")
+	q := f.h.SignIn(t, quality...)
+	res = q.Do(http.MethodPost, release, nil)
+	mustStatus(t, res, http.StatusOK, "release")
+	if got := unbuildOf(t, res); got.ReleasedAt == nil || got.ReleasedByDisplay == nil {
+		t.Errorf("released = %+v", got)
+	}
+	if got := f.h.stock.lotStatus(f.b2); got != contracts.LotAvailable {
+		t.Errorf("the restored lot is %s after the release", got)
+	}
+	if got := f.h.stock.lotStatus(f.j2); got != contracts.LotBlocked {
+		t.Errorf("the recalled lot is %s; the recall's block is not the unbuild's", got)
+	}
+	mustStatus(t, q.Do(http.MethodPost, release, nil), http.StatusOK, "a release done already")
+}
+
+// TestBomDepth_UnbuildCountsOutputScrap is M123's divisor: a production's
+// consumption made its good output and its output scrap, so a unit taken
+// apart restores what one of them consumed.
+func TestBomDepth_UnbuildCountsOutputScrap(t *testing.T) {
+	t.Parallel()
+	h := lotHarness(t)
+	c := h.SignIn(t, everything...)
+	b1 := h.stock.receiveLot(varBerry, "B-1", locMainA1, "10", h.Now(), nil)
+	h.stock.put(varSugar, locMainA1, "100")
+	o := jamOrder(t, c, "4", "")
+	berry, sugar := component(t, o, varBerry), component(t, o, varSugar)
+	p := produce(t, c, o, gen.ManufacturingProductionInput{ClientRequestId: "p", Quantity: "2", OutputScrap: str("2"),
+		Lines: []gen.ManufacturingProductionLineInput{
+			{ComponentId: *berry.Id, Consumed: str("8"), Lots: &[]gen.ManufacturingProductionLotInput{{LotId: b1, LocationId: locMainA1, Consumed: str("8")}}},
+			{ComponentId: *sugar.Id, Consumed: str("4")},
+		}})
+	o = closeShort(t, c, o.Id)
+	lot := p.OutputLots[0].LotId
+	res := c.Do(http.MethodPost, unbuildsPath, gen.ManufacturingUnbuildInput{ClientRequestId: "u", OrderId: &o.Id, Quantity: "1", LotId: &lot})
+	mustStatus(t, res, http.StatusCreated, "unbuild a jar")
+	if u := unbuildOf(t, res); len(u.Lines) != 2 || u.Lines[0].Quantity != "2" || u.Lines[1].Quantity != "1" {
+		t.Errorf("a jar of a production with output scrap restores %+v, want 2 berries and 1 sugar", u.Lines)
+	}
+}
+
+// TestBomDepth_PartialUnbuildOfSerials is M123's serial rule: an unbuild from
+// an order that would restore a fraction of a serial component is refused
+// naming it; whole units restore each serial whole.
+func TestBomDepth_PartialUnbuildOfSerials(t *testing.T) {
+	t.Parallel()
+	h := lotHarness(t)
+	c := h.SignIn(t, everything...)
+	p1 := h.stock.receiveLot(varPump, "P-1", locMainA1, "1", h.Now(), nil)
+	p2 := h.stock.receiveLot(varPump, "P-2", locMainA1, "1", h.Now(), nil)
+	saw := createWorkCenter(t, c, workCenterInput("SAW", siteMain))
+	in := bomInput(varBike, "1", line(varPump, "1"))
+	in.Operations = []gen.ManufacturingBomOperationInput{operation("a", 10, saw.Id, "1")}
+	createBom(t, c, in)
+	o := confirmOrder(t, c, createOrder(t, c, orderInput(varBike, "2"))).Order
+	pump := component(t, o, varPump)
+	produce(t, c, o, gen.ManufacturingProductionInput{ClientRequestId: "p", Quantity: "2",
+		Lines: []gen.ManufacturingProductionLineInput{{ComponentId: *pump.Id, Consumed: str("2"), Lots: &[]gen.ManufacturingProductionLotInput{
+			{LotId: p1, LocationId: locMainA1, Consumed: str("1")}, {LotId: p2, LocationId: locMainA1, Consumed: str("1")}}}}})
+	o = closeShort(t, c, o.Id)
+	p := expectRefusal(t, c.Do(http.MethodPost, unbuildsPath, gen.ManufacturingUnbuildInput{ClientRequestId: "half", OrderId: &o.Id, Quantity: "1"}),
+		http.StatusBadRequest, "serial_quantity", "half of each serial")
+	if p.Errors == nil || len((*p.Errors)["quantity"]) != 1 || !strings.Contains((*p.Errors)["quantity"][0], "PUMP-1") {
+		t.Errorf("the refusal does not name the component: %+v", p.Errors)
+	}
+	res := c.Do(http.MethodPost, unbuildsPath, gen.ManufacturingUnbuildInput{ClientRequestId: "whole", OrderId: &o.Id, Quantity: "2"})
+	mustStatus(t, res, http.StatusCreated, "both bicycles")
+	if u := unbuildOf(t, res); len(u.Lines) != 2 || u.Lines[0].Quantity != "1" || u.Lines[1].Quantity != "1" {
+		t.Errorf("whole units restore %+v", u.Lines)
 	}
 }
 
@@ -444,6 +555,12 @@ func TestBomDepth_FreeStandingUnbuild(t *testing.T) {
 	in.Components = &[]gen.ManufacturingUnbuildComponentInput{{VariantId: varBerry, Lot: &gen.ManufacturingOutputLotInput{Number: str("R-1")}},
 		{VariantId: varSugar, LotId: &lot}}
 	expectRefusal(t, c.Do(http.MethodPost, unbuildsPath, in), http.StatusBadRequest, "lot_not_allowed", "a lot for an untracked component")
+	in.Components = &[]gen.ManufacturingUnbuildComponentInput{{VariantId: varBerry, Lot: &gen.ManufacturingOutputLotInput{Number: str("R-1")}},
+		{VariantId: varPump, Lot: &gen.ManufacturingOutputLotInput{Number: str("X-1")}}}
+	np := expectRefusal(t, c.Do(http.MethodPost, unbuildsPath, in), http.StatusBadRequest, "", "a component the BoM does not have")
+	if np.Errors == nil || len((*np.Errors)["components[1].variantId"]) != 1 {
+		t.Errorf("a component the BoM does not have: errors %+v", np.Errors)
+	}
 	in.Components = &[]gen.ManufacturingUnbuildComponentInput{{VariantId: varBerry, Lot: &gen.ManufacturingOutputLotInput{Number: str("R-1")}}}
 	res = c.Do(http.MethodPost, unbuildsPath, in)
 	mustStatus(t, res, http.StatusCreated, "a free-standing unbuild into a new lot")
@@ -534,6 +651,10 @@ func TestBomDepth_Split(t *testing.T) {
 	if orderOutput(t, kept, varPaint).Expected != "4" {
 		t.Errorf("kept by-product = %+v", kept.Outputs)
 	}
+	// The original is not cancelled while its part is open.
+	kept = getOrder(t, c, kept.Id)
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(kept.Id, "cancel"), revisionInput(kept.Revision)), http.StatusConflict, "order_has_open_parts",
+		"a cancel of a split original with an open part")
 
 	// A draft splits into drafts; an order with a time log does not split.
 	draft := createOrder(t, c, orderInput(varBike, "3"))
@@ -731,5 +852,53 @@ func TestBomDepth_ConcurrentSplitsMergesAndPlans(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestBomDepth_SplitWithRegisteredQuantity is the review's D1: a registered
+// quantity is work done, so an order with one is neither split nor merged.
+func TestBomDepth_SplitWithRegisteredQuantity(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	saw := createWorkCenter(t, c, workCenterInput("SAW", siteMain))
+	a := operation("a", 10, saw.Id, "1")
+	a.SendAheadQuantity = str("2")
+	bikeWith(t, c, a, operation("b", 20, saw.Id, "1"))
+	o, wos := confirmedBike(t, c, "10")
+	mustStatus(t, c.Do(http.MethodPost, workOrderPath(wos[0].Id, "quantity"), gen.ManufacturingQuantityInput{ClientRequestId: uuid.New(), Quantity: "2"}),
+		http.StatusOK, "two through")
+	o = getOrder(t, c, o.Id)
+	expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "split"), gen.ManufacturingOrderSplitInput{Revision: o.Revision, Quantities: []string{"5", "5"}}),
+		http.StatusConflict, "order_has_work", "a split of an order with a registered quantity")
+	other, _ := confirmedBike(t, c, "1")
+	expectRefusal(t, c.Do(http.MethodPost, ordersPath+"/merge", gen.ManufacturingOrderMergeInput{Orders: []gen.ManufacturingOrderMergeItem{
+		{Id: o.Id, Revision: o.Revision}, {Id: other.Id, Revision: other.Revision}}}), http.StatusConflict, "order_has_work",
+		"a merge of an order with a registered quantity")
+}
+
+// TestBomDepth_MergeMatchesLinesInOrder is M125's matching: two BoM lines of
+// one variant and operation are matched the n-th to the n-th, by sort order.
+func TestBomDepth_MergeMatchesLinesInOrder(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	h.stock.put(varWheel, locMainA1, "1000")
+	saw := createWorkCenter(t, c, workCenterInput("SAW", siteMain))
+	in := bomInput(varBike, "1", line(varWheel, "2"), line(varWheel, "3"))
+	in.Operations = []gen.ManufacturingBomOperationInput{operation("a", 10, saw.Id, "1")}
+	createBom(t, c, in)
+	a, _ := confirmedBike(t, c, "1")
+	b, _ := confirmedBike(t, c, "1")
+	res := c.Do(http.MethodPost, ordersPath+"/merge", gen.ManufacturingOrderMergeInput{Orders: []gen.ManufacturingOrderMergeItem{
+		{Id: a.Id, Revision: a.Revision}, {Id: b.Id, Revision: b.Revision}}})
+	mustStatus(t, res, http.StatusOK, "merge")
+	s := mergeOf(t, res).Order
+	var required []string
+	for _, l := range s.Components {
+		required = append(required, l.Required)
+	}
+	if len(required) != 2 || required[0] != "4" || required[1] != "6" {
+		t.Errorf("the survivor's wheel lines = %v, want [4 6]", required)
 	}
 }
