@@ -46,10 +46,11 @@ type salesOrderLines struct {
 
 // Unreserved is what the open goods lines of confirmed sales orders at the
 // site still need beyond what they hold reserved there (manufacturing
-// phase 2 M107a): the lines and every order's reservations read in one
+// phase 2 M107a): the lines and their orders' reservations read in one
 // read-only snapshot — what a line holds is Inventory's to say
-// (ReservationsFor, on this transaction, the one connection it holds) — and
-// only a line with more open than reserved answered.
+// (ReservationsForSources, lock-free, on this transaction, the one connection
+// it holds, one round trip per MaxStockSources orders) — and only a line with
+// more open than reserved answered.
 func (p salesOrderLines) Unreserved(ctx context.Context, variantIDs []int32, siteID int64) ([]contracts.UnreservedDemand, error) {
 	if len(variantIDs) > contracts.MaxStockPlacements {
 		return nil, fmt.Errorf("orders: an unreserved demand read names %d variants, more than %d", len(variantIDs), contracts.MaxStockPlacements)
@@ -68,15 +69,16 @@ func (p salesOrderLines) Unreserved(ctx context.Context, variantIDs []int32, sit
 	}
 	held := map[int64]*big.Rat{}
 	if p.ledger != nil {
-		var orderID int64
+		var sources []contracts.StockSource
 		for _, r := range rows {
-			if r.OrderID == orderID {
-				continue
+			if n := len(sources); n == 0 || sources[n-1].ID != r.OrderID {
+				sources = append(sources, orderStock(r.OrderID))
 			}
-			orderID = r.OrderID
-			reservations, err := p.ledger.ReservationsFor(ctx, tx, orderStock(orderID))
+		}
+		for batch := range slices.Chunk(sources, contracts.MaxStockSources) {
+			reservations, err := p.ledger.ReservationsForSources(ctx, tx, batch)
 			if err != nil {
-				return nil, fmt.Errorf("orders: read sales order %d's reservations: %w", orderID, err)
+				return nil, fmt.Errorf("orders: read %d sales orders' reservations: %w", len(batch), err)
 			}
 			for _, res := range reservations {
 				q, ok := new(big.Rat).SetString(res.Quantity)
