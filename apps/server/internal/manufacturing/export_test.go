@@ -30,3 +30,9 @@ func ErasureCycle(ctx context.Context, d module.Deps) (int64, error) {
 func MtoCycle(ctx context.Context, d module.Deps) (int, error) {
 	return (&mtoWorker{s: newServer(d)}).RunCycle(ctx)
 }
+
+// ReplenishmentCycle runs one cycle of the replenishment worker: the runs it
+// finished.
+func ReplenishmentCycle(ctx context.Context, d module.Deps) (int, error) {
+	return (&replenishmentWorker{s: newServer(d)}).RunCycle(ctx)
+}

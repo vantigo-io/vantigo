@@ -59,10 +59,15 @@ func (s *server) GetManufacturingStats(ctx context.Context, _ gen.GetManufacturi
 	if err != nil {
 		return nil, err
 	}
+	suggestions, err := q.CountOpenMakeSuggestions(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return gen.GetManufacturingStats200JSONResponse{
 		ActiveWorkCenters: stats.ActiveWorkCenters, BlockedWorkCenters: stats.BlockedWorkCenters, ActiveBoms: stats.ActiveBoms,
 		OrdersToStartToday: orders.ToStartToday, OrdersInProgress: orders.InProgress, OrdersLate: orders.Late,
-		Today: openapi_types.Date{Time: today},
+		SuggestionsToMake: suggestions,
+		Today:             openapi_types.Date{Time: today},
 	}, nil
 }
 

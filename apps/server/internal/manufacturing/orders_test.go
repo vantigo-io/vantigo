@@ -104,7 +104,7 @@ func TestOrder_CreateDefaultsAndRefusals(t *testing.T) {
 	o := createOrder(t, c, in)
 	if o.Number != "MO-1" || o.BomId != b.Id || o.SiteId != siteMain || o.OutputLocationId != locMainRoot || o.ComponentLocationId != nil ||
 		o.Status != gen.ManufacturingOrderStatusDraft || o.Priority != gen.ManufacturingPriorityNormal || o.Note != "Rush" ||
-		o.Origin.Kind != gen.Manual || o.Quantity != "2" || o.Produced != "0" || o.Revision != 1 || o.ReservationStatus != nil {
+		o.Origin.Kind != gen.ManufacturingOriginManual || o.Quantity != "2" || o.Produced != "0" || o.Revision != 1 || o.ReservationStatus != nil {
 		t.Fatalf("created = %+v", o)
 	}
 	// A draft follows its BoM: 3 × 2 / 1 × 1.1 = 6.6 bolts, no id yet.

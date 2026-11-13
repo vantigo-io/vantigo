@@ -28,11 +28,11 @@ const (
 )
 
 // workers are the module's background workers: the erasure sweep, the
-// make-to-order worker (mto.go) and the photos' deletion ledger
-// (quality_photos.go).
+// make-to-order worker (mto.go), the photos' deletion ledger
+// (quality_photos.go) and the replenishment job (replenishment.go).
 func workers(d module.Deps) []worker.Worker {
 	s := newServer(d)
-	return []worker.Worker{&erasureWorker{deps: d}, &mtoWorker{s: s}, &objectDeletionsWorker{s: s}}
+	return []worker.Worker{&erasureWorker{deps: d}, &mtoWorker{s: s}, &objectDeletionsWorker{s: s}, &replenishmentWorker{s: s}}
 }
 
 // erasureWorker blanks the time-log notes of the operators identity erased.

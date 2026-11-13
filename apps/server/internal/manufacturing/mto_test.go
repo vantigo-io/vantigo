@@ -252,7 +252,7 @@ func TestMto_HandlerQueuesOnceAndWorkerMakesOnce(t *testing.T) {
 	// The BoM's work centers stand at the main site, whatever the sales
 	// order names (M44a); nothing is on hand, so it is confirmed short.
 	if o.Status != gen.ManufacturingOrderStatusConfirmed || o.Quantity != "2" || o.SiteId != siteMain ||
-		o.Origin.Kind != gen.SalesOrder || *o.Origin.Reference != "SO-1042" || *o.Origin.LineId != 501 || *o.Origin.OrderId != salesOrder ||
+		o.Origin.Kind != gen.ManufacturingOriginSalesOrder || *o.Origin.Reference != "SO-1042" || *o.Origin.LineId != 501 || *o.Origin.OrderId != salesOrder ||
 		o.DueDate == nil || !o.DueDate.Equal(delivery) || o.ReservationStatus == nil || *o.ReservationStatus != gen.ManufacturingReservationStatusNotReserved {
 		t.Fatalf("made = %+v", o)
 	}
@@ -437,7 +437,7 @@ func TestMto_ManualOrderForALine(t *testing.T) {
 	id := int64(1001)
 	in.SalesOrderLineId = &id
 	o := createOrder(t, c, in)
-	if o.Origin.Kind != gen.SalesOrder || *o.Origin.Reference != "SO-6" {
+	if o.Origin.Kind != gen.ManufacturingOriginSalesOrder || *o.Origin.Reference != "SO-6" {
 		t.Fatalf("origin = %+v", o.Origin)
 	}
 	expectRefusal(t, c.Do(http.MethodPost, ordersPath, in), http.StatusConflict, "sales_order_line_has_order", "a second order for the line")
@@ -523,7 +523,7 @@ func TestMto_ChildOrders(t *testing.T) {
 	}
 	child := getOrder(t, c, out.Children[0].Id)
 	// 3 frames required, 1 available: 2 missing.
-	if child.Quantity != "2" || child.Origin.Kind != gen.Parent || child.Parent == nil || child.Parent.Id != parent.Id ||
+	if child.Quantity != "2" || child.Origin.Kind != gen.ManufacturingOriginParent || child.Parent == nil || child.Parent.Id != parent.Id ||
 		child.DueDate == nil || !child.DueDate.Equal(time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("child = %+v", child)
 	}
@@ -719,7 +719,7 @@ func TestMto_BackorderKeepsTheCancelledFlag(t *testing.T) {
 	mustStatus(t, res, http.StatusOK, "close with a backorder")
 	var out gen.ManufacturingCloseResult
 	res.JSON(&out)
-	if out.Backorder == nil || !out.Backorder.Origin.Cancelled || out.Backorder.Origin.Kind != gen.SalesOrder {
+	if out.Backorder == nil || !out.Backorder.Origin.Cancelled || out.Backorder.Origin.Kind != gen.ManufacturingOriginSalesOrder {
 		t.Fatalf("backorder = %+v", out.Backorder)
 	}
 }

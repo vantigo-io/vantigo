@@ -54,6 +54,7 @@ func liveTopics(module.Deps) []live.Topic {
 		{Kind: liveWorkCenter, Authorize: authorizeID},
 		{Kind: liveWorkOrder, Presence: true, Authorize: authorizeID},
 		{Kind: liveSchedule, Authorize: authorizeID},
+		{Kind: liveSuggestions, Authorize: authorizeID},
 		{Kind: liveDeviations, Authorize: func(ctx context.Context, key string) error {
 			if key != "" || !live.HasPermission(ctx, permAccess) {
 				return live.ErrForbidden
