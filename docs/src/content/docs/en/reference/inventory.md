@@ -1641,8 +1641,14 @@ production is its own document, `manufacturing/production/30`.
 The lock order is the issue's: `LockVariants`, the caller's rows, then the engine's
 lots and balances in (variant, location, lot) order, and last the reserving document's
 reservations. With `Unbuild` the movement is of kind **`unbuild`** and its consume
-lines may take held and expired lots (manufacturing phase 2 M123; Manufacturing's
-unbuild is a later delivery). A produce line of a tracked variant names a lot made by
+lines may take held and expired lots (manufacturing phase 2 M123). When a lot one of its
+consume lines takes — named, or picked by `AutoLot` — holds an active hold, the same
+`Produce`, after posting, puts a **quarantine** hold on every lot its produce lines
+restore to: cause the consumed lot's active hold's (a block's first, then the oldest),
+source the unbuild's document (`manufacturing/unbuild/<id>`), note *Restored by an unbuild
+of a held lot*, taken as [`HoldLots`](#lots-of-other-modules) takes its lots. Held
+material taken apart does not come back usable; the hold is released from the lot page
+like any other source's. A produce line of a tracked variant names a lot made by
 [`EnsureLots`](#lots-of-other-modules); a consume line names one, or is `AutoLot`.
 
 ## Transfers

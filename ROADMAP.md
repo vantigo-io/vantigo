@@ -1056,7 +1056,16 @@ What the design deferred, each waiting for what is named:
   drafts or confirmed from the Suggestions page, and automatic creation per product and
   site, off by default
   ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#replenishment)).
-- **By-products, kits, unbuild, split and merge.**
+- **By-products, unbuild, split and merge (built, G)**: a BoM's by-products with their
+  share of the cost, made as produce lines of each production into lots of their own,
+  the actual split over them at close with a by-product not produced leaving its share
+  to the product; unbuilds of a done order's chosen lot restoring only what its
+  productions consumed, or by a BoM, posted as an unbuild movement the trace never
+  expands, a held lot taken apart quarantining what it restores; splitting an order into
+  parts and merging orders of one origin, unplanned under the schedule's locks and
+  reserved again
+  ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#bom-depth)).
+- **Kits.**
 - **Following a sales order's changed quantity** (`orders.sales_order.changed`), which
   make-to-order does not in phase 1, and **reserving a sub-assembly's output to its
   parent** automatically.
