@@ -404,12 +404,16 @@ det ikke.
 Fra da av setter hvert varemottak av varen hvert parti det lager, eller legger til, under en
 karantenesperre med årsaken **Kontroll**, navngitt med mottakets bevegelse. Mottaket sier
 fra når det bokføres: *2 partier holdt for kontroll*. Mottatt i et parti som allerede har
-beholdning, er hele partiet i karantene — også det som lå der fra før — fordi et parti er
-én mengde: frigi det når de nye varene er kontrollert.
+beholdning, er hele partiet i karantene — også det som lå der fra før, med mengden som
+ble godkjent tidligere — fordi et parti er én mengde: frigi det når de nye varene er
+kontrollert. Mens partiet er sperret, blir det som er reservert av varen, stående
+reservert, men en leveranse verken foreslår eller tar det sperrede partiet: den velger et
+annet, eller venter.
 
 Partiene som venter på kontroll, er kontrollkøen: forsiden lenker til dem som *Partier
-venter på kontroll*, og de er listen **Partier** filtrert på **Karantene** med årsaken
-**Kontroll**. På siden til et parti avslutter **Frigi** på mottakets sperring — med
+venter på kontroll*, og de er listen **Partier** filtrert på årsaken **Kontroll**, med
+eller uten beholdning — alle partier under en kontrollsperring, også et som en
+tilbakekalling har blokkert i tillegg. På siden til et parti avslutter **Frigi** på mottakets sperring — med
 **Administrere partier** — den som alle sidens egne sperringer.
 
 ### Meld avvik på et parti
