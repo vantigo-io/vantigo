@@ -41,5 +41,8 @@ describe("inspection on receipt (manufacturing phase 2 M100)", () => {
     renderRoute("/inventory");
     const link = await screen.findByRole("link", { name: "2 lots awaiting inspection" });
     expect(link.getAttribute("href")).toContain("holdCause=inspection");
+    // The count is every lot with an active inspection hold, whatever its status and stock: so is the list.
+    expect(link.getAttribute("href")).not.toContain("status=");
+    expect(link.getAttribute("href")).toContain("stock=all");
   });
 });
