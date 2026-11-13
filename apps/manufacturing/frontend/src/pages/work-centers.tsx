@@ -7,6 +7,7 @@ import { useState } from "react";
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import { manufacturingSitesQueryOptions } from "../api/sites";
 import { statusFilters, workCentersQueryOptions } from "../api/work-centers";
+import { WorkCenterGroups } from "../components/work-center-groups";
 import { canManageBoms } from "../lib/capabilities";
 import { statusColor, useManufacturingFormat } from "../lib/format";
 import {
@@ -146,6 +147,7 @@ export const WorkCentersPage = () => {
           )}
         </Stack>
       </PageSection>
+      <WorkCenterGroups />
     </Stack>
   );
 };

@@ -270,6 +270,11 @@
     "description": "An operation's quality checks: an instruction, pass or fail, a measure with its limits, or a photo, recorded at each work order or on the first piece."
   },
   {
+    "key": "manufacturing.bom.graph",
+    "route": "/manufacturing/boms/new",
+    "description": "The operations in steps by what each depends on: those in one step run side by side."
+  },
+  {
     "key": "manufacturing.bom.header",
     "route": "/manufacturing/boms/new",
     "description": "The product variant the bill makes, its code, output quantity, lead time, make to order and note."
@@ -505,6 +510,11 @@
     "description": "The buttons that block the work center with a reason, or lift the block."
   },
   {
+    "key": "manufacturing.shop-floor.group-work",
+    "route": "/manufacturing/shop-floor/work-centers/{workCenterId}",
+    "description": "Work of a group this work center is a member of, not yet taken by any member; Start here takes it to this work center."
+  },
+  {
     "key": "manufacturing.shop-floor.picker",
     "route": "/manufacturing/shop-floor",
     "description": "The work centers on the shop floor; the one last used on this device comes first."
@@ -555,6 +565,11 @@
     "description": "The button that saves the work center."
   },
   {
+    "key": "manufacturing.work-centers.groups",
+    "route": "/manufacturing/work-centers",
+    "description": "Groups of interchangeable work centers of one site, which an operation can target instead of one work center."
+  },
+  {
     "key": "manufacturing.work-centers.list",
     "route": "/manufacturing/work-centers",
     "description": "The filters by status, site and code or name, and the work centers they find."
@@ -583,6 +598,11 @@
     "key": "manufacturing.work-order.people",
     "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
     "description": "Who runs the work order, and the others who have it open now."
+  },
+  {
+    "key": "manufacturing.work-order.quantity",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "description": "Pass good units on to the next operations, which may start once the send-ahead quantity is through."
   },
   {
     "key": "manufacturing.work-order.timer",

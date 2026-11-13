@@ -47,6 +47,7 @@ import {
   type DayWindow,
   dayWindows,
   draggedStart,
+  droppedMember,
   movedStart,
   moveToPrefill,
   rescheduleBody,
@@ -69,9 +70,9 @@ const BAR_HEIGHT = 32;
 const useReschedule = () => {
   const { t } = useManufacturingFormat();
   const invalidate = useInvalidateManufacturing();
-  return async (bar: ManufacturingScheduleBar, start: number): Promise<boolean> => {
+  return async (bar: ManufacturingScheduleBar, start: number, workCenterId?: number): Promise<boolean> => {
     try {
-      await rescheduleWorkOrder(bar.workOrderId, rescheduleBody(bar, start));
+      await rescheduleWorkOrder(bar.workOrderId, rescheduleBody(bar, start, workCenterId));
       notifications.show({ color: "teal", title: t("workOrderRescheduled"), message: bar.orderNumber });
       await invalidate();
       return true;
@@ -116,11 +117,22 @@ const LoadLabel = ({ day }: { day: ManufacturingScheduleDay }) => {
 
 interface BarProps {
   bar: ManufacturingScheduleBar;
+  /** The work center of the row it is drawn on. */
+  centerId: number;
   windows: readonly DayWindow[];
   canMove: boolean;
-  onOpen: (bar: ManufacturingScheduleBar) => void;
-  onDrop: (bar: ManufacturingScheduleBar, start: number) => void;
+  onOpen: (bar: ManufacturingScheduleBar, centerId: number) => void;
+  onDrop: (bar: ManufacturingScheduleBar, start: number, workCenterId?: number) => void;
 }
+
+/** The work center of the board row under a point, from its `data-schedule-row`. */
+const rowAt = (x: number, y: number): number | undefined => {
+  for (const element of document.elementsFromPoint?.(x, y) ?? []) {
+    const row = (element as HTMLElement).closest?.("[data-schedule-row]");
+    if (row) return Number(row.getAttribute("data-schedule-row"));
+  }
+  return undefined;
+};
 
 /**
  * A work order's slot (M36): its MO and product, urgent marked, late in the
@@ -128,12 +140,15 @@ interface BarProps {
  * snapped to the quarter hour — or presses it for Move to…; others follow
  * it to the order.
  */
-const Bar = ({ bar, windows, canMove, onOpen, onDrop }: BarProps) => {
+const Bar = ({ bar, centerId, windows, canMove, onOpen, onDrop }: BarProps) => {
   const { t, stamp, time } = useManufacturingFormat();
   const layout = barLayout(bar, windows);
-  const drag = useRef<{ x: number; width: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; width: number; moved: boolean } | null>(null);
   const dragged = useRef(false);
   const [delta, setDelta] = useState<number | null>(null);
+  const [lift, setLift] = useState(0);
+  // A group work order whose member is not fixed may go down or up to another member's row (M119).
+  const crossRows = (bar.memberIds ?? []).length > 0;
   const label = `${bar.orderNumber} · ${bar.variant.productName}`;
   const title = t("barTitle", {
     order: bar.orderNumber,
@@ -149,16 +164,18 @@ const Bar = ({ bar, windows, canMove, onOpen, onDrop }: BarProps) => {
     if (!canMove || event.button !== 0) return;
     const track = event.currentTarget.parentElement;
     if (!track) return;
-    drag.current = { x: event.clientX, width: track.getBoundingClientRect().width, moved: false };
+    drag.current = { x: event.clientX, y: event.clientY, width: track.getBoundingClientRect().width, moved: false };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
   const pointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     const current = drag.current;
     if (!current || current.width <= 0) return;
     const travelled = event.clientX - current.x;
-    if (!current.moved && Math.abs(travelled) < DRAG_THRESHOLD_PX) return;
+    const dropped = crossRows ? event.clientY - current.y : 0;
+    if (!current.moved && Math.abs(travelled) < DRAG_THRESHOLD_PX && Math.abs(dropped) < DRAG_THRESHOLD_PX) return;
     current.moved = true;
     setDelta(travelled / current.width);
+    setLift(dropped);
   };
   const pointerUp = (event: ReactPointerEvent<HTMLElement>) => {
     const current = drag.current;
@@ -167,7 +184,9 @@ const Bar = ({ bar, windows, canMove, onOpen, onDrop }: BarProps) => {
     if (!current?.moved || current.width <= 0) return;
     dragged.current = true;
     setDelta(null);
-    onDrop(bar, workOrderStart(bar, draggedStart(bar, (event.clientX - current.x) / current.width, windows)));
+    setLift(0);
+    const member = crossRows ? droppedMember(bar, centerId, rowAt(event.clientX, event.clientY)) : undefined;
+    onDrop(bar, workOrderStart(bar, draggedStart(bar, (event.clientX - current.x) / current.width, windows)), member);
   };
   const click = () => {
     // A drag ends in a click as well; only a press that did not move opens the dialog.
@@ -175,7 +194,7 @@ const Bar = ({ bar, windows, canMove, onOpen, onDrop }: BarProps) => {
       dragged.current = false;
       return;
     }
-    onOpen(bar);
+    onOpen(bar, centerId);
   };
 
   const left = layout.left + (delta ?? 0);
@@ -197,6 +216,7 @@ const Bar = ({ bar, windows, canMove, onOpen, onDrop }: BarProps) => {
     cursor: canMove ? (delta === null ? "grab" : "grabbing") : "pointer",
     touchAction: canMove ? ("none" as const) : undefined,
     opacity: delta === null ? 1 : 0.85,
+    transform: lift === 0 ? undefined : `translateY(${lift}px)`,
     zIndex: delta === null ? 1 : 2,
     outline: bar.urgent ? "2px solid var(--mantine-color-orange-5)" : undefined,
     textDecoration: "none",
@@ -231,6 +251,7 @@ const Bar = ({ bar, windows, canMove, onOpen, onDrop }: BarProps) => {
       onPointerCancel={() => {
         drag.current = null;
         setDelta(null);
+        setLift(0);
       }}
       onClick={click}
       style={style}
@@ -251,13 +272,16 @@ const Row = ({
   row: ManufacturingScheduleRow;
   windows: readonly DayWindow[];
   canMove: boolean;
-  onOpen: (bar: ManufacturingScheduleBar) => void;
-  onDrop: (bar: ManufacturingScheduleBar, start: number) => void;
+  onOpen: (bar: ManufacturingScheduleBar, centerId: number) => void;
+  onDrop: (bar: ManufacturingScheduleBar, start: number, workCenterId?: number) => void;
 }) => {
   const { t } = useManufacturingFormat();
   const greyed = "var(--mantine-color-gray-light)";
   return (
-    <Box style={{ display: "flex", borderTop: "1px solid var(--mantine-color-default-border)" }}>
+    <Box
+      data-schedule-row={row.workCenter.id}
+      style={{ display: "flex", borderTop: "1px solid var(--mantine-color-default-border)" }}
+    >
       <Box w={LABEL_WIDTH} p={6} style={{ flex: "none", background: row.blocked ? greyed : undefined }}>
         <Text size="sm" fw={600} truncate>
           {row.workCenter.code}
@@ -295,6 +319,7 @@ const Row = ({
           <Bar
             key={`${bar.workOrderId}-${bar.startsAt}`}
             bar={bar}
+            centerId={row.workCenter.id}
             windows={windows}
             canMove={canMove}
             onOpen={onOpen}
@@ -314,7 +339,7 @@ const Board = ({
 }: {
   schedule: ManufacturingSchedule;
   canMove: boolean;
-  onOpen: (bar: ManufacturingScheduleBar) => void;
+  onOpen: (bar: ManufacturingScheduleBar, centerId: number) => void;
 }) => {
   const { t, formatters } = useManufacturingFormat();
   const reschedule = useReschedule();
@@ -351,7 +376,7 @@ const Board = ({
             windows={windows}
             canMove={canMove}
             onOpen={onOpen}
-            onDrop={(bar, start) => void reschedule(bar, start)}
+            onDrop={(bar, start, workCenterId) => void reschedule(bar, start, workCenterId)}
           />
         ))}
       </Box>
@@ -359,19 +384,48 @@ const Board = ({
   );
 };
 
-/** Move to… (M36): the keyboard's way to drag a bar — a day and a time, the same request. */
-const MoveDialog = ({ bar, onClose }: { bar: ManufacturingScheduleBar | undefined; onClose: () => void }) => {
+/** A bar being moved through Move to…, with the row it was opened on. */
+interface Moving {
+  bar: ManufacturingScheduleBar;
+  centerId: number;
+}
+
+/**
+ * Move to… (M36): the keyboard's way to drag a bar — a day and a time, the
+ * same request; for a group work order whose member is not fixed, also the
+ * member's row to move it to (manufacturing phase 2 M119).
+ */
+const MoveDialog = ({
+  moving,
+  rows,
+  onClose,
+}: {
+  moving: Moving | undefined;
+  rows: readonly ManufacturingScheduleRow[];
+  onClose: () => void;
+}) => {
   const { t, stamp } = useManufacturingFormat();
   const reschedule = useReschedule();
   const { timeZone } = useTimeZones();
+  const bar = moving?.bar;
   const [values, setValues] = useState(() => (bar ? moveToPrefill(bar, timeZone) : { date: "", time: "" }));
+  const [center, setCenter] = useState(moving?.centerId);
   const [busy, setBusy] = useState(false);
-  if (!bar) return null;
+  if (!bar || !moving) return null;
+  const members = [moving.centerId, ...(bar.memberIds ?? [])];
+  const centerOptions = members.map((id) => {
+    const row = rows.find((one) => one.workCenter.id === id);
+    return { value: String(id), label: row ? `${row.workCenter.code} · ${row.workCenter.name}` : String(id) };
+  });
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(values.date) && /^\d{2}:\d{2}$/.test(values.time);
   const submit = async () => {
     if (!valid) return;
     setBusy(true);
-    const moved = await reschedule(bar, movedStart(values.date, values.time, timeZone));
+    const moved = await reschedule(
+      bar,
+      movedStart(values.date, values.time, timeZone),
+      center !== undefined && center !== moving.centerId ? center : undefined,
+    );
     setBusy(false);
     if (moved) onClose();
   };
@@ -407,6 +461,15 @@ const MoveDialog = ({ bar, onClose }: { bar: ManufacturingScheduleBar | undefine
             }}
           />
         </Group>
+        {(bar.memberIds ?? []).length > 0 && (
+          <Select
+            label={t("moveToWorkCenter")}
+            allowDeselect={false}
+            data={centerOptions}
+            value={center === undefined ? null : String(center)}
+            onChange={(next) => next && setCenter(Number(next))}
+          />
+        )}
         <Text size="xs" c="dimmed">
           {t("moveToHint")}
         </Text>
@@ -592,7 +655,8 @@ const breadcrumbs = (t: TFunction) => [
  * times, the load per day, closed days and blocked centers greyed; and the
  * confirmed orders with no plan. Whoever may manage orders plans them, one
  * or all, and moves a bar by dragging it along its row or through Move to…;
- * a move to another work center is phase 2. The site last looked at is
+ * a group work order whose member is not fixed may also be dropped on another
+ * member's row (manufacturing phase 2 M119). The site last looked at is
  * remembered in the browser. It follows `manufacturing.schedule:<siteId>`
  * and `manufacturing.orders`, polling while either is down.
  */
@@ -603,7 +667,7 @@ export const SchedulePage = () => {
   const [chosenSite, setChosenSite] = useState<number | undefined>(readRememberedScheduleSite);
   const [from, setFrom] = useState<string>();
   const [days, setDays] = useState<ScheduleSpan>(7);
-  const [moving, setMoving] = useState<ManufacturingScheduleBar>();
+  const [moving, setMoving] = useState<Moving>();
   const siteId = sites.data?.some((site) => site.id === chosenSite) ? chosenSite : sites.data?.[0]?.id;
   const live = useScheduleLive(siteId);
   const schedule = useQuery({
@@ -680,14 +744,15 @@ export const SchedulePage = () => {
                 {t("scheduleDragHint")}
               </Text>
             )}
-            <Board schedule={schedule.data} canMove={manage} onOpen={setMoving} />
+            <Board schedule={schedule.data} canMove={manage} onOpen={(bar, centerId) => setMoving({ bar, centerId })} />
           </PageSection>
           <Unscheduled orders={schedule.data.unscheduled} siteId={schedule.data.siteId} canPlan={manage} />
         </>
       )}
       <MoveDialog
-        key={moving ? `${moving.workOrderId}-${moving.startsAt}` : "none"}
-        bar={moving}
+        key={moving ? `${moving.bar.workOrderId}-${moving.bar.startsAt}` : "none"}
+        moving={moving}
+        rows={schedule.data?.workCenters ?? []}
         onClose={() => setMoving(undefined)}
       />
     </Stack>

@@ -6,6 +6,7 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconClipboardCheck,
+  IconPackageExport,
   IconPlayerPause,
   IconPlayerPlay,
   IconTrash,
@@ -33,6 +34,7 @@ import { DeviationDialog } from "../components/deviation-dialog";
 import { Markdown } from "../components/markdown";
 import { OrderLots } from "../components/order-lots";
 import { ProductionDialog } from "../components/production-dialog";
+import { QuantityDialog } from "../components/quantity-dialog";
 import { ScrapDialog } from "../components/scrap-dialog";
 import { canWorkOnShopFloor } from "../lib/capabilities";
 import {
@@ -106,6 +108,7 @@ export const WorkOrderPage = () => {
   const [askForce, setAskForce] = useState(false);
   const [producing, setProducing] = useState(false);
   const [scrapping, setScrapping] = useState(false);
+  const [passing, setPassing] = useState(false);
   const [reporting, setReporting] = useState(false);
   const work = canWorkOnShopFloor(meta.data);
   const data = view.data;
@@ -280,6 +283,18 @@ export const WorkOrderPage = () => {
                   {t("finish")}
                 </Button>
               )}
+              {finishable && !workOrder.last && (
+                <Button
+                  h={ACTION_HEIGHT}
+                  size="xl"
+                  variant="default"
+                  leftSection={<IconPackageExport size={28} />}
+                  data-assist="manufacturing.work-order.quantity"
+                  onClick={() => setPassing(true)}
+                >
+                  {t("registerQuantity")}
+                </Button>
+              )}
               {finishable && workOrder.last && (
                 <Button
                   h={ACTION_HEIGHT}
@@ -390,6 +405,19 @@ export const WorkOrderPage = () => {
           <Fact label={t("loggedOfExpected")}>
             {t("minutesOf", { logged: minutes(workOrder.loggedMinutes), expected: minutes(workOrder.expectedMinutes) })}
           </Fact>
+          {workOrder.workCenterGroup && (
+            <Fact label={t("groupMembers")}>{t("groupValue", { code: workOrder.workCenterGroup.code })}</Fact>
+          )}
+          {!workOrder.last && (
+            <Fact label={t("quantityDone")}>
+              {workOrder.sendAheadQuantity
+                ? t("sendAheadValue", {
+                    done: quantity(workOrder.quantityDone ?? "0", order.variant.unit),
+                    ahead: quantity(workOrder.sendAheadQuantity, order.variant.unit),
+                  })
+                : quantity(workOrder.quantityDone ?? "0", order.variant.unit)}
+            </Fact>
+          )}
         </SimpleGrid>
       </PageSection>
       <PageSection title={t("instructions")}>
@@ -464,6 +492,13 @@ export const WorkOrderPage = () => {
         onClose={() => setReporting(false)}
         orderId={order.id}
         workOrderId={workOrder.id}
+      />
+      <QuantityDialog
+        workOrderId={id}
+        orderNumber={order.number}
+        unit={order.variant.unit}
+        opened={passing}
+        onClose={() => setPassing(false)}
       />
       <ScrapDialog
         workOrderId={id}

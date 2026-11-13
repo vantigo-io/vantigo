@@ -103,12 +103,24 @@ export const unblockWorkCenter = (workCenterId: number) =>
     method: "POST",
   });
 
-/** Opens a productive log for the caller (M29); `force` starts a pending work order out of sequence. */
-export const startWorkOrder = (workOrderId: number, force?: boolean) =>
+/**
+ * Opens a productive log for the caller (M29); `force` starts a pending work
+ * order out of sequence, `workCenterId` starts a group work order at that
+ * member (manufacturing phase 2 M119).
+ */
+export const startWorkOrder = (workOrderId: number, force?: boolean, workCenterId?: number) =>
   send<ManufacturingShopFloorResult>(
     `/api/v1/manufacturing/work-orders/${workOrderId}/start`,
-    json("POST", force ? { force: true } : {}),
+    json("POST", { ...(force ? { force: true } : {}), ...(workCenterId === undefined ? {} : { workCenterId }) }),
   );
+
+/**
+ * Register quantity (manufacturing phase 2 M116): good units passed on to the
+ * work orders after this one, posting nothing to stock. One `clientRequestId`
+ * per registration makes a retry the same one.
+ */
+export const registerQuantity = (workOrderId: number, input: Schemas["ManufacturingQuantityInput"]) =>
+  send<ManufacturingShopFloorResult>(`/api/v1/manufacturing/work-orders/${workOrderId}/quantity`, json("POST", input));
 
 export const pauseWorkOrder = (workOrderId: number) =>
   send<ManufacturingShopFloorResult>(`/api/v1/manufacturing/work-orders/${workOrderId}/pause`, { method: "POST" });

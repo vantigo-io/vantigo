@@ -965,6 +965,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/work-center-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List work center groups */
+        get: operations["listManufacturingWorkCenterGroups"];
+        put?: never;
+        /** Create a work center group */
+        post: operations["createManufacturingWorkCenterGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-center-groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a work center group */
+        get: operations["getManufacturingWorkCenterGroup"];
+        /** Update a work center group */
+        put: operations["updateManufacturingWorkCenterGroup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-center-groups/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive a work center group */
+        post: operations["archiveManufacturingWorkCenterGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/work-center-groups/{id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reactivate a work center group */
+        post: operations["reactivateManufacturingWorkCenterGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/work-centers": {
         parameters: {
             query?: never;
@@ -1251,6 +1321,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/work-orders/{id}/quantity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register a work order's quantity
+         * @description Register quantity (manufacturing phase 2 M116): raises the good units the work order has passed on, and readies each successor whose send-ahead quantity it has now reached. Nothing is posted to stock — only the last work order's production does that. The work order's first-piece checks must have their results (checks_incomplete). Sent again with its clientRequestId it registers nothing more and answers 200. Needs manufacturing:shop-floor or manufacturing:orders-manage, checked by the handler (M33).
+         */
+        post: operations["registerManufacturingWorkOrderQuantity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/work-orders/{id}/reschedule": {
         parameters: {
             query?: never;
@@ -1262,7 +1352,7 @@ export interface paths {
         put?: never;
         /**
          * Reschedule a work order
-         * @description Moves a work order on the board (M36): it is planned again from start (now when start is past), in the first free time from there; the later work orders of its order move after it when they would otherwise overlap; no other order moves. Under the work order's revision.
+         * @description Moves a work order on the board (M36): it is planned again from start (now when start is past), in the first free time from there; the work orders after it in its order's graph move after it when they would otherwise start too early (manufacturing phase 2 M115); no other order moves. A group work order may be dropped on another member's row with workCenterId (M119). Under the work order's revision.
          */
         post: operations["rescheduleManufacturingWorkOrder"];
         delete?: never;
@@ -1446,10 +1536,12 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
-        /** @description An operation of a BoM (M12), run in sequence order. */
+        /** @description An operation of a BoM (M12), after the operations it depends on (manufacturing phase 2 M112), at a work center or a work center group (M118). */
         ManufacturingBomOperation: {
             /** @description Its quality checks, by sequence (manufacturing phase 2 M95). */
             checks: components["schemas"]["ManufacturingCheckTemplate"][];
+            /** @description The keys of the operations it runs after (M112); empty when it can start at once. */
+            dependsOn: string[];
             /** Format: int64 */
             id: number;
             /** @description Markdown. */
@@ -1459,19 +1551,33 @@ export interface components {
             /** @description Exact decimal, more than 0. */
             minutesPerCycle: string;
             name: string;
+            /** @description Exact decimal; the good units it passes on before its successors may start (M116), null for none. */
+            sendAheadQuantity: string | null;
             /** Format: int32 */
             sequence: number;
             /** @description Exact decimal; null when the work center's setup applies. */
             setupMinutes: string | null;
+            /** @description The work center's code, or the group's for an operation that targets a group. */
             workCenterCode: string;
-            /** Format: int64 */
-            workCenterId: number;
+            /**
+             * Format: int64
+             * @description The work center group it targets (M118); null when it targets one work center.
+             */
+            workCenterGroupId: number | null;
+            /**
+             * Format: int64
+             * @description The work center it targets; null when it targets a group.
+             */
+            workCenterId: number | null;
+            /** @description The work center's name, or the group's. */
             workCenterName: string;
         };
         /** @description An operation as the editor sends it. */
         ManufacturingBomOperationInput: {
             /** @description Its quality checks, in order (M95): at most 20; absent or empty for none. They replace the operation's checks. */
             checks?: components["schemas"]["ManufacturingCheckTemplateInput"][];
+            /** @description The keys of the operations of this request it runs after (M112): absent for the operation before it by sequence, empty to start at once. A key no operation has is operation_unknown, a cycle operation_cycle. */
+            dependsOn?: string[];
             /**
              * Format: int64
              * @description An existing operation of this BoM to keep; absent for a new one.
@@ -1484,15 +1590,22 @@ export interface components {
             /** @description Exact decimal, more than 0. */
             minutesPerCycle: string;
             name: string;
+            /** @description Exact decimal, more than 0; the good units it passes on before its successors may start (M116). Null or absent for none. */
+            sendAheadQuantity?: string | null;
             /** Format: int32 */
             sequence: number;
             /** @description Exact decimal, 0 or more; null or absent for the work center's setup. */
             setupMinutes?: string | null;
             /**
              * Format: int64
-             * @description An active work center (work_center_unknown).
+             * @description An active work center group with an active member (work_center_unknown), instead of workCenterId (M118).
              */
-            workCenterId: number;
+            workCenterGroupId?: number;
+            /**
+             * Format: int64
+             * @description An active work center (work_center_unknown). Exactly one of workCenterId and workCenterGroupId.
+             */
+            workCenterId?: number;
         };
         /** @description A BoM exploded at a quantity, up to 10 levels and 2000 nodes. */
         ManufacturingBomOverview: {
@@ -2399,7 +2512,7 @@ export interface components {
          * @enum {string}
          */
         ManufacturingPriority: "normal" | "urgent";
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111). */
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_cycle (400: an operation's dependsOn makes a cycle; the detail names the path, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119). */
         ManufacturingProblem: {
             /** @description checks_incomplete only: every check with no result that stops it (M98). */
             checks?: components["schemas"]["ManufacturingMissingCheck"][];
@@ -2731,6 +2844,21 @@ export interface components {
             revision: number;
             /** Format: date-time */
             start: string;
+            /**
+             * Format: int64
+             * @description A group work order dropped on another member's row (manufacturing phase 2 M119): that member, re-snapshotted. A center outside the group is work_center_not_in_group; a work order with a time log is work_order_started.
+             */
+            workCenterId?: number;
+        };
+        /** @description Register quantity (manufacturing phase 2 M116): good units a work order passes on to its successors. Nothing is posted to stock. */
+        ManufacturingQuantityInput: {
+            /**
+             * Format: uuid
+             * @description The client's id for the registration; sent again it registers nothing more and answers 200.
+             */
+            clientRequestId: string;
+            /** @description Exact decimal, more than 0, at most three decimals (quantity_invalid). */
+            quantity: string;
         };
         /**
          * @description What the list shows of an open order's components (M21a), from the stored reserved copies: every line's remaining requirement reserved, some reserved, or none.
@@ -2974,6 +3102,8 @@ export interface components {
             endsAt: string;
             /** @description The work order's planned finish falls after its order's due date. */
             late: boolean;
+            /** @description The other members' rows it may be dragged to (M119); empty when it targets no group or a time log has fixed its member. */
+            memberIds?: number[];
             name: string;
             /** Format: int64 */
             orderId: number;
@@ -2997,6 +3127,11 @@ export interface components {
             variant: components["schemas"]["ManufacturingVariantRef"];
             /** Format: int64 */
             workOrderId: number;
+            /**
+             * Format: int64
+             * @description The group a group work order targets (manufacturing phase 2 M118); null otherwise.
+             */
+            workCenterGroupId?: number | null;
             /**
              * Format: int32
              * @description The work order's revision, for a reschedule.
@@ -3115,6 +3250,11 @@ export interface components {
         ManufacturingStartInput: {
             /** @description Start a pending work order out of sequence; the log is marked forced. Without it a pending work order is work_order_pending. */
             force?: boolean;
+            /**
+             * Format: int64
+             * @description The member a group work order is started at, from its Group work (manufacturing phase 2 M119): that member, re-snapshotted. Another member than the one fixed is work_order_member_fixed; a center outside the group work_center_not_in_group.
+             */
+            workCenterId?: number;
         };
         /** @description The overview's counts. */
         ManufacturingStats: {
@@ -3414,6 +3554,69 @@ export interface components {
             /** Format: date-time */
             since: string;
         };
+        /** @description A work center group (manufacturing phase 2 M117): interchangeable work centers of one site an operation may target; planning chooses the member that finishes first (M119). */
+        ManufacturingWorkCenterGroup: {
+            /** @description 1–16 characters A–Z and 0–9, unique among groups. */
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            id: number;
+            /** @description Its work centers, by code. */
+            members: components["schemas"]["ManufacturingWorkCenterRef"][];
+            name: string;
+            /** Format: int32 */
+            revision: number;
+            siteCode: string;
+            /** Format: int64 */
+            siteId: number;
+            siteName: string;
+            status: components["schemas"]["ManufacturingStatus"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description A new work center group. */
+        ManufacturingWorkCenterGroupInput: {
+            /** @description 1–16 characters A–Z and 0–9 after upper-casing, unique among groups (work_center_code_taken). */
+            code: string;
+            /** @description 1–50 active work centers of the site (work_center_unknown, work_center_other_site). */
+            memberIds: number[];
+            name: string;
+            /**
+             * Format: int64
+             * @description An active Inventory site (site_unknown).
+             */
+            siteId: number;
+        };
+        /** @description Work center groups, by code. */
+        ManufacturingWorkCenterGroupList: {
+            items: components["schemas"]["ManufacturingWorkCenterGroup"][];
+        };
+        /** @description A work center group as a work order names it. */
+        ManufacturingWorkCenterGroupRef: {
+            code: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description A work center group's fields and members, under its revision. */
+        ManufacturingWorkCenterGroupUpdate: {
+            /** @description 1–16 characters A–Z and 0–9 after upper-casing, unique among groups (work_center_code_taken). */
+            code: string;
+            /** @description 1–50 work centers of the site; a center added must be active (work_center_unknown, work_center_other_site). */
+            memberIds: number[];
+            name: string;
+            /**
+             * Format: int32
+             * @description The revision the client read (revision_conflict).
+             */
+            revision: number;
+            /**
+             * Format: int64
+             * @description An active Inventory site (site_unknown); it does not change while an active bill of materials targets the group (work_center_other_site).
+             */
+            siteId: number;
+        };
         /** @description A new work center. A field left out takes its default. */
         ManufacturingWorkCenterInput: {
             /**
@@ -3451,6 +3654,8 @@ export interface components {
         /** @description A work center's queue (M31): its ready, in-progress and paused work orders of open orders, by planned start, then the order's priority, then its due date. */
         ManufacturingWorkCenterQueue: {
             block: components["schemas"]["ManufacturingWorkCenterBlock"] | null;
+            /** @description Group work (manufacturing phase 2 M119): the ready work orders of the groups this center is a member of whose member is not fixed yet — unplanned, with no time log. Starting one here sets this center. */
+            groupWork?: components["schemas"]["ManufacturingWorkOrder"][];
             items: components["schemas"]["ManufacturingWorkOrder"][];
             workCenter: components["schemas"]["ManufacturingWorkCenterRef"];
         };
@@ -3520,11 +3725,13 @@ export interface components {
              * @description actualMinutes − expectedMinutes, the duration deviation (M41).
              */
             deviationMinutes: number;
+            /** @description The work orders of its order it runs after (manufacturing phase 2 M113). */
+            dependsOn?: number[];
             /** @description deviationMinutes ÷ expectedMinutes × 100, half-up to one decimal; null when nothing is expected. */
             deviationPercent: string | null;
             /**
              * Format: int64
-             * @description setup + cleanup + cycles × minutesPerCycle × 100 / timeEfficiency, cycles = ⌈(order quantity / output quantity) / capacity⌉, half-up to the minute; computed at confirm and never recomputed (M28a).
+             * @description setup + cleanup + cycles × minutesPerCycle × 100 / timeEfficiency, cycles = ⌈(order quantity / output quantity) / capacity⌉, half-up to the minute; computed at confirm and never recomputed (M28a) — but for a group work order moved to another member before any time is logged, which takes that member's figures (manufacturing phase 2 M118).
              */
             expectedMinutes: number;
             /** Format: date-time */
@@ -3538,6 +3745,8 @@ export interface components {
              * @description Productive minutes logged on it, open logs counted to now, rounded down.
              */
             loggedMinutes: number;
+            /** @description A group work order's member can no longer change — a time log exists (manufacturing phase 2 M119). False for a work order of no group. */
+            memberFixed?: boolean;
             /** @description Exact decimal: the time for one cycle (M28a). */
             minutesPerCycle: string;
             name: string;
@@ -3550,8 +3759,12 @@ export interface components {
             plannedFinish: string | null;
             /** Format: date-time */
             plannedStart: string | null;
+            /** @description Exact decimal; the good units passed on by Register quantity (manufacturing phase 2 M116). */
+            quantityDone?: string;
             /** Format: int32 */
             revision: number;
+            /** @description Exact decimal; the good units it passes on before its successors may start (M116), null for none. */
+            sendAheadQuantity?: string | null;
             /** Format: int32 */
             sequence: number;
             /** @description Exact decimal: the operation's setup, else the work center's, as at confirm. */
@@ -3565,6 +3778,8 @@ export interface components {
              */
             timeEfficiency: number;
             workCenter: components["schemas"]["ManufacturingWorkCenterRef"];
+            /** @description The group its operation targets (manufacturing phase 2 M118); workCenter is the member chosen. Null when it targets one work center. */
+            workCenterGroup?: components["schemas"]["ManufacturingWorkCenterGroupRef"] | null;
         };
         /** @description A check of a work order as it was copied at confirm (M96), with its result in force. */
         ManufacturingWorkOrderCheck: {
@@ -7038,6 +7253,398 @@ export interface operations {
             };
         };
     };
+    listManufacturingWorkCenterGroups: {
+        parameters: {
+            query?: {
+                /** @description Default active. */
+                status?: components["schemas"]["ManufacturingStatusFilter"];
+                siteId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterGroupList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    createManufacturingWorkCenterGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingWorkCenterGroupInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterGroup"];
+                };
+            };
+            /** @description Bad Request — field errors; site_unknown, work_center_unknown, work_center_other_site. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — work_center_code_taken: another group has the code. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    getManufacturingWorkCenterGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterGroup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work center group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    updateManufacturingWorkCenterGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingWorkCenterGroupUpdate"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterGroup"];
+                };
+            };
+            /** @description Bad Request — field errors; site_unknown, work_center_unknown, work_center_other_site (a member at another site, or siteId while an active bill of materials targets the group). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work center group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, work_center_code_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    archiveManufacturingWorkCenterGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterGroup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work center group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, work_center_in_use: an active bill of materials targets the group. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    reactivateManufacturingWorkCenterGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingRevisionInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingWorkCenterGroup"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such work center group. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — revision_conflict, site_archived. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
     listManufacturingWorkCenters: {
         parameters: {
             query?: {
@@ -8274,6 +8881,85 @@ export interface operations {
             };
         };
     };
+    registerManufacturingWorkOrderQuantity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingQuantityInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingShopFloorResult"];
+                };
+            };
+            /** @description Bad Request — field errors; quantity_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller lacks manufacturing:access, or (shop_floor_required, a problem) holds neither manufacturing:shop-floor nor manufacturing:orders-manage. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Not Found — no such work order. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — order_not_open, work_order_closed (done or cancelled), work_order_pending (not started and not ready), checks_incomplete (a first-piece check has no result), client_request_reused (the clientRequestId was sent before for another work order or quantity). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
     rescheduleManufacturingWorkOrder: {
         parameters: {
             query?: never;
@@ -8296,6 +8982,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ManufacturingWorkOrderList"];
+                };
+            };
+            /** @description Bad Request — field errors; work_center_not_in_group: workCenterId is not a member of the work order's group. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
                 };
             };
             /** @description Unauthorized */
@@ -8323,7 +9018,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — revision_conflict, order_not_open, work_order_closed (it is done or cancelled), no_capacity: it does not fit within 365 days. Nothing was changed. */
+            /** @description Conflict — revision_conflict, order_not_open, work_order_closed (it is done or cancelled), work_order_started (a drag to another member once a time log exists), no_capacity: it does not fit within 365 days. Nothing was changed. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8455,7 +9150,7 @@ export interface operations {
                     "application/json": components["schemas"]["ManufacturingShopFloorResult"];
                 };
             };
-            /** @description Bad Request — field errors. */
+            /** @description Bad Request — field errors; work_center_not_in_group (workCenterId is not a member of the work order's group). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -8490,7 +9185,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — order_not_open, work_order_closed (done or cancelled), work_order_pending (an earlier work order is not done; send force), work_center_blocked, log_conflict (another start of the caller's at the same instant), revision_conflict. */
+            /** @description Conflict — order_not_open, work_order_closed (done or cancelled), work_order_pending (an earlier work order is not done; send force), work_center_blocked, log_conflict (another start of the caller's at the same instant), revision_conflict, work_order_member_fixed (a group work order started at another member than the one fixed). */
             409: {
                 headers: {
                     [name: string]: unknown;

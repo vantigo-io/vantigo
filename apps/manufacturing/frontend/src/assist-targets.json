@@ -48,6 +48,18 @@
     }
   },
   {
+    "key": "manufacturing.work-centers.groups",
+    "route": "/manufacturing/work-centers",
+    "label": {
+      "en": "Work center groups",
+      "nb": "Arbeidsstasjonsgrupper"
+    },
+    "description": {
+      "en": "Groups of interchangeable work centers of one site, which an operation can target instead of one work center.",
+      "nb": "Grupper av arbeidsstasjoner på ett lagersted som kan erstatte hverandre, og som en operasjon kan bruke i stedet for én arbeidsstasjon."
+    }
+  },
+  {
     "key": "manufacturing.work-center.form",
     "route": "/manufacturing/work-centers/new",
     "label": {
@@ -153,6 +165,18 @@
     "description": {
       "en": "The operations in sequence: each one's work center, setup, minutes per cycle and instructions for the shop floor.",
       "nb": "Operasjonene i rekkefølge: arbeidsstasjonen, riggtiden, minutter per syklus og instruksjonene for verkstedet."
+    }
+  },
+  {
+    "key": "manufacturing.bom.graph",
+    "route": "/manufacturing/boms/new",
+    "label": {
+      "en": "Order of the operations",
+      "nb": "Rekkefølgen på operasjonene"
+    },
+    "description": {
+      "en": "The operations in steps by what each depends on: those in one step run side by side.",
+      "nb": "Operasjonene i trinn etter hva hver avhenger av: de på samme trinn kjøres side om side."
     }
   },
   {
@@ -456,6 +480,18 @@
     }
   },
   {
+    "key": "manufacturing.shop-floor.group-work",
+    "route": "/manufacturing/shop-floor/work-centers/{workCenterId}",
+    "label": {
+      "en": "Group work",
+      "nb": "Gruppearbeid"
+    },
+    "description": {
+      "en": "Work of a group this work center is a member of, not yet taken by any member; Start here takes it to this work center.",
+      "nb": "Arbeid for en gruppe denne arbeidsstasjonen er med i, som ingen har tatt ennå; Start her flytter det hit."
+    }
+  },
+  {
     "key": "manufacturing.shop-floor.block",
     "route": "/manufacturing/shop-floor/work-centers/{workCenterId}",
     "label": {
@@ -477,6 +513,18 @@
     "description": {
       "en": "The large buttons on a work order: Start, Pause, Finish, Register production on the last operation and Report scrap.",
       "nb": "De store knappene på en arbeidsordre: Start, Pause, Ferdig, Registrer produksjon på siste operasjon og Meld svinn."
+    }
+  },
+  {
+    "key": "manufacturing.work-order.quantity",
+    "route": "/manufacturing/shop-floor/work-orders/{workOrderId}",
+    "label": {
+      "en": "Register quantity",
+      "nb": "Registrer antall"
+    },
+    "description": {
+      "en": "Pass good units on to the next operations, which may start once the send-ahead quantity is through.",
+      "nb": "Send godkjente enheter videre til de neste operasjonene, som kan starte når overføringsantallet er nådd."
     }
   },
   {
