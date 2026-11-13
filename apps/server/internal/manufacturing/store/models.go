@@ -39,14 +39,16 @@ type ManufacturingBomLine struct {
 }
 
 type ManufacturingBomOperation struct {
-	ID              int64
-	BomID           int64
-	Sequence        int32
-	Name            string
-	WorkCenterID    int64
-	SetupMinutes    pgtype.Numeric
-	MinutesPerCycle pgtype.Numeric
-	Instructions    string
+	ID                int64
+	BomID             int64
+	Sequence          int32
+	Name              string
+	WorkCenterID      *int64
+	SetupMinutes      pgtype.Numeric
+	MinutesPerCycle   pgtype.Numeric
+	Instructions      string
+	WorkCenterGroupID *int64
+	SendAheadQuantity pgtype.Numeric
 }
 
 type ManufacturingBomOperationCheck struct {
@@ -62,6 +64,11 @@ type ManufacturingBomOperationCheck struct {
 	Unit             *string
 	Frequency        string
 	QuarantineOnFail bool
+}
+
+type ManufacturingBomOperationDependency struct {
+	OperationID int64
+	DependsOnID int64
 }
 
 type ManufacturingCheckPhoto struct {
@@ -352,28 +359,49 @@ type ManufacturingWorkCenterClosure struct {
 	Note         string
 }
 
+type ManufacturingWorkCenterGroup struct {
+	ID        int64
+	Code      string
+	Name      string
+	SiteID    int64
+	Status    string
+	Revision  int32
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type ManufacturingWorkCenterGroupMember struct {
+	GroupID      int64
+	WorkCenterID int64
+}
+
 type ManufacturingWorkOrder struct {
-	ID              int64
-	OrderID         int64
-	OperationID     *int64
-	Sequence        int32
-	Name            string
-	WorkCenterID    int64
-	SetupMinutes    pgtype.Numeric
-	CleanupMinutes  pgtype.Numeric
-	MinutesPerCycle pgtype.Numeric
-	Capacity        int32
-	TimeEfficiency  int32
-	MachineRate     pgtype.Numeric
-	LabourRate      pgtype.Numeric
-	Instructions    string
-	ExpectedMinutes int64
-	PlannedStart    *time.Time
-	PlannedFinish   *time.Time
-	Status          string
-	StartedAt       *time.Time
-	FinishedAt      *time.Time
-	Revision        int32
+	ID                int64
+	OrderID           int64
+	OperationID       *int64
+	Sequence          int32
+	Name              string
+	WorkCenterID      int64
+	SetupMinutes      pgtype.Numeric
+	CleanupMinutes    pgtype.Numeric
+	MinutesPerCycle   pgtype.Numeric
+	Capacity          int32
+	TimeEfficiency    int32
+	MachineRate       pgtype.Numeric
+	LabourRate        pgtype.Numeric
+	Instructions      string
+	ExpectedMinutes   int64
+	PlannedStart      *time.Time
+	PlannedFinish     *time.Time
+	Status            string
+	StartedAt         *time.Time
+	FinishedAt        *time.Time
+	Revision          int32
+	WorkCenterGroupID *int64
+	SendAheadQuantity pgtype.Numeric
+	QuantityDone      pgtype.Numeric
+	BomOutputQuantity pgtype.Numeric
+	OwnSetup          bool
 }
 
 type ManufacturingWorkOrderCheck struct {
@@ -390,6 +418,21 @@ type ManufacturingWorkOrderCheck struct {
 	Unit             *string
 	Frequency        string
 	QuarantineOnFail bool
+}
+
+type ManufacturingWorkOrderDependency struct {
+	WorkOrderID int64
+	DependsOnID int64
+}
+
+type ManufacturingWorkOrderQuantity struct {
+	ID              int64
+	WorkOrderID     int64
+	ClientRequestID uuid.UUID
+	Quantity        pgtype.Numeric
+	UserID          *uuid.UUID
+	UserDisplay     string
+	RegisteredAt    time.Time
 }
 
 type ManufacturingWorkOrderSlot struct {

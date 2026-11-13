@@ -78,31 +78,180 @@ func noCapacity(w planWork, from time.Time) error {
 
 // ---- planning, in memory -------------------------------------------------
 
-// planWork is one work order to place: its center, the working time it
-// needs, and whether it runs already and so starts from now (M35a).
-type planWork struct {
-	id      int64
-	center  int64
-	need    time.Duration
-	fromNow bool
+// planOption is one center a work order may be placed at: its own, or for a
+// group work order whose member is not fixed every active, unblocked member
+// of the group (manufacturing phase 2 M119), with the working time it needs
+// there and the figures the send-ahead offsets are computed from.
+type planOption struct {
+	center     int64
+	need       time.Duration
+	efficiency int32
+	code       string
+	setup      *big.Rat // minutes
+	perCycle   *big.Rat // minutes
+	capacity   int32
+	member     *store.SetWorkOrderMemberParams // the figures taken again when this member is chosen (M118); nil for the current one
 }
 
-// placement is where a work order went: its pieces, in order, and its
-// window.
+// planWork is one work order to place: the centers it may go to (the first
+// its current one), its predecessors, whether it runs already and so starts
+// from now (M35a), and its send-ahead quantity (M116).
+type planWork struct {
+	id        int64
+	options   []planOption
+	preds     []int64
+	fromNow   bool
+	output    *big.Rat      // the BoM's output quantity, for the send-ahead batches
+	sendAhead *big.Rat      // nil, or the good units its successors may start after
+	aheadMet  bool          // it has passed on its send-ahead quantity already
+	logged    time.Duration // the productive time logged on it
+}
+
+// placement is where a work order went: its center, its pieces, in order,
+// its window and the option it took.
 type placement struct {
 	id            int64
 	center        int64
 	pieces        []span
 	start, finish time.Time
+	option        planOption
 }
 
-// planChain places works in order (M35): each from its predecessor's finish
-// — never before start — or from now when it runs already, into the first
-// free time of its center that holds it, around booked and around the
+// optionFigures is a work order's figures at its current center.
+func optionFigures(w store.ManufacturingWorkOrder, logged map[int64]time.Duration, code string) planOption {
+	return planOption{center: w.WorkCenterID, need: remaining(w, logged), efficiency: w.TimeEfficiency, code: code,
+		setup: ratOrZero(w.SetupMinutes), perCycle: ratOrZero(w.MinutesPerCycle), capacity: w.Capacity}
+}
+
+// aheadAt is the working time p needs at o for its send-ahead quantity
+// (M116): its setup and the cycles of that quantity, less what it has
+// logged already.
+func aheadAt(p planWork, o planOption) time.Duration {
+	if p.sendAhead == nil {
+		return 0
+	}
+	minutes := new(big.Rat).Add(o.setup, runMinutes(p.sendAhead, p.output, o.perCycle, o.capacity, o.efficiency))
+	return max(ratDuration(minutes)-p.logged, 0)
+}
+
+// batchAt is the working time w needs at o for quantity q, setup left out:
+// the last send-ahead batch it finishes after its predecessor (M116).
+func batchAt(w planWork, o planOption, q *big.Rat) time.Duration {
+	return ratDuration(runMinutes(q, w.output, o.perCycle, o.capacity, o.efficiency))
+}
+
+// instantAfter is the instant pl has worked d of its pieces; its finish when
+// d is all of them or more.
+func instantAfter(pl placement, d time.Duration) time.Time {
+	if d <= 0 {
+		return pl.start
+	}
+	for _, piece := range pl.pieces {
+		if piece.length() >= d {
+			return piece.start.Add(d)
+		}
+		d -= piece.length()
+	}
+	return pl.finish
+}
+
+// fillAfter is fill, the finish held at no earlier than minFinish: the start
+// is pushed on by what the finish falls short, until it does not.
+func fillAfter(cal workCalendar, from time.Time, need time.Duration, booked []span, until, minFinish time.Time) ([]span, time.Time, bool) {
+	for range 64 {
+		pieces, finish, ok := cal.fill(from, need, booked, until)
+		if !ok || !finish.Before(minFinish) {
+			return pieces, finish, ok
+		}
+		from = from.Add(minFinish.Sub(finish))
+	}
+	return cal.fill(from, need, booked, until)
+}
+
+// bounds is where a work order may start by its predecessors' placements
+// (M115, M116): after each one's finish, or for one with a send-ahead
+// quantity after it has worked that quantity — and then it may not finish
+// before that predecessor's finish plus its own last batch.
+type bounds struct {
+	earliest time.Time
+	batches  []struct {
+		finish time.Time
+		q      *big.Rat
+	}
+}
+
+func boundsOf(w planWork, from time.Time, placed map[int64]placement, works map[int64]planWork) bounds {
+	b := bounds{earliest: from}
+	for _, id := range w.preds {
+		pl, ok := placed[id]
+		if !ok {
+			continue // done, cancelled or not planned
+		}
+		p := works[id]
+		if p.sendAhead == nil {
+			if pl.finish.After(b.earliest) {
+				b.earliest = pl.finish
+			}
+			continue
+		}
+		if !p.aheadMet {
+			if t := instantAfter(pl, aheadAt(p, pl.option)); t.After(b.earliest) {
+				b.earliest = t
+			}
+		}
+		b.batches = append(b.batches, struct {
+			finish time.Time
+			q      *big.Rat
+		}{pl.finish, p.sendAhead})
+	}
+	return b
+}
+
+// minFinishAt is the earliest w may finish at o by the send-ahead batches.
+func (b bounds) minFinishAt(w planWork, o planOption) time.Time {
+	var out time.Time
+	for _, x := range b.batches {
+		if t := x.finish.Add(batchAt(w, o, x.q)); t.After(out) {
+			out = t
+		}
+	}
+	return out
+}
+
+// placeAt places w at o from b, around booked.
+func placeAt(cals map[int64]workCalendar, booked []span, w planWork, o planOption, b bounds, until time.Time) (placement, bool) {
+	pieces, finish, ok := fillAfter(cals[o.center], b.earliest, o.need, booked, until, b.minFinishAt(w, o))
+	if !ok {
+		return placement{}, false
+	}
+	first := b.earliest
+	if len(pieces) > 0 {
+		first = pieces[0].start
+	}
+	return placement{id: w.id, center: o.center, pieces: pieces, start: first, finish: finish, option: o}, true
+}
+
+// better reports whether a is a better placement than b (M119): the earlier
+// finish, then the higher time efficiency, then the code.
+func better(a, b placement) bool {
+	if c := a.finish.Compare(b.finish); c != 0 {
+		return c < 0
+	}
+	if a.option.efficiency != b.option.efficiency {
+		return a.option.efficiency > b.option.efficiency
+	}
+	return a.option.code < b.option.code
+}
+
+// planGraph places works, in a topological order, after their predecessors
+// (M35, M115): each from the latest of its predecessors' finishes — or their
+// send-ahead offsets (M116) — never before start, or from now when it runs
+// already, into the first free time that holds it at each center it may go
+// to, taking the one that finishes first (M119), around booked and around the
 // pieces placed before it. It writes nothing to booked; the caller books the
-// placements once it keeps them. The horizon is 365 days from start; the
-// work order that does not fit is answered with ok false.
-func planChain(cals map[int64]workCalendar, booked map[int64][]span, works []planWork, start, now time.Time) ([]placement, planWork, bool) {
+// placements once it keeps them. The horizon is 365 days from start; the work
+// order that does not fit is answered with ok false.
+func planGraph(cals map[int64]workCalendar, booked map[int64][]span, works []planWork, start, now time.Time) ([]placement, planWork, bool) {
 	until := start.AddDate(0, 0, planHorizonDays)
 	local := map[int64][]span{}
 	bookedAt := func(center int64) []span {
@@ -111,27 +260,30 @@ func planChain(cals map[int64]workCalendar, booked map[int64][]span, works []pla
 		}
 		return booked[center]
 	}
-	out := make([]placement, 0, len(works))
-	cursor := start
+	byID := make(map[int64]planWork, len(works))
 	for _, w := range works {
-		from := cursor
-		if from.Before(start) {
-			from = start
-		}
+		byID[w.id] = w
+	}
+	placed := map[int64]placement{}
+	out := make([]placement, 0, len(works))
+	for _, w := range works {
+		b := boundsOf(w, start, placed, byID)
 		if w.fromNow {
-			from = now
+			b = bounds{earliest: now}
 		}
-		pieces, finish, ok := cals[w.center].fill(from, w.need, bookedAt(w.center), until)
-		if !ok {
+		var best *placement
+		for _, o := range w.options {
+			pl, ok := placeAt(cals, bookedAt(o.center), w, o, b, until)
+			if ok && (best == nil || better(pl, *best)) {
+				best = &pl
+			}
+		}
+		if best == nil {
 			return nil, w, false
 		}
-		first := from
-		if len(pieces) > 0 {
-			first = pieces[0].start
-		}
-		local[w.center] = book(bookedAt(w.center), pieces)
-		out = append(out, placement{id: w.id, center: w.center, pieces: pieces, start: first, finish: finish})
-		cursor = finish
+		local[best.center] = book(bookedAt(best.center), best.pieces)
+		placed[w.id] = *best
+		out = append(out, *best)
 	}
 	return out, planWork{}, true
 }
@@ -283,18 +435,19 @@ type orderPlan struct {
 	finish     *time.Time
 }
 
-// plan places the order's work orders (M35, M35a) on p: those not done,
-// from searchStart, each after its predecessor, an in-progress one from now
-// with only its remaining minutes. An order without work orders gets M34's
-// window: its due date less the BoM's lead time in business days, to its
-// due date. Nothing is written; no_capacity names the first work order that
-// does not fit.
-func (p *planner) plan(o store.ManufacturingOrder, wos []store.ManufacturingWorkOrder, logged map[int64]time.Duration, leadTimeDays int32) (orderPlan, error) {
+// plan places the order's work orders (M35, M35a, M115) on p: those not done,
+// from searchStart, each after its predecessors in the order's graph, an
+// in-progress one from now with only its remaining minutes, a group work
+// order at the member that finishes it first (M119). An order without work
+// orders gets M34's window: its due date less the BoM's lead time in
+// business days, to its due date. Nothing is written; no_capacity names the
+// first work order that does not fit.
+func (p *planner) plan(o store.ManufacturingOrder, in planInput) (orderPlan, error) {
 	out := orderPlan{order: o}
-	open := openWork(wos)
+	open := openWork(in.wos)
 	start := p.searchStart(o, open)
 	live := 0
-	for _, w := range wos {
+	for _, w := range in.wos {
 		if w.Status != workOrderCancelled {
 			live++
 		}
@@ -302,23 +455,21 @@ func (p *planner) plan(o store.ManufacturingOrder, wos []store.ManufacturingWork
 	if live == 0 {
 		s, f := start, start
 		if due := dateOf(o.DueDate); due != nil {
-			s = dayStart(previousBusinessDays(*due, int(max(leadTimeDays, 0))), p.zone)
+			s = dayStart(previousBusinessDays(*due, int(max(in.lead, 0))), p.zone)
 			f = dayStart(*due, p.zone)
 		}
 		out.start, out.finish = &s, &f
 		return out, nil
 	}
-	works := make([]planWork, 0, len(open))
 	for _, w := range open {
 		out.clear = append(out.clear, w.ID)
-		works = append(works, planWork{id: w.ID, center: w.WorkCenterID, need: remaining(w, logged), fromNow: started(w)})
 	}
-	placements, failed, ok := planChain(p.cals, p.booked, works, start, p.now)
+	placements, failed, ok := planGraph(p.cals, p.booked, worksOf(o, in, open, true), start, p.now)
 	if !ok {
 		return orderPlan{}, noCapacity(failed, start)
 	}
 	out.placements = placements
-	out.start, out.finish = windowOf(wos, placements)
+	out.start, out.finish = windowOf(in.wos, placements)
 	return out, nil
 }
 
@@ -365,6 +516,18 @@ func (p *planner) apply(ctx context.Context, txq *store.Queries, pl orderPlan, n
 		}
 	}
 	for _, x := range pl.placements {
+		if x.option.member != nil {
+			// Another member of the group (M118, M119): its figures are taken
+			// again, the old center's queue and board told.
+			before, err := txq.GetWorkOrder(ctx, x.id)
+			if err != nil {
+				return store.ManufacturingOrder{}, err
+			}
+			if _, err := txq.SetWorkOrderMember(ctx, *x.option.member); err != nil {
+				return store.ManufacturingOrder{}, err
+			}
+			notes.workOrder(before.ID, before.OrderID, before.WorkCenterID)
+		}
 		for _, piece := range x.pieces {
 			if err := txq.InsertSlot(ctx, store.InsertSlotParams{WorkOrderID: x.id, WorkCenterID: x.center, StartsAt: piece.start, EndsAt: piece.end}); err != nil {
 				return store.ManufacturingOrder{}, err
@@ -389,34 +552,126 @@ func (p *planner) apply(ctx context.Context, txq *store.Queries, pl orderPlan, n
 
 // ---- planning, the operations --------------------------------------------
 
-// planInputs is what planning an order reads beside the order, under the
-// locks: its work orders (locked), their logs and its BoM's lead time.
-func planInputs(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, now time.Time) ([]store.ManufacturingWorkOrder, map[int64]time.Duration, int32, error) {
+// planInput is what planning an order reads beside the order, under the
+// locks: its work orders (locked), their logs, its BoM's lead time, its work
+// order graph (M113) and the members of the groups its work orders target
+// (M119).
+type planInput struct {
+	wos     []store.ManufacturingWorkOrder
+	logged  map[int64]time.Duration
+	hasLogs map[int64]bool
+	lead    int32
+	graph   workOrderGraph
+	members map[int64][]store.ManufacturingWorkCenter // by group, by code
+}
+
+// worksOf is the order's open work orders as planWork, in a topological order
+// (M115): each at its own center, or — a group work order with no time log —
+// at whichever active, unblocked member of its group finishes first (M119),
+// its own member among them when it is one; with none such, its own.
+func worksOf(o store.ManufacturingOrder, in planInput, open []store.ManufacturingWorkOrder, choose bool) []planWork {
+	quantity := ratOrZero(o.Quantity)
+	out := make([]planWork, 0, len(open))
+	for _, w := range in.graph.topological(open) {
+		pw := planWork{id: w.ID, preds: in.graph.preds[w.ID], fromNow: started(w), output: ratOrZero(w.BomOutputQuantity),
+			sendAhead: sendAheadOf(w, quantity), logged: in.logged[w.ID]}
+		if pw.sendAhead != nil {
+			pw.aheadMet = ratOrZero(w.QuantityDone).Cmp(pw.sendAhead) >= 0
+		}
+		code := ""
+		var members []store.ManufacturingWorkCenter
+		if w.WorkCenterGroupID != nil {
+			members = in.members[*w.WorkCenterGroupID]
+			for _, c := range members {
+				if c.ID == w.WorkCenterID {
+					code = c.Code
+				}
+			}
+		}
+		own := optionFigures(w, in.logged, code)
+		if choose && w.WorkCenterGroupID != nil && !in.hasLogs[w.ID] {
+			for _, c := range members {
+				if c.Status != statusActive || c.WorkingState == stateBlocked {
+					continue
+				}
+				if c.ID == w.WorkCenterID {
+					pw.options = append(pw.options, own)
+					continue
+				}
+				f := memberFigures(w, c, quantity)
+				pw.options = append(pw.options, planOption{center: c.ID, need: time.Duration(f.ExpectedMinutes) * time.Minute,
+					efficiency: c.TimeEfficiency, code: c.Code, setup: ratOrZero(f.SetupMinutes), perCycle: ratOrZero(w.MinutesPerCycle),
+					capacity: c.Capacity, member: &f})
+			}
+		}
+		if len(pw.options) == 0 {
+			pw.options = []planOption{own}
+		}
+		out = append(out, pw)
+	}
+	return out
+}
+
+// planInputs reads what planning the order needs, under the locks: a work
+// order, or a member of a group one targets, on a center not locked starts
+// the write again (errRelock).
+func planInputs(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, now time.Time) (planInput, error) {
+	var in planInput
 	wos, err := txq.WorkOrdersOfOrder(ctx, o.ID)
 	if err != nil {
-		return nil, nil, 0, err
+		return in, err
 	}
 	if !centersHeld(ctx, wos) {
-		return nil, nil, 0, errRelock
+		return in, errRelock
 	}
 	ids := make([]int64, 0, len(wos))
+	var groups []int64
 	for _, w := range wos {
 		ids = append(ids, w.ID)
+		if w.WorkCenterGroupID != nil {
+			groups = append(groups, *w.WorkCenterGroupID)
+		}
 	}
 	if len(ids) > 0 {
 		if wos, err = txq.LockWorkOrders(ctx, ids); err != nil {
-			return nil, nil, 0, err
+			return in, err
+		}
+	}
+	slices.SortFunc(wos, func(a, b store.ManufacturingWorkOrder) int {
+		return cmp.Or(cmp.Compare(a.Sequence, b.Sequence), cmp.Compare(a.ID, b.ID))
+	})
+	in.wos = wos
+	if in.members, err = groupMembers(ctx, txq, groups); err != nil {
+		return in, err
+	}
+	held := lockedCenters(ctx)
+	for _, members := range in.members {
+		for _, c := range members {
+			if !slices.Contains(held, c.ID) {
+				return in, errRelock
+			}
 		}
 	}
 	logs, err := txq.LogsOfWorkOrders(ctx, ids)
 	if err != nil {
-		return nil, nil, 0, err
+		return in, err
+	}
+	in.logged = productiveLogged(logs, now)
+	in.hasLogs = map[int64]bool{}
+	for _, l := range logs {
+		if l.WorkOrderID != nil {
+			in.hasLogs[*l.WorkOrderID] = true
+		}
+	}
+	if in.graph, err = readGraph(ctx, txq, []int64{o.ID}); err != nil {
+		return in, err
 	}
 	bom, err := txq.GetBom(ctx, o.BomID)
 	if err != nil {
-		return nil, nil, 0, err
+		return in, err
 	}
-	return wos, productiveLogged(logs, now), bom.LeadTimeDays, nil
+	in.lead = bom.LeadTimeDays
+	return in, nil
 }
 
 // workOrderIDs is the ids of wos.
@@ -469,15 +724,15 @@ func (s *server) PlanManufacturingOrder(ctx context.Context, req gen.PlanManufac
 			if !isOpen(o.Status) {
 				return orderNotOpen(o.Status)
 			}
-			wos, logged, lead, err := planInputs(ctx, txq, o, now)
+			in, err := planInputs(ctx, txq, o, now)
 			if err != nil {
 				return err
 			}
-			p, err := loadPlanner(ctx, txq, lockedCenters(ctx), workOrderIDs(wos), zone, now)
+			p, err := loadPlanner(ctx, txq, lockedCenters(ctx), workOrderIDs(in.wos), zone, now)
 			if err != nil {
 				return err
 			}
-			pl, err := p.plan(o, wos, logged, lead)
+			pl, err := p.plan(o, in)
 			if err != nil {
 				return err
 			}
@@ -589,18 +844,13 @@ func (s *server) PlanAllManufacturingOrders(ctx context.Context, req gen.PlanAll
 				}
 			}
 			slices.SortFunc(list, planOrderPriority)
-			type inputs struct {
-				wos    []store.ManufacturingWorkOrder
-				logged map[int64]time.Duration
-				lead   int32
-			}
-			read := map[int64]inputs{}
+			read := map[int64]planInput{}
 			for _, o := range slices.SortedFunc(slices.Values(list), func(a, b store.ManufacturingOrder) int { return cmp.Compare(a.ID, b.ID) }) {
-				wos, logged, lead, err := planInputs(ctx, txq, o, now)
+				in, err := planInputs(ctx, txq, o, now)
 				if err != nil {
 					return err
 				}
-				read[o.ID] = inputs{wos: wos, logged: logged, lead: lead}
+				read[o.ID] = in
 			}
 			// No booking is left out: the orders planned hold none, so an
 			// order skipped as no_capacity keeps all it had and the others
@@ -612,8 +862,7 @@ func (s *server) PlanAllManufacturingOrders(ctx context.Context, req gen.PlanAll
 			notes := newNotices()
 			notes.sites[siteID] = true
 			for _, o := range list {
-				in := read[o.ID]
-				pl, err := p.plan(o, in.wos, in.logged, in.lead)
+				pl, err := p.plan(o, read[o.ID])
 				if _, ok := answerCode(err, codeNoCapacity); ok {
 					skipped = append(skipped, o)
 					continue
@@ -686,12 +935,12 @@ func (s *server) UnplanManufacturingOrder(ctx context.Context, req gen.UnplanMan
 			if !isOpen(o.Status) {
 				return orderNotOpen(o.Status)
 			}
-			wos, _, _, err := planInputs(ctx, txq, o, now)
+			in, err := planInputs(ctx, txq, o, now)
 			if err != nil {
 				return err
 			}
 			notes := newNotices()
-			open := openWork(wos)
+			open := openWork(in.wos)
 			if len(open) > 0 {
 				if err := txq.DeleteSlotsOfWorkOrders(ctx, workOrderIDs(open)); err != nil {
 					return err
@@ -725,6 +974,9 @@ func (s *server) UnplanManufacturingOrder(ctx context.Context, req gen.UnplanMan
 
 func rescheduleAnswers() answers[gen.RescheduleManufacturingWorkOrderResponseObject] {
 	return answers[gen.RescheduleManufacturingWorkOrderResponseObject]{
+		badRequest: func(p gen.ManufacturingProblem) gen.RescheduleManufacturingWorkOrderResponseObject {
+			return gen.RescheduleManufacturingWorkOrder400ApplicationProblemPlusJSONResponse(p)
+		},
 		notFound: func() gen.RescheduleManufacturingWorkOrderResponseObject {
 			return gen.RescheduleManufacturingWorkOrder404Response{}
 		},
@@ -738,13 +990,17 @@ func rescheduleAnswers() answers[gen.RescheduleManufacturingWorkOrderResponseObj
 }
 
 // reschedule moves target to start in memory (M36): target takes the first
-// free time from start (now when start is past), and each later work order
-// of the order that is planned moves to after the one before it when it
-// would otherwise begin before that one's finish; the rest keep their
-// slots. booked holds every other booking, the order's earlier work orders
-// included; it excludes target and the later ones.
-func reschedule(cals map[int64]workCalendar, booked map[int64][]span, target store.ManufacturingWorkOrder, later []store.ManufacturingWorkOrder,
-	keep map[int64][]span, logged map[int64]time.Duration, start, now time.Time) ([]placement, planWork, bool) {
+// free time from start (now when start is past) at its option, and each work
+// order after it in the order's graph that is planned (M115) moves to after
+// its predecessors — their finish, or their send-ahead offset (M116) — when it
+// would otherwise start before that, or finish before its last send-ahead
+// batch; the rest keep their slots. later is target's successors, direct or
+// not, in a topological order; existing is every planned open work order's
+// placement as it stands, and works every open work order of the order.
+// booked holds every other booking, the order's other work orders included;
+// it excludes target and later.
+func reschedule(cals map[int64]workCalendar, booked map[int64][]span, target planWork, option planOption, later []planWork,
+	existing map[int64]placement, works map[int64]planWork, start, now time.Time) ([]placement, planWork, bool) {
 	if start.Before(now) {
 		start = now
 	}
@@ -756,45 +1012,46 @@ func reschedule(cals map[int64]workCalendar, booked map[int64][]span, target sto
 		}
 		return booked[center]
 	}
-	w := planWork{id: target.ID, center: target.WorkCenterID, need: remaining(target, logged)}
-	pieces, finish, ok := cals[w.center].fill(start, w.need, bookedAt(w.center), until)
+	placed := make(map[int64]placement, len(existing)+1)
+	for id, pl := range existing {
+		placed[id] = pl
+	}
+	moved, ok := placeAt(cals, bookedAt(option.center), target, option, bounds{earliest: start}, until)
 	if !ok {
-		return nil, w, false
+		return nil, target, false
 	}
-	first := start
-	if len(pieces) > 0 {
-		first = pieces[0].start
-	}
-	local[w.center] = book(bookedAt(w.center), pieces)
-	out := []placement{{id: w.id, center: w.center, pieces: pieces, start: first, finish: finish}}
-	cursor := finish
-	for _, l := range later {
-		if l.PlannedStart == nil || !l.PlannedStart.Before(cursor) {
-			local[l.WorkCenterID] = book(bookedAt(l.WorkCenterID), keep[l.ID])
-			if l.PlannedFinish != nil && l.PlannedFinish.After(cursor) {
-				cursor = *l.PlannedFinish
-			}
+	local[moved.center] = book(bookedAt(moved.center), moved.pieces)
+	placed[target.id] = moved
+	out := []placement{moved}
+	for _, w := range later {
+		was, planned := existing[w.id]
+		if !planned {
+			continue // not planned: it stays so
+		}
+		b := boundsOf(w, start, placed, works)
+		if !was.start.Before(b.earliest) && !was.finish.Before(b.minFinishAt(w, was.option)) {
+			local[was.center] = book(bookedAt(was.center), was.pieces)
 			continue
 		}
-		lw := planWork{id: l.ID, center: l.WorkCenterID, need: remaining(l, logged)}
-		pieces, finish, ok := cals[lw.center].fill(cursor, lw.need, bookedAt(lw.center), until)
+		pl, ok := placeAt(cals, bookedAt(was.center), w, was.option, b, until)
 		if !ok {
-			return nil, lw, false
+			return nil, w, false
 		}
-		first := cursor
-		if len(pieces) > 0 {
-			first = pieces[0].start
-		}
-		local[lw.center] = book(bookedAt(lw.center), pieces)
-		out = append(out, placement{id: lw.id, center: lw.center, pieces: pieces, start: first, finish: finish})
-		cursor = finish
+		local[pl.center] = book(bookedAt(pl.center), pl.pieces)
+		placed[w.id] = pl
+		out = append(out, pl)
 	}
 	return out, planWork{}, true
 }
 
 // RescheduleManufacturingWorkOrder moves a work order on the board (M36),
-// under its revision; no other order moves.
+// under its revision; no other order moves. A group work order dropped on
+// another member's row (workCenterId) moves to that member, its figures taken
+// again (manufacturing phase 2 M118, M119): a center outside its group is
+// work_center_not_in_group, and once a time log exists the member is fixed
+// (work_order_started).
 func (s *server) RescheduleManufacturingWorkOrder(ctx context.Context, req gen.RescheduleManufacturingWorkOrderRequestObject) (gen.RescheduleManufacturingWorkOrderResponseObject, error) {
+	const title = "The work order was not moved"
 	pre, err := s.workOrderOrNotFound(ctx, req.Id)
 	if err != nil {
 		return answer(err, rescheduleAnswers())
@@ -811,14 +1068,14 @@ func (s *server) RescheduleManufacturingWorkOrder(ctx context.Context, req gen.R
 	err = s.withScheduledOrders(ctx, ordersCenters, func(context.Context, *store.Queries) ([]int64, error) { return []int64{orderID}, nil }, nil,
 		func(ctx context.Context, tx pgx.Tx, txq *store.Queries, orders map[int64]*lockedOrder) error {
 			o := orders[orderID].order
-			wos, logged, _, err := planInputs(ctx, txq, o, now)
+			in, err := planInputs(ctx, txq, o, now)
 			if err != nil {
 				return err
 			}
 			var target *store.ManufacturingWorkOrder
-			for i := range wos {
-				if wos[i].ID == req.Id {
-					target = &wos[i]
+			for i := range in.wos {
+				if in.wos[i].ID == req.Id {
+					target = &in.wos[i]
 				}
 			}
 			if target == nil {
@@ -833,26 +1090,66 @@ func (s *server) RescheduleManufacturingWorkOrder(ctx context.Context, req gen.R
 			if target.Status == workOrderDone || target.Status == workOrderCancelled {
 				return workOrderClosed(target.Status)
 			}
-			var later []store.ManufacturingWorkOrder
-			for _, w := range openWork(wos) {
-				if w.ID != target.ID && (w.Sequence > target.Sequence || (w.Sequence == target.Sequence && w.ID > target.ID)) {
+			open := openWork(in.wos)
+			works := worksOf(o, in, open, false)
+			byID := map[int64]planWork{}
+			for _, w := range works {
+				byID[w.id] = w
+			}
+			tw := byID[target.ID]
+			option := tw.options[0]
+			if at := req.Body.WorkCenterId; at != nil && *at != target.WorkCenterID {
+				if target.WorkCenterGroupID == nil {
+					return notInGroup(title)
+				}
+				i := slices.IndexFunc(in.members[*target.WorkCenterGroupID], func(c store.ManufacturingWorkCenter) bool {
+					return c.ID == *at && c.Status == statusActive
+				})
+				if i < 0 {
+					return notInGroup(title)
+				}
+				if in.hasLogs[target.ID] {
+					return conflict(codeWorkOrderStarted, "The work order has started",
+						"Time is logged on the work order, so it stays at its work center. Move it along its own row instead.")
+				}
+				c := in.members[*target.WorkCenterGroupID][i]
+				f := memberFigures(*target, c, ratOrZero(o.Quantity))
+				option = planOption{center: c.ID, need: time.Duration(f.ExpectedMinutes) * time.Minute, efficiency: c.TimeEfficiency,
+					code: c.Code, setup: ratOrZero(f.SetupMinutes), perCycle: ratOrZero(target.MinutesPerCycle), capacity: c.Capacity, member: &f}
+			}
+			after := in.graph.descendants(target.ID)
+			var later []planWork
+			for _, w := range works {
+				if after[w.id] {
 					later = append(later, w)
 				}
 			}
-			except := append(workOrderIDs(later), target.ID)
+			except := []int64{target.ID}
+			for _, w := range later {
+				except = append(except, w.id)
+			}
 			p, err := loadPlanner(ctx, txq, lockedCenters(ctx), except, zone, now)
 			if err != nil {
 				return err
 			}
-			slots, err := txq.SlotsOfWorkOrders(ctx, workOrderIDs(later))
+			slots, err := txq.SlotsOfWorkOrders(ctx, workOrderIDs(open))
 			if err != nil {
 				return err
 			}
-			keep := map[int64][]span{}
-			for _, sl := range slots {
-				keep[sl.WorkOrderID] = append(keep[sl.WorkOrderID], span{start: sl.StartsAt, end: sl.EndsAt})
+			existing := map[int64]placement{}
+			for _, w := range open {
+				if w.PlannedStart != nil && w.PlannedFinish != nil {
+					existing[w.ID] = placement{id: w.ID, center: w.WorkCenterID, start: *w.PlannedStart, finish: *w.PlannedFinish,
+						option: byID[w.ID].options[0]}
+				}
 			}
-			placements, failed, ok := reschedule(p.cals, p.booked, *target, later, keep, logged, req.Body.Start, now)
+			for _, sl := range slots {
+				if pl, ok := existing[sl.WorkOrderID]; ok {
+					pl.pieces = append(pl.pieces, span{start: sl.StartsAt, end: sl.EndsAt})
+					existing[sl.WorkOrderID] = pl
+				}
+			}
+			placements, failed, ok := reschedule(p.cals, p.booked, tw, option, later, existing, byID, req.Body.Start, now)
 			if !ok {
 				return noCapacity(failed, req.Body.Start)
 			}
@@ -860,7 +1157,7 @@ func (s *server) RescheduleManufacturingWorkOrder(ctx context.Context, req gen.R
 			for _, x := range placements {
 				pl.clear = append(pl.clear, x.id)
 			}
-			pl.start, pl.finish = windowOf(wos, placements)
+			pl.start, pl.finish = windowOf(in.wos, placements)
 			notes := newNotices()
 			if _, err := p.apply(ctx, txq, pl, notes); err != nil {
 				return err
@@ -931,6 +1228,7 @@ func (s *server) GetManufacturingSchedule(ctx context.Context, req gen.GetManufa
 		closures    []store.ManufacturingWorkCenterClosure
 		slots       []store.ScheduleSlotsRow
 		unscheduled []store.UnscheduledOrdersAtSiteRow
+		members     map[int64][]store.ManufacturingWorkCenter
 	)
 	err = s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		status := statusActive
@@ -946,6 +1244,15 @@ func (s *server) GetManufacturingSchedule(ctx context.Context, req gen.GetManufa
 			return err
 		}
 		if slots, err = q.ScheduleSlots(ctx, store.ScheduleSlotsParams{WorkCenterIds: orEmpty(ids), FromAt: window.start, ToAt: window.end}); err != nil {
+			return err
+		}
+		var groups []int64
+		for _, sl := range slots {
+			if sl.WorkCenterGroupID != nil {
+				groups = append(groups, *sl.WorkCenterGroupID)
+			}
+		}
+		if members, err = groupMembers(ctx, q, groups); err != nil {
 			return err
 		}
 		unscheduled, err = q.UnscheduledOrdersAtSite(ctx, req.Params.SiteId)
@@ -996,7 +1303,19 @@ func (s *server) GetManufacturingSchedule(ctx context.Context, req gen.GetManufa
 			row.Days = append(row.Days, scheduleDayOf(cal, d, slotsOf[c.ID]))
 		}
 		for _, sl := range slotsOf[c.ID] {
-			row.Bars = append(row.Bars, barOf(sl, entries, costs, zone))
+			bar := barOf(sl, entries, costs, zone)
+			// A group work order may be dragged to another active member's
+			// row until a time log fixes its member (M119).
+			others := []int64{}
+			if sl.WorkCenterGroupID != nil && !sl.HasLogs {
+				for _, m := range members[*sl.WorkCenterGroupID] {
+					if m.ID != c.ID && m.Status == statusActive {
+						others = append(others, m.ID)
+					}
+				}
+			}
+			bar.MemberIds = &others
+			row.Bars = append(row.Bars, bar)
 		}
 		out.WorkCenters = append(out.WorkCenters, row)
 	}
@@ -1063,7 +1382,7 @@ const percentDisplayPlaces = 1
 // finish falls after its order's due date.
 func barOf(sl store.ScheduleSlotsRow, entries map[int32]contracts.VariantEntry, costs bool, zone *time.Location) gen.ManufacturingScheduleBar {
 	return gen.ManufacturingScheduleBar{
-		WorkOrderId: sl.WorkOrderID, WorkOrderRevision: sl.Revision, Sequence: sl.Sequence, Name: sl.Name,
+		WorkOrderId: sl.WorkOrderID, WorkOrderRevision: sl.Revision, Sequence: sl.Sequence, Name: sl.Name, WorkCenterGroupId: sl.WorkCenterGroupID,
 		Status: gen.ManufacturingWorkOrderStatus(sl.Status), OrderId: sl.OrderID, OrderNumber: orderNumber(sl.OrderNumber, sl.OrderSuffix),
 		Variant: refOf(entries, sl.OrderVariantID, costs), Urgent: sl.OrderPriority == priorityUrgent,
 		Late:     lateByDays(sl.PlannedFinish, dateOf(sl.OrderDueDate), zone) != nil,

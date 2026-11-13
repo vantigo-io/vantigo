@@ -13,10 +13,56 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addQuantityDone = `-- name: AddQuantityDone :one
+UPDATE manufacturing.work_orders SET quantity_done = quantity_done + $1, revision = revision + 1
+WHERE id = $2
+RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup
+`
+
+type AddQuantityDoneParams struct {
+	Quantity pgtype.Numeric
+	ID       int64
+}
+
+// AddQuantityDone raises the good units the work order has passed on (M116).
+func (q *Queries) AddQuantityDone(ctx context.Context, arg AddQuantityDoneParams) (ManufacturingWorkOrder, error) {
+	row := q.db.QueryRow(ctx, addQuantityDone, arg.Quantity, arg.ID)
+	var i ManufacturingWorkOrder
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.OperationID,
+		&i.Sequence,
+		&i.Name,
+		&i.WorkCenterID,
+		&i.SetupMinutes,
+		&i.CleanupMinutes,
+		&i.MinutesPerCycle,
+		&i.Capacity,
+		&i.TimeEfficiency,
+		&i.MachineRate,
+		&i.LabourRate,
+		&i.Instructions,
+		&i.ExpectedMinutes,
+		&i.PlannedStart,
+		&i.PlannedFinish,
+		&i.Status,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Revision,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
+		&i.QuantityDone,
+		&i.BomOutputQuantity,
+		&i.OwnSetup,
+	)
+	return i, err
+}
+
 const cancelOpenWorkOrders = `-- name: CancelOpenWorkOrders :many
 UPDATE manufacturing.work_orders SET status = 'cancelled', revision = revision + 1
 WHERE order_id = $1 AND status NOT IN ('done', 'cancelled')
-RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision
+RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup
 `
 
 // CancelOpenWorkOrders cancels every work order of the order not done
@@ -52,6 +98,11 @@ func (q *Queries) CancelOpenWorkOrders(ctx context.Context, orderID int64) ([]Ma
 			&i.StartedAt,
 			&i.FinishedAt,
 			&i.Revision,
+			&i.WorkCenterGroupID,
+			&i.SendAheadQuantity,
+			&i.QuantityDone,
+			&i.BomOutputQuantity,
+			&i.OwnSetup,
 		); err != nil {
 			return nil, err
 		}
@@ -134,6 +185,35 @@ func (q *Queries) CountOpenWorkOrdersAtWorkCenter(ctx context.Context, workCente
 	return column_1, err
 }
 
+const dependenciesOfOrders = `-- name: DependenciesOfOrders :many
+SELECT d.work_order_id, d.depends_on_id FROM manufacturing.work_order_dependencies d
+JOIN manufacturing.work_orders w ON w.id = d.work_order_id
+WHERE w.order_id = ANY($1::bigint[])
+ORDER BY d.work_order_id, d.depends_on_id
+`
+
+// DependenciesOfOrders is the work orders' graph of the orders (M113): each
+// edge, the work order and the one it depends on.
+func (q *Queries) DependenciesOfOrders(ctx context.Context, orderIds []int64) ([]ManufacturingWorkOrderDependency, error) {
+	rows, err := q.db.Query(ctx, dependenciesOfOrders, orderIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ManufacturingWorkOrderDependency
+	for rows.Next() {
+		var i ManufacturingWorkOrderDependency
+		if err := rows.Scan(&i.WorkOrderID, &i.DependsOnID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const endTimeLog = `-- name: EndTimeLog :exec
 UPDATE manufacturing.time_logs SET ended_at = $1::timestamptz, quantity = COALESCE($2, quantity)
 WHERE id = $3 AND ended_at IS NULL
@@ -155,7 +235,7 @@ UPDATE manufacturing.work_orders
 SET status = 'done', started_at = COALESCE(started_at, $1::timestamptz), finished_at = $1::timestamptz,
     revision = revision + 1
 WHERE id = $2
-RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision
+RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup
 `
 
 type FinishWorkOrderParams struct {
@@ -188,6 +268,11 @@ func (q *Queries) FinishWorkOrder(ctx context.Context, arg FinishWorkOrderParams
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.Revision,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
+		&i.QuantityDone,
+		&i.BomOutputQuantity,
+		&i.OwnSetup,
 	)
 	return i, err
 }
@@ -253,7 +338,7 @@ func (q *Queries) GetWorkCenterForShare(ctx context.Context, id int64) (Manufact
 }
 
 const getWorkOrder = `-- name: GetWorkOrder :one
-SELECT id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision FROM manufacturing.work_orders WHERE id = $1
+SELECT id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup FROM manufacturing.work_orders WHERE id = $1
 `
 
 func (q *Queries) GetWorkOrder(ctx context.Context, id int64) (ManufacturingWorkOrder, error) {
@@ -281,6 +366,134 @@ func (q *Queries) GetWorkOrder(ctx context.Context, id int64) (ManufacturingWork
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.Revision,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
+		&i.QuantityDone,
+		&i.BomOutputQuantity,
+		&i.OwnSetup,
+	)
+	return i, err
+}
+
+const groupMembers = `-- name: GroupMembers :many
+SELECT m.group_id, c.id, c.code, c.name, c.site_id, c.capacity, c.time_efficiency, c.setup_minutes, c.cleanup_minutes, c.machine_cost_per_hour, c.labour_cost_per_hour, c.pattern, c.working_state, c.status, c.revision, c.created_at, c.updated_at FROM manufacturing.work_center_group_members m
+JOIN manufacturing.work_centers c ON c.id = m.work_center_id
+WHERE m.group_id = ANY($1::bigint[])
+ORDER BY m.group_id, c.code
+`
+
+type GroupMembersRow struct {
+	GroupID                 int64
+	ManufacturingWorkCenter ManufacturingWorkCenter
+}
+
+// GroupMembers is the members of the groups, by group, with the center.
+func (q *Queries) GroupMembers(ctx context.Context, groupIds []int64) ([]GroupMembersRow, error) {
+	rows, err := q.db.Query(ctx, groupMembers, groupIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GroupMembersRow
+	for rows.Next() {
+		var i GroupMembersRow
+		if err := rows.Scan(
+			&i.GroupID,
+			&i.ManufacturingWorkCenter.ID,
+			&i.ManufacturingWorkCenter.Code,
+			&i.ManufacturingWorkCenter.Name,
+			&i.ManufacturingWorkCenter.SiteID,
+			&i.ManufacturingWorkCenter.Capacity,
+			&i.ManufacturingWorkCenter.TimeEfficiency,
+			&i.ManufacturingWorkCenter.SetupMinutes,
+			&i.ManufacturingWorkCenter.CleanupMinutes,
+			&i.ManufacturingWorkCenter.MachineCostPerHour,
+			&i.ManufacturingWorkCenter.LabourCostPerHour,
+			&i.ManufacturingWorkCenter.Pattern,
+			&i.ManufacturingWorkCenter.WorkingState,
+			&i.ManufacturingWorkCenter.Status,
+			&i.ManufacturingWorkCenter.Revision,
+			&i.ManufacturingWorkCenter.CreatedAt,
+			&i.ManufacturingWorkCenter.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const groupWorkQueue = `-- name: GroupWorkQueue :many
+SELECT w.id FROM manufacturing.work_orders w JOIN manufacturing.orders o ON o.id = w.order_id
+JOIN manufacturing.work_center_group_members m ON m.group_id = w.work_center_group_id AND m.work_center_id = $1
+WHERE w.status = 'ready'
+  AND o.status IN ('confirmed', 'in_progress')
+  AND w.planned_start IS NULL
+  AND NOT EXISTS (SELECT 1 FROM manufacturing.time_logs l WHERE l.work_order_id = w.id)
+ORDER BY (o.priority = 'urgent') DESC, o.due_date ASC NULLS LAST, o.number, o.suffix, w.sequence, w.id
+LIMIT 500
+`
+
+// GroupWorkQueue is a work center's Group work (M119): the ready group work
+// orders of open orders whose member is not fixed yet — unplanned, with no
+// log — of every group the center is an active member of, by the order's
+// priority, then its due date.
+func (q *Queries) GroupWorkQueue(ctx context.Context, workCenterID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, groupWorkQueue, workCenterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const insertQuantityRegistration = `-- name: InsertQuantityRegistration :one
+INSERT INTO manufacturing.work_order_quantities (work_order_id, client_request_id, quantity, user_id, user_display, registered_at)
+VALUES ($1, $2, $3, $4, $5, $6::timestamptz)
+RETURNING id, work_order_id, client_request_id, quantity, user_id, user_display, registered_at
+`
+
+type InsertQuantityRegistrationParams struct {
+	WorkOrderID     int64
+	ClientRequestID uuid.UUID
+	Quantity        pgtype.Numeric
+	UserID          *uuid.UUID
+	UserDisplay     string
+	Now             time.Time
+}
+
+func (q *Queries) InsertQuantityRegistration(ctx context.Context, arg InsertQuantityRegistrationParams) (ManufacturingWorkOrderQuantity, error) {
+	row := q.db.QueryRow(ctx, insertQuantityRegistration,
+		arg.WorkOrderID,
+		arg.ClientRequestID,
+		arg.Quantity,
+		arg.UserID,
+		arg.UserDisplay,
+		arg.Now,
+	)
+	var i ManufacturingWorkOrderQuantity
+	err := row.Scan(
+		&i.ID,
+		&i.WorkOrderID,
+		&i.ClientRequestID,
+		&i.Quantity,
+		&i.UserID,
+		&i.UserDisplay,
+		&i.RegisteredAt,
 	)
 	return i, err
 }
@@ -358,29 +571,35 @@ func (q *Queries) InsertTimeLog(ctx context.Context, arg InsertTimeLogParams) (M
 const insertWorkOrder = `-- name: InsertWorkOrder :one
 
 INSERT INTO manufacturing.work_orders (
-    order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle,
-    capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11, $12, $13, $14, $15)
-RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision
+    order_id, operation_id, sequence, name, work_center_id, work_center_group_id, setup_minutes, cleanup_minutes, minutes_per_cycle,
+    capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, status,
+    send_ahead_quantity, bom_output_quantity, own_setup)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+        $10, $11, $12, $13, $14, $15, $16,
+        $17, $18, $19)
+RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup
 `
 
 type InsertWorkOrderParams struct {
-	OrderID         int64
-	OperationID     *int64
-	Sequence        int32
-	Name            string
-	WorkCenterID    int64
-	SetupMinutes    pgtype.Numeric
-	CleanupMinutes  pgtype.Numeric
-	MinutesPerCycle pgtype.Numeric
-	Capacity        int32
-	TimeEfficiency  int32
-	MachineRate     pgtype.Numeric
-	LabourRate      pgtype.Numeric
-	Instructions    string
-	ExpectedMinutes int64
-	Status          string
+	OrderID           int64
+	OperationID       *int64
+	Sequence          int32
+	Name              string
+	WorkCenterID      int64
+	WorkCenterGroupID *int64
+	SetupMinutes      pgtype.Numeric
+	CleanupMinutes    pgtype.Numeric
+	MinutesPerCycle   pgtype.Numeric
+	Capacity          int32
+	TimeEfficiency    int32
+	MachineRate       pgtype.Numeric
+	LabourRate        pgtype.Numeric
+	Instructions      string
+	ExpectedMinutes   int64
+	Status            string
+	SendAheadQuantity pgtype.Numeric
+	BomOutputQuantity pgtype.Numeric
+	OwnSetup          bool
 }
 
 // Work orders and time logs (manufacturing design M27–M30, M29a): the work
@@ -396,6 +615,7 @@ func (q *Queries) InsertWorkOrder(ctx context.Context, arg InsertWorkOrderParams
 		arg.Sequence,
 		arg.Name,
 		arg.WorkCenterID,
+		arg.WorkCenterGroupID,
 		arg.SetupMinutes,
 		arg.CleanupMinutes,
 		arg.MinutesPerCycle,
@@ -406,6 +626,9 @@ func (q *Queries) InsertWorkOrder(ctx context.Context, arg InsertWorkOrderParams
 		arg.Instructions,
 		arg.ExpectedMinutes,
 		arg.Status,
+		arg.SendAheadQuantity,
+		arg.BomOutputQuantity,
+		arg.OwnSetup,
 	)
 	var i ManufacturingWorkOrder
 	err := row.Scan(
@@ -430,8 +653,29 @@ func (q *Queries) InsertWorkOrder(ctx context.Context, arg InsertWorkOrderParams
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.Revision,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
+		&i.QuantityDone,
+		&i.BomOutputQuantity,
+		&i.OwnSetup,
 	)
 	return i, err
+}
+
+const insertWorkOrderDependency = `-- name: InsertWorkOrderDependency :exec
+INSERT INTO manufacturing.work_order_dependencies (work_order_id, depends_on_id) VALUES ($1, $2)
+`
+
+type InsertWorkOrderDependencyParams struct {
+	WorkOrderID int64
+	DependsOnID int64
+}
+
+// InsertWorkOrderDependency is one edge of the order's graph, copied from
+// its operations' at confirm (manufacturing phase 2 M113).
+func (q *Queries) InsertWorkOrderDependency(ctx context.Context, arg InsertWorkOrderDependencyParams) error {
+	_, err := q.db.Exec(ctx, insertWorkOrderDependency, arg.WorkOrderID, arg.DependsOnID)
+	return err
 }
 
 const lastWorkOrderOfOrders = `-- name: LastWorkOrderOfOrders :many
@@ -555,7 +799,7 @@ func (q *Queries) LockWorkCentersForShare(ctx context.Context, ids []int64) ([]i
 }
 
 const lockWorkOrders = `-- name: LockWorkOrders :many
-SELECT id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision FROM manufacturing.work_orders WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+SELECT id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup FROM manufacturing.work_orders WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
 `
 
 // LockWorkOrders is step 4 of the lock order (M26a): the work orders, in id
@@ -591,6 +835,11 @@ func (q *Queries) LockWorkOrders(ctx context.Context, ids []int64) ([]Manufactur
 			&i.StartedAt,
 			&i.FinishedAt,
 			&i.Revision,
+			&i.WorkCenterGroupID,
+			&i.SendAheadQuantity,
+			&i.QuantityDone,
+			&i.BomOutputQuantity,
+			&i.OwnSetup,
 		); err != nil {
 			return nil, err
 		}
@@ -804,21 +1053,48 @@ func (q *Queries) OpenLogsOfWorkOrders(ctx context.Context, workOrderIds []int64
 	return items, nil
 }
 
-const readyNextWorkOrder = `-- name: ReadyNextWorkOrder :many
-UPDATE manufacturing.work_orders w SET status = 'ready', revision = w.revision + 1
-WHERE w.id = (SELECT n.id FROM manufacturing.work_orders n
-              WHERE n.order_id = $1 AND n.status NOT IN ('done', 'cancelled')
-              ORDER BY n.sequence, n.id LIMIT 1)
-  AND w.status = 'pending'
-RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision
+const quantityRegistration = `-- name: QuantityRegistration :one
+SELECT id, work_order_id, client_request_id, quantity, user_id, user_display, registered_at FROM manufacturing.work_order_quantities WHERE client_request_id = $1
 `
 
-// ReadyNextWorkOrder readies the order's next work order once one finishes
-// (M27): the first by sequence that is neither done nor cancelled, only when
-// it is pending — so every one before it is done or cancelled. One started
-// out of sequence is left as it is, and the ones after it wait for it.
-func (q *Queries) ReadyNextWorkOrder(ctx context.Context, orderID int64) ([]ManufacturingWorkOrder, error) {
-	rows, err := q.db.Query(ctx, readyNextWorkOrder, orderID)
+// QuantityRegistration is the registration a clientRequestId made, for its
+// replay.
+func (q *Queries) QuantityRegistration(ctx context.Context, clientRequestID uuid.UUID) (ManufacturingWorkOrderQuantity, error) {
+	row := q.db.QueryRow(ctx, quantityRegistration, clientRequestID)
+	var i ManufacturingWorkOrderQuantity
+	err := row.Scan(
+		&i.ID,
+		&i.WorkOrderID,
+		&i.ClientRequestID,
+		&i.Quantity,
+		&i.UserID,
+		&i.UserDisplay,
+		&i.RegisteredAt,
+	)
+	return i, err
+}
+
+const readyWorkOrders = `-- name: ReadyWorkOrders :many
+UPDATE manufacturing.work_orders w SET status = 'ready', revision = w.revision + 1
+FROM manufacturing.orders o
+WHERE o.id = w.order_id AND w.order_id = $1 AND w.status = 'pending'
+  AND NOT EXISTS (
+      SELECT 1 FROM manufacturing.work_order_dependencies d
+      JOIN manufacturing.work_orders p ON p.id = d.depends_on_id
+      WHERE d.work_order_id = w.id AND p.status NOT IN ('done', 'cancelled')
+        AND NOT (p.send_ahead_quantity IS NOT NULL AND p.send_ahead_quantity < o.quantity
+                 AND p.quantity_done >= p.send_ahead_quantity))
+RETURNING w.id, w.order_id, w.operation_id, w.sequence, w.name, w.work_center_id, w.setup_minutes, w.cleanup_minutes, w.minutes_per_cycle, w.capacity, w.time_efficiency, w.machine_rate, w.labour_rate, w.instructions, w.expected_minutes, w.planned_start, w.planned_finish, w.status, w.started_at, w.finished_at, w.revision, w.work_center_group_id, w.send_ahead_quantity, w.quantity_done, w.bom_output_quantity, w.own_setup
+`
+
+// ReadyWorkOrders readies every pending work order of the order whose
+// predecessors allow it (manufacturing phase 2 M114): each predecessor is
+// done or cancelled, or has passed on its send-ahead quantity — one at or
+// above the order's quantity counts as none (M116). Run after every finish
+// and every quantity registered. One started out of turn is left as it is,
+// and the ones after it wait for it.
+func (q *Queries) ReadyWorkOrders(ctx context.Context, orderID int64) ([]ManufacturingWorkOrder, error) {
+	rows, err := q.db.Query(ctx, readyWorkOrders, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -848,6 +1124,11 @@ func (q *Queries) ReadyNextWorkOrder(ctx context.Context, orderID int64) ([]Manu
 			&i.StartedAt,
 			&i.FinishedAt,
 			&i.Revision,
+			&i.WorkCenterGroupID,
+			&i.SendAheadQuantity,
+			&i.QuantityDone,
+			&i.BomOutputQuantity,
+			&i.OwnSetup,
 		); err != nil {
 			return nil, err
 		}
@@ -874,6 +1155,75 @@ type SetOrderInProgressParams struct {
 func (q *Queries) SetOrderInProgress(ctx context.Context, arg SetOrderInProgressParams) error {
 	_, err := q.db.Exec(ctx, setOrderInProgress, arg.Now, arg.ID)
 	return err
+}
+
+const setWorkOrderMember = `-- name: SetWorkOrderMember :one
+UPDATE manufacturing.work_orders
+SET work_center_id = $1, setup_minutes = $2, cleanup_minutes = $3,
+    capacity = $4, time_efficiency = $5, machine_rate = $6,
+    labour_rate = $7, expected_minutes = $8, revision = revision + 1
+WHERE id = $9
+RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup
+`
+
+type SetWorkOrderMemberParams struct {
+	WorkCenterID    int64
+	SetupMinutes    pgtype.Numeric
+	CleanupMinutes  pgtype.Numeric
+	Capacity        int32
+	TimeEfficiency  int32
+	MachineRate     pgtype.Numeric
+	LabourRate      pgtype.Numeric
+	ExpectedMinutes int64
+	ID              int64
+}
+
+// SetWorkOrderMember moves a group work order to another member of its group
+// (M118, M119): the member's figures are taken again and the expected
+// minutes recomputed with them — never once a time log exists, which the
+// caller has judged.
+func (q *Queries) SetWorkOrderMember(ctx context.Context, arg SetWorkOrderMemberParams) (ManufacturingWorkOrder, error) {
+	row := q.db.QueryRow(ctx, setWorkOrderMember,
+		arg.WorkCenterID,
+		arg.SetupMinutes,
+		arg.CleanupMinutes,
+		arg.Capacity,
+		arg.TimeEfficiency,
+		arg.MachineRate,
+		arg.LabourRate,
+		arg.ExpectedMinutes,
+		arg.ID,
+	)
+	var i ManufacturingWorkOrder
+	err := row.Scan(
+		&i.ID,
+		&i.OrderID,
+		&i.OperationID,
+		&i.Sequence,
+		&i.Name,
+		&i.WorkCenterID,
+		&i.SetupMinutes,
+		&i.CleanupMinutes,
+		&i.MinutesPerCycle,
+		&i.Capacity,
+		&i.TimeEfficiency,
+		&i.MachineRate,
+		&i.LabourRate,
+		&i.Instructions,
+		&i.ExpectedMinutes,
+		&i.PlannedStart,
+		&i.PlannedFinish,
+		&i.Status,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Revision,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
+		&i.QuantityDone,
+		&i.BomOutputQuantity,
+		&i.OwnSetup,
+	)
+	return i, err
 }
 
 const setWorkingState = `-- name: SetWorkingState :one
@@ -921,7 +1271,7 @@ SET status = CASE
         ELSE w.status END,
     revision = w.revision + 1
 WHERE w.id = $1 AND w.status NOT IN ('done', 'cancelled')
-RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision
+RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup
 `
 
 // SettleWorkOrder is a work order's state from its logs (M27, M29a): in
@@ -952,6 +1302,11 @@ func (q *Queries) SettleWorkOrder(ctx context.Context, id int64) (ManufacturingW
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.Revision,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
+		&i.QuantityDone,
+		&i.BomOutputQuantity,
+		&i.OwnSetup,
 	)
 	return i, err
 }
@@ -960,7 +1315,7 @@ const startWorkOrder = `-- name: StartWorkOrder :one
 UPDATE manufacturing.work_orders
 SET status = 'in_progress', started_at = COALESCE(started_at, $1::timestamptz), revision = revision + 1
 WHERE id = $2
-RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision
+RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup
 `
 
 type StartWorkOrderParams struct {
@@ -994,6 +1349,11 @@ func (q *Queries) StartWorkOrder(ctx context.Context, arg StartWorkOrderParams) 
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.Revision,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
+		&i.QuantityDone,
+		&i.BomOutputQuantity,
+		&i.OwnSetup,
 	)
 	return i, err
 }
@@ -1032,6 +1392,8 @@ SELECT w.id FROM manufacturing.work_orders w JOIN manufacturing.orders o ON o.id
 WHERE w.work_center_id = $1
   AND w.status IN ('ready', 'in_progress', 'paused')
   AND o.status IN ('confirmed', 'in_progress')
+  AND (w.work_center_group_id IS NULL OR w.planned_start IS NOT NULL
+       OR EXISTS (SELECT 1 FROM manufacturing.time_logs l WHERE l.work_order_id = w.id))
 ORDER BY w.planned_start ASC NULLS LAST, (o.priority = 'urgent') DESC, o.due_date ASC NULLS LAST,
          o.number, o.suffix, w.sequence, w.id
 LIMIT 500
@@ -1039,7 +1401,9 @@ LIMIT 500
 
 // WorkCenterQueue is the work center's queue (M31): its ready, in-progress
 // and paused work orders of open orders, by planned start, then the order's
-// priority, then its due date.
+// priority, then its due date. A group work order whose member is not fixed
+// yet — unplanned with no log (manufacturing phase 2 M119) — is not here but
+// under Group work (GroupWorkQueue).
 func (q *Queries) WorkCenterQueue(ctx context.Context, workCenterID int64) ([]int64, error) {
 	rows, err := q.db.Query(ctx, workCenterQueue, workCenterID)
 	if err != nil {
@@ -1085,7 +1449,7 @@ func (q *Queries) WorkOrderIDsOfOrders(ctx context.Context, orderIds []int64) ([
 }
 
 const workOrderRows = `-- name: WorkOrderRows :many
-SELECT w.id, w.order_id, w.operation_id, w.sequence, w.name, w.work_center_id, w.setup_minutes, w.cleanup_minutes, w.minutes_per_cycle, w.capacity, w.time_efficiency, w.machine_rate, w.labour_rate, w.instructions, w.expected_minutes, w.planned_start, w.planned_finish, w.status, w.started_at, w.finished_at, w.revision, o.number AS order_number, o.suffix AS order_suffix, o.variant_id AS order_variant_id,
+SELECT w.id, w.order_id, w.operation_id, w.sequence, w.name, w.work_center_id, w.setup_minutes, w.cleanup_minutes, w.minutes_per_cycle, w.capacity, w.time_efficiency, w.machine_rate, w.labour_rate, w.instructions, w.expected_minutes, w.planned_start, w.planned_finish, w.status, w.started_at, w.finished_at, w.revision, w.work_center_group_id, w.send_ahead_quantity, w.quantity_done, w.bom_output_quantity, w.own_setup, o.number AS order_number, o.suffix AS order_suffix, o.variant_id AS order_variant_id,
        o.quantity AS order_quantity, o.produced AS order_produced, o.due_date AS order_due_date,
        o.priority AS order_priority, o.status AS order_status, o.site_id AS order_site_id
 FROM manufacturing.work_orders w JOIN manufacturing.orders o ON o.id = w.order_id
@@ -1139,6 +1503,11 @@ func (q *Queries) WorkOrderRows(ctx context.Context, ids []int64) ([]WorkOrderRo
 			&i.ManufacturingWorkOrder.StartedAt,
 			&i.ManufacturingWorkOrder.FinishedAt,
 			&i.ManufacturingWorkOrder.Revision,
+			&i.ManufacturingWorkOrder.WorkCenterGroupID,
+			&i.ManufacturingWorkOrder.SendAheadQuantity,
+			&i.ManufacturingWorkOrder.QuantityDone,
+			&i.ManufacturingWorkOrder.BomOutputQuantity,
+			&i.ManufacturingWorkOrder.OwnSetup,
 			&i.OrderNumber,
 			&i.OrderSuffix,
 			&i.OrderVariantID,
@@ -1160,7 +1529,7 @@ func (q *Queries) WorkOrderRows(ctx context.Context, ids []int64) ([]WorkOrderRo
 }
 
 const workOrdersOfOrder = `-- name: WorkOrdersOfOrder :many
-SELECT id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision FROM manufacturing.work_orders WHERE order_id = $1 ORDER BY sequence, id
+SELECT id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup FROM manufacturing.work_orders WHERE order_id = $1 ORDER BY sequence, id
 `
 
 func (q *Queries) WorkOrdersOfOrder(ctx context.Context, orderID int64) ([]ManufacturingWorkOrder, error) {
@@ -1194,6 +1563,11 @@ func (q *Queries) WorkOrdersOfOrder(ctx context.Context, orderID int64) ([]Manuf
 			&i.StartedAt,
 			&i.FinishedAt,
 			&i.Revision,
+			&i.WorkCenterGroupID,
+			&i.SendAheadQuantity,
+			&i.QuantityDone,
+			&i.BomOutputQuantity,
+			&i.OwnSetup,
 		); err != nil {
 			return nil, err
 		}
@@ -1244,6 +1618,34 @@ func (q *Queries) WorkOrdersTouchedBy(ctx context.Context, arg WorkOrdersTouched
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const workOrdersWithLogs = `-- name: WorkOrdersWithLogs :many
+SELECT DISTINCT work_order_id::bigint AS id FROM manufacturing.time_logs
+WHERE work_order_id = ANY($1::bigint[])
+ORDER BY id
+`
+
+// WorkOrdersWithLogs is which of the work orders have a time log: a group
+// work order's member is fixed once one does (M119).
+func (q *Queries) WorkOrdersWithLogs(ctx context.Context, ids []int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, workOrdersWithLogs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

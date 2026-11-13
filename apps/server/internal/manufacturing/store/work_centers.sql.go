@@ -20,8 +20,21 @@ WHERE o.work_center_id = $1 AND b.status = 'active'
 
 // CountActiveBomsAtWorkCenter is how many active BoMs have an operation at
 // the work center: while any does, its site does not change (M12a).
-func (q *Queries) CountActiveBomsAtWorkCenter(ctx context.Context, workCenterID int64) (int32, error) {
+func (q *Queries) CountActiveBomsAtWorkCenter(ctx context.Context, workCenterID *int64) (int32, error) {
 	row := q.db.QueryRow(ctx, countActiveBomsAtWorkCenter, workCenterID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countGroupsOfWorkCenter = `-- name: CountGroupsOfWorkCenter :one
+SELECT count(*)::int FROM manufacturing.work_center_group_members WHERE work_center_id = $1
+`
+
+// CountGroupsOfWorkCenter is how many groups have the work center as a
+// member: while any does, its site does not change (M117).
+func (q *Queries) CountGroupsOfWorkCenter(ctx context.Context, workCenterID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countGroupsOfWorkCenter, workCenterID)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -30,7 +43,8 @@ func (q *Queries) CountActiveBomsAtWorkCenter(ctx context.Context, workCenterID 
 const countOperationsOfWorkCenter = `-- name: CountOperationsOfWorkCenter :one
 SELECT ((SELECT count(*) FROM manufacturing.bom_operations o WHERE o.work_center_id = $1::bigint)
       + (SELECT count(*) FROM manufacturing.work_orders w WHERE w.work_center_id = $1::bigint)
-      + (SELECT count(*) FROM manufacturing.time_logs l WHERE l.work_center_id = $1::bigint))::int
+      + (SELECT count(*) FROM manufacturing.time_logs l WHERE l.work_center_id = $1::bigint)
+      + (SELECT count(*) FROM manufacturing.work_center_group_members m WHERE m.work_center_id = $1::bigint))::int
 `
 
 // CountOperationsOfWorkCenter is how many BoM operations, work orders and

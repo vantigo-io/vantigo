@@ -530,7 +530,7 @@ func line(variant int32, qty string) gen.ManufacturingBomLineInput {
 
 // operation is a BoM operation at a work center.
 func operation(key string, sequence int32, center int64, perCycle string) gen.ManufacturingBomOperationInput {
-	return gen.ManufacturingBomOperationInput{Key: key, Sequence: sequence, Name: "Op " + key, WorkCenterId: center, MinutesPerCycle: perCycle}
+	return gen.ManufacturingBomOperationInput{Key: key, Sequence: sequence, Name: "Op " + key, WorkCenterId: &center, MinutesPerCycle: perCycle}
 }
 
 // bomInput is a BoM of variant making output with lines and no operations.
@@ -575,8 +575,10 @@ func updateOf(b gen.ManufacturingBom) gen.ManufacturingBomUpdate {
 		Operations: []gen.ManufacturingBomOperationInput{}, Lines: []gen.ManufacturingBomLineInput{}}
 	for _, o := range b.Operations {
 		id := o.Id
+		depends := slices.Clone(o.DependsOn)
 		u.Operations = append(u.Operations, gen.ManufacturingBomOperationInput{Id: &id, Key: o.Key, Sequence: o.Sequence,
-			Name: o.Name, WorkCenterId: o.WorkCenterId, MinutesPerCycle: o.MinutesPerCycle, SetupMinutes: o.SetupMinutes})
+			Name: o.Name, WorkCenterId: o.WorkCenterId, WorkCenterGroupId: o.WorkCenterGroupId, MinutesPerCycle: o.MinutesPerCycle,
+			SetupMinutes: o.SetupMinutes, SendAheadQuantity: o.SendAheadQuantity, DependsOn: &depends})
 	}
 	for _, l := range b.Lines {
 		scrap := l.ScrapPercent

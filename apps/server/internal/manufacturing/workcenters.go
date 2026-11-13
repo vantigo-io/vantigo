@@ -492,13 +492,22 @@ func (s *server) UpdateManufacturingWorkCenter(ctx context.Context, req gen.Upda
 			if _, ok := siteOf(sites, v.siteID); !ok {
 				return refuseField(workCenterTitle, "siteId", codeSiteUnknown, "Not an active Inventory site")
 			}
-			used, err := txq.CountActiveBomsAtWorkCenter(ctx, w.ID)
+			used, err := txq.CountActiveBomsAtWorkCenter(ctx, &w.ID)
 			if err != nil {
 				return err
 			}
 			if used > 0 {
 				return refuseField(workCenterTitle, "siteId", codeWorkCenterOtherSite,
 					fmt.Sprintf("%d active bill(s) of materials have operations at %s; its site does not change while they do", used, w.Code))
+			}
+			// A group holds centers of its own site (manufacturing phase 2 M117).
+			groups, err := txq.CountGroupsOfWorkCenter(ctx, w.ID)
+			if err != nil {
+				return err
+			}
+			if groups > 0 {
+				return refuseField(workCenterTitle, "siteId", codeWorkCenterOtherSite,
+					fmt.Sprintf("%s is a member of %d work center group(s); its site does not change while it is", w.Code, groups))
 			}
 		}
 		taken, err := txq.WorkCenterCodeTaken(ctx, store.WorkCenterCodeTakenParams{Code: v.code, ID: w.ID})

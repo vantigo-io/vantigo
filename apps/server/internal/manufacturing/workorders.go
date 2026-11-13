@@ -72,19 +72,32 @@ const (
 var errAlreadyDone = errors.New("manufacturing: the work order was finished by this request before")
 
 // snapshotWorkOrders creates the order's work orders from its BoM's
-// operations (M27, M27a, M28a): one per operation by sequence, the first
-// ready and the rest pending, each with the operation's and its work
-// center's figures as they are now, and its expected minutes — computed
-// once, here, and never again. A figure past maxExpectedMinutes is held at
-// it, as the overview refuses past it. Their work centers are then taken FOR
-// SHARE (M26a step 5), so an archive waits for the confirm and counts them.
+// operations (M27, M27a, M28a): one per operation by sequence, each with the
+// operation's and its work center's figures as they are now, and its expected
+// minutes — computed here, and again only when a group work order moves to
+// another member before any time is logged (manufacturing phase 2 M118). An
+// operation that targets a group takes the group's first active member by
+// code. The operations' graph is copied between the work orders (M113): those
+// with no predecessor are ready, the rest pending. A figure past
+// maxExpectedMinutes is held at it, as the overview refuses past it. Their
+// work centers are then taken FOR SHARE (M26a step 5), so an archive waits for
+// the confirm and counts them.
 func snapshotWorkOrders(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, bom store.ManufacturingBom) ([]store.ManufacturingWorkOrder, error) {
 	ops, err := txq.OperationsOfBoms(ctx, []int64{bom.ID})
 	if err != nil {
 		return nil, err
 	}
+	edges, err := txq.DependenciesOfBoms(ctx, []int64{bom.ID})
+	if err != nil {
+		return nil, err
+	}
+	hasPred := map[int64]bool{}
+	for _, e := range edges {
+		hasPred[e.OperationID] = true
+	}
 	out := make([]store.ManufacturingWorkOrder, 0, len(ops))
-	for i, op := range ops {
+	byOperation := map[int64]int64{}
+	for _, op := range ops {
 		minutes := expectedMinutes(op, ratOrZero(o.Quantity), ratOrZero(bom.OutputQuantity))
 		if minutes.Cmp(maxExpectedMinutes) > 0 {
 			minutes = maxExpectedMinutes
@@ -93,25 +106,35 @@ func snapshotWorkOrders(ctx context.Context, txq *store.Queries, o store.Manufac
 		if !setup.Valid {
 			setup = op.WorkCenterSetupMinutes
 		}
-		status := workOrderPending
-		if i == 0 {
-			status = workOrderReady
+		status := workOrderReady
+		if hasPred[op.ID] {
+			status = workOrderPending
 		}
 		operationID := op.ID
 		w, err := txq.InsertWorkOrder(ctx, store.InsertWorkOrderParams{
-			OrderID: o.ID, OperationID: &operationID, Sequence: op.Sequence, Name: op.Name, WorkCenterID: op.WorkCenterID,
-			SetupMinutes: setup, CleanupMinutes: op.WorkCenterCleanupMinutes, MinutesPerCycle: op.MinutesPerCycle,
-			Capacity: op.WorkCenterCapacity, TimeEfficiency: op.WorkCenterTimeEfficiency, MachineRate: op.WorkCenterMachineCostPerHour,
-			LabourRate: op.WorkCenterLabourCostPerHour, Instructions: op.Instructions, ExpectedMinutes: minutes.Int64(), Status: status,
+			OrderID: o.ID, OperationID: &operationID, Sequence: op.Sequence, Name: op.Name, WorkCenterID: op.CenterID,
+			WorkCenterGroupID: op.WorkCenterGroupID, SetupMinutes: setup, CleanupMinutes: op.WorkCenterCleanupMinutes,
+			MinutesPerCycle: op.MinutesPerCycle, Capacity: op.WorkCenterCapacity, TimeEfficiency: op.WorkCenterTimeEfficiency,
+			MachineRate: op.WorkCenterMachineCostPerHour, LabourRate: op.WorkCenterLabourCostPerHour, Instructions: op.Instructions,
+			ExpectedMinutes: minutes.Int64(), Status: status, SendAheadQuantity: op.SendAheadQuantity,
+			BomOutputQuantity: bom.OutputQuantity, OwnSetup: op.SetupMinutes.Valid,
 		})
 		if err != nil {
 			return nil, err
 		}
+		byOperation[op.ID] = w.ID
 		// The operation's checks, copied as the operation is (M96).
 		if err := txq.SnapshotWorkOrderChecks(ctx, store.SnapshotWorkOrderChecksParams{WorkOrderID: w.ID, OperationID: op.ID}); err != nil {
 			return nil, err
 		}
 		out = append(out, w)
+	}
+	for _, e := range edges {
+		if err := txq.InsertWorkOrderDependency(ctx, store.InsertWorkOrderDependencyParams{
+			WorkOrderID: byOperation[e.OperationID], DependsOnID: byOperation[e.DependsOnID],
+		}); err != nil {
+			return nil, err
+		}
 	}
 	centers := make([]int64, 0, len(out))
 	for _, w := range out {
@@ -264,6 +287,10 @@ func (s *server) StartManufacturingWorkOrder(ctx context.Context, req gen.StartM
 		return answer(refuseInvalid("The work order was not started", f), startAnswers())
 	}
 	force := req.Body != nil && req.Body.Force != nil && *req.Body.Force
+	var at *int64
+	if req.Body != nil {
+		at = req.Body.WorkCenterId
+	}
 	pre, err := s.workOrderOrNotFound(ctx, req.Id)
 	if err != nil {
 		return answer(err, startAnswers())
@@ -315,7 +342,15 @@ func (s *server) StartManufacturingWorkOrder(ctx context.Context, req gen.StartM
 			return workOrderClosed(w.Status)
 		case w.Status == workOrderPending && !force:
 			return conflict(codeWorkOrderPending, "An earlier work order is not done",
-				"The operations run in sequence and an earlier one is not finished. Send force to start this one anyway; the log is marked as forced.")
+				"A work order this one depends on is not finished. Send force to start this one anyway; the log is marked as forced.")
+		}
+		if at != nil && *at != w.WorkCenterID {
+			moved, err := startAtMember(ctx, txq, w, *at, o)
+			if err != nil {
+				return err
+			}
+			n.workCenters[w.WorkCenterID] = true
+			w = moved
 		}
 		center, err := txq.GetWorkCenterForShare(ctx, w.WorkCenterID)
 		if err != nil {
@@ -376,6 +411,40 @@ func (s *server) StartManufacturingWorkOrder(ctx context.Context, req gen.StartM
 		return answer(err, startAnswers())
 	}
 	return gen.StartManufacturingWorkOrder200JSONResponse(out), nil
+}
+
+// startAtMember moves a group work order to the member it is started at, from
+// a stale or a current Group work list (manufacturing phase 2 M119): a center
+// outside its group is work_center_not_in_group; once a time log exists, or
+// the work order is planned at its member, the member is fixed
+// (work_order_member_fixed, naming it). Otherwise the member's figures are
+// taken again (M118).
+func startAtMember(ctx context.Context, txq *store.Queries, w store.ManufacturingWorkOrder, at int64, o store.ManufacturingOrder) (store.ManufacturingWorkOrder, error) {
+	const title = "The work order was not started"
+	if w.WorkCenterGroupID == nil {
+		return w, notInGroup(title)
+	}
+	members, err := groupMembers(ctx, txq, []int64{*w.WorkCenterGroupID})
+	if err != nil {
+		return w, err
+	}
+	i := slices.IndexFunc(members[*w.WorkCenterGroupID], func(c store.ManufacturingWorkCenter) bool { return c.ID == at })
+	if i < 0 {
+		return w, notInGroup(title)
+	}
+	logged, err := withLogs(ctx, txq, []int64{w.ID})
+	if err != nil {
+		return w, err
+	}
+	if logged[w.ID] || w.PlannedStart != nil {
+		current, err := txq.GetWorkCenter(ctx, w.WorkCenterID)
+		if err != nil {
+			return w, err
+		}
+		return w, conflict(codeWorkOrderMemberFixed, "The work order is fixed at another work center",
+			fmt.Sprintf("The work order runs at %s now; start it there.", current.Code))
+	}
+	return txq.SetWorkOrderMember(ctx, memberFigures(w, members[*w.WorkCenterGroupID][i], ratOrZero(o.Quantity)))
 }
 
 // pauseAnswers are pause's typed refusals.
@@ -538,7 +607,7 @@ func (s *server) FinishManufacturingWorkOrder(ctx context.Context, req gen.Finis
 			return workOrderClosed(w.Status)
 		case workOrderPending:
 			return conflict(codeWorkOrderPending, "An earlier work order is not done",
-				"The operations run in sequence and an earlier one is not finished. Start this one with force first.")
+				"A work order this one depends on is not finished. Start this one with force first.")
 		}
 		open, err := txq.OpenLogsOfWorkOrders(ctx, []int64{w.ID})
 		if err != nil {
@@ -562,7 +631,7 @@ func (s *server) FinishManufacturingWorkOrder(ctx context.Context, req gen.Finis
 		if _, err := txq.FinishWorkOrder(ctx, store.FinishWorkOrderParams{ID: w.ID, Now: now}); err != nil {
 			return err
 		}
-		next, err := txq.ReadyNextWorkOrder(ctx, o.ID)
+		next, err := txq.ReadyWorkOrders(ctx, o.ID)
 		if err != nil {
 			return err
 		}
@@ -591,6 +660,140 @@ func (s *server) FinishManufacturingWorkOrder(ctx context.Context, req gen.Finis
 		return answer(err, finishAnswers())
 	}
 	return gen.FinishManufacturingWorkOrder200JSONResponse(out), nil
+}
+
+// quantityAnswers are Register quantity's typed refusals.
+func quantityAnswers() answers[gen.RegisterManufacturingWorkOrderQuantityResponseObject] {
+	return answers[gen.RegisterManufacturingWorkOrderQuantityResponseObject]{
+		badRequest: func(p gen.ManufacturingProblem) gen.RegisterManufacturingWorkOrderQuantityResponseObject {
+			return gen.RegisterManufacturingWorkOrderQuantity400ApplicationProblemPlusJSONResponse(p)
+		},
+		forbidden: func(p gen.ManufacturingProblem) gen.RegisterManufacturingWorkOrderQuantityResponseObject {
+			return gen.RegisterManufacturingWorkOrderQuantity403ApplicationProblemPlusJSONResponse(p)
+		},
+		notFound: func() gen.RegisterManufacturingWorkOrderQuantityResponseObject {
+			return gen.RegisterManufacturingWorkOrderQuantity404Response{}
+		},
+		conflict: func(p gen.ManufacturingProblem) gen.RegisterManufacturingWorkOrderQuantityResponseObject {
+			return gen.RegisterManufacturingWorkOrderQuantity409ApplicationProblemPlusJSONResponse(p)
+		},
+		unavailable: func(p gen.ManufacturingProblem) gen.RegisterManufacturingWorkOrderQuantityResponseObject {
+			return gen.RegisterManufacturingWorkOrderQuantity503ApplicationProblemPlusJSONResponse(p)
+		},
+	}
+}
+
+// quantityIndex is a registration's clientRequestId, once.
+const quantityIndex = "ux_work_order_quantities_request"
+
+// replayQuantity judges a registration sent again: the same work order and
+// quantity is a replay (true), anything else client_request_reused.
+func replayQuantity(r store.ManufacturingWorkOrderQuantity, workOrderID int64, quantity *big.Rat) (bool, error) {
+	if r.WorkOrderID == workOrderID && ratOrZero(r.Quantity).Cmp(quantity) == 0 {
+		return true, nil
+	}
+	return false, conflict(codeClientRequestReused, "The request id was used for another registration",
+		"This clientRequestId registered another quantity or another work order before. Send a new one.")
+}
+
+// RegisterManufacturingWorkOrderQuantity is Register quantity (manufacturing
+// phase 2 M116): good units the work order passes on to its successors, which
+// posts nothing to stock. Each successor whose send-ahead quantity is now
+// reached is readied (M114). The work order's first-piece checks must have
+// their results first (M98). Sent again with its clientRequestId it registers
+// nothing more.
+func (s *server) RegisterManufacturingWorkOrderQuantity(ctx context.Context, req gen.RegisterManufacturingWorkOrderQuantityRequestObject) (gen.RegisterManufacturingWorkOrderQuantityResponseObject, error) {
+	const title = "The quantity was not registered"
+	if err := s.requireShopFloor(ctx, "Registering a quantity"); err != nil {
+		return answer(err, quantityAnswers())
+	}
+	f := s.unknownProperties(ctx, quantityInputSchema)
+	quantity, msg := parsePositive(req.Body.Quantity, quantityPlaces, maxQuantity)
+	f.addCoded("quantity", codeQuantityInvalid, msg)
+	if f.failed() {
+		return answer(refuseInvalid(title, f), quantityAnswers())
+	}
+	pre, err := s.workOrderOrNotFound(ctx, req.Id)
+	if err != nil {
+		return answer(err, quantityAnswers())
+	}
+	requestID := uuid.UUID(req.Body.ClientRequestId)
+	replayed := false
+	if r, err := store.New(s.deps.Pool).QuantityRegistration(ctx, requestID); err == nil {
+		if replayed, err = replayQuantity(r, req.Id, quantity); err != nil {
+			return answer(err, quantityAnswers())
+		}
+	} else if !noRows(err) {
+		return nil, err
+	}
+	if !replayed {
+		who, err := s.actorOf(ctx)
+		if err != nil {
+			return nil, err
+		}
+		err = s.withOrder(ctx, pre.OrderID, nil, func(ctx context.Context, tx pgx.Tx, txq *store.Queries, lo *lockedOrder) error {
+			if !isOpen(lo.order.Status) {
+				return orderNotOpen(lo.order.Status)
+			}
+			wos, err := lockedWorkOrders(ctx, txq, []int64{req.Id})
+			if err != nil {
+				return err
+			}
+			w := wos[req.Id]
+			switch w.Status {
+			case workOrderDone, workOrderCancelled:
+				return workOrderClosed(w.Status)
+			case workOrderPending:
+				return conflict(codeWorkOrderPending, "The work order is not ready",
+					"A work order this one depends on is not finished, and this one was not started. Nothing is passed on from it yet.")
+			}
+			missing, err := txq.MissingChecksOfWorkOrders(ctx, store.MissingChecksOfWorkOrdersParams{WorkOrderIds: []int64{w.ID},
+				Frequencies: []string{frequencyFirstPiece}})
+			if err != nil {
+				return err
+			}
+			if len(missing) > 0 {
+				return checksIncomplete("Checks are missing",
+					fmt.Sprintf("%d first-piece check(s) of the work order have no result; record them before passing quantity on.", len(missing)), missing)
+			}
+			now := s.deps.Clock()
+			if _, err := txq.InsertQuantityRegistration(ctx, store.InsertQuantityRegistrationParams{
+				WorkOrderID: w.ID, ClientRequestID: requestID, Quantity: numeric(quantity, quantityPlaces),
+				UserID: who.id, UserDisplay: who.display, Now: now,
+			}); err != nil {
+				return err
+			}
+			if _, err := txq.AddQuantityDone(ctx, store.AddQuantityDoneParams{ID: w.ID, Quantity: numeric(quantity, quantityPlaces)}); err != nil {
+				return err
+			}
+			n := newNotices()
+			readied, err := txq.ReadyWorkOrders(ctx, w.OrderID)
+			if err != nil {
+				return err
+			}
+			for _, x := range readied {
+				n.workOrder(x.ID, x.OrderID, x.WorkCenterID)
+			}
+			n.workOrder(w.ID, w.OrderID, w.WorkCenterID)
+			return n.send(ctx, tx)
+		})
+		if db.IsUniqueViolation(err, quantityIndex) {
+			// A replay that raced the first: judged against what it wrote.
+			r, rerr := store.New(s.deps.Pool).QuantityRegistration(ctx, requestID)
+			if rerr != nil {
+				return nil, rerr
+			}
+			_, err = replayQuantity(r, req.Id, quantity)
+		}
+		if err != nil {
+			return answer(err, quantityAnswers())
+		}
+	}
+	out, err := s.shopFloorResult(ctx, req.Id, 0, 0)
+	if err != nil {
+		return answer(err, quantityAnswers())
+	}
+	return gen.RegisterManufacturingWorkOrderQuantity200JSONResponse(out), nil
 }
 
 // scrapAnswers are scrap's typed refusals.
@@ -935,6 +1138,8 @@ type workOrderRead struct {
 	last       map[int64]int64                               // by order: its last work order not cancelled
 	centers    map[int64]store.ManufacturingWorkCenter
 	checks     map[int64][]gen.ManufacturingWorkOrderCheck // by work order, by sequence (M96)
+	graph      workOrderGraph                              // the orders' work order graphs (M113)
+	groups     map[int64]store.ManufacturingWorkCenterGroup
 }
 
 // readWorkOrders reads the work orders ids names, in that order, with their
@@ -942,7 +1147,8 @@ type workOrderRead struct {
 // their work centers.
 func readWorkOrders(ctx context.Context, q *store.Queries, ids []int64) (workOrderRead, error) {
 	r := workOrderRead{components: map[int64][]store.ManufacturingOrderComponent{}, logs: map[int64][]store.ManufacturingTimeLog{},
-		last: map[int64]int64{}, centers: map[int64]store.ManufacturingWorkCenter{}}
+		last: map[int64]int64{}, centers: map[int64]store.ManufacturingWorkCenter{}, groups: map[int64]store.ManufacturingWorkCenterGroup{},
+		graph: graphOf(nil)}
 	if len(ids) == 0 {
 		return r, nil
 	}
@@ -951,11 +1157,14 @@ func readWorkOrders(ctx context.Context, q *store.Queries, ids []int64) (workOrd
 		return r, err
 	}
 	byID := map[int64]store.WorkOrderRowsRow{}
-	var orderIDs, centerIDs []int64
+	var orderIDs, centerIDs, groupIDs []int64
 	for _, row := range rows {
 		byID[row.ManufacturingWorkOrder.ID] = row
 		orderIDs = append(orderIDs, row.ManufacturingWorkOrder.OrderID)
 		centerIDs = append(centerIDs, row.ManufacturingWorkOrder.WorkCenterID)
+		if g := row.ManufacturingWorkOrder.WorkCenterGroupID; g != nil {
+			groupIDs = append(groupIDs, *g)
+		}
 	}
 	for _, id := range ids {
 		if row, ok := byID[id]; ok {
@@ -997,6 +1206,16 @@ func readWorkOrders(ctx context.Context, q *store.Queries, ids []int64) (workOrd
 		return r, err
 	}
 	r.checks = workOrderChecksOf(checks)
+	if r.graph, err = readGraph(ctx, q, orderIDs); err != nil {
+		return r, err
+	}
+	groups, err := q.WorkCenterGroupsByIDs(ctx, orEmpty(groupIDs))
+	if err != nil {
+		return r, err
+	}
+	for _, g := range groups {
+		r.groups[g.ID] = g
+	}
 	return r, nil
 }
 
@@ -1063,6 +1282,25 @@ func workOrderOf(row store.WorkOrderRowsRow, r workOrderRead, entries map[int32]
 		checks = []gen.ManufacturingWorkOrderCheck{}
 	}
 	out.Checks = &checks
+	depends := slices.Clone(r.graph.preds[w.ID])
+	if depends == nil {
+		depends = []int64{}
+	}
+	slices.Sort(depends)
+	out.DependsOn = &depends
+	done := numericText(w.QuantityDone, quantityPlaces)
+	out.QuantityDone = &done
+	if q := ratOf(w.SendAheadQuantity); q != nil {
+		t := text(q, quantityPlaces)
+		out.SendAheadQuantity = &t
+	}
+	fixed := false
+	if w.WorkCenterGroupID != nil {
+		g := r.groups[*w.WorkCenterGroupID]
+		out.WorkCenterGroup = &gen.ManufacturingWorkCenterGroupRef{Id: *w.WorkCenterGroupID, Code: g.Code, Name: g.Name}
+		fixed = len(r.logs[w.ID]) > 0
+	}
+	out.MemberFixed = &fixed
 	out.LoggedMinutes = int64(logged / time.Minute)
 	out.ActualMinutes, out.DeviationMinutes, out.DeviationPercent = workOrderDuration(w, r.logs[w.ID], now)
 	return out
@@ -1127,6 +1365,7 @@ func (s *server) queueAnswer(ctx context.Context, id int64) (gen.ManufacturingWo
 	var center store.ManufacturingWorkCenter
 	var r workOrderRead
 	var open []store.ManufacturingTimeLog
+	var groupWork map[int64]bool
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
 		if center, err = q.GetWorkCenter(ctx, id); noRows(err) {
@@ -1138,7 +1377,15 @@ func (s *server) queueAnswer(ctx context.Context, id int64) (gen.ManufacturingWo
 		if err != nil {
 			return err
 		}
-		if r, err = readWorkOrders(ctx, q, ids); err != nil {
+		group, err := q.GroupWorkQueue(ctx, id)
+		if err != nil {
+			return err
+		}
+		groupWork = map[int64]bool{}
+		for _, g := range group {
+			groupWork[g] = true
+		}
+		if r, err = readWorkOrders(ctx, q, append(ids, group...)); err != nil {
 			return err
 		}
 		open, err = q.OpenLogsAtWorkCenter(ctx, id)
@@ -1147,11 +1394,20 @@ func (s *server) queueAnswer(ctx context.Context, id int64) (gen.ManufacturingWo
 	if err != nil {
 		return gen.ManufacturingWorkCenterQueue{}, err
 	}
-	items, _, err := s.workOrdersOf(ctx, r, nil)
+	all, _, err := s.workOrdersOf(ctx, r, nil)
 	if err != nil {
 		return gen.ManufacturingWorkCenterQueue{}, err
 	}
-	return gen.ManufacturingWorkCenterQueue{WorkCenter: centerRefOf(center, center.ID), Block: blockOf(open), Items: items}, nil
+	items := make([]gen.ManufacturingWorkOrder, 0, len(all))
+	group := []gen.ManufacturingWorkOrder{}
+	for _, w := range all {
+		if groupWork[w.Id] {
+			group = append(group, w)
+		} else {
+			items = append(items, w)
+		}
+	}
+	return gen.ManufacturingWorkCenterQueue{WorkCenter: centerRefOf(center, center.ID), Block: blockOf(open), Items: items, GroupWork: &group}, nil
 }
 
 // GetManufacturingWorkCenterQueue is the work center page's queue (M31).

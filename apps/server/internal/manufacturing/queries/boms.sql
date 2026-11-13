@@ -141,16 +141,41 @@ ORDER BY variant_id;
 
 -- name: OperationsOfBoms :many
 -- OperationsOfBoms is the operations of the BoMs, by BoM and sequence, each
--- with its work center's code, name, site and rates.
-SELECT o.*, w.code AS work_center_code, w.name AS work_center_name, w.site_id AS work_center_site_id,
+-- with its work center's code, name, site and rates. An operation that
+-- targets a group (manufacturing phase 2 M118) is read with the group's
+-- first active member by code — the one a confirm snapshots — else, with no
+-- active member, its first member: center_id is that center, work_center_id
+-- the operation's own (null for a group).
+SELECT o.*, w.id AS center_id, w.code AS work_center_code, w.name AS work_center_name, w.site_id AS work_center_site_id,
        w.status AS work_center_status, w.capacity AS work_center_capacity,
        w.time_efficiency AS work_center_time_efficiency, w.setup_minutes AS work_center_setup_minutes,
        w.cleanup_minutes AS work_center_cleanup_minutes, w.machine_cost_per_hour AS work_center_machine_cost_per_hour,
-       w.labour_cost_per_hour AS work_center_labour_cost_per_hour
+       w.labour_cost_per_hour AS work_center_labour_cost_per_hour,
+       g.code AS group_code, g.name AS group_name
 FROM manufacturing.bom_operations o
-JOIN manufacturing.work_centers w ON w.id = o.work_center_id
+LEFT JOIN manufacturing.work_center_groups g ON g.id = o.work_center_group_id
+JOIN manufacturing.work_centers w ON w.id = COALESCE(o.work_center_id,
+    (SELECT c.id FROM manufacturing.work_center_group_members m JOIN manufacturing.work_centers c ON c.id = m.work_center_id
+     WHERE m.group_id = o.work_center_group_id
+     ORDER BY (c.status = 'active') DESC, c.code LIMIT 1))
 WHERE o.bom_id = ANY(@bom_ids::bigint[])
 ORDER BY o.bom_id, o.sequence, o.id;
+
+-- name: DependenciesOfBoms :many
+-- DependenciesOfBoms is the operations' graph of the BoMs (M112): each edge,
+-- the operation and the one it depends on.
+SELECT d.operation_id, d.depends_on_id FROM manufacturing.bom_operation_dependencies d
+JOIN manufacturing.bom_operations o ON o.id = d.operation_id
+WHERE o.bom_id = ANY(@bom_ids::bigint[])
+ORDER BY d.operation_id, d.depends_on_id;
+
+-- name: DeleteDependenciesOfBom :exec
+-- DeleteDependenciesOfBom removes the BoM's graph: an edit replaces it.
+DELETE FROM manufacturing.bom_operation_dependencies
+WHERE operation_id IN (SELECT id FROM manufacturing.bom_operations WHERE bom_id = @bom_id);
+
+-- name: InsertBomOperationDependency :exec
+INSERT INTO manufacturing.bom_operation_dependencies (operation_id, depends_on_id) VALUES (@operation_id, @depends_on_id);
 
 -- name: LinesOfBoms :many
 -- LinesOfBoms is the lines of the BoMs, by BoM and sort order.
@@ -165,16 +190,19 @@ ORDER BY bom_id, sort_order, id;
 DELETE FROM manufacturing.bom_operations WHERE bom_id = @bom_id AND NOT (id = ANY(@keep_ids::bigint[]));
 
 -- name: InsertBomOperation :one
-INSERT INTO manufacturing.bom_operations (bom_id, sequence, name, work_center_id, setup_minutes, minutes_per_cycle, instructions)
-VALUES (@bom_id, @sequence, @name, @work_center_id, sqlc.narg(setup_minutes), @minutes_per_cycle, @instructions)
+INSERT INTO manufacturing.bom_operations (bom_id, sequence, name, work_center_id, work_center_group_id, setup_minutes,
+                                          minutes_per_cycle, send_ahead_quantity, instructions)
+VALUES (@bom_id, @sequence, @name, sqlc.narg(work_center_id), sqlc.narg(work_center_group_id), sqlc.narg(setup_minutes),
+        @minutes_per_cycle, sqlc.narg(send_ahead_quantity), @instructions)
 RETURNING *;
 
 -- name: UpdateBomOperation :one
 -- UpdateBomOperation rewrites an operation the edit keeps; 0 rows is an id
 -- that is not one of the BoM's.
 UPDATE manufacturing.bom_operations
-SET sequence = @sequence, name = @name, work_center_id = @work_center_id, setup_minutes = sqlc.narg(setup_minutes),
-    minutes_per_cycle = @minutes_per_cycle, instructions = @instructions
+SET sequence = @sequence, name = @name, work_center_id = sqlc.narg(work_center_id),
+    work_center_group_id = sqlc.narg(work_center_group_id), setup_minutes = sqlc.narg(setup_minutes),
+    minutes_per_cycle = @minutes_per_cycle, send_ahead_quantity = sqlc.narg(send_ahead_quantity), instructions = @instructions
 WHERE id = @id AND bom_id = @bom_id
 RETURNING *;
 

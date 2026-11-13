@@ -834,7 +834,7 @@ func TestOrder_ConfirmedOrderKeepsItsPlace(t *testing.T) {
 
 	branch := createWorkCenter(t, c, workCenterInput("BR", siteBranch))
 	u := updateOf(getBom(t, c, b.Id))
-	u.Operations[0].WorkCenterId = branch.Id
+	u.Operations[0].WorkCenterId = &branch.Id
 	mustStatus(t, c.Do(http.MethodPut, bomPath(b.Id), u), http.StatusOK, "move the BoM to the branch")
 	atMain := orderInput(varBike, "1")
 	atMain.SiteId = &[]int64{siteMain}[0]

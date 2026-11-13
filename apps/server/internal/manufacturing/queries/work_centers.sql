@@ -69,7 +69,8 @@ DELETE FROM manufacturing.work_centers WHERE id = @id;
 -- work order or a log keeps it as an operation does.
 SELECT ((SELECT count(*) FROM manufacturing.bom_operations o WHERE o.work_center_id = @work_center_id::bigint)
       + (SELECT count(*) FROM manufacturing.work_orders w WHERE w.work_center_id = @work_center_id::bigint)
-      + (SELECT count(*) FROM manufacturing.time_logs l WHERE l.work_center_id = @work_center_id::bigint))::int;
+      + (SELECT count(*) FROM manufacturing.time_logs l WHERE l.work_center_id = @work_center_id::bigint)
+      + (SELECT count(*) FROM manufacturing.work_center_group_members m WHERE m.work_center_id = @work_center_id::bigint))::int;
 
 -- name: CountActiveBomsAtWorkCenter :one
 -- CountActiveBomsAtWorkCenter is how many active BoMs have an operation at
@@ -77,6 +78,11 @@ SELECT ((SELECT count(*) FROM manufacturing.bom_operations o WHERE o.work_center
 SELECT count(DISTINCT b.id)::int FROM manufacturing.boms b
 JOIN manufacturing.bom_operations o ON o.bom_id = b.id
 WHERE o.work_center_id = @work_center_id AND b.status = 'active';
+
+-- name: CountGroupsOfWorkCenter :one
+-- CountGroupsOfWorkCenter is how many groups have the work center as a
+-- member: while any does, its site does not change (M117).
+SELECT count(*)::int FROM manufacturing.work_center_group_members WHERE work_center_id = @work_center_id;
 
 -- name: Stats :one
 -- Stats is the overview's counts: active work centers, the active ones

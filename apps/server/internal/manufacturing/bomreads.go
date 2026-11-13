@@ -30,6 +30,7 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 		ops    []store.OperationsOfBomsRow
 		lines  []store.ManufacturingBomLine
 		checks []store.ManufacturingBomOperationCheck
+		edges  []store.ManufacturingBomOperationDependency
 	)
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -46,6 +47,9 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 			opIDs = append(opIDs, o.ID)
 		}
 		if checks, err = q.ChecksOfOperations(ctx, opIDs); err != nil {
+			return err
+		}
+		if edges, err = q.DependenciesOfBoms(ctx, []int64{id}); err != nil {
 			return err
 		}
 		lines, err = q.LinesOfBoms(ctx, []int64{id})
@@ -67,6 +71,10 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 		Operations: make([]gen.ManufacturingBomOperation, 0, len(ops)), Lines: make([]gen.ManufacturingBomLine, 0, len(lines)),
 		CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt,
 	}
+	depends := map[int64][]string{}
+	for _, e := range edges {
+		depends[e.OperationID] = append(depends[e.OperationID], operationKey(e.DependsOnID))
+	}
 	for _, o := range ops {
 		if out.SiteId == nil {
 			site := o.WorkCenterSiteID
@@ -77,11 +85,24 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 			t := text(r, minutePlaces)
 			setup = &t
 		}
+		code, name := o.WorkCenterCode, o.WorkCenterName
+		if o.WorkCenterGroupID != nil && o.GroupCode != nil && o.GroupName != nil {
+			code, name = *o.GroupCode, *o.GroupName
+		}
+		var ahead *string
+		if r := ratOf(o.SendAheadQuantity); r != nil {
+			t := text(r, quantityPlaces)
+			ahead = &t
+		}
+		dependsOn := depends[o.ID]
+		if dependsOn == nil {
+			dependsOn = []string{}
+		}
 		out.Operations = append(out.Operations, gen.ManufacturingBomOperation{
 			Id: o.ID, Key: operationKey(o.ID), Sequence: o.Sequence, Name: o.Name, WorkCenterId: o.WorkCenterID,
-			WorkCenterCode: o.WorkCenterCode, WorkCenterName: o.WorkCenterName, SetupMinutes: setup,
+			WorkCenterGroupId: o.WorkCenterGroupID, WorkCenterCode: code, WorkCenterName: name, SetupMinutes: setup,
 			MinutesPerCycle: numericText(o.MinutesPerCycle, minutePlaces), Instructions: o.Instructions,
-			Checks: checkTemplatesOf(checks, o.ID),
+			Checks: checkTemplatesOf(checks, o.ID), DependsOn: dependsOn, SendAheadQuantity: ahead,
 		})
 	}
 	for _, l := range lines {

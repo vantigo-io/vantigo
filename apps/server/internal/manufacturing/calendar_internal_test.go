@@ -158,8 +158,8 @@ func TestPlanChain_PredecessorAndInProgress(t *testing.T) {
 	cals := map[int64]workCalendar{1: testCalendar(t, weekdays(iv("07:00", "15:00"))), 2: testCalendar(t, weekdays(iv("07:00", "15:00")))}
 	start := at(2026, time.March, 2, 7, 0)
 	booked := map[int64][]span{2: {{at(2026, 3, 2, 9, 0), at(2026, 3, 2, 12, 0)}}}
-	works := []planWork{{id: 10, center: 1, need: 2 * time.Hour}, {id: 11, center: 2, need: 4 * time.Hour}}
-	got, _, ok := planChain(cals, booked, works, start, start)
+	works := []planWork{work(10, 1, 2*time.Hour), work(11, 2, 4*time.Hour, 10)}
+	got, _, ok := planGraph(cals, booked, works, start, start)
 	if !ok {
 		t.Fatal("no capacity")
 	}
@@ -169,12 +169,14 @@ func TestPlanChain_PredecessorAndInProgress(t *testing.T) {
 	// The second may not start before 09:00, and 09:00–12:00 is booked.
 	wantPieces(t, got[1].pieces, span{at(2026, 3, 2, 12, 0), at(2026, 3, 2, 15, 0)}, span{at(2026, 3, 3, 7, 0), at(2026, 3, 3, 8, 0)})
 	if len(booked[2]) != 1 {
-		t.Error("planChain wrote to booked")
+		t.Error("planGraph wrote to booked")
 	}
 
 	now := at(2026, time.March, 2, 10, 0)
 	later := at(2026, time.March, 4, 7, 0)
-	got, _, ok = planChain(cals, nil, []planWork{{id: 10, center: 1, need: time.Hour, fromNow: true}, {id: 11, center: 2, need: time.Hour}}, later, now)
+	running := work(10, 1, time.Hour)
+	running.fromNow = true
+	got, _, ok = planGraph(cals, nil, []planWork{running, work(11, 2, time.Hour, 10)}, later, now)
 	if !ok || !got[0].start.Equal(now) || !got[1].start.Equal(later) {
 		t.Errorf("running work order at %v, next at %v; want now and the requested start", got[0].start.In(oslo), got[1].start.In(oslo))
 	}
@@ -187,11 +189,11 @@ func TestReschedule_MovesOverlappingSuccessors(t *testing.T) {
 	t.Parallel()
 	cals := map[int64]workCalendar{1: testCalendar(t, weekdays(iv("07:00", "15:00")))}
 	now := at(2026, time.March, 2, 6, 0)
-	target := store.ManufacturingWorkOrder{ID: 1, WorkCenterID: 1, ExpectedMinutes: 120, Sequence: 10}
+	target, next := work(1, 1, 2*time.Hour), work(2, 1, time.Hour, 1)
 	nextStart, nextFinish := at(2026, 3, 2, 9, 0), at(2026, 3, 2, 10, 0)
-	next := store.ManufacturingWorkOrder{ID: 2, WorkCenterID: 1, ExpectedMinutes: 60, Sequence: 20, PlannedStart: &nextStart, PlannedFinish: &nextFinish}
-	keep := map[int64][]span{2: {{nextStart, nextFinish}}}
-	got, _, ok := reschedule(cals, nil, target, []store.ManufacturingWorkOrder{next}, keep, nil, at(2026, 3, 2, 13, 0), now)
+	existing := map[int64]placement{2: {id: 2, center: 1, pieces: []span{{nextStart, nextFinish}}, start: nextStart, finish: nextFinish, option: next.options[0]}}
+	works := map[int64]planWork{1: target, 2: next}
+	got, _, ok := reschedule(cals, nil, target, target.options[0], []planWork{next}, existing, works, at(2026, 3, 2, 13, 0), now)
 	if !ok || len(got) != 2 {
 		t.Fatalf("placements %v", got)
 	}
@@ -200,11 +202,19 @@ func TestReschedule_MovesOverlappingSuccessors(t *testing.T) {
 
 	// Dropped early, the later one stays where it is, and the moved one goes
 	// around it.
-	got, _, ok = reschedule(cals, nil, target, []store.ManufacturingWorkOrder{next}, keep, nil, at(2026, 3, 2, 7, 0), now)
+	got, _, ok = reschedule(cals, nil, target, target.options[0], []planWork{next}, existing, works, at(2026, 3, 2, 7, 0), now)
 	if !ok || len(got) != 1 {
 		t.Fatalf("placements %v", got)
 	}
 	wantPieces(t, got[0].pieces, span{at(2026, 3, 2, 7, 0), at(2026, 3, 2, 9, 0)})
+}
+
+// work is a planWork at center needing need there, after preds, with a
+// minute a cycle at full efficiency.
+func work(id, center int64, need time.Duration, preds ...int64) planWork {
+	return planWork{id: id, preds: preds, output: big.NewRat(1, 1), options: []planOption{{
+		center: center, need: need, efficiency: 100, setup: new(big.Rat), perCycle: big.NewRat(1, 1), capacity: 1,
+	}}}
 }
 
 // TestDefaultRequestedStart is M35a's default: the due date less ⌈minutes /

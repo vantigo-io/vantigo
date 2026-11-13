@@ -280,7 +280,7 @@ func nodeOf(n *node, entries map[int32]contracts.VariantEntry, available map[int
 	}
 	for _, o := range n.ops {
 		out.Operations = append(out.Operations, gen.ManufacturingOverviewOperation{
-			OperationId: o.row.ID, Sequence: o.row.Sequence, Name: o.row.Name, WorkCenterId: o.row.WorkCenterID,
+			OperationId: o.row.ID, Sequence: o.row.Sequence, Name: o.row.Name, WorkCenterId: o.row.CenterID,
 			WorkCenterCode: o.row.WorkCenterCode, ExpectedMinutes: o.minutes.Int64(), Cost: amountJSON(costs, o.cost),
 		})
 	}

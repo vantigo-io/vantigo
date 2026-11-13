@@ -83,7 +83,7 @@ func newLotsInstallation(t *testing.T, opts ...modtest.Option) lotsInstallation 
 	okJSON(t, s.c, http.MethodPost, mfgBase+"/work-centers", mfggen.ManufacturingWorkCenterInput{Code: "POT", Name: "Pot", SiteId: s.site}, &center)
 	s.center = center.Id
 	okJSON(t, s.c, http.MethodPost, mfgBase+"/boms", mfggen.ManufacturingBomInput{VariantId: s.jam, OutputQuantity: "1",
-		Operations: []mfggen.ManufacturingBomOperationInput{{Key: "a", Sequence: 10, Name: "Boil", WorkCenterId: center.Id, MinutesPerCycle: "1"}},
+		Operations: []mfggen.ManufacturingBomOperationInput{{Key: "a", Sequence: 10, Name: "Boil", WorkCenterId: &center.Id, MinutesPerCycle: "1"}},
 		Lines:      []mfggen.ManufacturingBomLineInput{{VariantId: s.berry, Quantity: "2"}}}, nil)
 	return s
 }
