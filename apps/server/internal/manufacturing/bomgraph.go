@@ -38,14 +38,24 @@ func tooDeep() error {
 // component's default active BoM, reach product (bom_cycle), or go more than
 // maxLevels BoMs deep (bom_too_deep). The BoM being written is level 1 and
 // is never read: its components are given, and product is where every walk
-// stops. A BoM that is, or becomes, product's default also counts the
+// stops. Its by-products, outputs, stop a walk as product does (manufacturing
+// phase 2 M120): a by-product reached through the components is one of its
+// own components, a cycle. The graph gains an edge from each by-product of a
+// default active BoM to that BoM's components, so a BoM consuming another's
+// by-product walks into the BoM that makes it. A BoM that is, or becomes,
+// product's default also counts the
 // default BoMs above it — those that consume product, through theirs — since
 // an overview of the topmost one explodes through it: their levels and its
 // own together go no more than maxLevels deep.
-func walkBom(ctx context.Context, txq *store.Queries, product int32, components []int32, asDefault bool) error {
+func walkBom(ctx context.Context, txq *store.Queries, product int32, components, outputs []int32, asDefault bool) error {
 	components = dedupe(components)
 	if slices.Contains(components, product) {
 		return &cycleError{path: []int32{product, product}}
+	}
+	for _, o := range outputs {
+		if slices.Contains(components, o) {
+			return &cycleError{path: []int32{product, o, product}}
+		}
 	}
 	// Load the reachable graph a level at a time: each variant's default
 	// active BoM's components, as far as the limit could need.
@@ -61,11 +71,25 @@ func walkBom(ctx context.Context, txq *store.Queries, product int32, components 
 			return err
 		}
 		ids := make([]int64, 0, len(defaults))
-		variantOf := map[int64]int32{}
+		variantsOf := map[int64][]int32{}
 		for _, d := range defaults {
 			ids = append(ids, d.ID)
-			variantOf[d.ID] = d.VariantID
+			variantsOf[d.ID] = append(variantsOf[d.ID], d.VariantID)
 			children[d.VariantID] = []int32{}
+		}
+		// A by-product's edge to the BoM that makes it (M120).
+		making, err := txq.DefaultBomsMakingVariants(ctx, frontier)
+		if err != nil {
+			return err
+		}
+		for _, m := range making {
+			if !slices.Contains(ids, m.BomID) {
+				ids = append(ids, m.BomID)
+			}
+			variantsOf[m.BomID] = append(variantsOf[m.BomID], m.OutputID)
+			if _, ok := children[m.OutputID]; !ok {
+				children[m.OutputID] = []int32{}
+			}
 		}
 		lines, err := txq.LinesOfBoms(ctx, ids)
 		if err != nil {
@@ -73,8 +97,9 @@ func walkBom(ctx context.Context, txq *store.Queries, product int32, components 
 		}
 		var next []int32
 		for _, l := range lines {
-			parent := variantOf[l.BomID]
-			children[parent] = append(children[parent], l.VariantID)
+			for _, parent := range variantsOf[l.BomID] {
+				children[parent] = append(children[parent], l.VariantID)
+			}
 			if !seen[l.VariantID] {
 				seen[l.VariantID] = true
 				next = append(next, l.VariantID)
@@ -83,7 +108,7 @@ func walkBom(ctx context.Context, txq *store.Queries, product int32, components 
 		frontier = next
 	}
 
-	w := walker{product: product, children: children, height: map[int32]int{}, onPath: map[int32]bool{}}
+	w := walker{product: product, outputs: outputs, children: children, height: map[int32]int{}, onPath: map[int32]bool{}}
 	deepest := 0
 	for _, c := range components {
 		h, err := w.visit(c, []int32{product})
@@ -156,6 +181,7 @@ func heightAbove(ctx context.Context, txq *store.Queries, product int32) (int, e
 // current path, so reaching one again is a cycle.
 type walker struct {
 	product  int32
+	outputs  []int32
 	children map[int32][]int32
 	height   map[int32]int
 	onPath   map[int32]bool
@@ -163,7 +189,7 @@ type walker struct {
 
 func (w *walker) visit(v int32, path []int32) (int, error) {
 	path = append(slices.Clone(path), v)
-	if v == w.product || w.onPath[v] {
+	if v == w.product || w.onPath[v] || slices.Contains(w.outputs, v) {
 		return 0, &cycleError{path: path}
 	}
 	if h, ok := w.height[v]; ok {

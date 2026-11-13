@@ -14,6 +14,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/store"
 )
@@ -43,6 +44,49 @@ type storedCost struct {
 	Total       string  `json:"total"`
 	Incomplete  bool    `json:"incomplete"`
 	CostPerUnit *string `json:"costPerUnit,omitempty"`
+	// MainTotal and ByProducts are the split of the total over the main
+	// product and the by-products, fixed at close (manufacturing phase 2
+	// M122); absent for an order with no by-products.
+	MainTotal  *string           `json:"mainTotal,omitempty"`
+	ByProducts []storedByProduct `json:"byProducts,omitempty"`
+}
+
+// storedByProduct is a by-product's part of the actual as fixed at close
+// (M122): its share's amount, its cost per unit, and whether it produced
+// nothing — its share then went to the main product, and amount is the part
+// it would have had.
+type storedByProduct struct {
+	OutputID    int64   `json:"outputId"`
+	VariantID   int32   `json:"variantId"`
+	Share       string  `json:"share"`
+	Amount      string  `json:"amount"`
+	Produced    string  `json:"produced"`
+	CostPerUnit *string `json:"costPerUnit,omitempty"`
+	NotProduced bool    `json:"notProduced,omitempty"`
+}
+
+// splitCost splits a cost total over the by-products and the main product
+// (M122): each by-product carries its share percent of it, exact; one that
+// produced nothing has no cost per unit and its share stays with the main
+// product, which takes what the others do not.
+func splitCost(total *big.Rat, outputs []store.ManufacturingOrderOutput) (*big.Rat, []storedByProduct) {
+	main := new(big.Rat).Set(total)
+	parts := make([]storedByProduct, 0, len(outputs))
+	for _, x := range outputs {
+		part := new(big.Rat).Mul(total, ratOrZero(x.CostShare))
+		part.Quo(part, hundred)
+		produced := ratOrZero(x.Produced)
+		p := storedByProduct{OutputID: x.ID, VariantID: x.VariantID, Share: numericText(x.CostShare, percentPlaces), Amount: amountText(part),
+			Produced: text(produced, quantityPlaces)}
+		if produced.Sign() <= 0 {
+			p.NotProduced = true
+		} else {
+			main.Sub(main, part)
+			p.CostPerUnit = costPerUnitOf(part, produced)
+		}
+		parts = append(parts, p)
+	}
+	return main, parts
 }
 
 func storedOf(c costParts) storedCost {
@@ -230,8 +274,8 @@ func downtimeOf(stopped map[string]time.Duration) []gen.ManufacturingDowntimeMin
 // estimate; the stored actual once done, else the running actual to now;
 // the deviation when both are there; the cost per unit at close.
 func orderCostOf(o store.ManufacturingOrder, components []store.ManufacturingOrderComponent, wos []store.ManufacturingWorkOrder,
-	logs []store.ManufacturingTimeLog, now time.Time) *gen.ManufacturingOrderCost {
-	out := &gen.ManufacturingOrderCost{Downtime: []gen.ManufacturingDowntimeMinutes{}}
+	logs []store.ManufacturingTimeLog, now time.Time, outputs []store.ManufacturingOrderOutput, entries map[int32]contracts.VariantEntry) *gen.ManufacturingOrderCost {
+	out := &gen.ManufacturingOrderCost{Downtime: []gen.ManufacturingDowntimeMinutes{}, ByProducts: []gen.ManufacturingByproductCost{}}
 	if o.Status == orderDraft {
 		return out
 	}
@@ -255,6 +299,40 @@ func orderCostOf(o store.ManufacturingOrder, components []store.ManufacturingOrd
 	if estimate != nil {
 		d := deviationOf(*actual, *estimate)
 		out.Deviation = &d
+	}
+	// The split over the by-products (M122): fixed at close, else the
+	// running actual split as close would.
+	main, parts := splitCost(mustRat(actual.Total), outputs)
+	mainText := amountText(main)
+	if out.ActualFixed && actual.MainTotal != nil {
+		mainText, parts = *actual.MainTotal, actual.ByProducts
+	}
+	out.MainActual = &mainText
+	byOutput := map[int64]storedByProduct{}
+	for _, part := range parts {
+		byOutput[part.OutputID] = part
+	}
+	for _, x := range outputs {
+		part := byOutput[x.ID]
+		c := gen.ManufacturingByproductCost{OutputId: x.ID, Variant: refOf(entries, x.VariantID, true), CostShare: numericText(x.CostShare, percentPlaces),
+			Produced: numericText(x.Produced, quantityPlaces), NotProduced: ratOrZero(x.Produced).Sign() <= 0}
+		if c.Variant.Sku == "" {
+			c.Variant.Sku, c.Variant.ProductName, c.Variant.Unit = x.Sku, x.ProductName, x.Unit
+		}
+		if part.Amount != "" {
+			amount := part.Amount
+			c.Actual = &amount
+			c.NotProduced = part.NotProduced
+		}
+		if out.ActualFixed {
+			c.CostPerUnit = part.CostPerUnit
+		}
+		if estimate != nil {
+			e := new(big.Rat).Mul(mustRat(estimate.Total), ratOrZero(x.CostShare))
+			t := amountText(e.Quo(e, hundred))
+			c.Estimate = &t
+		}
+		out.ByProducts = append(out.ByProducts, c)
 	}
 	return out
 }

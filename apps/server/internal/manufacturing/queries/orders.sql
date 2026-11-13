@@ -19,12 +19,12 @@ INSERT INTO manufacturing.orders (
     number, suffix, variant_id, bom_id, quantity, site_id, component_location_id, output_location_id,
     due_date, planned_start, planned_finish, requested_start, priority, responsible_user_id, note,
     origin_kind, origin_order_id, origin_line_id, origin_reference, origin_cancelled, parent_order_id, backorder_of_id,
-    created_at, updated_at)
+    split_from_id, created_at, updated_at)
 VALUES (
     @number, @suffix, @variant_id, @bom_id, @quantity, @site_id, @component_location_id, @output_location_id,
     @due_date, @planned_start, @planned_finish, @requested_start, @priority, @responsible_user_id, @note,
     @origin_kind, @origin_order_id, @origin_line_id, @origin_reference, @origin_cancelled, @parent_order_id, @backorder_of_id,
-    @now, @now)
+    sqlc.narg(split_from_id), @now, @now)
 RETURNING *;
 
 -- name: GetOrder :one
@@ -204,9 +204,13 @@ VALUES (@order_id, @kind, @payload, @actor_user_id, @actor_display, @now);
 SELECT * FROM manufacturing.order_events WHERE order_id = @order_id ORDER BY id;
 
 -- name: OrderLinks :many
--- OrderLinks is the orders made from id: its backorders (backorder_of_id)
--- and its children (parent_order_id), by id.
-SELECT * FROM manufacturing.orders WHERE backorder_of_id = @id OR parent_order_id = @id ORDER BY id;
+-- OrderLinks is the orders made from id: its backorders (backorder_of_id),
+-- its children (parent_order_id), the parts split from it (split_from_id,
+-- manufacturing phase 2 M124) and the orders merged into it (merged_into_id,
+-- M125), by id.
+SELECT * FROM manufacturing.orders
+WHERE backorder_of_id = @id OR parent_order_id = @id OR split_from_id = @id OR merged_into_id = @id
+ORDER BY id;
 
 -- name: ListOrders :many
 -- ListOrders is the list (M24, M21a), one page, with the filtered total and
@@ -264,4 +268,5 @@ SELECT (SELECT count(*) FROM manufacturing.orders
 SELECT count(*)::int FROM manufacturing.orders o
 WHERE o.status IN ('draft', 'confirmed', 'in_progress')
   AND (o.variant_id = @variant_id
-       OR EXISTS (SELECT 1 FROM manufacturing.order_components c WHERE c.order_id = o.id AND c.variant_id = @variant_id));
+       OR EXISTS (SELECT 1 FROM manufacturing.order_components c WHERE c.order_id = o.id AND c.variant_id = @variant_id)
+       OR EXISTS (SELECT 1 FROM manufacturing.order_outputs x WHERE x.order_id = o.id AND x.variant_id = @variant_id));

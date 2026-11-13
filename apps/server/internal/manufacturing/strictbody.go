@@ -181,6 +181,14 @@ const (
 	groupInputSchema    = "ManufacturingWorkCenterGroupInput"
 	groupUpdateSchema   = "ManufacturingWorkCenterGroupUpdate"
 	quantityInputSchema = "ManufacturingQuantityInput"
+
+	bomOutputInputSchema        = "ManufacturingBomOutputInput"
+	productionOutputInputSchema = "ManufacturingProductionOutputInput"
+	unbuildInputSchema          = "ManufacturingUnbuildInput"
+	unbuildComponentInputSchema = "ManufacturingUnbuildComponentInput"
+	splitInputSchema            = "ManufacturingOrderSplitInput"
+	mergeInputSchema            = "ManufacturingOrderMergeInput"
+	mergeItemSchema             = "ManufacturingOrderMergeItem"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -194,6 +202,8 @@ var closedSchemas = []string{
 	blockInputSchema, correctionSchema, timeLogInputSchema,
 	checkTemplateInputSchema, checkResultInputSchema, deviationInputSchema, deviationCloseInputSchema,
 	groupInputSchema, groupUpdateSchema, quantityInputSchema,
+	bomOutputInputSchema, productionOutputInputSchema, unbuildInputSchema, unbuildComponentInputSchema, splitInputSchema, mergeInputSchema,
+	mergeItemSchema,
 }
 
 // weekPatternDays is a week pattern's arrays, one per weekday, each of
@@ -207,10 +217,12 @@ var weekPatternDays = map[string]string{
 // closed schemas of their own: a key the contract does not name inside an
 // operation or a line is refused on operations[i].<key> or lines[i].<key>.
 var closedItems = map[string]map[string]string{
-	bomInputSchema:            {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
-	bomUpdateSchema:           {"operations": bomOperationInputSchema, "lines": bomLineInputSchema},
+	bomInputSchema:            {"operations": bomOperationInputSchema, "lines": bomLineInputSchema, "outputs": bomOutputInputSchema},
+	bomUpdateSchema:           {"operations": bomOperationInputSchema, "lines": bomLineInputSchema, "outputs": bomOutputInputSchema},
 	weekPatternSchema:         weekPatternDays,
-	productionInputSchema:     {"lines": productionLineInputSchema},
+	productionInputSchema:     {"lines": productionLineInputSchema, "outputs": productionOutputInputSchema},
+	unbuildInputSchema:        {"components": unbuildComponentInputSchema},
+	mergeInputSchema:          {"orders": mergeItemSchema},
 	productionLineInputSchema: {"lots": productionLotInputSchema},
 	scrapInputSchema:          {"lines": scrapLineInputSchema},
 }
@@ -224,6 +236,10 @@ var closedObjects = map[string]map[string]string{
 	workCenterUpdateSchema: {"pattern": weekPatternSchema},
 	finishInputSchema:      {"production": productionInputSchema},
 	productionInputSchema:  {"outputLot": outputLotInputSchema, "outputSerials": outputSerialsInputSchema},
+	// A by-product's lot and a free-standing unbuild's new lot (manufacturing
+	// phase 2 M121, M123).
+	productionOutputInputSchema: {"lot": outputLotInputSchema},
+	unbuildComponentInputSchema: {"lot": outputLotInputSchema},
 }
 
 // checkClosedSchemas fails the mount unless the contract has every schema of

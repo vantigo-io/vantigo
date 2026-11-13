@@ -7,6 +7,7 @@ import (
 
 	invgen "github.com/vantigo-io/vantigo/server/internal/inventory/gen"
 	mfggen "github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // The trace on the real modules (manufacturing phase 2, layer T): berries
@@ -74,5 +75,86 @@ func TestManufacturingLots_TraceAndBlock(t *testing.T) {
 	}
 	if res := s.newDelivery(sale2.Id); res.Status != http.StatusConflict || problemCode(res) != "nothing_to_deliver" {
 		t.Errorf("a delivery of the blocked jam = %d %s, want 409 nothing_to_deliver", res.Status, res.Body)
+	}
+}
+
+// TestManufacturingLots_UnbuildIsAReverseEdge is manufacturing phase 2 M123
+// and M88 on the real modules: jam made from berries, its order closed, the
+// jam's lot blocked by a recall, then taken apart by an unbuild. The unbuild
+// is posted as a movement of kind unbuild; the berries it restored go back
+// into their own lot under a quarantine hold from the unbuild; the jam's usage
+// trace ends at the unbuild and never walks into the berries, the berries'
+// origin is still their receipt, and the berries' usage does not reach back
+// through the unbuild.
+func TestManufacturingLots_UnbuildIsAReverseEdge(t *testing.T) {
+	t.Parallel()
+	s := newLotsInstallation(t)
+	s.receiveLot(t, s.berry, "BER-U", 10)
+	o := s.jamOrder(t, "3")
+	res := s.produce(o, mfggen.ManufacturingProductionInput{ClientRequestId: "jam-u", Quantity: "3",
+		Lines: []mfggen.ManufacturingProductionLineInput{{ComponentId: *o.Components[0].Id, Consumed: strPtr("6")}}})
+	if res.Status != http.StatusCreated {
+		t.Fatalf("the production = %d %s", res.Status, res.Body)
+	}
+	var p mfggen.ManufacturingProduction
+	res.JSON(&p)
+	jamLot, berryLot := p.OutputLots[0].LotId, p.Lines[0].Lots[0].LotId
+	var now mfggen.ManufacturingOrder
+	okJSON(t, s.c, http.MethodGet, fmt.Sprintf("%s/orders/%d", mfgBase, o.Id), nil, &now)
+	var closed mfggen.ManufacturingCloseResult
+	okJSON(t, s.c, http.MethodPost, fmt.Sprintf("%s/orders/%d/close", mfgBase, o.Id), mfggen.ManufacturingCloseInput{Revision: now.Revision}, &closed)
+	okJSON(t, s.c, http.MethodPost, fmt.Sprintf("/api/v1/inventory/lots/%d/holds", jamLot), map[string]any{"kind": "block", "cause": "recall"}, nil)
+
+	var u mfggen.ManufacturingUnbuild
+	okJSON(t, s.c, http.MethodPost, mfgBase+"/unbuilds", mfggen.ManufacturingUnbuildInput{ClientRequestId: "ub-1", OrderId: &o.Id, Quantity: "1", LotId: &jamLot}, &u)
+	if u.MovementId == nil || len(u.Lines) != 1 || u.Lines[0].LotId == nil || *u.Lines[0].LotId != berryLot || u.Lines[0].Quantity != "2" {
+		t.Fatalf("unbuild = %+v", u)
+	}
+	if kind := modtest.One[string](t, s.h, `SELECT kind FROM inventory.movements WHERE id = $1`, *u.MovementId); kind != "unbuild" {
+		t.Errorf("the movement's kind = %s", kind)
+	}
+	if got := modtest.One[string](t, s.h, `SELECT status FROM inventory.lots WHERE id = $1`, berryLot); got != "quarantine" {
+		t.Errorf("the restored berries are %s, want quarantine", got)
+	}
+	if got := modtest.One[string](t, s.h, `SELECT COALESCE(sum(on_hand), 0)::text FROM inventory.balances WHERE lot_id = $1`, berryLot); got != "6.000" {
+		t.Errorf("berries in their lot after the unbuild = %s", got)
+	}
+
+	trace := func(lot int64, direction string) invgen.InventoryTrace {
+		t.Helper()
+		var tr invgen.InventoryTrace
+		okJSON(t, s.c, http.MethodGet, fmt.Sprintf("/api/v1/inventory/trace?lotId=%d&direction=%s", lot, direction), nil, &tr)
+		return tr
+	}
+	usage := trace(jamLot, "usage")
+	for _, n := range usage.Nodes {
+		if n.Lot != nil && n.Lot.Id == berryLot {
+			t.Errorf("the jam's usage walks into the berries: %+v", usage.Nodes)
+		}
+	}
+	unbuilds := 0
+	for _, n := range usage.Nodes {
+		if n.Kind == invgen.TraceUnbuild {
+			unbuilds++
+		}
+	}
+	if unbuilds != 1 {
+		t.Errorf("the jam's usage ends at %d unbuilds: %+v", unbuilds, usage.Nodes)
+	}
+	origin := trace(berryLot, "origin")
+	for _, n := range origin.Nodes {
+		if n.Lot != nil && n.Lot.Id == jamLot {
+			t.Errorf("the berries' origin walks into the jam: %+v", origin.Nodes)
+		}
+	}
+	berryUsage := trace(berryLot, "usage")
+	seen := 0
+	for _, n := range berryUsage.Nodes {
+		if n.Lot != nil && n.Lot.Id == jamLot {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Errorf("the berries' usage shows the jam %d times, want once (the production, not the unbuild back): %+v", seen, berryUsage.Nodes)
 	}
 }

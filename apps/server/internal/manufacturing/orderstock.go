@@ -242,7 +242,45 @@ func snapshot(ctx context.Context, txq *store.Queries, o store.ManufacturingOrde
 			return 0, err
 		}
 	}
+	if err := snapshotOutputs(ctx, txq, o, bom, locked); err != nil {
+		return 0, err
+	}
 	return len(lines), nil
+}
+
+// expectedOutput is a by-product's expected quantity on an order (manufacturing
+// phase 2 M121): quantity × the order's quantity ÷ the BoM's output quantity,
+// half-up to three decimals.
+func expectedOutput(quantity, orderQuantity, outputQuantity *big.Rat) *big.Rat {
+	if outputQuantity.Sign() <= 0 {
+		return new(big.Rat)
+	}
+	v := new(big.Rat).Mul(quantity, orderQuantity)
+	return roundPlaces(v.Quo(v, outputQuantity), quantityPlaces)
+}
+
+// snapshotOutputs copies the BoM's by-products onto the order at confirm
+// (M121), each with its expected quantity, from what LockVariants answered; a
+// by-product whose variant was not locked is errRelock.
+func snapshotOutputs(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder, bom store.ManufacturingBom, locked map[int32]contracts.VariantEntry) error {
+	outputs, err := txq.OutputsOfBoms(ctx, []int64{bom.ID})
+	if err != nil {
+		return err
+	}
+	for _, x := range outputs {
+		e, ok := locked[x.VariantID]
+		if !ok {
+			return errRelock
+		}
+		if _, err := txq.InsertOrderOutput(ctx, store.InsertOrderOutputParams{
+			OrderID: o.ID, VariantID: x.VariantID, Sku: e.SKU, ProductName: e.ProductName, Unit: e.Unit, Quantity: x.Quantity,
+			CostShare: x.CostShare, Expected: numeric(expectedOutput(ratOrZero(x.Quantity), ratOrZero(o.Quantity), ratOrZero(bom.OutputQuantity)), quantityPlaces),
+			SortOrder: x.SortOrder,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // snapshotCost is the catalog's standard cost as a column's value; none is
@@ -809,9 +847,20 @@ func (s *server) fixActual(ctx context.Context, txq *store.Queries, o store.Manu
 	if err != nil {
 		return err
 	}
+	outputs, err := txq.OutputsOfOrders(ctx, []int64{o.ID})
+	if err != nil {
+		return err
+	}
 	actual, _ := actualOf(components, wos, logs, at)
 	stored := storedOf(actual)
-	stored.CostPerUnit = costPerUnitOf(actual.total(), ratOrZero(o.Produced))
+	// The main product carries what its by-products do not (manufacturing
+	// phase 2 M122); the exact total is split, each part rounded once.
+	main, parts := splitCost(actual.total(), outputs)
+	stored.CostPerUnit = costPerUnitOf(main, ratOrZero(o.Produced))
+	if len(outputs) > 0 {
+		mainText := amountText(main)
+		stored.MainTotal, stored.ByProducts = &mainText, parts
+	}
 	return txq.SetOrderActual(ctx, store.SetOrderActualParams{ID: o.ID, Actual: marshalCost(stored)})
 }
 

@@ -34,7 +34,8 @@ const countActiveBomsNamingVariant = `-- name: CountActiveBomsNamingVariant :one
 SELECT count(*)::int FROM manufacturing.boms b
 WHERE b.status = 'active'
   AND (b.variant_id = $1
-       OR EXISTS (SELECT 1 FROM manufacturing.bom_lines l WHERE l.bom_id = b.id AND l.variant_id = $1))
+       OR EXISTS (SELECT 1 FROM manufacturing.bom_lines l WHERE l.bom_id = b.id AND l.variant_id = $1)
+       OR EXISTS (SELECT 1 FROM manufacturing.bom_outputs x WHERE x.bom_id = b.id AND x.variant_id = $1))
 `
 
 // CountActiveBomsNamingVariant is how many active BoMs name the variant as

@@ -31,6 +31,7 @@ import (
 // A BoM's limits (M10–M12).
 const (
 	maxLines           = 200
+	maxOutputs         = 20
 	maxOperations      = 50
 	maxBomCode         = 32
 	maxBomNote         = 2000
@@ -53,6 +54,7 @@ type bomFields struct {
 	LotPattern     *string
 	Operations     []gen.ManufacturingBomOperationInput
 	Lines          []gen.ManufacturingBomLineInput
+	Outputs        *[]gen.ManufacturingBomOutputInput
 }
 
 // bomValues is a BoM's input judged: what is stored.
@@ -66,6 +68,15 @@ type bomValues struct {
 	ops         []opValues
 	deps        [][]string // each operation's predecessors, by key, in ops' order (M112)
 	lines       []lineValues
+	outputs     []outputValues // the by-products (manufacturing phase 2 M120)
+}
+
+// outputValues is a by-product as stored (M120).
+type outputValues struct {
+	variantID int32
+	quantity  *big.Rat
+	share     *big.Rat
+	sortOrder int32
 }
 
 type opValues struct {
@@ -270,7 +281,89 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 		}
 		v.lines = append(v.lines, l)
 	}
+	v.outputs = judgeOutputs(&j, in.Outputs)
 	return v, j
+}
+
+// judgeOutputs is the by-products' shape (M120): at most 20, each variant
+// once, a quantity more than 0 and a share of 0–100 with at most two
+// decimals, the shares summing to at most 100 (cost_share_over).
+func judgeOutputs(j *judgement, in *[]gen.ManufacturingBomOutputInput) []outputValues {
+	if in == nil {
+		return nil
+	}
+	if len(*in) > maxOutputs {
+		j.f.add("outputs", "At most 20 by-products")
+		return nil
+	}
+	out := make([]outputValues, 0, len(*in))
+	seen := map[int32]bool{}
+	sum := new(big.Rat)
+	for i, o := range *in {
+		at := fmt.Sprintf("outputs[%d].", i)
+		v := outputValues{variantID: o.VariantId, share: new(big.Rat), sortOrder: int32(i)}
+		if seen[o.VariantId] {
+			j.f.add(at+"variantId", "Two by-products name this variant")
+		}
+		seen[o.VariantId] = true
+		q, msg := parsePositive(o.Quantity, quantityPlaces, maxQuantity)
+		j.f.addCoded(at+"quantity", codeQuantityInvalid, msg)
+		v.quantity = q
+		if o.CostShare != nil {
+			share, msg := parseDecimal(*o.CostShare, percentPlaces, hundred)
+			j.f.add(at+"costShare", msg)
+			if share != nil {
+				v.share = share
+			}
+		}
+		sum.Add(sum, v.share)
+		if o.SortOrder != nil {
+			v.sortOrder = *o.SortOrder
+		}
+		out = append(out, v)
+	}
+	if sum.Cmp(hundred) > 0 {
+		j.f.addCoded("outputs", codeCostShareOver, fmt.Sprintf("The by-products' shares sum to %s %%; at most 100", text(sum, percentPlaces)))
+	}
+	return out
+}
+
+// outputVariants is the by-products' variants, in their order.
+func outputVariants(outputs []outputValues) []int32 {
+	ids := make([]int32, 0, len(outputs))
+	for _, o := range outputs {
+		ids = append(ids, o.variantID)
+	}
+	return ids
+}
+
+// storedOutputs is stored by-products' variants, in their order.
+func storedOutputs(outputs []store.ManufacturingBomOutput) []int32 {
+	ids := make([]int32, 0, len(outputs))
+	for _, o := range outputs {
+		ids = append(ids, o.VariantID)
+	}
+	return ids
+}
+
+// judgeOutputGoods judges each by-product from what LockVariants answered
+// (M120): absent is variant_not_found, not goods variant_not_goods, the BoM's
+// own variant output_is_product, one of its components output_is_component.
+func judgeOutputGoods(j *judgement, product int32, components, outputs []int32, locked map[int32]contracts.VariantEntry) {
+	for i, id := range outputs {
+		field := fmt.Sprintf("outputs[%d].variantId", i)
+		v, ok := locked[id]
+		switch {
+		case !ok:
+			j.f.addCoded(field, codeVariantNotFound, "No such variant in the catalog")
+		case v.ProductType != goodsType:
+			j.f.addCoded(field, codeVariantNotGoods, fmt.Sprintf("%s is not goods; only goods are made", v.SKU))
+		case id == product:
+			j.f.addCoded(field, codeOutputIsProduct, "The BoM's own product is not one of its by-products")
+		case slices.Contains(components, id):
+			j.f.addCoded(field, codeOutputIsComponent, fmt.Sprintf("%s is a component of this BoM; a by-product is never consumed by the BoM that makes it", v.SKU))
+		}
+	}
 }
 
 // lockedVariants is the product and the components a write locks (M10a).
@@ -490,6 +583,17 @@ func writeStructure(ctx context.Context, txq *store.Queries, bomID int64, v bomV
 			}
 		}
 	}
+	if err := txq.DeleteBomOutputs(ctx, bomID); err != nil {
+		return err
+	}
+	for _, o := range v.outputs {
+		if err := txq.InsertBomOutput(ctx, store.InsertBomOutputParams{
+			BomID: bomID, VariantID: o.variantID, Quantity: numeric(o.quantity, quantityPlaces), CostShare: numeric(o.share, percentPlaces),
+			SortOrder: o.sortOrder,
+		}); err != nil {
+			return err
+		}
+	}
 	for _, l := range v.lines {
 		var op *int64
 		if l.opKey != nil {
@@ -550,20 +654,22 @@ func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManuf
 	in := req.Body
 	v, j := s.judgeBom(ctx, bomFields{
 		Code: in.Code, OutputQuantity: in.OutputQuantity, MakeToOrder: in.MakeToOrder, LeadTimeDays: in.LeadTimeDays,
-		Note: in.Note, LotPattern: in.LotPattern, Operations: in.Operations, Lines: in.Lines,
+		Note: in.Note, LotPattern: in.LotPattern, Operations: in.Operations, Lines: in.Lines, Outputs: in.Outputs,
 	}, bomInputSchema)
 	if j.f.failed() {
 		return answer(j.err(), createBomAnswers())
 	}
 	components := componentsOf(v.lines)
+	outputs := outputVariants(v.outputs)
 	var id int64
 	err := s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		return mapBomUnique(func() error {
-			locked, err := s.lockVariants(ctx, tx, lockedVariants(in.VariantId, components))
+			locked, err := s.lockVariants(ctx, tx, lockedVariants(in.VariantId, append(slices.Clone(components), outputs...)))
 			if err != nil {
 				return err
 			}
 			judgeGoods(&j, in.VariantId, components, locked)
+			judgeOutputGoods(&j, in.VariantId, components, outputs, locked)
 			pattern := defaultLotPattern
 			if v.lotPattern != nil {
 				pattern = *v.lotPattern
@@ -586,7 +692,7 @@ func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManuf
 				return err
 			}
 			isDefault := !hasDefault || (in.IsDefault != nil && *in.IsDefault)
-			if err := walkBom(ctx, txq, in.VariantId, components, isDefault); err != nil {
+			if err := walkBom(ctx, txq, in.VariantId, components, outputs, isDefault); err != nil {
 				return err
 			}
 			now := s.deps.Clock()
@@ -647,15 +753,16 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 	}
 	v, j := s.judgeBom(ctx, bomFields{
 		Code: in.Code, OutputQuantity: in.OutputQuantity, MakeToOrder: in.MakeToOrder, LeadTimeDays: in.LeadTimeDays,
-		Note: in.Note, LotPattern: in.LotPattern, Operations: in.Operations, Lines: in.Lines,
+		Note: in.Note, LotPattern: in.LotPattern, Operations: in.Operations, Lines: in.Lines, Outputs: in.Outputs,
 	}, bomUpdateSchema)
 	if j.f.failed() {
 		return answer(j.err(), updateBomAnswers())
 	}
 	components := componentsOf(v.lines)
+	outputs := outputVariants(v.outputs)
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		return mapBomUnique(func() error {
-			locked, err := s.lockVariants(ctx, tx, lockedVariants(pre.VariantID, components))
+			locked, err := s.lockVariants(ctx, tx, lockedVariants(pre.VariantID, append(slices.Clone(components), outputs...)))
 			if err != nil {
 				return err
 			}
@@ -670,6 +777,7 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 				return notActive()
 			}
 			judgeGoods(&j, b.VariantID, components, locked)
+			judgeOutputGoods(&j, b.VariantID, components, outputs, locked)
 			pattern := b.LotPattern
 			if v.lotPattern != nil {
 				pattern = *v.lotPattern
@@ -692,7 +800,7 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 			if err := judgeCode(ctx, txq, v.code, b.ID); err != nil {
 				return err
 			}
-			if err := walkBom(ctx, txq, b.VariantID, components, b.IsDefault); err != nil {
+			if err := walkBom(ctx, txq, b.VariantID, components, outputs, b.IsDefault); err != nil {
 				return err
 			}
 			if _, err := txq.UpdateBom(ctx, store.UpdateBomParams{
@@ -719,6 +827,15 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 // lines' variants.
 type lifecycle func(ctx context.Context, txq *store.Queries, b store.ManufacturingBom, components []int32, locked map[int32]contracts.VariantEntry) error
 
+// bomOutputsOf is the BoM's stored by-products' variants.
+func bomOutputsOf(ctx context.Context, q *store.Queries, id int64) ([]int32, error) {
+	rows, err := q.OutputsOfBoms(ctx, []int64{id})
+	if err != nil {
+		return nil, err
+	}
+	return storedOutputs(rows), nil
+}
+
 // runLifecycle runs a lifecycle write in the structural order (M10a, M14a):
 // the product and its stored components locked through LockVariants, the
 // graph lock, the BoM's row under its revision, then do.
@@ -737,9 +854,13 @@ func (s *server) runLifecycle(ctx context.Context, id int64, revision int32, do 
 	if err != nil {
 		return err
 	}
+	preOutputs, err := bomOutputsOf(ctx, q, id)
+	if err != nil {
+		return err
+	}
 	err = s.withLockedTx(ctx, func(ctx context.Context, tx pgx.Tx, txq *store.Queries) error {
 		return mapBomUnique(func() error {
-			locked, err := s.lockVariants(ctx, tx, lockedVariants(pre.VariantID, storedComponents(preLines)))
+			locked, err := s.lockVariants(ctx, tx, lockedVariants(pre.VariantID, append(storedComponents(preLines), preOutputs...)))
 			if err != nil {
 				return err
 			}
@@ -819,7 +940,11 @@ func promoteOldest(ctx context.Context, txq *store.Queries, archived store.Manuf
 	if err != nil {
 		return err
 	}
-	if err := walkBom(ctx, txq, next.VariantID, storedComponents(lines), true); err != nil {
+	outputs, err := bomOutputsOf(ctx, txq, next.ID)
+	if err != nil {
+		return err
+	}
+	if err := walkBom(ctx, txq, next.VariantID, storedComponents(lines), outputs, true); err != nil {
 		var cycle *cycleError
 		var refused *refusal
 		if errors.As(err, &cycle) || errors.As(err, &refused) {
@@ -875,7 +1000,11 @@ func (s *server) ReactivateManufacturingBom(ctx context.Context, req gen.Reactiv
 		if err != nil {
 			return err
 		}
-		if err := walkBom(ctx, txq, b.VariantID, components, !hasDefault); err != nil {
+		outputs, err := bomOutputsOf(ctx, txq, b.ID)
+		if err != nil {
+			return err
+		}
+		if err := walkBom(ctx, txq, b.VariantID, components, outputs, !hasDefault); err != nil {
 			return err
 		}
 		_, err = txq.SetBomStatus(ctx, store.SetBomStatusParams{ID: b.ID, Status: statusActive, IsDefault: !hasDefault, Now: s.deps.Clock()})
@@ -919,14 +1048,18 @@ func (s *server) MakeDefaultManufacturingBom(ctx context.Context, req gen.MakeDe
 		if err := judgeStoredGoods(b, components, locked); err != nil {
 			return err
 		}
-		if err := walkBom(ctx, txq, b.VariantID, components, true); err != nil {
+		outputs, err := bomOutputsOf(ctx, txq, b.ID)
+		if err != nil {
+			return err
+		}
+		if err := walkBom(ctx, txq, b.VariantID, components, outputs, true); err != nil {
 			return err
 		}
 		now := s.deps.Clock()
 		if _, err := txq.UnsetVariantDefault(ctx, store.UnsetVariantDefaultParams{VariantID: b.VariantID, ExceptID: b.ID, Now: now}); err != nil {
 			return err
 		}
-		_, err := txq.SetBomDefault(ctx, store.SetBomDefaultParams{ID: b.ID, Now: now})
+		_, err = txq.SetBomDefault(ctx, store.SetBomDefaultParams{ID: b.ID, Now: now})
 		return err
 	})
 	if err != nil {
