@@ -1688,12 +1688,15 @@ type ManufacturingOrderLink struct {
 	VariantId int32 `json:"variantId"`
 }
 
-// ManufacturingOrderLots The lots an order's productions made and consumed (manufacturing phase 2 M83), for the order page's Lots tab.
+// ManufacturingOrderLots The lots an order's productions made and consumed (manufacturing phase 2 M83), for the order page's Lots tab, with how its product is tracked as the catalog has it now (tracking), for the unbuild dialog's choice of lot (M123).
 type ManufacturingOrderLots struct {
 	// ByProducts The lots the productions put by-products in (M121).
 	ByProducts []ManufacturingProductionByproduct `json:"byProducts"`
 	Components []ManufacturingOrderComponentLots  `json:"components"`
 	Outputs    []ManufacturingOrderOutputLot      `json:"outputs"`
+
+	// Tracking How a variant's stock is tracked (manufacturing phase 2 M49).
+	Tracking ManufacturingTracking `json:"tracking"`
 }
 
 // ManufacturingOrderMergeInput A merge (manufacturing phase 2 M125): 2–20 orders, each with the revision the client read.
@@ -1973,7 +1976,7 @@ type ManufacturingPlanAllResult struct {
 // ManufacturingPriority An order's priority (M17).
 type ManufacturingPriority string
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_order (400: dependsOn names an operation that does not come before it by sequence, itself included, M112), operation_unjoined (400: an operation other than the last by sequence that no operation depends on, at its own dependsOn, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119), work_order_is_output (409: Register quantity on the output work order, M116), quantity_over_order (400: Register quantity past the order's quantity, M116), work_center_group_empty (409: a confirm of an order whose operation targets a group with no active work center, M118), output_is_product (400: a by-product that is the BoM's own variant, M120), output_is_component (400: a by-product that is one of the BoM's components, M120), cost_share_over (400: by-products' shares summing to more than 100, M120), unbuild_too_much (400: an unbuild of more than the order, or the lot, has left to take apart, M123), split_sum (400: a split's quantities that do not sum to the order's, M124), merge_mismatch (400: a merge of orders of another variant, BoM, site, state or origin, M125), order_has_work (409: a split or a merge of an order with a production or a time log, M124).
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_order (400: dependsOn names an operation that does not come before it by sequence, itself included, M112), operation_unjoined (400: an operation other than the last by sequence that no operation depends on, at its own dependsOn, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119), work_order_is_output (409: Register quantity on the output work order, M116), quantity_over_order (400: Register quantity past the order's quantity, M116), work_center_group_empty (409: a confirm of an order whose operation targets a group with no active work center, M118), output_is_product (400: a by-product that is the BoM's own variant, M120), output_is_component (400: a by-product that is one of the BoM's components, M120), cost_share_over (400: by-products' shares summing to more than 100, M120), unbuild_too_much (400: an unbuild of more than the order, or the lot, has left to take apart, M123), split_sum (400: a split's quantities that do not sum to the order's, M124), merge_mismatch (400: a merge of orders of another variant, BoM, site, state or origin, M125), order_has_work (409: a split or a merge of an order with a production, a time log or a registered quantity, M124), order_has_open_parts (409: a cancel of an order split into parts that are still open, M124), unbuild_has_byproducts (409: an unbuild from an order whose productions made by-products, M123), unbuild_not_quarantined (409: a release of an unbuild that quarantined nothing, M123).
 type ManufacturingProblem struct {
 	// Checks checks_incomplete only: every check with no result that stops it (M98).
 	Checks *[]ManufacturingMissingCheck `json:"checks,omitempty"`
@@ -2011,6 +2014,9 @@ type ManufacturingProblemLine struct {
 
 	// LotId The lot the line failed at, for a refusal of a production's lot (manufacturing phase 2 M82).
 	LotId *int64 `json:"lotId,omitempty"`
+
+	// OutputId An order's by-product, for a refusal of a production's by-product line (manufacturing phase 2 M121).
+	OutputId *int64 `json:"outputId,omitempty"`
 }
 
 // ManufacturingProblemPathStep One variant of a cycle's path.
@@ -2953,8 +2959,15 @@ type ManufacturingUnbuild struct {
 	PostedByDisplay string              `json:"postedByDisplay"`
 	PostedByUserId  *openapi_types.UUID `json:"postedByUserId"`
 	Quantity        string              `json:"quantity"`
-	SiteId          int64               `json:"siteId"`
-	ToLocationId    int64               `json:"toLocationId"`
+
+	// Quarantined Whether Inventory quarantined the lots it restored, the finished lot taken apart being held (M123). The holds are the unbuild's until released.
+	Quarantined bool `json:"quarantined"`
+
+	// ReleasedAt When a quality manager released the unbuild's quarantine; null while it holds.
+	ReleasedAt        *time.Time `json:"releasedAt"`
+	ReleasedByDisplay *string    `json:"releasedByDisplay"`
+	SiteId            int64      `json:"siteId"`
+	ToLocationId      int64      `json:"toLocationId"`
 
 	// Variant A catalog variant as Manufacturing names it.
 	Variant ManufacturingVariantRef `json:"variant"`
@@ -4005,6 +4018,9 @@ type ServerInterface interface {
 	// GetManufacturingUnbuild Get an unbuild
 	// (GET /api/v1/manufacturing/unbuilds/{id})
 	GetManufacturingUnbuild(w http.ResponseWriter, r *http.Request, id int64)
+	// ReleaseManufacturingUnbuild Release an unbuild's quarantine
+	// (POST /api/v1/manufacturing/unbuilds/{id}/release)
+	ReleaseManufacturingUnbuild(w http.ResponseWriter, r *http.Request, id int64)
 	// SearchManufacturingVariants Search the catalog's goods variants
 	// (GET /api/v1/manufacturing/variants)
 	SearchManufacturingVariants(w http.ResponseWriter, r *http.Request, params SearchManufacturingVariantsParams)
@@ -6124,6 +6140,32 @@ func (siw *ServerInterfaceWrapper) GetManufacturingUnbuild(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// ReleaseManufacturingUnbuild operation middleware
+func (siw *ServerInterfaceWrapper) ReleaseManufacturingUnbuild(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleaseManufacturingUnbuild(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SearchManufacturingVariants operation middleware
 func (siw *ServerInterfaceWrapper) SearchManufacturingVariants(w http.ResponseWriter, r *http.Request) {
 
@@ -7226,6 +7268,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/unbuilds", wrapper.ListManufacturingUnbuilds)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/unbuilds", wrapper.CreateManufacturingUnbuild)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/unbuilds/{id}", wrapper.GetManufacturingUnbuild)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/unbuilds/{id}/release", wrapper.ReleaseManufacturingUnbuild)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/variants", wrapper.SearchManufacturingVariants)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups", wrapper.ListManufacturingWorkCenterGroups)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups", wrapper.CreateManufacturingWorkCenterGroup)
@@ -9616,6 +9659,20 @@ type GetManufacturingOrderLots404Response struct {
 func (response GetManufacturingOrderLots404Response) VisitGetManufacturingOrderLotsResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type GetManufacturingOrderLots503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingOrderLots503ApplicationProblemPlusJSONResponse) VisitGetManufacturingOrderLotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PlanManufacturingOrderRequestObject struct {
@@ -12034,6 +12091,92 @@ func (response GetManufacturingUnbuild404Response) VisitGetManufacturingUnbuildR
 type GetManufacturingUnbuild503ApplicationProblemPlusJSONResponse ManufacturingProblem
 
 func (response GetManufacturingUnbuild503ApplicationProblemPlusJSONResponse) VisitGetManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseManufacturingUnbuildRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ReleaseManufacturingUnbuildResponseObject interface {
+	VisitReleaseManufacturingUnbuildResponse(w http.ResponseWriter) error
+}
+
+type ReleaseManufacturingUnbuild200JSONResponse ManufacturingUnbuild
+
+func (response ReleaseManufacturingUnbuild200JSONResponse) VisitReleaseManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseManufacturingUnbuild401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReleaseManufacturingUnbuild401JSONResponse) VisitReleaseManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseManufacturingUnbuild403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReleaseManufacturingUnbuild403JSONResponse) VisitReleaseManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseManufacturingUnbuild404Response struct {
+}
+
+func (response ReleaseManufacturingUnbuild404Response) VisitReleaseManufacturingUnbuildResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReleaseManufacturingUnbuild409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ReleaseManufacturingUnbuild409ApplicationProblemPlusJSONResponse) VisitReleaseManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleaseManufacturingUnbuild503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ReleaseManufacturingUnbuild503ApplicationProblemPlusJSONResponse) VisitReleaseManufacturingUnbuildResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -15088,6 +15231,9 @@ type StrictServerInterface interface {
 	// GetManufacturingUnbuild Get an unbuild
 	// (GET /api/v1/manufacturing/unbuilds/{id})
 	GetManufacturingUnbuild(ctx context.Context, request GetManufacturingUnbuildRequestObject) (GetManufacturingUnbuildResponseObject, error)
+	// ReleaseManufacturingUnbuild Release an unbuild's quarantine
+	// (POST /api/v1/manufacturing/unbuilds/{id}/release)
+	ReleaseManufacturingUnbuild(ctx context.Context, request ReleaseManufacturingUnbuildRequestObject) (ReleaseManufacturingUnbuildResponseObject, error)
 	// SearchManufacturingVariants Search the catalog's goods variants
 	// (GET /api/v1/manufacturing/variants)
 	SearchManufacturingVariants(ctx context.Context, request SearchManufacturingVariantsRequestObject) (SearchManufacturingVariantsResponseObject, error)
@@ -16900,6 +17046,32 @@ func (sh *strictHandler) GetManufacturingUnbuild(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetManufacturingUnbuildResponseObject); ok {
 		if err := validResponse.VisitGetManufacturingUnbuildResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleaseManufacturingUnbuild operation middleware
+func (sh *strictHandler) ReleaseManufacturingUnbuild(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ReleaseManufacturingUnbuildRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleaseManufacturingUnbuild(ctx, request.(ReleaseManufacturingUnbuildRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleaseManufacturingUnbuild")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleaseManufacturingUnbuildResponseObject); ok {
+		if err := validResponse.VisitReleaseManufacturingUnbuildResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

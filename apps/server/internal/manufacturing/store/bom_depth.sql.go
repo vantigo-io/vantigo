@@ -64,19 +64,37 @@ func (q *Queries) CopyWorkOrderChecks(ctx context.Context, arg CopyWorkOrderChec
 	return err
 }
 
-const countLogsOfOrder = `-- name: CountLogsOfOrder :one
-SELECT count(*)::int FROM manufacturing.time_logs l
-JOIN manufacturing.work_orders w ON w.id = l.work_order_id
-WHERE w.order_id = $1
+const countOpenSplitParts = `-- name: CountOpenSplitParts :one
+SELECT count(*)::int FROM manufacturing.orders
+WHERE split_from_id = $1::bigint AND status NOT IN ('done', 'cancelled')
 `
 
-// CountLogsOfOrder is how many time logs the order's work orders have: a split
-// or a merge refuses an order with one (M124, M125).
-func (q *Queries) CountLogsOfOrder(ctx context.Context, orderID int64) (int32, error) {
-	row := q.db.QueryRow(ctx, countLogsOfOrder, orderID)
+// CountOpenSplitParts is how many parts split from the order are still open:
+// the original is not cancelled while one is (M124).
+func (q *Queries) CountOpenSplitParts(ctx context.Context, orderID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countOpenSplitParts, orderID)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const countWorkOfOrder = `-- name: CountWorkOfOrder :one
+SELECT ((SELECT count(*) FROM manufacturing.time_logs l
+         JOIN manufacturing.work_orders w ON w.id = l.work_order_id
+         WHERE w.order_id = $1)
+      + (SELECT count(*) FROM manufacturing.work_order_quantities q
+         JOIN manufacturing.work_orders w ON w.id = q.work_order_id
+         WHERE w.order_id = $1))::int AS work
+`
+
+// CountWorkOfOrder is how many time logs and registered quantities the
+// order's work orders have: a split or a merge refuses an order with one
+// (M124, M125).
+func (q *Queries) CountWorkOfOrder(ctx context.Context, orderID int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countWorkOfOrder, orderID)
+	var work int32
+	err := row.Scan(&work)
+	return work, err
 }
 
 const defaultBomsMakingVariants = `-- name: DefaultBomsMakingVariants :many
@@ -126,43 +144,68 @@ func (q *Queries) DeleteBomOutputs(ctx context.Context, bomID int64) error {
 }
 
 const getUnbuild = `-- name: GetUnbuild :one
-SELECT u.id, u.number, u.order_id, u.bom_id, u.variant_id, u.quantity, u.lot_id, u.lot_number, u.site_id, u.from_location_id, u.to_location_id, u.movement_id, u.note, u.posted_by_user_id, u.posted_by_display, u.posted_at, u.client_request_id, u.request_hash, o.number AS order_number, o.suffix AS order_suffix
+SELECT u.id, u.number, u.order_id, u.bom_id, u.variant_id, u.sku, u.product_name, u.unit, u.quantity, u.lot_id, u.lot_number, u.site_id, u.from_location_id, u.to_location_id, u.movement_id, u.note, u.posted_by_user_id, u.posted_by_display, u.posted_at, u.client_request_id, u.request_hash, u.quarantined, u.released_at, u.released_by_user_id, u.released_by_display, o.number AS order_number, o.suffix AS order_suffix
 FROM manufacturing.unbuilds u LEFT JOIN manufacturing.orders o ON o.id = u.order_id
 WHERE u.id = $1
 `
 
 type GetUnbuildRow struct {
-	ID              int64
-	Number          int64
-	OrderID         *int64
-	BomID           int64
-	VariantID       int32
-	Quantity        pgtype.Numeric
-	LotID           *int64
-	LotNumber       *string
-	SiteID          int64
-	FromLocationID  int64
-	ToLocationID    int64
-	MovementID      *int64
-	Note            string
-	PostedByUserID  *uuid.UUID
-	PostedByDisplay string
-	PostedAt        time.Time
-	ClientRequestID string
-	RequestHash     string
-	OrderNumber     *int64
-	OrderSuffix     *int32
+	ManufacturingUnbuild ManufacturingUnbuild
+	OrderNumber          *int64
+	OrderSuffix          *int32
 }
 
 func (q *Queries) GetUnbuild(ctx context.Context, id int64) (GetUnbuildRow, error) {
 	row := q.db.QueryRow(ctx, getUnbuild, id)
 	var i GetUnbuildRow
 	err := row.Scan(
+		&i.ManufacturingUnbuild.ID,
+		&i.ManufacturingUnbuild.Number,
+		&i.ManufacturingUnbuild.OrderID,
+		&i.ManufacturingUnbuild.BomID,
+		&i.ManufacturingUnbuild.VariantID,
+		&i.ManufacturingUnbuild.Sku,
+		&i.ManufacturingUnbuild.ProductName,
+		&i.ManufacturingUnbuild.Unit,
+		&i.ManufacturingUnbuild.Quantity,
+		&i.ManufacturingUnbuild.LotID,
+		&i.ManufacturingUnbuild.LotNumber,
+		&i.ManufacturingUnbuild.SiteID,
+		&i.ManufacturingUnbuild.FromLocationID,
+		&i.ManufacturingUnbuild.ToLocationID,
+		&i.ManufacturingUnbuild.MovementID,
+		&i.ManufacturingUnbuild.Note,
+		&i.ManufacturingUnbuild.PostedByUserID,
+		&i.ManufacturingUnbuild.PostedByDisplay,
+		&i.ManufacturingUnbuild.PostedAt,
+		&i.ManufacturingUnbuild.ClientRequestID,
+		&i.ManufacturingUnbuild.RequestHash,
+		&i.ManufacturingUnbuild.Quarantined,
+		&i.ManufacturingUnbuild.ReleasedAt,
+		&i.ManufacturingUnbuild.ReleasedByUserID,
+		&i.ManufacturingUnbuild.ReleasedByDisplay,
+		&i.OrderNumber,
+		&i.OrderSuffix,
+	)
+	return i, err
+}
+
+const getUnbuildForUpdate = `-- name: GetUnbuildForUpdate :one
+SELECT id, number, order_id, bom_id, variant_id, sku, product_name, unit, quantity, lot_id, lot_number, site_id, from_location_id, to_location_id, movement_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id, request_hash, quarantined, released_at, released_by_user_id, released_by_display FROM manufacturing.unbuilds WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetUnbuildForUpdate(ctx context.Context, id int64) (ManufacturingUnbuild, error) {
+	row := q.db.QueryRow(ctx, getUnbuildForUpdate, id)
+	var i ManufacturingUnbuild
+	err := row.Scan(
 		&i.ID,
 		&i.Number,
 		&i.OrderID,
 		&i.BomID,
 		&i.VariantID,
+		&i.Sku,
+		&i.ProductName,
+		&i.Unit,
 		&i.Quantity,
 		&i.LotID,
 		&i.LotNumber,
@@ -176,8 +219,10 @@ func (q *Queries) GetUnbuild(ctx context.Context, id int64) (GetUnbuildRow, erro
 		&i.PostedAt,
 		&i.ClientRequestID,
 		&i.RequestHash,
-		&i.OrderNumber,
-		&i.OrderSuffix,
+		&i.Quarantined,
+		&i.ReleasedAt,
+		&i.ReleasedByUserID,
+		&i.ReleasedByDisplay,
 	)
 	return i, err
 }
@@ -278,11 +323,12 @@ func (q *Queries) InsertProductionByproduct(ctx context.Context, arg InsertProdu
 }
 
 const insertUnbuild = `-- name: InsertUnbuild :one
-INSERT INTO manufacturing.unbuilds (number, order_id, bom_id, variant_id, quantity, lot_id, lot_number, site_id, from_location_id,
-                                    to_location_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id, request_hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-        $10, $11, $12, $13, $14, $15, $16)
-RETURNING id, number, order_id, bom_id, variant_id, quantity, lot_id, lot_number, site_id, from_location_id, to_location_id, movement_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id, request_hash
+INSERT INTO manufacturing.unbuilds (number, order_id, bom_id, variant_id, sku, product_name, unit, quantity, lot_id, lot_number, site_id,
+                                    from_location_id, to_location_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id,
+                                    request_hash)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19)
+RETURNING id, number, order_id, bom_id, variant_id, sku, product_name, unit, quantity, lot_id, lot_number, site_id, from_location_id, to_location_id, movement_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id, request_hash, quarantined, released_at, released_by_user_id, released_by_display
 `
 
 type InsertUnbuildParams struct {
@@ -290,6 +336,9 @@ type InsertUnbuildParams struct {
 	OrderID         *int64
 	BomID           int64
 	VariantID       int32
+	Sku             string
+	ProductName     string
+	Unit            string
 	Quantity        pgtype.Numeric
 	LotID           *int64
 	LotNumber       *string
@@ -310,6 +359,9 @@ func (q *Queries) InsertUnbuild(ctx context.Context, arg InsertUnbuildParams) (M
 		arg.OrderID,
 		arg.BomID,
 		arg.VariantID,
+		arg.Sku,
+		arg.ProductName,
+		arg.Unit,
 		arg.Quantity,
 		arg.LotID,
 		arg.LotNumber,
@@ -330,6 +382,9 @@ func (q *Queries) InsertUnbuild(ctx context.Context, arg InsertUnbuildParams) (M
 		&i.OrderID,
 		&i.BomID,
 		&i.VariantID,
+		&i.Sku,
+		&i.ProductName,
+		&i.Unit,
 		&i.Quantity,
 		&i.LotID,
 		&i.LotNumber,
@@ -343,6 +398,10 @@ func (q *Queries) InsertUnbuild(ctx context.Context, arg InsertUnbuildParams) (M
 		&i.PostedAt,
 		&i.ClientRequestID,
 		&i.RequestHash,
+		&i.Quarantined,
+		&i.ReleasedAt,
+		&i.ReleasedByUserID,
+		&i.ReleasedByDisplay,
 	)
 	return i, err
 }
@@ -380,7 +439,7 @@ func (q *Queries) InsertUnbuildLine(ctx context.Context, arg InsertUnbuildLinePa
 }
 
 const listUnbuilds = `-- name: ListUnbuilds :many
-SELECT u.id, u.number, u.order_id, u.bom_id, u.variant_id, u.quantity, u.lot_id, u.lot_number, u.site_id, u.from_location_id, u.to_location_id, u.movement_id, u.note, u.posted_by_user_id, u.posted_by_display, u.posted_at, u.client_request_id, u.request_hash, o.number AS order_number, o.suffix AS order_suffix, count(*) OVER ()::int AS total
+SELECT u.id, u.number, u.order_id, u.bom_id, u.variant_id, u.sku, u.product_name, u.unit, u.quantity, u.lot_id, u.lot_number, u.site_id, u.from_location_id, u.to_location_id, u.movement_id, u.note, u.posted_by_user_id, u.posted_by_display, u.posted_at, u.client_request_id, u.request_hash, u.quarantined, u.released_at, u.released_by_user_id, u.released_by_display, o.number AS order_number, o.suffix AS order_suffix, count(*) OVER ()::int AS total
 FROM manufacturing.unbuilds u LEFT JOIN manufacturing.orders o ON o.id = u.order_id
 WHERE $1::bigint IS NULL OR u.order_id = $1
 ORDER BY u.posted_at DESC, u.id DESC
@@ -394,27 +453,10 @@ type ListUnbuildsParams struct {
 }
 
 type ListUnbuildsRow struct {
-	ID              int64
-	Number          int64
-	OrderID         *int64
-	BomID           int64
-	VariantID       int32
-	Quantity        pgtype.Numeric
-	LotID           *int64
-	LotNumber       *string
-	SiteID          int64
-	FromLocationID  int64
-	ToLocationID    int64
-	MovementID      *int64
-	Note            string
-	PostedByUserID  *uuid.UUID
-	PostedByDisplay string
-	PostedAt        time.Time
-	ClientRequestID string
-	RequestHash     string
-	OrderNumber     *int64
-	OrderSuffix     *int32
-	Total           int32
+	ManufacturingUnbuild ManufacturingUnbuild
+	OrderNumber          *int64
+	OrderSuffix          *int32
+	Total                int32
 }
 
 // ListUnbuilds is a page of unbuilds, of one order when order_id is set,
@@ -429,24 +471,31 @@ func (q *Queries) ListUnbuilds(ctx context.Context, arg ListUnbuildsParams) ([]L
 	for rows.Next() {
 		var i ListUnbuildsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.Number,
-			&i.OrderID,
-			&i.BomID,
-			&i.VariantID,
-			&i.Quantity,
-			&i.LotID,
-			&i.LotNumber,
-			&i.SiteID,
-			&i.FromLocationID,
-			&i.ToLocationID,
-			&i.MovementID,
-			&i.Note,
-			&i.PostedByUserID,
-			&i.PostedByDisplay,
-			&i.PostedAt,
-			&i.ClientRequestID,
-			&i.RequestHash,
+			&i.ManufacturingUnbuild.ID,
+			&i.ManufacturingUnbuild.Number,
+			&i.ManufacturingUnbuild.OrderID,
+			&i.ManufacturingUnbuild.BomID,
+			&i.ManufacturingUnbuild.VariantID,
+			&i.ManufacturingUnbuild.Sku,
+			&i.ManufacturingUnbuild.ProductName,
+			&i.ManufacturingUnbuild.Unit,
+			&i.ManufacturingUnbuild.Quantity,
+			&i.ManufacturingUnbuild.LotID,
+			&i.ManufacturingUnbuild.LotNumber,
+			&i.ManufacturingUnbuild.SiteID,
+			&i.ManufacturingUnbuild.FromLocationID,
+			&i.ManufacturingUnbuild.ToLocationID,
+			&i.ManufacturingUnbuild.MovementID,
+			&i.ManufacturingUnbuild.Note,
+			&i.ManufacturingUnbuild.PostedByUserID,
+			&i.ManufacturingUnbuild.PostedByDisplay,
+			&i.ManufacturingUnbuild.PostedAt,
+			&i.ManufacturingUnbuild.ClientRequestID,
+			&i.ManufacturingUnbuild.RequestHash,
+			&i.ManufacturingUnbuild.Quarantined,
+			&i.ManufacturingUnbuild.ReleasedAt,
+			&i.ManufacturingUnbuild.ReleasedByUserID,
+			&i.ManufacturingUnbuild.ReleasedByDisplay,
 			&i.OrderNumber,
 			&i.OrderSuffix,
 			&i.Total,
@@ -459,6 +508,30 @@ func (q *Queries) ListUnbuilds(ctx context.Context, arg ListUnbuildsParams) ([]L
 		return nil, err
 	}
 	return items, nil
+}
+
+const markUnbuildReleased = `-- name: MarkUnbuildReleased :exec
+UPDATE manufacturing.unbuilds
+SET released_at = $1::timestamptz, released_by_user_id = $2, released_by_display = $3
+WHERE id = $4
+`
+
+type MarkUnbuildReleasedParams struct {
+	Now               time.Time
+	ReleasedByUserID  *uuid.UUID
+	ReleasedByDisplay *string
+	ID                int64
+}
+
+// MarkUnbuildReleased records the release of the unbuild's quarantine (M123).
+func (q *Queries) MarkUnbuildReleased(ctx context.Context, arg MarkUnbuildReleasedParams) error {
+	_, err := q.db.Exec(ctx, markUnbuildReleased,
+		arg.Now,
+		arg.ReleasedByUserID,
+		arg.ReleasedByDisplay,
+		arg.ID,
+	)
+	return err
 }
 
 const nextUnbuildNumber = `-- name: NextUnbuildNumber :one
@@ -476,8 +549,21 @@ func (q *Queries) NextUnbuildNumber(ctx context.Context) (int64, error) {
 	return number, err
 }
 
+const orderMadeByproducts = `-- name: OrderMadeByproducts :one
+SELECT EXISTS (SELECT 1 FROM manufacturing.order_outputs WHERE order_id = $1 AND produced > 0)::bool AS made
+`
+
+// OrderMadeByproducts reports whether the order's productions made any of its
+// by-products: an unbuild from such an order is refused (M123).
+func (q *Queries) OrderMadeByproducts(ctx context.Context, orderID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, orderMadeByproducts, orderID)
+	var made bool
+	err := row.Scan(&made)
+	return made, err
+}
+
 const orderProductionsGood = `-- name: OrderProductionsGood :many
-SELECT p.id, p.quantity AS production_quantity, p.quantity AS lot_quantity
+SELECT p.id, (p.quantity + p.output_scrap)::numeric(14, 3) AS production_quantity, p.quantity AS lot_quantity
 FROM manufacturing.productions p
 WHERE p.order_id = $1 AND p.quantity > 0
 ORDER BY p.id
@@ -489,7 +575,8 @@ type OrderProductionsGoodRow struct {
 	LotQuantity        pgtype.Numeric
 }
 
-// OrderProductionsGood is every production of the order with good output.
+// OrderProductionsGood is every production of the order with good output,
+// with what its consumption made: its good quantity and its output scrap.
 func (q *Queries) OrderProductionsGood(ctx context.Context, orderID int64) ([]OrderProductionsGoodRow, error) {
 	rows, err := q.db.Query(ctx, orderProductionsGood, orderID)
 	if err != nil {
@@ -511,7 +598,7 @@ func (q *Queries) OrderProductionsGood(ctx context.Context, orderID int64) ([]Or
 }
 
 const orderProductionsOfLot = `-- name: OrderProductionsOfLot :many
-SELECT p.id, p.quantity AS production_quantity, po.quantity AS lot_quantity
+SELECT p.id, (p.quantity + p.output_scrap)::numeric(14, 3) AS production_quantity, po.quantity AS lot_quantity
 FROM manufacturing.productions p
 JOIN manufacturing.production_outputs po ON po.production_id = p.id
 WHERE p.order_id = $1 AND po.lot_id = $2
@@ -530,7 +617,8 @@ type OrderProductionsOfLotRow struct {
 }
 
 // OrderProductionsOfLot is the order's productions that put good output into
-// the lot, each with what it put there and its own good quantity (M123).
+// the lot, each with what it put there and what its consumption made — its
+// good quantity and its output scrap (M123).
 func (q *Queries) OrderProductionsOfLot(ctx context.Context, arg OrderProductionsOfLotParams) ([]OrderProductionsOfLotRow, error) {
 	rows, err := q.db.Query(ctx, orderProductionsOfLot, arg.OrderID, arg.LotID)
 	if err != nil {
@@ -916,16 +1004,19 @@ func (q *Queries) SetOutputExpected(ctx context.Context, arg SetOutputExpectedPa
 }
 
 const setUnbuildMovement = `-- name: SetUnbuildMovement :exec
-UPDATE manufacturing.unbuilds SET movement_id = $1 WHERE id = $2
+UPDATE manufacturing.unbuilds SET movement_id = $1, quarantined = $2 WHERE id = $3
 `
 
 type SetUnbuildMovementParams struct {
-	MovementID *int64
-	ID         int64
+	MovementID  *int64
+	Quarantined bool
+	ID          int64
 }
 
+// SetUnbuildMovement records the unbuild's movement, and whether Inventory
+// quarantined what it restored (M123).
 func (q *Queries) SetUnbuildMovement(ctx context.Context, arg SetUnbuildMovementParams) error {
-	_, err := q.db.Exec(ctx, setUnbuildMovement, arg.MovementID, arg.ID)
+	_, err := q.db.Exec(ctx, setUnbuildMovement, arg.MovementID, arg.Quarantined, arg.ID)
 	return err
 }
 
@@ -946,7 +1037,7 @@ func (q *Queries) SetWorkOrderExpected(ctx context.Context, arg SetWorkOrderExpe
 }
 
 const unbuildByClientRequest = `-- name: UnbuildByClientRequest :one
-SELECT id, number, order_id, bom_id, variant_id, quantity, lot_id, lot_number, site_id, from_location_id, to_location_id, movement_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id, request_hash FROM manufacturing.unbuilds WHERE client_request_id = $1
+SELECT id, number, order_id, bom_id, variant_id, sku, product_name, unit, quantity, lot_id, lot_number, site_id, from_location_id, to_location_id, movement_id, note, posted_by_user_id, posted_by_display, posted_at, client_request_id, request_hash, quarantined, released_at, released_by_user_id, released_by_display FROM manufacturing.unbuilds WHERE client_request_id = $1
 `
 
 func (q *Queries) UnbuildByClientRequest(ctx context.Context, clientRequestID string) (ManufacturingUnbuild, error) {
@@ -958,6 +1049,9 @@ func (q *Queries) UnbuildByClientRequest(ctx context.Context, clientRequestID st
 		&i.OrderID,
 		&i.BomID,
 		&i.VariantID,
+		&i.Sku,
+		&i.ProductName,
+		&i.Unit,
 		&i.Quantity,
 		&i.LotID,
 		&i.LotNumber,
@@ -971,6 +1065,10 @@ func (q *Queries) UnbuildByClientRequest(ctx context.Context, clientRequestID st
 		&i.PostedAt,
 		&i.ClientRequestID,
 		&i.RequestHash,
+		&i.Quarantined,
+		&i.ReleasedAt,
+		&i.ReleasedByUserID,
+		&i.ReleasedByDisplay,
 	)
 	return i, err
 }

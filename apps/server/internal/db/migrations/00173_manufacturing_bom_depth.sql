@@ -62,26 +62,36 @@ CREATE INDEX ix_production_byproducts_production ON manufacturing.production_byp
 -- An unbuild (M123), numbered UB-<n> from the counters row 'unbuild': finished
 -- goods taken apart, from a done order's productions (order_id, and for a
 -- tracked product the finished lot chosen) or free-standing by a BoM. It is
--- posted to Inventory as one movement of kind unbuild.
+-- posted to Inventory as one movement of kind unbuild. The product's SKU, name
+-- and unit are snapshotted as the unbuild was posted. An unbuild of a held lot
+-- quarantines what it restores (quarantined) until a quality manager releases
+-- its holds (released_at).
 CREATE TABLE manufacturing.unbuilds (
-    id                bigint         GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
-    number            bigint         NOT NULL,
-    order_id          bigint         REFERENCES manufacturing.orders (id) ON DELETE RESTRICT,
-    bom_id            bigint         NOT NULL REFERENCES manufacturing.boms (id) ON DELETE RESTRICT,
-    variant_id        integer        NOT NULL,
-    quantity          numeric(14, 3) NOT NULL,
-    lot_id            bigint,
-    lot_number        varchar(20),
-    site_id           bigint         NOT NULL,
-    from_location_id  bigint         NOT NULL,
-    to_location_id    bigint         NOT NULL,
-    movement_id       bigint,
-    note              text           NOT NULL DEFAULT '',
-    posted_by_user_id uuid,
-    posted_by_display text           NOT NULL DEFAULT '',
-    posted_at         timestamptz    NOT NULL,
-    client_request_id varchar(100)   NOT NULL,
-    request_hash      varchar(64)    NOT NULL,
+    id                  bigint         GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
+    number              bigint         NOT NULL,
+    order_id            bigint         REFERENCES manufacturing.orders (id) ON DELETE RESTRICT,
+    bom_id              bigint         NOT NULL REFERENCES manufacturing.boms (id) ON DELETE RESTRICT,
+    variant_id          integer        NOT NULL,
+    sku                 text           NOT NULL,
+    product_name        text           NOT NULL,
+    unit                text           NOT NULL,
+    quantity            numeric(14, 3) NOT NULL,
+    lot_id              bigint,
+    lot_number          varchar(20),
+    site_id             bigint         NOT NULL,
+    from_location_id    bigint         NOT NULL,
+    to_location_id      bigint         NOT NULL,
+    movement_id         bigint,
+    note                text           NOT NULL DEFAULT '',
+    posted_by_user_id   uuid,
+    posted_by_display   text           NOT NULL DEFAULT '',
+    posted_at           timestamptz    NOT NULL,
+    client_request_id   varchar(100)   NOT NULL,
+    request_hash        varchar(64)    NOT NULL,
+    quarantined         boolean        NOT NULL DEFAULT false,
+    released_at         timestamptz,
+    released_by_user_id uuid,
+    released_by_display text,
     CONSTRAINT ck_unbuilds_quantity CHECK (quantity > 0),
     CONSTRAINT ck_unbuilds_note CHECK (char_length(note) <= 2000)
 );

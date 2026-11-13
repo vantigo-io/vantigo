@@ -34,6 +34,7 @@ type byproductValue struct {
 // byproductMade is what a production made of one by-product: the produce
 // line's figures and the lot it went into (0 for none).
 type byproductMade struct {
+	index    int // its index in the request's outputs
 	output   store.ManufacturingOrderOutput
 	quantity *big.Rat
 	lotID    int64
@@ -62,7 +63,7 @@ func judgeByproducts(f *fieldErrors, prefix string, in *[]gen.ManufacturingProdu
 		f.addCoded(at+"quantity", codeQuantityInvalid, msg)
 		v := byproductValue{outputID: o.OutputId, quantity: q}
 		if o.Lot != nil {
-			v.lot = judgeOutputLot(f, at, o.Lot)
+			v.lot = judgeOutputLot(f, at, "lot", o.Lot)
 		}
 		out = append(out, v)
 	}
@@ -119,7 +120,7 @@ func (s *server) prepareByproducts(ctx context.Context, tx pgx.Tx, txq *store.Qu
 		if !ok {
 			return nil, errRelock
 		}
-		m := byproductMade{output: x, quantity: b.quantity}
+		m := byproductMade{index: i, output: x, quantity: b.quantity}
 		switch e.Tracking {
 		case contracts.TrackingSerial:
 			return nil, refuseField(productionTitle, at+"quantity", codeSerialQuantity,

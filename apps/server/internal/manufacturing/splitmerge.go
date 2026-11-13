@@ -1,8 +1,8 @@
 package manufacturing
 
 // Split and merge of manufacturing orders (manufacturing phase 2 M124–M128).
-// Both take orders that are drafts or confirmed with no production and no
-// time log (order_has_work), so nothing measured is lost when their lines and
+// Both take orders that are drafts or confirmed with no production, no time
+// log and no registered quantity (order_has_work), so nothing measured is lost when their lines and
 // work orders are taken again for new quantities (M126 amends D1 M28a's
 // "never recomputed").
 //
@@ -37,14 +37,14 @@ const (
 )
 
 // orderHasWork is the 409 order_has_work of a split or a merge of an order
-// with a production or a time log.
+// with a production, a time log or a registered quantity.
 func orderHasWork(number string) error {
 	return conflict(codeOrderHasWork, "The manufacturing order has work",
-		fmt.Sprintf("%s has a production or a time log; it is neither split nor merged.", number))
+		fmt.Sprintf("%s has a production, a time log or a registered quantity; it is neither split nor merged.", number))
 }
 
 // judgeWorkless refuses an order that is not a draft or confirmed, or has a
-// production or a time log (M124, M125).
+// production, a time log or a registered quantity (M124, M125).
 func judgeWorkless(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder) error {
 	number := orderNumber(o.Number, o.Suffix)
 	switch o.Status {
@@ -58,11 +58,11 @@ func judgeWorkless(ctx context.Context, txq *store.Queries, o store.Manufacturin
 	if err != nil {
 		return err
 	}
-	logs, err := txq.CountLogsOfOrder(ctx, o.ID)
+	work, err := txq.CountWorkOfOrder(ctx, o.ID)
 	if err != nil {
 		return err
 	}
-	if productions > 0 || logs > 0 {
+	if productions > 0 || work > 0 {
 		return orderHasWork(number)
 	}
 	return nil
@@ -168,6 +168,7 @@ func fixEstimate(ctx context.Context, txq *store.Queries, orderID int64) error {
 func copyWorkOrders(ctx context.Context, txq *store.Queries, from store.ManufacturingOrder, to store.ManufacturingOrder, wos []store.ManufacturingWorkOrder,
 	bom store.ManufacturingBom, notes *notices) error {
 	ids := map[int64]int64{}
+	var made []store.ManufacturingWorkOrder
 	for _, w := range wos {
 		if w.Status == workOrderCancelled {
 			continue
@@ -183,6 +184,7 @@ func copyWorkOrders(ctx context.Context, txq *store.Queries, from store.Manufact
 			return err
 		}
 		ids[w.ID] = n.ID
+		made = append(made, n)
 		if err := txq.CopyWorkOrderChecks(ctx, store.CopyWorkOrderChecksParams{ToWorkOrderID: n.ID, FromWorkOrderID: w.ID}); err != nil {
 			return err
 		}
@@ -202,7 +204,8 @@ func copyWorkOrders(ctx context.Context, txq *store.Queries, from store.Manufact
 			return err
 		}
 	}
-	return notes.groupWork(ctx, txq, wos...)
+	// The group topics of the part's own work orders (M119).
+	return notes.groupWork(ctx, txq, made...)
 }
 
 // splitAnswers are the split's typed refusals.
@@ -471,7 +474,8 @@ func mergeAnswers() answers[gen.MergeManufacturingOrdersResponseObject] {
 }
 
 // lineKey is how a merge matches a merged order's line to the survivor's: the
-// variant and the operation of a BoM line; an added line matches none.
+// variant and the operation of a BoM line, the n-th such line by sort order
+// to the n-th; an added line matches none.
 type lineKey struct {
 	variant   int32
 	operation int64
@@ -657,17 +661,18 @@ func (s *server) MergeManufacturingOrders(ctx context.Context, req gen.MergeManu
 }
 
 // mergeLines adds the merged orders' lines and by-products to the survivor's
-// (M125): a BoM line to the survivor's of the same variant and operation, an
-// added line, or one the survivor has not, as a line of its own.
+// (M125): the n-th BoM line of a variant and operation, by sort order, to the
+// survivor's n-th of the same; an added line, or one the survivor has not, as
+// a line of its own.
 func (s *server) mergeLines(ctx context.Context, txq *store.Queries, survivorID int64, others []store.ManufacturingOrder) error {
 	mine, err := txq.ListOrderComponents(ctx, survivorID)
 	if err != nil {
 		return err
 	}
-	byKey := map[lineKey]int64{}
+	byKey := map[lineKey][]int64{}
 	for _, c := range mine {
 		if !c.Added {
-			byKey[keyOf(c)] = c.ID
+			byKey[keyOf(c)] = append(byKey[keyOf(c)], c.ID)
 		}
 	}
 	outs, err := txq.OutputsOfOrders(ctx, []int64{survivorID})
@@ -683,12 +688,18 @@ func (s *server) mergeLines(ctx context.Context, txq *store.Queries, survivorID 
 		if err != nil {
 			return err
 		}
+		nth := map[lineKey]int{}
 		for _, c := range lines {
-			if id, ok := byKey[keyOf(c)]; ok && !c.Added {
-				if err := txq.AddComponentRequired(ctx, store.AddComponentRequiredParams{ID: id, Required: c.Required}); err != nil {
-					return err
+			if !c.Added {
+				k := keyOf(c)
+				n := nth[k]
+				nth[k]++
+				if n < len(byKey[k]) {
+					if err := txq.AddComponentRequired(ctx, store.AddComponentRequiredParams{ID: byKey[k][n], Required: c.Required}); err != nil {
+						return err
+					}
+					continue
 				}
-				continue
 			}
 			sort, err := txq.NextComponentSortOrder(ctx, survivorID)
 			if err != nil {
@@ -702,7 +713,7 @@ func (s *server) mergeLines(ctx context.Context, txq *store.Queries, survivorID 
 				return err
 			}
 			if !c.Added {
-				byKey[keyOf(c)] = n.ID
+				byKey[keyOf(c)] = append(byKey[keyOf(c)], n.ID)
 			}
 		}
 		theirs, err := txq.OutputsOfOrders(ctx, []int64{o.ID})

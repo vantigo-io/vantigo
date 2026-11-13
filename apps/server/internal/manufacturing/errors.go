@@ -87,13 +87,16 @@ const (
 	codeWorkCenterGroupEmpty = "work_center_group_empty"  // 409
 
 	// BoM depth (manufacturing phase 2 M120–M125).
-	codeOutputIsProduct   = "output_is_product"   // 400
-	codeOutputIsComponent = "output_is_component" // 400
-	codeCostShareOver     = "cost_share_over"     // 400
-	codeUnbuildTooMuch    = "unbuild_too_much"    // 400
-	codeSplitSum          = "split_sum"           // 400
-	codeMergeMismatch     = "merge_mismatch"      // 400
-	codeOrderHasWork      = "order_has_work"      // 409
+	codeOutputIsProduct   = "output_is_product"       // 400
+	codeOutputIsComponent = "output_is_component"     // 400
+	codeCostShareOver     = "cost_share_over"         // 400
+	codeUnbuildTooMuch    = "unbuild_too_much"        // 400
+	codeSplitSum          = "split_sum"               // 400
+	codeMergeMismatch     = "merge_mismatch"          // 400
+	codeOrderHasWork      = "order_has_work"          // 409
+	codeOrderHasOpenParts = "order_has_open_parts"    // 409
+	codeUnbuildByproducts = "unbuild_has_byproducts"  // 409
+	codeUnbuildNotHeld    = "unbuild_not_quarantined" // 409
 
 	// A line's codes (ManufacturingProblemLine.code), each also a problem's
 	// own code when it is the first failing line's or a field's.
@@ -122,6 +125,7 @@ var refusalCodes = []string{
 	codeOperationOrder, codeOperationUnjoined, codeOperationUnknown, codeWorkCenterNotInGroup, codeWorkOrderStarted, codeWorkOrderMemberFixed,
 	codeWorkOrderIsOutput, codeQuantityOverOrder, codeWorkCenterGroupEmpty,
 	codeOutputIsProduct, codeOutputIsComponent, codeCostShareOver, codeUnbuildTooMuch, codeSplitSum, codeMergeMismatch, codeOrderHasWork,
+	codeOrderHasOpenParts, codeUnbuildByproducts, codeUnbuildNotHeld,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

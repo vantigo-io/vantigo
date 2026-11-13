@@ -268,7 +268,7 @@ func judgeProduction(in gen.ManufacturingProductionInput, f fieldErrors, prefix 
 		pl.lots, pl.proposed = judgeLotRows(&f, at, l, pl)
 		v.lines = append(v.lines, pl)
 	}
-	v.outputLot = judgeOutputLot(&f, prefix, in.OutputLot)
+	v.outputLot = judgeOutputLot(&f, prefix, "outputLot", in.OutputLot)
 	v.serials = judgeSerials(&f, prefix, in.OutputSerials)
 	v.outputs = judgeByproducts(&f, prefix, in.Outputs)
 	if f.failed() {
@@ -720,18 +720,22 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 		if err := s.ensureOutputLots(ctx, tx, txq, ledger, o, lo.locked[o.VariantID], prep, p.ID, outs, newLots); err != nil {
 			return 0, err
 		}
-		// 7b. The open quarantining deviations of the order hold every
-		// lot it makes or adds to (M80, M86, M99).
-		if err := s.holdNewOutput(ctx, tx, txq, o.ID, outs, who, at); err != nil {
-			return 0, err
-		}
 	}
-	// 7a, 7b for the by-products (manufacturing phase 2 M121).
+	// 7a for the by-products (manufacturing phase 2 M121): every output's lot
+	// is found or made before any is held.
 	made, err := s.prepareByproducts(ctx, tx, txq, ledger, lo, prep, p.ID)
 	if err != nil {
 		return 0, err
 	}
-	if err := s.holdNewOutput(ctx, tx, txq, o.ID, byproductHolds(made), who, at); err != nil {
+	// 7b. The open quarantining deviations of the order hold every lot it
+	// makes or adds to (M80, M86, M99), the by-products' with the main
+	// product's.
+	var holds []outputLot
+	if len(newLots) > 0 {
+		holds = append(holds, outs...)
+	}
+	holds = append(holds, byproductHolds(made)...)
+	if err := s.holdNewOutput(ctx, tx, txq, o.ID, holds, who, at); err != nil {
 		return 0, err
 	}
 	tracked := map[int32]bool{}
@@ -769,9 +773,9 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 					return 0, errResplit
 				}
 				if again := reproposable(r, refs); again != nil && !prep.reproposed {
-					return 0, &errRepropose{components: again, refusal: productionRefusal(r, components, refs)}
+					return 0, &errRepropose{components: again, refusal: productionRefusal(r, components, refs, made, len(production.Produce)-len(made))}
 				}
-				return 0, productionRefusal(r, components, refs)
+				return 0, productionRefusal(r, components, refs, made, len(production.Produce)-len(made))
 			}
 			return 0, fmt.Errorf("manufacturing: post production %d: %w", p.ID, err)
 		}
@@ -829,8 +833,12 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 
 // productionRefusal is Inventory's refusal of a production as this module's
 // 409 (stockRefusal), each failing line named by its component line and, for
-// a lot, the lot (M82): a consume line's index names its component.
-func productionRefusal(r *contracts.StockRefusal, components []store.ManufacturingOrderComponent, refs []consumeRef) error {
+// a lot, the lot (M82): a consume line's index names its component. A produce
+// line's index past the consume lines and the main product's lines (mains)
+// names a by-product (manufacturing phase 2 M121): its order output, at its
+// index in the request's outputs.
+func productionRefusal(r *contracts.StockRefusal, components []store.ManufacturingOrderComponent, refs []consumeRef, made []byproductMade,
+	mains int) error {
 	err := stockRefusal(r, components)
 	var ref *refusal
 	if !errors.As(err, &ref) || ref.problem.Lines == nil {
@@ -845,7 +853,16 @@ func productionRefusal(r *contracts.StockRefusal, components []store.Manufacturi
 			lot := l.LotID
 			lines[i].LotId = &lot
 		}
-		if lines[i].ComponentId == nil && l.Index >= 0 && l.Index < len(refs) {
+		if l.Index >= len(refs) {
+			// A produce line names no component, whatever its line id.
+			lines[i].ComponentId = nil
+			if k := l.Index - len(refs) - mains; k >= 0 && k < len(made) {
+				id := made[k].output.ID
+				lines[i].OutputId, lines[i].Index = &id, int32(made[k].index)
+			}
+			continue
+		}
+		if lines[i].ComponentId == nil && l.Index >= 0 {
 			id := refs[l.Index].componentID
 			lines[i].ComponentId = &id
 		}
