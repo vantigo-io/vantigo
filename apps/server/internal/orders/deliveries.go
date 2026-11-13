@@ -129,8 +129,9 @@ func openForDelivery(l store.OrdersLine, drafted map[int64]*big.Rat) *big.Rat {
 // goodsVariantsOf are the variants of the order's goods lines at its site.
 func goodsVariantsOf(lines []store.OrdersLine) []int32 {
 	var ids []int32
+	kits := kitsOf(lines)
 	for _, l := range lines {
-		if reservable(l) && !slices.Contains(ids, *l.VariantID) {
+		if reservable(l, kits) && !slices.Contains(ids, *l.VariantID) {
 			ids = append(ids, *l.VariantID)
 		}
 	}
@@ -494,8 +495,9 @@ func (s *server) CreateDelivery(ctx context.Context, req gen.CreateDeliveryReque
 			qty  *big.Rat
 		}
 		var picks []proposed
+		kits := kitsOf(lines)
 		for _, l := range lines {
-			if !reservable(l) {
+			if !reservable(l, kits) {
 				continue
 			}
 			open := openForDelivery(l, drafted)
@@ -685,6 +687,7 @@ func (s *server) UpdateDelivery(ctx context.Context, req gen.UpdateDeliveryReque
 		}
 		pool := newLotPool(lots, today)
 		byLine := byID(lines)
+		kits := kitsOf(lines)
 		seen := map[int64]bool{}
 		var failures []lineFailure
 		type written struct {
@@ -700,7 +703,7 @@ func (s *server) UpdateDelivery(ctx context.Context, req gen.UpdateDeliveryReque
 		for i, in := range body.Lines {
 			l, ok := byLine[in.OrderLineId]
 			switch {
-			case !ok || !reservable(l):
+			case !ok || !reservable(l, kits):
 				failures = append(failures, lineFailure{index: i, code: codeLineNotFound,
 					detail: fmt.Sprintf("Line %d is not a goods line of order %d delivered from its site.", in.OrderLineId, o.Number)})
 				continue
@@ -1172,6 +1175,8 @@ func (s *server) postDeliveryTx(ctx context.Context, in deliveryPost, variants [
 			return refused
 		}
 		movement := issued.MovementID
+		// A kit line counts the whole kits its children now make (M145).
+		syncKits(lines)
 		for _, l := range lines {
 			if err := txq.SetLineBuckets(ctx, store.SetLineBucketsParams{
 				ID: l.ID, QtyCancelled: l.QtyCancelled, QtyDelivered: l.QtyDelivered, QtyInvoiced: l.QtyInvoiced,

@@ -30,7 +30,13 @@ func writeLines(ctx context.Context, txq *store.Queries, ownerKind string, owner
 	}
 	out := make([]store.OrdersLine, 0, len(lines))
 	for i, l := range lines {
-		row, err := insertLine(ctx, txq, ownerKind, ownerID, int32(i+1), l)
+		// A kit's child line names its kit, written before it (manufacturing
+		// phase 2 M145).
+		var parent *int64
+		if l.kit != nil {
+			parent = &out[*l.kit].ID
+		}
+		row, err := insertLine(ctx, txq, ownerKind, ownerID, int32(i+1), l, parent)
 		if err != nil {
 			return nil, fmt.Errorf("orders: write %s %d's line %d: %w", ownerKind, ownerID, i+1, err)
 		}
@@ -39,8 +45,9 @@ func writeLines(ctx context.Context, txq *store.Queries, ownerKind string, owner
 	return out, nil
 }
 
-// insertLine writes one line at position, under its own id when it has one.
-func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, ownerID int64, position int32, l pricedLine) (store.OrdersLine, error) {
+// insertLine writes one line at position, under its own id when it has one;
+// parent is a kit child line's kit line.
+func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, ownerID int64, position int32, l pricedLine, parent *int64) (store.OrdersLine, error) {
 	p := store.InsertLineParams{
 		OwnerKind: ownerKind, OwnerID: ownerID, Position: position, Kind: l.kind, VariantID: l.variantID,
 		Sku: l.sku, Name: l.name, Unit: l.unit, Description: l.description,
@@ -53,6 +60,7 @@ func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, owner
 		InvoicePolicy: cmp.Or(l.invoicePolicy, policyOnOrder), Optional: l.optional && (ownerKind == ownerQuote || ownerKind == ownerTemplate),
 		DeliveryMethod: cmp.Or(l.deliveryMethod, methodManual),
 		ProductID:      l.productID, PackagingName: l.packagingName, ValidFrom: l.validFrom, ValidTo: l.validTo, ChainID: l.chainID,
+		ParentLineID: parent, PerKit: numeric(l.perKit, quantityPlaces),
 	}
 	if !pricedKind(l.kind) {
 		p.PriceSource = nil
@@ -68,6 +76,7 @@ func insertLine(ctx context.Context, txq *store.Queries, ownerKind string, owner
 		VatCategory: p.VatCategory, LineGross: p.LineGross, LineAllowance: p.LineAllowance, LineNet: p.LineNet,
 		ExternalLineID: p.ExternalLineID, InvoicePolicy: p.InvoicePolicy, Optional: p.Optional, DeliveryMethod: p.DeliveryMethod,
 		ProductID: p.ProductID, PackagingName: p.PackagingName, ValidFrom: p.ValidFrom, ValidTo: p.ValidTo, ChainID: p.ChainID,
+		ParentLineID: p.ParentLineID, PerKit: p.PerKit,
 	})
 }
 
@@ -120,6 +129,7 @@ func lineOut(l store.OrdersLine, pricesIncludeVat bool) gen.OrdersLine {
 		ExternalLineId: l.ExternalLineID, InvoicePolicy: gen.OrdersLineInvoicePolicy(l.InvoicePolicy), Optional: l.Optional,
 		QtyCancelled: wire(ratOrZero(l.QtyCancelled), quantityPlaces), QtyDelivered: wire(ratOrZero(l.QtyDelivered), quantityPlaces),
 		QtyInvoiced: wire(ratOrZero(l.QtyInvoiced), quantityPlaces), DeliveryMethod: gen.OrdersLineDeliveryMethod(l.DeliveryMethod),
+		ParentLineId: l.ParentLineID, PerKit: wirePtr(ratOf(l.PerKit), quantityPlaces),
 	}
 	if l.PriceSource != nil {
 		src := gen.OrdersLinePriceSource(*l.PriceSource)

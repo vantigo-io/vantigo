@@ -408,6 +408,15 @@ func printedLine(ln store.OrdersLine, h header, lang string) pdfRow {
 	if packed := packagingText(ln, quantity, lang); packed != "" {
 		desc = strings.Join(nonEmpty(desc, packed), " – ")
 	}
+	if ln.ParentLineID != nil {
+		// A kit's child line prints under its kit with no price: the kit
+		// carries it (manufacturing phase 2 M145).
+		cells := []string{kitIndent + desc, quantity, ln.Unit, "", ""}
+		if h.DiscountVisible {
+			cells = append(cells, "")
+		}
+		return pdfRow{kind: kindProduct, cells: cells}
+	}
 	shown := func(v *big.Rat) *big.Rat {
 		if h.PricesIncludeVat {
 			return withVAT(v, rate)

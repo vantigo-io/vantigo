@@ -144,6 +144,11 @@ type pricedLine struct {
 	// requestedPolicy is the policy the request named, nil for none.
 	invoicePolicy, deliveryMethod string
 	requestedPolicy               *string
+	// kit is, on an order's kit child line, the index of its kit line in the
+	// lines written, and perKit how much of it one kit holds (manufacturing
+	// phase 2 M145); nil on every other line.
+	kit    *int
+	perKit *big.Rat
 }
 
 // pricedLineOf is a stored line as it would be written again, unchanged:

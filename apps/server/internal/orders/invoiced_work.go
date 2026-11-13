@@ -407,6 +407,16 @@ func (h *invoicedWorkHolder) writeInvoiced(ctx context.Context, q *store.Queries
 		if err != nil {
 			return nil, err
 		}
+		// A kit's children count as invoiced what its invoice covers
+		// (manufacturing phase 2 M145).
+		for _, i := range syncKits(lines) {
+			l := lines[i]
+			if err := q.SetLineBuckets(ctx, store.SetLineBucketsParams{
+				ID: l.ID, QtyCancelled: l.QtyCancelled, QtyDelivered: l.QtyDelivered, QtyInvoiced: l.QtyInvoiced,
+			}); err != nil {
+				return nil, fmt.Errorf("orders: store kit line %d's progress: %w", l.ID, err)
+			}
+		}
 		delivery, invoice := progressOf(lines)
 		row, err := q.SetOrderProgress(ctx, store.SetOrderProgressParams{
 			ID: id, DeliveryStatus: delivery, InvoiceStatus: invoice, Version: o.Version, Now: at,

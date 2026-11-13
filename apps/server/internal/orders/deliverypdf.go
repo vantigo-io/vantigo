@@ -14,6 +14,10 @@ package orders
 // column; the packing slip the lot numbers and expiries under the line, so
 // the customer receives the one-step-forward record on paper. Serial numbers
 // are listed and wrapped.
+//
+// A kit line is never picked itself (manufacturing phase 2 M145): the pick
+// list prints its children only, the packing slip the kit with its children
+// under it.
 
 import (
 	"cmp"
@@ -90,6 +94,13 @@ type deliveryPrintable struct {
 
 // kindLots is a packing slip's row of a line's lots, under the line.
 const kindLots = "lots"
+
+// kindKit is a packing slip's row of a kit line, its children under it,
+// each description led by kitIndent (manufacturing phase 2 M145).
+const (
+	kindKit   = "kit"
+	kitIndent = "    – "
+)
 
 // lotText is a pick's lot as a delivery document prints it: the number and,
 // when it has one, the expiry.
@@ -213,8 +224,28 @@ func buildDeliveryModel(p deliveryPrintable) pdfModel {
 		}
 	} else {
 		m.header = []string{l.description, l.ordered, l.quantity, l.backOrder, l.unit}
-		for _, dl := range p.dlines {
+		// A kit's children print under their kit, which is never delivered
+		// itself (manufacturing phase 2 M145): a row of the kit with what was
+		// ordered of it, then each child, indented.
+		dlines := slices.Clone(p.dlines)
+		at := func(dl store.OrdersDeliveryLine) int32 {
 			ol := byLine[dl.OrderLineID]
+			if ol.ParentLineID != nil {
+				return byLine[*ol.ParentLineID].Position
+			}
+			return ol.Position
+		}
+		slices.SortStableFunc(dlines, func(a, b store.OrdersDeliveryLine) int {
+			return cmp.Or(cmp.Compare(at(a), at(b)), cmp.Compare(byLine[a.OrderLineID].Position, byLine[b.OrderLineID].Position))
+		})
+		var kit *int64
+		for _, dl := range dlines {
+			ol := byLine[dl.OrderLineID]
+			if ol.ParentLineID != nil && (kit == nil || *kit != *ol.ParentLineID) {
+				k := byLine[*ol.ParentLineID]
+				m.rows = append(m.rows, pdfRow{kind: kindKit, cells: []string{describe(k), qty(ratOrZero(k.Quantity)), "", "", k.Unit}})
+			}
+			kit = ol.ParentLineID
 			// What remains once this delivery is out: posted, it is already
 			// in delivered; a draft's is not yet.
 			left := openToDeliver(ol)
@@ -224,8 +255,12 @@ func buildDeliveryModel(p deliveryPrintable) pdfModel {
 					left = new(big.Rat)
 				}
 			}
+			desc := describe(ol)
+			if ol.ParentLineID != nil {
+				desc = kitIndent + desc
+			}
 			m.rows = append(m.rows, pdfRow{kind: kindProduct, cells: []string{
-				describe(ol), qty(ratOrZero(ol.Quantity)), qty(ratOrZero(dl.Quantity)), qty(left), ol.Unit,
+				desc, qty(ratOrZero(ol.Quantity)), qty(ratOrZero(dl.Quantity)), qty(left), ol.Unit,
 			}})
 			// The line's lots under it, each once — what it takes summed over
 			// its locations — with what it takes when the line takes more
@@ -347,6 +382,10 @@ func renderListPDF(m pdfModel, packingSlip bool) ([]byte, error) {
 	}
 	row(m.header, true)
 	for _, r := range m.rows {
+		if r.kind == kindKit {
+			row(r.cells, true)
+			continue
+		}
 		if r.kind == kindLots {
 			// A line's lots, under it, wrapped across the table.
 			doc.AddAutoRow(col.New(1), text.NewCol(11, r.cells[0], props.Text{Size: 8, Bottom: 1}))
