@@ -176,9 +176,10 @@ in the group, but work is no longer planned at it.
      planning and the shop floor choose the member (see
      [Group interchangeable work centers](#group-interchangeable-work-centers)). All the
      operations of one BoM must be at work centers on the **same site**;
-   - **Depends on**, the operations it runs after. A new operation depends on the one added
-     before it; clear the field for one that can start at once, or pick two or more for
-     one that waits for several. Operations that depend on the same one run side by side;
+   - **Depends on**, the operations it runs after — only operations before it in
+     **Seq.** are offered. A new operation depends on the one added before it; clear
+     the field for one that can start at once, or pick two or more for one that waits for
+     several. Operations that depend on the same one run side by side;
    - **Send-ahead quantity**, optional: how many good units this operation passes on before
      the operations after it may start, so they can overlap with it. Empty means they wait
      until it is finished;
@@ -207,9 +208,12 @@ the same edit, before either is saved.
 
 Below the operations, **Order of the operations** shows them in steps: step 1 is what can
 start at once, each next step what runs after the steps before it, and the operations of
-one step run side by side. Operations that depend on each other in a circle are refused —
-the editor says so before it sends, and the server names the circle. Removing an operation
-others depended on makes them depend on what it depended on, so the order stays.
+one step run side by side. Every branch must lead to the last operation, the one that makes
+the product: an operation that no later operation depends on is refused — *No operation
+runs after this one* — unless it is the last. An operation that depends on one that is not
+before it in sequence is refused too. The editor marks both on **Depends on** before it
+sends. Removing an operation others depended on makes them depend on what it depended on,
+so the order stays.
 
 **Editing** a BoM saves its lines and operations as you see them, in one go. When you
 remove an operation a line named, the line simply no longer names one. The edit is
@@ -409,7 +413,10 @@ On a draft, choose **Confirm**. Confirming:
 - creates a **work order** for each operation of the bill of materials, at its work
   center, with its instructions and its expected minutes. The first operation is ready to
   start on the [shop floor](#the-shop-floor); the others wait their turn. An order whose
-  bill of materials has no operations has no work orders.
+  bill of materials has no operations has no work orders. An operation that targets a
+  work center group is given the group's first active member; when none of the group's
+  work centers is active, the order is not confirmed — reactivate one, or add one to the
+  group, first.
 
 When the site does not have enough of a component, the order is confirmed all the same:
 the lines that could not be reserved are left unreserved, and the page names each one with
@@ -700,7 +707,9 @@ Several operators can work on one work order at once, each with their own time.
 ### Start a work order out of sequence
 
 Operations run in the order their bill of materials gives: a work order is **Pending**
-until every operation it depends on is done.
+until every operation it depends on is done. Only the operations it depends on directly
+count: when you start one out of sequence and finish it, the operation after it becomes
+**Ready** even if an operation before the one you started is still open.
 When you choose **Start** on it, you are told *An earlier operation is not finished*. When
 the work overlaps in practice, choose **Start anyway**: the work starts as usual, and the
 time log is marked **Out of order**, so the supervisor can see it. **Cancel** leaves it
@@ -708,13 +717,15 @@ pending.
 
 ### Group work
 
-When the work center is a member of a work center group, its page also shows **Group
-work**: the group's work orders that are ready and that no member has taken yet — none is
+When the work center is an active member of a work center group, its page also shows
+**Group work**: the group's work orders that are ready and that no member has taken yet — none is
 planned and no time is logged on them. The same work orders show on every member's page.
 Choose **Start here** to take one: it moves to this work center, with this work center's
 setup, efficiency and rates, and its time starts. From then on it is shown only in this
 work center's **Queue**. When another member took it a moment before you, you are told the
-work order was taken at another work center, and the list is read again.
+work order was taken at another work center, and the list is read again. When the group is
+archived, its work orders stay at the member they have and show in that work center's
+**Queue**.
 
 ### Pass a quantity on
 
@@ -724,7 +735,8 @@ last, choose **Register quantity**, enter the good units you are passing on, and
 **Register quantity**. Nothing is posted to stock — only the last operation's production
 does that. The work order shows **Passed on**, such as *4 pcs of 10 pcs passed on before
 the next may start*, and the next operations become **Ready** as soon as the quantity is
-reached. The work order's first-piece checks must be recorded first. Sending the same
+reached. The work order's first-piece checks must be recorded first. All the quantities
+registered on a work order together cannot exceed the order's quantity. Sending the same
 registration twice registers it once.
 
 ### Switch to another work order
@@ -933,12 +945,14 @@ your own time zone, and it also offers to open the order.
 The work order takes the first free time from the moment you chose — from now, if that
 has passed. The work orders that depend on it, directly or further on, follow it only when
 they would otherwise start too early — before it is finished, or before its send-ahead
-quantity is through; work orders of other orders never move.
+quantity is through. One that moves goes around those that stay, so two never share a
+work center at once; work orders of other orders never move.
 
 A work order of a work center group whose member is not fixed yet can also be dragged up or
 down onto another member's row, or moved there with **Work center** in **Move … to…**: it
-then runs at that member, with its figures. Any other row is refused. Once time is logged on
-the work order it stays at its member, and a move to another row is refused.
+then runs at that member, with its figures. Any other row is refused, and so is a member
+that is **blocked** — its row is not offered. Once time is logged on the work order, or
+when its group is archived, it stays at its member, and a move to another row is refused.
 
 ## The cost of an order
 
