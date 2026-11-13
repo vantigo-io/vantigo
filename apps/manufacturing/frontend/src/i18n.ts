@@ -1038,7 +1038,23 @@ export const manufacturingCatalog = {
     "refusal.split_sum": "The parts do not add up to the order's quantity.",
     "refusal.merge_mismatch":
       "These orders cannot be merged: another product, bill of materials, site, state or origin.",
-    "refusal.order_has_work": "The order has a production or logged time, so it is neither split nor merged.",
+    "refusal.order_has_work":
+      "The order has a production, logged time or a registered quantity, so it is neither split nor merged.",
+    "refusal.order_has_open_parts": "Orders split from this one are still open. Cancel or finish them first.",
+    "refusal.unbuild_has_byproducts":
+      "The order's productions made by-products, so it is not taken apart from the order. Unbuild by the bill of materials instead.",
+    "refusal.unbuild_not_quarantined": "The unbuild quarantined nothing.",
+    unbuildFrom: "Take from",
+    unbuildTo: "Put the components at",
+    unbuildToHint: "Where the restored components go.",
+    unbuildToDefault: "The order's component location",
+    unbuildQuarantined: "Quarantined",
+    unbuildQuarantinedBody:
+      "The lot taken apart was held, so the lots this unbuild restored to are quarantined. Release the quarantine once they are inspected; holds of any other source stay.",
+    unbuildRelease: "Release the quarantine",
+    unbuildQuarantineReleased: "Quarantine released",
+    unbuildReleasedAt: "Quarantine released",
+    unbuildNotFound: "There is no such unbuild.",
   },
   nb: {
     manufacturing: "Produksjon",
@@ -2070,7 +2086,23 @@ export const manufacturingCatalog = {
     "refusal.merge_mismatch":
       "Disse ordrene kan ikke slås sammen: et annet produkt, en annen stykkliste, lokasjon, status eller opprinnelse.",
     "refusal.order_has_work":
-      "Ordren har en produksjon eller registrert tid, så den kan verken deles opp eller slås sammen.",
+      "Ordren har en produksjon, registrert tid eller et registrert antall, så den kan verken deles opp eller slås sammen.",
+    "refusal.order_has_open_parts":
+      "Ordrer som er delt fra denne, er fortsatt åpne. Kanseller eller fullfør dem først.",
+    "refusal.unbuild_has_byproducts":
+      "Ordrens produksjoner laget biprodukter, så den demonteres ikke fra ordren. Demonter etter stykklisten i stedet.",
+    "refusal.unbuild_not_quarantined": "Demonteringen satte ingenting i karantene.",
+    unbuildFrom: "Ta fra",
+    unbuildTo: "Legg komponentene på",
+    unbuildToHint: "Hvor komponentene som kommer tilbake, legges.",
+    unbuildToDefault: "Ordrens komponentlokasjon",
+    unbuildQuarantined: "I karantene",
+    unbuildQuarantinedBody:
+      "Partiet som ble demontert var holdt tilbake, så partiene denne demonteringen ga tilbake til, er satt i karantene. Opphev karantenen når de er kontrollert; sperrer fra andre kilder blir stående.",
+    unbuildRelease: "Opphev karantenen",
+    unbuildQuarantineReleased: "Karantenen er opphevet",
+    unbuildReleasedAt: "Karantene opphevet",
+    unbuildNotFound: "Det finnes ingen slik demontering.",
   },
 } satisfies CatalogResources;
 

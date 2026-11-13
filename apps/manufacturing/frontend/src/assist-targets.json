@@ -970,5 +970,17 @@
       "en": "The list of unbuilds: what each took apart and what it restored.",
       "nb": "Listen over demonteringer: hva hver tok fra hverandre, og hva den ga tilbake."
     }
+  },
+  {
+    "key": "manufacturing.unbuild.release",
+    "route": "/manufacturing/unbuilds/{unbuildId}",
+    "label": {
+      "en": "Release the quarantine",
+      "nb": "Opphev karantenen"
+    },
+    "description": {
+      "en": "The button on an unbuild's page that releases the quarantine an unbuild of a held lot put on what it restored; quality managers only.",
+      "nb": "Knappen på siden til en demontering som opphever karantenen en demontering av et holdt parti satte på det den ga tilbake; bare for kvalitetsansvarlige."
+    }
   }
 ]

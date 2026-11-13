@@ -575,6 +575,11 @@
     "description": "The button on the suggestions page that runs replenishment at once instead of waiting for the night."
   },
   {
+    "key": "manufacturing.unbuild.release",
+    "route": "/manufacturing/unbuilds/{unbuildId}",
+    "description": "The button on an unbuild's page that releases the quarantine an unbuild of a held lot put on what it restored; quality managers only."
+  },
+  {
     "key": "manufacturing.unbuilds.list",
     "route": "/manufacturing/unbuilds",
     "description": "The list of unbuilds: what each took apart and what it restored."

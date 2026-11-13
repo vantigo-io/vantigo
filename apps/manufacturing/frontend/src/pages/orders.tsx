@@ -16,7 +16,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { IconAlertCircle, IconArrowsJoin, IconClipboardList, IconPlus, IconSearch } from "@tabler/icons-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -25,7 +25,6 @@ import {
   mergeOrders,
   ORDER_PAGE_SIZE,
   orderOrigins,
-  orderQueryOptions,
   orderSorts,
   orderStatuses,
   ordersQueryOptions,
@@ -84,25 +83,29 @@ export const OrdersPage = () => {
         : (orders.data?.items.find((order) => order.responsible?.id === search.responsibleUserId)?.responsible ??
           undefined);
   const siteName = new Map((sites.data ?? []).map((site) => [site.id, site.code]));
-  // Merge (manufacturing phase 2 M125): the drafts and confirmed orders chosen here.
-  const client = useQueryClient();
+  // Merge (manufacturing phase 2 M125): the drafts and confirmed orders chosen
+  // here, each with the revision this view showed — an order changed since is
+  // revision_conflict, never merged as it is now unseen. A choice lasts while
+  // its page and filter do.
   const { run, confirm } = useRecordActions();
-  const [chosen, setChosen] = useState<readonly number[]>([]);
+  const [chosen, setChosen] = useState<readonly { id: number; number: string; revision: number }[]>([]);
+  const searchKey = JSON.stringify(search);
+  const [chosenFor, setChosenFor] = useState(searchKey);
+  if (chosenFor !== searchKey) {
+    setChosenFor(searchKey);
+    setChosen([]);
+  }
   const manage = canManageOrders(meta.data);
   const mergeable = (status: string) => status === "draft" || status === "confirmed";
-  const chosenNumbers = (orders.data?.items ?? [])
-    .filter((order) => chosen.includes(order.id))
-    .map((order) => order.number);
   const merge = () =>
     confirm(
       t("mergeOrdersTitle"),
-      t("mergeOrdersBody", { numbers: chosenNumbers.join(", ") }),
+      t("mergeOrdersBody", { numbers: chosen.map((order) => order.number).join(", ") }),
       t("mergeOrders"),
       () =>
         void run(
           async () => {
-            const read = await Promise.all(chosen.map((id) => client.fetchQuery(orderQueryOptions(id))));
-            const result = await mergeOrders(read.map((order) => ({ id: order.id, revision: order.revision })));
+            const result = await mergeOrders(chosen.map((order) => ({ id: order.id, revision: order.revision })));
             setChosen([]);
             void navigate(orderLinkOptions(result.order.id));
           },
@@ -275,11 +278,13 @@ export const OrdersPage = () => {
                             {mergeable(order.status) && (
                               <Checkbox
                                 aria-label={t("chooseToMerge", { number: order.number })}
-                                checked={chosen.includes(order.id)}
+                                checked={chosen.some((one) => one.id === order.id)}
                                 onChange={(event) => {
                                   const on = event.currentTarget.checked;
                                   setChosen((current) =>
-                                    on ? [...current, order.id] : current.filter((id) => id !== order.id),
+                                    on
+                                      ? [...current, { id: order.id, number: order.number, revision: order.revision }]
+                                      : current.filter((one) => one.id !== order.id),
                                   );
                                 }}
                               />
