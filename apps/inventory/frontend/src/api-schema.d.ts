@@ -131,7 +131,7 @@ export interface paths {
         put?: never;
         /**
          * Import placements
-         * @description Reads a CSV of sku, site (code), primary_location (full code), reorder_point and maximum, at most 5000 rows, the SKUs resolved in one catalog lookup (I61). Each row sets all three fields of the variant's placement at the site, an empty cell clearing its field, and a row clearing all three removes the placement. A dry run answers each row's outcome; a commit writes every row, last wins, bumping each revision — or, when any row fails, writes nothing and answers the rows with ok false. The same file posted twice writes once.
+         * @description Reads a CSV of sku, site (code), primary_location (full code), reorder_point and maximum, and optionally multiple (manufacturing phase 2 M105), at most 5000 rows, the SKUs resolved in one catalog lookup (I61). Each row sets every field of the variant's placement at the site, an empty cell — or a multiple column left out — clearing its field, and a row clearing the primary location, reorder point and maximum removes the placement. A dry run answers each row's outcome; a commit writes every row, last wins, bumping each revision — or, when any row fails, writes nothing and answers the rows with ok false. The same file posted twice writes once.
          */
         post: operations["importInventoryPlacements"];
         delete?: never;
@@ -1756,6 +1756,11 @@ export interface components {
             maximum: number | null;
             /**
              * Format: double
+             * @description The placement's multiple (manufacturing phase 2 M105), which needed is rounded up to before the packaging; null when unset.
+             */
+            multiple?: number | null;
+            /**
+             * Format: double
              * @description The target less available plus incoming; at least 1.
              */
             needed: number;
@@ -1771,7 +1776,7 @@ export interface components {
             site: components["schemas"]["InventorySiteRef"];
             /**
              * Format: double
-             * @description Needed, rounded up to a whole number of the packaging; needed when the variant has none. It may pass the maximum.
+             * @description Needed, rounded up to the placement's multiple when it has one, then to a whole number of the packaging; that alone when the variant has none. It may pass the maximum.
              */
             suggested: number;
             variant: components["schemas"]["InventoryVariantRef"];
@@ -1944,6 +1949,11 @@ export interface components {
              */
             maximum: number | null;
             /**
+             * Format: double
+             * @description What a suggestion is rounded up to a whole number of (manufacturing phase 2 M105); more than 0, null when unset.
+             */
+            multiple: number | null;
+            /**
              * Format: int64
              * @description An active location of the site, the default where the variant is put and taken (I55).
              */
@@ -1981,6 +1991,8 @@ export interface components {
         InventoryPlacementImportRow: {
             detail?: string;
             maximum: string;
+            /** @description The multiple's cell; empty, or absent when the file has no multiple column, clears it. */
+            multiple?: string;
             outcome: components["schemas"]["InventoryPlacementImportOutcome"];
             /** @description The location's full code. */
             primaryLocation: string;
@@ -1994,10 +2006,12 @@ export interface components {
             site: string;
             sku: string;
         };
-        /** @description A placement's three fields (I54), each null to leave it unset; all three null is placement_empty — remove the placement instead. The maximum is never below the reorder point (maximum_below_reorder_point); the primary location is an active location of the site (placement_location_invalid). */
+        /** @description A placement's fields (I54), each null to leave it unset; primary location, reorder point and maximum all null is placement_empty — remove the placement instead. The multiple (manufacturing phase 2 M105) is more than 0, and absent is null. The maximum is never below the reorder point (maximum_below_reorder_point); the primary location is an active location of the site (placement_location_invalid). */
         InventoryPlacementInput: {
             /** Format: double */
             maximum: number | null;
+            /** Format: double */
+            multiple?: number | null;
             /** Format: int64 */
             primaryLocationId: number | null;
             /** Format: double */
@@ -3287,7 +3301,7 @@ export interface operations {
                     "application/json": components["schemas"]["InventoryPlacementImportResult"];
                 };
             };
-            /** @description Bad Request — a file that does not read, a header other than sku, site, primary_location, reorder_point, maximum, or more than 5000 rows. */
+            /** @description Bad Request — a file that does not read, a header other than sku, site, primary_location, reorder_point, maximum (and optionally multiple), or more than 5000 rows. */
             400: {
                 headers: {
                     [name: string]: unknown;

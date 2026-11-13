@@ -97,6 +97,8 @@ export interface Placement {
   primaryLocationId: number | null;
   reorderPoint: number | null;
   maximum: number | null;
+  /** Manufacturing phase 2 M105; absent is unset. */
+  multiple?: number | null;
   revision: number;
 }
 
@@ -383,6 +385,7 @@ export const stubInventoryApi = (server: InventoryServer = {}): InventoryStub =>
       primaryLocationId: one.primaryLocationId,
       reorderPoint: one.reorderPoint,
       maximum: one.maximum,
+      multiple: one.multiple ?? null,
       revision: one.revision,
       low: one.reorderPoint !== null && available + incoming <= one.reorderPoint,
     };

@@ -633,6 +633,8 @@ export const inventoryCatalog = {
     primaryLocationHelp: "Where it is received and picked by default. Stock may still lie anywhere.",
     reorderPointHelp: "Low when available + incoming is at or below it.",
     maximumHelp: "The suggestion fills up to it.",
+    multiple: "Multiple",
+    multipleHelp: "A suggestion is rounded up to a whole number of it, such as a batch size.",
     placementTitle: "Placement at {{site}}",
     editPlacement: "Edit placement",
     removePlacement: "Remove",
@@ -654,6 +656,7 @@ export const inventoryCatalog = {
     placementSaved: "Placement saved",
     placementRemoved: "Placement removed",
     maximumPositive: "The maximum must be more than 0.",
+    multiplePositive: "The multiple must be more than 0.",
     selectLowStockRow: "Choose {{sku}} at {{site}}",
     createTransfer: "Create transfer",
     createTransferAgainTitle: "A draft is already open",
@@ -664,7 +667,7 @@ export const inventoryCatalog = {
     notAllowed_lowStock:
       "You cannot see the low-stock list. Ask an administrator for the permissions View locations and View stock.",
     placementsImportHint:
-      "A CSV file with the columns sku, site (its code), primary_location (the full code), reorder_point and maximum, at most 5000 rows. Each row sets all three; an empty cell clears its field, and a row with all three empty removes the placement. Try it first: nothing is written until you commit, and a file with a failing row writes nothing.",
+      "A CSV file with the columns sku, site (its code), primary_location (the full code), reorder_point and maximum, and optionally multiple, at most 5000 rows. Each row sets every field; an empty cell clears its field, and a row with the first three empty removes the placement. Try it first: nothing is written until you commit, and a file with a failing row writes nothing.",
     placementsAllOk_one: "{{count}} row is ready to import.",
     placementsAllOk_other: "All {{count}} rows are ready to import.",
     placementsRowsFailing_one: "{{count}} row cannot be imported. Fix the file and try again.",
@@ -1534,6 +1537,8 @@ export const inventoryCatalog = {
     primaryLocationHelp: "Der varen mottas og plukkes som standard. Varer kan fortsatt ligge hvor som helst.",
     reorderPointHelp: "Lav når tilgjengelig + innkommende er på eller under det.",
     maximumHelp: "Forslaget fyller opp til den.",
+    multiple: "Multiplum",
+    multipleHelp: "Et forslag rundes opp til et helt antall av den, for eksempel en partistørrelse.",
     placementTitle: "Påfylling på {{site}}",
     editPlacement: "Endre påfylling",
     removePlacement: "Fjern",
@@ -1555,6 +1560,7 @@ export const inventoryCatalog = {
     placementSaved: "Påfylling lagret",
     placementRemoved: "Påfylling fjernet",
     maximumPositive: "Maksbeholdningen må være mer enn 0.",
+    multiplePositive: "Multiplumet må være mer enn 0.",
     selectLowStockRow: "Velg {{sku}} på {{site}}",
     createTransfer: "Opprett overføring",
     createTransferAgainTitle: "Et utkast er allerede åpent",
@@ -1565,7 +1571,7 @@ export const inventoryCatalog = {
     notAllowed_lowStock:
       "Du kan ikke se listen over lav beholdning. Be en administrator om tillatelsene Se lagersteder og Se beholdning.",
     placementsImportHint:
-      "En CSV-fil med kolonnene sku, site (koden), primary_location (full kode), reorder_point og maximum, høyst 5000 rader. Hver rad setter alle tre; en tom celle tømmer feltet, og en rad der alle tre er tomme fjerner påfyllingen. Prøv først: ingenting skrives før du fullfører, og en fil med en feilende rad skriver ingenting.",
+      "En CSV-fil med kolonnene sku, site (koden), primary_location (full kode), reorder_point og maximum, og eventuelt multiple, høyst 5000 rader. Hver rad setter alle feltene; en tom celle tømmer feltet, og en rad der de tre første er tomme fjerner påfyllingen. Prøv først: ingenting skrives før du fullfører, og en fil med en feilende rad skriver ingenting.",
     placementsAllOk_one: "{{count}} rad er klar til import.",
     placementsAllOk_other: "Alle {{count}} rader er klare til import.",
     placementsRowsFailing_one: "{{count}} rad kan ikke importeres. Rett filen og prøv igjen.",

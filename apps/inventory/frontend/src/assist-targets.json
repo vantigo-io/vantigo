@@ -250,5 +250,17 @@
       "en": "The button on a lot's page that reports a deviation of the lot in Manufacturing, which can put it in quarantine.",
       "nb": "Knappen på et partis side som melder et avvik på partiet i Produksjon, som kan sette det i karantene."
     }
+  },
+  {
+    "key": "inventory.placement.multiple",
+    "route": "/inventory/variants/{variantId}",
+    "label": {
+      "en": "Multiple",
+      "nb": "Multiplum"
+    },
+    "description": {
+      "en": "The placement's multiple: a suggestion is rounded up to a whole number of it, such as a batch size.",
+      "nb": "Påfyllingens multiplum: et forslag rundes opp til et helt antall av det, for eksempel en partistørrelse."
+    }
   }
 ]

@@ -289,7 +289,7 @@ const OpeningBalancesImport = () => {
 /**
  * The placements import (I61): one file across every site, of `sku`, `site`
  * (its code), `primary_location` (a full code), `reorder_point` and
- * `maximum`. A dry run answers each row; Commit, offered only when every row
+ * `maximum`, and optionally `multiple` (manufacturing phase 2 M105). A dry run answers each row; Commit, offered only when every row
  * is ok, sets each placement, an empty cell clearing its field and a row
  * clearing all three removing it. The same file twice writes once.
  */
@@ -415,6 +415,7 @@ const PlacementsImport = () => {
                     <Table.Th>{t("primaryLocation")}</Table.Th>
                     <Table.Th ta="right">{t("reorderPoint")}</Table.Th>
                     <Table.Th ta="right">{t("maximumLevel")}</Table.Th>
+                    <Table.Th ta="right">{t("multiple")}</Table.Th>
                     <Table.Th>{t("importOutcome")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
@@ -431,6 +432,7 @@ const PlacementsImport = () => {
                       </Table.Td>
                       <Table.Td ta="right">{row.reorderPoint}</Table.Td>
                       <Table.Td ta="right">{row.maximum}</Table.Td>
+                      <Table.Td ta="right">{row.multiple ?? ""}</Table.Td>
                       <Table.Td>
                         <Badge variant="light" color={row.outcome === "ok" ? "teal" : "red"}>
                           {t(`placementOutcome_${row.outcome}`)}

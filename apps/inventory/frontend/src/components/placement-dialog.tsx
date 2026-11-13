@@ -20,14 +20,15 @@ export interface PlacementDialogProps {
   placement?: InventoryPlacement;
 }
 
-type Field = "location" | "reorderPoint" | "maximum";
+type Field = "location" | "reorderPoint" | "maximum" | "multiple";
 
 const asNumber = (value: number | string): number | "" => (value === "" ? "" : roundQuantity(Number(value)));
 const orNull = (value: number | ""): number | null => (value === "" ? null : value);
 
 /**
  * A variant's placement at one site (I54, I61): its primary location among
- * the site's active ones, its reorder point and its maximum, each with a line
+ * the site's active ones, its reorder point, its maximum and the multiple a
+ * suggestion is rounded up to (manufacturing phase 2 M105), each with a line
  * of help; Remove deletes it. A new placement is created under
  * `If-None-Match: *`, one read is changed under `If-Match`; when it moved on
  * in between the page reloads it and says so. What the server would refuse
@@ -40,6 +41,7 @@ export const PlacementDialog = ({ opened, onClose, variant, site, placement }: P
   const [locationId, setLocationId] = useState<number | null>(placement?.primaryLocationId ?? null);
   const [reorderPoint, setReorderPoint] = useState<number | "">(placement?.reorderPoint ?? "");
   const [maximum, setMaximum] = useState<number | "">(placement?.maximum ?? "");
+  const [multiple, setMultiple] = useState<number | "">(placement?.multiple ?? "");
   // The revision the dialog was opened at, and whether there was a placement then: a refetch while it is open
   // must not turn the write into one against somebody else's change (I61).
   const [readAt] = useState<number | undefined>(placement?.revision);
@@ -81,7 +83,12 @@ export const PlacementDialog = ({ opened, onClose, variant, site, placement }: P
       putPlacement(
         variant.id,
         site.id,
-        { primaryLocationId: locationId, reorderPoint: orNull(reorderPoint), maximum: orNull(maximum) },
+        {
+          primaryLocationId: locationId,
+          reorderPoint: orNull(reorderPoint),
+          maximum: orNull(maximum),
+          multiple: orNull(multiple),
+        },
         readAt,
       ),
     onSuccess: async () => {
@@ -111,6 +118,7 @@ export const PlacementDialog = ({ opened, onClose, variant, site, placement }: P
     if (maximum !== "" && maximum <= 0) next.maximum = t("maximumPositive");
     else if (maximum !== "" && reorderPoint !== "" && maximum < reorderPoint)
       next.maximum = t("refusal.maximum_below_reorder_point");
+    if (multiple !== "" && multiple <= 0) next.multiple = t("multiplePositive");
     setErrors(next);
     if (Object.keys(next).length > 0) return;
     // A placement with nothing set is never stored (placement_empty): an existing one is removed instead.
@@ -174,6 +182,23 @@ export const PlacementDialog = ({ opened, onClose, variant, site, placement }: P
           value={maximum}
           onChange={(value) => edit(setMaximum, "maximum")(asNumber(value))}
           error={errors.maximum}
+        />
+        <NumberInput
+          label={t("multiple")}
+          description={t("multipleHelp")}
+          decimalScale={QUANTITY_DECIMALS}
+          allowNegative={false}
+          min={0}
+          rightSection={
+            <Text size="xs" c="dimmed" pr="xs">
+              {variant.unit}
+            </Text>
+          }
+          rightSectionWidth={48}
+          value={multiple}
+          onChange={(value) => edit(setMultiple, "multiple")(asNumber(value))}
+          error={errors.multiple}
+          data-assist="inventory.placement.multiple"
         />
         {problem && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotSave")}>
