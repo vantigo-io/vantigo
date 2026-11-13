@@ -11,6 +11,7 @@ import type {
 } from "../api/orders";
 import type { ManufacturingPerson } from "../api/people";
 import type { ManufacturingDeviation } from "../api/quality";
+import type { ManufacturingReplenishmentRule, ManufacturingSuggestionList } from "../api/replenishment";
 import type { ManufacturingSchedule, ManufacturingScheduleBar, ManufacturingScheduleDay } from "../api/schedule";
 import type {
   ManufacturingMyWork,
@@ -456,6 +457,10 @@ export interface ManufacturingServer {
   orderLots?: Record<number, ManufacturingOrderLots>;
   /** The deviations (manufacturing phase 2 M99), newest first. */
   deviations?: ManufacturingDeviation[];
+  /** The replenishment suggestions (manufacturing phase 2 M111); none, never run, when absent. */
+  suggestions?: ManufacturingSuggestionList;
+  /** A variant's replenishment rules (M111); none when absent. */
+  replenishmentRules?: ManufacturingReplenishmentRule[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -515,6 +520,7 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
     ordersToStartToday: 0,
     ordersInProgress: 0,
     ordersLate: 0,
+    suggestionsToMake: 0,
     today: "2026-11-11",
     ...server.stats,
   };
@@ -695,6 +701,10 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       const found = server.deviations?.find((one) => one.id === Number(deviation[1]));
       return Promise.resolve(found ? jsonResponse(200, found) : manufacturingProblem(404, undefined));
     }
+    if (path === "/replenishment/suggestions")
+      return Promise.resolve(jsonResponse(200, server.suggestions ?? { sites: [], lastRun: null, salesCounted: true }));
+    if (path === "/replenishment/rules")
+      return Promise.resolve(jsonResponse(200, { items: server.replenishmentRules ?? [] }));
     if (/^\/boms\/\d+\/overview$/.test(path) && server.overview)
       return Promise.resolve(jsonResponse(200, server.overview));
     return Promise.resolve(jsonResponse(404, {}));

@@ -667,6 +667,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manufacturing/replenishment/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a variant's replenishment rules
+         * @description A variant's automatic creation per site (manufacturing phase 2 M111): every active site, with the rule it has there, off when it has none.
+         */
+        get: operations["listManufacturingReplenishmentRules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/replenishment/rules/{variantId}/{siteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a replenishment rule
+         * @description Sets the variant's automatic creation at the site (M111): with autoCreate the nightly run creates the manufacturing order a suggestion of the variant asks for itself, as the system, and confirms it too with autoConfirm — never while an order from an earlier suggestion of the variant is open or a draft at the site. Both off removes the rule. autoConfirm without autoCreate is a field error.
+         */
+        put: operations["putManufacturingReplenishmentRule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/replenishment/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List replenishment runs
+         * @description The replenishment job's runs (M109), newest first, at most 20; runs are kept 90 days.
+         */
+        get: operations["listManufacturingReplenishmentRuns"];
+        put?: never;
+        /**
+         * Run replenishment now
+         * @description Asks for a run of the replenishment job now (M109), for one site or, without siteId, every active site; the worker runs it shortly after. At most one a minute: while a run asked for less than a minute ago is pending, running or just done, it is answered instead and no new run is made.
+         */
+        post: operations["startManufacturingReplenishmentRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/replenishment/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List replenishment suggestions
+         * @description The open replenishment suggestions (M110, M111), one group per active site with any — or only siteId's — make rows first, then by SKU; with the last run and whether Orders' unreserved sales demand was counted. A suggestion's reason shows what Orders still needs only as a sum, never a customer or an order.
+         */
+        get: operations["listManufacturingSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/replenishment/suggestions/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create orders from suggestions
+         * @description Creates one manufacturing order per make suggestion named (M111), origin reorder, at the suggestion's site, for its quantity or the one sent, due on its need-by date, from the variant's default active BoM — each in its own transaction, under the lock order of a new order (LockVariants, the suggestion FOR UPDATE, the counter). With confirm each is confirmed too, reserving its components by the two passes of M20a, where shortage never refuses. The suggestion becomes done with the order. A suggestion that is not open, a buy suggestion, or one whose order is refused is answered among failed with its code; the others are made.
+         */
+        post: operations["createManufacturingOrdersFromSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/manufacturing/replenishment/suggestions/{id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a suggestion
+         * @description Dismisses an open suggestion until the next run (M111), which suggests it again if it is still needed.
+         */
+        post: operations["dismissManufacturingSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manufacturing/sales-order-lines/{id}": {
         parameters: {
             query?: never;
@@ -2187,10 +2311,10 @@ export interface components {
             shortLines: components["schemas"]["ManufacturingShortLine"][];
         };
         /**
-         * @description Where an order came from (M17): by hand, a sales order (delivery E) or a parent order (E).
+         * @description Where an order came from (M17): by hand, a sales order (delivery E), a parent order (E) or a replenishment suggestion (manufacturing phase 2 M111).
          * @enum {string}
          */
-        ManufacturingOrigin: "manual" | "sales_order" | "parent";
+        ManufacturingOrigin: "manual" | "sales_order" | "parent" | "reorder";
         /** @description The lot a production of a lot-tracked product puts its good output in (manufacturing phase 2 M80). Every field is optional. The number defaults to the order's lot pattern rendered on the production date — a number its {N} counter hands out is always a new lot, one another document's lot has already is skipped; a number sent that the product has already names that lot, and only the dates sent are compared with it (lot_dates_differ). The production date defaults to today; expiry and bestBefore to the variant's offsets from it, when the lot is made. */
         ManufacturingOutputLotInput: {
             /** Format: date */
@@ -2275,7 +2399,7 @@ export interface components {
          * @enum {string}
          */
         ManufacturingPriority: "normal" | "urgent";
-        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. */
+        /** @description An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111). */
         ManufacturingProblem: {
             /** @description checks_incomplete only: every check with no result that stops it (M98). */
             checks?: components["schemas"]["ManufacturingMissingCheck"][];
@@ -2624,6 +2748,167 @@ export interface components {
             children: components["schemas"]["ManufacturingOrderLink"][];
             order: components["schemas"]["ManufacturingOrder"];
         };
+        /** @description A variant's automatic creation at a site (M111); both false when it has no rule. */
+        ManufacturingReplenishmentRule: {
+            autoConfirm: boolean;
+            autoCreate: boolean;
+            /** Format: int64 */
+            siteId: number;
+            /** Format: int32 */
+            variantId: number;
+        };
+        /** @description A replenishment rule's two switches; autoConfirm needs autoCreate. */
+        ManufacturingReplenishmentRuleInput: {
+            autoConfirm: boolean;
+            autoCreate: boolean;
+        };
+        /** @description A variant's rules at every active site, by site code. */
+        ManufacturingReplenishmentRuleList: {
+            items: components["schemas"]["ManufacturingReplenishmentRule"][];
+        };
+        /** @description A run of the replenishment job (M109): nightly at 02:00 in the business zone, or asked for by a person. */
+        ManufacturingReplenishmentRun: {
+            /** @description Why a failed run failed, in English. */
+            error: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "nightly" | "manual";
+            /**
+             * Format: int32
+             * @description The orders automatic creation made.
+             */
+            ordersCreated: number;
+            /** Format: date-time */
+            requestedAt: string;
+            /** @description Orders' unreserved sales demand was counted; false when Orders is not enabled. */
+            salesCounted: boolean;
+            /**
+             * Format: int64
+             * @description The one site the run was asked for; null for every active site.
+             */
+            siteId: number | null;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** @enum {string} */
+            status: "pending" | "running" | "done" | "failed";
+            /**
+             * Format: int32
+             * @description The open suggestions it left.
+             */
+            suggestions: number;
+        };
+        /** @description The site to run for; none for every active site. */
+        ManufacturingReplenishmentRunInput: {
+            /** Format: int64 */
+            siteId?: number | null;
+        };
+        /** @description The newest runs. */
+        ManufacturingReplenishmentRunList: {
+            items: components["schemas"]["ManufacturingReplenishmentRun"][];
+        };
+        /** @description A replenishment suggestion (M108, M110): to make (the variant has a default active BoM) or buy, at a site, the quantity that brings the projected stock up to the placement's target, rounded up to its multiple, needed by needBy. */
+        ManufacturingSuggestion: {
+            /**
+             * Format: int64
+             * @description The default active BoM a make suggestion is made from.
+             */
+            bomId: number | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            kind: "make" | "buy";
+            /**
+             * Format: date
+             * @description Today when usable on hand less reserved is already at or below the reorder point, else today plus the BoM's lead time in business days (buy, today).
+             */
+            needBy: string;
+            /**
+             * Format: int64
+             * @description The manufacturing order made from it.
+             */
+            orderId: number | null;
+            orderNumber: string | null;
+            /** @description Exact decimal text. */
+            quantity: string;
+            reason: components["schemas"]["ManufacturingSuggestionReason"];
+            /** @description An order from an earlier suggestion of the variant is open or a draft at the site, so automatic creation made none. */
+            reorderOpen: boolean;
+            /** Format: int64 */
+            siteId: number;
+            /** @enum {string} */
+            status: "open" | "done" | "dismissed" | "superseded";
+            variant: components["schemas"]["ManufacturingVariantRef"];
+        };
+        /** @description A suggestion no order was made from, and why. */
+        ManufacturingSuggestionFailure: {
+            /** @description suggestion_not_open, variant_not_goods, bom_required, or the code of the rule the order's creation or confirmation refused. */
+            code: string;
+            detail: string;
+            /** Format: int64 */
+            suggestionId: number;
+        };
+        /** @description An order made from a suggestion. */
+        ManufacturingSuggestionMade: {
+            number: string;
+            /** Format: int64 */
+            orderId: number;
+            /** Format: int64 */
+            suggestionId: number;
+        };
+        /** @description A suggestion to make an order from, with the quantity when it was edited. */
+        ManufacturingSuggestionOrderItem: {
+            /** @description Exact decimal text, more than 0; the suggestion's when absent. */
+            quantity?: string | null;
+            /** Format: int64 */
+            suggestionId: number;
+        };
+        /** @description The suggestions to make orders from, and whether to confirm them. */
+        ManufacturingSuggestionOrdersInput: {
+            /** @description Confirm each order too, reserving its components. */
+            confirm: boolean;
+            items: components["schemas"]["ManufacturingSuggestionOrderItem"][];
+        };
+        /** @description What was made and what was not. */
+        ManufacturingSuggestionOrdersResult: {
+            failed: components["schemas"]["ManufacturingSuggestionFailure"][];
+            made: components["schemas"]["ManufacturingSuggestionMade"][];
+        };
+        /** @description The figures a suggestion was made from (M107, M108), each exact decimal text: projected = onHand − reserved + incoming + inProduction − neededByProduction − neededBySales, at or below reorderPoint. */
+        ManufacturingSuggestionReason: {
+            /** @description In transit to the site on open transfers. */
+            incoming: string;
+            /** @description What the open orders, and the drafts from earlier suggestions, still make of it at the site; make-to-order orders left out. */
+            inProduction: string;
+            /** @description The placement's maximum, the target; null when it has none and the target is the reorder point plus 1. */
+            maximum: string | null;
+            multiple: string | null;
+            /** @description What open orders at the site still need of it as a component and do not hold reserved. */
+            neededByProduction: string;
+            /** @description What open sales orders at the site still need of it and do not hold reserved, as a sum; lines a make-to-order order serves left out. */
+            neededBySales: string;
+            /** @description Usable on hand at the site. */
+            onHand: string;
+            projected: string;
+            reorderPoint: string;
+            reserved: string;
+        };
+        /** @description One site's open suggestions. */
+        ManufacturingSuggestionSite: {
+            site: components["schemas"]["ManufacturingSite"];
+            suggestions: components["schemas"]["ManufacturingSuggestion"][];
+        };
+        /** @description The open suggestions per site, the last run and whether sales orders were counted. */
+        ManufacturingSuggestionList: {
+            lastRun: components["schemas"]["ManufacturingReplenishmentRun"] | null;
+            /** @description Orders is enabled, so open sales orders' unreserved demand is counted; false shows Sales orders not counted. */
+            salesCounted: boolean;
+            sites: components["schemas"]["ManufacturingSuggestionSite"][];
+        };
         /** @description A sales order line to make an order for (M45): what the new-order form is prefilled from. */
         ManufacturingSalesOrderLine: {
             /**
@@ -2863,6 +3148,11 @@ export interface components {
              * @description Confirmed orders not started whose planned start is today or earlier.
              */
             ordersToStartToday: number;
+            /**
+             * Format: int32
+             * @description Open make suggestions at every active site (M111), the dashboard's Suggestions to make.
+             */
+            suggestionsToMake: number;
             /**
              * Format: date
              * @description Today in the business calendar's zone, the day the counts are of; the overview's week ends on the Sunday after it.
@@ -5880,6 +6170,381 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    listManufacturingReplenishmentRules: {
+        parameters: {
+            query: {
+                variantId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingReplenishmentRuleList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    putManufacturingReplenishmentRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                variantId: number;
+                siteId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingReplenishmentRuleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingReplenishmentRule"];
+                };
+            };
+            /** @description Bad Request — field errors (autoConfirm without autoCreate; site_unknown, a site that is not an active Inventory site). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    listManufacturingReplenishmentRuns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingReplenishmentRunList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    startManufacturingReplenishmentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingReplenishmentRunInput"];
+            };
+        };
+        responses: {
+            /** @description Accepted — the run, pending until the worker takes it. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingReplenishmentRun"];
+                };
+            };
+            /** @description Bad Request — site_unknown, a site that is not an active Inventory site. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    listManufacturingSuggestions: {
+        parameters: {
+            query?: {
+                siteId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingSuggestionList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: Inventory is not composed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    createManufacturingOrdersFromSuggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManufacturingSuggestionOrdersInput"];
+            };
+        };
+        responses: {
+            /** @description OK — what was made and what was not. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingSuggestionOrdersResult"];
+                };
+            };
+            /** @description Bad Request — field errors (no suggestion, more than 200, one named twice, a quantity that is not more than 0). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable — dependency_unavailable: the catalog or Inventory is not composed. Nothing was changed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
+                };
+            };
+        };
+    };
+    dismissManufacturingSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManufacturingSuggestion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such suggestion. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — suggestion_not_open, a suggestion acted on or replaced by a later run. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ManufacturingProblem"];
                 };
             };
         };

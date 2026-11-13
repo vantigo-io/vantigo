@@ -15,6 +15,7 @@ import {
   ORDERS_ROUTE_PATH,
   orderLinkOptions,
   REPORTS_ROUTE_PATH,
+  SUGGESTIONS_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
 } from "../lib/routes";
 
@@ -170,6 +171,11 @@ export const ManufacturingOverviewPage = () => {
               href={WORK_CENTERS_ROUTE_PATH}
             />
             <KpiCard label={t("activeBoms")} value={stats.data.activeBoms} href={BOMS_ROUTE_PATH} />
+            <KpiCard
+              label={t("suggestionsToMake")}
+              value={stats.data.suggestionsToMake}
+              href={SUGGESTIONS_ROUTE_PATH}
+            />
           </SimpleGrid>
           {stats.data.activeBoms > 0 && <DueThisWeek today={stats.data.today} />}
           {stats.data.activeBoms === 0 && (

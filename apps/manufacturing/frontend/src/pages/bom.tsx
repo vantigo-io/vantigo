@@ -7,8 +7,9 @@ import { archiveBom, bomQueryOptions, makeDefaultBom, reactivateBom } from "../a
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import { NotFoundError } from "../api/request";
 import { BomEditor } from "../components/bom-editor";
+import { ReplenishmentRules } from "../components/replenishment-rules";
 import { useRecordActions } from "../lib/actions";
-import { canManageBoms } from "../lib/capabilities";
+import { canManageBoms, canManageOrders } from "../lib/capabilities";
 import { statusColor, useManufacturingFormat } from "../lib/format";
 import { BOMS_ROUTE_PATH, bomOverviewLinkOptions, MANUFACTURING_HOME_ROUTE_PATH } from "../lib/routes";
 
@@ -146,6 +147,9 @@ export const BomPage = () => {
           )}
           {/* A fresh editor per revision: a save, a status change or someone else's edit reloads it. */}
           <BomEditor key={data.revision} bom={data} />
+          {data.isDefault && data.status === "active" && (
+            <ReplenishmentRules variantId={data.variant.id} editable={canManageOrders(meta.data)} />
+          )}
         </>
       )}
     </Stack>

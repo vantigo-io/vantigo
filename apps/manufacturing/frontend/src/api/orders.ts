@@ -46,7 +46,7 @@ export const orderStatuses: readonly ManufacturingOrderStatus[] = [
 /** The statuses the list shows when none is asked for (M24). */
 export const openOrderStatuses: readonly ManufacturingOrderStatus[] = ["draft", "confirmed", "in_progress"];
 export const orderSorts: readonly ManufacturingOrderSort[] = ["dueDate", "number", "priority"];
-export const orderOrigins: readonly ManufacturingOrigin[] = ["manual", "sales_order", "parent"];
+export const orderOrigins: readonly ManufacturingOrigin[] = ["manual", "sales_order", "parent", "reorder"];
 export const priorities: readonly ManufacturingPriority[] = ["normal", "urgent"];
 export const availabilities: readonly ManufacturingAvailability[] = ["ready", "partly_available", "waiting"];
 export const reservationStatuses: readonly ManufacturingReservationStatus[] = [
