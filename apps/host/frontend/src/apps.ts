@@ -12,6 +12,7 @@ import {
   IconBuildingBank,
   IconBuildingFactory2,
   IconBuildingWarehouse,
+  IconBulb,
   IconCalendar,
   IconCalendarDue,
   IconCalendarEvent,
@@ -269,6 +270,7 @@ const inventoryNavPresentation: Record<InventoryNavItem["key"], Pick<NavItem, "l
 const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<NavItem, "label" | "icon">> = {
   overview: { label: "navigation.manufacturingOverview", icon: IconBuildingFactory2 },
   orders: { label: "navigation.manufacturingOrders", icon: IconClipboardList },
+  suggestions: { label: "navigation.manufacturingSuggestions", icon: IconBulb },
   shopFloor: { label: "navigation.manufacturingShopFloor", icon: IconHammer },
   schedule: { label: "navigation.manufacturingSchedule", icon: IconCalendarTime },
   deviations: { label: "navigation.manufacturingDeviations", icon: IconZoomExclamation },
