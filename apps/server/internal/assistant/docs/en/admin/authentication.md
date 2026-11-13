@@ -1,6 +1,6 @@
 ---
 title: "Identity, authentication and deployment"
-description: "Local accounts, users Staff manages, the accounts it announces and the roles it may give, the workforce OIDC provider and SCIM, email, proxy trust, APP_SECRET-derived key material and migrations."
+description: "Local accounts, users Staff manages, the accounts it announces and the roles it may give, shared shop-floor stations with their pairing, PINs, badges and backoff, the workforce OIDC provider and SCIM, email, proxy trust, APP_SECRET-derived key material and migrations."
 sidebar:
   order: 20
 sources:
@@ -11,6 +11,9 @@ sources:
   - apps/server/internal/db/migrations/00102_identity_assistant_grants.sql
   - apps/server/internal/db/migrations/00141_identity_agent_users.sql
   - apps/server/internal/db/migrations/00142_identity_agent_grants.sql
+  - apps/server/internal/db/migrations/00174_identity_stations.sql
+  - apps/server/internal/live/handler.go
+  - apps/server/internal/module/router.go
 ---
 Vantigo authenticates the browser SPA and the same-origin API with an application
 cookie issued by the identity module. The API answers JSON `401`/`403` problems
@@ -48,8 +51,9 @@ fails its first boot with the complete list instead of one restart per mistake.
 | `vantigo.2fa` | A pending two-factor sign-in's ticket, 5 minutes | `HttpOnly`, `SameSite=Strict` |
 | `vantigo.oidc` | OIDC state, nonce and PKCE verifier, sealed | `HttpOnly`, `SameSite=Lax` |
 | `vantigo.identity.external` | The validated external identity between callback and completion, sealed | `HttpOnly`, `SameSite=Lax` |
+| `vantigo.station` | A shared shop-floor station's token, 90 days (see [Shop-floor stations](#shop-floor-stations)) | `HttpOnly`, `SameSite=Strict`, scoped to the base path |
 
-All four are `Secure` exactly when `APP_URL` is an https origin (a `Secure` cookie
+All five are `Secure` exactly when `APP_URL` is an https origin (a `Secure` cookie
 never reaches an http one). The two OIDC cookies are `SameSite=Lax` on
 purpose: the provider's redirect back is a cross-site top-level navigation, which
 `Lax` admits and `Strict` would not. Both are sealed with AES-256-GCM under
@@ -932,10 +936,145 @@ restarts** rather than per process. The limit is applied before the access check
 | `InvitationAcceptance` | 20 / minute | Invitation validate and accept |
 | `UserManagement` | 30 / minute | Owner user management, adoption for Staff and the employee roles |
 | `OwnerAvatarRead` | 300 / minute | Owner avatar reads |
+| `StationPairing` | 10 / 15 minutes | Pairing a station with a code |
+| `station-operator-sign-in` | 10 failures / 5 minutes | Failed operator sign-ins at one station, keyed by the station; answers without `Retry-After` |
 
-Every policy except `login-attempts` keys on the client address, which is why
+Every policy except `login-attempts` and `station-operator-sign-in` keys on the client address, which is why
 `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` matter behind a proxy: get them
 wrong and every request shares one bucket, or a client picks its own.
+
+## Shop-floor stations
+
+A **station** is a shared tablet on the shop floor (Manufacturing's, phase 2). It is a
+registered **device**, never a person: with its cookie alone it can do nothing but list
+who may switch in, switch operators in and out, and listen for live updates on its own
+work centers. Every module request it makes is an **operator's** — a person who switched
+in at the station with a PIN or a badge — and reaches only Manufacturing's shop floor.
+Stations are listed under **Workspace admin → Stations** while Manufacturing is on; the
+page and its endpoints need `identity:manage`.
+
+### Register and pair a station
+
+1. Under **Workspace admin → Stations**, choose **Register a station**: a name, the idle
+   timeout (5 minutes by default, 1 to 60), whether a badge needs its holder's PIN too,
+   an optional network allowlist and, for someone who holds `manufacturing:boms-manage`,
+   the work centers it serves. Audited `station_registered`.
+2. The answer is a **pairing code**: eight characters of Crockford base32, valid **15
+   minutes**, shown once and stored only as a SHA-256 hash.
+3. On the tablet, open `/station` under `APP_URL` and enter the code. Pairing spends it,
+   mints a 256-bit station token, stores its hash, and sets the `vantigo.station` cookie
+   for **90 days**. Pairing is rate limited per address (`StationPairing`). Audited
+   `station_paired`.
+4. **A browser is a station or a person's, never both.** If someone is signed in to
+   Vantigo in the browser that pairs, that session is ended and its cookie cleared in the
+   same answer (audited `station_session_signed_out`). If a person later signs in on the
+   tablet, the station refuses every request with `409 station_has_session` and its page
+   asks them to sign out: until they do, the tablet is their browser.
+
+After 90 days the station answers `station_unknown` and shows the pairing form again:
+choose **New pairing code** on the station's row and pair it once more (audited
+`station_repaired`). Pairing with a new code replaces the token, so whichever browser held
+the old one is no longer the station.
+
+### Revoke a station
+
+**Revoke** clears the station's token and any pending code and ends every operator session
+at it in one transaction (audited `station_revoked`). The very next request with the old
+cookie is `401 station_unknown`, and the station's live socket closes at its next minute's
+re-check. Time logs left running keep running: a supervisor corrects them as any other.
+A revoked station is put back to use with a new pairing code.
+
+### The network allowlist
+
+**Allowed networks** pins a station to the addresses it may be used from: one address or
+CIDR network per line (`192.168.10.0/24`), at most 50. Every station request from any other
+address is `station_unknown`. The address is the client's as the rate limiter resolves it
+behind the proxy, so `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` must be right before an
+allowlist means anything. A change is audited `station_networks_changed`.
+
+### PINs and badges
+
+- **A PIN** is six digits, set by the person under **Settings → Security → Station PIN**
+  with their current password or within ten minutes of signing in. One digit repeated and
+  ascending or descending runs (`123456`) are refused. It is hashed with **argon2id at the
+  password parameters over an HMAC-SHA-256 of the PIN** under a key derived from
+  `APP_SECRET` (the *pepper*), so the table alone cannot be searched over the PIN's million
+  values. An administrator can **clear** a PIN on the user's page, never set or read one.
+  Audited `pin_set`, `pin_disabled` (the person) and `pin_cleared` (an administrator).
+- **A badge** is the code a keyboard-wedge card reader types. An administrator enrols it
+  by scanning the card into the field on the user's page; it is stored as an HMAC under
+  its own key derived from `APP_SECRET`, unique per person. Audited `badge_enrolled` and
+  `badge_cleared`.
+- **A badge needs the PIN too by default** (*Require the PIN with a badge*), so a found
+  card is not enough. Turning it off makes a card alone sign its holder in at that station
+  — suitable only for a card-only terminal in a controlled area.
+- Neither is ever a sign-in credential: sign-in, MFA, passkeys and single sign-on never
+  read them. Rotating `APP_SECRET` makes every PIN and badge unusable: people set their
+  PINs again and badges are enrolled again.
+
+### Operator sign-in, backoff and alerts
+
+Who may switch in is every active person holding `manufacturing:shop-floor` who has a PIN
+or a badge; the station lists their names and initials and nothing more.
+
+- **Ten failed sign-ins in five minutes** close the station to sign-ins for the rest of the
+  window (`429`, no `Retry-After`).
+- **Escalating backoff per (station, person), never a lock-out:** from the fifth
+  consecutive failure for one person at one station, the next attempt waits 30 seconds,
+  doubling with each further failure up to 15 minutes. An attempt before then is refused
+  without being checked. A success clears it, and the same person at another station is not
+  slowed. Nobody at a tablet can lock a colleague out of the floor.
+- Every failure gives the same `401 operator_sign_in_failed`, and the PIN is checked against
+  a fixed dummy hash for an unknown person, one without a PIN and one in backoff, so the
+  time taken tells them apart no better than the answer does. Audited
+  `operator_sign_in_failed` with the station and the person chosen, never the PIN.
+- **Alert:** every tenth consecutive failure for one person, and the station's limit
+  tripping, write `operator_backoff` to the audit trail and mail the holders of
+  `identity:manage` through the system mail — **at most once an hour per station**. The
+  station list marks the station.
+- At most **ten** operators are signed in at a station at once (`too_many_operators`);
+  signing in someone already signed in replaces their session.
+
+### Operator sessions and what they reach
+
+An operator's requests carry the station cookie and `Authorization: Station <token>`; the
+page holds the token in memory only, so a reload asks the operators to switch in again. A
+session ends when the operator is **switched out** (with the station cookie alone, so a
+chip can be closed after a reload), after the station's **idle timeout** measured by the
+server's clock, after **12 hours**, when the person may no longer act (disabled, pending,
+deactivated by the directory), when the station is revoked or re-paired, and when the same
+person signs in again. A token copied to another station's browser is
+`401 operator_session_ended`. Audited `operator_signed_in` and `operator_signed_out` with
+the reason.
+
+What an operator may do is cut down three ways:
+
+- **Only operations marked for stations.** The router answers a station's operator only
+  for operations whose contract carries `x-vantigo-station: allowed` (Manufacturing's shop
+  floor); any other operation is `403 station_scope`. Any access check made outside the
+  router — a handler of its own, a platform endpoint, the documentation — treats station
+  credentials as no caller at all.
+- **Only the shop floor's permissions.** The operator's permissions are intersected with
+  `manufacturing:access` and `manufacturing:shop-floor`: an Owner at a station holds those
+  two and nothing more, and no cost is shown.
+- **Only the station's work centers**, which Manufacturing checks on every request.
+
+### Cross-site requests
+
+The station cookie is `SameSite=Strict`, and operator requests carry the token in a header
+a cross-site form cannot send, so stations need no CSRF token. The endpoints that take the
+cookie alone (sign-in, switch out, pairing) are POSTs refused cross-site by the same
+`CrossOriginProtection` as every other unsafe request; the live socket's handshake checks
+the origin as it does for a person.
+
+### What is audited
+
+`station_registered`, `station_paired`, `station_repaired`, `station_revoked`,
+`station_networks_changed`, `station_session_signed_out`, `pin_set`, `pin_disabled`,
+`pin_cleared`, `badge_enrolled`, `badge_cleared`, `operator_signed_in`,
+`operator_sign_in_failed`, `operator_backoff` and `operator_signed_out`, each in the
+authorization audit trail beside the change it describes. Erasing a user deletes their PIN,
+badge and operator sessions with the user.
 
 ## Invitation and recovery URLs
 
@@ -1060,7 +1199,8 @@ configuration is printed.
 `APP_SECRET` is the process-wide key material: at least 32 bytes, from which every
 key the process uses is derived with HKDF-SHA256 — one derived key per purpose —
 and used as AES-256-GCM (CSRF and cookie sealing, OIDC state, TOTP secret
-encryption, the OIDC client secret, Communications channel passwords). The purpose
+encryption, the OIDC client secret, Communications channel passwords) or as an HMAC
+key (the stations' PIN pepper and badge codes). The purpose
 string is bound in as additional authenticated data, so a value sealed for one purpose
 cannot be opened under another, and a key-id byte leaves room for a future rotation
 scheme.

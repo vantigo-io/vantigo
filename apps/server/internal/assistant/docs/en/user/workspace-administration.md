@@ -11,14 +11,16 @@ sources:
 
 Workspace administration is where an **Owner** manages who can use Vantigo and what
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
-its sidebar has **Overview**, **Users**, **Invitations** and **Roles & access**, and,
+its sidebar has **Overview**, **Users**, **Invitations**, **Roles & access** and, while
+Manufacturing is on, **Stations**, and,
 under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping** and, once Vantigo has set up AI for the
 installation, **AI models** and **Assistant**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
 has delegated role administration sees **Roles & access** alone, both in the avatar
-menu and in the sidebar; and someone who holds `entra:manage`, `google:manage` or `orders:carriers-manage` without being an Owner
-sees **Integrations** alone ([below](#integrations)). The last active Owner can never be
+menu and in the sidebar; someone who holds `entra:manage`, `google:manage` or `orders:carriers-manage` without being an Owner
+sees **Integrations** alone ([below](#integrations)); and someone who holds `identity:manage`
+sees **Stations** ([below](#shop-floor-stations)). The last active Owner can never be
 demoted, disabled or deleted, so the workspace always has one.
 
 ## Read the overview
@@ -101,8 +103,36 @@ While the Assistant module is on, the **Edit user** dialog also carries the swit
 assistant**, which takes effect when the assistant is set to *Per person*
 ([Assistant](#assistant)).
 
+While Manufacturing is on, the dialog also shows the person's **Shop-floor station**
+credentials: whether it **Has a PIN** — **Clear PIN** removes it; only the person sets
+one — and whether it **Has a badge**. To enrol a badge, put the cursor in **Badge**, scan
+the card with the reader and choose **Enrol badge**; **Remove badge** takes it away. A card
+already enrolled for someone else is refused.
+
 Resetting another administrator's two-factor authentication is not offered on this
 screen; it exists in the API for an Owner whose own session is MFA-verified.
+
+## Shop-floor stations
+
+**Stations** lists the shared tablets on the shop floor where operators switch in with a
+PIN or a badge ([working at a station](/en/user/manufacturing/#work-at-a-shared-station)).
+It needs `identity:manage`, and is there while Manufacturing is on. Each row shows the
+station's **State** (*Waiting to be paired*, *Paired*, *Pairing expired*, *Not paired* or
+*Revoked*), its **Last activity** with the address, who is **Signed in** at it, and
+**Failed sign-ins** when repeated wrong PINs or badges there mailed the administrators.
+
+1. Choose **Register a station** and give it a **Name**. Set the **Idle timeout**, whether
+   to **Require the PIN with a badge** (on unless only cards are used in a controlled area),
+   the **Allowed networks** it may be used from (empty for any) and the **Work centers** it
+   serves — the last needs Manage bills of materials and work centers.
+2. Choose **Save**. The **Pairing code** appears once: on the tablet, open the address shown
+   and enter the code within 15 minutes.
+3. To change a station, choose **Edit** in its row's menu. **New pairing code** pairs it
+   again — after its 90 days, or on a new tablet — and **Revoke** stops it at once and signs
+   everyone at it out.
+
+The administrator's details — the token, the backoff and the alerts — are under
+[Shop-floor stations](/en/admin/authentication/#shop-floor-stations).
 
 ## Disable, enable or delete a user
 

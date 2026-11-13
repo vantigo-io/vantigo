@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de seks rettighetene og hva hver gir, kvalitetsrettigheten som lukker avvik, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, hvem som planlegger produksjonsplanen, rollene du bygger av dem; virksomhetens tidssone som arbeidsstasjonenes kalendere går i; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, kameraet og nettverket; lagringen bildene av kontrollene tar; den nattlige påfyllingsjobben og automatisk oppretting, av som standard; hvordan du kontrollerer det, og hva som kan gå galt.
+description: Slå på Produksjon — de to modulene den krever, migreringen og skjemaet manufacturing, og å gi det til en rolle med færrest mulige rettigheter — de seks rettighetene og hva hver gir, kvalitetsrettigheten som lukker avvik, den sensitive kostnadsrettigheten og hvem som bør ha den, hvem som administrerer produksjonsordrer og hvem som registrerer produksjon, hvem som arbeider i verkstedet og hvem som korrigerer tidsregistreringer, hvem som planlegger produksjonsplanen, rollene du bygger av dem; virksomhetens tidssone som arbeidsstasjonenes kalendere går i; å sette opp nettbrett i verkstedet — en konto per operatør, en oppdatert nettleser, å holde skjermen våken, arbeidsstasjonen hvert nettbrett husker, kameraet og nettverket; delte stasjoner der operatører logger på med PIN-kode eller kort, arbeidsstasjonene en stasjon betjener og hva den kan gjøre; lagringen bildene av kontrollene tar; den nattlige påfyllingsjobben og automatisk oppretting, av som standard; hvordan du kontrollerer det, og hva som kan gå galt.
 sidebar:
   order: 51
 sources:
@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
   - apps/server/internal/db/migrations/00171_manufacturing_replenishment.sql
   - apps/server/internal/manufacturing/replenishment.go
+  - apps/server/internal/db/migrations/00175_manufacturing_stations.sql
 ---
 
 Produksjon-modulen (**Manufacturing** på engelsk) beskriver hvordan virksomheten lager
@@ -152,10 +153,9 @@ Verkstedet (**Produksjon** → **Verksted**) er laget for et nettbrett ved hver
 arbeidsstasjon. Hver handling registreres på den som er logget inn, så sett opp
 nettbrettene etter det.
 
-1. **Gi hver operatør sin egen konto.** Operatøren er den innloggede brukeren, og å bytte
-   operatør betyr å bytte konto: logge ut og inn igjen. Det finnes ikke noe delt
-   nettbrett med en PIN-kode per operatør i denne versjonen. La ikke et skift dele én
-   konto — tidsregistreringene, produksjonene og ordrens historikk ville alle navngi den
+1. **Gi hver operatør sin egen konto.** Operatøren er den innloggede brukeren, eller, på
+   en [delt stasjon](#delte-stasjoner), personen som logget på der. La ikke et skift dele
+   én konto — tidsregistreringene, produksjonene og ordrens historikk ville alle navngi den
    kontoen.
 2. **Gi rollene.** Gi hver operatør Bruke Produksjon (`manufacturing:access`) og Arbeide i
    verkstedet (`manufacturing:shop-floor`), og ikke mer med mindre de også planlegger.
@@ -180,6 +180,35 @@ nettbrettene etter det.
 
 Tidtakeren teller på nettbrettet fra arbeidet startet, så et nettbrett som kobler seg til
 igjen, viser riktig tid uten at serveren sender den.
+
+### Delte stasjoner
+
+Et nettbrett flere operatører deler, settes heller opp som en **stasjon** enn som innlogget
+som én av dem: stasjonen kobles til én gang, og hver operatør logger på den med en sekssifret
+PIN-kode eller et kort, slik at hver start, produksjon og kontroll navngir personen som
+gjorde den — og stasjonen den ble gjort på. Administratorens side (tilkobling, tokenet på 90
+dager, tilbakekalling, tillatte nettverk, PIN-koder, kort, ventetiden og varslene) er
+beskrevet under [Stasjoner i verkstedet](/nb/admin/authentication/#stasjoner-i-verkstedet).
+
+1. **Registrer stasjonen** under **Administrer arbeidsområde → Stasjoner**
+   (`identity:manage`) og velg **arbeidsstasjonene** den betjener
+   (`manufacturing:boms-manage`). En stasjon som ikke betjener noen, når ingen: verkstedet
+   dens åpner på arbeidsstasjonene, og hver forespørsel operatørene gjør som navngir en
+   arbeidsstasjon, en arbeidsordre eller en ordres produksjon, kontrolleres mot dem
+   (`403 station_scope` ellers).
+2. **Koble til nettbrettet**: åpne `/station` på det og skriv inn koblingskoden.
+3. **Gi hver operatør en PIN-kode eller et kort.** Folk setter sin egen PIN-kode under
+   **Innstillinger → Sikkerhet → PIN-kode for stasjoner**; en administrator registrerer kort
+   under **Administrer arbeidsområde → Brukere**. De som kan logge på, er de som har Arbeide i
+   verkstedet (`manufacturing:shop-floor`) og har en av dem.
+4. **La stasjonen forbli en stasjon.** En person som logger inn i Vantigo på nettbrettet,
+   gjør det til sin egen nettleser til de logger ut; stasjonssiden sier det og nekter å
+   virke.
+
+På en stasjon har en operatør Bruke Produksjon og Arbeide i verkstedet og ikke noe mer,
+uansett roller ellers — også en eier — så ingen kostnader vises der, og ordrens partier,
+andre sider og produktbildene er utelatt. Tidsregistreringer, produksjoner,
+kontrollresultater og avvik registrerer stasjonen de ble gjort på.
 
 ## Bilder av kontrollene
 

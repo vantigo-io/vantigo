@@ -1,6 +1,6 @@
 ---
 title: Getting started
-description: Accepting an invitation, signing in, your profile and security settings, and signing out.
+description: Accepting an invitation, signing in, your profile and security settings, the PIN for shop-floor stations, and signing out.
 sidebar:
   order: 1
 sources:
@@ -220,6 +220,15 @@ this browser cannot create one; try another.
 To remove one, choose **Remove** next to it. The **Remove passkey** dialog warns
 that it cannot be undone and asks for your current password. A removed passkey can
 no longer sign you in; add it again if you need it back.
+
+## Set a PIN for shop-floor stations
+
+While Manufacturing is on and you work on the shop floor, **Settings → Security** has a
+**Station PIN** card: the six digits you switch in with at a shared station on the floor.
+Enter a **New PIN** and, unless you signed in within the last ten minutes, your **Current
+password**, and choose **Set PIN**. One digit repeated and runs such as `123456` are
+refused. **Remove PIN** takes it away. The PIN never signs you in to Vantigo itself; an
+administrator can clear it, but never see or set it.
 
 ## Sign out
 
