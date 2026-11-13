@@ -2057,6 +2057,10 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/ManufacturingPerson'
                     nullable: true
+                revision:
+                    description: The order's revision as the list read it, for a merge chosen from the list (manufacturing phase 2 M125).
+                    format: int32
+                    type: integer
                 siteId:
                     format: int64
                     type: integer
@@ -2083,6 +2087,7 @@ components:
                 - late
                 - backorderOfId
                 - createdAt
+                - revision
             type: object
         ManufacturingOrderUpdate:
             additionalProperties: false
