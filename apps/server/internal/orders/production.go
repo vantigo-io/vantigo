@@ -31,14 +31,79 @@ import (
 // mtoReserveHandler marks a line produced, ready to reserve (M48a).
 const mtoReserveHandler = "orders.mto-reserve"
 
-// newSalesOrderLines builds contracts.SalesOrderLines over d's pool (M43).
+// newSalesOrderLines builds contracts.SalesOrderLines over d's pool (M43),
+// with the stock ledger Unreserved reads what each line holds reserved by.
 func newSalesOrderLines(d module.Deps) contracts.SalesOrderLines {
-	return salesOrderLines{pool: d.Pool}
+	return salesOrderLines{pool: d.Pool, ledger: d.StockLedger}
 }
 
 // salesOrderLines is contracts.SalesOrderLines: consumer-gated (M43a), so
 // it authorises nothing, and it names the customer by id only.
-type salesOrderLines struct{ pool *pgxpool.Pool }
+type salesOrderLines struct {
+	pool   *pgxpool.Pool
+	ledger contracts.StockLedger
+}
+
+// Unreserved is what the open goods lines of confirmed sales orders at the
+// site still need beyond what they hold reserved there (manufacturing
+// phase 2 M107a): the lines and every order's reservations read in one
+// read-only snapshot — what a line holds is Inventory's to say
+// (ReservationsFor, on this transaction, the one connection it holds) — and
+// only a line with more open than reserved answered.
+func (p salesOrderLines) Unreserved(ctx context.Context, variantIDs []int32, siteID int64) ([]contracts.UnreservedDemand, error) {
+	if len(variantIDs) > contracts.MaxStockPlacements {
+		return nil, fmt.Errorf("orders: an unreserved demand read names %d variants, more than %d", len(variantIDs), contracts.MaxStockPlacements)
+	}
+	if len(variantIDs) == 0 {
+		return nil, nil
+	}
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, fmt.Errorf("orders: begin the unreserved demand read: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	rows, err := store.New(tx).OpenGoodsLinesAt(ctx, store.OpenGoodsLinesAtParams{VariantIds: variantIDs, SiteID: siteID})
+	if err != nil {
+		return nil, fmt.Errorf("orders: read the open lines at site %d: %w", siteID, err)
+	}
+	held := map[int64]*big.Rat{}
+	if p.ledger != nil {
+		var orderID int64
+		for _, r := range rows {
+			if r.OrderID == orderID {
+				continue
+			}
+			orderID = r.OrderID
+			reservations, err := p.ledger.ReservationsFor(ctx, tx, orderStock(orderID))
+			if err != nil {
+				return nil, fmt.Errorf("orders: read sales order %d's reservations: %w", orderID, err)
+			}
+			for _, res := range reservations {
+				q, ok := new(big.Rat).SetString(res.Quantity)
+				if !ok || res.SiteID != siteID {
+					continue
+				}
+				if held[res.LineID] == nil {
+					held[res.LineID] = new(big.Rat)
+				}
+				held[res.LineID].Add(held[res.LineID], q)
+			}
+		}
+	}
+	out := make([]contracts.UnreservedDemand, 0, len(rows))
+	for _, r := range rows {
+		open := ratOrZero(r.OpenQuantity)
+		if h := held[r.ID]; h != nil {
+			open.Sub(open, h)
+		}
+		if open.Sign() <= 0 {
+			continue
+		}
+		out = append(out, contracts.UnreservedDemand{OrderID: r.OrderID, LineID: r.ID, VariantID: r.VariantID,
+			Quantity: decimalText(open, quantityPlaces)})
+	}
+	return out, nil
+}
 
 // Lines is the sales order lines named by ids.
 func (p salesOrderLines) Lines(ctx context.Context, ids []int64) ([]contracts.SalesOrderLine, error) {
