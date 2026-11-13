@@ -94,15 +94,15 @@ func TestRouting_BomGraph(t *testing.T) {
 	saw := createWorkCenter(t, c, workCenterInput("SAW", siteMain))
 	in := bomInput(varBike, "1")
 	in.Operations = []gen.ManufacturingBomOperationInput{
-		operation("a", 10, saw.Id, "1"), operation("b", 20, saw.Id, "1"), after(operation("c", 30, saw.Id, "1"), "a"),
-		after(operation("d", 40, saw.Id, "1"), "b", "c"), after(operation("e", 50, saw.Id, "1")),
+		operation("a", 10, saw.Id, "1"), operation("b", 20, saw.Id, "1"), after(operation("c", 30, saw.Id, "1")),
+		after(operation("d", 40, saw.Id, "1"), "b", "c"), operation("e", 50, saw.Id, "1"),
 	}
 	b := createBom(t, c, in)
 	key := map[string]string{}
 	for _, op := range b.Operations {
 		key[op.Name[3:]] = op.Key
 	}
-	want := map[string][]string{"a": {}, "b": {key["a"]}, "c": {key["a"]}, "d": {key["b"], key["c"]}, "e": {}}
+	want := map[string][]string{"a": {}, "b": {key["a"]}, "c": {}, "d": {key["b"], key["c"]}, "e": {key["d"]}}
 	for _, op := range b.Operations {
 		got := slices.Sorted(slices.Values(op.DependsOn))
 		if w := slices.Sorted(slices.Values(want[op.Name[3:]])); !slices.Equal(got, w) {
@@ -111,10 +111,17 @@ func TestRouting_BomGraph(t *testing.T) {
 	}
 
 	in.Operations[0] = after(in.Operations[0], "d")
-	p := expectRefusal(t, c.Do(http.MethodPost, bomsPath, in), http.StatusBadRequest, "operation_cycle", "a cycle")
-	if p.Errors == nil || len((*p.Errors)["operations"]) != 1 {
-		t.Errorf("the cycle's errors %+v", p.Errors)
+	p := expectRefusal(t, c.Do(http.MethodPost, bomsPath, in), http.StatusBadRequest, "operation_order", "a after a later one")
+	if p.Errors == nil || len((*p.Errors)["operations[0].dependsOn"]) != 1 {
+		t.Errorf("the order's errors %+v", p.Errors)
 	}
+	in.Operations[0] = after(in.Operations[0])
+	in.Operations[4] = after(in.Operations[4])
+	p = expectRefusal(t, c.Do(http.MethodPost, bomsPath, in), http.StatusBadRequest, "operation_unjoined", "d leading nowhere")
+	if p.Errors == nil || len((*p.Errors)["operations[3].dependsOn"]) != 1 {
+		t.Errorf("the unjoined branch's errors %+v", p.Errors)
+	}
+	in.Operations[4] = operation("e", 50, saw.Id, "1")
 	in.Operations[0] = after(in.Operations[0], "zz")
 	expectRefusal(t, c.Do(http.MethodPost, bomsPath, in), http.StatusBadRequest, "operation_unknown", "an unknown key")
 	in.Operations[0] = after(in.Operations[0])
@@ -224,6 +231,14 @@ func TestRouting_SendAhead(t *testing.T) {
 	if got[1].Status != "ready" || *got[0].QuantityDone != "10" || got[0].Status != "ready" {
 		t.Fatalf("after ten: a %s done %v, b %s", got[0].Status, *got[0].QuantityDone, got[1].Status)
 	}
+	// The last work order passes nothing on, and what a work order passes on
+	// stays within the order's 40.
+	expectRefusal(t, register(uuid.New(), wos[1].Id, "1"), http.StatusConflict, "work_order_is_output", "a quantity on the output work order")
+	p := expectRefusal(t, register(uuid.New(), wos[0].Id, "31"), http.StatusBadRequest, "quantity_over_order", "past the order's quantity")
+	if p.Errors == nil || len((*p.Errors)["quantity"]) != 1 {
+		t.Errorf("the errors %+v", p.Errors)
+	}
+	mustStatus(t, register(uuid.New(), wos[0].Id, "30"), http.StatusOK, "up to the order's quantity")
 }
 
 // TestRouting_SendAheadAtTheQuantityIsNone is M116's last rule: a send-ahead
@@ -442,6 +457,94 @@ func TestRouting_GroupWorkAndTheFixedMember(t *testing.T) {
 		http.StatusConflict, "work_order_started", "a drag to another member after a log")
 }
 
+// TestRouting_ArchivedGroupKeepsItsMember is M117 on archiving: the work
+// orders of an archived group keep their member — on its own queue, planned
+// there and started nowhere else — and Group work lists only active members'
+// groups.
+func TestRouting_ArchivedGroupKeepsItsMember(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	f := newGroupFloor(t, c, 200)
+	b := bikeWith(t, c, atGroup("a", 10, f.group.Id, "1"))
+	o, wos := confirmedBike(t, c, "60")
+	w := wos[0]
+
+	// M2 archived: its Group work no longer lists the work order.
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(f.m2.Id, "archive"), revisionInput(f.m2.Revision)), http.StatusOK, "archive M2")
+	if q := queueOf(t, c, f.m2.Id); q.GroupWork != nil && len(*q.GroupWork) != 0 {
+		t.Errorf("an archived member's group work %v", *q.GroupWork)
+	}
+	m2 := getWorkCenter(t, c, f.m2.Id)
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(f.m2.Id, "reactivate"), revisionInput(m2.Revision)), http.StatusOK, "reactivate M2")
+
+	b = getBom(t, c, b.Id)
+	mustStatus(t, c.Do(http.MethodPost, bomPath(b.Id, "archive"), revisionInput(b.Revision)), http.StatusOK, "archive the BoM")
+	mustStatus(t, c.Do(http.MethodPost, groupPath(f.group.Id, "archive"), revisionInput(f.group.Revision)), http.StatusOK, "archive the group")
+	if q := queueOf(t, c, f.m1.Id); len(q.Items) != 1 || (q.GroupWork != nil && len(*q.GroupWork) != 0) {
+		t.Fatalf("M1's queue %d items, group work %v", len(q.Items), q.GroupWork)
+	}
+	if q := queueOf(t, c, f.m2.Id); len(q.Items) != 0 || (q.GroupWork != nil && len(*q.GroupWork) != 0) {
+		t.Errorf("M2's queue %d items, group work %v", len(q.Items), q.GroupWork)
+	}
+	m2Id := f.m2.Id
+	expectRefusal(t, c.Do(http.MethodPost, workOrderPath(w.Id, "start"), gen.ManufacturingStartInput{WorkCenterId: &m2Id}),
+		http.StatusBadRequest, "work_center_not_in_group", "a start at another member of an archived group")
+	// M2 is twice as efficient, but the member is kept.
+	planOrder(t, c, o)
+	if got := workOrdersOf(t, c, o.Id)[0]; got.WorkCenter.Id != f.m1.Id || got.ExpectedMinutes != 60 {
+		t.Errorf("planned at %s, %d minutes", got.WorkCenter.Code, got.ExpectedMinutes)
+	}
+}
+
+// TestRouting_GroupWithNoActiveMember is M118 at confirm: an operation whose
+// group has no active work center is work_center_group_empty.
+func TestRouting_GroupWithNoActiveMember(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	f := newGroupFloor(t, c, 100)
+	bikeWith(t, c, atGroup("a", 10, f.group.Id, "1"))
+	for _, m := range []gen.ManufacturingWorkCenter{f.m1, f.m2} {
+		mustStatus(t, c.Do(http.MethodPost, workCenterPath(m.Id, "archive"), revisionInput(m.Revision)), http.StatusOK, "archive "+m.Code)
+	}
+	draft := createOrder(t, c, orderInput(varBike, "1"))
+	p := expectRefusal(t, c.Do(http.MethodPost, orderPath(draft.Id, "confirm"), revisionInput(draft.Revision)), http.StatusConflict,
+		"work_center_group_empty", "a confirm with no member to run at")
+	if p.Detail == nil || !strings.Contains(*p.Detail, "G") {
+		t.Errorf("the refusal names %v", p.Detail)
+	}
+}
+
+// TestRouting_BlockedMemberIsNoDropTarget is M119 on the board with a
+// blocked member: its row is not offered, and a drag to it is
+// work_center_blocked.
+func TestRouting_BlockedMemberIsNoDropTarget(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	f := newGroupFloor(t, c, 200)
+	bikeWith(t, c, atGroup("a", 10, f.group.Id, "1"))
+	o, _ := confirmedBike(t, c, "60")
+	planOrder(t, c, o)
+	w := workOrdersOf(t, c, o.Id)[0]
+	if w.WorkCenter.Id != f.m2.Id {
+		t.Fatalf("planned at %s", w.WorkCenter.Code)
+	}
+	mustStatus(t, c.Do(http.MethodPost, workCenterPath(f.m1.Id, "block"), gen.ManufacturingBlockInput{Reason: gen.Breakdown}), http.StatusOK, "block M1")
+	s := scheduleOf(t, c, fmt.Sprintf("siteId=%d&from=2026-09-14", siteMain))
+	for _, row := range s.WorkCenters {
+		for _, bar := range row.Bars {
+			if bar.MemberIds == nil || len(*bar.MemberIds) != 0 {
+				t.Errorf("the bar may go to %v", bar.MemberIds)
+			}
+		}
+	}
+	m1 := f.m1.Id
+	expectRefusal(t, c.Do(http.MethodPost, workOrderPath(w.Id, "reschedule"), gen.ManufacturingRescheduleInput{Start: osloAt(9, 14, 9, 0), Revision: w.Revision, WorkCenterId: &m1}),
+		http.StatusConflict, "work_center_blocked", "a drag to a blocked member")
+}
+
 // TestRouting_DragToAnotherMember is M119 on the board: a planned group
 // work order dropped on another member's row moves there with its figures;
 // a row outside the group is refused; its successor on another center moves
@@ -596,8 +699,8 @@ func TestRouting_ConcurrentPlansAndDragsOnAGroup(t *testing.T) {
 }
 
 // TestRouting_ProductionGateByTheGraph is M98 after F: a production is gated
-// on the checks of the work orders the output work order is reachable from,
-// not on a parallel branch that does not lead to it.
+// on the checks of the work orders the output work order is reachable from —
+// a parallel branch included, since every branch joins the last (M112).
 func TestRouting_ProductionGateByTheGraph(t *testing.T) {
 	t.Parallel()
 	h := lotHarness(t)
@@ -609,7 +712,7 @@ func TestRouting_ProductionGateByTheGraph(t *testing.T) {
 	a, side, b := operation("a", 10, mix.Id, "1"), after(operation("s", 15, label.Id, "1")), operation("b", 20, fill.Id, "1")
 	a.Checks = &[]gen.ManufacturingCheckTemplateInput{{Kind: gen.Instruction, Title: "Recipe", Frequency: gen.EachWorkOrder}}
 	side.Checks = &[]gen.ManufacturingCheckTemplateInput{{Kind: gen.Instruction, Title: "Labels", Frequency: gen.EachWorkOrder}}
-	b = after(b, "a")
+	b = after(b, "a", "s")
 	in.Operations = []gen.ManufacturingBomOperationInput{a, side, b}
 	createBom(t, c, in)
 	h.stock.receiveLot(varBerry, "B-1", locMainA1, "100", h.Now().Add(-time.Hour), day(2030, 1, 1))
@@ -618,12 +721,18 @@ func TestRouting_ProductionGateByTheGraph(t *testing.T) {
 	wos := workOrdersOf(t, c, o.Id)
 	p := expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), jamProduction("g1", "1")), http.StatusConflict,
 		"checks_incomplete", "a production before the recipe")
-	if p.Checks == nil || len(*p.Checks) != 1 || (*p.Checks)[0].WorkOrderId != wos[0].Id {
+	if p.Checks == nil || len(*p.Checks) != 2 {
 		t.Fatalf("missing %+v", p.Checks)
 	}
 	recordCheck(t, c, wos[0].Id, checksOf(wos[0])[0].Id, gen.ManufacturingCheckResultInput{})
-	// The labels are a branch that does not lead to the output: not asked.
-	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), jamProduction("g2", "1")), http.StatusCreated, "a production with the side branch open")
+	// The labels are a branch that joins the output: asked too.
+	p = expectRefusal(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), jamProduction("g2", "1")), http.StatusConflict,
+		"checks_incomplete", "a production before the labels")
+	if p.Checks == nil || len(*p.Checks) != 1 || (*p.Checks)[0].WorkOrderId != wos[1].Id {
+		t.Fatalf("missing %+v", p.Checks)
+	}
+	recordCheck(t, c, wos[1].Id, checksOf(wos[1])[0].Id, gen.ManufacturingCheckResultInput{})
+	mustStatus(t, c.Do(http.MethodPost, orderPath(o.Id, "productions"), jamProduction("g3", "1")), http.StatusCreated, "a production with every check")
 }
 
 // TestRouting_EditKeepsTheGraph is M112 on an edit: the keys of kept
@@ -634,19 +743,20 @@ func TestRouting_EditKeepsTheGraph(t *testing.T) {
 	h := newHarness(t)
 	c := h.SignIn(t, manager...)
 	saw := createWorkCenter(t, c, workCenterInput("SAW", siteMain))
-	b := bikeWith(t, c, operation("a", 10, saw.Id, "1"), operation("b", 20, saw.Id, "1"))
+	b := bikeWith(t, c, operation("a", 10, saw.Id, "1"), operation("b", 20, saw.Id, "1"), operation("c", 30, saw.Id, "1"))
 	u := updateOf(b)
 	u.Operations[1] = after(u.Operations[1])
+	u.Operations[2] = after(u.Operations[2], strconv.FormatInt(b.Operations[0].Id, 10), strconv.FormatInt(b.Operations[1].Id, 10))
 	res := c.Do(http.MethodPut, bomPath(b.Id), u)
 	mustStatus(t, res, http.StatusOK, "make b parallel")
 	got := bomOf(t, res)
-	if len(got.Operations[1].DependsOn) != 0 {
-		t.Fatalf("b depends on %v", got.Operations[1].DependsOn)
+	if len(got.Operations[1].DependsOn) != 0 || len(got.Operations[2].DependsOn) != 2 {
+		t.Fatalf("b depends on %v, c on %v", got.Operations[1].DependsOn, got.Operations[2].DependsOn)
 	}
 	u = updateOf(got)
 	u.Operations[0] = after(u.Operations[0], strconv.FormatInt(got.Operations[1].Id, 10))
 	u.Operations[1].DependsOn = nil // absent: the one before by sequence
-	expectRefusal(t, c.Do(http.MethodPut, bomPath(b.Id), u), http.StatusBadRequest, "operation_cycle", "a then b then a")
+	expectRefusal(t, c.Do(http.MethodPut, bomPath(b.Id), u), http.StatusBadRequest, "operation_order", "a after b")
 }
 
 // TestRouting_GroupWorkLive is §17 for groups: a group work order started at

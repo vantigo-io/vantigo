@@ -29,23 +29,36 @@ func TestMemberFigures(t *testing.T) {
 	}
 }
 
-// TestOperationCycle is M112's cycle check: the path is named, a diamond is
-// no cycle.
-func TestOperationCycle(t *testing.T) {
+// TestJudgeDependencies is M112's rules: a diamond into the last is kept; a
+// dependency on an operation not before it by sequence is operation_order,
+// and a branch nothing joins is operation_unjoined, each on its field.
+func TestJudgeDependencies(t *testing.T) {
 	t.Parallel()
 	ops := []opValues{{key: "a", name: "A", sequence: 1}, {key: "b", name: "B", sequence: 2}, {key: "c", name: "C", sequence: 3}, {key: "d", name: "D", sequence: 4}}
+	all := []bool{true, true, true, true}
 	var f fieldErrors
-	judgeDependencies(&f, ops, [][]string{{}, {"a"}, {"a"}, {"b", "c"}}, []bool{true, true, true, true})
+	judgeDependencies(&f, ops, [][]string{{}, {"a"}, {"a"}, {"b", "c"}}, all)
 	if f.failed() {
 		t.Fatalf("a diamond refused: %+v", f)
 	}
 	f = fieldErrors{}
 	deps := judgeDependencies(&f, ops, [][]string{{"c"}, nil, {"b"}, nil}, []bool{true, false, true, false})
-	if f.code != codeOperationCycle || len(f.errs["operations"]) != 1 {
-		t.Fatalf("cycle %+v (deps %v)", f, deps)
+	if f.code != codeOperationOrder || len(f.errs["operations[0].dependsOn"]) != 1 {
+		t.Fatalf("a dependency on a later one %+v (deps %v)", f, deps)
 	}
-	if got := f.errs["operations"][0]; got != "The operations depend on each other in a circle: A → C → B → A" {
+	if got := f.errs["operations[0].dependsOn"][0]; got != "C does not come before A in sequence" {
 		t.Errorf("message %q", got)
+	}
+	f = fieldErrors{}
+	judgeDependencies(&f, ops, [][]string{{}, {"b"}, {"a"}, {"c"}}, all)
+	if f.code != codeOperationOrder || len(f.errs["operations[1].dependsOn"]) != 1 {
+		t.Errorf("a self-dependency %+v", f)
+	}
+	f = fieldErrors{}
+	// B runs after A, but nothing runs after B: a branch that leads nowhere.
+	judgeDependencies(&f, ops, [][]string{{}, {"a"}, {"a"}, {"c"}}, all)
+	if f.code != codeOperationUnjoined || len(f.errs["operations[1].dependsOn"]) != 1 || len(f.errs) != 1 {
+		t.Errorf("an unjoined branch %+v", f)
 	}
 }
 

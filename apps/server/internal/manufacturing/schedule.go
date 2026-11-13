@@ -566,7 +566,7 @@ type planInput struct {
 	hasLogs map[int64]bool
 	lead    int32
 	graph   workOrderGraph
-	members map[int64][]store.ManufacturingWorkCenter // by group, by code
+	members map[int64][]store.ManufacturingWorkCenter // of the active groups, by group, by code
 }
 
 // worksOf is the order's open work orders as planWork, in a topological order
@@ -645,7 +645,7 @@ func planInputs(ctx context.Context, txq *store.Queries, o store.ManufacturingOr
 		return cmp.Or(cmp.Compare(a.Sequence, b.Sequence), cmp.Compare(a.ID, b.ID))
 	})
 	in.wos = wos
-	if in.members, err = groupMembers(ctx, txq, groups); err != nil {
+	if in.members, err = choosableMembers(ctx, txq, groups); err != nil {
 		return in, err
 	}
 	held := lockedCenters(ctx)
@@ -1028,19 +1028,28 @@ func reschedule(cals map[int64]workCalendar, booked map[int64][]span, target pla
 	if !ok {
 		return nil, target, false
 	}
-	local[moved.center] = book(bookedAt(moved.center), moved.pieces)
 	placed[target.id] = moved
 	out := []placement{moved}
+	// Every planned successor holds its slot until it moves, so one that moves
+	// goes around those that stay; the target is placed before them, so one it
+	// overlaps — a send-ahead successor at the same center — moves too.
+	for _, w := range later {
+		if was, planned := existing[w.id]; planned {
+			local[was.center] = book(bookedAt(was.center), was.pieces)
+		}
+	}
+	local[moved.center] = book(bookedAt(moved.center), moved.pieces)
 	for _, w := range later {
 		was, planned := existing[w.id]
 		if !planned {
 			continue // not planned: it stays so
 		}
 		b := boundsOf(w, start, placed, works)
-		if !was.start.Before(b.earliest) && !was.finish.Before(b.minFinishAt(w, was.option)) {
-			local[was.center] = book(bookedAt(was.center), was.pieces)
+		if !was.start.Before(b.earliest) && !was.finish.Before(b.minFinishAt(w, was.option)) &&
+			(was.center != moved.center || !overlapsAny(was.pieces, moved.pieces)) {
 			continue
 		}
+		local[was.center] = unbook(local[was.center], was.pieces)
 		pl, ok := placeAt(cals, bookedAt(was.center), w, was.option, b, until)
 		if !ok {
 			return nil, w, false
@@ -1052,12 +1061,36 @@ func reschedule(cals map[int64]workCalendar, booked map[int64][]span, target pla
 	return out, planWork{}, true
 }
 
+// unbook is booked without pieces, each taken out once.
+func unbook(booked, pieces []span) []span {
+	out := slices.Clone(booked)
+	for _, p := range pieces {
+		if i := slices.Index(out, p); i >= 0 {
+			out = slices.Delete(out, i, i+1)
+		}
+	}
+	return out
+}
+
+// overlapsAny reports whether any of a overlaps any of b.
+func overlapsAny(a, b []span) bool {
+	for _, x := range a {
+		for _, y := range b {
+			if x.start.Before(y.end) && y.start.Before(x.end) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // RescheduleManufacturingWorkOrder moves a work order on the board (M36),
 // under its revision; no other order moves. A group work order dropped on
 // another member's row (workCenterId) moves to that member, its figures taken
-// again (manufacturing phase 2 M118, M119): a center outside its group is
-// work_center_not_in_group, and once a time log exists the member is fixed
-// (work_order_started).
+// again (manufacturing phase 2 M118, M119): a center outside its group, or any
+// other center once the group is archived, is work_center_not_in_group, a
+// blocked member work_center_blocked, and once a time log exists the member
+// is fixed (work_order_started).
 func (s *server) RescheduleManufacturingWorkOrder(ctx context.Context, req gen.RescheduleManufacturingWorkOrderRequestObject) (gen.RescheduleManufacturingWorkOrderResponseObject, error) {
 	const title = "The work order was not moved"
 	pre, err := s.workOrderOrNotFound(ctx, req.Id)
@@ -1121,6 +1154,10 @@ func (s *server) RescheduleManufacturingWorkOrder(ctx context.Context, req gen.R
 						"Time is logged on the work order, so it stays at its work center. Move it along its own row instead.")
 				}
 				c := in.members[*target.WorkCenterGroupID][i]
+				if c.WorkingState == stateBlocked {
+					return conflict(codeWorkCenterBlocked, "The work center is blocked",
+						fmt.Sprintf("%s is blocked, so nothing is moved to it. Choose another work center of the group.", c.Code))
+				}
 				f := memberFigures(*target, c, ratOrZero(o.Quantity))
 				option = planOption{center: c.ID, need: time.Duration(f.ExpectedMinutes) * time.Minute, efficiency: c.TimeEfficiency,
 					code: c.Code, setup: ratOrZero(f.SetupMinutes), perCycle: ratOrZero(target.MinutesPerCycle), capacity: c.Capacity, member: &f}
@@ -1260,7 +1297,7 @@ func (s *server) GetManufacturingSchedule(ctx context.Context, req gen.GetManufa
 				groups = append(groups, *sl.WorkCenterGroupID)
 			}
 		}
-		if members, err = groupMembers(ctx, q, groups); err != nil {
+		if members, err = choosableMembers(ctx, q, groups); err != nil {
 			return err
 		}
 		unscheduled, err = q.UnscheduledOrdersAtSite(ctx, req.Params.SiteId)
@@ -1312,12 +1349,13 @@ func (s *server) GetManufacturingSchedule(ctx context.Context, req gen.GetManufa
 		}
 		for _, sl := range slotsOf[c.ID] {
 			bar := barOf(sl, entries, costs, zone)
-			// A group work order may be dragged to another active member's
-			// row until a time log fixes its member (M119).
+			// A group work order may be dragged to another active, unblocked
+			// member's row of its active group until a time log fixes its
+			// member (M119).
 			others := []int64{}
 			if sl.WorkCenterGroupID != nil && !sl.HasLogs {
 				for _, m := range members[*sl.WorkCenterGroupID] {
-					if m.ID != c.ID && m.Status == statusActive {
+					if m.ID != c.ID && m.Status == statusActive && m.WorkingState != stateBlocked {
 						others = append(others, m.ID)
 					}
 				}

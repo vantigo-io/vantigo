@@ -429,6 +429,8 @@ func (q *Queries) GroupMembers(ctx context.Context, groupIds []int64) ([]GroupMe
 const groupWorkQueue = `-- name: GroupWorkQueue :many
 SELECT w.id FROM manufacturing.work_orders w JOIN manufacturing.orders o ON o.id = w.order_id
 JOIN manufacturing.work_center_group_members m ON m.group_id = w.work_center_group_id AND m.work_center_id = $1
+JOIN manufacturing.work_centers c ON c.id = m.work_center_id AND c.status = 'active'
+JOIN manufacturing.work_center_groups g ON g.id = w.work_center_group_id AND g.status = 'active'
 WHERE w.status = 'ready'
   AND o.status IN ('confirmed', 'in_progress')
   AND w.planned_start IS NULL
@@ -439,8 +441,8 @@ LIMIT 500
 
 // GroupWorkQueue is a work center's Group work (M119): the ready group work
 // orders of open orders whose member is not fixed yet — unplanned, with no
-// log — of every group the center is an active member of, by the order's
-// priority, then its due date.
+// log — of every active group the center is an active member of, by the
+// order's priority, then its due date.
 func (q *Queries) GroupWorkQueue(ctx context.Context, workCenterID int64) ([]int64, error) {
 	rows, err := q.db.Query(ctx, groupWorkQueue, workCenterID)
 	if err != nil {
@@ -1393,7 +1395,8 @@ WHERE w.work_center_id = $1
   AND w.status IN ('ready', 'in_progress', 'paused')
   AND o.status IN ('confirmed', 'in_progress')
   AND (w.work_center_group_id IS NULL OR w.planned_start IS NOT NULL
-       OR EXISTS (SELECT 1 FROM manufacturing.time_logs l WHERE l.work_order_id = w.id))
+       OR EXISTS (SELECT 1 FROM manufacturing.time_logs l WHERE l.work_order_id = w.id)
+       OR EXISTS (SELECT 1 FROM manufacturing.work_center_groups g WHERE g.id = w.work_center_group_id AND g.status <> 'active'))
 ORDER BY w.planned_start ASC NULLS LAST, (o.priority = 'urgent') DESC, o.due_date ASC NULLS LAST,
          o.number, o.suffix, w.sequence, w.id
 LIMIT 500
@@ -1402,8 +1405,9 @@ LIMIT 500
 // WorkCenterQueue is the work center's queue (M31): its ready, in-progress
 // and paused work orders of open orders, by planned start, then the order's
 // priority, then its due date. A group work order whose member is not fixed
-// yet — unplanned with no log (manufacturing phase 2 M119) — is not here but
-// under Group work (GroupWorkQueue).
+// yet — unplanned with no log, of a group that is active (manufacturing
+// phase 2 M119) — is not here but under Group work (GroupWorkQueue); one of
+// an archived group keeps its member and is here.
 func (q *Queries) WorkCenterQueue(ctx context.Context, workCenterID int64) ([]int64, error) {
 	rows, err := q.db.Query(ctx, workCenterQueue, workCenterID)
 	if err != nil {

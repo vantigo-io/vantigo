@@ -1,7 +1,7 @@
 package manufacturing
 
 // Routing (manufacturing phase 2 M112–M119): the operations' graph and its
-// cycle check, the work orders' graph walked in a topological order, a
+// rules, the work orders' graph walked in a topological order, a
 // group work order's member and the figures taken again from it, and the
 // send-ahead quantity's arithmetic.
 
@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"math/big"
 	"slices"
 	"strings"
@@ -21,9 +22,13 @@ import (
 
 // judgeDependencies settles each operation's dependsOn (M112): absent is the
 // operation before it by sequence, a key no operation of the request has is
-// operation_unknown on the field, and a cycle is operation_cycle naming its
-// path. ops are in the request's order; deps is answered in the same order,
-// as keys.
+// operation_unknown on the field, and a key of an operation that does not
+// come before it by sequence — itself included — is operation_order there,
+// so the sequence is an order the graph keeps and no cycle can be. Every
+// operation but the last by sequence must have one that runs after it, so
+// each branch joins and leads to the last: one that has none is
+// operation_unjoined on its own dependsOn. ops are in the request's order;
+// deps is answered in the same order, as keys.
 func judgeDependencies(f *fieldErrors, ops []opValues, dependsOn [][]string, sent []bool) [][]string {
 	out := make([][]string, len(ops))
 	keys := map[string]int{}
@@ -42,12 +47,17 @@ func judgeDependencies(f *fieldErrors, ops []opValues, dependsOn [][]string, sen
 			}
 			continue
 		}
+		field := fmt.Sprintf("operations[%d].dependsOn", i)
 		seen := map[string]bool{}
 		for _, raw := range dependsOn[i] {
 			key := strings.TrimSpace(raw)
-			if _, ok := keys[key]; !ok {
-				f.addCoded(fmt.Sprintf("operations[%d].dependsOn", i), codeOperationUnknown,
-					fmt.Sprintf("No operation of this bill of materials has the key %q", key))
+			j, ok := keys[key]
+			if !ok {
+				f.addCoded(field, codeOperationUnknown, fmt.Sprintf("No operation of this bill of materials has the key %q", key))
+				continue
+			}
+			if ops[j].sequence >= ops[i].sequence {
+				f.addCoded(field, codeOperationOrder, fmt.Sprintf("%s does not come before %s in sequence", ops[j].name, ops[i].name))
 				continue
 			}
 			if !seen[key] {
@@ -56,57 +66,23 @@ func judgeDependencies(f *fieldErrors, ops []opValues, dependsOn [][]string, sen
 			}
 		}
 	}
-	if f.failed() {
+	if f.failed() || len(ops) == 0 {
 		return out
 	}
-	if path := operationCycle(ops, out, keys); path != nil {
-		names := make([]string, 0, len(path))
-		for _, i := range path {
-			names = append(names, ops[i].name)
+	joined := map[string]bool{}
+	for _, deps := range out {
+		for _, key := range deps {
+			joined[key] = true
 		}
-		f.addCoded("operations", codeOperationCycle, "The operations depend on each other in a circle: "+strings.Join(names, " → "))
+	}
+	last := bySequence[len(bySequence)-1]
+	for _, i := range bySequence {
+		if i != last && !joined[ops[i].key] {
+			f.addCoded(fmt.Sprintf("operations[%d].dependsOn", i), codeOperationUnjoined,
+				fmt.Sprintf("No operation runs after %s: a later one must depend on it, so that it leads to %s", ops[i].name, ops[last].name))
+		}
 	}
 	return out
-}
-
-// operationCycle is a cycle of the operations' graph as indexes, the first
-// repeated at the end, nil when there is none.
-func operationCycle(ops []opValues, deps [][]string, keys map[string]int) []int {
-	const (
-		unseen = iota
-		open
-		closed
-	)
-	state := make([]int, len(ops))
-	var stack []int
-	var found []int
-	var visit func(i int) bool
-	visit = func(i int) bool {
-		state[i] = open
-		stack = append(stack, i)
-		for _, key := range deps[i] {
-			j := keys[key]
-			switch state[j] {
-			case open:
-				at := slices.Index(stack, j)
-				found = append(slices.Clone(stack[at:]), j)
-				return true
-			case unseen:
-				if visit(j) {
-					return true
-				}
-			}
-		}
-		stack = stack[:len(stack)-1]
-		state[i] = closed
-		return false
-	}
-	for i := range ops {
-		if state[i] == unseen && visit(i) {
-			return found
-		}
-	}
-	return nil
 }
 
 // ---- the work orders' graph -----------------------------------------------
@@ -291,6 +267,26 @@ func groupMembers(ctx context.Context, q *store.Queries, groupIDs []int64) (map[
 		out[r.GroupID] = append(out[r.GroupID], r.ManufacturingWorkCenter)
 	}
 	return out, nil
+}
+
+// choosableMembers is groupMembers of the groups that are active: the work
+// orders of an archived group keep their member, with no other to choose,
+// drag or start at (manufacturing phase 2 M117).
+func choosableMembers(ctx context.Context, q *store.Queries, groupIDs []int64) (map[int64][]store.ManufacturingWorkCenter, error) {
+	members, err := groupMembers(ctx, q, groupIDs)
+	if err != nil || len(members) == 0 {
+		return members, err
+	}
+	groups, err := q.WorkCenterGroupsByIDs(ctx, slices.Collect(maps.Keys(members)))
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range groups {
+		if g.Status != statusActive {
+			delete(members, g.ID)
+		}
+	}
+	return members, nil
 }
 
 // withLogs is which of the work orders have a time log: a group work order's
