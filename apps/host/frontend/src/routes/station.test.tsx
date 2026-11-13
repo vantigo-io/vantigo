@@ -61,7 +61,7 @@ const allowed = (method: string, url: string) => {
 };
 
 /** Every request the SPA makes, recorded, answered as a station's server would. */
-const recordFetch = () => {
+const recordFetch = (refuse: (path: string) => boolean = () => false) => {
   const requests: { url: string; method: string; authorization: string | null }[] = [];
   let paired = false;
   let operators: unknown[] = [];
@@ -72,6 +72,8 @@ const recordFetch = () => {
       const method = init?.method ?? "GET";
       requests.push({ url, method, authorization: new Headers(init?.headers).get("Authorization") });
       const path = new URL(url, "http://localhost").pathname;
+      if (refuse(path))
+        return Promise.resolve(json({ error: { code: "operator_session_ended", message: "Signed out." } }, 401));
       if (path === "/api/v1/identity/station" && method === "GET")
         return Promise.resolve(
           paired ? json(self(operators)) : json({ error: { code: "station_unknown", message: "Not paired." } }, 401),
@@ -233,5 +235,28 @@ describe("the /station route", () => {
       document.cookie,
     ];
     expect(stored.some((value) => value.includes(TOKEN))).toBe(false);
+  });
+
+  it("marks the operator whose request was refused signed out", async () => {
+    vi.stubGlobal("WebSocket", QuietSocket);
+    recordFetch((path) => path === "/api/v1/manufacturing/work-centers");
+    renderSpaAt("/station");
+
+    await userEvent.type(await screen.findByLabelText("Pairing code"), "ABCD-EFGH");
+    await userEvent.click(screen.getByRole("button", { name: "Pair" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Switch in" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(await within(dialog).findByRole("button", { name: /Ada Lovelace/ }));
+    const pinField = await vi.waitFor(() => {
+      const field = dialog.querySelector<HTMLInputElement>("input");
+      if (!field) throw new Error("no PIN field yet");
+      return field;
+    });
+    await userEvent.type(pinField, "482915");
+    // The shop floor's first read is refused: Ada's chip says she is signed
+    // out, and the floor asks who is working.
+    expect(await screen.findByText("Ada Lovelace · Signed out")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /SAW/ })).not.toBeInTheDocument();
   });
 });

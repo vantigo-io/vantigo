@@ -20,8 +20,13 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconAlertTriangle, IconLogout, IconUserPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { LiveProvider, useI18n } from "@vantigo/frontend-shell";
-import { MANUFACTURING_QUERY_KEY, StationShopFloor, setStationOperator } from "@vantigo/manufacturing-ui";
+import { LiveProvider, setTimeZones, useI18n } from "@vantigo/frontend-shell";
+import {
+  MANUFACTURING_QUERY_KEY,
+  manufacturingMetaQueryOptions,
+  StationShopFloor,
+  setStationOperator,
+} from "@vantigo/manufacturing-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "../api/auth";
 import {
@@ -44,11 +49,44 @@ const refusalOf = (error: unknown) => {
 
 const stationQueryKey = ["station", "self"] as const;
 
-/** An operator signed in at this station, as this page holds them: in memory only (M133). */
-type HeldOperator = { sessionId: string; token: string; displayName: string; userId: string; heldAt: number };
+/** The station as read, and when the read was sent: a sign-in after that is not in it. */
+type StationRead = { self: StationSelf; startedAt: number };
+
+const readStationNow = async (): Promise<StationRead> => {
+  const startedAt = Date.now();
+  return { self: await readStation(), startedAt };
+};
+
+/**
+ * An operator signed in at this station, as this page holds them: in memory
+ * only (M133). `lastRequestAt` is when a request made with their token was
+ * last answered (or the server's last activity, when that is later): the
+ * server's idle window has slid to within `every` of it. A signed-out
+ * operator keeps a chip that says so until it is dismissed.
+ */
+type HeldOperator = {
+  sessionId: string;
+  token: string;
+  displayName: string;
+  userId: string;
+  heldAt: number;
+  lastRequestAt: number;
+  signedOut?: boolean;
+};
 
 /** How long before an idle session ends the warning shows (M140). */
 const IDLE_WARNING_MS = 30_000;
+
+/**
+ * How stale the server's record of an operator's activity may be: it slides
+ * its idle window only once the window is a quarter of the timeout old, at
+ * most a minute (identity's checkStation).
+ */
+const slideEvery = (idleMinutes: number) => Math.min((idleMinutes * 60_000) / 4, 60_000);
+
+/** When the server ends an operator's session if nothing more is asked with their token. */
+const expiresAt = (operator: HeldOperator, idleMinutes: number) =>
+  operator.lastRequestAt - slideEvery(idleMinutes) + idleMinutes * 60_000;
 
 /**
  * The shared shop-floor station (manufacturing phase 2 M140): outside the app
@@ -57,15 +95,34 @@ const IDLE_WARNING_MS = 30_000;
  * and a PIN pad or a badge scan, and below it the shop floor for the operator
  * whose chip is chosen — every request with that operator's token, which this
  * page holds in memory only: a reload asks the operators to switch in again.
+ * Dates and times show in the workspace's zone, which the station reads.
  */
 const StationPage = () => {
   const { t } = useI18n("host");
   const queryClient = useQueryClient();
-  const station = useQuery({ queryKey: stationQueryKey, queryFn: readStation, retry: false });
+  const station = useQuery({ queryKey: stationQueryKey, queryFn: readStationNow, retry: false });
   const [held, setHeld] = useState<Record<string, HeldOperator>>({});
   const [active, setActive] = useState<string | null>(null);
+  const zone = station.data?.self.timeZone;
+  useEffect(() => {
+    if (zone) setTimeZones({ timeZone: zone, businessTimeZone: zone });
+  }, [zone]);
 
+  /** The operator is signed out: their token is dropped, their chip says so. */
   const forget = useCallback(
+    (sessionId: string) => {
+      setHeld((current) =>
+        current[sessionId]
+          ? { ...current, [sessionId]: { ...current[sessionId], signedOut: true, token: "" } }
+          : current,
+      );
+      setActive((current) => (current === sessionId ? null : current));
+      void queryClient.invalidateQueries({ queryKey: stationQueryKey });
+    },
+    [queryClient],
+  );
+  /** A chip put away: switched out, or a signed-out one dismissed. */
+  const dismiss = useCallback(
     (sessionId: string) => {
       setHeld((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== sessionId)));
       setActive((current) => (current === sessionId ? null : current));
@@ -74,32 +131,53 @@ const StationPage = () => {
     [queryClient],
   );
 
-  // The manufacturing pages' requests go out as the active operator; a 401 is
-  // the station's: the operator signed out, or the station itself unpaired.
-  // Installed while rendering, so before the shop floor's first request, again
-  // after a remount, and cleared when the page goes.
+  // The manufacturing pages' requests go out as the active operator, each
+  // tagged with the token it carried. A 401 is the station's: the operator
+  // whose token the request carried is signed out — whoever is active now —
+  // or the station itself is unpaired. Every other answer tells the idle
+  // clock that operator was active. Installed while rendering, so before the
+  // shop floor's first request, again after a remount, and cleared when the
+  // page goes.
   const signedOut = useCallback(
-    (code: string | undefined) => {
+    (code: string | undefined, token: string | undefined) => {
       if (code === "station_unknown") {
         void queryClient.invalidateQueries({ queryKey: stationQueryKey });
         return;
       }
-      if (!active) return;
-      notifications.show({ color: "yellow", title: t("stations.operatorSignedOut"), message: "" });
-      forget(active);
+      const operator = token ? Object.values(held).find((one) => one.token === token) : undefined;
+      if (!operator || operator.signedOut) return;
+      notifications.show({ color: "yellow", title: t("stations.operatorSignedOut"), message: operator.displayName });
+      forget(operator.sessionId);
     },
-    [active, forget, queryClient, t],
+    [held, forget, queryClient, t],
   );
+  const answered = useCallback((token: string) => {
+    const now = Date.now();
+    setHeld((current) => {
+      const operator = Object.values(current).find((one) => one.token === token);
+      return operator
+        ? { ...current, [operator.sessionId]: { ...current[operator.sessionId], lastRequestAt: now } }
+        : current;
+    });
+  }, []);
   const install = useCallback(
-    () => setStationOperator(() => (active ? held[active]?.token : undefined), signedOut),
-    [active, held, signedOut],
+    () => setStationOperator(() => (active ? held[active]?.token || undefined : undefined), signedOut, answered),
+    [active, held, signedOut, answered],
   );
   useMemo(() => install(), [install]);
   useEffect(install, [install]);
   useEffect(() => () => setStationOperator(undefined), []);
   // What one operator read is not another's: their own work, their open log.
+  // The idle clock starts from what the server last saw of them, if later.
   const choose = (sessionId: string) => {
     queryClient.removeQueries({ queryKey: [MANUFACTURING_QUERY_KEY] });
+    const listed = station.data?.self.operators.find((operator) => operator.sessionId === sessionId);
+    const serverSaw = listed ? Date.parse(listed.lastActivityAt) : Number.NaN;
+    setHeld((current) =>
+      current[sessionId] && Number.isFinite(serverSaw) && serverSaw > current[sessionId].lastRequestAt
+        ? { ...current, [sessionId]: { ...current[sessionId], lastRequestAt: serverSaw } }
+        : current,
+    );
     setActive(sessionId);
   };
 
@@ -122,17 +200,19 @@ const StationPage = () => {
     );
   return (
     <PairedStation
-      station={station.data}
-      readAt={station.dataUpdatedAt}
+      station={station.data.self}
+      readStartedAt={station.data.startedAt}
       held={held}
       active={active}
       onActive={choose}
       onSignedIn={(operator) => {
         setHeld((current) => ({ ...current, [operator.sessionId]: operator }));
-        choose(operator.sessionId);
+        queryClient.removeQueries({ queryKey: [MANUFACTURING_QUERY_KEY] });
+        setActive(operator.sessionId);
         void queryClient.invalidateQueries({ queryKey: stationQueryKey });
       }}
       onForget={forget}
+      onDismiss={dismiss}
     />
   );
 };
@@ -163,7 +243,7 @@ const PairingForm = () => {
   const [code, setCode] = useState("");
   const pair = useMutation({
     mutationFn: () => pairStation(code),
-    onSuccess: (data) => queryClient.setQueryData(stationQueryKey, data),
+    onSuccess: (data) => queryClient.setQueryData<StationRead>(stationQueryKey, { self: data, startedAt: Date.now() }),
   });
   return (
     <Center h="100vh" p="md">
@@ -203,43 +283,64 @@ const PairingForm = () => {
 /** The paired station: its bar, its operators and the shop floor for the active one. */
 const PairedStation = ({
   station,
-  readAt,
+  readStartedAt,
   held,
   active,
   onActive,
   onSignedIn,
   onForget,
+  onDismiss,
 }: {
   station: StationSelf;
-  readAt: number;
+  readStartedAt: number;
   held: Record<string, HeldOperator>;
   active: string | null;
   onActive: (sessionId: string) => void;
   onSignedIn: (operator: HeldOperator) => void;
   onForget: (sessionId: string) => void;
+  onDismiss: (sessionId: string) => void;
 }) => {
   const { t } = useI18n("host");
   const [switching, setSwitching] = useState(false);
   const [ending, setEnding] = useState<string | null>(null);
-  const out = async (session: StationOperatorSession) => {
-    setEnding(session.sessionId);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const out = async (sessionId: string) => {
+    setEnding(sessionId);
     try {
-      await switchOut(session.sessionId);
+      await switchOut(sessionId);
     } catch {
       // Already ended: the chip goes either way.
     } finally {
       setEnding(null);
-      onForget(session.sessionId);
+      onDismiss(sessionId);
     }
   };
-  // A token the server no longer lists, in a read made after it was held, is
-  // gone: an idle timeout, a replacement, a switch out elsewhere.
+  // A token the server no longer lists, in a read sent after it was held, is
+  // gone: an idle timeout, a replacement, a switch out elsewhere. A read sent
+  // before the sign-in cannot list it, whenever its answer arrives.
   useEffect(() => {
     const listed = new Set(station.operators.map((operator) => operator.sessionId));
     for (const operator of Object.values(held))
-      if (operator.heldAt < readAt && !listed.has(operator.sessionId)) onForget(operator.sessionId);
-  }, [station.operators, readAt, held, onForget]);
+      if (!operator.signedOut && operator.heldAt < readStartedAt && !listed.has(operator.sessionId))
+        onForget(operator.sessionId);
+  }, [station.operators, readStartedAt, held, onForget]);
+  // Every held operator's idle clock runs, chosen or not: one whose session
+  // the server has ended for idleness is marked signed out here too.
+  useEffect(() => {
+    for (const operator of Object.values(held))
+      if (!operator.signedOut && now >= expiresAt(operator, station.idleMinutes)) onForget(operator.sessionId);
+  }, [now, held, station.idleMinutes, onForget]);
   const activeOperator = active ? held[active] : undefined;
+  const chips: (StationOperatorSession | HeldOperator)[] = [
+    ...station.operators,
+    ...Object.values(held).filter(
+      (operator) => operator.signedOut && !station.operators.some((one) => one.sessionId === operator.sessionId),
+    ),
+  ];
   return (
     <LiveProvider userId={station.id}>
       <Stack p="md" gap="lg" mih="100vh">
@@ -247,34 +348,35 @@ const PairedStation = ({
           <Group justify="space-between" wrap="wrap" gap="md">
             <Title order={3}>{station.name}</Title>
             <Group gap="sm" wrap="wrap">
-              {station.operators.map((operator) => {
+              {chips.map((operator) => {
                 const mine = held[operator.sessionId];
+                const gone = mine?.signedOut === true;
                 const chosen = active === operator.sessionId;
                 return (
                   <Group key={operator.sessionId} gap={4} wrap="nowrap">
                     <UnstyledButton
-                      onClick={() => mine && onActive(operator.sessionId)}
-                      disabled={!mine}
+                      onClick={() => mine && !gone && onActive(operator.sessionId)}
+                      disabled={!mine || gone}
                       aria-pressed={chosen}
                       aria-label={operator.displayName}
                     >
                       <Badge
                         size="xl"
                         variant={chosen ? "filled" : "light"}
-                        color={mine ? "blue" : "gray"}
+                        color={gone ? "orange" : mine ? "blue" : "gray"}
                         leftSection={<Avatar size="sm" name={operator.displayName} color="initials" />}
                       >
-                        {operator.displayName}
+                        {gone ? `${operator.displayName} · ${t("stations.operatorSignedOut")}` : operator.displayName}
                       </Badge>
                     </UnstyledButton>
                     <Button
                       size="compact-md"
                       variant="subtle"
-                      color="red"
+                      color={gone ? "gray" : "red"}
                       loading={ending === operator.sessionId}
-                      onClick={() => void out(operator)}
+                      onClick={() => (gone ? onDismiss(operator.sessionId) : void out(operator.sessionId))}
                     >
-                      {t("stations.switchOut")}
+                      {gone ? t("stations.dismiss") : t("stations.switchOut")}
                     </Button>
                   </Group>
                 );
@@ -285,19 +387,22 @@ const PairedStation = ({
             </Group>
           </Group>
         </Card>
-        {activeOperator ? (
+        {activeOperator && !activeOperator.signedOut ? (
           <>
             <IdleWarning
               key={activeOperator.sessionId}
               idleMinutes={station.idleMinutes}
               name={activeOperator.displayName}
-              onExpired={() => onForget(activeOperator.sessionId)}
+              lastRequestAt={activeOperator.lastRequestAt}
+              now={now}
             />
             <StationShopFloor key={activeOperator.sessionId} />
           </>
         ) : (
           <Alert color="blue" title={t("stations.chooseOperatorTitle")}>
-            {Object.keys(held).length > 0 ? t("stations.chooseOperatorBody") : t("stations.switchInFirst")}
+            {Object.values(held).some((operator) => !operator.signedOut)
+              ? t("stations.chooseOperatorBody")
+              : t("stations.switchInFirst")}
           </Alert>
         )}
       </Stack>
@@ -315,44 +420,61 @@ const PairedStation = ({
 };
 
 /**
- * The idle warning (M140): 30 seconds before the station's idle timeout the
- * operator is asked to stay; a tap anywhere counts as activity and *Stay
- * signed in* reads the floor again, which the server counts as activity too.
+ * The idle warning (M140), for the active operator: their session ends when
+ * the server has seen no request with their token for the station's timeout,
+ * so the clock runs from the last request answered (`lastRequestAt`), less
+ * the minute the server may lag in recording it. Live updates refetch with
+ * the active token and keep the session alive. A tap or a key, once a request
+ * would slide the server's window, reads Manufacturing's meta — the cheapest
+ * request open to stations — so working the screen counts; *Stay signed in*
+ * does the same at once and reads the floor again.
  */
 const IdleWarning = ({
   idleMinutes,
   name,
-  onExpired,
+  lastRequestAt,
+  now,
 }: {
   idleMinutes: number;
   name: string;
-  onExpired: () => void;
+  lastRequestAt: number;
+  now: number;
 }) => {
   const { t } = useI18n("host");
   const queryClient = useQueryClient();
-  const [last, setLast] = useState(() => Date.now());
-  const [now, setNow] = useState(() => Date.now());
+  const every = slideEvery(idleMinutes);
+  const touch = useCallback(
+    () => queryClient.fetchQuery({ ...manufacturingMetaQueryOptions(), staleTime: 0 }).catch(() => undefined),
+    [queryClient],
+  );
+  const lastRef = useRef(lastRequestAt);
   useEffect(() => {
-    const touch = () => setLast(Date.now());
-    document.addEventListener("pointerdown", touch);
-    document.addEventListener("keydown", touch);
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      document.removeEventListener("pointerdown", touch);
-      document.removeEventListener("keydown", touch);
-      window.clearInterval(timer);
+    lastRef.current = lastRequestAt;
+  }, [lastRequestAt]);
+  useEffect(() => {
+    const activity = () => {
+      if (Date.now() - lastRef.current >= every) void touch();
     };
-  }, []);
-  const left = idleMinutes * 60_000 - (now - last);
-  useEffect(() => {
-    if (left <= 0) onExpired();
-  }, [left, onExpired]);
-  if (left > IDLE_WARNING_MS) return null;
+    document.addEventListener("pointerdown", activity);
+    document.addEventListener("keydown", activity);
+    return () => {
+      document.removeEventListener("pointerdown", activity);
+      document.removeEventListener("keydown", activity);
+    };
+  }, [every, touch]);
+  const left = lastRequestAt - every + idleMinutes * 60_000 - now;
+  if (left > IDLE_WARNING_MS || left <= 0) return null;
   return (
     <Alert color="orange" icon={<IconAlertTriangle size={20} />} title={t("stations.idleTitle", { name })}>
       <Group justify="space-between">
         <Text>{t("stations.idleBody", { seconds: Math.max(0, Math.ceil(left / 1000)) })}</Text>
-        <Button size="lg" onClick={() => void queryClient.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY] })}>
+        <Button
+          size="lg"
+          onClick={() => {
+            void touch();
+            void queryClient.invalidateQueries({ queryKey: [MANUFACTURING_QUERY_KEY] });
+          }}
+        >
           {t("stations.staySignedIn")}
         </Button>
       </Group>
@@ -401,6 +523,7 @@ const SwitchInModal = ({
         displayName: answer.operator.displayName,
         userId: answer.operator.userId,
         heldAt: Date.now(),
+        lastRequestAt: Date.now(),
       });
     },
     onError: (error) => {

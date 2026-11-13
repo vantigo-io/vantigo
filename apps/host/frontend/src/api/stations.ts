@@ -30,6 +30,12 @@ export const updateStation = (id: string, body: StationRequest) =>
 export const issuePairingCode = (id: string) =>
   request<StationPairing>(`${stations}/${id}/pairing`, { method: "POST" });
 export const revokeStation = (id: string) => request<Station>(`${stations}/${id}/revoke`, { method: "POST" });
+/** Ends an operator's session at a station from the administrator's list (M136). */
+export const endOperatorSession = (stationId: string, sessionId: string) =>
+  request<void>(`${stations}/${stationId}/operators/${sessionId}/end`, { method: "POST" });
+/** Resets a person's run of failed sign-ins at a station (M133). */
+export const resetBackoff = (stationId: string, userId: string) =>
+  request<void>(`${stations}/${stationId}/backoff/${userId}`, { method: "DELETE" });
 
 /*
  * The station's own requests carry its cookie and nothing else: a 401 is the
@@ -74,11 +80,11 @@ export const operatorCredentialsQueryKey = (userId: string) => ["identity", "use
 export const readOperatorCredentials = (userId: string) =>
   request<OperatorCredentials>(`/api/v1/identity/users/${userId}/operator-credentials`);
 export const clearPin = (userId: string) => request<void>(`/api/v1/identity/users/${userId}/pin`, { method: "DELETE" });
-export const enrolBadge = (userId: string, badge: string) =>
+export const enrolBadge = (userId: string, badge: string, currentPassword?: string) =>
   request<void>(`/api/v1/identity/users/${userId}/badge`, {
     method: "PUT",
     headers: json,
-    body: JSON.stringify({ badge }),
+    body: JSON.stringify(currentPassword ? { badge, currentPassword } : { badge }),
   });
 export const removeBadge = (userId: string) =>
   request<void>(`/api/v1/identity/users/${userId}/badge`, { method: "DELETE" });

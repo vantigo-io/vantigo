@@ -3,10 +3,12 @@ import {
   Badge,
   Button,
   Code,
+  Group,
   Menu,
   Modal,
   MultiSelect,
   NumberInput,
+  PasswordInput,
   Stack,
   Switch,
   Table,
@@ -29,9 +31,11 @@ import {
 import { useState } from "react";
 import { getAuthorizationMe } from "../../api/authorization";
 import {
+  endOperatorSession,
   issuePairingCode,
   listStations,
   registerStation,
+  resetBackoff,
   revokeStation,
   type Station,
   type StationPairing,
@@ -55,8 +59,13 @@ type Draft = {
   name: string;
   idleMinutes: number;
   requirePinWithBadge: boolean;
+  /** Whether the station took the PIN with a badge when the form opened: turning that off asks for the password. */
+  requiredPin: boolean;
   networks: string;
   workCenters: string[];
+  /** The work centers as read, to send only a change; null when they could not be read. */
+  readCenters: string[] | null;
+  currentPassword: string;
 };
 
 const emptyDraft: Draft = {
@@ -64,9 +73,19 @@ const emptyDraft: Draft = {
   name: "",
   idleMinutes: 5,
   requirePinWithBadge: true,
+  requiredPin: true,
   networks: "",
   workCenters: [],
+  readCenters: [],
+  currentPassword: "",
 };
+
+/** The same work centers, in any order. */
+const sameCenters = (a: string[], b: string[]) =>
+  a.length === b.length && [...a].sort().join() === [...b].sort().join();
+
+/** A refusal's code, whichever shape the client threw it in. */
+const codeOf = (error: unknown) => (error as { code?: string } | null)?.code;
 
 /**
  * Workspace › Stations (manufacturing phase 2 M129, M139): the shared
@@ -81,8 +100,14 @@ const StationsPage = () => {
   const queryClient = useQueryClient();
   const stations = useQuery({ queryKey: stationsQueryKey, queryFn: listStations });
   const centers = useQuery({ ...workCentersQueryOptions({ status: "all" }), retry: false });
+  const me = useQuery({ queryKey: ["authorization", "me"], queryFn: getAuthorizationMe });
+  // The work centers are Manufacturing's, set with manufacturing:boms-manage:
+  // without it the field is shown, not changed.
+  const manageCenters = hasPermissions(me.data?.permissions ?? [], ["manufacturing:boms-manage"]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [code, setCode] = useState<StationPairing | null>(null);
+  // When the page opened: a pairing code still waiting is judged against it.
+  const [openedAt] = useState(() => Date.now());
   const refresh = () => queryClient.invalidateQueries({ queryKey: stationsQueryKey });
 
   const save = useMutation({
@@ -96,6 +121,7 @@ const StationsPage = () => {
         idleMinutes: d.idleMinutes,
         requirePinWithBadge: d.requirePinWithBadge,
         allowedNetworks: networks.length > 0 ? networks : null,
+        ...(d.currentPassword ? { currentPassword: d.currentPassword } : {}),
       };
       let id = d.id;
       let pairing: StationPairing | null = null;
@@ -104,18 +130,50 @@ const StationsPage = () => {
         pairing = await registerStation(body);
         id = pairing.station.id;
       }
-      if (centers.data) await setStationWorkCenters(id, d.workCenters.map(Number));
-      return pairing;
+      // The centers go only when they changed and may be changed; the station
+      // is saved, and a new one's code shown, whether they are or not.
+      let centersFailed: Error | null = null;
+      if (manageCenters && d.readCenters !== null && !sameCenters(d.readCenters, d.workCenters))
+        await setStationWorkCenters(id, d.workCenters.map(Number)).catch((error: Error) => {
+          centersFailed = error;
+        });
+      return { pairing, centersFailed: centersFailed as Error | null };
     },
-    onSuccess: async (pairing) => {
+    onSuccess: async ({ pairing, centersFailed }) => {
       setDraft(null);
       if (pairing) setCode(pairing);
       else notifications.show({ color: "teal", title: t("stations.saved"), message: "" });
+      if (centersFailed)
+        notifications.show({ color: "red", title: t("stations.centersNotSaved"), message: centersFailed.message });
       await refresh();
       await queryClient.invalidateQueries({ queryKey: ["manufacturing", "stations"] });
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: t("stations.couldNotSave"), message: (error as Error).message }),
+      notifications.show({
+        color: "red",
+        title: t("stations.couldNotSave"),
+        message:
+          codeOf(error) === "reauthentication_required"
+            ? t("stations.reauth")
+            : codeOf(error) === "invalid_credentials"
+              ? t("stations.pinWrongPassword")
+              : (error as Error).message,
+      }),
+  });
+  const endSession = useMutation({
+    mutationFn: ({ stationId, sessionId }: { stationId: string; sessionId: string }) =>
+      endOperatorSession(stationId, sessionId),
+    onSuccess: async () => {
+      notifications.show({ color: "teal", title: t("stations.sessionEnded"), message: "" });
+      await refresh();
+    },
+  });
+  const reset = useMutation({
+    mutationFn: ({ stationId, userId }: { stationId: string; userId: string }) => resetBackoff(stationId, userId),
+    onSuccess: async () => {
+      notifications.show({ color: "teal", title: t("stations.backoffReset"), message: "" });
+      await refresh();
+    },
   });
   const newCode = useMutation({
     mutationFn: issuePairingCode,
@@ -133,18 +191,23 @@ const StationsPage = () => {
   });
 
   const edit = async (station: Station) => {
-    let workCenters: string[] = [];
+    // Centers that could not be read are not taken for none: saving is
+    // blocked until they can be.
+    let readCenters: string[] | null = [];
     if (centers.data) {
-      const ids = await queryClient.fetchQuery(stationWorkCentersQueryOptions(station.id)).catch(() => [] as number[]);
-      workCenters = ids.map(String);
+      const ids = await queryClient.fetchQuery(stationWorkCentersQueryOptions(station.id)).catch(() => null);
+      readCenters = ids ? ids.map(String) : null;
     }
     setDraft({
       id: station.id,
       name: station.name,
       idleMinutes: station.idleMinutes,
       requirePinWithBadge: station.requirePinWithBadge,
+      requiredPin: station.requirePinWithBadge,
       networks: (station.allowedNetworks ?? []).join("\n"),
-      workCenters,
+      workCenters: readCenters ?? [],
+      readCenters,
+      currentPassword: "",
     });
   };
   const confirmRevoke = (station: Station) =>
@@ -198,9 +261,18 @@ const StationsPage = () => {
                       </Stack>
                     </Table.Td>
                     <Table.Td>
-                      <Badge color={stateColor[station.state]} variant="light">
-                        {t(`stations.state_${station.state}`)}
-                      </Badge>
+                      <Stack gap={4}>
+                        <Badge color={stateColor[station.state]} variant="light">
+                          {t(`stations.state_${station.state}`)}
+                        </Badge>
+                        {station.state === "paired" &&
+                          station.pairingExpiresAt &&
+                          Date.parse(station.pairingExpiresAt) > openedAt && (
+                            <Badge color="blue" variant="outline">
+                              {t("stations.repairPending")}
+                            </Badge>
+                          )}
+                      </Stack>
                     </Table.Td>
                     <Table.Td>
                       {station.lastSeenAt
@@ -210,7 +282,40 @@ const StationsPage = () => {
                         : t("stations.never")}
                     </Table.Td>
                     <Table.Td>
-                      {station.activeOperators.map((operator) => operator.displayName).join(", ") || "—"}
+                      <Stack gap={4}>
+                        {station.activeOperators.length === 0 && <Text size="sm">—</Text>}
+                        {station.activeOperators.map((operator) => (
+                          <Group key={operator.sessionId} gap={4} wrap="nowrap">
+                            <Text size="sm">{operator.displayName}</Text>
+                            <Button
+                              size="compact-xs"
+                              variant="subtle"
+                              color="red"
+                              loading={endSession.isPending && endSession.variables?.sessionId === operator.sessionId}
+                              onClick={() =>
+                                endSession.mutate({ stationId: station.id, sessionId: operator.sessionId })
+                              }
+                            >
+                              {t("stations.endSession")}
+                            </Button>
+                          </Group>
+                        ))}
+                        {station.backoff.map((run) => (
+                          <Group key={run.userId} gap={4} wrap="nowrap">
+                            <Badge color="orange" variant="light">
+                              {t("stations.backoffRun", { name: run.displayName, count: run.failures })}
+                            </Badge>
+                            <Button
+                              size="compact-xs"
+                              variant="subtle"
+                              loading={reset.isPending && reset.variables?.userId === run.userId}
+                              onClick={() => reset.mutate({ stationId: station.id, userId: run.userId })}
+                            >
+                              {t("stations.resetBackoff")}
+                            </Button>
+                          </Group>
+                        ))}
+                      </Stack>
                     </Table.Td>
                     <Table.Td>
                       <Menu position="bottom-end">
@@ -272,6 +377,14 @@ const StationsPage = () => {
                 checked={draft.requirePinWithBadge}
                 onChange={(event) => setDraft({ ...draft, requirePinWithBadge: event.currentTarget.checked })}
               />
+              {draft.requiredPin && !draft.requirePinWithBadge && (
+                <PasswordInput
+                  label={t("stations.currentPassword")}
+                  description={t("stations.badgeOnlyPasswordHint")}
+                  value={draft.currentPassword}
+                  onChange={(event) => setDraft({ ...draft, currentPassword: event.currentTarget.value })}
+                />
+              )}
               <Textarea
                 label={t("stations.allowedNetworks")}
                 description={t("stations.allowedNetworksHint")}
@@ -280,11 +393,17 @@ const StationsPage = () => {
                 value={draft.networks}
                 onChange={(event) => setDraft({ ...draft, networks: event.currentTarget.value })}
               />
-              {centers.data && (
+              {centers.data && draft.readCenters === null && (
+                <Alert color="red" icon={<IconAlertTriangle size={16} />} title={t("stations.centersNotRead")}>
+                  {t("stations.centersNotReadHint")}
+                </Alert>
+              )}
+              {centers.data && draft.readCenters !== null && (
                 <MultiSelect
                   label={t("stations.workCenters")}
-                  description={t("stations.workCentersHint")}
+                  description={manageCenters ? t("stations.workCentersHint") : t("stations.workCentersReadOnly")}
                   searchable
+                  disabled={!manageCenters}
                   data={centers.data.map((center) => ({
                     value: String(center.id),
                     label: `${center.code} · ${center.name}`,
@@ -293,7 +412,11 @@ const StationsPage = () => {
                   onChange={(workCenters) => setDraft({ ...draft, workCenters })}
                 />
               )}
-              <Button type="submit" loading={save.isPending} disabled={!draft.name.trim()}>
+              <Button
+                type="submit"
+                loading={save.isPending}
+                disabled={!draft.name.trim() || (centers.data !== undefined && draft.readCenters === null)}
+              >
                 {t("stations.save")}
               </Button>
             </Stack>
