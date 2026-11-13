@@ -51,8 +51,8 @@ SELECT * FROM manufacturing.work_order_checks WHERE id = @id AND work_order_id =
 SELECT * FROM manufacturing.check_results WHERE work_order_check_id = @work_order_check_id AND superseded_by IS NULL;
 
 -- name: InsertCheckResult :one
-INSERT INTO manufacturing.check_results (work_order_check_id, result, value, note, photo_id, user_id, user_display, recorded_at)
-VALUES (@work_order_check_id, @result, sqlc.narg(value), sqlc.narg(note), sqlc.narg(photo_id), sqlc.narg(user_id), @user_display, @now)
+INSERT INTO manufacturing.check_results (work_order_check_id, result, value, note, photo_id, user_id, user_display, recorded_at, station_id)
+VALUES (@work_order_check_id, @result, sqlc.narg(value), sqlc.narg(note), sqlc.narg(photo_id), sqlc.narg(user_id), @user_display, @now, sqlc.narg(station_id))
 RETURNING *;
 
 -- name: SupersedeCheckResult :exec
@@ -139,9 +139,9 @@ RETURNING (next_value - 1)::bigint AS number;
 
 -- name: InsertDeviation :one
 INSERT INTO manufacturing.deviations (number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id,
-                                      quarantine, opened_by_user_id, opened_by_display, opened_at)
+                                      quarantine, opened_by_user_id, opened_by_display, opened_at, station_id)
 VALUES (@number, @title, @description, sqlc.narg(order_id), sqlc.narg(work_order_id), sqlc.narg(check_result_id), sqlc.narg(lot_id),
-        sqlc.narg(lot_number), sqlc.narg(variant_id), @quarantine, sqlc.narg(opened_by_user_id), @opened_by_display, @now)
+        sqlc.narg(lot_number), sqlc.narg(variant_id), @quarantine, sqlc.narg(opened_by_user_id), @opened_by_display, @now, sqlc.narg(station_id))
 RETURNING *;
 
 -- name: OpenDeviationOfCheck :one

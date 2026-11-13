@@ -395,7 +395,7 @@ func (s *server) StartManufacturingWorkOrder(ctx context.Context, req gen.StartM
 		}
 		if _, err := txq.InsertTimeLog(ctx, store.InsertTimeLogParams{
 			WorkOrderID: &w.ID, WorkCenterID: w.WorkCenterID, UserID: who.id, UserDisplay: who.display, Kind: logProductive,
-			StartedAt: now, Forced: w.Status == workOrderPending,
+			StartedAt: now, Forced: w.Status == workOrderPending, StationID: stationOf(ctx),
 		}); err != nil {
 			return err
 		}
@@ -1078,6 +1078,7 @@ func (s *server) BlockManufacturingWorkCenter(ctx context.Context, req gen.Block
 		}
 		if _, err := txq.InsertTimeLog(ctx, store.InsertTimeLogParams{
 			WorkCenterID: center.ID, Kind: logDowntime, Reason: &reason, Note: note, NoteBy: who.id, NoteByDisplay: who.display, StartedAt: now,
+			StationID: stationOf(ctx),
 		}); err != nil {
 			return err
 		}

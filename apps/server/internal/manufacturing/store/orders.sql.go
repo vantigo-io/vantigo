@@ -296,7 +296,7 @@ func (q *Queries) GetOrderForUpdate(ctx context.Context, id int64) (Manufacturin
 }
 
 const getProduction = `-- name: GetProduction :one
-SELECT p.id, p.order_id, p.client_request_id, p.request_hash, p.quantity, p.output_scrap, p.to_location_id, p.movement_id, p.posted_by_user_id, p.posted_by_display, p.posted_at, o.number AS order_number, o.suffix AS order_suffix
+SELECT p.id, p.order_id, p.client_request_id, p.request_hash, p.quantity, p.output_scrap, p.to_location_id, p.movement_id, p.posted_by_user_id, p.posted_by_display, p.posted_at, p.station_id, o.number AS order_number, o.suffix AS order_suffix
 FROM manufacturing.productions p JOIN manufacturing.orders o ON o.id = p.order_id
 WHERE p.id = $1
 `
@@ -313,6 +313,7 @@ type GetProductionRow struct {
 	PostedByUserID  *uuid.UUID
 	PostedByDisplay string
 	PostedAt        time.Time
+	StationID       *uuid.UUID
 	OrderNumber     int64
 	OrderSuffix     int32
 }
@@ -332,6 +333,7 @@ func (q *Queries) GetProduction(ctx context.Context, id int64) (GetProductionRow
 		&i.PostedByUserID,
 		&i.PostedByDisplay,
 		&i.PostedAt,
+		&i.StationID,
 		&i.OrderNumber,
 		&i.OrderSuffix,
 	)
@@ -533,10 +535,10 @@ func (q *Queries) InsertOrderEvent(ctx context.Context, arg InsertOrderEventPara
 const insertProduction = `-- name: InsertProduction :one
 INSERT INTO manufacturing.productions (
     order_id, client_request_id, request_hash, quantity, output_scrap, to_location_id,
-    posted_by_user_id, posted_by_display, posted_at)
+    posted_by_user_id, posted_by_display, posted_at, station_id)
 VALUES ($1, $2, $3, $4, $5, $6,
-        $7, $8, $9)
-RETURNING id, order_id, client_request_id, request_hash, quantity, output_scrap, to_location_id, movement_id, posted_by_user_id, posted_by_display, posted_at
+        $7, $8, $9, $10)
+RETURNING id, order_id, client_request_id, request_hash, quantity, output_scrap, to_location_id, movement_id, posted_by_user_id, posted_by_display, posted_at, station_id
 `
 
 type InsertProductionParams struct {
@@ -549,6 +551,7 @@ type InsertProductionParams struct {
 	PostedByUserID  *uuid.UUID
 	PostedByDisplay string
 	Now             time.Time
+	StationID       *uuid.UUID
 }
 
 func (q *Queries) InsertProduction(ctx context.Context, arg InsertProductionParams) (ManufacturingProduction, error) {
@@ -562,6 +565,7 @@ func (q *Queries) InsertProduction(ctx context.Context, arg InsertProductionPara
 		arg.PostedByUserID,
 		arg.PostedByDisplay,
 		arg.Now,
+		arg.StationID,
 	)
 	var i ManufacturingProduction
 	err := row.Scan(
@@ -576,6 +580,7 @@ func (q *Queries) InsertProduction(ctx context.Context, arg InsertProductionPara
 		&i.PostedByUserID,
 		&i.PostedByDisplay,
 		&i.PostedAt,
+		&i.StationID,
 	)
 	return i, err
 }
@@ -1194,7 +1199,7 @@ func (q *Queries) PeekLotCounter(ctx context.Context, counterName string) (int64
 }
 
 const productionByClientRequest = `-- name: ProductionByClientRequest :one
-SELECT id, order_id, client_request_id, request_hash, quantity, output_scrap, to_location_id, movement_id, posted_by_user_id, posted_by_display, posted_at FROM manufacturing.productions WHERE client_request_id = $1
+SELECT id, order_id, client_request_id, request_hash, quantity, output_scrap, to_location_id, movement_id, posted_by_user_id, posted_by_display, posted_at, station_id FROM manufacturing.productions WHERE client_request_id = $1
 `
 
 func (q *Queries) ProductionByClientRequest(ctx context.Context, clientRequestID string) (ManufacturingProduction, error) {
@@ -1212,6 +1217,7 @@ func (q *Queries) ProductionByClientRequest(ctx context.Context, clientRequestID
 		&i.PostedByUserID,
 		&i.PostedByDisplay,
 		&i.PostedAt,
+		&i.StationID,
 	)
 	return i, err
 }

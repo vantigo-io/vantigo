@@ -1979,7 +1979,7 @@ type ManufacturingPlanAllResult struct {
 // ManufacturingPriority An order's priority (M17).
 type ManufacturingPriority string
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_order (400: dependsOn names an operation that does not come before it by sequence, itself included, M112), operation_unjoined (400: an operation other than the last by sequence that no operation depends on, at its own dependsOn, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119), work_order_is_output (409: Register quantity on the output work order, M116), quantity_over_order (400: Register quantity past the order's quantity, M116), work_center_group_empty (409: a confirm of an order whose operation targets a group with no active work center, M118), output_is_product (400: a by-product that is the BoM's own variant, M120), output_is_component (400: a by-product that is one of the BoM's components, M120), cost_share_over (400: by-products' shares summing to more than 100, M120), unbuild_too_much (400: an unbuild of more than the order, or the lot, has left to take apart, M123), split_sum (400: a split's quantities that do not sum to the order's, M124), merge_mismatch (400: a merge of orders of another variant, BoM, site, state or origin, M125), order_has_work (409: a split or a merge of an order with a production, a time log or a registered quantity, M124), order_has_open_parts (409: a cancel of an order split into parts that are still open, M124), unbuild_has_byproducts (409: an unbuild from an order whose productions made by-products, M123), unbuild_not_quarantined (409: a release of an unbuild that quarantined nothing, M123).
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_order (400: dependsOn names an operation that does not come before it by sequence, itself included, M112), operation_unjoined (400: an operation other than the last by sequence that no operation depends on, at its own dependsOn, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119), work_order_is_output (409: Register quantity on the output work order, M116), quantity_over_order (400: Register quantity past the order's quantity, M116), work_center_group_empty (409: a confirm of an order whose operation targets a group with no active work center, M118), output_is_product (400: a by-product that is the BoM's own variant, M120), output_is_component (400: a by-product that is one of the BoM's components, M120), cost_share_over (400: by-products' shares summing to more than 100, M120), unbuild_too_much (400: an unbuild of more than the order, or the lot, has left to take apart, M123), split_sum (400: a split's quantities that do not sum to the order's, M124), merge_mismatch (400: a merge of orders of another variant, BoM, site, state or origin, M125), order_has_work (409: a split or a merge of an order with a production, a time log or a registered quantity, M124), order_has_open_parts (409: a cancel of an order split into parts that are still open, M124), unbuild_has_byproducts (409: an unbuild from an order whose productions made by-products, M123), unbuild_not_quarantined (409: a release of an unbuild that quarantined nothing, M123), station_scope (403: a shared station's operator at a work center, or on a work order or a production of one, that is not the station's, M131).
 type ManufacturingProblem struct {
 	// Checks checks_incomplete only: every check with no result that stops it (M98).
 	Checks *[]ManufacturingMissingCheck `json:"checks,omitempty"`
@@ -2688,6 +2688,11 @@ type ManufacturingStartInput struct {
 
 	// WorkCenterId The member a group work order is started at, from its Group work (manufacturing phase 2 M119): that member, re-snapshotted. Another member than the one fixed is work_order_member_fixed; a center outside the group work_center_not_in_group.
 	WorkCenterId *int64 `json:"workCenterId,omitempty"`
+}
+
+// ManufacturingStationWorkCenters defines model for ManufacturingStationWorkCenters.
+type ManufacturingStationWorkCenters struct {
+	WorkCenterIds []int64 `json:"workCenterIds"`
 }
 
 // ManufacturingStats The overview's counts.
@@ -3785,6 +3790,9 @@ type CreateManufacturingOrdersFromSuggestionsJSONRequestBody = ManufacturingSugg
 // PlanAllManufacturingOrdersJSONRequestBody defines body for PlanAllManufacturingOrders for application/json ContentType.
 type PlanAllManufacturingOrdersJSONRequestBody = ManufacturingPlanAllInput
 
+// PutManufacturingStationWorkCentersJSONRequestBody defines body for PutManufacturingStationWorkCenters for application/json ContentType.
+type PutManufacturingStationWorkCentersJSONRequestBody = ManufacturingStationWorkCenters
+
 // CorrectManufacturingTimeLogJSONRequestBody defines body for CorrectManufacturingTimeLog for application/json ContentType.
 type CorrectManufacturingTimeLogJSONRequestBody = ManufacturingTimeLogCorrection
 
@@ -4006,6 +4014,12 @@ type ServerInterface interface {
 	// ListManufacturingSiteLocations List a site's locations
 	// (GET /api/v1/manufacturing/sites/{id}/locations)
 	ListManufacturingSiteLocations(w http.ResponseWriter, r *http.Request, id int64)
+	// GetManufacturingStationWorkCenters List a station's work centers
+	// (GET /api/v1/manufacturing/stations/{stationId}/work-centers)
+	GetManufacturingStationWorkCenters(w http.ResponseWriter, r *http.Request, stationId openapi_types.UUID)
+	// PutManufacturingStationWorkCenters Set a station's work centers
+	// (PUT /api/v1/manufacturing/stations/{stationId}/work-centers)
+	PutManufacturingStationWorkCenters(w http.ResponseWriter, r *http.Request, stationId openapi_types.UUID)
 	// GetManufacturingStats Get the overview's counts
 	// (GET /api/v1/manufacturing/stats)
 	GetManufacturingStats(w http.ResponseWriter, r *http.Request)
@@ -6004,6 +6018,58 @@ func (siw *ServerInterfaceWrapper) ListManufacturingSiteLocations(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// GetManufacturingStationWorkCenters operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingStationWorkCenters(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "stationId" -------------
+	var stationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "stationId", r.PathValue("stationId"), &stationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingStationWorkCenters(w, r, stationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutManufacturingStationWorkCenters operation middleware
+func (siw *ServerInterfaceWrapper) PutManufacturingStationWorkCenters(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "stationId" -------------
+	var stationId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "stationId", r.PathValue("stationId"), &stationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "stationId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutManufacturingStationWorkCenters(w, r, stationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetManufacturingStats operation middleware
 func (siw *ServerInterfaceWrapper) GetManufacturingStats(w http.ResponseWriter, r *http.Request) {
 
@@ -7266,6 +7332,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/shop-floor/mine", wrapper.GetManufacturingMyWork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/sites", wrapper.ListManufacturingSites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/sites/{id}/locations", wrapper.ListManufacturingSiteLocations)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/stations/{stationId}/work-centers", wrapper.GetManufacturingStationWorkCenters)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/stations/{stationId}/work-centers", wrapper.PutManufacturingStationWorkCenters)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/stats", wrapper.GetManufacturingStats)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/manufacturing/time-logs/{id}", wrapper.CorrectManufacturingTimeLog)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/unbuilds", wrapper.ListManufacturingUnbuilds)
@@ -9830,6 +9898,20 @@ func (response GetManufacturingProductionDraft403JSONResponse) VisitGetManufactu
 	return err
 }
 
+type GetManufacturingProductionDraft403ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingProductionDraft403ApplicationProblemPlusJSONResponse) VisitGetManufacturingProductionDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetManufacturingProductionDraft404Response struct {
 }
 
@@ -11687,6 +11769,121 @@ func (response ListManufacturingSiteLocations503ApplicationProblemPlusJSONRespon
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingStationWorkCentersRequestObject struct {
+	StationId openapi_types.UUID `json:"stationId"`
+}
+
+type GetManufacturingStationWorkCentersResponseObject interface {
+	VisitGetManufacturingStationWorkCentersResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingStationWorkCenters200JSONResponse ManufacturingStationWorkCenters
+
+func (response GetManufacturingStationWorkCenters200JSONResponse) VisitGetManufacturingStationWorkCentersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingStationWorkCenters401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingStationWorkCenters401JSONResponse) VisitGetManufacturingStationWorkCentersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingStationWorkCenters403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingStationWorkCenters403JSONResponse) VisitGetManufacturingStationWorkCentersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutManufacturingStationWorkCentersRequestObject struct {
+	StationId openapi_types.UUID `json:"stationId"`
+	Body      *PutManufacturingStationWorkCentersJSONRequestBody
+}
+
+type PutManufacturingStationWorkCentersResponseObject interface {
+	VisitPutManufacturingStationWorkCentersResponse(w http.ResponseWriter) error
+}
+
+type PutManufacturingStationWorkCenters200JSONResponse ManufacturingStationWorkCenters
+
+func (response PutManufacturingStationWorkCenters200JSONResponse) VisitPutManufacturingStationWorkCentersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutManufacturingStationWorkCenters400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response PutManufacturingStationWorkCenters400ApplicationProblemPlusJSONResponse) VisitPutManufacturingStationWorkCentersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutManufacturingStationWorkCenters401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutManufacturingStationWorkCenters401JSONResponse) VisitPutManufacturingStationWorkCentersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutManufacturingStationWorkCenters403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutManufacturingStationWorkCenters403JSONResponse) VisitPutManufacturingStationWorkCentersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13618,6 +13815,20 @@ func (response GetManufacturingWorkCenterQueue403JSONResponse) VisitGetManufactu
 	return err
 }
 
+type GetManufacturingWorkCenterQueue403ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingWorkCenterQueue403ApplicationProblemPlusJSONResponse) VisitGetManufacturingWorkCenterQueueResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetManufacturingWorkCenterQueue404Response struct {
 }
 
@@ -13872,6 +14083,20 @@ func (response GetManufacturingWorkOrder403JSONResponse) VisitGetManufacturingWo
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingWorkOrder403ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingWorkOrder403ApplicationProblemPlusJSONResponse) VisitGetManufacturingWorkOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
@@ -15219,6 +15444,12 @@ type StrictServerInterface interface {
 	// ListManufacturingSiteLocations List a site's locations
 	// (GET /api/v1/manufacturing/sites/{id}/locations)
 	ListManufacturingSiteLocations(ctx context.Context, request ListManufacturingSiteLocationsRequestObject) (ListManufacturingSiteLocationsResponseObject, error)
+	// GetManufacturingStationWorkCenters List a station's work centers
+	// (GET /api/v1/manufacturing/stations/{stationId}/work-centers)
+	GetManufacturingStationWorkCenters(ctx context.Context, request GetManufacturingStationWorkCentersRequestObject) (GetManufacturingStationWorkCentersResponseObject, error)
+	// PutManufacturingStationWorkCenters Set a station's work centers
+	// (PUT /api/v1/manufacturing/stations/{stationId}/work-centers)
+	PutManufacturingStationWorkCenters(ctx context.Context, request PutManufacturingStationWorkCentersRequestObject) (PutManufacturingStationWorkCentersResponseObject, error)
 	// GetManufacturingStats Get the overview's counts
 	// (GET /api/v1/manufacturing/stats)
 	GetManufacturingStats(ctx context.Context, request GetManufacturingStatsRequestObject) (GetManufacturingStatsResponseObject, error)
@@ -16909,6 +17140,65 @@ func (sh *strictHandler) ListManufacturingSiteLocations(w http.ResponseWriter, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListManufacturingSiteLocationsResponseObject); ok {
 		if err := validResponse.VisitListManufacturingSiteLocationsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingStationWorkCenters operation middleware
+func (sh *strictHandler) GetManufacturingStationWorkCenters(w http.ResponseWriter, r *http.Request, stationId openapi_types.UUID) {
+	var request GetManufacturingStationWorkCentersRequestObject
+
+	request.StationId = stationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingStationWorkCenters(ctx, request.(GetManufacturingStationWorkCentersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingStationWorkCenters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingStationWorkCentersResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingStationWorkCentersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutManufacturingStationWorkCenters operation middleware
+func (sh *strictHandler) PutManufacturingStationWorkCenters(w http.ResponseWriter, r *http.Request, stationId openapi_types.UUID) {
+	var request PutManufacturingStationWorkCentersRequestObject
+
+	request.StationId = stationId
+
+	var body PutManufacturingStationWorkCentersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutManufacturingStationWorkCenters(ctx, request.(PutManufacturingStationWorkCentersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutManufacturingStationWorkCenters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutManufacturingStationWorkCentersResponseObject); ok {
+		if err := validResponse.VisitPutManufacturingStationWorkCentersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

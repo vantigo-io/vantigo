@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/vantigo-io/vantigo/server/internal/live"
+	"github.com/vantigo-io/vantigo/server/internal/manufacturing/store"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
@@ -42,7 +43,12 @@ const (
 // apply: manufacturing:access. An order's key must be an id; one that names
 // no order is still answered alike, so a subscription is no existence
 // oracle.
-func liveTopics(module.Deps) []live.Topic {
+//
+// A shared shop-floor station's socket (manufacturing phase 2 §17) may hear a
+// work center of its own and a work order at one of them, decided from the
+// station's work centers instead of a person's permission; every other topic
+// refuses a station.
+func liveTopics(d module.Deps) []live.Topic {
 	return []live.Topic{
 		{Kind: liveOrders, Authorize: func(ctx context.Context, key string) error {
 			if key != "" || !live.HasPermission(ctx, permAccess) {
@@ -51,8 +57,24 @@ func liveTopics(module.Deps) []live.Topic {
 			return nil
 		}},
 		{Kind: liveOrder, Authorize: authorizeID},
-		{Kind: liveWorkCenter, Authorize: authorizeID},
-		{Kind: liveWorkOrder, Presence: true, Authorize: authorizeID},
+		{Kind: liveWorkCenter, Station: true, Authorize: func(ctx context.Context, key string) error {
+			station, ok := live.StationID(ctx)
+			if !ok {
+				return authorizeID(ctx, key)
+			}
+			return authorizeStation(ctx, d, key, func(q *store.Queries, id int64) (bool, error) {
+				return q.StationServesWorkCenter(ctx, store.StationServesWorkCenterParams{StationID: station, WorkCenterID: id})
+			})
+		}},
+		{Kind: liveWorkOrder, Presence: true, Station: true, Authorize: func(ctx context.Context, key string) error {
+			station, ok := live.StationID(ctx)
+			if !ok {
+				return authorizeID(ctx, key)
+			}
+			return authorizeStation(ctx, d, key, func(q *store.Queries, id int64) (bool, error) {
+				return q.StationServesWorkOrder(ctx, store.StationServesWorkOrderParams{StationID: station, WorkOrderID: id})
+			})
+		}},
 		{Kind: liveSchedule, Authorize: authorizeID},
 		{Kind: liveSuggestions, Authorize: authorizeID},
 		{Kind: liveDeviations, Authorize: func(ctx context.Context, key string) error {
@@ -69,6 +91,24 @@ func liveTopics(module.Deps) []live.Topic {
 func authorizeID(ctx context.Context, key string) error {
 	if id, err := strconv.ParseInt(key, 10, 64); err != nil || id < 1 || strconv.FormatInt(id, 10) != key ||
 		!live.HasPermission(ctx, permAccess) {
+		return live.ErrForbidden
+	}
+	return nil
+}
+
+// authorizeStation admits a station's socket to a keyed topic whose key is an
+// id that serves says the station reaches (§17). An id that names nothing is
+// refused alike.
+func authorizeStation(ctx context.Context, d module.Deps, key string, serves func(*store.Queries, int64) (bool, error)) error {
+	id, err := strconv.ParseInt(key, 10, 64)
+	if err != nil || id < 1 || strconv.FormatInt(id, 10) != key || d.Pool == nil {
+		return live.ErrForbidden
+	}
+	ok, err := serves(store.New(d.Pool), id)
+	if err != nil {
+		return err
+	}
+	if !ok {
 		return live.ErrForbidden
 	}
 	return nil

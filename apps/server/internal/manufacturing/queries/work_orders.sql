@@ -221,9 +221,9 @@ RETURNING *;
 -- name: InsertTimeLog :one
 INSERT INTO manufacturing.time_logs (
     work_order_id, work_center_id, user_id, user_display, kind, reason, note, note_by, note_by_display, started_at, ended_at,
-    quantity, forced, corrected_by, corrected_by_display, corrected_at)
+    quantity, forced, corrected_by, corrected_by_display, corrected_at, station_id)
 VALUES (@work_order_id, @work_center_id, @user_id, @user_display, @kind, @reason, @note, @note_by, @note_by_display, @started_at, @ended_at,
-        @quantity, @forced, @corrected_by, @corrected_by_display, @corrected_at)
+        @quantity, @forced, @corrected_by, @corrected_by_display, @corrected_at, sqlc.narg(station_id))
 RETURNING *;
 
 -- name: GetTimeLog :one

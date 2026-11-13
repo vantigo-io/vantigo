@@ -263,7 +263,7 @@ func (q *Queries) LockScheduleCenter(ctx context.Context, workCenterID int32) er
 }
 
 const logsAtWorkCentersBetween = `-- name: LogsAtWorkCentersBetween :many
-SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display FROM manufacturing.time_logs
+SELECT id, work_order_id, work_center_id, user_id, user_display, kind, reason, note, started_at, ended_at, quantity, forced, corrected_by, corrected_by_display, corrected_at, note_by, note_by_display, station_id FROM manufacturing.time_logs
 WHERE work_center_id = ANY($1::bigint[])
   AND started_at < $2::timestamptz AND (ended_at IS NULL OR ended_at > $3::timestamptz)
 ORDER BY work_center_id, started_at, id
@@ -305,6 +305,7 @@ func (q *Queries) LogsAtWorkCentersBetween(ctx context.Context, arg LogsAtWorkCe
 			&i.CorrectedAt,
 			&i.NoteBy,
 			&i.NoteByDisplay,
+			&i.StationID,
 		); err != nil {
 			return nil, err
 		}

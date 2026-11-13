@@ -100,7 +100,7 @@ func (s *server) openDeviation(ctx context.Context, tx pgx.Tx, txq *store.Querie
 	dev, err := txq.InsertDeviation(ctx, store.InsertDeviationParams{
 		Number: number, Title: d.title, Description: d.description, OrderID: d.orderID, WorkOrderID: d.workOrderID,
 		CheckResultID: d.checkResultID, LotID: d.lotID, LotNumber: d.lotNumber, VariantID: d.variantID, Quarantine: d.quarantine,
-		OpenedByUserID: who.id, OpenedByDisplay: who.display, Now: now,
+		OpenedByUserID: who.id, OpenedByDisplay: who.display, Now: now, StationID: stationOf(ctx),
 	})
 	if err != nil {
 		return dev, err

@@ -17,7 +17,7 @@ const addResultToDeviation = `-- name: AddResultToDeviation :one
 UPDATE manufacturing.deviations
 SET check_result_id = $1, description = left(description || $2::text, 5000), revision = revision + 1
 WHERE id = $3
-RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision
+RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision, station_id
 `
 
 type AddResultToDeviationParams struct {
@@ -55,6 +55,7 @@ func (q *Queries) AddResultToDeviation(ctx context.Context, arg AddResultToDevia
 		&i.ClosedAt,
 		&i.ClosingNote,
 		&i.Revision,
+		&i.StationID,
 	)
 	return i, err
 }
@@ -221,7 +222,7 @@ UPDATE manufacturing.deviations
 SET status = 'closed', disposition = $1, closing_note = $2, closed_by_user_id = $3,
     closed_by_display = $4, closed_at = $5, holds_released = $6, revision = revision + 1
 WHERE id = $7
-RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision
+RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision, station_id
 `
 
 type CloseDeviationParams struct {
@@ -268,6 +269,7 @@ func (q *Queries) CloseDeviation(ctx context.Context, arg CloseDeviationParams) 
 		&i.ClosedAt,
 		&i.ClosingNote,
 		&i.Revision,
+		&i.StationID,
 	)
 	return i, err
 }
@@ -309,7 +311,7 @@ func (q *Queries) CountDeviations(ctx context.Context, arg CountDeviationsParams
 }
 
 const currentCheckResult = `-- name: CurrentCheckResult :one
-SELECT id, work_order_check_id, result, value, note, photo_id, user_id, user_display, recorded_at, superseded_by FROM manufacturing.check_results WHERE work_order_check_id = $1 AND superseded_by IS NULL
+SELECT id, work_order_check_id, result, value, note, photo_id, user_id, user_display, recorded_at, superseded_by, station_id FROM manufacturing.check_results WHERE work_order_check_id = $1 AND superseded_by IS NULL
 `
 
 func (q *Queries) CurrentCheckResult(ctx context.Context, workOrderCheckID int64) (ManufacturingCheckResult, error) {
@@ -326,6 +328,7 @@ func (q *Queries) CurrentCheckResult(ctx context.Context, workOrderCheckID int64
 		&i.UserDisplay,
 		&i.RecordedAt,
 		&i.SupersededBy,
+		&i.StationID,
 	)
 	return i, err
 }
@@ -426,7 +429,7 @@ func (q *Queries) GetCheckPhoto(ctx context.Context, arg GetCheckPhotoParams) (M
 }
 
 const getDeviation = `-- name: GetDeviation :one
-SELECT id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision FROM manufacturing.deviations WHERE id = $1
+SELECT id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision, station_id FROM manufacturing.deviations WHERE id = $1
 `
 
 func (q *Queries) GetDeviation(ctx context.Context, id int64) (ManufacturingDeviation, error) {
@@ -455,12 +458,13 @@ func (q *Queries) GetDeviation(ctx context.Context, id int64) (ManufacturingDevi
 		&i.ClosedAt,
 		&i.ClosingNote,
 		&i.Revision,
+		&i.StationID,
 	)
 	return i, err
 }
 
 const getDeviationForUpdate = `-- name: GetDeviationForUpdate :one
-SELECT id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision FROM manufacturing.deviations WHERE id = $1 FOR UPDATE
+SELECT id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision, station_id FROM manufacturing.deviations WHERE id = $1 FOR UPDATE
 `
 
 // GetDeviationForUpdate takes the deviation after its order (M99).
@@ -490,6 +494,7 @@ func (q *Queries) GetDeviationForUpdate(ctx context.Context, id int64) (Manufact
 		&i.ClosedAt,
 		&i.ClosingNote,
 		&i.Revision,
+		&i.StationID,
 	)
 	return i, err
 }
@@ -573,9 +578,9 @@ func (q *Queries) InsertCheckPhoto(ctx context.Context, arg InsertCheckPhotoPara
 }
 
 const insertCheckResult = `-- name: InsertCheckResult :one
-INSERT INTO manufacturing.check_results (work_order_check_id, result, value, note, photo_id, user_id, user_display, recorded_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, work_order_check_id, result, value, note, photo_id, user_id, user_display, recorded_at, superseded_by
+INSERT INTO manufacturing.check_results (work_order_check_id, result, value, note, photo_id, user_id, user_display, recorded_at, station_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, work_order_check_id, result, value, note, photo_id, user_id, user_display, recorded_at, superseded_by, station_id
 `
 
 type InsertCheckResultParams struct {
@@ -587,6 +592,7 @@ type InsertCheckResultParams struct {
 	UserID           *uuid.UUID
 	UserDisplay      string
 	Now              time.Time
+	StationID        *uuid.UUID
 }
 
 func (q *Queries) InsertCheckResult(ctx context.Context, arg InsertCheckResultParams) (ManufacturingCheckResult, error) {
@@ -599,6 +605,7 @@ func (q *Queries) InsertCheckResult(ctx context.Context, arg InsertCheckResultPa
 		arg.UserID,
 		arg.UserDisplay,
 		arg.Now,
+		arg.StationID,
 	)
 	var i ManufacturingCheckResult
 	err := row.Scan(
@@ -612,16 +619,17 @@ func (q *Queries) InsertCheckResult(ctx context.Context, arg InsertCheckResultPa
 		&i.UserDisplay,
 		&i.RecordedAt,
 		&i.SupersededBy,
+		&i.StationID,
 	)
 	return i, err
 }
 
 const insertDeviation = `-- name: InsertDeviation :one
 INSERT INTO manufacturing.deviations (number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id,
-                                      quarantine, opened_by_user_id, opened_by_display, opened_at)
+                                      quarantine, opened_by_user_id, opened_by_display, opened_at, station_id)
 VALUES ($1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12, $13)
-RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision
+        $8, $9, $10, $11, $12, $13, $14)
+RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision, station_id
 `
 
 type InsertDeviationParams struct {
@@ -638,6 +646,7 @@ type InsertDeviationParams struct {
 	OpenedByUserID  *uuid.UUID
 	OpenedByDisplay string
 	Now             time.Time
+	StationID       *uuid.UUID
 }
 
 func (q *Queries) InsertDeviation(ctx context.Context, arg InsertDeviationParams) (ManufacturingDeviation, error) {
@@ -655,6 +664,7 @@ func (q *Queries) InsertDeviation(ctx context.Context, arg InsertDeviationParams
 		arg.OpenedByUserID,
 		arg.OpenedByDisplay,
 		arg.Now,
+		arg.StationID,
 	)
 	var i ManufacturingDeviation
 	err := row.Scan(
@@ -680,6 +690,7 @@ func (q *Queries) InsertDeviation(ctx context.Context, arg InsertDeviationParams
 		&i.ClosedAt,
 		&i.ClosingNote,
 		&i.Revision,
+		&i.StationID,
 	)
 	return i, err
 }
@@ -726,7 +737,7 @@ func (q *Queries) InsertObjectDeletion(ctx context.Context, arg InsertObjectDele
 }
 
 const listDeviations = `-- name: ListDeviations :many
-SELECT d.id, d.number, d.title, d.description, d.order_id, d.work_order_id, d.check_result_id, d.lot_id, d.lot_number, d.variant_id, d.disposition, d.status, d.quarantine, d.holds_released, d.opened_by_user_id, d.opened_by_display, d.opened_at, d.closed_by_user_id, d.closed_by_display, d.closed_at, d.closing_note, d.revision
+SELECT d.id, d.number, d.title, d.description, d.order_id, d.work_order_id, d.check_result_id, d.lot_id, d.lot_number, d.variant_id, d.disposition, d.status, d.quarantine, d.holds_released, d.opened_by_user_id, d.opened_by_display, d.opened_at, d.closed_by_user_id, d.closed_by_display, d.closed_at, d.closing_note, d.revision, d.station_id
 FROM manufacturing.deviations d
 LEFT JOIN manufacturing.orders o ON o.id = d.order_id
 WHERE ($1::text IS NULL OR d.status = $1)
@@ -797,6 +808,7 @@ func (q *Queries) ListDeviations(ctx context.Context, arg ListDeviationsParams) 
 			&i.ManufacturingDeviation.ClosedAt,
 			&i.ManufacturingDeviation.ClosingNote,
 			&i.ManufacturingDeviation.Revision,
+			&i.ManufacturingDeviation.StationID,
 		); err != nil {
 			return nil, err
 		}
@@ -892,7 +904,7 @@ func (q *Queries) LotsOfDeviations(ctx context.Context, deviationIds []int64) ([
 }
 
 const markDeviationReleased = `-- name: MarkDeviationReleased :one
-UPDATE manufacturing.deviations SET holds_released = true, revision = revision + 1 WHERE id = $1 RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision
+UPDATE manufacturing.deviations SET holds_released = true, revision = revision + 1 WHERE id = $1 RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision, station_id
 `
 
 func (q *Queries) MarkDeviationReleased(ctx context.Context, id int64) (ManufacturingDeviation, error) {
@@ -921,6 +933,7 @@ func (q *Queries) MarkDeviationReleased(ctx context.Context, id int64) (Manufact
 		&i.ClosedAt,
 		&i.ClosingNote,
 		&i.Revision,
+		&i.StationID,
 	)
 	return i, err
 }
@@ -994,7 +1007,7 @@ func (q *Queries) NextDeviationNumber(ctx context.Context) (int64, error) {
 }
 
 const openDeviationOfCheck = `-- name: OpenDeviationOfCheck :one
-SELECT d.id, d.number, d.title, d.description, d.order_id, d.work_order_id, d.check_result_id, d.lot_id, d.lot_number, d.variant_id, d.disposition, d.status, d.quarantine, d.holds_released, d.opened_by_user_id, d.opened_by_display, d.opened_at, d.closed_by_user_id, d.closed_by_display, d.closed_at, d.closing_note, d.revision FROM manufacturing.deviations d
+SELECT d.id, d.number, d.title, d.description, d.order_id, d.work_order_id, d.check_result_id, d.lot_id, d.lot_number, d.variant_id, d.disposition, d.status, d.quarantine, d.holds_released, d.opened_by_user_id, d.opened_by_display, d.opened_at, d.closed_by_user_id, d.closed_by_display, d.closed_at, d.closing_note, d.revision, d.station_id FROM manufacturing.deviations d
 JOIN manufacturing.check_results r ON r.id = d.check_result_id
 WHERE r.work_order_check_id = $1 AND d.status = 'open'
 ORDER BY d.id
@@ -1031,12 +1044,13 @@ func (q *Queries) OpenDeviationOfCheck(ctx context.Context, workOrderCheckID int
 		&i.ClosedAt,
 		&i.ClosingNote,
 		&i.Revision,
+		&i.StationID,
 	)
 	return i, err
 }
 
 const openQuarantineDeviationsOfOrder = `-- name: OpenQuarantineDeviationsOfOrder :many
-SELECT id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision FROM manufacturing.deviations
+SELECT id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision, station_id FROM manufacturing.deviations
 WHERE order_id = $1 AND status = 'open' AND quarantine
 ORDER BY id
 `
@@ -1075,6 +1089,7 @@ func (q *Queries) OpenQuarantineDeviationsOfOrder(ctx context.Context, orderID *
 			&i.ClosedAt,
 			&i.ClosingNote,
 			&i.Revision,
+			&i.StationID,
 		); err != nil {
 			return nil, err
 		}

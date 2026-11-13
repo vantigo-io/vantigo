@@ -226,6 +226,8 @@ var markedByHand = map[string]string{
 	"deleteIdentityUsersByIdPin":                 "never",
 	"putIdentityUsersByIdBadge":                  "never",
 	"deleteIdentityUsersByIdBadge":               "never",
+	"getManufacturingStationWorkCenters":         "never",
+	"putManufacturingStationWorkCenters":         "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
