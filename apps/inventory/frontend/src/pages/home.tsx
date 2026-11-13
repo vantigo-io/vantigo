@@ -75,7 +75,8 @@ export const InventoryHomePage = () => {
   const meta = useQuery(inventoryMetaQueryOptions());
   const canViewLocations = meta.data?.canViewLocations === true;
   const sites = useQuery({ ...sitesQueryOptions(), enabled: canViewLocations });
-  // The inspection queue (manufacturing phase 2 M100): lots a receipt put in quarantine for inspection.
+  // The inspection queue (manufacturing phase 2 M100): lots a receipt put in quarantine for inspection —
+  // counted, and linked to, as every lot with an active inspection hold, whatever its status or stock.
   const stats = useQuery({ ...inventoryStatsQueryOptions(), enabled: meta.data?.canViewStock === true });
   const awaiting = stats.data?.lotsAwaitingInspection ?? 0;
   const [creating, setCreating] = useState(false);
@@ -141,9 +142,7 @@ export const InventoryHomePage = () => {
         >
           <Anchor
             fw={500}
-            renderRoot={(props) => (
-              <Link {...lotsLinkOptions({ status: "quarantine", holdCause: "inspection" })} {...props} />
-            )}
+            renderRoot={(props) => <Link {...lotsLinkOptions({ holdCause: "inspection", stock: "all" })} {...props} />}
           >
             {t("awaitingInspection", { count: awaiting })}
           </Anchor>
