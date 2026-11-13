@@ -44,8 +44,17 @@ const (
 	bomCodeUniqueIndex = "ux_boms_code"
 )
 
+// The BoM kinds (manufacturing phase 2 M144).
+const (
+	kindNormal = "normal"
+	kindKit    = "kit"
+)
+
 // bomFields is a BoM's input, whichever operation sent it.
 type bomFields struct {
+	// Kind is the BoM's kind: the request's on a create, the stored one on an
+	// update (it never changes).
+	Kind           string
 	Code           *string
 	OutputQuantity string
 	MakeToOrder    *bool
@@ -282,7 +291,26 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 		v.lines = append(v.lines, l)
 	}
 	v.outputs = judgeOutputs(&j, in.Outputs)
+	if in.Kind == kindKit {
+		judgeKit(&j, v)
+	}
 	return v, j
+}
+
+// judgeKit is a kit's rules (manufacturing phase 2 M144): lines only — no
+// operations, no by-products — and never made to order, each refused
+// kit_not_manufactured on its field.
+func judgeKit(j *judgement, v bomValues) {
+	const why = "A kit is not manufactured: "
+	if len(v.ops) > 0 {
+		j.f.addCoded("operations", codeKitNotManufactured, why+"it has no operations")
+	}
+	if len(v.outputs) > 0 {
+		j.f.addCoded("outputs", codeKitNotManufactured, why+"it has no by-products")
+	}
+	if v.makeToOrder {
+		j.f.addCoded("makeToOrder", codeKitNotManufactured, why+"it is never made to order")
+	}
 }
 
 // judgeOutputs is the by-products' shape (M120): at most 20, each variant
@@ -652,8 +680,12 @@ func createBomAnswers() answers[gen.CreateManufacturingBomResponseObject] {
 // in the same transaction.
 func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManufacturingBomRequestObject) (gen.CreateManufacturingBomResponseObject, error) {
 	in := req.Body
+	kind := kindNormal
+	if in.Kind != nil {
+		kind = string(*in.Kind)
+	}
 	v, j := s.judgeBom(ctx, bomFields{
-		Code: in.Code, OutputQuantity: in.OutputQuantity, MakeToOrder: in.MakeToOrder, LeadTimeDays: in.LeadTimeDays,
+		Kind: kind, Code: in.Code, OutputQuantity: in.OutputQuantity, MakeToOrder: in.MakeToOrder, LeadTimeDays: in.LeadTimeDays,
 		Note: in.Note, LotPattern: in.LotPattern, Operations: in.Operations, Lines: in.Lines, Outputs: in.Outputs,
 	}, bomInputSchema)
 	if j.f.failed() {
@@ -695,6 +727,9 @@ func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManuf
 			if err := walkBom(ctx, txq, in.VariantId, components, outputs, isDefault); err != nil {
 				return err
 			}
+			if err := walkKit(ctx, txq, in.VariantId, kind, components, isDefault); err != nil {
+				return err
+			}
 			now := s.deps.Clock()
 			if isDefault && hasDefault {
 				if _, err := txq.UnsetVariantDefault(ctx, store.UnsetVariantDefaultParams{VariantID: in.VariantId, Now: now}); err != nil {
@@ -703,7 +738,7 @@ func (s *server) CreateManufacturingBom(ctx context.Context, req gen.CreateManuf
 			}
 			b, err := txq.InsertBom(ctx, store.InsertBomParams{
 				VariantID: in.VariantId, Code: v.code, OutputQuantity: numeric(v.output, quantityPlaces), IsDefault: isDefault,
-				MakeToOrder: v.makeToOrder, LeadTimeDays: v.leadTime, Note: v.note, LotPattern: pattern, Now: now,
+				MakeToOrder: v.makeToOrder, LeadTimeDays: v.leadTime, Note: v.note, LotPattern: pattern, Kind: &kind, Now: now,
 			})
 			if err != nil {
 				return err
@@ -752,7 +787,7 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 		return nil, err
 	}
 	v, j := s.judgeBom(ctx, bomFields{
-		Code: in.Code, OutputQuantity: in.OutputQuantity, MakeToOrder: in.MakeToOrder, LeadTimeDays: in.LeadTimeDays,
+		Kind: pre.Kind, Code: in.Code, OutputQuantity: in.OutputQuantity, MakeToOrder: in.MakeToOrder, LeadTimeDays: in.LeadTimeDays,
 		Note: in.Note, LotPattern: in.LotPattern, Operations: in.Operations, Lines: in.Lines, Outputs: in.Outputs,
 	}, bomUpdateSchema)
 	if j.f.failed() {
@@ -801,6 +836,9 @@ func (s *server) UpdateManufacturingBom(ctx context.Context, req gen.UpdateManuf
 				return err
 			}
 			if err := walkBom(ctx, txq, b.VariantID, components, outputs, b.IsDefault); err != nil {
+				return err
+			}
+			if err := walkKit(ctx, txq, b.VariantID, b.Kind, components, b.IsDefault); err != nil {
 				return err
 			}
 			if _, err := txq.UpdateBom(ctx, store.UpdateBomParams{
@@ -944,7 +982,11 @@ func promoteOldest(ctx context.Context, txq *store.Queries, archived store.Manuf
 	if err != nil {
 		return err
 	}
-	if err := walkBom(ctx, txq, next.VariantID, storedComponents(lines), outputs, true); err != nil {
+	err = walkBom(ctx, txq, next.VariantID, storedComponents(lines), outputs, true)
+	if err == nil {
+		err = walkKit(ctx, txq, next.VariantID, next.Kind, storedComponents(lines), true)
+	}
+	if err != nil {
 		var cycle *cycleError
 		var refused *refusal
 		if errors.As(err, &cycle) || errors.As(err, &refused) {
@@ -1007,6 +1049,9 @@ func (s *server) ReactivateManufacturingBom(ctx context.Context, req gen.Reactiv
 		if err := walkBom(ctx, txq, b.VariantID, components, outputs, !hasDefault); err != nil {
 			return err
 		}
+		if err := walkKit(ctx, txq, b.VariantID, b.Kind, components, !hasDefault); err != nil {
+			return err
+		}
 		_, err = txq.SetBomStatus(ctx, store.SetBomStatusParams{ID: b.ID, Status: statusActive, IsDefault: !hasDefault, Now: s.deps.Clock()})
 		return err
 	})
@@ -1053,6 +1098,9 @@ func (s *server) MakeDefaultManufacturingBom(ctx context.Context, req gen.MakeDe
 			return err
 		}
 		if err := walkBom(ctx, txq, b.VariantID, components, outputs, true); err != nil {
+			return err
+		}
+		if err := walkKit(ctx, txq, b.VariantID, b.Kind, components, true); err != nil {
 			return err
 		}
 		now := s.deps.Clock()

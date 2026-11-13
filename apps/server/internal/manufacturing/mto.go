@@ -610,7 +610,11 @@ func (p production) HasBOM(ctx context.Context, variantIDs []int32) (map[int32]b
 		return nil, fmt.Errorf("manufacturing: read the default BoMs: %w", err)
 	}
 	for _, r := range rows {
-		out[r.VariantID] = true
+		// A kit is never made (manufacturing phase 2 M144): its lines' child
+		// lines are the goods.
+		if r.Kind != kindKit {
+			out[r.VariantID] = true
+		}
 	}
 	return out, nil
 }

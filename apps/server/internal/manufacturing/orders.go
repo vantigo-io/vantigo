@@ -492,9 +492,11 @@ func (s *server) judgeResponsible(ctx context.Context, id, was *uuid.UUID) error
 
 // orderBom is the BoM a new order or a draft names: the one asked for, of
 // the variant and active, else the variant's default active BoM
-// (bom_required when it has none, M14a).
+// (bom_required when it has none, M14a). A kit is never made
+// (kit_not_manufactured, manufacturing phase 2 M144).
 func (s *server) orderBom(ctx context.Context, variantID int32, bomID *int64) (store.ManufacturingBom, error) {
 	q := store.New(s.deps.Pool)
+	variantDefault := bomID == nil
 	if bomID == nil {
 		defaults, err := q.DefaultActiveBomsOfVariants(ctx, []int32{variantID})
 		if err != nil {
@@ -514,6 +516,13 @@ func (s *server) orderBom(ctx context.Context, variantID int32, bomID *int64) (s
 	}
 	if b.Status != statusActive {
 		return b, notActive()
+	}
+	if b.Kind == kindKit {
+		field := "bomId"
+		if variantDefault {
+			field = "variantId"
+		}
+		return b, refuseField(orderTitle, field, codeKitNotManufactured, "The bill of materials is a kit, which is sold, never made")
 	}
 	return b, nil
 }
@@ -1152,7 +1161,11 @@ func (s *server) componentBoms(ctx context.Context, components []store.Manufactu
 		return nil, err
 	}
 	for _, r := range rows {
-		out[r.VariantID] = r.ID
+		// A kit is never made (manufacturing phase 2 M144): no sub-assembly
+		// order is offered for it.
+		if r.Kind != kindKit {
+			out[r.VariantID] = r.ID
+		}
 	}
 	return out, nil
 }

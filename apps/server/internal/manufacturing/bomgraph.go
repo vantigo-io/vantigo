@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/gen"
 	"github.com/vantigo-io/vantigo/server/internal/manufacturing/store"
 )
@@ -128,6 +129,81 @@ func walkBom(ctx context.Context, txq *store.Queries, product int32, components,
 		return tooDeep()
 	}
 	return nil
+}
+
+// kitTooDeep is the 400 bom_too_deep of a kit (manufacturing phase 2 M144).
+func kitTooDeep() error {
+	return refuse(problem(http.StatusBadRequest, codeBomTooDeep, "The kit nests too deep",
+		fmt.Sprintf("Kits nest at most %d levels: a kit, a kit among its components and one among theirs. Nothing was saved.", contracts.MaxKitLevels)))
+}
+
+// walkKit refuses a kit that nests more than contracts.MaxKitLevels kits deep
+// (bom_too_deep, manufacturing phase 2 M144): the kit is level 1, a
+// component whose default active BoM is a kit level 2, and so on. A kit that
+// is, or becomes, product's default also counts the kits above it — the
+// variants whose default active BoM is a kit naming product, through theirs —
+// since contracts.KitStructure explodes the topmost one through it. A normal
+// BoM nests no kit and is not walked. It runs after walkBom, which has
+// refused every cycle, so each level is read at most MaxKitLevels+1 times.
+func walkKit(ctx context.Context, txq *store.Queries, product int32, kind string, components []int32, asDefault bool) error {
+	if kind != kindKit {
+		return nil
+	}
+	below, err := kitDepth(ctx, txq, components)
+	if err != nil {
+		return err
+	}
+	above := 0
+	if asDefault {
+		frontier := []int32{product}
+		for above <= contracts.MaxKitLevels && len(frontier) > 0 {
+			rows, err := txq.DefaultKitsNamingVariants(ctx, frontier)
+			if err != nil {
+				return err
+			}
+			var next []int32
+			for _, r := range rows {
+				next = append(next, r.ParentID)
+			}
+			if frontier = dedupe(next); len(frontier) > 0 {
+				above++
+			}
+		}
+	}
+	if above+1+below > contracts.MaxKitLevels {
+		return kitTooDeep()
+	}
+	return nil
+}
+
+// kitDepth is how many kits deep components go below a kit: 0 when none of
+// them is a kit, one more for each level of default active kit BoMs, read a
+// level at a time up to one past the limit.
+func kitDepth(ctx context.Context, txq *store.Queries, components []int32) (int, error) {
+	depth := 0
+	frontier := dedupe(components)
+	for depth <= contracts.MaxKitLevels && len(frontier) > 0 {
+		defaults, err := txq.DefaultActiveBomsOfVariants(ctx, frontier)
+		if err != nil {
+			return 0, err
+		}
+		var kits []int64
+		for _, d := range defaults {
+			if d.Kind == kindKit {
+				kits = append(kits, d.ID)
+			}
+		}
+		if len(kits) == 0 {
+			break
+		}
+		depth++
+		lines, err := txq.LinesOfBoms(ctx, kits)
+		if err != nil {
+			return 0, err
+		}
+		frontier = dedupe(storedComponents(lines))
+	}
+	return depth, nil
 }
 
 // heightAbove is how many default active BoMs stand above product at most:
