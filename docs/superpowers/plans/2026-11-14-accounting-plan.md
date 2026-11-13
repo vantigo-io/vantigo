@@ -2,8 +2,8 @@
 
 This plan builds the first phase of the Accounting module. It works from:
 
-- **The spec:** `docs/superpowers/specs/2026-11-14-accounting-design.md`. Its decisions
-  are numbered A*n*.
+- **The spec:** `docs/superpowers/specs/2026-11-14-accounting-design.md`, revision 2. Its
+  decisions are numbered A*n*, and its §13 (R*n*) amends them and wins.
 - **The research:** `docs/superpowers/research/2026-11-14-accounting-module.md`, called
   "R" below.
 
@@ -81,24 +81,27 @@ Workers are tested as `module.Workers` builds them, not through the harness's de
 R, the spec and this plan, committed as `docs(accounting): research, design and plan for
 the Accounting module`. Then `gh stack init` adopts this branch as the bottom layer.
 
-## Layer 2 — delivery 0, the seams (A12, A17)
+## Layer 2 — delivery 0, the seams (A12, A17; R1, R6, R13)
 
 **Contracts** (`srv/contracts/sales_journal.go`, `events_invoices.go`):
 
-- `SalesJournal` with `Documents`, `Payments`, `Charges`, `OpenAt` and their value types.
+- `SalesJournal` with `Documents`, `Facts`, `OpenAt` and their value types (R1).
 - Events `invoices.document.issued` and `invoices.payment.removed`.
 - The module slot on `module.Module` and `Deps`, resolved in `module.Workers` too.
 - Fakes in `modtest`.
 
 **Invoices** (`srv/invoices`):
 
-- `mig/00178_invoices_journal.sql`: the order each stream is read in (see the spec, A12).
+- `mig/00178_invoices_journal.sql`: `journal_facts` with its deferred constraint
+  triggers and the `journal` counter (R1); `line_kind`, `tax_category_id` and
+  `project_id` on lines, snapshotted at issue (R6).
+- Confirm every issue path takes the `documents` counter (R1).
 - The provider, reading issued documents with lines and VAT summaries, payments with
   removals, charge payments and waivers.
 - Publishing the two events in the transactions that make the facts.
 
 **Brønnøysund:** move the client from `srv/customers` to `srv/brreg` (client, entity
-decoding, config). Customers keeps its registry records, feed worker and behaviour.
+decoding, config), without Customers' generated types (R13). Customers keeps its registry records, feed worker and behaviour.
 Depguard: `srv/brreg` is a platform package every module may import.
 
 **Tests:** each stream's order under concurrent writers; the cursor never skips a row;
@@ -108,7 +111,7 @@ events published once per fact; Customers' registry tests unchanged.
 `contributing/platform-packages.md` (`srv/brreg`), `reference/customers.md` where it
 names the client.
 
-## Layer 3 — delivery A, the ledger (A1–A11)
+## Layer 3 — delivery A, the ledger (A1–A11; R3, R5, R10, R12, R13)
 
 **Seam:**
 
@@ -142,10 +145,10 @@ locking, reports, inviting an accountant. `admin/installation.md` (en and nb): s
 location and the backup test. `reference/accounting.md`. The overview listings,
 `ROADMAP.md`, the `deploy/compose` `MODULES` and `GRANT` lines, `README.md`.
 
-## Layer 4 — delivery B, sales (A12–A16)
+## Layer 4 — delivery B, sales (A12–A16; R1, R3, R4, R5, R7, R9)
 
 **Seam:** `mig/00180_invoices_write_offs.sql`; `mig/00181_accounting_sales.sql` (posting
-rules, cursors, unposted); the OpenAPI operations in both contracts; `SalesJournal` gains
+rules, cursors, catch-up requests and leases, unposted); the OpenAPI operations in both contracts; `SalesJournal` gains
 the write-off kind.
 
 **Lanes:**
@@ -166,7 +169,7 @@ balanced voucher; a late handler; a failing fact.
 **Docs:** `user/accounting.md` and `user/invoices.md` (en and nb);
 `reference/accounting.md` with every rule and its version; `reference/invoices.md`.
 
-## Layer 5 — delivery C, purchases (A17–A20)
+## Layer 5 — delivery C, purchases (A17–A20; R2, R8)
 
 **Seam:** `mig/00182_expenses_journal.sql`; `mig/00183_accounting_purchases.sql`
 (suppliers, supplier invoices and lines); `contracts.ExpenseJournal` and the two events;
@@ -184,7 +187,7 @@ the OpenAPI operations.
 
 **Docs:** `user/accounting.md`, `user/expenses.md` (en and nb); the two references.
 
-## Layer 6 — delivery D, VAT (A21–A23)
+## Layer 6 — delivery D, VAT (A21–A23; R4, R10)
 
 **Seam:** `mig/00184_accounting_vat.sql` (terms); the OpenAPI operations; the
 `mvamelding` XSDs and examples under `srv/accounting/mva/testdata`.
@@ -219,7 +222,7 @@ database gives the same balances; a file from the repository's examples.
 **Docs:** `user/accounting.md` (en and nb): the file for an audit, coming from another
 system; the reference.
 
-## Layer 8 — delivery F, bank (A26–A28)
+## Layer 8 — delivery F, bank (A26–A28; R5, R11)
 
 **Seam:** `mig/00186_accounting_bank.sql`; the OpenAPI operations; camt.053 fixtures.
 
