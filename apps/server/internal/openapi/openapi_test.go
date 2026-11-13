@@ -768,3 +768,76 @@ func walkContract(t *testing.T, visit func(file, path string, node map[string]an
 		walk("", doc)
 	}
 }
+
+// The station extension (manufacturing phase 2 M135): "allowed" only, and only
+// behind a permission rule of Manufacturing's alone.
+func TestLintChecksTheStationExtension(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData([]byte(`
+openapi: 3.0.3
+info: {title: t, version: "1"}
+paths:
+  /a:
+    post:
+      operationId: allowedOnManufacturing
+      summary: S
+      x-vantigo-access: permission:manufacturing:access
+      x-vantigo-station: allowed
+      responses: {"204": {description: ok}}
+    put:
+      operationId: allowedOnTwoKeys
+      summary: S
+      x-vantigo-access: permission:manufacturing:access+manufacturing:shop-floor
+      x-vantigo-station: allowed
+      responses: {"204": {description: ok}}
+    get:
+      operationId: noStation
+      summary: S
+      x-vantigo-access: session
+      responses: {"204": {description: ok}}
+  /b:
+    post:
+      operationId: otherValue
+      summary: S
+      x-vantigo-access: permission:manufacturing:access
+      x-vantigo-station: yes
+      responses: {"204": {description: ok}}
+    put:
+      operationId: onSession
+      summary: S
+      x-vantigo-access: session
+      x-vantigo-station: allowed
+      responses: {"204": {description: ok}}
+    get:
+      operationId: onCustomers
+      summary: S
+      x-vantigo-access: permission:customers:view
+      x-vantigo-station: allowed
+      responses: {"204": {description: ok}}
+    delete:
+      operationId: onMixedKeys
+      summary: S
+      x-vantigo-access: permission:customers:view+manufacturing:access
+      x-vantigo-station: allowed
+      responses: {"204": {description: ok}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, p := range Lint(doc) {
+		got[p.OperationID] = p.Message
+	}
+	for _, id := range []string{"allowedOnManufacturing", "allowedOnTwoKeys", "noStation"} {
+		if msg, bad := got[id]; bad {
+			t.Errorf("%s flagged: %v", id, msg)
+		}
+	}
+	if msg := got["otherValue"]; !strings.Contains(msg, "must be allowed") {
+		t.Errorf("otherValue: %q, want must be allowed", msg)
+	}
+	for _, id := range []string{"onSession", "onCustomers", "onMixedKeys"} {
+		if msg := got[id]; !strings.Contains(msg, "only for an operation behind permission:manufacturing") {
+			t.Errorf("%s: %q, want the manufacturing-only problem", id, msg)
+		}
+	}
+}

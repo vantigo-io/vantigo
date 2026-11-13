@@ -783,6 +783,9 @@ func (h *Hub) canWrite(ctx context.Context, access *cycleAccess, c *client, t To
 			ok = false
 		}
 	}()
+	if c.station != uuid.Nil {
+		return false // no document topic admits a station; and it writes none
+	}
 	return t.Doc.CanWrite(contracts.AsUser(withAccess(ctx, access), c.user), key)
 }
 

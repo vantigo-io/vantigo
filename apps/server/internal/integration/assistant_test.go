@@ -205,6 +205,27 @@ var markedByHand = map[string]string{
 	"registerManufacturingWorkOrderQuantity": "never",
 	"uploadManufacturingCheckPhoto":          "never",
 	"getManufacturingCheckPhoto":             "never",
+	// Shared shop-floor stations (manufacturing phase 2 M129–M143): a station
+	// is a device and its operators people at it; a pairing code, a PIN and a
+	// badge are credentials, and which stations exist and what they reach is
+	// an administrator's.
+	"getIdentityStations":                        "never",
+	"postIdentityStations":                       "never",
+	"putIdentityStationsById":                    "never",
+	"postIdentityStationsByIdPairing":            "never",
+	"postIdentityStationsByIdRevoke":             "never",
+	"getIdentityStation":                         "never",
+	"postIdentityStationPair":                    "never",
+	"getIdentityStationOperators":                "never",
+	"postIdentityStationOperators":               "never",
+	"postIdentityStationOperatorsBySessionIdEnd": "never",
+	"getIdentityAccountPin":                      "never",
+	"putIdentityAccountPin":                      "never",
+	"deleteIdentityAccountPin":                   "never",
+	"getIdentityUsersByIdOperatorCredentials":    "never",
+	"deleteIdentityUsersByIdPin":                 "never",
+	"putIdentityUsersByIdBadge":                  "never",
+	"deleteIdentityUsersByIdBadge":               "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

@@ -2305,6 +2305,321 @@ components:
                 - importedFromEnvironment
                 - directory
             type: object
+        AccountPinRequest:
+            properties:
+                currentPassword:
+                    description: The caller's password; not needed when the session signed in within the last 10 minutes.
+                    nullable: true
+                    type: string
+                pin:
+                    description: Six digits, not all one digit and not an ascending or descending run.
+                    type: string
+            required:
+                - pin
+            type: object
+        AccountPinResponse:
+            properties:
+                set:
+                    type: boolean
+                setAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+            required:
+                - set
+                - setAt
+            type: object
+        BadgeRequest:
+            properties:
+                badge:
+                    description: The code the card reader types, 4 to 128 characters.
+                    type: string
+            required:
+                - badge
+            type: object
+        OperatorCredentials:
+            properties:
+                badgeSetAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                hasBadge:
+                    type: boolean
+                hasPin:
+                    type: boolean
+                pinSetAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+            required:
+                - hasPin
+                - pinSetAt
+                - hasBadge
+                - badgeSetAt
+            type: object
+        Station:
+            description: A shared shop-floor station (manufacturing phase 2 M129).
+            properties:
+                activeOperators:
+                    items:
+                        $ref: '#/components/schemas/StationOperatorSession'
+                    type: array
+                alertedAt:
+                    description: The last time failed operator sign-ins here mailed the administrators.
+                    format: date-time
+                    nullable: true
+                    type: string
+                allowedNetworks:
+                    description: The networks (CIDR) station requests may come from; null for any.
+                    items:
+                        type: string
+                    nullable: true
+                    type: array
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                idleMinutes:
+                    type: integer
+                lastSeenAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                lastSeenIp:
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                pairedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                pairingExpiresAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                requirePinWithBadge:
+                    type: boolean
+                revokedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                state:
+                    $ref: '#/components/schemas/StationState'
+                tokenExpiresAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - name
+                - state
+                - idleMinutes
+                - requirePinWithBadge
+                - allowedNetworks
+                - createdAt
+                - pairedAt
+                - pairingExpiresAt
+                - tokenExpiresAt
+                - lastSeenAt
+                - lastSeenIp
+                - revokedAt
+                - alertedAt
+                - activeOperators
+            type: object
+        StationList:
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/Station'
+                    type: array
+            required:
+                - items
+            type: object
+        StationOperator:
+            properties:
+                displayName:
+                    type: string
+                initials:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - initials
+            type: object
+        StationOperatorCandidate:
+            properties:
+                displayName:
+                    type: string
+                hasBadge:
+                    type: boolean
+                hasPin:
+                    type: boolean
+                initials:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - initials
+                - hasPin
+                - hasBadge
+            type: object
+        StationOperatorCandidateList:
+            properties:
+                items:
+                    items:
+                        $ref: '#/components/schemas/StationOperatorCandidate'
+                    type: array
+            required:
+                - items
+            type: object
+        StationOperatorSession:
+            properties:
+                displayName:
+                    type: string
+                initials:
+                    type: string
+                lastActivityAt:
+                    format: date-time
+                    type: string
+                sessionId:
+                    format: uuid
+                    type: string
+                startedAt:
+                    format: date-time
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - sessionId
+                - userId
+                - displayName
+                - initials
+                - startedAt
+                - lastActivityAt
+            type: object
+        StationOperatorSignIn:
+            properties:
+                operator:
+                    $ref: '#/components/schemas/StationOperator'
+                sessionId:
+                    format: uuid
+                    type: string
+                startedAt:
+                    format: date-time
+                    type: string
+                token:
+                    description: The operator token, sent as Authorization Station <token> with each request the operator makes. Kept in memory only.
+                    type: string
+            required:
+                - sessionId
+                - token
+                - operator
+                - startedAt
+            type: object
+        StationOperatorSignInRequest:
+            properties:
+                badge:
+                    nullable: true
+                    type: string
+                pin:
+                    nullable: true
+                    type: string
+                userId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            type: object
+        StationPairRequest:
+            properties:
+                code:
+                    description: The eight-character pairing code an administrator issued.
+                    type: string
+            required:
+                - code
+            type: object
+        StationPairing:
+            properties:
+                pairingCode:
+                    description: The one-time code, shown once.
+                    type: string
+                pairingExpiresAt:
+                    format: date-time
+                    type: string
+                station:
+                    $ref: '#/components/schemas/Station'
+            required:
+                - station
+                - pairingCode
+                - pairingExpiresAt
+            type: object
+        StationRequest:
+            properties:
+                allowedNetworks:
+                    description: Networks in CIDR notation (192.168.10.0/24) or single addresses; null or empty for any.
+                    items:
+                        type: string
+                    maxItems: 50
+                    nullable: true
+                    type: array
+                idleMinutes:
+                    description: 1 to 60; 5 when left out.
+                    nullable: true
+                    type: integer
+                name:
+                    maxLength: 100
+                    type: string
+                requirePinWithBadge:
+                    description: Whether a badge needs its holder's PIN too; true when left out.
+                    nullable: true
+                    type: boolean
+            required:
+                - name
+            type: object
+        StationSelf:
+            description: The station this browser is paired as, as the station itself reads it.
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                idleMinutes:
+                    type: integer
+                name:
+                    type: string
+                operators:
+                    items:
+                        $ref: '#/components/schemas/StationOperatorSession'
+                    type: array
+                requirePinWithBadge:
+                    type: boolean
+                timeZone:
+                    description: The workspace's business time zone.
+                    type: string
+            required:
+                - id
+                - name
+                - idleMinutes
+                - requirePinWithBadge
+                - timeZone
+                - operators
+            type: object
+        StationState:
+            enum:
+                - pairing
+                - paired
+                - expired
+                - unpaired
+                - revoked
+            type: string
         SystemMaintenanceRequest:
             properties:
                 enabled:
@@ -4310,6 +4625,103 @@ paths:
                             schema:
                                 type: string
             summary: Change the caller's password
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
+    /api/v1/identity/account/pin:
+        delete:
+            description: Removes the caller's PIN for shared shop-floor stations (manufacturing phase 2 M132), audited pin_disabled. Signing in at a station then needs a badge.
+            operationId: deleteIdentityAccountPin
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Remove the caller's operator PIN
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
+        get:
+            description: Whether the caller has set a PIN for shared shop-floor stations, and when. The PIN itself is never answered.
+            operationId: getIdentityAccountPin
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountPinResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Tell whether the caller has an operator PIN
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+            x-vantigo-assistant: never
+        put:
+            description: Sets the caller's six-digit PIN for shared shop-floor stations (manufacturing phase 2 M132). It is hashed with argon2id over an HMAC of the PIN under a key from APP_SECRET, and is never a sign-in credential. The request needs the current password, or a session that signed in within the last 10 minutes. Audited pin_set.
+            operationId: putIdentityAccountPin
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/AccountPinRequest'
+                            nullable: true
+            responses:
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request — invalid_request (not six digits) or pin_too_simple (one digit repeated, or an ascending or descending run).
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized — also invalid_credentials, a wrong current password.
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Forbidden — reauthentication_required: the session signed in more than 10 minutes ago and no current password was given.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Set the caller's operator PIN
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -7713,6 +8125,396 @@ paths:
             tags:
                 - Authentication
             x-vantigo-access: session
+    /api/v1/identity/station:
+        get:
+            description: 'The shared shop-floor station this browser is paired as (manufacturing phase 2 M129, M130): its name, idle timeout and badge rule, the workspace''s time zone, and the operators signed in at it. Read with the station cookie alone; a request that also carries a session cookie is refused station_has_session.'
+            operationId: getIdentityStation
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StationSelf'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized — station_unknown: no station cookie, or one of a revoked, expired or unknown station, or a request from outside the station''s networks.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — station_has_session: this browser is also signed in to Vantigo as a person; sign out first (M134).'
+            summary: Read this station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: anonymous
+            x-vantigo-assistant: never
+    /api/v1/identity/station/operators:
+        get:
+            description: 'The people who may switch in at this station (M133): every active person holding manufacturing:shop-floor who has set a PIN or been given a badge, by display name, with initials and which of the two they have. Nothing else about them. Read with the station cookie alone.'
+            operationId: getIdentityStationOperators
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StationOperatorCandidateList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized — station_unknown: no station cookie, or one of a revoked, expired or unknown station, or a request from outside the station''s networks.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — station_has_session: this browser is also signed in to Vantigo as a person; sign out first (M134).'
+            summary: List who may switch in at this station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: anonymous
+            x-vantigo-assistant: never
+        post:
+            description: 'Switches an operator in with the station cookie (M133): a user and their PIN, or a badge (and, while the station requires it, the badge''s holder''s PIN as well). Ten failed attempts in five minutes close the station for the rest of the window; from the fifth consecutive failure for one person at this station each attempt waits, 30 seconds doubling to 15 minutes. Success answers an operator token for the Authorization header (Station <token>), which the page keeps in memory only. Signing in a person already signed in here replaces their session. Audited operator_signed_in or operator_sign_in_failed.'
+            operationId: postIdentityStationOperators
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/StationOperatorSignInRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StationOperatorSignIn'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — invalid_request: neither a user and PIN nor a badge.'
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized — operator_sign_in_failed, the same for an unknown user, a wrong PIN or badge, a person in backoff and a person who may not act; or station_unknown.
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict — too_many_operators (ten are signed in) or station_has_session.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Switch an operator in at this station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: anonymous
+            x-vantigo-assistant: never
+    /api/v1/identity/station/operators/{sessionId}/end:
+        post:
+            description: 'Ends an operator''s session at this station (M136) with the station cookie alone: the operator''s token is not needed, since a reload has forgotten it. Time logs left running keep running. Audited operator_signed_out.'
+            operationId: postIdentityStationOperatorsBySessionIdEnd
+            parameters:
+                - description: The operator session, as the station answered it.
+                  in: path
+                  name: sessionId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Unauthorized — station_unknown: no station cookie, or one of a revoked, expired or unknown station, or a request from outside the station''s networks.'
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Not Found — operator_session_unknown: not one of this station''s signed-in operators.'
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — station_has_session: this browser is also signed in to Vantigo as a person; sign out first (M134).'
+            summary: Switch an operator out at this station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: anonymous
+            x-vantigo-assistant: never
+    /api/v1/identity/station/pair:
+        post:
+            description: Pairs this browser as a shared shop-floor station with the one-time code an administrator issued (M129). The code is spent; a 256-bit station token is minted, its hash stored, and the vantigo.station cookie set for 90 days. A session cookie on the request is signed out in the same answer, so a station browser never holds both. Ten attempts per address in 15 minutes. Audited station_paired.
+            operationId: postIdentityStationPair
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/StationPairRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StationSelf'
+                    description: OK — the station cookie is set (HttpOnly, Secure on https, SameSite=Strict, 90 days).
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Bad Request — pairing_code_invalid: unknown, used or expired.'
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+            summary: Pair this browser as a station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: anonymous
+            x-vantigo-assistant: never
+    /api/v1/identity/stations:
+        get:
+            description: 'Every shared shop-floor station (M139): its state, network allowlist, last activity and the operators signed in at it, and whether failed sign-ins alerted administrators.'
+            operationId: getIdentityStations
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StationList'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List the shop-floor stations
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+        post:
+            description: 'Registers a shared shop-floor station (M129) and answers a one-time pairing code: eight characters of Crockford base32, valid 15 minutes, stored only as a hash. Audited station_registered.'
+            operationId: postIdentityStations
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/StationRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StationPairing'
+                    description: OK — the station and its one-time pairing code, shown once.
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Register a shop-floor station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+    /api/v1/identity/stations/{id}:
+        put:
+            description: Changes a station's name, idle timeout, badge rule and network allowlist. A changed allowlist is audited station_networks_changed and applies to the next request.
+            operationId: putIdentityStationsById
+            parameters:
+                - description: The station.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/StationRequest'
+                            nullable: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Station'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
+            summary: Change a shop-floor station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+    /api/v1/identity/stations/{id}/pairing:
+        post:
+            description: Issues a new one-time pairing code for a station (re-pairing, M129), valid 15 minutes. Pairing with it replaces the station's token; a revoked station paired again is in use again. Audited station_repaired.
+            operationId: postIdentityStationsByIdPairing
+            parameters:
+                - description: The station.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StationPairing'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
+            summary: Issue a new pairing code for a station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+    /api/v1/identity/stations/{id}/revoke:
+        post:
+            description: 'Revokes a station (M129): its token and any pairing code are cleared and every operator session at it ends at once; its next request is station_unknown. Audited station_revoked.'
+            operationId: postIdentityStationsByIdRevoke
+            parameters:
+                - description: The station.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Station'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
+            summary: Revoke a shop-floor station
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
     /api/v1/identity/system/maintenance:
         put:
             operationId: putIdentitySystemMaintenance
@@ -7805,5 +8607,179 @@ paths:
             tags:
                 - Identity system
             x-vantigo-access: policy:SystemAdmin
+    /api/v1/identity/users/{id}/badge:
+        delete:
+            description: Removes the badge enrolled for a person. Audited badge_cleared.
+            operationId: deleteIdentityUsersByIdBadge
+            parameters:
+                - description: The person.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
+            summary: Remove a person's badge
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+        put:
+            description: Enrols the code a keyboard-wedge card reader types for a person (M132), stored as an HMAC under a key from APP_SECRET. Replaces the person's badge. Audited badge_enrolled.
+            operationId: putIdentityUsersByIdBadge
+            parameters:
+                - description: The person.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            allOf:
+                                - $ref: '#/components/schemas/BadgeRequest'
+                            nullable: true
+            responses:
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: 'Conflict — badge_taken: the card is another person''s.'
+            summary: Enrol a person's badge
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+    /api/v1/identity/users/{id}/operator-credentials:
+        get:
+            description: Whether a person has set a station PIN and has a badge, and when; never the PIN or the badge.
+            operationId: getIdentityUsersByIdOperatorCredentials
+            parameters:
+                - description: The person.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OperatorCredentials'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
+            summary: Tell whether a person has a PIN or a badge
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
+    /api/v1/identity/users/{id}/pin:
+        delete:
+            description: Clears a person's station PIN (M132); an administrator never sets or reads one. Audited pin_cleared.
+            operationId: deleteIdentityUsersByIdPin
+            parameters:
+                - description: The person.
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
+            summary: Clear a person's PIN
+            tags:
+                - Shop-floor stations
+            x-vantigo-access: permission:identity:manage
+            x-vantigo-assistant: never
 servers:
     - url: /

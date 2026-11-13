@@ -493,6 +493,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/account/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tell whether the caller has an operator PIN
+         * @description Whether the caller has set a PIN for shared shop-floor stations, and when. The PIN itself is never answered.
+         */
+        get: operations["getIdentityAccountPin"];
+        /**
+         * Set the caller's operator PIN
+         * @description Sets the caller's six-digit PIN for shared shop-floor stations (manufacturing phase 2 M132). It is hashed with argon2id over an HMAC of the PIN under a key from APP_SECRET, and is never a sign-in credential. The request needs the current password, or a session that signed in within the last 10 minutes. Audited pin_set.
+         */
+        put: operations["putIdentityAccountPin"];
+        post?: never;
+        /**
+         * Remove the caller's operator PIN
+         * @description Removes the caller's PIN for shared shop-floor stations (manufacturing phase 2 M132), audited pin_disabled. Signing in at a station then needs a badge.
+         */
+        delete: operations["deleteIdentityAccountPin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/account/profile": {
         parameters: {
             query?: never;
@@ -1548,6 +1576,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identity/station": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read this station
+         * @description The shared shop-floor station this browser is paired as (manufacturing phase 2 M129, M130): its name, idle timeout and badge rule, the workspace's time zone, and the operators signed in at it. Read with the station cookie alone; a request that also carries a session cookie is refused station_has_session.
+         */
+        get: operations["getIdentityStation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/station/operators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List who may switch in at this station
+         * @description The people who may switch in at this station (M133): every active person holding manufacturing:shop-floor who has set a PIN or been given a badge, by display name, with initials and which of the two they have. Nothing else about them. Read with the station cookie alone.
+         */
+        get: operations["getIdentityStationOperators"];
+        put?: never;
+        /**
+         * Switch an operator in at this station
+         * @description Switches an operator in with the station cookie (M133): a user and their PIN, or a badge (and, while the station requires it, the badge's holder's PIN as well). Ten failed attempts in five minutes close the station for the rest of the window; from the fifth consecutive failure for one person at this station each attempt waits, 30 seconds doubling to 15 minutes. Success answers an operator token for the Authorization header (Station <token>), which the page keeps in memory only. Signing in a person already signed in here replaces their session. Audited operator_signed_in or operator_sign_in_failed.
+         */
+        post: operations["postIdentityStationOperators"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/station/operators/{sessionId}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch an operator out at this station
+         * @description Ends an operator's session at this station (M136) with the station cookie alone: the operator's token is not needed, since a reload has forgotten it. Time logs left running keep running. Audited operator_signed_out.
+         */
+        post: operations["postIdentityStationOperatorsBySessionIdEnd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/station/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pair this browser as a station
+         * @description Pairs this browser as a shared shop-floor station with the one-time code an administrator issued (M129). The code is spent; a 256-bit station token is minted, its hash stored, and the vantigo.station cookie set for 90 days. A session cookie on the request is signed out in the same answer, so a station browser never holds both. Ten attempts per address in 15 minutes. Audited station_paired.
+         */
+        post: operations["postIdentityStationPair"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/stations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the shop-floor stations
+         * @description Every shared shop-floor station (M139): its state, network allowlist, last activity and the operators signed in at it, and whether failed sign-ins alerted administrators.
+         */
+        get: operations["getIdentityStations"];
+        put?: never;
+        /**
+         * Register a shop-floor station
+         * @description Registers a shared shop-floor station (M129) and answers a one-time pairing code: eight characters of Crockford base32, valid 15 minutes, stored only as a hash. Audited station_registered.
+         */
+        post: operations["postIdentityStations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/stations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a shop-floor station
+         * @description Changes a station's name, idle timeout, badge rule and network allowlist. A changed allowlist is audited station_networks_changed and applies to the next request.
+         */
+        put: operations["putIdentityStationsById"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/stations/{id}/pairing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a new pairing code for a station
+         * @description Issues a new one-time pairing code for a station (re-pairing, M129), valid 15 minutes. Pairing with it replaces the station's token; a revoked station paired again is in use again. Audited station_repaired.
+         */
+        post: operations["postIdentityStationsByIdPairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/stations/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a shop-floor station
+         * @description Revokes a station (M129): its token and any pairing code are cleared and every operator session at it ends at once; its next request is station_unknown. Audited station_revoked.
+         */
+        post: operations["postIdentityStationsByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identity/system/maintenance": {
         parameters: {
             query?: never;
@@ -1594,6 +1790,70 @@ export interface paths {
         /** Revoke every session for an account */
         post: operations["postIdentitySystemUsersByUserIdSessionsRevoke"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/users/{id}/badge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Enrol a person's badge
+         * @description Enrols the code a keyboard-wedge card reader types for a person (M132), stored as an HMAC under a key from APP_SECRET. Replaces the person's badge. Audited badge_enrolled.
+         */
+        put: operations["putIdentityUsersByIdBadge"];
+        post?: never;
+        /**
+         * Remove a person's badge
+         * @description Removes the badge enrolled for a person. Audited badge_cleared.
+         */
+        delete: operations["deleteIdentityUsersByIdBadge"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/users/{id}/operator-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tell whether a person has a PIN or a badge
+         * @description Whether a person has set a station PIN and has a badge, and when; never the PIN or the badge.
+         */
+        get: operations["getIdentityUsersByIdOperatorCredentials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/identity/users/{id}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear a person's PIN
+         * @description Clears a person's station PIN (M132); an administrator never sets or reads one. Audited pin_cleared.
+         */
+        delete: operations["deleteIdentityUsersByIdPin"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2550,6 +2810,139 @@ export interface components {
              */
             version: number;
         };
+        AccountPinRequest: {
+            /** @description The caller's password; not needed when the session signed in within the last 10 minutes. */
+            currentPassword?: string | null;
+            /** @description Six digits, not all one digit and not an ascending or descending run. */
+            pin: string;
+        };
+        AccountPinResponse: {
+            set: boolean;
+            /** Format: date-time */
+            setAt: string | null;
+        };
+        BadgeRequest: {
+            /** @description The code the card reader types, 4 to 128 characters. */
+            badge: string;
+        };
+        OperatorCredentials: {
+            /** Format: date-time */
+            badgeSetAt: string | null;
+            hasBadge: boolean;
+            hasPin: boolean;
+            /** Format: date-time */
+            pinSetAt: string | null;
+        };
+        /** @description A shared shop-floor station (manufacturing phase 2 M129). */
+        Station: {
+            activeOperators: components["schemas"]["StationOperatorSession"][];
+            /**
+             * Format: date-time
+             * @description The last time failed operator sign-ins here mailed the administrators.
+             */
+            alertedAt: string | null;
+            /** @description The networks (CIDR) station requests may come from; null for any. */
+            allowedNetworks: string[] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            idleMinutes: number;
+            /** Format: date-time */
+            lastSeenAt: string | null;
+            lastSeenIp: string | null;
+            name: string;
+            /** Format: date-time */
+            pairedAt: string | null;
+            /** Format: date-time */
+            pairingExpiresAt: string | null;
+            requirePinWithBadge: boolean;
+            /** Format: date-time */
+            revokedAt: string | null;
+            state: components["schemas"]["StationState"];
+            /** Format: date-time */
+            tokenExpiresAt: string | null;
+        };
+        StationList: {
+            items: components["schemas"]["Station"][];
+        };
+        StationOperator: {
+            displayName: string;
+            initials: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        StationOperatorCandidate: {
+            displayName: string;
+            hasBadge: boolean;
+            hasPin: boolean;
+            initials: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        StationOperatorCandidateList: {
+            items: components["schemas"]["StationOperatorCandidate"][];
+        };
+        StationOperatorSession: {
+            displayName: string;
+            initials: string;
+            /** Format: date-time */
+            lastActivityAt: string;
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        StationOperatorSignIn: {
+            operator: components["schemas"]["StationOperator"];
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** @description The operator token, sent as Authorization Station <token> with each request the operator makes. Kept in memory only. */
+            token: string;
+        };
+        StationOperatorSignInRequest: {
+            badge?: string | null;
+            pin?: string | null;
+            /** Format: uuid */
+            userId?: string | null;
+        };
+        StationPairRequest: {
+            /** @description The eight-character pairing code an administrator issued. */
+            code: string;
+        };
+        StationPairing: {
+            /** @description The one-time code, shown once. */
+            pairingCode: string;
+            /** Format: date-time */
+            pairingExpiresAt: string;
+            station: components["schemas"]["Station"];
+        };
+        StationRequest: {
+            /** @description Networks in CIDR notation (192.168.10.0/24) or single addresses; null or empty for any. */
+            allowedNetworks?: string[] | null;
+            /** @description 1 to 60; 5 when left out. */
+            idleMinutes?: number | null;
+            name: string;
+            /** @description Whether a badge needs its holder's PIN too; true when left out. */
+            requirePinWithBadge?: boolean | null;
+        };
+        /** @description The station this browser is paired as, as the station itself reads it. */
+        StationSelf: {
+            /** Format: uuid */
+            id: string;
+            idleMinutes: number;
+            name: string;
+            operators: components["schemas"]["StationOperatorSession"][];
+            requirePinWithBadge: boolean;
+            /** @description The workspace's business time zone. */
+            timeZone: string;
+        };
+        /** @enum {string} */
+        StationState: "pairing" | "paired" | "expired" | "unpaired" | "revoked";
         SystemMaintenanceRequest: {
             enabled?: boolean;
             message?: string | null;
@@ -5103,6 +5496,139 @@ export interface operations {
             429: {
                 headers: {
                     "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityAccountPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPinResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityAccountPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AccountPinRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request — invalid_request (not six digits) or pin_too_simple (one digit repeated, or an ascending or descending run). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized — also invalid_credentials, a wrong current password. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — reauthentication_required: the session signed in more than 10 minutes ago and no current password was given. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityAccountPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -9397,6 +9923,486 @@ export interface operations {
             };
         };
     };
+    getIdentityStation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationSelf"];
+                };
+            };
+            /** @description Unauthorized — station_unknown: no station cookie, or one of a revoked, expired or unknown station, or a request from outside the station's networks. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — station_has_session: this browser is also signed in to Vantigo as a person; sign out first (M134). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityStationOperators: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationOperatorCandidateList"];
+                };
+            };
+            /** @description Unauthorized — station_unknown: no station cookie, or one of a revoked, expired or unknown station, or a request from outside the station's networks. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — station_has_session: this browser is also signed in to Vantigo as a person; sign out first (M134). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityStationOperators: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StationOperatorSignInRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationOperatorSignIn"];
+                };
+            };
+            /** @description Bad Request — invalid_request: neither a user and PIN nor a badge. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized — operator_sign_in_failed, the same for an unknown user, a wrong PIN or badge, a person in backoff and a person who may not act; or station_unknown. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — too_many_operators (ten are signed in) or station_has_session. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityStationOperatorsBySessionIdEnd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The operator session, as the station answered it. */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized — station_unknown: no station cookie, or one of a revoked, expired or unknown station, or a request from outside the station's networks. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — operator_session_unknown: not one of this station's signed-in operators. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — station_has_session: this browser is also signed in to Vantigo as a person; sign out first (M134). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityStationPair: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StationPairRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK — the station cookie is set (HttpOnly, Secure on https, SameSite=Strict, 90 days). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationSelf"];
+                };
+            };
+            /** @description Bad Request — pairing_code_invalid: unknown, used or expired. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityStations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityStations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StationRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK — the station and its one-time pairing code, shown once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationPairing"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityStationsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StationRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Station"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityStationsByIdPairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StationPairing"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    postIdentityStationsByIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The station. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Station"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
     putIdentitySystemMaintenance: {
         parameters: {
             query?: never;
@@ -9487,6 +10493,222 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SessionRevocationResponse"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putIdentityUsersByIdBadge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The person. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BadgeRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — badge_taken: the card is another person's. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityUsersByIdBadge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The person. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getIdentityUsersByIdOperatorCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The person. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperatorCredentials"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteIdentityUsersByIdPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The person. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {

@@ -123,6 +123,13 @@ var limits = map[string]ratelimit.Policy{
 	"deleteIdentityAccountPasskeysByCredentialId": policyMfa,
 	"postIdentityPasskeysLoginBegin":              policyPasskeyLogin,
 	"postIdentityPasskeysLoginComplete":           policyPasskeyLogin,
+
+	// Shared shop-floor stations (manufacturing phase 2 M129, M132): pairing
+	// per address; setting a PIN, which may verify the current password, as
+	// the second factor's endpoints are. The operator sign-in's limit is per
+	// station and counts failures only (policyStationSignIn, stations.go).
+	"postIdentityStationPair": policyStationPairing,
+	"putIdentityAccountPin":   policyMfa,
 }
 
 // Module is identity as a platform module: its contract mounted under

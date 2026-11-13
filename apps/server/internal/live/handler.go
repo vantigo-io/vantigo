@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/coder/websocket"
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
@@ -40,6 +41,15 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !h.sameOrigin(r) {
 		httpx.WriteProblem(w, r, http.StatusForbidden, "Cross-origin requests are not allowed.")
 		return
+	}
+	// The station path (manufacturing phase 2 §17): a handshake with the
+	// station cookie and no session cookie is a station's.
+	if stations, ok := h.opts.Access.(contracts.StationAccess); ok {
+		station, isStation, err := stations.CheckStation(r)
+		if isStation {
+			h.serveStation(w, r, station, err)
+			return
+		}
 	}
 	p, err := h.opts.Access.Check(r, sessionRule)
 	if err != nil {
@@ -76,6 +86,50 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.detach(c)
 		}
 		return // Accept has answered
+	}
+	if attachErr != nil {
+		_ = ws.Close(CloseTooManyConnections, "too many connections")
+		return
+	}
+	h.serveSocket(ws, c)
+}
+
+// serveStation opens a station's socket (§17): the station resolved by
+// CheckStation (err its refusal, station_unknown, answered by Reject), the
+// connect rate limit and the per-replica socket cap kept per station. The
+// socket may subscribe only to the topics marked Station, which decide by the
+// station's work centers; it announces no presence.
+func (h *Hub) serveStation(w http.ResponseWriter, r *http.Request, station uuid.UUID, err error) {
+	if err != nil {
+		if errors.Is(err, contracts.ErrUnauthenticated) || errors.Is(err, contracts.ErrForbidden) {
+			h.opts.Access.Reject(w, r, sessionRule, err)
+			return
+		}
+		httpx.WriteError(w, r, err)
+		return
+	}
+	if h.opts.Limiter != nil {
+		d, err := h.opts.Limiter.Hit(r.Context(), connectPolicy, "station:"+station.String())
+		if err != nil {
+			httpx.WriteError(w, r, err)
+			return
+		}
+		if !d.Allowed {
+			ratelimit.Reject(w, r, connectPolicy, d)
+			return
+		}
+	}
+	c, attachErr := h.attachStation(station)
+	if errors.Is(attachErr, errHubClosed) {
+		httpx.WriteProblem(w, r, http.StatusServiceUnavailable, "The server is shutting down.")
+		return
+	}
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	if err != nil {
+		if c != nil {
+			h.detach(c)
+		}
+		return
 	}
 	if attachErr != nil {
 		_ = ws.Close(CloseTooManyConnections, "too many connections")

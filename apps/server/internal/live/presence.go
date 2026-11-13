@@ -266,6 +266,9 @@ func (p *presenceState) members(topic string) map[uuid.UUID]combined {
 // setPresence acts on a client's presence frame: it needs a subscription to
 // a topic whose Presence is true.
 func (h *Hub) setPresence(c *client, topic string, state *string) {
+	if c.station != uuid.Nil {
+		return // a station's socket is no person: it announces no presence (§17)
+	}
 	s := ""
 	if state != nil {
 		s = *state
