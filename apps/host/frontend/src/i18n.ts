@@ -31,6 +31,7 @@ import { legalCatalog } from "./catalogs/legal";
 import { navigationCatalog } from "./catalogs/navigation";
 import { projectCatalog } from "./catalogs/project";
 import { settingsCatalog } from "./catalogs/settings";
+import { stationsCatalog } from "./catalogs/stations";
 import { systemAdminCatalog } from "./catalogs/system-admin";
 
 export {
@@ -57,6 +58,7 @@ export const hostCatalog = {
     ...projectCatalog.en,
     ...adminCatalog.en,
     ...settingsCatalog.en,
+    ...stationsCatalog.en,
     ...systemAdminCatalog.en,
     ...legalCatalog.en,
   },
@@ -70,6 +72,7 @@ export const hostCatalog = {
     ...projectCatalog.nb,
     ...adminCatalog.nb,
     ...settingsCatalog.nb,
+    ...stationsCatalog.nb,
     ...systemAdminCatalog.nb,
     ...legalCatalog.nb,
   },

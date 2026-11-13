@@ -39,6 +39,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as StaffRouteImport } from './routes/staff'
+import { Route as StationRouteImport } from './routes/station'
 import { Route as TimeRouteImport } from './routes/time'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -126,6 +127,7 @@ import { Route as WorkspaceMetaRouteImport } from './routes/workspace/meta'
 import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overview'
 import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceShippingRouteImport } from './routes/workspace/shipping'
+import { Route as WorkspaceStationsRouteImport } from './routes/workspace/stations'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
 import { Route as AgentsAgentIdIndexRouteImport } from './routes/agents/$agentId.index'
 import { Route as AgentsReviewIndexRouteImport } from './routes/agents/review.index'
@@ -372,6 +374,11 @@ const SignInRoute = SignInRouteImport.update({
 const StaffRoute = StaffRouteImport.update({
   id: '/staff',
   path: '/staff',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StationRoute = StationRouteImport.update({
+  id: '/station',
+  path: '/station',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TimeRoute = TimeRouteImport.update({
@@ -809,6 +816,11 @@ const WorkspaceRolesRoute = WorkspaceRolesRouteImport.update({
 const WorkspaceShippingRoute = WorkspaceShippingRouteImport.update({
   id: '/shipping',
   path: '/shipping',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
+const WorkspaceStationsRoute = WorkspaceStationsRouteImport.update({
+  id: '/stations',
+  path: '/stations',
   getParentRoute: () => WorkspaceRoute,
 } as any)
 const WorkspaceUsersRoute = WorkspaceUsersRouteImport.update({
@@ -1379,6 +1391,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/staff': typeof StaffRouteWithChildren
+  '/station': typeof StationRoute
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
   '/agents/settings': typeof AgentsSettingsRoute
@@ -1445,6 +1458,7 @@ export interface FileRoutesByFullPath {
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
+  '/workspace/stations': typeof WorkspaceStationsRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
   '/agents/': typeof AgentsIndexRoute
@@ -1576,6 +1590,7 @@ export interface FileRoutesByTo {
   '/session-expired': typeof SessionExpiredRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/station': typeof StationRoute
   '/agents/settings': typeof AgentsSettingsRoute
   '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
@@ -1636,6 +1651,7 @@ export interface FileRoutesByTo {
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
+  '/workspace/stations': typeof WorkspaceStationsRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin': typeof AdminIndexRoute
   '/agents': typeof AgentsIndexRoute
@@ -1787,6 +1803,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/staff': typeof StaffRouteWithChildren
+  '/station': typeof StationRoute
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
   '/agents/settings': typeof AgentsSettingsRoute
@@ -1853,6 +1870,7 @@ export interface FileRoutesById {
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/shipping': typeof WorkspaceShippingRoute
+  '/workspace/stations': typeof WorkspaceStationsRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
   '/agents/': typeof AgentsIndexRoute
@@ -2005,6 +2023,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/staff'
+    | '/station'
     | '/time'
     | '/workspace'
     | '/agents/settings'
@@ -2071,6 +2090,7 @@ export interface FileRouteTypes {
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/shipping'
+    | '/workspace/stations'
     | '/workspace/users'
     | '/admin/'
     | '/agents/'
@@ -2202,6 +2222,7 @@ export interface FileRouteTypes {
     | '/session-expired'
     | '/setup'
     | '/sign-in'
+    | '/station'
     | '/agents/settings'
     | '/assistant/$conversationId'
     | '/calendar/settings'
@@ -2262,6 +2283,7 @@ export interface FileRouteTypes {
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/shipping'
+    | '/workspace/stations'
     | '/workspace/users'
     | '/admin'
     | '/agents'
@@ -2412,6 +2434,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/staff'
+    | '/station'
     | '/time'
     | '/workspace'
     | '/agents/settings'
@@ -2478,6 +2501,7 @@ export interface FileRouteTypes {
     | '/workspace/overview'
     | '/workspace/roles'
     | '/workspace/shipping'
+    | '/workspace/stations'
     | '/workspace/users'
     | '/admin/'
     | '/agents/'
@@ -2629,6 +2653,7 @@ export interface RootRouteChildren {
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
   StaffRoute: typeof StaffRouteWithChildren
+  StationRoute: typeof StationRoute
   TimeRoute: typeof TimeRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
@@ -2844,6 +2869,13 @@ declare module '@tanstack/react-router' {
       path: '/staff'
       fullPath: '/staff'
       preLoaderRoute: typeof StaffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/station': {
+      id: '/station'
+      path: '/station'
+      fullPath: '/station'
+      preLoaderRoute: typeof StationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/time': {
@@ -3453,6 +3485,13 @@ declare module '@tanstack/react-router' {
       path: '/shipping'
       fullPath: '/workspace/shipping'
       preLoaderRoute: typeof WorkspaceShippingRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
+    '/workspace/stations': {
+      id: '/workspace/stations'
+      path: '/stations'
+      fullPath: '/workspace/stations'
+      preLoaderRoute: typeof WorkspaceStationsRouteImport
       parentRoute: typeof WorkspaceRoute
     }
     '/workspace/users': {
@@ -4723,6 +4762,7 @@ interface WorkspaceRouteChildren {
   WorkspaceOverviewRoute: typeof WorkspaceOverviewRoute
   WorkspaceRolesRoute: typeof WorkspaceRolesRoute
   WorkspaceShippingRoute: typeof WorkspaceShippingRoute
+  WorkspaceStationsRoute: typeof WorkspaceStationsRoute
   WorkspaceUsersRoute: typeof WorkspaceUsersRoute
   WorkspaceIndexRoute: typeof WorkspaceIndexRoute
 }
@@ -4737,6 +4777,7 @@ const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceOverviewRoute: WorkspaceOverviewRoute,
   WorkspaceRolesRoute: WorkspaceRolesRoute,
   WorkspaceShippingRoute: WorkspaceShippingRoute,
+  WorkspaceStationsRoute: WorkspaceStationsRoute,
   WorkspaceUsersRoute: WorkspaceUsersRoute,
   WorkspaceIndexRoute: WorkspaceIndexRoute,
 }
@@ -4776,6 +4817,7 @@ const rootRouteChildren: RootRouteChildren = {
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
   StaffRoute: StaffRouteWithChildren,
+  StationRoute: StationRoute,
   TimeRoute: TimeRouteWithChildren,
   WorkspaceRoute: WorkspaceRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
