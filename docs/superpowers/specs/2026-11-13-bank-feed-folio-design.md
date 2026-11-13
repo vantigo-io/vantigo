@@ -1,6 +1,11 @@
 # Invoices: a bank feed, with Folio as the first bank — design
 
-Date: 2026-11-13. Status: draft for the owner's review; nothing is built.
+Date: 2026-11-13. Status: accepted by the owner 2026-11-14. Plan:
+[2026-11-14-bank-feed-folio-plan](../plans/2026-11-14-bank-feed-folio-plan.md), whose
+*Deviations and findings* amend this design where the code made a decision here wrong —
+among them: a queued feed line a person applies is registered by that person (F6 over
+F10), the feed's read is open to `invoices:access` (F8), and Folio's transaction id is
+kept without hyphens as the archive reference (F5).
 
 ## The problem
 
@@ -271,6 +276,13 @@ balances and statements · a second bank's adapter · camt.053 · reversals dete
 feed · a customer credit balance for overpayments · webhooks (Folio has none).
 
 ## Later, named not designed
+
+- **The second adapter: an aggregator, not a bank.** No other Norwegian bank found on
+  2026-11-14 lets a business customer switch on a documented API by themselves:
+  SpareBank 1 sends corporate customers to a partner or to files, and the banks' PSD2
+  APIs need a licence. Aritma's banking API covers the Norwegian business banks behind
+  one contract, with webhooks, and is the likely second adapter behind this port. It
+  needs a commercial agreement; no price was found.
 
 - **Expenses: company cards.** Folio's events carry card purchases with merchant,
   cardholder and receipt. They could become outlays in Expenses with the receipt attached,
