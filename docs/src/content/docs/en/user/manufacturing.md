@@ -282,12 +282,15 @@ picked as its components. In Manufacturing it is a bill of materials whose **Kin
 1. In **Bills of materials**, choose **New bill of materials**, pick the kit's product and
    set **Kind** to **Kit**.
 2. Add a line for each component and how many one kit holds — per the output quantity, as
-   on any bill. A component may itself be a kit: its components are then counted in.
+   on any bill. A component may itself be a kit: its components are then counted in. A
+   line that comes to 0 per kit at three decimals — 0.4 on an output quantity of 1000 —
+   is refused on the line.
 3. Choose **Create bill of materials**. The list and the bill's page mark it **Kit**.
 
 A kit is never made. It has lines only: no operations, no by-products, no lot pattern and
 no make-to-order, and its editor does not offer them. A manufacturing order of a kit is
-refused, a kit gets no replenishment suggestion to make it, and a sales order line of a
+refused, a kit gets no replenishment suggestion — neither to make nor to buy it; its
+components get theirs — and a sales order line of a
 kit offers no manufacturing order. Kits nest at most **three levels** — a kit, a kit among
 its components, and one among theirs — counting, for a kit that is its product's default,
 the kits above it too.

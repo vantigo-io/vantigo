@@ -370,7 +370,9 @@ list of typed actions, each with the line it is about where it is about one and 
 before and after as text: `line_added`, `line_removed`, `quantity_changed`,
 `price_changed`, `discount_changed`, `text_changed`, `delivery_changed`,
 `contact_changed`, `reference_changed`, `cancelled_remaining`, `held`, `released`,
-`locked`, `unlocked`, `delivered_marked`, `delivered_undone`, `warning_overridden` (a
+`locked`, `unlocked`, `delivered_marked`, `delivered_undone`, `delivered_beyond_kits` (a
+cancel of the rest left a kit's component delivered beyond the whole kits kept: to is the
+excess, delivered and never invoiced — see [Kits](#kits)), `warning_overridden` (a
 block warning overridden at confirm: from is the warning, to the reason) and
 `draft_allocations_released` (to is how many were released). An invoice's issue and a
 credit note's release are not logged: the order's **Invoices** list is their record.
@@ -466,7 +468,8 @@ clock and never reads a directory; its caller never calls it under a lock of its
   does not apply — an allocation writes no line). Each line is judged under the locks, the
   first refusal answering and nothing written — an `AllocationRefusal` with the line and
   a code: **`line_not_invoiceable`** for a line that is not a priced product line with a
-  VAT code invoiced on order, or whose order is a draft, on hold or cancelled;
+  VAT code invoiced on order, is a kit's child line ([Kits](#kits)), or whose order is a
+  draft, on hold or cancelled;
   **`allocation_exceeds_open`** for a quantity above what the line has to invoice. The
   allocation names its order's project only while Projects is composed. A request may
   name `Subscriptions` too, each with a `Through` date: [Billing a
@@ -835,6 +838,8 @@ KitStructure answers is a kit; each component becomes a child line after its kit
   line;
 - its quantity the kit's × per kit, half-up at three decimals — 0 is **400**
   `quantity_invalid` on the kit's line;
+- a kit KitStructure answers with **no** component (present, empty — absent is "not a
+  kit") is **400** `line_invalid` on the kit's line, never sold as an ordinary line;
 - price **0**, price source `manual`, no discount or packaging, the kit line's VAT code;
 - its delivery method and invoice policy settled as any goods line's.
 
@@ -852,6 +857,15 @@ towards the 500 lines.
 Without Manufacturing (a nil slot) nothing is copied: a kit variant is an ordinary goods
 line. KitStructure is ungated, so the author needs no Manufacturing permission.
 
+A refusal naming a line names it by its **row in the request** — the editor holds a kit
+line and not its children — on a create, a save, a confirm, Reserve now and an accept into
+an order: every line-indexed refusal (`OrdersProblemLine.index`), whether it is judged on
+the request's lines, on the lines with the children added, or on the stored lines (a
+reservation's `insufficient_available`, `quantity_below_progress`, `variant_not_found`,
+`line_unpriced`, …), is mapped back to the request's index, a child's to its kit's
+(`atInputs`, `atTopLevel`). On a confirm and Reserve now, which have no request lines, the
+index is the line's among the order's lines that are no kit's child.
+
 ### Stock, delivery and invoicing
 
 - **Reservations.** A line with children is not **reservable** (`reservable(l, kitsOf(lines))`);
@@ -861,12 +875,33 @@ line. KitStructure is ungated, so the author needs no Manufacturing permission.
   posted, the kit line's delivered becomes the **whole kits** its children make — the least,
   over them, of delivered ÷ per kit, rounded down to three decimals, at most ordered less
   cancelled (`syncKits`) — so the order's delivery status and the kit's invoicing on
-  delivery follow. A kit line delivered by hand (Inventory off) is marked by hand, as its
-  children are.
+  delivery follow.
+- **Delivered by hand** ([Delivered by hand](#delivered-by-hand)). A kit line delivered by
+  delivery documents is never marked by hand: **mark-delivered** and **undo-delivered**
+  refuse it, **400** `line_invalid` on its row; a child of it marked by hand brings the kit
+  to the whole kits its children make, as a posted delivery does. A kit line marked by hand
+  (an order without a site, or Inventory off) marks its children **in step** in the same
+  transaction — each child's delivered becomes the kit's × per kit, half-up at three
+  decimals, within 0 and its ordered less cancelled, logged `delivered_marked` or
+  `delivered_undone` on the child — and a child of such a kit is not marked on its own
+  (`line_invalid`).
 - **Invoicing.** The kit line carries the price and is the only one offered to invoice: the
-  billable read leaves child lines out. When the kit's invoiced quantity moves — an issue or
-  a credit through the invoiced-work holder — each child's invoiced becomes the kit's × per
-  kit, at most its quantity, so a delivered and invoiced kit order is done.
+  billable read leaves child lines out, and **Allocate** refuses one
+  (`line_not_invoiceable`). When the kit's invoiced quantity moves — an issue or a credit
+  through the invoiced-work holder — each child's invoiced becomes the kit's × per kit, at
+  most its quantity. A child line **never counts toward the order's invoicing** — its kit
+  does: the invoice status leaves children out; **done** — on the order, in the list's
+  `done` and `open` filters and in the retention sweep — asks of a child only that
+  cancelled and the larger of delivered and invoiced cover it; and the customer summary's
+  delivered-not-invoiced, the backlog's delivered-not-invoiced and the variant holder's open
+  orders leave a child's invoicing out.
+- **Cancel the rest.** Each line is cancelled as any line, a kit at what is not delivered
+  of whole kits and invoiced. A component delivered **beyond the whole kits** the kit keeps —
+  its delivered over the kit's ordered less cancelled × per kit, as when one component was
+  delivered and another not — is logged `delivered_beyond_kits` on the component's line, to
+  the excess, in the cancellation's change log entry: that much was delivered and is
+  **never invoiced**, as only whole kits carry a price. The order still reaches invoiced and
+  done when the kept kits are invoiced.
 - **Availability** (M146). On the order's read, a kit line's `available` is the least, over
   its children, of what is available of the child's variant at the site ÷ per kit, rounded
   down to three decimals; null when one has no figure.
@@ -1646,7 +1681,7 @@ a bare 400.
 | `price_invalid` | 400 | Not 0 or more with at most four decimals |
 | `discount_invalid` | 400 | Not 0–100 with at most two decimals |
 | `vat_code_unknown` | 400 | The free-text line's VAT code is not active |
-| `line_invalid` | 400 | Not a product, section or note; a free-text line with no name or description; an id not one of the document's; a confirmed order's kept line given another unit or VAT code |
+| `line_invalid` | 400 | Not a product, section or note; a free-text line with no name or description; an id not one of the document's; a confirmed order's kept line given another unit or VAT code; a kit KitStructure answers with no component; a kit line delivered by delivery documents, or a child of a kit marked by hand, named to mark-delivered or undo-delivered ([Kits](#kits)) |
 | `line_unpriced` | 400 | At send, mark as sent or confirm: a line has no price in the currency |
 | `vat_code_unmapped` | 400 | At send, mark as sent or confirm: a line's tax category maps to no VAT code |
 | `order_empty` | 400 | Confirm: no product line |

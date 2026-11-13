@@ -2401,10 +2401,17 @@ failure **400** `kit_not_manufactured` on its field, in the one 400 with the oth
 - `outputs` — it has no by-products;
 - `makeToOrder` — it is never made to order, so never the default MTO reads.
 
+And a line whose quantity **per kit** — its quantity over the output quantity — is 0 at
+three decimals, half-up, is **400** `quantity_invalid` on the line: KitStructure would leave
+it out, and a kit of nothing but such lines would explode to nothing. A line's quantity and
+the output quantity change only through a save, which judges them, so a reactivation, a
+make default or the promotion on archive never brings such a line in.
+
 A **manufacturing order** of a kit BoM — the variant's default or one named by `bomId` —
 is **400** `kit_not_manufactured` on `variantId` or `bomId` (`orderBom`, which every
-create, draft change and suggestion's action goes through). Replenishment treats a kit's
-variant as one with no BoM (no *make* suggestion), the sub-assembly read gives a kit
+create, draft change and suggestion's action goes through). Replenishment leaves a
+variant whose default BoM is a kit out entirely — no *make* and no *buy* suggestion: it is
+sold as its components, each judged for itself — the sub-assembly read gives a kit
 component no `defaultBomId`, and `Production.HasBOM` answers false for a kit variant, so
 Orders offers no manufacturing order on a kit line. The cycle and depth walk counts a kit
 as any BoM.
@@ -2439,7 +2446,10 @@ among the ids whose **default active BoM is a kit**, its components as
 - `PerKit` is exact decimal text half-up at three decimals; a component that rounds to 0
   is left out.
 
-A variant with no kit, or a normal default BoM, is absent. The read is **ungated**: it
+A variant with no kit, or a normal default BoM, is **absent**: absent means "not a kit".
+A kit is present with its components; present with none — every component rounded away,
+which the line rule above prevents — means "a kit with no components", and Orders refuses
+it rather than sell it as an ordinary line. The read is **ungated**: it
 carries no cost and no person, only which variants make up a kit and how many, and the
 consumer decides what to show (module-boundaries rule 12's third kind). It reads in one
 read-only, repeatable-read transaction on the pool. Orders calls it before its own
@@ -2528,7 +2538,7 @@ bodies are strict: an unknown property is a 400.
 | `bom_too_deep` | 400 | The walk passes 10 levels, counting the default BoMs above a default, or the overview meets a made node below the 10th (M14); a kit nesting more than three kits deep, counting the default kits above a default (M144) |
 | `bom_too_large` | 400 | The overview passes 2,000 nodes (M15a), or an operation's expected time passes 10^12 minutes |
 | `bom_not_active` | 409 | Make default or edit of an archived BoM (M14a); confirm of an order whose BoM is archived |
-| `quantity_invalid` | 400 | Not more than 0, or more than three decimals; a line's code on a line; a production's quantities |
+| `quantity_invalid` | 400 | Not more than 0, or more than three decimals; a line's code on a line; a production's quantities; a kit's line whose quantity per kit is 0 at three decimals (M144) |
 | `bom_required` | 400 | A new order for a variant with no active BoM (M17) |
 | `kit_not_manufactured` | 400 | A kit BoM with operations, by-products or make-to-order, on its field; a manufacturing order of a kit BoM (M144) |
 | `location_unknown` | 400 | An order's location, or a production's, is not an active location of the order's site (M17a) |
