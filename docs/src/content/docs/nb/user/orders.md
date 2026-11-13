@@ -230,8 +230,24 @@ På en bekreftet ordre med lagersted er settets **Disponibelt** hvor mange sett
 komponentene gir av det som er disponibelt: det minste, over komponentene, av det som er
 disponibelt av hver delt på hvor mange ett sett holder. Settet regnes som levert med de hele
 settene komponentenes leveranser gir, og tilbys fakturert alene; fakturaen dekker
-komponentene. Plukklisten skriver bare ut komponentene; pakkseddelen skriver ut settet med
-komponentene under.
+komponentene, og ordren regnes som fakturert og ferdig ut fra settets linje. Plukklisten
+skriver bare ut komponentene; pakkseddelen skriver ut settet med komponentene under.
+
+**Registrer levert** behandler et sett etter hvordan ordren leveres. På en ordre som leveres
+med leveranser tilbys ikke settets linje — komponentene gjør det, og settet regnes som
+levert med de hele settene de gir. På en ordre som registreres levert for hånd (uten
+lagersted, eller når Lager ikke fører beholdning) tilbys settets linje og ikke
+komponentene: å registrere settet registrerer hver komponent med det, settets antall
+ganger hvor mange ett sett holder, og å ta det tilbake tar dem tilbake.
+
+Når komponentene er levert ujevnt — mer av én enn av en annen — og du velger **Kanseller
+rest**, beholder settet de hele settene som er levert, og resten av det kanselleres. En
+komponent som er levert utover de hele settene, forblir levert og faktureres aldri, siden
+bare hele sett har en pris: endringsloggen sier **Levert utover hele sett, ikke fakturert**
+på den komponenten, med hvor mye. Ordren er ferdig når settene som beholdes, er fakturert.
+
+Når noe avvises, er linjen som nevnes settets linje, også når årsaken er en av
+komponentene — for eksempel en komponent det ikke er nok av på lagerstedet ved **Bekreft**.
 
 Uten Produksjon selges et setts produkt som en vanlig varelinje, som reserveres og leveres
 selv.
