@@ -419,7 +419,7 @@ func (s *server) StartManufacturingWorkOrder(ctx context.Context, req gen.StartM
 
 // startAtMember moves a group work order to the member it is started at, from
 // a stale or a current Group work list (manufacturing phase 2 M119): a center
-// outside its group is work_center_not_in_group; once a time log exists, or
+// that is not an active member of its group is work_center_not_in_group; once a time log exists, or
 // the work order is planned at its member, the member is fixed
 // (work_order_member_fixed, naming it). Otherwise the member's figures are
 // taken again (M118).
@@ -432,7 +432,9 @@ func startAtMember(ctx context.Context, txq *store.Queries, w store.Manufacturin
 	if err != nil {
 		return w, err
 	}
-	i := slices.IndexFunc(members[*w.WorkCenterGroupID], func(c store.ManufacturingWorkCenter) bool { return c.ID == at })
+	i := slices.IndexFunc(members[*w.WorkCenterGroupID], func(c store.ManufacturingWorkCenter) bool {
+		return c.ID == at && c.Status == statusActive
+	})
 	if i < 0 {
 		return w, notInGroup(title)
 	}
