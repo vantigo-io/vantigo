@@ -49,7 +49,7 @@ func placementOf(p store.InventoryPlacement, site store.InventorySite, onHand, r
 	v := judgeLow(lowLevels{onHand: onHand, reserved: reserved, incoming: incoming, reorderPoint: reorderPoint})
 	return gen.InventoryPlacement{
 		PrimaryLocationId: p.PrimaryLocationID, ReorderPoint: optionalWire(reorderPoint),
-		Maximum: optionalWire(optionalRat(p.Maximum)), Revision: p.Revision, Low: v.low && site.Status == string(gen.Active),
+		Maximum: optionalWire(optionalRat(p.Maximum)), Multiple: optionalWire(optionalRat(p.Multiple)), Revision: p.Revision, Low: v.low && site.Status == string(gen.Active),
 	}
 }
 
@@ -88,15 +88,16 @@ func cmpBool(a, b bool) int {
 	return -1
 }
 
-// placementFields is a placement's three fields, read and judged.
+// placementFields is a placement's fields, read and judged.
 type placementFields struct {
-	primaryLocationID     *int64
-	reorderPoint, maximum *big.Rat
+	primaryLocationID               *int64
+	reorderPoint, maximum, multiple *big.Rat
 }
 
 // readPlacementFields judges a PUT's body (I54): a reorder point of 0 or
-// more, a maximum of more than 0 and never below the reorder point, at least
-// one of the three set.
+// more, a maximum of more than 0 and never below the reorder point, a
+// multiple of more than 0 (manufacturing phase 2 M105), at least one of the
+// primary location, the reorder point and the maximum set.
 func readPlacementFields(f *fieldErrors, in gen.InventoryPlacementInput) placementFields {
 	var out placementFields
 	out.primaryLocationID = in.PrimaryLocationId
@@ -116,6 +117,14 @@ func readPlacementFields(f *fieldErrors, in gen.InventoryPlacementInput) placeme
 		f.addCoded("maximum", codeQuantityInvalid, msg)
 		out.maximum = q
 	}
+	if in.Multiple != nil {
+		q, msg := parseQuantity(*in.Multiple, positiveQuantity)
+		if msg == "The quantity must be more than 0" {
+			msg = "The multiple must be more than 0"
+		}
+		f.addCoded("multiple", codeQuantityInvalid, msg)
+		out.multiple = q
+	}
 	switch {
 	case in.PrimaryLocationId == nil && in.ReorderPoint == nil && in.Maximum == nil:
 		f.addCoded("primaryLocationId", codePlacementEmpty, "Set a primary location, a reorder point or a maximum, or remove the placement instead")
@@ -130,9 +139,10 @@ func readPlacementFields(f *fieldErrors, in gen.InventoryPlacementInput) placeme
 func placementChanges(before *store.InventoryPlacement, after placementFields) changes {
 	c := changes{}
 	var beforeLocation *int64
-	var beforeReorder, beforeMaximum *big.Rat
+	var beforeReorder, beforeMaximum, beforeMultiple *big.Rat
 	if before != nil {
 		beforeLocation, beforeReorder, beforeMaximum = before.PrimaryLocationID, optionalRat(before.ReorderPoint), optionalRat(before.Maximum)
+		beforeMultiple = optionalRat(before.Multiple)
 	}
 	if !equalPtr(beforeLocation, after.primaryLocationID) {
 		c["primaryLocationId"] = fieldChange{From: beforeLocation, To: after.primaryLocationID}
@@ -151,6 +161,7 @@ func placementChanges(before *store.InventoryPlacement, after placementFields) c
 	}
 	quantity("reorderPoint", beforeReorder, after.reorderPoint)
 	quantity("maximum", beforeMaximum, after.maximum)
+	quantity("multiple", beforeMultiple, after.multiple)
 	return c
 }
 
@@ -243,6 +254,10 @@ func (s *server) PutInventoryPlacement(ctx context.Context, req gen.PutInventory
 	if err != nil {
 		return nil, err
 	}
+	multiple, err := optionalNumeric(in.multiple)
+	if err != nil {
+		return nil, err
+	}
 	var out store.InventoryPlacement
 	err = s.withLockedTx(ctx, func(ctx context.Context, _ pgx.Tx, txq *store.Queries) error {
 		if _, err := sharePlacementSite(ctx, txq, req.SiteId); err != nil {
@@ -268,7 +283,7 @@ func (s *server) PutInventoryPlacement(ctx context.Context, req gen.PutInventory
 		if create {
 			out, err = txq.InsertPlacement(ctx, store.InsertPlacementParams{
 				VariantID: req.VariantId, SiteID: req.SiteId, PrimaryLocationID: in.primaryLocationID,
-				ReorderPoint: reorderPoint, Maximum: maximum, Sku: variant.SKU, ProductName: variant.ProductName,
+				ReorderPoint: reorderPoint, Maximum: maximum, Multiple: multiple, Sku: variant.SKU, ProductName: variant.ProductName,
 				UpdatedByUserID: who.UserID, UpdatedByDisplay: &who.Display, Now: s.deps.Clock(),
 			})
 			if noRows(err) {
@@ -294,7 +309,7 @@ func (s *server) PutInventoryPlacement(ctx context.Context, req gen.PutInventory
 			before = &cur
 			out, err = txq.UpdatePlacement(ctx, store.UpdatePlacementParams{
 				VariantID: req.VariantId, SiteID: req.SiteId, PrimaryLocationID: in.primaryLocationID,
-				ReorderPoint: reorderPoint, Maximum: maximum, Sku: variant.SKU, ProductName: variant.ProductName,
+				ReorderPoint: reorderPoint, Maximum: maximum, Multiple: multiple, Sku: variant.SKU, ProductName: variant.ProductName,
 				UpdatedByUserID: who.UserID, UpdatedByDisplay: &who.Display, Now: s.deps.Clock(),
 			})
 			if err != nil {

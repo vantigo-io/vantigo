@@ -1505,6 +1505,9 @@ type InventoryLowStockRow struct {
 	Incoming float64  `json:"incoming"`
 	Maximum  *float64 `json:"maximum"`
 
+	// Multiple The placement's multiple (manufacturing phase 2 M105), which needed is rounded up to before the packaging; null when unset.
+	Multiple *float64 `json:"multiple,omitempty"`
+
 	// Needed The target less available plus incoming; at least 1.
 	Needed float64 `json:"needed"`
 	OnHand float64 `json:"onHand"`
@@ -1518,7 +1521,7 @@ type InventoryLowStockRow struct {
 	// Site A site as other answers name it.
 	Site InventorySiteRef `json:"site"`
 
-	// Suggested Needed, rounded up to a whole number of the packaging; needed when the variant has none. It may pass the maximum.
+	// Suggested Needed, rounded up to the placement's multiple when it has one, then to a whole number of the packaging; that alone when the variant has none. It may pass the maximum.
 	Suggested float64 `json:"suggested"`
 
 	// Variant A variant as the catalog answers it, or as its last movement line snapshotted it when the catalog no longer knows it (deleted).
@@ -1707,6 +1710,9 @@ type InventoryPlacement struct {
 	// Maximum What a suggestion fills up to; never below the reorder point.
 	Maximum *float64 `json:"maximum"`
 
+	// Multiple What a suggestion is rounded up to a whole number of (manufacturing phase 2 M105); more than 0, null when unset.
+	Multiple *float64 `json:"multiple"`
+
 	// PrimaryLocationId An active location of the site, the default where the variant is put and taken (I55).
 	PrimaryLocationId *int64 `json:"primaryLocationId"`
 
@@ -1735,9 +1741,12 @@ type InventoryPlacementImportResult struct {
 
 // InventoryPlacementImportRow One row of the placements file and its outcome (I61). Every cell is as written; an empty one clears its field.
 type InventoryPlacementImportRow struct {
-	Detail  *string                         `json:"detail,omitempty"`
-	Maximum string                          `json:"maximum"`
-	Outcome InventoryPlacementImportOutcome `json:"outcome"`
+	Detail  *string `json:"detail,omitempty"`
+	Maximum string  `json:"maximum"`
+
+	// Multiple The multiple's cell; empty, or absent when the file has no multiple column, clears it.
+	Multiple *string                         `json:"multiple,omitempty"`
+	Outcome  InventoryPlacementImportOutcome `json:"outcome"`
 
 	// PrimaryLocation The location's full code.
 	PrimaryLocation string `json:"primaryLocation"`
@@ -1751,9 +1760,10 @@ type InventoryPlacementImportRow struct {
 	Sku  string `json:"sku"`
 }
 
-// InventoryPlacementInput A placement's three fields (I54), each null to leave it unset; all three null is placement_empty — remove the placement instead. The maximum is never below the reorder point (maximum_below_reorder_point); the primary location is an active location of the site (placement_location_invalid).
+// InventoryPlacementInput A placement's fields (I54), each null to leave it unset; primary location, reorder point and maximum all null is placement_empty — remove the placement instead. The multiple (manufacturing phase 2 M105) is more than 0, and absent is null. The maximum is never below the reorder point (maximum_below_reorder_point); the primary location is an active location of the site (placement_location_invalid).
 type InventoryPlacementInput struct {
 	Maximum           *float64 `json:"maximum"`
+	Multiple          *float64 `json:"multiple,omitempty"`
 	PrimaryLocationId *int64   `json:"primaryLocationId"`
 	ReorderPoint      *float64 `json:"reorderPoint"`
 }

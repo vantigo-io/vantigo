@@ -228,7 +228,7 @@ func (q *Queries) DeletePrimaryOnlyPlacementsIn(ctx context.Context, locationIds
 
 const getPlacement = `-- name: GetPlacement :one
 
-SELECT variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at FROM inventory.placements WHERE variant_id = $1 AND site_id = $2
+SELECT variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at, multiple FROM inventory.placements WHERE variant_id = $1 AND site_id = $2
 `
 
 type GetPlacementParams struct {
@@ -257,17 +257,18 @@ func (q *Queries) GetPlacement(ctx context.Context, arg GetPlacementParams) (Inv
 		&i.UpdatedByUserID,
 		&i.UpdatedByDisplay,
 		&i.UpdatedAt,
+		&i.Multiple,
 	)
 	return i, err
 }
 
 const insertPlacement = `-- name: InsertPlacement :one
-INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name,
+INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, multiple, sku, product_name,
                                   updated_by_user_id, updated_by_display, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10::timestamptz)
+VALUES ($1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11::timestamptz)
 ON CONFLICT (variant_id, site_id) DO NOTHING
-RETURNING variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at
+RETURNING variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at, multiple
 `
 
 type InsertPlacementParams struct {
@@ -276,6 +277,7 @@ type InsertPlacementParams struct {
 	PrimaryLocationID *int64
 	ReorderPoint      pgtype.Numeric
 	Maximum           pgtype.Numeric
+	Multiple          pgtype.Numeric
 	Sku               string
 	ProductName       string
 	UpdatedByUserID   *uuid.UUID
@@ -292,6 +294,7 @@ func (q *Queries) InsertPlacement(ctx context.Context, arg InsertPlacementParams
 		arg.PrimaryLocationID,
 		arg.ReorderPoint,
 		arg.Maximum,
+		arg.Multiple,
 		arg.Sku,
 		arg.ProductName,
 		arg.UpdatedByUserID,
@@ -311,6 +314,7 @@ func (q *Queries) InsertPlacement(ctx context.Context, arg InsertPlacementParams
 		&i.UpdatedByUserID,
 		&i.UpdatedByDisplay,
 		&i.UpdatedAt,
+		&i.Multiple,
 	)
 	return i, err
 }
@@ -357,7 +361,7 @@ func (q *Queries) LocationsByFullCodes(ctx context.Context, fullCodes []string) 
 }
 
 const lockPlacement = `-- name: LockPlacement :one
-SELECT variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at FROM inventory.placements WHERE variant_id = $1 AND site_id = $2 FOR UPDATE
+SELECT variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at, multiple FROM inventory.placements WHERE variant_id = $1 AND site_id = $2 FOR UPDATE
 `
 
 type LockPlacementParams struct {
@@ -382,6 +386,7 @@ func (q *Queries) LockPlacement(ctx context.Context, arg LockPlacementParams) (I
 		&i.UpdatedByUserID,
 		&i.UpdatedByDisplay,
 		&i.UpdatedAt,
+		&i.Multiple,
 	)
 	return i, err
 }
@@ -401,7 +406,7 @@ func (q *Queries) LockPlacementImports(ctx context.Context, lockKey int64) error
 
 const lowStock = `-- name: LowStock :many
 SELECT p.variant_id, p.site_id, s.code AS site_code, p.sku, p.product_name,
-       p.reorder_point::text AS reorder_point, p.maximum,
+       p.reorder_point::text AS reorder_point, p.maximum, p.multiple,
        oh.on_hand::text AS on_hand, rs.reserved::text AS reserved, it.incoming::text AS incoming
 FROM inventory.placements p
 JOIN inventory.sites s ON s.id = p.site_id
@@ -453,6 +458,7 @@ type LowStockRow struct {
 	ProductName  string
 	ReorderPoint string
 	Maximum      pgtype.Numeric
+	Multiple     pgtype.Numeric
 	OnHand       string
 	Reserved     string
 	Incoming     string
@@ -491,6 +497,7 @@ func (q *Queries) LowStock(ctx context.Context, arg LowStockParams) ([]LowStockR
 			&i.ProductName,
 			&i.ReorderPoint,
 			&i.Maximum,
+			&i.Multiple,
 			&i.OnHand,
 			&i.Reserved,
 			&i.Incoming,
@@ -635,7 +642,7 @@ func (q *Queries) PlacementImportSeen(ctx context.Context, arg PlacementImportSe
 }
 
 const placementsOfVariants = `-- name: PlacementsOfVariants :many
-SELECT variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at FROM inventory.placements
+SELECT variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at, multiple FROM inventory.placements
 WHERE variant_id = ANY($1::int[])
 ORDER BY variant_id, site_id
 `
@@ -663,6 +670,7 @@ func (q *Queries) PlacementsOfVariants(ctx context.Context, variantIds []int32) 
 			&i.UpdatedByUserID,
 			&i.UpdatedByDisplay,
 			&i.UpdatedAt,
+			&i.Multiple,
 		); err != nil {
 			return nil, err
 		}
@@ -776,20 +784,96 @@ func (q *Queries) SitesByCodes(ctx context.Context, codes []string) ([]Inventory
 	return items, nil
 }
 
+const stockPlacementsAt = `-- name: StockPlacementsAt :many
+SELECT p.variant_id, p.reorder_point::text AS reorder_point, p.maximum, p.multiple,
+       oh.on_hand::text AS on_hand, rs.reserved::text AS reserved, it.incoming::text AS incoming
+FROM inventory.placements p
+JOIN inventory.sites s ON s.id = p.site_id
+CROSS JOIN LATERAL (
+    SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
+    FROM inventory.balances b
+    JOIN inventory.locations l ON l.id = b.location_id
+    LEFT JOIN inventory.lots t ON t.id = b.lot_id
+    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id
+      AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= $1::date)))) oh
+CROSS JOIN LATERAL (
+    SELECT coalesce(sum(r.quantity), 0)::numeric AS reserved
+    FROM inventory.reservations r
+    WHERE r.variant_id = p.variant_id AND r.site_id = p.site_id) rs
+CROSS JOIN LATERAL (
+    SELECT coalesce(sum(tl.sent - tl.received - tl.missing - tl.returned), 0)::numeric AS incoming
+    FROM inventory.transfer_lines tl
+    JOIN inventory.transfers t ON t.id = tl.transfer_id
+    WHERE tl.variant_id = p.variant_id AND t.to_site_id = p.site_id
+      AND tl.sent > tl.received + tl.missing + tl.returned) it
+WHERE p.site_id = $2 AND p.reorder_point IS NOT NULL AND s.status = 'active'
+ORDER BY p.variant_id
+LIMIT $3::int
+`
+
+type StockPlacementsAtParams struct {
+	Today    pgtype.Date
+	SiteID   int64
+	RowLimit int32
+}
+
+type StockPlacementsAtRow struct {
+	VariantID    int32
+	ReorderPoint string
+	Maximum      pgtype.Numeric
+	Multiple     pgtype.Numeric
+	OnHand       string
+	Reserved     string
+	Incoming     string
+}
+
+// StockPlacementsAt is contracts.Stock.Placements (manufacturing phase 2
+// M106): every placement with a reorder point at the site, if it is active,
+// with LowStock's figures — usable on hand on today, reserved and incoming —
+// by variant id, at most row_limit.
+func (q *Queries) StockPlacementsAt(ctx context.Context, arg StockPlacementsAtParams) ([]StockPlacementsAtRow, error) {
+	rows, err := q.db.Query(ctx, stockPlacementsAt, arg.Today, arg.SiteID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StockPlacementsAtRow
+	for rows.Next() {
+		var i StockPlacementsAtRow
+		if err := rows.Scan(
+			&i.VariantID,
+			&i.ReorderPoint,
+			&i.Maximum,
+			&i.Multiple,
+			&i.OnHand,
+			&i.Reserved,
+			&i.Incoming,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePlacement = `-- name: UpdatePlacement :one
 UPDATE inventory.placements
 SET primary_location_id = $1, reorder_point = $2,
-    maximum = $3, sku = $4, product_name = $5,
-    updated_by_user_id = $6, updated_by_display = $7,
-    revision = revision + 1, updated_at = $8::timestamptz
-WHERE variant_id = $9 AND site_id = $10
-RETURNING variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at
+    maximum = $3, multiple = $4, sku = $5, product_name = $6,
+    updated_by_user_id = $7, updated_by_display = $8,
+    revision = revision + 1, updated_at = $9::timestamptz
+WHERE variant_id = $10 AND site_id = $11
+RETURNING variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name, revision, updated_by_user_id, updated_by_display, updated_at, multiple
 `
 
 type UpdatePlacementParams struct {
 	PrimaryLocationID *int64
 	ReorderPoint      pgtype.Numeric
 	Maximum           pgtype.Numeric
+	Multiple          pgtype.Numeric
 	Sku               string
 	ProductName       string
 	UpdatedByUserID   *uuid.UUID
@@ -799,13 +883,14 @@ type UpdatePlacementParams struct {
 	SiteID            int64
 }
 
-// UpdatePlacement replaces a placement's three fields and its snapshot, and
+// UpdatePlacement replaces a placement's fields and its snapshot, and
 // moves its revision on (If-Match, I61).
 func (q *Queries) UpdatePlacement(ctx context.Context, arg UpdatePlacementParams) (InventoryPlacement, error) {
 	row := q.db.QueryRow(ctx, updatePlacement,
 		arg.PrimaryLocationID,
 		arg.ReorderPoint,
 		arg.Maximum,
+		arg.Multiple,
 		arg.Sku,
 		arg.ProductName,
 		arg.UpdatedByUserID,
@@ -827,22 +912,23 @@ func (q *Queries) UpdatePlacement(ctx context.Context, arg UpdatePlacementParams
 		&i.UpdatedByUserID,
 		&i.UpdatedByDisplay,
 		&i.UpdatedAt,
+		&i.Multiple,
 	)
 	return i, err
 }
 
 const upsertPlacements = `-- name: UpsertPlacements :exec
-INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name,
+INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, multiple, sku, product_name,
                                   updated_by_user_id, updated_by_display, updated_at)
-SELECT u.variant_id, u.site_id, nullif(u.primary_location_id, 0), u.reorder_point, u.maximum, u.sku, u.product_name,
+SELECT u.variant_id, u.site_id, nullif(u.primary_location_id, 0), u.reorder_point, u.maximum, u.multiple, u.sku, u.product_name,
        $1, $2, $3::timestamptz
 FROM (SELECT unnest($4::int[]) AS variant_id, unnest($5::bigint[]) AS site_id,
              unnest($6::bigint[]) AS primary_location_id,
              unnest($7::numeric[]) AS reorder_point, unnest($8::numeric[]) AS maximum,
-             unnest($9::text[]) AS sku, unnest($10::text[]) AS product_name) AS u
+             unnest($9::numeric[]) AS multiple, unnest($10::text[]) AS sku, unnest($11::text[]) AS product_name) AS u
 ON CONFLICT (variant_id, site_id) DO UPDATE
 SET primary_location_id = excluded.primary_location_id, reorder_point = excluded.reorder_point,
-    maximum = excluded.maximum, sku = excluded.sku, product_name = excluded.product_name,
+    maximum = excluded.maximum, multiple = excluded.multiple, sku = excluded.sku, product_name = excluded.product_name,
     updated_by_user_id = excluded.updated_by_user_id, updated_by_display = excluded.updated_by_display,
     revision = inventory.placements.revision + 1, updated_at = excluded.updated_at
 `
@@ -856,12 +942,13 @@ type UpsertPlacementsParams struct {
 	PrimaryLocationIds []int64
 	ReorderPoints      []pgtype.Numeric
 	Maximums           []pgtype.Numeric
+	Multiples          []pgtype.Numeric
 	Skus               []string
 	ProductNames       []string
 }
 
 // UpsertPlacements is the placements import's commit (I61): each row sets
-// all three fields, last wins, bumping the revision of one already there.
+// all four fields, last wins, bumping the revision of one already there.
 // The arrays are read row by row; a primary location of 0 is none, and a
 // null reorder point or maximum clears it. Rows clearing all three go to
 // DeletePlacementsOf instead.
@@ -875,6 +962,7 @@ func (q *Queries) UpsertPlacements(ctx context.Context, arg UpsertPlacementsPara
 		arg.PrimaryLocationIds,
 		arg.ReorderPoints,
 		arg.Maximums,
+		arg.Multiples,
 		arg.Skus,
 		arg.ProductNames,
 	)

@@ -150,7 +150,8 @@ func (s *server) lowStockRows(ctx context.Context, params store.LowStockParams, 
 		}
 		out = append(out, lowRow{row: r, variant: v, verdict: judgeLow(lowLevels{
 			onHand: ratFromText(r.OnHand), reserved: ratFromText(r.Reserved), incoming: ratFromText(r.Incoming),
-			reorderPoint: ratFromText(r.ReorderPoint), maximum: optionalRat(r.Maximum), packagings: v.Packagings,
+			reorderPoint: ratFromText(r.ReorderPoint), maximum: optionalRat(r.Maximum), multiple: optionalRat(r.Multiple),
+			packagings: v.Packagings,
 		})})
 	}
 	return out, last, nil
@@ -260,7 +261,7 @@ func lowStockRowOf(r lowRow, site store.InventorySite) gen.InventoryLowStockRow 
 		Site: siteRefOf(site), Variant: variantRefOf(r.variant),
 		OnHand: wireQuantity(ratFromText(r.row.OnHand)), Reserved: wireQuantity(ratFromText(r.row.Reserved)),
 		Available: wireQuantity(v.available), Incoming: wireQuantity(ratFromText(r.row.Incoming)),
-		ReorderPoint: wireQuantity(ratFromText(r.row.ReorderPoint)), Maximum: optionalWire(optionalRat(r.row.Maximum)),
+		ReorderPoint: wireQuantity(ratFromText(r.row.ReorderPoint)), Maximum: optionalWire(optionalRat(r.row.Maximum)), Multiple: optionalWire(optionalRat(r.row.Multiple)),
 		Needed: wireQuantity(v.needed), Suggested: wireQuantity(v.suggested),
 		Elsewhere: []gen.InventoryLowStockElsewhere{}, OpenDrafts: []int64{},
 	}

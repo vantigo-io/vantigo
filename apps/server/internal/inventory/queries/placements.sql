@@ -16,19 +16,19 @@ SELECT * FROM inventory.placements WHERE variant_id = @variant_id AND site_id = 
 -- name: InsertPlacement :one
 -- InsertPlacement creates a placement (If-None-Match: *, I61). One already
 -- there answers no row, which is revision_conflict.
-INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name,
+INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, multiple, sku, product_name,
                                   updated_by_user_id, updated_by_display, updated_at)
-VALUES (@variant_id, @site_id, sqlc.narg(primary_location_id), sqlc.narg(reorder_point), sqlc.narg(maximum), @sku,
+VALUES (@variant_id, @site_id, sqlc.narg(primary_location_id), sqlc.narg(reorder_point), sqlc.narg(maximum), sqlc.narg(multiple), @sku,
         @product_name, sqlc.narg(updated_by_user_id), sqlc.narg(updated_by_display), @now::timestamptz)
 ON CONFLICT (variant_id, site_id) DO NOTHING
 RETURNING *;
 
 -- name: UpdatePlacement :one
--- UpdatePlacement replaces a placement's three fields and its snapshot, and
+-- UpdatePlacement replaces a placement's fields and its snapshot, and
 -- moves its revision on (If-Match, I61).
 UPDATE inventory.placements
 SET primary_location_id = sqlc.narg(primary_location_id), reorder_point = sqlc.narg(reorder_point),
-    maximum = sqlc.narg(maximum), sku = @sku, product_name = @product_name,
+    maximum = sqlc.narg(maximum), multiple = sqlc.narg(multiple), sku = @sku, product_name = @product_name,
     updated_by_user_id = sqlc.narg(updated_by_user_id), updated_by_display = sqlc.narg(updated_by_display),
     revision = revision + 1, updated_at = @now::timestamptz
 WHERE variant_id = @variant_id AND site_id = @site_id
@@ -91,7 +91,7 @@ RETURNING p.variant_id, p.site_id, prev.primary_location_id::bigint AS primary_l
 -- after the cursor's. Quantities as text, for the rule's arithmetic in
 -- decimals.
 SELECT p.variant_id, p.site_id, s.code AS site_code, p.sku, p.product_name,
-       p.reorder_point::text AS reorder_point, p.maximum,
+       p.reorder_point::text AS reorder_point, p.maximum, p.multiple,
        oh.on_hand::text AS on_hand, rs.reserved::text AS reserved, it.incoming::text AS incoming
 FROM inventory.placements p
 JOIN inventory.sites s ON s.id = p.site_id
@@ -203,21 +203,21 @@ WHERE p.variant_id = u.variant_id AND (p.sku <> u.sku OR p.product_name <> u.pro
 
 -- name: UpsertPlacements :exec
 -- UpsertPlacements is the placements import's commit (I61): each row sets
--- all three fields, last wins, bumping the revision of one already there.
+-- all four fields, last wins, bumping the revision of one already there.
 -- The arrays are read row by row; a primary location of 0 is none, and a
 -- null reorder point or maximum clears it. Rows clearing all three go to
 -- DeletePlacementsOf instead.
-INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, sku, product_name,
+INSERT INTO inventory.placements (variant_id, site_id, primary_location_id, reorder_point, maximum, multiple, sku, product_name,
                                   updated_by_user_id, updated_by_display, updated_at)
-SELECT u.variant_id, u.site_id, nullif(u.primary_location_id, 0), u.reorder_point, u.maximum, u.sku, u.product_name,
+SELECT u.variant_id, u.site_id, nullif(u.primary_location_id, 0), u.reorder_point, u.maximum, u.multiple, u.sku, u.product_name,
        sqlc.narg(updated_by_user_id), sqlc.narg(updated_by_display), @now::timestamptz
 FROM (SELECT unnest(@variant_ids::int[]) AS variant_id, unnest(@site_ids::bigint[]) AS site_id,
              unnest(@primary_location_ids::bigint[]) AS primary_location_id,
              unnest(@reorder_points::numeric[]) AS reorder_point, unnest(@maximums::numeric[]) AS maximum,
-             unnest(@skus::text[]) AS sku, unnest(@product_names::text[]) AS product_name) AS u
+             unnest(@multiples::numeric[]) AS multiple, unnest(@skus::text[]) AS sku, unnest(@product_names::text[]) AS product_name) AS u
 ON CONFLICT (variant_id, site_id) DO UPDATE
 SET primary_location_id = excluded.primary_location_id, reorder_point = excluded.reorder_point,
-    maximum = excluded.maximum, sku = excluded.sku, product_name = excluded.product_name,
+    maximum = excluded.maximum, multiple = excluded.multiple, sku = excluded.sku, product_name = excluded.product_name,
     updated_by_user_id = excluded.updated_by_user_id, updated_by_display = excluded.updated_by_display,
     revision = inventory.placements.revision + 1, updated_at = excluded.updated_at;
 
@@ -258,3 +258,33 @@ SELECT * FROM inventory.sites WHERE code = ANY(@codes::text[]);
 -- LocationsByFullCodes is the locations the placements import's rows name by
 -- full code, at any site (I61); a full code is unique in the deployment.
 SELECT * FROM inventory.locations WHERE full_code = ANY(@full_codes::text[]);
+
+-- name: StockPlacementsAt :many
+-- StockPlacementsAt is contracts.Stock.Placements (manufacturing phase 2
+-- M106): every placement with a reorder point at the site, if it is active,
+-- with LowStock's figures — usable on hand on today, reserved and incoming —
+-- by variant id, at most row_limit.
+SELECT p.variant_id, p.reorder_point::text AS reorder_point, p.maximum, p.multiple,
+       oh.on_hand::text AS on_hand, rs.reserved::text AS reserved, it.incoming::text AS incoming
+FROM inventory.placements p
+JOIN inventory.sites s ON s.id = p.site_id
+CROSS JOIN LATERAL (
+    SELECT coalesce(sum(b.on_hand), 0)::numeric AS on_hand
+    FROM inventory.balances b
+    JOIN inventory.locations l ON l.id = b.location_id
+    LEFT JOIN inventory.lots t ON t.id = b.lot_id
+    WHERE b.variant_id = p.variant_id AND l.site_id = p.site_id
+      AND (b.lot_id IS NULL OR (t.status = 'available' AND (t.expiry IS NULL OR t.expiry >= @today::date)))) oh
+CROSS JOIN LATERAL (
+    SELECT coalesce(sum(r.quantity), 0)::numeric AS reserved
+    FROM inventory.reservations r
+    WHERE r.variant_id = p.variant_id AND r.site_id = p.site_id) rs
+CROSS JOIN LATERAL (
+    SELECT coalesce(sum(tl.sent - tl.received - tl.missing - tl.returned), 0)::numeric AS incoming
+    FROM inventory.transfer_lines tl
+    JOIN inventory.transfers t ON t.id = tl.transfer_id
+    WHERE tl.variant_id = p.variant_id AND t.to_site_id = p.site_id
+      AND tl.sent > tl.received + tl.missing + tl.returned) it
+WHERE p.site_id = @site_id AND p.reorder_point IS NOT NULL AND s.status = 'active'
+ORDER BY p.variant_id
+LIMIT @row_limit::int;

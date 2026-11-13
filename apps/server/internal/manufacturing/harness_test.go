@@ -295,6 +295,8 @@ type fakeStock struct {
 	// locationsHook, when set, runs after each Locations read: a test's
 	// window between the read a post splits on and its transaction.
 	locationsHook func()
+	// placements are what Placements answers, per site (M106).
+	placements map[int64][]contracts.StockPlacement
 	ledgerState
 }
 
@@ -311,6 +313,23 @@ func (s *fakeStock) setAvailable(site int64, variant int32, q string) {
 		s.available[site] = map[int32]string{}
 	}
 	s.available[site][variant] = q
+}
+
+// setPlacements is what Placements answers for the site.
+func (s *fakeStock) setPlacements(site int64, ps ...contracts.StockPlacement) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.placements == nil {
+		s.placements = map[int64][]contracts.StockPlacement{}
+	}
+	s.placements[site] = ps
+}
+
+func (s *fakeStock) Placements(ctx context.Context, site int64) ([]contracts.StockPlacement, error) {
+	lockedContractCalls.note(ctx, "fake Stock.Placements")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.placements[site]), nil
 }
 
 func (s *fakeStock) archiveSite(id int64) {

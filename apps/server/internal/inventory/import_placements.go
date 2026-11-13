@@ -24,23 +24,27 @@ import (
 )
 
 // The placements import (phase 2 design I61): a CSV of sku, site (code),
-// primary_location (full code), reorder_point and maximum, read by
+// primary_location (full code), reorder_point and maximum, and optionally
+// multiple (manufacturing phase 2 M105), read by
 // srv/fileimport as the opening-balance import is, at most 5000 rows. Every
 // row is resolved before any transaction — the SKUs in one LookupSKUs, the
 // sites and locations in one read each — and judged as a PUT would judge
 // it, an empty cell clearing its field. A dry run, the default, answers
 // each row's outcome. A commit with any failing row writes nothing; one with
 // every row ok writes them all, last wins for a variant and site named
-// twice, each bumping the placement's revision, a row clearing all three
-// fields removing the placement, each change a placement_set or
+// twice, each bumping the placement's revision, a row clearing the primary
+// location, the reorder point and the maximum removing the placement, each change a placement_set or
 // placement_cleared event. The commit records one placements_imported event
 // keyed by the file's SHA-256, and a file already committed answers 200 with
 // what its first commit wrote, writing nothing: the import is idempotent by
 // the file.
 
 // placementImportColumns are the header's five names, as
-// fileimport.HeaderKey reads them.
+// fileimport.HeaderKey reads them; placementImportMultiple is the sixth a
+// header may add (M105), a file without it clearing every row's multiple.
 var placementImportColumns = []string{"sku", "site", "primarylocation", "reorderpoint", "maximum"}
+
+const placementImportMultiple = "multiple"
 
 // placementsResolved is a test's hook, run after a commit's rows are
 // resolved and before its transaction opens: what a concurrent write may do
@@ -49,11 +53,11 @@ var placementsResolved atomic.Pointer[func()]
 
 // placementWrite is one ok row as the commit writes it.
 type placementWrite struct {
-	variantID             int32
-	siteID                int64
-	primaryLocationID     *int64
-	reorderPoint, maximum *big.Rat
-	sku, productName      string
+	variantID                       int32
+	siteID                          int64
+	primaryLocationID               *int64
+	reorderPoint, maximum, multiple *big.Rat
+	sku, productName                string
 }
 
 // clears reports whether the row clears all three fields.
@@ -90,9 +94,14 @@ func (s *server) ImportInventoryPlacements(ctx context.Context, req gen.ImportIn
 	for i, h := range file.Header {
 		column[fileimport.HeaderKey(h)] = i
 	}
+	_, withMultiple := column[placementImportMultiple]
+	want := len(placementImportColumns)
+	if withMultiple {
+		want++
+	}
 	for _, name := range placementImportColumns {
-		if _, ok := column[name]; !ok || len(file.Header) != len(placementImportColumns) {
-			return placementImportProblem("file", "The header must name exactly the columns sku, site, primary_location, reorder_point and maximum"), nil
+		if _, ok := column[name]; !ok || len(file.Header) != want {
+			return placementImportProblem("file", "The header must name exactly the columns sku, site, primary_location, reorder_point and maximum, and optionally multiple"), nil
 		}
 	}
 	rows, writes, err := s.resolvePlacementImport(ctx, file, column)
@@ -279,6 +288,10 @@ func (s *server) commitPlacements(ctx context.Context, txq *store.Queries, who a
 			if err != nil {
 				return out, false, err
 			}
+			multiple, err := optionalNumeric(w.multiple)
+			if err != nil {
+				return out, false, err
+			}
 			var location int64
 			if w.primaryLocationID != nil {
 				location = *w.primaryLocationID
@@ -288,6 +301,7 @@ func (s *server) commitPlacements(ctx context.Context, txq *store.Queries, who a
 			params.PrimaryLocationIds = append(params.PrimaryLocationIds, location)
 			params.ReorderPoints = append(params.ReorderPoints, reorderPoint)
 			params.Maximums = append(params.Maximums, maximum)
+			params.Multiples = append(params.Multiples, multiple)
 			params.Skus = append(params.Skus, w.sku)
 			params.ProductNames = append(params.ProductNames, w.productName)
 		}
@@ -299,7 +313,7 @@ func (s *server) commitPlacements(ctx context.Context, txq *store.Queries, who a
 			if p, ok := before[siteKey{w.variantID, w.siteID}]; ok {
 				was = &p
 			}
-			c := placementChanges(was, placementFields{primaryLocationID: w.primaryLocationID, reorderPoint: w.reorderPoint, maximum: w.maximum})
+			c := placementChanges(was, placementFields{primaryLocationID: w.primaryLocationID, reorderPoint: w.reorderPoint, maximum: w.maximum, multiple: w.multiple})
 			if len(c) == 0 {
 				continue
 			}
@@ -325,7 +339,7 @@ func (s *server) commitPlacements(ctx context.Context, txq *store.Queries, who a
 // locations once each, before any transaction.
 func (s *server) resolvePlacementImport(ctx context.Context, file fileimport.File, column map[string]int) ([]gen.InventoryPlacementImportRow, []placementWrite, error) {
 	cell := func(r fileimport.Record, name string) string {
-		if i := column[name]; i < len(r.Cells) {
+		if i, ok := column[name]; ok && i < len(r.Cells) {
 			return strings.TrimSpace(r.Cells[i])
 		}
 		return ""
@@ -369,6 +383,9 @@ func (s *server) resolvePlacementImport(ctx context.Context, file fileimport.Fil
 		row := gen.InventoryPlacementImportRow{
 			Row: int32(r.Row + 1), Sku: cell(r, "sku"), Site: cell(r, "site"), PrimaryLocation: cell(r, "primarylocation"),
 			ReorderPoint: cell(r, "reorderpoint"), Maximum: cell(r, "maximum"), Outcome: gen.InventoryPlacementImportOutcomeOk,
+		}
+		if _, ok := column[placementImportMultiple]; ok {
+			row.Multiple = ptr(cell(r, placementImportMultiple))
 		}
 		w, outcome, detail := judgePlacementRow(row, extraCells(r, len(file.Header)), siteByCode, locationByCode, found)
 		row.Outcome = outcome
@@ -441,6 +458,16 @@ func judgePlacementRow(row gen.InventoryPlacementImportRow, extra bool, sites ma
 			return w, gen.InventoryPlacementImportOutcomeQuantityInvalid, msg
 		}
 		w.maximum = q
+	}
+	if row.Multiple != nil && *row.Multiple != "" {
+		q, msg := parseImportDecimal(*row.Multiple, "multiple")
+		if msg == "" && q.Sign() <= 0 {
+			msg = "The multiple must be more than 0"
+		}
+		if msg != "" {
+			return w, gen.InventoryPlacementImportOutcomeQuantityInvalid, msg
+		}
+		w.multiple = q
 	}
 	if w.reorderPoint != nil && w.maximum != nil && w.maximum.Cmp(w.reorderPoint) < 0 {
 		return w, gen.InventoryPlacementImportOutcomeMaximumBelowReorderPoint,
