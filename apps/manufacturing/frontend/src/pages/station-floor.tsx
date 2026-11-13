@@ -59,7 +59,7 @@ const ACTION_HEIGHT = 72;
 type StationView =
   | { kind: "centers" }
   | { kind: "center"; id: number }
-  | { kind: "workOrder"; id: number; centerId: number };
+  | { kind: "workOrder"; id: number; centerId: number; askForce?: boolean };
 
 /**
  * The shop floor on a shared station (manufacturing phase 2 M140): the
@@ -78,11 +78,17 @@ export const StationShopFloor = () => {
         <StationQueue
           id={view.id}
           onBack={() => setView({ kind: "centers" })}
-          onOpen={(id) => setView({ kind: "workOrder", id, centerId: view.id })}
+          onOpen={(id, askForce) => setView({ kind: "workOrder", id, centerId: view.id, askForce })}
         />
       )}
       {view.kind === "workOrder" && (
-        <StationWorkOrder id={view.id} onBack={() => setView({ kind: "center", id: view.centerId })} />
+        <StationWorkOrder
+          key={view.id}
+          id={view.id}
+          centerId={view.centerId}
+          askForce={view.askForce}
+          onBack={() => setView({ kind: "center", id: view.centerId })}
+        />
       )}
     </StationContext.Provider>
   );
@@ -144,8 +150,20 @@ const StationCenters = ({ onOpen }: { onOpen: (id: number) => void }) => {
   );
 };
 
-/** A work center's queue at the station, with its block (M30, M31). */
-const StationQueue = ({ id, onBack, onOpen }: { id: number; onBack: () => void; onOpen: (id: number) => void }) => {
+/**
+ * A work center's queue at the station, with its block (M30, M31). Start here
+ * on a group's work order starts it at this center; one that is still pending
+ * opens with Start anyway asked, as the work order's own Start does.
+ */
+const StationQueue = ({
+  id,
+  onBack,
+  onOpen,
+}: {
+  id: number;
+  onBack: () => void;
+  onOpen: (id: number, askForce?: boolean) => void;
+}) => {
   const { t, stamp } = useManufacturingFormat();
   const live = useWorkCenterLive(id);
   const meta = useQuery(manufacturingMetaQueryOptions());
@@ -176,6 +194,10 @@ const StationQueue = ({ id, onBack, onOpen }: { id: number; onBack: () => void; 
       await invalidate();
       onOpen(workOrderId);
     } catch (error) {
+      if (refusalCode(error) === "work_order_pending") {
+        onOpen(workOrderId, true);
+        return;
+      }
       notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
       await invalidate();
     } finally {
@@ -300,15 +322,28 @@ const RunningTimer = ({ log }: { log: ManufacturingTimeLog }) => {
  * Start, Pause, Finish, Register quantity or production, Report scrap, Report a
  * deviation — its checks, its instructions and its components, for the
  * active operator. The order's lots and the links to other pages are left out.
+ * Every start, Start anyway too, names the center it was opened from
+ * (`centerId`): the station is judged by it, and a group's work order starts
+ * at that member.
  */
-const StationWorkOrder = ({ id, onBack }: { id: number; onBack: () => void }) => {
+const StationWorkOrder = ({
+  id,
+  centerId,
+  askForce: askedForce = false,
+  onBack,
+}: {
+  id: number;
+  centerId: number;
+  askForce?: boolean;
+  onBack: () => void;
+}) => {
   const { t, quantity } = useManufacturingFormat();
   const live = useWorkOrderLive(id);
   const meta = useQuery(manufacturingMetaQueryOptions());
   const view = useQuery(workOrderQueryOptions(id, live));
   const invalidate = useInvalidateManufacturing();
   const [busy, setBusy] = useState<"start" | "pause" | "finish">();
-  const [askForce, setAskForce] = useState(false);
+  const [askForce, setAskForce] = useState(askedForce);
   const [producing, setProducing] = useState(false);
   const [scrapping, setScrapping] = useState(false);
   const [passing, setPassing] = useState(false);
@@ -340,7 +375,8 @@ const StationWorkOrder = ({ id, onBack }: { id: number; onBack: () => void }) =>
       setBusy(undefined);
     }
   };
-  const start = (force?: boolean) => void act("start", () => startWorkOrder(id, force), t("workOrderStarted"));
+  const start = (force?: boolean) =>
+    void act("start", () => startWorkOrder(id, force, centerId), t("workOrderStarted"));
   const pause = () => void act("pause", () => pauseWorkOrder(id), t("workOrderPaused"));
   const finish = () =>
     modals.openConfirmModal({

@@ -19,39 +19,60 @@ const client = createApiClient({ resolveUrl: appUrl, sessionNotFoundMeansExpired
  * memory only; nothing here stores it.
  */
 let stationToken: (() => string | undefined) | undefined;
-let onStationUnauthorized: ((code: string | undefined) => void) | undefined;
+let onStationUnauthorized: ((code: string | undefined, token: string | undefined) => void) | undefined;
+let onStationAnswered: ((token: string) => void) | undefined;
 
-/** Puts this package's requests in station mode (a token getter), or back in a person's (undefined). */
+/**
+ * Puts this package's requests in station mode (a token getter), or back in a
+ * person's (undefined). Every request is tagged with the token it went out
+ * with: `onUnauthorized` hears a 401 with its code and that token, so the
+ * station drops the operator the request was made for even when another has
+ * been chosen since; `onAnswered` hears every other answer with its token —
+ * the server saw that operator active, which the station's idle clock follows.
+ */
 export const setStationOperator = (
   token: (() => string | undefined) | undefined,
-  onUnauthorized?: (code: string | undefined) => void,
+  onUnauthorized?: (code: string | undefined, token: string | undefined) => void,
+  onAnswered?: (token: string) => void,
 ) => {
   stationToken = token;
   onStationUnauthorized = token ? onUnauthorized : undefined;
+  onStationAnswered = token ? onAnswered : undefined;
 };
 
 /** Whether this package's requests go out as a station's operator. */
 export const inStationMode = () => stationToken !== undefined;
 
 /** init with the active operator's Authorization header, in station mode. */
-export const stationInit = <T extends RequestInit>(init: T): T => withStation(init);
+export const stationInit = <T extends RequestInit>(init: T): T => withStation(init, stationToken?.());
 
-const withStation = <T extends RequestInit>(init: T): T => {
-  const token = stationToken?.();
+/** The active operator's token now, to tag a request with (`stationAnswered`, `handleUnauthorized`). */
+export const currentStationToken = (): string | undefined => stationToken?.();
+
+const withStation = <T extends RequestInit>(init: T, token: string | undefined): T => {
   if (token === undefined) return init;
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Station ${token}`);
   return { ...init, headers };
 };
 
+/** Tells the station a request made with token was answered, other than with a 401. */
+export const stationAnswered = (token: string | undefined) => {
+  if (token !== undefined) onStationAnswered?.(token);
+};
+
 /** The shared client's request, as a station's operator in station mode. */
 export const request = async <T>(url: string, init: RequestOptions = {}): Promise<T> => {
   if (!stationToken) return client.request<T>(url, init);
+  const token = stationToken();
   try {
-    return await client.request<T>(url, { ...withStation(init), handleUnauthorized: false });
+    const answer = await client.request<T>(url, { ...withStation(init, token), handleUnauthorized: false });
+    stationAnswered(token);
+    return answer;
   } catch (error) {
     const failed = error as { status?: number; code?: string };
-    if (failed.status === 401) onStationUnauthorized?.(failed.code);
+    if (failed.status === 401) onStationUnauthorized?.(failed.code, token);
+    else stationAnswered(token);
     throw error;
   }
 };
@@ -85,10 +106,10 @@ export const setAuthStateClearer = (clearer: (() => void | Promise<void>) | unde
  * code when the response is at hand (`operator_session_ended`,
  * `station_unknown`).
  */
-export const handleUnauthorized = async (response?: Response): Promise<void> => {
+export const handleUnauthorized = async (response?: Response, token?: string): Promise<void> => {
   if (stationToken) {
     const body = response ? await readJson<{ error?: { code?: string } }>(response.clone()).catch(() => null) : null;
-    onStationUnauthorized?.(body?.error?.code);
+    onStationUnauthorized?.(body?.error?.code, token);
     return;
   }
   try {
@@ -286,8 +307,10 @@ export const refusalOf = async (response: Response): Promise<Error> => {
 
 /** A write sent past the shared client, so its refusal keeps the code, the lines and the path (`refusalOf`). */
 export const send = async <T>(url: string, init: RequestInit): Promise<T> => {
-  const response = await fetch(appUrl(url), { ...withStation(init), credentials: "include" });
-  if (response.status === 401) await handleUnauthorized(response);
+  const token = stationToken?.();
+  const response = await fetch(appUrl(url), { ...withStation(init, token), credentials: "include" });
+  if (response.status === 401) await handleUnauthorized(response, token);
+  else stationAnswered(token);
   if (response.ok) return (response.status === 204 ? undefined : await response.json()) as T;
   throw await refusalOf(response);
 };

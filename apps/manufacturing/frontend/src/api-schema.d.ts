@@ -962,7 +962,7 @@ export interface paths {
         get: operations["getManufacturingStationWorkCenters"];
         /**
          * Set a station's work centers
-         * @description Replaces the work centers a shared shop-floor station serves (M131). Its shop floor opens on them, and every request its operators make that names a work center, a work order or a production is checked against them. Archived work centers may stay; an unknown one is work_center_unknown. At most 100.
+         * @description Replaces the work centers a shared shop-floor station serves (M131). Its shop floor opens on them, and every request its operators make that names a work center, a work order or a production is checked against them. Archived work centers may stay; an unknown one is work_center_unknown. At most 100. A station Identity does not know is 404. A change is recorded with who made it and the centers before and after.
          */
         put: operations["putManufacturingStationWorkCenters"];
         post?: never;
@@ -7743,6 +7743,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+            /** @description Not Found — no such station. The body is empty. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

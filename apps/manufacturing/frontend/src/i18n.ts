@@ -2111,13 +2111,13 @@ export const manufacturingCatalog = {
     unbuildQuarantineReleased: "Karantenen er opphevet",
     unbuildReleasedAt: "Karantene opphevet",
     unbuildNotFound: "Det finnes ingen slik demontering.",
-    stationNoWorkCenters: "Denne stasjonen betjener ingen arbeidsstasjon ennå",
+    stationNoWorkCenters: "Denne nettbrettstasjonen betjener ingen arbeidsstasjon ennå",
     stationNoWorkCentersHint:
-      "En administrator velger hvilke arbeidsstasjoner en stasjon betjener under Arbeidsområde → Stasjoner. Til da er det ingenting å arbeide med her.",
+      "En administrator velger hvilke arbeidsstasjoner en nettbrettstasjon betjener under Arbeidsområde → Nettbrettstasjoner. Til da er det ingenting å arbeide med her.",
     stationBack: "Tilbake",
     stationWorkCenters: "Arbeidsstasjoner",
     stationWorkCentersHint:
-      "Stasjonens verksted åpner på disse arbeidsstasjonene, og operatørene når bare dem og arbeidsordrene ved dem.",
+      "Nettbrettstasjonens verksted åpner på disse arbeidsstasjonene, og operatørene når bare dem og arbeidsordrene ved dem.",
   },
 } satisfies CatalogResources;
 

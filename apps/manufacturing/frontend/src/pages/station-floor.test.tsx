@@ -6,10 +6,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ManufacturingWorkOrderCheck } from "../api/quality";
-import { setStationOperator } from "../api/request";
+import { request, setStationOperator } from "../api/request";
 import { stationOperationList } from "../api/stations";
 import { stubFetch } from "../test/fetch";
-import { orderFixture, stubManufacturingApi, workOrderFixture } from "../test/server";
+import { manufacturingProblem, orderFixture, stubManufacturingApi, workOrderFixture } from "../test/server";
 import { StationShopFloor } from "./station-floor";
 
 const TOKEN = "operator-token-in-memory";
@@ -125,5 +125,86 @@ describe("the shop floor on a shared station", () => {
     );
     renderStation();
     await waitFor(() => expect(signedOut).toBe("operator_session_ended"));
+  });
+
+  it("names the center on every start, Start anyway too", async () => {
+    const starts: { path: string; body: unknown }[] = [];
+    stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      workOrders: [workOrderFixture({ status: "ready" })],
+      write: (method, path, body) => {
+        if (method !== "POST" || !path.endsWith("/start")) return undefined;
+        starts.push({ path, body });
+        return starts.length === 1 ? manufacturingProblem(409, "work_order_pending") : undefined;
+      },
+    });
+    setStationOperator(() => TOKEN);
+    renderStation();
+    await userEvent.click(await screen.findByRole("button", { name: /SAW/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "MO-12 · Cut" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start anyway" }));
+    await waitFor(() => expect(starts).toHaveLength(2));
+    expect(starts.map(({ body }) => body)).toEqual([{ workCenterId: 1 }, { force: true, workCenterId: 1 }]);
+  });
+
+  it("starts a group's work order here through Start anyway, at this center", async () => {
+    const starts: { path: string; body: unknown }[] = [];
+    const grouped = workOrderFixture({
+      id: 42,
+      status: "ready",
+      workCenter: { id: 2, code: "PAINT", name: "PAINT station", siteId: 1, workingState: "normal" },
+    });
+    stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      workOrders: [grouped],
+      groupWork: { 1: [grouped] },
+      write: (method, path, body) => {
+        if (method !== "POST" || !path.endsWith("/start")) return undefined;
+        starts.push({ path, body });
+        return starts.length === 1 ? manufacturingProblem(409, "work_order_pending") : undefined;
+      },
+    });
+    setStationOperator(() => TOKEN);
+    renderStation();
+    await userEvent.click(await screen.findByRole("button", { name: /SAW/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start here" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Start anyway" }));
+    await waitFor(() => expect(starts).toHaveLength(2));
+    expect(starts).toEqual([
+      { path: "/work-orders/42/start", body: { workCenterId: 1 } },
+      { path: "/work-orders/42/start", body: { force: true, workCenterId: 1 } },
+    ]);
+  });
+
+  it("tells the station which operator's request was refused, and which were answered", async () => {
+    const refused: (string | undefined)[] = [];
+    const answered: string[] = [];
+    let token = "first-operator";
+    stubFetch((_input: RequestInfo | URL, init?: RequestInit) => {
+      const sent = new Headers(init?.headers).get("Authorization");
+      // The first operator's session has ended; the second's stands.
+      if (sent === "Station first-operator")
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: { code: "operator_session_ended", message: "x" } }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      return Promise.resolve(
+        new Response(JSON.stringify({ items: [] }), { status: 200, headers: { "Content-Type": "application/json" } }),
+      );
+    });
+    setStationOperator(
+      () => token,
+      (_code, carried) => refused.push(carried),
+      (carried) => answered.push(carried),
+    );
+    renderStation();
+    await waitFor(() => expect(refused).toContain("first-operator"));
+    token = "second-operator";
+    await expect(request("/api/v1/manufacturing/work-centers")).resolves.toBeDefined();
+    expect(answered).toContain("second-operator");
+    expect(refused).not.toContain("second-operator");
   });
 });
