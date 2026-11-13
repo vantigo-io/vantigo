@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourceHref } from "./routes";
+import { sourceHref, unbuildHref } from "./routes";
 
 describe("sourceHref", () => {
   const production = { module: "manufacturing", kind: "production", id: "9", lineId: "5" };
@@ -9,10 +9,18 @@ describe("sourceHref", () => {
     expect(sourceHref(production, undefined)).toBe("/manufacturing/orders/5");
   });
 
-  it("links an unbuild to Manufacturing's unbuilds (manufacturing phase 2 M123)", () => {
+  it("links an unbuild to its page in Manufacturing (manufacturing phase 2 M123)", () => {
     const unbuild = { module: "manufacturing", kind: "unbuild", id: "4", lineId: "4" };
-    expect(sourceHref(unbuild, ["inventory", "manufacturing"])).toBe("/manufacturing/unbuilds");
+    expect(sourceHref(unbuild, ["inventory", "manufacturing"])).toBe("/manufacturing/unbuilds/4");
     expect(sourceHref(unbuild, ["inventory"])).toBeUndefined();
+    expect(sourceHref({ ...unbuild, id: "x" }, undefined)).toBeUndefined();
+  });
+
+  it("links a hold an unbuild put to the unbuild (M123)", () => {
+    const hold = { module: "manufacturing", kind: "unbuild", id: "4" };
+    expect(unbuildHref(hold, undefined)).toBe("/manufacturing/unbuilds/4");
+    expect(unbuildHref(hold, ["inventory"])).toBeUndefined();
+    expect(unbuildHref({ ...hold, kind: "deviation" }, undefined)).toBeUndefined();
   });
 
   it("links nothing when Manufacturing is not mounted, or for another source", () => {

@@ -147,6 +147,32 @@ describe("the lot column", () => {
 });
 
 describe("the lot page", () => {
+  it("links a hold an unbuild put to the unbuild, which releases it (manufacturing phase 2 M123)", async () => {
+    stubInventoryApi({
+      variants: [...variants(), milk],
+      lots: [
+        lot(1001, "E1", {
+          status: "quarantine",
+          holds: [
+            {
+              id: 8,
+              kind: "quarantine",
+              cause: "recall",
+              source: { module: "manufacturing", kind: "unbuild", id: "1002" },
+              inventorys: false,
+              createdAt: "2026-09-02T08:00:00Z",
+            },
+          ],
+        }),
+      ],
+    });
+    renderRoute("/inventory/lots/1001");
+    expect(await screen.findByRole("link", { name: "An unbuild of a held lot" })).toHaveAttribute(
+      "href",
+      "/manufacturing/unbuilds/1002",
+    );
+  });
+
   it("puts a quarantine, releases Inventory's hold, and leaves another module's to it", async () => {
     const fetchMock = stubInventoryApi({
       variants: [...variants(), milk],

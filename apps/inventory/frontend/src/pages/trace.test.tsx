@@ -166,6 +166,36 @@ describe("the trace (M87–M91)", () => {
     expect(await screen.findByText("Sent to Bergen")).toBeInTheDocument();
   });
 
+  it("links an unbuild to its page in Manufacturing (manufacturing phase 2 M123)", async () => {
+    stubInventoryApi({
+      variants: [...variants(), flour],
+      trace: () => ({
+        ...usage,
+        nodes: [
+          usage.nodes[0],
+          {
+            key: "0.0",
+            parentKey: "0",
+            depth: 1,
+            kind: "unbuild",
+            variant: flour,
+            depthLimit: false,
+            quantity: 1,
+            movement: {
+              id: 6003,
+              kind: "unbuild",
+              postedAt: "2026-09-12T09:00:00Z",
+              source: { module: "manufacturing", kind: "unbuild", id: "1001" },
+            },
+          },
+        ],
+      }),
+    });
+    renderRoute("/inventory/trace?lotId=1001");
+    expect(await screen.findByText("Unbuilt")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Unbuild" })).toHaveAttribute("href", "/manufacturing/unbuilds/1001");
+  });
+
   it("asks the other direction and the components, says when deliveries are hidden, and exports", async () => {
     const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:file");
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
