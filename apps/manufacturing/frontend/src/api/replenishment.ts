@@ -73,9 +73,15 @@ export function useSuggestionsLive(siteId: number): boolean {
 /** The byte order mark a spreadsheet reads the file as UTF-8 by. */
 const BYTE_ORDER_MARK = new Uint8Array([0xef, 0xbb, 0xbf]);
 
-/** A CSV cell: quoted when it holds the separator, a quote or a line break, and guarded against formulas. */
+/** A number as the file writes it, which a spreadsheet reads as one: `-14`, `2,5`. */
+const NUMBER = /^-?\d+(,\d+)?$/;
+
+/**
+ * A CSV cell: quoted when it holds the separator, a quote or a line break, and
+ * guarded against formulas — a text cell only: a negative number stays a number.
+ */
 const cell = (value: string) => {
-  const guarded = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  const guarded = !NUMBER.test(value) && /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
   return /[;"\n\r]/.test(guarded) ? `"${guarded.replaceAll('"', '""')}"` : guarded;
 };
 
