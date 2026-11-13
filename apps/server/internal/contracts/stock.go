@@ -402,6 +402,10 @@ type StockLedger interface {
 type StockPosted struct {
 	MovementID int64
 	Picks      []StockPick // one per lot an AutoLot line took, by line index
+	// Quarantined is the lots an unbuild of a held lot quarantined, in id
+	// order (manufacturing phase 2 M123): its holds are the unbuild's, for
+	// its release. Empty for any other posting.
+	Quarantined []int64
 }
 
 // StockPick is one lot an AutoLot line took: the line's index in Lines or

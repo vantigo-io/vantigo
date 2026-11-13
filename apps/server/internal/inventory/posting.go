@@ -429,6 +429,12 @@ func (s *server) postOnce(ctx context.Context, tx pgx.Tx, txq *store.Queries, m 
 		if inspected[l.variantID] && l.lotID != 0 {
 			update[l.lotID] = true
 		}
+		// A lot an unbuild restores to may be quarantined after the posting
+		// (manufacturing phase 2 M123): taken as the hold takes it, so two
+		// unbuilds into one lot wait for each other rather than deadlock.
+		if m.kind == movementKindUnbuild && l.to != nil && l.lotID != 0 {
+			update[l.lotID] = true
+		}
 	}
 	lots, err := lockLots(ctx, txq, lotIDs, update)
 	if err != nil {

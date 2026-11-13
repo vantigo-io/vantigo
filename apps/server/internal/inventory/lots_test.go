@@ -742,6 +742,55 @@ func TestLots_HoldRacesPosting(t *testing.T) {
 	assertLedgerConsistent(t, h)
 }
 
+// TestLots_UnbuildsIntoOneLot is two-and-more unbuilds of a held lot
+// restoring into one lot at once (manufacturing phase 2 M123), on a pool of
+// four: each takes the lot it restores to FOR NO KEY UPDATE at step 5, as its
+// quarantine does after the posting, so they wait for each other rather than
+// deadlock; every one posts and quarantines the lot under its own source.
+func TestLots_UnbuildsIntoOneLot(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithPoolMaxConns(4))
+	c, _ := signIn(t, h, everything...)
+	s := seedLots(t, h, c)
+	e1, _, e3 := receiveLots(t, h, c, s)
+	l := ledgerOf(h)
+	if err := inTx(t, h, func(tx pgx.Tx) error {
+		return l.HoldLots(t.Context(), tx, contracts.StockSource{Module: "inventory", Kind: "lot", ID: e1}, []contracts.LotHold{{LotID: e1, Kind: "block", Cause: "recall"}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const n = 6
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			doc := contracts.StockSource{Module: "manufacturing", Kind: "unbuild", ID: int64(200 + i)}
+			var posted contracts.StockPosted
+			err := inTx(t, h, func(tx pgx.Tx) error {
+				var err error
+				posted, err = l.Produce(inCallerTx(t.Context()), tx, doc, contracts.StockProduction{Document: doc, SiteID: s.site.Id, Today: testToday, Unbuild: true,
+					Consume: []contracts.ConsumeLine{{VariantID: varLot, LineID: doc.ID, FromLocationID: s.shelf1.Id, Quantity: "0.5", LotID: e1}},
+					Produce: []contracts.ProduceLine{{VariantID: varLot, LineID: doc.ID, ToLocationID: s.shelf2.Id, Quantity: "0.5", LotID: e3}}})
+				return err
+			})
+			if err != nil {
+				t.Errorf("unbuild %d: %v", doc.ID, err)
+				return
+			}
+			if len(posted.Quarantined) != 1 || posted.Quarantined[0] != e3 {
+				t.Errorf("unbuild %d quarantined %v, want [%d]", doc.ID, posted.Quarantined, e3)
+			}
+		})
+	}
+	wg.Wait()
+	if got := modtest.One[int64](t, h.Harness, `SELECT count(*) FROM inventory.lot_holds WHERE lot_id = $1 AND source_kind = 'unbuild' AND released_at IS NULL`, e3); got != n {
+		t.Errorf("the restored lot holds %d unbuild holds, want %d", got, n)
+	}
+	if got := lotOnHand(t, h, e3, s.shelf2.Id); got != "3.000" {
+		t.Errorf("the restored lot holds %s on shelf 2, want 3.000", got)
+	}
+	assertLedgerConsistent(t, h)
+}
+
 // TestLots_SerialReserveLoad is a reserve against 10,000 serial balances at
 // one site (M65b), timed: the reserve locks every one of the variant's rows
 // there, and the row locks are kept while that stays under 50 ms on CI.

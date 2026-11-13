@@ -1040,21 +1040,23 @@ func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 			return contracts.StockPosted{}, err
 		}
 	}
+	var quarantined []int64
 	if p.Unbuild {
-		if err := l.quarantineRestored(ctx, tx, txq, doc, p, res.picks); err != nil {
+		if quarantined, err = l.quarantineRestored(ctx, tx, txq, doc, p, res.picks); err != nil {
 			return contracts.StockPosted{}, err
 		}
 	}
-	return contracts.StockPosted{MovementID: res.movementID, Picks: res.picks}, nil
+	return contracts.StockPosted{MovementID: res.movementID, Picks: res.picks, Quarantined: quarantined}, nil
 }
 
 // quarantineRestored is an unbuild's hold on what it restores (manufacturing
 // phase 2 M123): when a lot it consumed holds an active hold, every lot it
 // restores to gets a quarantine hold from the unbuild, with the consumed
 // lot's cause — a block's first — so held material does not come back
-// usable. It runs inside the same Produce, after the posting.
+// usable. It runs inside the same Produce, after the posting, and answers
+// the lots it held, in id order.
 func (l ledger) quarantineRestored(ctx context.Context, tx pgx.Tx, txq *store.Queries, doc contracts.StockSource, p contracts.StockProduction,
-	picks []contracts.StockPick) error {
+	picks []contracts.StockPick) ([]int64, error) {
 	var consumed []int64
 	for _, c := range p.Consume {
 		if c.LotID != 0 {
@@ -1071,14 +1073,14 @@ func (l ledger) quarantineRestored(ctx context.Context, tx pgx.Tx, txq *store.Qu
 		}
 	}
 	if len(consumed) == 0 || len(restored) == 0 {
-		return nil
+		return nil, nil
 	}
 	held, err := txq.ActiveHoldsOfLots(ctx, consumed)
 	if err != nil {
-		return fmt.Errorf("inventory: read the holds of the lots an unbuild took: %w", err)
+		return nil, fmt.Errorf("inventory: read the holds of the lots an unbuild took: %w", err)
 	}
 	if len(held) == 0 {
-		return nil
+		return nil, nil
 	}
 	slices.Sort(restored)
 	holds := make([]contracts.LotHold, 0, len(restored))
@@ -1087,7 +1089,10 @@ func (l ledger) quarantineRestored(ctx context.Context, tx pgx.Tx, txq *store.Qu
 		holds = append(holds, contracts.LotHold{LotID: id, Kind: "quarantine", Cause: held[0].Cause, By: by,
 			Note: "Restored by an unbuild of a held lot"})
 	}
-	return l.s.holdLots(ctx, tx, txq, sourceText(doc), holds, restored)
+	if err := l.s.holdLots(ctx, tx, txq, sourceText(doc), holds, restored); err != nil {
+		return nil, err
+	}
+	return restored, nil
 }
 
 // issueLineOf is an issue's lineOf for issueError: line i's variant and line
