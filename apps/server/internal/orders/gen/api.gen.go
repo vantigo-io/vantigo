@@ -2234,7 +2234,7 @@ type OrdersIntakeRow struct {
 
 // OrdersLine A line of a quote or an order (O15). A section or a note has only its text and position. The amounts are Invoices' own (O17); VAT is per document. The quantity buckets are an order line's and stay 0 on a quote.
 type OrdersLine struct {
-	// Available What is available of the line's variant at the order's site — on hand less every reservation there — as Inventory answers it (O45). Null when stock is not kept, the order names no site, or the line names no goods variant. May be negative.
+	// Available What is available of the line's variant at the order's site — on hand less every reservation there — as Inventory answers it (O45). On a kit line, how many kits its child lines make: the least over the children of available ÷ perKit, rounded down to three decimals (manufacturing phase 2 M146). Null when stock is not kept, the order names no site, or the line names no goods variant. May be negative.
 	Available       *float64                 `json:"available,omitempty"`
 	DeliveryMethod  OrdersLineDeliveryMethod `json:"deliveryMethod"`
 	Description     string                   `json:"description"`
@@ -2268,10 +2268,16 @@ type OrdersLine struct {
 	PackagingId *int32 `json:"packagingId,omitempty"`
 
 	// PackagingName The name of the packaging the line was entered in, as it was then (O15).
-	PackagingName     *string                `json:"packagingName,omitempty"`
-	PackagingQuantity *float64               `json:"packagingQuantity,omitempty"`
-	Position          int32                  `json:"position"`
-	PriceSource       *OrdersLinePriceSource `json:"priceSource,omitempty"`
+	PackagingName     *string  `json:"packagingName,omitempty"`
+	PackagingQuantity *float64 `json:"packagingQuantity,omitempty"`
+
+	// ParentLineId The kit line this line is a child of (manufacturing phase 2 M145): a component of the kit, copied onto the order from Manufacturing's kit BoM when the kit line was added. A child line reserves, is delivered and picks lots as any goods line; it is priced 0, is not invoiced on its own — its invoiced follows its kit's — and its quantity is its kit's × perKit. Absent on every other line.
+	ParentLineId *int64 `json:"parentLineId,omitempty"`
+
+	// PerKit How much of a child line one kit holds (manufacturing phase 2 M145), at most three decimals; absent on every other line.
+	PerKit      *float64               `json:"perKit,omitempty"`
+	Position    int32                  `json:"position"`
+	PriceSource *OrdersLinePriceSource `json:"priceSource,omitempty"`
 
 	// ProductId The product of a catalog line's variant, as it was when the line was written; null on a free-text line.
 	ProductId *int32 `json:"productId,omitempty"`
@@ -2325,7 +2331,7 @@ type OrdersLineKind string
 // OrdersLinePriceSource defines model for OrdersLine.PriceSource.
 type OrdersLinePriceSource string
 
-// OrdersLineInput A line as the editor saves it; the document's lines are replaced whole on save, a line naming its id kept as that line (O15). A product line with a variantId is priced from the catalog unless unitPrice is given, which makes the price manual (O16); entered including VAT when the document's prices include VAT (O19).
+// OrdersLineInput A line as the editor saves it; the document's lines are replaced whole on save, a line naming its id kept as that line (O15). A product line with a variantId is priced from the catalog unless unitPrice is given, which makes the price manual (O16); entered including VAT when the document's prices include VAT (O19). An order's kit lines bring their child lines themselves (manufacturing phase 2 M145): a new product line whose variant is a kit in Manufacturing gets a child line per component, a kept kit line keeps its children, rescaled to its quantity, and a line sent with a child line's id is left out — a save sends the kit line alone.
 type OrdersLineInput struct {
 	// Description A product line's description; the text of a section or a note line, which the PDF prints under its name.
 	Description *string `json:"description,omitempty"`

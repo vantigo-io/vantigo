@@ -7,7 +7,8 @@
 -- SalesOrderLinesByIDs is the product lines naming a variant among ids that
 -- are a sales order's, with their open quantity (ordered less cancelled less
 -- delivered, at least 0) and the order's number, customer, delivery date,
--- site and status.
+-- site and status. A kit line is none of them (manufacturing phase 2
+-- M145): its child lines are the goods, and the kit is never made.
 SELECT l.id, l.owner_id AS order_id, o.number, o.customer_id, l.variant_id::int AS variant_id,
        GREATEST(l.quantity - l.qty_cancelled - l.qty_delivered, 0)::numeric(14, 3) AS open_quantity,
        o.delivery_date, o.site_id, o.status
@@ -15,6 +16,7 @@ FROM orders.lines l
 JOIN orders.orders o ON o.id = l.owner_id
 WHERE l.owner_kind = 'order' AND l.kind = 'product' AND l.variant_id IS NOT NULL AND l.quantity IS NOT NULL
   AND l.id = ANY(@ids::bigint[])
+  AND NOT EXISTS (SELECT 1 FROM orders.lines c WHERE c.parent_line_id = l.id)
 ORDER BY l.owner_id, l.position;
 
 -- name: SalesOrderLinesOfOrder :many
@@ -27,6 +29,7 @@ FROM orders.lines l
 JOIN orders.orders o ON o.id = l.owner_id
 WHERE l.owner_kind = 'order' AND l.kind = 'product' AND l.variant_id IS NOT NULL AND l.quantity IS NOT NULL
   AND l.owner_id = @order_id
+  AND NOT EXISTS (SELECT 1 FROM orders.lines c WHERE c.parent_line_id = l.id)
 ORDER BY l.position;
 
 -- name: OrderOfLine :one
@@ -55,7 +58,8 @@ ORDER BY line_id, marked_at DESC, manufacturing_order_id DESC;
 -- OpenGoodsLinesAt is the open goods lines of confirmed sales orders
 -- fulfilled from the site, of the variants given (manufacturing phase 2
 -- M107a): delivered by delivery documents, with something open (ordered less
--- cancelled less delivered), by order then line.
+-- cancelled less delivered), by order then line; a kit line is not one, its
+-- child lines are (manufacturing phase 2 M145).
 SELECT l.id, l.owner_id AS order_id, l.variant_id::int AS variant_id,
        (l.quantity - l.qty_cancelled - l.qty_delivered)::numeric(14, 3) AS open_quantity
 FROM orders.lines l
@@ -64,4 +68,5 @@ WHERE l.owner_kind = 'order' AND l.kind = 'product' AND l.delivery_method = 'del
   AND l.variant_id = ANY(@variant_ids::int[]) AND l.quantity IS NOT NULL
   AND l.quantity - l.qty_cancelled - l.qty_delivered > 0
   AND o.status = 'confirmed' AND o.site_id = @site_id::bigint
+  AND NOT EXISTS (SELECT 1 FROM orders.lines c WHERE c.parent_line_id = l.id)
 ORDER BY l.owner_id, l.id;

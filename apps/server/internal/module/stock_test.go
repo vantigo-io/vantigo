@@ -183,6 +183,12 @@ func (fakeDeliveryTrace) Deliveries(context.Context, []int64) ([]contracts.Trace
 	return nil, nil
 }
 
+type fakeKitStructure struct{}
+
+func (fakeKitStructure) Kits(context.Context, []int32) (map[int32][]contracts.KitComponent, error) {
+	return nil, nil
+}
+
 // The production reads and the delivery trace resolve from the enabled modules only: with the
 // provider of each disabled, its slot is nil (manufacturing design M43, M46).
 func TestWorkers_ResolvesProductionReadsFromEnabledModules(t *testing.T) {
@@ -192,15 +198,16 @@ func TestWorkers_ResolvesProductionReadsFromEnabledModules(t *testing.T) {
 	lines := Module{Name: "lines", SalesOrderLines: func(Deps) contracts.SalesOrderLines { return fakeSalesOrderLines{} }}
 	production := Module{Name: "production", Production: func(Deps) contracts.Production { return fakeProduction{} }}
 	trace := Module{Name: "trace", DeliveryTrace: func(Deps) contracts.DeliveryTrace { return fakeDeliveryTrace{} }}
+	kits := Module{Name: "kits", KitStructure: func(Deps) contracts.KitStructure { return fakeKitStructure{} }}
 
-	Workers(Deps{Config: &config.Config{Modules: []string{"consumer", "lines", "production", "trace"}}}, consumer, lines, production, trace)
-	if seen.SalesOrderLines == nil || seen.Production == nil || seen.DeliveryTrace == nil {
-		t.Fatalf("Workers left a production read unset: lines %v, production %v, trace %v", seen.SalesOrderLines, seen.Production, seen.DeliveryTrace)
+	Workers(Deps{Config: &config.Config{Modules: []string{"consumer", "lines", "production", "trace", "kits"}}}, consumer, lines, production, trace, kits)
+	if seen.SalesOrderLines == nil || seen.Production == nil || seen.DeliveryTrace == nil || seen.KitStructure == nil {
+		t.Fatalf("Workers left a production read unset: lines %v, production %v, trace %v, kits %v", seen.SalesOrderLines, seen.Production, seen.DeliveryTrace, seen.KitStructure)
 	}
 
 	seen = Deps{}
-	Workers(Deps{Config: &config.Config{Modules: []string{"consumer"}}}, consumer, lines, production, trace)
-	if seen.SalesOrderLines != nil || seen.Production != nil || seen.DeliveryTrace != nil {
+	Workers(Deps{Config: &config.Config{Modules: []string{"consumer"}}}, consumer, lines, production, trace, kits)
+	if seen.SalesOrderLines != nil || seen.Production != nil || seen.DeliveryTrace != nil || seen.KitStructure != nil {
 		t.Fatal("Workers resolved a production read from a disabled module")
 	}
 }

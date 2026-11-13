@@ -552,7 +552,7 @@ func (q *Queries) KeptOrderNumbers(ctx context.Context, customerID int32) ([]int
 }
 
 const linesOfOwners = `-- name: LinesOfOwners :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id FROM orders.lines
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id, per_kit FROM orders.lines
 WHERE owner_kind = $1 AND owner_id = ANY($2::bigint[])
 ORDER BY owner_id, position
 `
@@ -610,6 +610,7 @@ func (q *Queries) LinesOfOwners(ctx context.Context, arg LinesOfOwnersParams) ([
 			&i.ValidFrom,
 			&i.ValidTo,
 			&i.ChainID,
+			&i.PerKit,
 		); err != nil {
 			return nil, err
 		}

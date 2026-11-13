@@ -51,6 +51,7 @@ WHERE l.owner_kind = 'order' AND l.kind = 'product' AND l.delivery_method = 'del
   AND l.variant_id = ANY($1::int[]) AND l.quantity IS NOT NULL
   AND l.quantity - l.qty_cancelled - l.qty_delivered > 0
   AND o.status = 'confirmed' AND o.site_id = $2::bigint
+  AND NOT EXISTS (SELECT 1 FROM orders.lines c WHERE c.parent_line_id = l.id)
 ORDER BY l.owner_id, l.id
 `
 
@@ -69,7 +70,8 @@ type OpenGoodsLinesAtRow struct {
 // OpenGoodsLinesAt is the open goods lines of confirmed sales orders
 // fulfilled from the site, of the variants given (manufacturing phase 2
 // M107a): delivered by delivery documents, with something open (ordered less
-// cancelled less delivered), by order then line.
+// cancelled less delivered), by order then line; a kit line is not one, its
+// child lines are (manufacturing phase 2 M145).
 func (q *Queries) OpenGoodsLinesAt(ctx context.Context, arg OpenGoodsLinesAtParams) ([]OpenGoodsLinesAtRow, error) {
 	rows, err := q.db.Query(ctx, openGoodsLinesAt, arg.VariantIds, arg.SiteID)
 	if err != nil {
@@ -159,6 +161,7 @@ FROM orders.lines l
 JOIN orders.orders o ON o.id = l.owner_id
 WHERE l.owner_kind = 'order' AND l.kind = 'product' AND l.variant_id IS NOT NULL AND l.quantity IS NOT NULL
   AND l.id = ANY($1::bigint[])
+  AND NOT EXISTS (SELECT 1 FROM orders.lines c WHERE c.parent_line_id = l.id)
 ORDER BY l.owner_id, l.position
 `
 
@@ -181,7 +184,8 @@ type SalesOrderLinesByIDsRow struct {
 // SalesOrderLinesByIDs is the product lines naming a variant among ids that
 // are a sales order's, with their open quantity (ordered less cancelled less
 // delivered, at least 0) and the order's number, customer, delivery date,
-// site and status.
+// site and status. A kit line is none of them (manufacturing phase 2
+// M145): its child lines are the goods, and the kit is never made.
 func (q *Queries) SalesOrderLinesByIDs(ctx context.Context, ids []int64) ([]SalesOrderLinesByIDsRow, error) {
 	rows, err := q.db.Query(ctx, salesOrderLinesByIDs, ids)
 	if err != nil {
@@ -220,6 +224,7 @@ FROM orders.lines l
 JOIN orders.orders o ON o.id = l.owner_id
 WHERE l.owner_kind = 'order' AND l.kind = 'product' AND l.variant_id IS NOT NULL AND l.quantity IS NOT NULL
   AND l.owner_id = $1
+  AND NOT EXISTS (SELECT 1 FROM orders.lines c WHERE c.parent_line_id = l.id)
 ORDER BY l.position
 `
 

@@ -13,7 +13,7 @@ import (
 )
 
 const bomsByIDs = `-- name: BomsByIDs :many
-SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern FROM manufacturing.boms WHERE id = ANY($1::bigint[]) ORDER BY id
+SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern, kind FROM manufacturing.boms WHERE id = ANY($1::bigint[]) ORDER BY id
 `
 
 func (q *Queries) BomsByIDs(ctx context.Context, ids []int64) ([]ManufacturingBom, error) {
@@ -39,6 +39,7 @@ func (q *Queries) BomsByIDs(ctx context.Context, ids []int64) ([]ManufacturingBo
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LotPattern,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}

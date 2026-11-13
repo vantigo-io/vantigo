@@ -9,7 +9,8 @@
 -- whose delivery date falls after until is not yet due (a NULL until is no
 -- bound, and an order with no delivery date is always due). At most
 -- row_limit rows: the caller asks one more than it answers, to know there
--- was more.
+-- was more. A kit's child line is not invoiced on its own (manufacturing
+-- phase 2 M145): its kit line carries the price.
 SELECT o.id AS order_id, o.number AS order_number, o.customer_id, o.currency::text AS currency, o.project_id,
        o.your_reference, o.delivery_date, o.delivery_address_id, o.delivery_name, o.delivery_address_line1,
        o.delivery_address_line2, o.delivery_postal_code, o.delivery_city, o.delivery_country,
@@ -33,6 +34,7 @@ WHERE o.status IN ('draft', 'confirmed')
   AND (sqlc.narg(until)::date IS NULL OR o.delivery_date IS NULL OR o.delivery_date <= sqlc.narg(until)::date)
   AND l.kind IN ('product', 'shipping') AND l.invoice_policy IN ('order', 'delivery')
   AND l.quantity IS NOT NULL AND l.unit_price IS NOT NULL AND l.vat_code_id IS NOT NULL
+  AND l.parent_line_id IS NULL
   AND (CASE WHEN l.invoice_policy = 'delivery' THEN l.qty_delivered ELSE l.quantity - l.qty_cancelled END)
       - l.qty_invoiced - coalesce(a.allocated, 0) > 0
 ORDER BY o.id, l.position

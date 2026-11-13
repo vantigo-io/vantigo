@@ -25,6 +25,7 @@ type ManufacturingBom struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	LotPattern     string
+	Kind           string
 }
 
 type ManufacturingBomLine struct {

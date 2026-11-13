@@ -202,6 +202,7 @@ WHERE o.status IN ('draft', 'confirmed')
   AND ($4::date IS NULL OR o.delivery_date IS NULL OR o.delivery_date <= $4::date)
   AND l.kind IN ('product', 'shipping') AND l.invoice_policy IN ('order', 'delivery')
   AND l.quantity IS NOT NULL AND l.unit_price IS NOT NULL AND l.vat_code_id IS NOT NULL
+  AND l.parent_line_id IS NULL
   AND (CASE WHEN l.invoice_policy = 'delivery' THEN l.qty_delivered ELSE l.quantity - l.qty_cancelled END)
       - l.qty_invoiced - coalesce(a.allocated, 0) > 0
 ORDER BY o.id, l.position
@@ -255,7 +256,8 @@ type DueOrderLinesRow struct {
 // whose delivery date falls after until is not yet due (a NULL until is no
 // bound, and an order with no delivery date is always due). At most
 // row_limit rows: the caller asks one more than it answers, to know there
-// was more.
+// was more. A kit's child line is not invoiced on its own (manufacturing
+// phase 2 M145): its kit line carries the price.
 func (q *Queries) DueOrderLines(ctx context.Context, arg DueOrderLinesParams) ([]DueOrderLinesRow, error) {
 	rows, err := q.db.Query(ctx, dueOrderLines,
 		arg.Every,
@@ -487,7 +489,7 @@ func (q *Queries) LockOrderDraftAllocations(ctx context.Context, orderID *int64)
 }
 
 const lockOrderLinesByIDs = `-- name: LockOrderLinesByIDs :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id FROM orders.lines
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id, per_kit FROM orders.lines
 WHERE id = ANY($1::bigint[]) AND owner_kind = 'order'
 ORDER BY id FOR UPDATE
 `
@@ -540,6 +542,7 @@ func (q *Queries) LockOrderLinesByIDs(ctx context.Context, ids []int64) ([]Order
 			&i.ValidFrom,
 			&i.ValidTo,
 			&i.ChainID,
+			&i.PerKit,
 		); err != nil {
 			return nil, err
 		}

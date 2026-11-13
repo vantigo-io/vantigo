@@ -52,7 +52,7 @@ func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
 // Deps.Products, Deps.SalesTax, Deps.Workforce, Deps.Stock, Deps.StockLedger,
-// Deps.SalesOrderLines, Deps.Production, Deps.DeliveryTrace, Deps.CalendarSources,
+// Deps.SalesOrderLines, Deps.Production, Deps.DeliveryTrace, Deps.KitStructure, Deps.CalendarSources,
 // Deps.IdentityProvisioners, Deps.MailboxCalendars, Deps.ChannelMailboxes and
 // Deps.PersonalMailboxes, which it resolves from the enabled modules the way
 // Compose does — the same base Deps Compose resolves Directory from, before
@@ -504,8 +504,8 @@ func withStock(deps Deps, given, enabled []Module) (Deps, error) {
 	return withProduction(deps, enabled)
 }
 
-// withProduction resolves contracts.SalesOrderLines, contracts.Production
-// and contracts.DeliveryTrace from the enabled modules — at most one may declare each — keeping a preset
+// withProduction resolves contracts.SalesOrderLines, contracts.Production,
+// contracts.DeliveryTrace and contracts.KitStructure from the enabled modules — at most one may declare each — keeping a preset
 // value when none does (manufacturing design M43, M46). Neither provider
 // reads the other while it is built, so the two may come in either order;
 // withStock calls it last, for Compose and Workers both.
@@ -530,6 +530,13 @@ func withProduction(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if trace != nil {
 		deps.DeliveryTrace = trace.DeliveryTrace(deps)
+	}
+	kits, err := soleProvider(enabled, "a kit structure", func(m Module) bool { return m.KitStructure != nil })
+	if err != nil {
+		return deps, err
+	}
+	if kits != nil {
+		deps.KitStructure = kits.KitStructure(deps)
 	}
 	return deps, nil
 }

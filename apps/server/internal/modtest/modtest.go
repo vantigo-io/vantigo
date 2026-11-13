@@ -177,6 +177,7 @@ type setup struct {
 	salesOrderLines   contracts.SalesOrderLines
 	production        contracts.Production
 	deliveryTrace     contracts.DeliveryTrace
+	kitStructure      contracts.KitStructure
 	smtpVerify        func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend          func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore       storage.ObjectStore
@@ -271,6 +272,14 @@ func WithSalesOrderLines(p contracts.SalesOrderLines) Option {
 // declares Module.Production.
 func WithProduction(p contracts.Production) Option {
 	return func(s *setup) { s.production = p }
+}
+
+// WithKitStructure sets Deps.KitStructure directly, for a module under test
+// that copies Manufacturing's kits (orders' kit lines) without composing
+// manufacturing beside it. Compose only overwrites it when a composed module
+// declares Module.KitStructure.
+func WithKitStructure(k contracts.KitStructure) Option {
+	return func(s *setup) { s.kitStructure = k }
 }
 
 // WithDeliveryTrace sets Deps.DeliveryTrace directly, for a module under
@@ -902,6 +911,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		SalesOrderLines:          s.salesOrderLines,
 		Production:               s.production,
 		DeliveryTrace:            s.deliveryTrace,
+		KitStructure:             s.kitStructure,
 		SMTPVerify:               s.smtpVerify,
 		SMTPSend:                 s.smtpSend,
 		ObjectStore:              s.objectStore,
