@@ -3,15 +3,61 @@ import {
   ApiValidationError,
   createApiClient,
   NotFoundError,
+  type RequestOptions,
   readJson,
 } from "@vantigo/frontend-api-client";
 import { appUrl } from "@vantigo/frontend-shell";
 
 const client = createApiClient({ resolveUrl: appUrl, sessionNotFoundMeansExpired: false });
 
-export const { request } = client;
-export type { ApiError, RequestOptions } from "@vantigo/frontend-api-client";
+/**
+ * A shared shop-floor station (manufacturing phase 2 M134, M140): while the
+ * station page has set an operator, every request of this package carries
+ * that operator's token as `Authorization: Station <token>` beside the
+ * station's cookie, and a 401 is the station's to handle — an operator signed
+ * out — never the person's session expiring. The token lives in the page's
+ * memory only; nothing here stores it.
+ */
+let stationToken: (() => string | undefined) | undefined;
+let onStationUnauthorized: ((code: string | undefined) => void) | undefined;
+
+/** Puts this package's requests in station mode (a token getter), or back in a person's (undefined). */
+export const setStationOperator = (
+  token: (() => string | undefined) | undefined,
+  onUnauthorized?: (code: string | undefined) => void,
+) => {
+  stationToken = token;
+  onStationUnauthorized = token ? onUnauthorized : undefined;
+};
+
+/** Whether this package's requests go out as a station's operator. */
+export const inStationMode = () => stationToken !== undefined;
+
+/** init with the active operator's Authorization header, in station mode. */
+export const stationInit = <T extends RequestInit>(init: T): T => withStation(init);
+
+const withStation = <T extends RequestInit>(init: T): T => {
+  const token = stationToken?.();
+  if (token === undefined) return init;
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Station ${token}`);
+  return { ...init, headers };
+};
+
+/** The shared client's request, as a station's operator in station mode. */
+export const request = async <T>(url: string, init: RequestOptions = {}): Promise<T> => {
+  if (!stationToken) return client.request<T>(url, init);
+  try {
+    return await client.request<T>(url, { ...withStation(init), handleUnauthorized: false });
+  } catch (error) {
+    const failed = error as { status?: number; code?: string };
+    if (failed.status === 401) onStationUnauthorized?.(failed.code);
+    throw error;
+  }
+};
+export type { ApiError } from "@vantigo/frontend-api-client";
 export { ApiConflictError, ApiValidationError, NotFoundError, readJson } from "@vantigo/frontend-api-client";
+export type { RequestOptions };
 
 /**
  * The host's session handling, kept here as well as handed to the client.
@@ -33,8 +79,18 @@ export const setAuthStateClearer = (clearer: (() => void | Promise<void>) | unde
   client.setAuthStateClearer(clearer);
 };
 
-/** What the shared client does on a 401: clear the session, then tell the host. */
-export const handleUnauthorized = async (): Promise<void> => {
+/**
+ * What the shared client does on a 401: clear the session, then tell the
+ * host. In station mode the station hears of it instead, with the refusal's
+ * code when the response is at hand (`operator_session_ended`,
+ * `station_unknown`).
+ */
+export const handleUnauthorized = async (response?: Response): Promise<void> => {
+  if (stationToken) {
+    const body = response ? await readJson<{ error?: { code?: string } }>(response.clone()).catch(() => null) : null;
+    onStationUnauthorized?.(body?.error?.code);
+    return;
+  }
   try {
     await clearAuthState?.();
   } finally {
@@ -230,8 +286,8 @@ export const refusalOf = async (response: Response): Promise<Error> => {
 
 /** A write sent past the shared client, so its refusal keeps the code, the lines and the path (`refusalOf`). */
 export const send = async <T>(url: string, init: RequestInit): Promise<T> => {
-  const response = await fetch(appUrl(url), { ...init, credentials: "include" });
-  if (response.status === 401) await handleUnauthorized();
+  const response = await fetch(appUrl(url), { ...withStation(init), credentials: "include" });
+  if (response.status === 401) await handleUnauthorized(response);
   if (response.ok) return (response.status === 204 ? undefined : await response.json()) as T;
   throw await refusalOf(response);
 };

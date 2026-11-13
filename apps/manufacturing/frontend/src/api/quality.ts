@@ -2,7 +2,16 @@ import { queryOptions, useQueryClient } from "@tanstack/react-query";
 import { appUrl, useLiveTopic } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
 import { downloadCsvFrom } from "./reports";
-import { handleUnauthorized, json, MANUFACTURING_QUERY_KEY, queryString, refusalOf, request, send } from "./request";
+import {
+  handleUnauthorized,
+  json,
+  MANUFACTURING_QUERY_KEY,
+  queryString,
+  refusalOf,
+  request,
+  send,
+  stationInit,
+} from "./request";
 
 type Schemas = components["schemas"];
 
@@ -51,11 +60,10 @@ export const uploadCheckPhoto = async (workOrderId: number, file: File): Promise
   const body = new FormData();
   body.append("file", file);
   const response = await fetch(appUrl(`/api/v1/manufacturing/work-orders/${workOrderId}/photos`), {
-    method: "POST",
-    body,
+    ...stationInit({ method: "POST", body }),
     credentials: "include",
   });
-  if (response.status === 401) await handleUnauthorized();
+  if (response.status === 401) await handleUnauthorized(response);
   if (!response.ok) throw await refusalOf(response);
   return (await response.json()) as ManufacturingCheckPhoto;
 };

@@ -1,0 +1,80 @@
+{
+  "manufacturing": [
+    { "operationId": "createManufacturingDeviation", "method": "POST", "path": "/api/v1/manufacturing/deviations" },
+    { "operationId": "getManufacturingMeta", "method": "GET", "path": "/api/v1/manufacturing/meta" },
+    {
+      "operationId": "getManufacturingProductionDraft",
+      "method": "GET",
+      "path": "/api/v1/manufacturing/orders/{id}/production-draft"
+    },
+    {
+      "operationId": "postManufacturingProduction",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/orders/{id}/productions"
+    },
+    { "operationId": "getManufacturingMyWork", "method": "GET", "path": "/api/v1/manufacturing/shop-floor/mine" },
+    { "operationId": "listManufacturingWorkCenters", "method": "GET", "path": "/api/v1/manufacturing/work-centers" },
+    {
+      "operationId": "blockManufacturingWorkCenter",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-centers/{id}/block"
+    },
+    {
+      "operationId": "getManufacturingWorkCenterQueue",
+      "method": "GET",
+      "path": "/api/v1/manufacturing/work-centers/{id}/queue"
+    },
+    {
+      "operationId": "unblockManufacturingWorkCenter",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-centers/{id}/unblock"
+    },
+    { "operationId": "getManufacturingWorkOrder", "method": "GET", "path": "/api/v1/manufacturing/work-orders/{id}" },
+    {
+      "operationId": "recordManufacturingCheckResult",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-orders/{id}/checks/{checkId}/result"
+    },
+    {
+      "operationId": "finishManufacturingWorkOrder",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-orders/{id}/finish"
+    },
+    {
+      "operationId": "pauseManufacturingWorkOrder",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-orders/{id}/pause"
+    },
+    {
+      "operationId": "uploadManufacturingCheckPhoto",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-orders/{id}/photos"
+    },
+    {
+      "operationId": "registerManufacturingWorkOrderQuantity",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-orders/{id}/quantity"
+    },
+    {
+      "operationId": "reportManufacturingWorkOrderScrap",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-orders/{id}/scrap"
+    },
+    {
+      "operationId": "startManufacturingWorkOrder",
+      "method": "POST",
+      "path": "/api/v1/manufacturing/work-orders/{id}/start"
+    }
+  ],
+  "identity": [
+    { "operationId": "getIdentityStation", "method": "GET", "path": "/api/v1/identity/station" },
+    { "operationId": "getIdentityStationOperators", "method": "GET", "path": "/api/v1/identity/station/operators" },
+    { "operationId": "postIdentityStationOperators", "method": "POST", "path": "/api/v1/identity/station/operators" },
+    {
+      "operationId": "postIdentityStationOperatorsBySessionIdEnd",
+      "method": "POST",
+      "path": "/api/v1/identity/station/operators/{sessionId}/end"
+    },
+    { "operationId": "postIdentityStationPair", "method": "POST", "path": "/api/v1/identity/station/pair" }
+  ]
+}
