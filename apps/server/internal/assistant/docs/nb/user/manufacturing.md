@@ -756,7 +756,7 @@ det og når.
 nettbrett ved arbeidsstasjonen: store knapper, ingen hover, lesbart på armlengdes
 avstand. Du arbeider som den som er logget inn, så hver operatør logger inn med sin egen
 konto; å bytte operatør betyr å bytte konto — eller, på et nettbrett satt opp som en
-[delt stasjon](#arbeid-på-en-delt-stasjon), å logge på med PIN-kode eller kort.
+[delt nettbrettstasjon](#arbeid-på-en-delt-nettbrettstasjon), å logge på med PIN-kode eller kort.
 
 Å arbeide i verkstedet krever **Arbeide i verkstedet** (`manufacturing:shop-floor`), eller
 **Administrere produksjonsordrer**, ved siden av Bruke Produksjon. Med bare Bruke
@@ -972,36 +972,41 @@ har sluttet, eller be en arbeidsleder [korrigere tiden](#korriger-en-tidsregistr
 En arbeidsordre nevner også de andre som har hatt tiden løpende så lenge, og ordrens
 tidsregistreringer merker en slik registrering **Over 12 t**.
 
-### Arbeid på en delt stasjon
+### Arbeid på en delt nettbrettstasjon
 
-Et nettbrett flere deler, kan settes opp som en **stasjon**: det forblir koblet til
+Et nettbrett flere deler, kan settes opp som en **nettbrettstasjon**: det forblir koblet til
 arbeidsområdet, og hver av dere logger på med egen PIN-kode eller eget kort, så det du gjør,
-registreres på deg — og på den stasjonen. Sett PIN-koden din under **Innstillinger →
-Sikkerhet → PIN-kode for stasjoner** først; be en administrator om et kort.
+registreres på deg — og på den nettbrettstasjonen. Sett PIN-koden din under **Innstillinger →
+Sikkerhet → PIN-kode for nettbrettstasjoner** først; be en administrator om et kort.
 
 1. Trykk **Logg på** i linjen øverst. Skann kortet ditt, eller velg navnet ditt og skriv inn
-   den sekssifrede PIN-koden. En stasjon som krever PIN-kode sammen med kort, spør etter den
+   den sekssifrede PIN-koden. En nettbrettstasjon som krever PIN-kode sammen med kort, spør etter den
    etter skanningen.
 2. Navnet ditt vises som en **brikke** i linjen. Opptil ti personer kan være pålogget
    samtidig; trykk på brikken din for å arbeide som deg selv. Verkstedet nedenfor er den
    aktive personens.
-3. Velg en av stasjonens **arbeidsstasjoner**, så en arbeidsordre i køen, og arbeid som på et
+3. Velg en av nettbrettstasjonens **arbeidsstasjoner**, så en arbeidsordre i køen, og arbeid som på et
    hvilket som helst nettbrett: Start, Pause, Ferdig, Registrer antall eller produksjon, Meld
    svinn, Meld avvik og kontrollene. **Tilbake** går et steg opp.
-4. Når du går, trykker du **Logg av** ved brikken din. En stasjon logger deg også av etter
-   tiden for inaktivitet — den varsler 30 sekunder før, med **Forbli pålogget** — og etter 12
-   timer.
+4. Når du går, trykker du **Logg av** ved brikken din. Den som står ved nettbrettet, kan
+   trykke på brikken din og arbeide som deg til du gjør det. En nettbrettstasjon logger deg også av
+   etter tiden for inaktivitet — den varsler 30 sekunder før, med **Forbli pålogget**; å
+   arbeide på skjermen og direkteoppdateringene av det du ser på holder deg pålogget — og
+   etter 12 timer.
+5. En brikke som sier **Logget av**, er en nettbrettstasjonen har logget av — inaktiv, avsluttet av en
+   administrator, PIN-koden eller kortet endret, eller ikke lenger tillatt i verkstedet.
+   Trykk **Fjern** for å legge den bort; de logger på igjen for å fortsette.
 
-En stasjon viser verkstedet for sine egne arbeidsstasjoner og ikke noe mer, uansett hvem som
+En nettbrettstasjon viser verkstedet for sine egne arbeidsstasjoner og ikke noe mer, uansett hvem som
 er pålogget: ingen kostnader, ingen partier eller andre sider for ordren, ingen
 produktbilder. Laster du siden på nytt, glemmer nettbrettet hvem som var pålogget; brikkene
 blir stående, så lukk dem med **Logg av**. Tid som står og løper, fortsetter når du logges
 av, som i din egen nettleser.
 
-Flere feil PIN-koder på rad gjør at stasjonen venter før den prøver din igjen, fra 30
-sekunder opp til 15 minutter, bare på den stasjonen. Sier stasjonen *Denne nettleseren er
+Flere feil PIN-koder på rad gjør at nettbrettstasjonen venter før den prøver din igjen, fra 30
+sekunder opp til 15 minutter, bare på den nettbrettstasjonen. Sier nettbrettstasjonen *Denne nettleseren er
 logget inn i Vantigo*, har noen logget inn her som seg selv: logg ut for å bruke den som
-stasjon igjen.
+nettbrettstasjon igjen.
 
 ## Produksjonsplanen
 
