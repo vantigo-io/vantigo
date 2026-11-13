@@ -258,6 +258,9 @@ ORDER BY requested_at DESC
 LIMIT 10;
 ```
 
+Et produkt med et **sett** som standardstykkliste får ikke forslag om å lages: et sett
+lages aldri, og komponentene foreslås som ethvert annet produkts.
+
 ## Kontroller
 
 1. Som en med Administrere stykklister og arbeidsstasjoner åpner du **Produksjon** →

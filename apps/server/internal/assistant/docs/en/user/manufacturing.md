@@ -273,6 +273,30 @@ of materials afterwards does not change the checks of an order already confirmed
   the BoM's product nor one of its components — nor, through the components' own BoMs, be
   used to make the product: that is a circle, refused as one.
 
+## Make a kit
+
+A **kit** is goods sold together under one product — a toolbox set, a gift box — and
+picked as its components. In Manufacturing it is a bill of materials whose **Kind** is
+**Kit** (*Sett*), chosen when you create it; a bill's kind never changes.
+
+1. In **Bills of materials**, choose **New bill of materials**, pick the kit's product and
+   set **Kind** to **Kit**.
+2. Add a line for each component and how many one kit holds — per the output quantity, as
+   on any bill. A component may itself be a kit: its components are then counted in.
+3. Choose **Create bill of materials**. The list and the bill's page mark it **Kit**.
+
+A kit is never made. It has lines only: no operations, no by-products, no lot pattern and
+no make-to-order, and its editor does not offer them. A manufacturing order of a kit is
+refused, a kit gets no replenishment suggestion to make it, and a sales order line of a
+kit offers no manufacturing order. Kits nest at most **three levels** — a kit, a kit among
+its components, and one among theirs — counting, for a kit that is its product's default,
+the kits above it too.
+
+When Orders sells the kit's product, the order line gets a line per component of the
+product's default kit, which is reserved, picked and delivered: see
+[Sell a kit](/en/user/orders/#sell-a-kit). A later change of the kit's lines reaches only
+orders made after it.
+
 ## The default and the alternative bills of materials
 
 A product may have several active bills of materials — alternative recipes, a new revision

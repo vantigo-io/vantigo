@@ -281,6 +281,31 @@ stykklisten etterpå endrer ikke kontrollene til en ordre som allerede er bekref
   komponentenes egne stykklister, brukes til å lage produktet: det er en sirkel, og nektes
   som en.
 
+## Lag et sett
+
+Et **sett** er varer som selges sammen under ett produkt — et verktøysett, en gaveeske —
+og plukkes som komponentene. I Produksjon er det en stykkliste med **Type** **Sett**, som du
+velger når du oppretter den; en stykklistes type endres aldri.
+
+1. I **Stykklister** velger du **Ny stykkliste**, velger settets produkt og setter **Type**
+   til **Sett**.
+2. Legg til en linje for hver komponent og hvor mange ett sett holder — per
+   produksjonsmengden, som på enhver stykkliste. En komponent kan selv være et sett:
+   komponentene dens regnes da med.
+3. Velg **Opprett stykkliste**. Listen og stykklistens side merker den **Sett**.
+
+Et sett lages aldri. Det har bare linjer: ingen operasjoner, ingen biprodukter, ikke noe
+partimønster og ingen produksjon mot ordre, og redigeringen tilbyr dem ikke. En
+produksjonsordre på et sett avvises, et sett får ikke påfyllingsforslag om å lages, og en
+salgsordrelinje med et sett tilbyr ingen produksjonsordre. Sett kan ligge i hverandre i
+høyst **tre nivåer** — et sett, et sett blant komponentene og ett blant deres — og for et sett
+som er produktets standard, teller også settene over det.
+
+Når Ordre selger settets produkt, får ordrelinjen en linje per komponent i produktets
+standardsett, som reserveres, plukkes og leveres: se
+[Selg et sett](/nb/user/orders/#selg-et-sett). En senere endring av settets linjer når bare
+ordrer som lages etter den.
+
 ## Standardstykklisten og de alternative stykklistene
 
 Et produkt kan ha flere aktive stykklister — alternative oppskrifter, en ny revisjon ved
