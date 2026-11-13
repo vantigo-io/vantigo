@@ -322,7 +322,8 @@ type IdentityStation struct {
 type IdentityStationOperatorSession struct {
 	ID             uuid.UUID
 	StationID      uuid.UUID
-	UserID         uuid.UUID
+	UserID         *uuid.UUID
+	UserDisplay    string
 	TokenHash      []byte
 	StartedAt      time.Time
 	LastActivityAt time.Time
@@ -370,16 +371,18 @@ type IdentityUser struct {
 }
 
 type IdentityUserBadge struct {
-	UserID    uuid.UUID
-	BadgeHash []byte
-	SetAt     time.Time
-	SetBy     *uuid.UUID
+	UserID     uuid.UUID
+	BadgeHash  []byte
+	KeyVersion int32
+	SetAt      time.Time
+	SetBy      *uuid.UUID
 }
 
 type IdentityUserPin struct {
-	UserID  uuid.UUID
-	PinHash string
-	SetAt   time.Time
+	UserID     uuid.UUID
+	PinHash    string
+	KeyVersion int32
+	SetAt      time.Time
 }
 
 type IdentityUserRole struct {

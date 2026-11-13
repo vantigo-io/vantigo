@@ -56,8 +56,8 @@ func TestStation_TheWholeContract(t *testing.T) {
 	now := h.Now()
 	h.Exec(t, `INSERT INTO identity.stations (id, name, token_hash, token_expires_at, paired_at, created_at)
 	           VALUES ($1, 'Station', $2, $3, $4, $4)`, station, cookieHash, now.Add(90*24*time.Hour), now)
-	h.Exec(t, `INSERT INTO identity.station_operator_sessions (id, station_id, user_id, token_hash, started_at, last_activity_at)
-	           VALUES ($1, $2, $3, $4, $5, $5)`, uuid.New(), station, user, operatorHash, now)
+	h.Exec(t, `INSERT INTO identity.station_operator_sessions (id, station_id, user_id, user_display, token_hash, started_at, last_activity_at)
+	           VALUES ($1, $2, $3, 'Operator', $4, $5, $5)`, uuid.New(), station, user, operatorHash, now)
 	c := h.Client(t)
 	c.SetCookie("vantigo.station", cookie)
 

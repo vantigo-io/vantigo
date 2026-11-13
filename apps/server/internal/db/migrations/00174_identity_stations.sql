@@ -35,29 +35,38 @@ CREATE TABLE identity.stations (
 );
 CREATE UNIQUE INDEX ux_stations_token_hash ON identity.stations (token_hash) WHERE token_hash IS NOT NULL;
 CREATE UNIQUE INDEX ux_stations_pairing_hash ON identity.stations (pairing_hash) WHERE pairing_hash IS NOT NULL;
+CREATE INDEX ix_stations_created_by ON identity.stations (created_by) WHERE created_by IS NOT NULL;
+CREATE INDEX ix_stations_revoked_by ON identity.stations (revoked_by) WHERE revoked_by IS NOT NULL;
 
 -- A person's PIN (M132): argon2id over HMAC-SHA-256 of the six digits under a
 -- key derived from APP_SECRET, so the table alone cannot be searched over its
--- million values.
+-- million values. key_version is the version of that key the hash was made
+-- under: a PIN of an older version cannot be verified and is set again.
 CREATE TABLE identity.user_pins (
-    user_id  uuid PRIMARY KEY REFERENCES identity.users (id) ON DELETE CASCADE,
-    pin_hash text        NOT NULL,
-    set_at   timestamptz NOT NULL
+    user_id     uuid PRIMARY KEY REFERENCES identity.users (id) ON DELETE CASCADE,
+    pin_hash    text        NOT NULL,
+    key_version integer     NOT NULL,
+    set_at      timestamptz NOT NULL
 );
 
 -- A person's badge (M132): HMAC-SHA-256 of the code a card reader types,
--- under its own derived key; unique, so one card names one person.
+-- under its own derived key; unique, so one card names one person. key_version
+-- as the PIN's: a badge of an older version is enrolled again.
 CREATE TABLE identity.user_badges (
-    user_id    uuid PRIMARY KEY REFERENCES identity.users (id) ON DELETE CASCADE,
-    badge_hash bytea       NOT NULL,
-    set_at     timestamptz NOT NULL,
-    set_by     uuid REFERENCES identity.users (id) ON DELETE SET NULL
+    user_id     uuid PRIMARY KEY REFERENCES identity.users (id) ON DELETE CASCADE,
+    badge_hash  bytea       NOT NULL,
+    key_version integer     NOT NULL,
+    set_at      timestamptz NOT NULL,
+    set_by      uuid REFERENCES identity.users (id) ON DELETE SET NULL
 );
+CREATE INDEX ix_user_badges_set_by ON identity.user_badges (set_by) WHERE set_by IS NOT NULL;
 CREATE UNIQUE INDEX ux_user_badges_hash ON identity.user_badges (badge_hash);
 
 -- The escalating backoff per (station, user) (M133): consecutive failures,
--- the first of the run, and when the next attempt may be verified. A success
--- deletes the row.
+-- the first and the last of the run, and when the next attempt may be
+-- verified. A success deletes the row, and so do a PIN or a badge set or
+-- cleared and an administrator's reset; a run whose last failure is an hour
+-- old starts again.
 CREATE TABLE identity.operator_backoff (
     station_id       uuid        NOT NULL REFERENCES identity.stations (id) ON DELETE CASCADE,
     user_id          uuid        NOT NULL REFERENCES identity.users (id) ON DELETE CASCADE,
@@ -67,22 +76,30 @@ CREATE TABLE identity.operator_backoff (
     next_attempt_at  timestamptz,
     PRIMARY KEY (station_id, user_id)
 );
+CREATE INDEX ix_operator_backoff_user ON identity.operator_backoff (user_id);
 
 -- An operator signed in at a station (M133): the token's SHA-256, ended by a
--- switch out, the idle timer, the 12-hour bound, a revocation or a replacing
--- sign-in.
+-- switch out, the idle timer, the 12-hour bound, a revocation, a replacing
+-- sign-in, the person's PIN or badge changing, their sessions being signed
+-- out, or an administrator. The rows are kept as the station's history when
+-- the person is erased (M141): user_id is cleared and user_display keeps the
+-- name the session had; an erased person's session has ended, so it has no
+-- token.
 CREATE TABLE identity.station_operator_sessions (
     id               uuid PRIMARY KEY,
     station_id       uuid        NOT NULL REFERENCES identity.stations (id) ON DELETE CASCADE,
-    user_id          uuid        NOT NULL REFERENCES identity.users (id) ON DELETE CASCADE,
+    user_id          uuid        REFERENCES identity.users (id) ON DELETE SET NULL,
+    user_display     text        NOT NULL,
     token_hash       bytea,
     started_at       timestamptz NOT NULL,
     last_activity_at timestamptz NOT NULL,
     ended_at         timestamptz,
     end_reason       text,
     CONSTRAINT ck_station_operator_sessions_end CHECK ((ended_at IS NULL) = (end_reason IS NULL)),
+    CONSTRAINT ck_station_operator_sessions_token CHECK (token_hash IS NULL OR (ended_at IS NULL AND user_id IS NOT NULL)),
     CONSTRAINT ck_station_operator_sessions_reason CHECK (end_reason IS NULL OR end_reason IN
-        ('switched_out', 'idle', 'expired', 'revoked', 'replaced', 'user_inactive'))
+        ('switched_out', 'idle', 'expired', 'revoked', 'replaced', 'user_inactive',
+         'credentials_changed', 'signed_out', 'ended_by_admin'))
 );
 CREATE UNIQUE INDEX ux_station_operator_sessions_token ON identity.station_operator_sessions (token_hash) WHERE token_hash IS NOT NULL;
 CREATE INDEX ix_station_operator_sessions_active ON identity.station_operator_sessions (station_id) WHERE ended_at IS NULL;

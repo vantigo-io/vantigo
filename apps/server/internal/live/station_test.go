@@ -22,7 +22,9 @@ import (
 type stationAccess struct {
 	*fakeAccess
 	smu      sync.Mutex
-	stations map[uuid.UUID]bool // live
+	stations map[uuid.UUID]bool   // live
+	allowed  map[uuid.UUID]string // the one address a station is reached from, "" for any
+	seen     map[uuid.UUID]string // the address the last re-check was given
 }
 
 func (a *stationAccess) CheckStation(r *http.Request) (uuid.UUID, bool, error) {
@@ -42,10 +44,18 @@ func (a *stationAccess) CheckStation(r *http.Request) (uuid.UUID, bool, error) {
 	return id, true, nil
 }
 
-func (a *stationAccess) StationLive(_ context.Context, id uuid.UUID) (bool, error) {
+func (a *stationAccess) StationKnown(_ context.Context, id uuid.UUID) (bool, error) {
 	a.smu.Lock()
 	defer a.smu.Unlock()
-	return a.stations[id], nil
+	_, ok := a.stations[id]
+	return ok, nil
+}
+
+func (a *stationAccess) StationLive(_ context.Context, id uuid.UUID, ip string) (bool, error) {
+	a.smu.Lock()
+	defer a.smu.Unlock()
+	a.seen[id] = ip
+	return a.stations[id] && (a.allowed[id] == "" || a.allowed[id] == ip), nil
 }
 
 // stationRegistry serves alpha.list (people only) and alpha.center, which a
@@ -90,7 +100,7 @@ func stationRegistry(t testing.TB, centers map[uuid.UUID][]string, mu *sync.Mute
 // at the re-check, and a subscription the station no longer reaches is
 // dropped.
 func TestHandler_StationPath(t *testing.T) {
-	access := &stationAccess{fakeAccess: newFakeAccess(), stations: map[uuid.UUID]bool{}}
+	access := &stationAccess{fakeAccess: newFakeAccess(), stations: map[uuid.UUID]bool{}, allowed: map[uuid.UUID]string{}, seen: map[uuid.UUID]string{}}
 	station, other := uuid.New(), uuid.New()
 	access.stations[station], access.stations[other] = true, true
 	var mu sync.Mutex
@@ -172,6 +182,29 @@ func TestHandler_StationPath(t *testing.T) {
 	access.smu.Unlock()
 	if code := closedWith(t, c); code != CloseSessionEnded {
 		t.Fatalf("closed with %d, want 4401", code)
+	}
+
+	// The re-check is given the address of the socket's handshake, so a
+	// station whose allowlist no longer admits it closes with 4401 too.
+	fenced := uuid.New()
+	access.smu.Lock()
+	access.stations[fenced] = true
+	access.smu.Unlock()
+	fc, _, err := dial("station=" + fenced.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	access.smu.Lock()
+	access.allowed[fenced] = "10.0.0.1"
+	access.smu.Unlock()
+	if code := closedWith(t, fc); code != CloseSessionEnded {
+		t.Fatalf("outside the allowlist the socket closed with %d, want 4401", code)
+	}
+	access.smu.Lock()
+	seen := access.seen[fenced]
+	access.smu.Unlock()
+	if seen != "127.0.0.1" {
+		t.Fatalf("the re-check was given %q, want the handshake's address", seen)
 	}
 
 	// A session cookie beside the station's makes the handshake a person's.

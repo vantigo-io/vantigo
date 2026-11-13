@@ -25,7 +25,7 @@ func (q *Queries) CountActiveOperatorSessions(ctx context.Context, stationID uui
 	return column_1, err
 }
 
-const deleteOperatorBackoff = `-- name: DeleteOperatorBackoff :exec
+const deleteOperatorBackoff = `-- name: DeleteOperatorBackoff :execrows
 DELETE FROM identity.operator_backoff WHERE station_id = $1 AND user_id = $2
 `
 
@@ -34,9 +34,12 @@ type DeleteOperatorBackoffParams struct {
 	UserID    uuid.UUID
 }
 
-func (q *Queries) DeleteOperatorBackoff(ctx context.Context, arg DeleteOperatorBackoffParams) error {
-	_, err := q.db.Exec(ctx, deleteOperatorBackoff, arg.StationID, arg.UserID)
-	return err
+func (q *Queries) DeleteOperatorBackoff(ctx context.Context, arg DeleteOperatorBackoffParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOperatorBackoff, arg.StationID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteUserBadge = `-- name: DeleteUserBadge :execrows
@@ -49,6 +52,17 @@ func (q *Queries) DeleteUserBadge(ctx context.Context, userID uuid.UUID) (int64,
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteUserOperatorBackoff = `-- name: DeleteUserOperatorBackoff :exec
+DELETE FROM identity.operator_backoff WHERE user_id = $1
+`
+
+// DeleteUserOperatorBackoff clears a person's backoff at every station: their
+// PIN or badge was set or cleared.
+func (q *Queries) DeleteUserOperatorBackoff(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUserOperatorBackoff, userID)
+	return err
 }
 
 const deleteUserPin = `-- name: DeleteUserPin :execrows
@@ -77,16 +91,16 @@ type EndActiveOperatorSessionAtStationParams struct {
 	StationID uuid.UUID
 }
 
-// EndActiveOperatorSessionAtStation is a switch out: only an active session of
-// this station ends.
-func (q *Queries) EndActiveOperatorSessionAtStation(ctx context.Context, arg EndActiveOperatorSessionAtStationParams) (uuid.UUID, error) {
+// EndActiveOperatorSessionAtStation is a switch out, by the station or an
+// administrator: only an active session of this station ends.
+func (q *Queries) EndActiveOperatorSessionAtStation(ctx context.Context, arg EndActiveOperatorSessionAtStationParams) (*uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, endActiveOperatorSessionAtStation,
 		arg.Now,
 		arg.EndReason,
 		arg.ID,
 		arg.StationID,
 	)
-	var user_id uuid.UUID
+	var user_id *uuid.UUID
 	err := row.Scan(&user_id)
 	return user_id, err
 }
@@ -111,13 +125,14 @@ func (q *Queries) EndOperatorSession(ctx context.Context, arg EndOperatorSession
 	return result.RowsAffected(), nil
 }
 
-const endStaleOperatorSessions = `-- name: EndStaleOperatorSessions :exec
+const endStaleOperatorSessions = `-- name: EndStaleOperatorSessions :many
 UPDATE identity.station_operator_sessions
 SET ended_at = $1::timestamptz, token_hash = NULL,
     end_reason = CASE WHEN started_at <= $1::timestamptz - $2::interval THEN 'expired' ELSE 'idle' END
 WHERE station_id = $3 AND ended_at IS NULL
   AND (last_activity_at <= $1::timestamptz - $4::interval
        OR started_at <= $1::timestamptz - $2::interval)
+RETURNING id, user_id, end_reason
 `
 
 type EndStaleOperatorSessionsParams struct {
@@ -127,22 +142,45 @@ type EndStaleOperatorSessionsParams struct {
 	Idle      pgtype.Interval
 }
 
+type EndStaleOperatorSessionsRow struct {
+	ID        uuid.UUID
+	UserID    *uuid.UUID
+	EndReason *string
+}
+
 // EndStaleOperatorSessions ends the station's sessions idle past its timeout
-// (idle) or older than the absolute bound (expired), before a count.
-func (q *Queries) EndStaleOperatorSessions(ctx context.Context, arg EndStaleOperatorSessionsParams) error {
-	_, err := q.db.Exec(ctx, endStaleOperatorSessions,
+// (idle) or older than the absolute bound (expired), before a count; it
+// answers each one ended, for the audit.
+func (q *Queries) EndStaleOperatorSessions(ctx context.Context, arg EndStaleOperatorSessionsParams) ([]EndStaleOperatorSessionsRow, error) {
+	rows, err := q.db.Query(ctx, endStaleOperatorSessions,
 		arg.Now,
 		arg.Absolute,
 		arg.StationID,
 		arg.Idle,
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EndStaleOperatorSessionsRow
+	for rows.Next() {
+		var i EndStaleOperatorSessionsRow
+		if err := rows.Scan(&i.ID, &i.UserID, &i.EndReason); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const endStationOperatorSessions = `-- name: EndStationOperatorSessions :exec
+const endStationOperatorSessions = `-- name: EndStationOperatorSessions :many
 UPDATE identity.station_operator_sessions
 SET ended_at = $1, end_reason = $2, token_hash = NULL
 WHERE station_id = $3 AND ended_at IS NULL
+RETURNING id, user_id
 `
 
 type EndStationOperatorSessionsParams struct {
@@ -151,9 +189,74 @@ type EndStationOperatorSessionsParams struct {
 	StationID uuid.UUID
 }
 
-func (q *Queries) EndStationOperatorSessions(ctx context.Context, arg EndStationOperatorSessionsParams) error {
-	_, err := q.db.Exec(ctx, endStationOperatorSessions, arg.Now, arg.EndReason, arg.StationID)
-	return err
+type EndStationOperatorSessionsRow struct {
+	ID     uuid.UUID
+	UserID *uuid.UUID
+}
+
+// EndStationOperatorSessions ends every active session of a station: revoked
+// or paired again. It answers each one ended, for the audit.
+func (q *Queries) EndStationOperatorSessions(ctx context.Context, arg EndStationOperatorSessionsParams) ([]EndStationOperatorSessionsRow, error) {
+	rows, err := q.db.Query(ctx, endStationOperatorSessions, arg.Now, arg.EndReason, arg.StationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EndStationOperatorSessionsRow
+	for rows.Next() {
+		var i EndStationOperatorSessionsRow
+		if err := rows.Scan(&i.ID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const endUserOperatorSessions = `-- name: EndUserOperatorSessions :many
+UPDATE identity.station_operator_sessions s
+SET ended_at = $1, end_reason = $2, token_hash = NULL
+FROM identity.stations st
+WHERE st.id = s.station_id AND s.user_id = $3 AND s.ended_at IS NULL
+RETURNING s.id, s.station_id, st.name AS station_name
+`
+
+type EndUserOperatorSessionsParams struct {
+	Now       *time.Time
+	EndReason *string
+	UserID    *uuid.UUID
+}
+
+type EndUserOperatorSessionsRow struct {
+	ID          uuid.UUID
+	StationID   uuid.UUID
+	StationName string
+}
+
+// EndUserOperatorSessions ends a user's active sessions at every station: their
+// PIN or badge changed, their sessions were signed out, or they can no longer
+// act. It answers each one ended with its station's name, for the audit.
+func (q *Queries) EndUserOperatorSessions(ctx context.Context, arg EndUserOperatorSessionsParams) ([]EndUserOperatorSessionsRow, error) {
+	rows, err := q.db.Query(ctx, endUserOperatorSessions, arg.Now, arg.EndReason, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EndUserOperatorSessionsRow
+	for rows.Next() {
+		var i EndUserOperatorSessionsRow
+		if err := rows.Scan(&i.ID, &i.StationID, &i.StationName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const endUserOperatorSessionsAtStation = `-- name: EndUserOperatorSessionsAtStation :many
@@ -167,7 +270,7 @@ type EndUserOperatorSessionsAtStationParams struct {
 	Now       *time.Time
 	EndReason *string
 	StationID uuid.UUID
-	UserID    uuid.UUID
+	UserID    *uuid.UUID
 }
 
 // EndUserOperatorSessionsAtStation ends a user's active sessions at a station:
@@ -221,7 +324,7 @@ func (q *Queries) GetOperatorBackoff(ctx context.Context, arg GetOperatorBackoff
 }
 
 const getOperatorSessionByTokenHash = `-- name: GetOperatorSessionByTokenHash :one
-SELECT s.id, s.station_id, s.user_id, s.started_at, s.last_activity_at,
+SELECT s.id, s.station_id, u.id AS user_id, s.started_at, s.last_activity_at,
        u.is_disabled, u.lockout_end, (u.pending_since IS NOT NULL)::boolean AS pending, u.kind,
        r.role_names, r.is_owner,
        m.upstream_active AS scim_upstream_active
@@ -346,7 +449,7 @@ func (q *Queries) GetStationByTokenHash(ctx context.Context, tokenHash []byte) (
 }
 
 const getUserBadge = `-- name: GetUserBadge :one
-SELECT user_id, badge_hash, set_at, set_by FROM identity.user_badges WHERE user_id = $1
+SELECT user_id, badge_hash, key_version, set_at, set_by FROM identity.user_badges WHERE user_id = $1
 `
 
 func (q *Queries) GetUserBadge(ctx context.Context, userID uuid.UUID) (IdentityUserBadge, error) {
@@ -355,6 +458,7 @@ func (q *Queries) GetUserBadge(ctx context.Context, userID uuid.UUID) (IdentityU
 	err := row.Scan(
 		&i.UserID,
 		&i.BadgeHash,
+		&i.KeyVersion,
 		&i.SetAt,
 		&i.SetBy,
 	)
@@ -362,7 +466,7 @@ func (q *Queries) GetUserBadge(ctx context.Context, userID uuid.UUID) (IdentityU
 }
 
 const getUserBadgeByHash = `-- name: GetUserBadgeByHash :one
-SELECT user_id, badge_hash, set_at, set_by FROM identity.user_badges WHERE badge_hash = $1
+SELECT user_id, badge_hash, key_version, set_at, set_by FROM identity.user_badges WHERE badge_hash = $1
 `
 
 func (q *Queries) GetUserBadgeByHash(ctx context.Context, badgeHash []byte) (IdentityUserBadge, error) {
@@ -371,6 +475,7 @@ func (q *Queries) GetUserBadgeByHash(ctx context.Context, badgeHash []byte) (Ide
 	err := row.Scan(
 		&i.UserID,
 		&i.BadgeHash,
+		&i.KeyVersion,
 		&i.SetAt,
 		&i.SetBy,
 	)
@@ -389,27 +494,33 @@ func (q *Queries) GetUserDisplayName(ctx context.Context, id uuid.UUID) (string,
 }
 
 const getUserPin = `-- name: GetUserPin :one
-SELECT user_id, pin_hash, set_at FROM identity.user_pins WHERE user_id = $1
+SELECT user_id, pin_hash, key_version, set_at FROM identity.user_pins WHERE user_id = $1
 `
 
 func (q *Queries) GetUserPin(ctx context.Context, userID uuid.UUID) (IdentityUserPin, error) {
 	row := q.db.QueryRow(ctx, getUserPin, userID)
 	var i IdentityUserPin
-	err := row.Scan(&i.UserID, &i.PinHash, &i.SetAt)
+	err := row.Scan(
+		&i.UserID,
+		&i.PinHash,
+		&i.KeyVersion,
+		&i.SetAt,
+	)
 	return i, err
 }
 
 const insertOperatorSession = `-- name: InsertOperatorSession :exec
-INSERT INTO identity.station_operator_sessions (id, station_id, user_id, token_hash, started_at, last_activity_at)
-VALUES ($1, $2, $3, $4, $5, $5)
+INSERT INTO identity.station_operator_sessions (id, station_id, user_id, user_display, token_hash, started_at, last_activity_at)
+VALUES ($1, $2, $3, $4, $5, $6, $6)
 `
 
 type InsertOperatorSessionParams struct {
-	ID        uuid.UUID
-	StationID uuid.UUID
-	UserID    uuid.UUID
-	TokenHash []byte
-	Now       time.Time
+	ID          uuid.UUID
+	StationID   uuid.UUID
+	UserID      *uuid.UUID
+	UserDisplay string
+	TokenHash   []byte
+	Now         time.Time
 }
 
 func (q *Queries) InsertOperatorSession(ctx context.Context, arg InsertOperatorSessionParams) error {
@@ -417,6 +528,7 @@ func (q *Queries) InsertOperatorSession(ctx context.Context, arg InsertOperatorS
 		arg.ID,
 		arg.StationID,
 		arg.UserID,
+		arg.UserDisplay,
 		arg.TokenHash,
 		arg.Now,
 	)
@@ -481,7 +593,7 @@ func (q *Queries) InsertStation(ctx context.Context, arg InsertStationParams) (I
 }
 
 const listActiveOperatorSessions = `-- name: ListActiveOperatorSessions :many
-SELECT s.id, s.station_id, s.user_id, s.started_at, s.last_activity_at, u.display_name
+SELECT s.id, s.station_id, u.id AS user_id, s.started_at, s.last_activity_at, u.display_name
 FROM identity.station_operator_sessions s
 JOIN identity.users u ON u.id = s.user_id
 WHERE s.ended_at IS NULL AND ($1::uuid IS NULL OR s.station_id = $1::uuid)
@@ -515,6 +627,59 @@ func (q *Queries) ListActiveOperatorSessions(ctx context.Context, stationID *uui
 			&i.StartedAt,
 			&i.LastActivityAt,
 			&i.DisplayName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOperatorBackoff = `-- name: ListOperatorBackoff :many
+SELECT b.station_id, b.user_id, u.display_name, b.failures, b.first_failure_at, b.last_failure_at, b.next_attempt_at
+FROM identity.operator_backoff b
+JOIN identity.users u ON u.id = b.user_id
+WHERE b.last_failure_at > $1::timestamptz - $2::interval
+ORDER BY b.station_id, u.display_name, b.user_id
+`
+
+type ListOperatorBackoffParams struct {
+	Now   time.Time
+	Decay pgtype.Interval
+}
+
+type ListOperatorBackoffRow struct {
+	StationID      uuid.UUID
+	UserID         uuid.UUID
+	DisplayName    string
+	Failures       int32
+	FirstFailureAt time.Time
+	LastFailureAt  time.Time
+	NextAttemptAt  *time.Time
+}
+
+// ListOperatorBackoff is every run of failures not yet decayed, with the
+// person's name, for the administrators' list.
+func (q *Queries) ListOperatorBackoff(ctx context.Context, arg ListOperatorBackoffParams) ([]ListOperatorBackoffRow, error) {
+	rows, err := q.db.Query(ctx, listOperatorBackoff, arg.Now, arg.Decay)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOperatorBackoffRow
+	for rows.Next() {
+		var i ListOperatorBackoffRow
+		if err := rows.Scan(
+			&i.StationID,
+			&i.UserID,
+			&i.DisplayName,
+			&i.Failures,
+			&i.FirstFailureAt,
+			&i.LastFailureAt,
+			&i.NextAttemptAt,
 		); err != nil {
 			return nil, err
 		}
@@ -566,6 +731,24 @@ func (q *Queries) ListStations(ctx context.Context) ([]IdentityStation, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockOperatorAttempt = `-- name: LockOperatorAttempt :exec
+SELECT pg_advisory_xact_lock(hashtextextended('identity.operator-attempt:' || $1::uuid::text || ':' || $2::uuid::text, 0))
+`
+
+type LockOperatorAttemptParams struct {
+	StationID uuid.UUID
+	UserID    uuid.UUID
+}
+
+// LockOperatorAttempt serialises the sign-in attempts for one person at one
+// station until the transaction ends, so the backoff an attempt reads is the
+// one the attempt before it left. It takes the same lock for a person who
+// does not exist, so such an attempt does the same work.
+func (q *Queries) LockOperatorAttempt(ctx context.Context, arg LockOperatorAttemptParams) error {
+	_, err := q.db.Exec(ctx, lockOperatorAttempt, arg.StationID, arg.UserID)
+	return err
 }
 
 const lockStation = `-- name: LockStation :one
@@ -695,11 +878,33 @@ func (q *Queries) PairStation(ctx context.Context, arg PairStationParams) (Ident
 	return i, err
 }
 
+const pseudonymiseUserOperatorSessions = `-- name: PseudonymiseUserOperatorSessions :exec
+UPDATE identity.station_operator_sessions SET user_display = $1 WHERE user_id = $2
+`
+
+type PseudonymiseUserOperatorSessionsParams struct {
+	Display string
+	UserID  *uuid.UUID
+}
+
+// PseudonymiseUserOperatorSessions replaces the name an erased person's
+// operator sessions keep (M141): the rows stay as the station's history,
+// naming no one.
+func (q *Queries) PseudonymiseUserOperatorSessions(ctx context.Context, arg PseudonymiseUserOperatorSessionsParams) error {
+	_, err := q.db.Exec(ctx, pseudonymiseUserOperatorSessions, arg.Display, arg.UserID)
+	return err
+}
+
 const recordOperatorFailure = `-- name: RecordOperatorFailure :one
 INSERT INTO identity.operator_backoff (station_id, user_id, failures, first_failure_at, last_failure_at)
 VALUES ($1, $2, 1, $3::timestamptz, $3::timestamptz)
 ON CONFLICT (station_id, user_id) DO UPDATE
-SET failures = identity.operator_backoff.failures + 1,
+SET failures = CASE WHEN identity.operator_backoff.last_failure_at <= $3::timestamptz - $4::interval
+                    THEN 1 ELSE identity.operator_backoff.failures + 1 END,
+    first_failure_at = CASE WHEN identity.operator_backoff.last_failure_at <= $3::timestamptz - $4::interval
+                            THEN EXCLUDED.first_failure_at ELSE identity.operator_backoff.first_failure_at END,
+    next_attempt_at = CASE WHEN identity.operator_backoff.last_failure_at <= $3::timestamptz - $4::interval
+                           THEN NULL ELSE identity.operator_backoff.next_attempt_at END,
     last_failure_at = EXCLUDED.last_failure_at
 RETURNING station_id, user_id, failures, first_failure_at, last_failure_at, next_attempt_at
 `
@@ -708,12 +913,19 @@ type RecordOperatorFailureParams struct {
 	StationID uuid.UUID
 	UserID    uuid.UUID
 	Now       time.Time
+	Decay     pgtype.Interval
 }
 
 // RecordOperatorFailure counts one more consecutive failure of a user at a
-// station; only a success (DeleteOperatorBackoff) ends the run.
+// station. A success (DeleteOperatorBackoff) ends the run, and a run whose
+// last failure is older than decay starts again at one.
 func (q *Queries) RecordOperatorFailure(ctx context.Context, arg RecordOperatorFailureParams) (IdentityOperatorBackoff, error) {
-	row := q.db.QueryRow(ctx, recordOperatorFailure, arg.StationID, arg.UserID, arg.Now)
+	row := q.db.QueryRow(ctx, recordOperatorFailure,
+		arg.StationID,
+		arg.UserID,
+		arg.Now,
+		arg.Decay,
+	)
 	var i IdentityOperatorBackoff
 	err := row.Scan(
 		&i.StationID,
@@ -992,22 +1204,25 @@ func (q *Queries) UpdateStation(ctx context.Context, arg UpdateStationParams) (I
 }
 
 const upsertUserBadge = `-- name: UpsertUserBadge :exec
-INSERT INTO identity.user_badges (user_id, badge_hash, set_at, set_by)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (user_id) DO UPDATE SET badge_hash = EXCLUDED.badge_hash, set_at = EXCLUDED.set_at, set_by = EXCLUDED.set_by
+INSERT INTO identity.user_badges (user_id, badge_hash, key_version, set_at, set_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (user_id) DO UPDATE SET badge_hash = EXCLUDED.badge_hash, key_version = EXCLUDED.key_version,
+    set_at = EXCLUDED.set_at, set_by = EXCLUDED.set_by
 `
 
 type UpsertUserBadgeParams struct {
-	UserID    uuid.UUID
-	BadgeHash []byte
-	Now       time.Time
-	SetBy     *uuid.UUID
+	UserID     uuid.UUID
+	BadgeHash  []byte
+	KeyVersion int32
+	Now        time.Time
+	SetBy      *uuid.UUID
 }
 
 func (q *Queries) UpsertUserBadge(ctx context.Context, arg UpsertUserBadgeParams) error {
 	_, err := q.db.Exec(ctx, upsertUserBadge,
 		arg.UserID,
 		arg.BadgeHash,
+		arg.KeyVersion,
 		arg.Now,
 		arg.SetBy,
 	)
@@ -1015,19 +1230,25 @@ func (q *Queries) UpsertUserBadge(ctx context.Context, arg UpsertUserBadgeParams
 }
 
 const upsertUserPin = `-- name: UpsertUserPin :exec
-INSERT INTO identity.user_pins (user_id, pin_hash, set_at)
-VALUES ($1, $2, $3)
-ON CONFLICT (user_id) DO UPDATE SET pin_hash = EXCLUDED.pin_hash, set_at = EXCLUDED.set_at
+INSERT INTO identity.user_pins (user_id, pin_hash, key_version, set_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id) DO UPDATE SET pin_hash = EXCLUDED.pin_hash, key_version = EXCLUDED.key_version, set_at = EXCLUDED.set_at
 `
 
 type UpsertUserPinParams struct {
-	UserID  uuid.UUID
-	PinHash string
-	Now     time.Time
+	UserID     uuid.UUID
+	PinHash    string
+	KeyVersion int32
+	Now        time.Time
 }
 
 func (q *Queries) UpsertUserPin(ctx context.Context, arg UpsertUserPinParams) error {
-	_, err := q.db.Exec(ctx, upsertUserPin, arg.UserID, arg.PinHash, arg.Now)
+	_, err := q.db.Exec(ctx, upsertUserPin,
+		arg.UserID,
+		arg.PinHash,
+		arg.KeyVersion,
+		arg.Now,
+	)
 	return err
 }
 

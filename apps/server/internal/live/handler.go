@@ -119,7 +119,7 @@ func (h *Hub) serveStation(w http.ResponseWriter, r *http.Request, station uuid.
 			return
 		}
 	}
-	c, attachErr := h.attachStation(station)
+	c, attachErr := h.attachStation(station, httpx.ClientIP(r))
 	if errors.Is(attachErr, errHubClosed) {
 		httpx.WriteProblem(w, r, http.StatusServiceUnavailable, "The server is shutting down.")
 		return

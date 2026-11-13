@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
 )
@@ -39,18 +40,22 @@ const operatorSessionAbsolute = 12 * time.Hour
 // stationAuthScheme is the Authorization scheme of an operator's request.
 const stationAuthScheme = "Station"
 
-// stationPermissions are all a station's operator may ever hold (M134): the
-// operator's own permissions are intersected with them.
-var stationPermissions = []string{"manufacturing:access", "manufacturing:shop-floor"}
+// stationPermissions are all a station's operator may ever hold (M134), and
+// what they must hold to act at all: every station request is checked for
+// both, whatever its own rule names.
+var stationPermissions = contracts.StationPermissions
 
 // The end reasons of an operator session (the CHECK on end_reason).
 const (
-	endSwitchedOut  = "switched_out"
-	endIdle         = "idle"
-	endExpired      = "expired"
-	endRevoked      = "revoked"
-	endReplaced     = "replaced"
-	endUserInactive = "user_inactive"
+	endSwitchedOut        = "switched_out"
+	endIdle               = "idle"
+	endExpired            = "expired"
+	endRevoked            = "revoked"
+	endReplaced           = "replaced"
+	endUserInactive       = "user_inactive"
+	endCredentialsChanged = "credentials_changed"
+	endSignedOut          = "signed_out"
+	endByAdmin            = "ended_by_admin"
 )
 
 // stationRefusal is a station request refused with its own code: a 401 that
@@ -207,15 +212,23 @@ func addressAllowed(networks []netip.Prefix, ip string) bool {
 
 // CheckStation is contracts.StationAccess's handshake check for the live
 // socket's station path (§17): a handshake with the station cookie and no
-// session cookie is a station's, resolved as resolveStation resolves it.
+// live session is a station's, resolved as resolveStation resolves it. A
+// session cookie beside the station's is judged as the HTTP path judges it
+// (liveSessionCookie): a live session makes the handshake a person's, a dead
+// one does not.
 func (a *Access) CheckStation(r *http.Request) (uuid.UUID, bool, error) {
 	if _, ok := stationTokenFrom(r); !ok {
 		return uuid.Nil, false, nil
 	}
-	if _, ok := sessionTokenFrom(r); ok {
+	now := a.now()
+	live, err := a.liveSessionCookie(r.Context(), r, now)
+	if err != nil {
+		return uuid.Nil, true, err
+	}
+	if live {
 		return uuid.Nil, false, nil
 	}
-	st, err := a.resolveStation(r.Context(), r, a.now())
+	st, err := a.resolveStation(r.Context(), r, now)
 	if err != nil {
 		return uuid.Nil, true, err
 	}
@@ -223,8 +236,9 @@ func (a *Access) CheckStation(r *http.Request) (uuid.UUID, bool, error) {
 }
 
 // StationLive is contracts.StationAccess's re-check: the station is still
-// paired, unrevoked and within its 90 days.
-func (a *Access) StationLive(ctx context.Context, stationID uuid.UUID) (bool, error) {
+// paired, unrevoked and within its 90 days, and ip, the address of the
+// socket's handshake, is still inside its network allowlist.
+func (a *Access) StationLive(ctx context.Context, stationID uuid.UUID, ip string) (bool, error) {
 	st, err := a.q.GetStation(ctx, stationID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
@@ -232,7 +246,20 @@ func (a *Access) StationLive(ctx context.Context, stationID uuid.UUID) (bool, er
 	if err != nil {
 		return false, fmt.Errorf("identity: read whether the station is live: %w", err)
 	}
-	return stationLive(st, a.now()), nil
+	return stationLive(st, a.now()) && addressAllowed(st.AllowedNetworks, ip), nil
+}
+
+// StationKnown is contracts.StationAccess's question of a station id: one is
+// registered, paired, revoked or neither.
+func (a *Access) StationKnown(ctx context.Context, stationID uuid.UUID) (bool, error) {
+	_, err := a.q.GetStation(ctx, stationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("identity: read whether the station is known: %w", err)
+	}
+	return true, nil
 }
 
 var _ contracts.StationAccess = (*Access)(nil)
@@ -244,9 +271,13 @@ var _ contracts.StationAccess = (*Access)(nil)
 // station cookie (station_unknown); the operator token — unknown, ended, of
 // another station, idle past the station's timeout, older than 12 hours, or
 // of a person who may no longer act (operator_session_ended, ending the
-// session); an operation not open to stations (station_scope); and then the
-// rule itself, which must be a permission rule naming only stationPermissions
-// that the operator holds.
+// session); an operator who no longer holds every one of stationPermissions
+// (operator_session_ended, ending the session), whatever the rule names, so
+// losing manufacturing:shop-floor ends reads too; an operation not open to
+// stations (station_scope); and then the rule itself, which must be a
+// permission rule naming only stationPermissions. The principal answered
+// holds stationPermissions and no role (contracts.HasPermissions answers a
+// station's operator from it).
 func (a *Access) checkStation(ctx context.Context, r *http.Request, rule contracts.Rule, now time.Time) (contracts.Principal, error) {
 	if rule.Station == contracts.StationRefused {
 		return contracts.Principal{}, contracts.ErrUnauthenticated
@@ -280,9 +311,22 @@ func (a *Access) checkStation(ctx context.Context, r *http.Request, rule contrac
 	if op.StationID != st.ID {
 		return contracts.Principal{}, errOperatorSessionEnded
 	}
-	if reason := a.operatorEndReason(ctx, st, op, now); reason != "" {
-		if _, err := a.q.EndOperatorSession(ctx, store.EndOperatorSessionParams{ID: op.ID, Now: &now, EndReason: &reason}); err != nil {
-			return contracts.Principal{}, fmt.Errorf("identity: end operator session: %w", err)
+	reason := a.operatorEndReason(ctx, st, op, now)
+	if reason == "" {
+		// The operator must hold the whole shop floor for any station
+		// request, reads included: a person whose role lost
+		// manufacturing:shop-floor is signed out at their next request.
+		holds, err := a.operatorHolds(ctx, op, stationPermissions, now)
+		if err != nil {
+			return contracts.Principal{}, err
+		}
+		if !holds {
+			reason = endUserInactive
+		}
+	}
+	if reason != "" {
+		if err := a.endOperatorSession(ctx, r, st, op.ID, op.UserID, reason, now); err != nil {
+			return contracts.Principal{}, err
 		}
 		return contracts.Principal{}, errOperatorSessionEnded
 	}
@@ -297,13 +341,6 @@ func (a *Access) checkStation(ctx context.Context, r *http.Request, rule contrac
 			return contracts.Principal{}, contracts.ErrForbidden
 		}
 	}
-	ok, err = a.operatorHolds(ctx, op, rule.Names, now)
-	if err != nil {
-		return contracts.Principal{}, err
-	}
-	if !ok {
-		return contracts.Principal{}, contracts.ErrForbidden
-	}
 	// The idle window slides once it is a quarter of the timeout old, at most
 	// a minute, so an operator active within the timeout is never ended idle.
 	every := min(time.Duration(st.IdleMinutes)*time.Minute/4, time.Minute)
@@ -313,9 +350,50 @@ func (a *Access) checkStation(ctx context.Context, r *http.Request, rule contrac
 	return contracts.Principal{
 		UserID:    op.UserID,
 		SessionID: op.ID,
-		Roles:     orderRoles(op.RoleNames),
 		Via:       &contracts.Via{Kind: contracts.ViaStation, StationID: st.ID},
 	}, nil
+}
+
+// endOperatorSession ends one operator session for reason, with its audit
+// operator_signed_out, in one transaction. A session another request ended
+// first is left as it is, and audited once.
+func (a *Access) endOperatorSession(ctx context.Context, r *http.Request, st store.IdentityStation, sessionID, userID uuid.UUID, reason string, now time.Time) error {
+	err := db.WithTx(ctx, a.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		n, err := q.EndOperatorSession(ctx, store.EndOperatorSessionParams{ID: sessionID, Now: &now, EndReason: &reason})
+		if err != nil || n == 0 {
+			return err
+		}
+		return writeAudit(ctx, q, r, now, auditEvent{
+			targetUser: &userID, action: auditOperatorSignedOut, before: struct{}{},
+			after: operatorAudit{StationID: st.ID, Station: st.Name, SessionID: sessionID, Reason: reason},
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("identity: end operator session: %w", err)
+	}
+	return nil
+}
+
+// endUserOperatorSessions ends every operator session of userID, at every
+// station, for reason, on the caller's transaction q, auditing each one
+// operator_signed_out with actor (nil for none). A PIN or a badge set or
+// cleared ends them (credentials_changed), so does every revocation of the
+// person's sessions (signed_out), and an erasure (user_inactive).
+func endUserOperatorSessions(ctx context.Context, q *store.Queries, r *http.Request, actor *uuid.UUID, userID uuid.UUID, reason string, now time.Time) error {
+	ended, err := q.EndUserOperatorSessions(ctx, store.EndUserOperatorSessionsParams{UserID: &userID, Now: &now, EndReason: &reason})
+	if err != nil {
+		return fmt.Errorf("identity: end operator sessions: %w", err)
+	}
+	for _, row := range ended {
+		if err := writeAudit(ctx, q, r, now, auditEvent{
+			actor: actor, targetUser: &userID, action: auditOperatorSignedOut, before: struct{}{},
+			after: operatorAudit{StationID: row.StationID, Station: row.StationName, SessionID: row.ID, Reason: reason},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // operatorEndReason is why an operator session can no longer stand at now,

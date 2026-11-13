@@ -448,8 +448,14 @@ func TestStation_OperatorsSwitchInAndOut(t *testing.T) {
 	if r := station.do(http.MethodPost, stationPath+"/operators/"+again.SessionID.String()+"/end", nil); r.status != http.StatusNoContent {
 		t.Fatalf("switch out: %d %s", r.status, r.body)
 	}
-	if got := h.auditEvents(t, "operator_signed_out"); len(got) != 1 || !strings.Contains(got[0].After, "switched_out") {
-		t.Fatalf("operator_signed_out = %+v", got)
+	switched := 0
+	for _, e := range h.auditEvents(t, "operator_signed_out") {
+		if strings.Contains(e.After, `"reason":"switched_out"`) {
+			switched++
+		}
+	}
+	if switched != 1 {
+		t.Fatalf("operator_signed_out switched_out audited %d times, want 1", switched)
 	}
 	if _, err := h.access.Check(h.stationRequest(station, again.Token), allowedRule); !errors.Is(err, contracts.ErrUnauthenticated) {
 		t.Fatalf("a switched-out token: %v", err)
@@ -665,7 +671,7 @@ func TestStation_RevokeTakesEffectAtOnce(t *testing.T) {
 	if n := h.count(t, `SELECT count(*) FROM identity.station_operator_sessions WHERE station_id = $1 AND ended_at IS NULL`, p.Station.ID); n != 0 {
 		t.Fatalf("%d operator sessions still open after revoke", n)
 	}
-	live, err := h.access.StationLive(context.Background(), p.Station.ID)
+	live, err := h.access.StationLive(context.Background(), p.Station.ID, "")
 	if err != nil || live {
 		t.Fatalf("StationLive after revoke = %v %v", live, err)
 	}
@@ -798,7 +804,7 @@ func TestStation_BadgesAndTheAdministrator(t *testing.T) {
 	if r := owner.do(http.MethodPut, userPath+"/badge", map[string]any{"badge": "0004211337"}); r.status != http.StatusNoContent {
 		t.Fatalf("enrol: %d %s", r.status, r.body)
 	}
-	if r := owner.do(http.MethodPut, "/api/v1/identity/users/"+otherID.String()+"/badge", map[string]any{"badge": "0004211337"}); r.status != http.StatusConflict || r.code() != "badge_taken" {
+	if r := owner.do(http.MethodPut, "/api/v1/identity/users/"+otherID.String()+"/badge", map[string]any{"badge": "0004211337"}); r.status != http.StatusConflict || r.code() != "badge_unavailable" || strings.Contains(string(r.body), "someone") {
 		t.Fatalf("a taken badge: %d %s", r.status, r.body)
 	}
 	if r := owner.do(http.MethodPut, "/api/v1/identity/users/"+uuid.NewString()+"/badge", map[string]any{"badge": "0004211338"}); r.status != http.StatusNotFound {

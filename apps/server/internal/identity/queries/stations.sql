@@ -74,9 +74,9 @@ WHERE id = @id
 SELECT * FROM identity.user_pins WHERE user_id = @user_id;
 
 -- name: UpsertUserPin :exec
-INSERT INTO identity.user_pins (user_id, pin_hash, set_at)
-VALUES (@user_id, @pin_hash, @now)
-ON CONFLICT (user_id) DO UPDATE SET pin_hash = EXCLUDED.pin_hash, set_at = EXCLUDED.set_at;
+INSERT INTO identity.user_pins (user_id, pin_hash, key_version, set_at)
+VALUES (@user_id, @pin_hash, @key_version, @now)
+ON CONFLICT (user_id) DO UPDATE SET pin_hash = EXCLUDED.pin_hash, key_version = EXCLUDED.key_version, set_at = EXCLUDED.set_at;
 
 -- name: DeleteUserPin :execrows
 DELETE FROM identity.user_pins WHERE user_id = @user_id;
@@ -88,9 +88,10 @@ SELECT * FROM identity.user_badges WHERE user_id = @user_id;
 SELECT * FROM identity.user_badges WHERE badge_hash = @badge_hash;
 
 -- name: UpsertUserBadge :exec
-INSERT INTO identity.user_badges (user_id, badge_hash, set_at, set_by)
-VALUES (@user_id, @badge_hash, @now, @set_by)
-ON CONFLICT (user_id) DO UPDATE SET badge_hash = EXCLUDED.badge_hash, set_at = EXCLUDED.set_at, set_by = EXCLUDED.set_by;
+INSERT INTO identity.user_badges (user_id, badge_hash, key_version, set_at, set_by)
+VALUES (@user_id, @badge_hash, @key_version, @now, @set_by)
+ON CONFLICT (user_id) DO UPDATE SET badge_hash = EXCLUDED.badge_hash, key_version = EXCLUDED.key_version,
+    set_at = EXCLUDED.set_at, set_by = EXCLUDED.set_by;
 
 -- name: DeleteUserBadge :execrows
 DELETE FROM identity.user_badges WHERE user_id = @user_id;
@@ -101,13 +102,26 @@ SELECT EXISTS (SELECT 1 FROM identity.users WHERE id = @id AND kind = 'person'):
 -- name: GetOperatorBackoff :one
 SELECT * FROM identity.operator_backoff WHERE station_id = @station_id AND user_id = @user_id;
 
+-- name: LockOperatorAttempt :exec
+-- LockOperatorAttempt serialises the sign-in attempts for one person at one
+-- station until the transaction ends, so the backoff an attempt reads is the
+-- one the attempt before it left. It takes the same lock for a person who
+-- does not exist, so such an attempt does the same work.
+SELECT pg_advisory_xact_lock(hashtextextended('identity.operator-attempt:' || sqlc.arg(station_id)::uuid::text || ':' || sqlc.arg(user_id)::uuid::text, 0));
+
 -- name: RecordOperatorFailure :one
 -- RecordOperatorFailure counts one more consecutive failure of a user at a
--- station; only a success (DeleteOperatorBackoff) ends the run.
+-- station. A success (DeleteOperatorBackoff) ends the run, and a run whose
+-- last failure is older than decay starts again at one.
 INSERT INTO identity.operator_backoff (station_id, user_id, failures, first_failure_at, last_failure_at)
 VALUES (@station_id, @user_id, 1, sqlc.arg(now)::timestamptz, sqlc.arg(now)::timestamptz)
 ON CONFLICT (station_id, user_id) DO UPDATE
-SET failures = identity.operator_backoff.failures + 1,
+SET failures = CASE WHEN identity.operator_backoff.last_failure_at <= sqlc.arg(now)::timestamptz - sqlc.arg(decay)::interval
+                    THEN 1 ELSE identity.operator_backoff.failures + 1 END,
+    first_failure_at = CASE WHEN identity.operator_backoff.last_failure_at <= sqlc.arg(now)::timestamptz - sqlc.arg(decay)::interval
+                            THEN EXCLUDED.first_failure_at ELSE identity.operator_backoff.first_failure_at END,
+    next_attempt_at = CASE WHEN identity.operator_backoff.last_failure_at <= sqlc.arg(now)::timestamptz - sqlc.arg(decay)::interval
+                           THEN NULL ELSE identity.operator_backoff.next_attempt_at END,
     last_failure_at = EXCLUDED.last_failure_at
 RETURNING *;
 
@@ -115,18 +129,34 @@ RETURNING *;
 UPDATE identity.operator_backoff SET next_attempt_at = @next_attempt_at
 WHERE station_id = @station_id AND user_id = @user_id;
 
--- name: DeleteOperatorBackoff :exec
+-- name: DeleteOperatorBackoff :execrows
 DELETE FROM identity.operator_backoff WHERE station_id = @station_id AND user_id = @user_id;
 
--- name: EndStaleOperatorSessions :exec
+-- name: DeleteUserOperatorBackoff :exec
+-- DeleteUserOperatorBackoff clears a person's backoff at every station: their
+-- PIN or badge was set or cleared.
+DELETE FROM identity.operator_backoff WHERE user_id = @user_id;
+
+-- name: ListOperatorBackoff :many
+-- ListOperatorBackoff is every run of failures not yet decayed, with the
+-- person's name, for the administrators' list.
+SELECT b.station_id, b.user_id, u.display_name, b.failures, b.first_failure_at, b.last_failure_at, b.next_attempt_at
+FROM identity.operator_backoff b
+JOIN identity.users u ON u.id = b.user_id
+WHERE b.last_failure_at > sqlc.arg(now)::timestamptz - sqlc.arg(decay)::interval
+ORDER BY b.station_id, u.display_name, b.user_id;
+
+-- name: EndStaleOperatorSessions :many
 -- EndStaleOperatorSessions ends the station's sessions idle past its timeout
--- (idle) or older than the absolute bound (expired), before a count.
+-- (idle) or older than the absolute bound (expired), before a count; it
+-- answers each one ended, for the audit.
 UPDATE identity.station_operator_sessions
 SET ended_at = sqlc.arg(now)::timestamptz, token_hash = NULL,
     end_reason = CASE WHEN started_at <= sqlc.arg(now)::timestamptz - sqlc.arg(absolute)::interval THEN 'expired' ELSE 'idle' END
 WHERE station_id = @station_id AND ended_at IS NULL
   AND (last_activity_at <= sqlc.arg(now)::timestamptz - sqlc.arg(idle)::interval
-       OR started_at <= sqlc.arg(now)::timestamptz - sqlc.arg(absolute)::interval);
+       OR started_at <= sqlc.arg(now)::timestamptz - sqlc.arg(absolute)::interval)
+RETURNING id, user_id, end_reason;
 
 -- name: EndUserOperatorSessionsAtStation :many
 -- EndUserOperatorSessionsAtStation ends a user's active sessions at a station:
@@ -136,18 +166,28 @@ SET ended_at = @now, end_reason = @end_reason, token_hash = NULL
 WHERE station_id = @station_id AND user_id = @user_id AND ended_at IS NULL
 RETURNING id;
 
+-- name: EndUserOperatorSessions :many
+-- EndUserOperatorSessions ends a user's active sessions at every station: their
+-- PIN or badge changed, their sessions were signed out, or they can no longer
+-- act. It answers each one ended with its station's name, for the audit.
+UPDATE identity.station_operator_sessions s
+SET ended_at = @now, end_reason = @end_reason, token_hash = NULL
+FROM identity.stations st
+WHERE st.id = s.station_id AND s.user_id = @user_id AND s.ended_at IS NULL
+RETURNING s.id, s.station_id, st.name AS station_name;
+
 -- name: CountActiveOperatorSessions :one
 SELECT count(*)::integer FROM identity.station_operator_sessions WHERE station_id = @station_id AND ended_at IS NULL;
 
 -- name: InsertOperatorSession :exec
-INSERT INTO identity.station_operator_sessions (id, station_id, user_id, token_hash, started_at, last_activity_at)
-VALUES (@id, @station_id, @user_id, @token_hash, @now, @now);
+INSERT INTO identity.station_operator_sessions (id, station_id, user_id, user_display, token_hash, started_at, last_activity_at)
+VALUES (@id, @station_id, @user_id, @user_display, @token_hash, @now, @now);
 
 -- name: GetOperatorSessionByTokenHash :one
 -- GetOperatorSessionByTokenHash resolves an operator token with the user's
 -- state, which GetSessionByTokenHash's predicates judge in Go: an ended
 -- session has no token hash, so only a live row is found.
-SELECT s.id, s.station_id, s.user_id, s.started_at, s.last_activity_at,
+SELECT s.id, s.station_id, u.id AS user_id, s.started_at, s.last_activity_at,
        u.is_disabled, u.lockout_end, (u.pending_since IS NOT NULL)::boolean AS pending, u.kind,
        r.role_names, r.is_owner,
        m.upstream_active AS scim_upstream_active
@@ -169,17 +209,20 @@ SET ended_at = @now, end_reason = @end_reason, token_hash = NULL
 WHERE id = @id AND ended_at IS NULL;
 
 -- name: EndActiveOperatorSessionAtStation :one
--- EndActiveOperatorSessionAtStation is a switch out: only an active session of
--- this station ends.
+-- EndActiveOperatorSessionAtStation is a switch out, by the station or an
+-- administrator: only an active session of this station ends.
 UPDATE identity.station_operator_sessions
 SET ended_at = @now, end_reason = @end_reason, token_hash = NULL
 WHERE id = @id AND station_id = @station_id AND ended_at IS NULL
 RETURNING user_id;
 
--- name: EndStationOperatorSessions :exec
+-- name: EndStationOperatorSessions :many
+-- EndStationOperatorSessions ends every active session of a station: revoked
+-- or paired again. It answers each one ended, for the audit.
 UPDATE identity.station_operator_sessions
 SET ended_at = @now, end_reason = @end_reason, token_hash = NULL
-WHERE station_id = @station_id AND ended_at IS NULL;
+WHERE station_id = @station_id AND ended_at IS NULL
+RETURNING id, user_id;
 
 -- name: TouchOperatorSession :exec
 -- TouchOperatorSession slides the idle window once it is every old: a
@@ -192,7 +235,7 @@ WHERE id = @id AND ended_at IS NULL
 -- name: ListActiveOperatorSessions :many
 -- ListActiveOperatorSessions is every live operator session, of one station
 -- or (station_id null) of all, with the operator's name.
-SELECT s.id, s.station_id, s.user_id, s.started_at, s.last_activity_at, u.display_name
+SELECT s.id, s.station_id, u.id AS user_id, s.started_at, s.last_activity_at, u.display_name
 FROM identity.station_operator_sessions s
 JOIN identity.users u ON u.id = s.user_id
 WHERE s.ended_at IS NULL AND (sqlc.narg(station_id)::uuid IS NULL OR s.station_id = sqlc.narg(station_id)::uuid)
@@ -247,3 +290,9 @@ SELECT created_at FROM identity.sessions WHERE id = @id;
 
 -- name: GetUserDisplayName :one
 SELECT display_name FROM identity.users WHERE id = @id;
+
+-- name: PseudonymiseUserOperatorSessions :exec
+-- PseudonymiseUserOperatorSessions replaces the name an erased person's
+-- operator sessions keep (M141): the rows stay as the station's history,
+-- naming no one.
+UPDATE identity.station_operator_sessions SET user_display = @display WHERE user_id = @user_id;

@@ -688,6 +688,11 @@ func (s *server) DeleteIdentityOwnerUsersById(ctx context.Context, req gen.Delet
 		if scim {
 			return provenanceConflict
 		}
+		// The person's operator sessions end first: their rows outlive the
+		// user as the stations' history, without a token (M141).
+		if err := endUserOperatorSessions(ctx, q, r, &p.UserID, req.Id, endUserInactive, now); err != nil {
+			return err
+		}
 		if err := q.DeleteUser(ctx, req.Id); err != nil {
 			if isProvenanceViolation(err) {
 				return provenanceConflict

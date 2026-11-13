@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 )
@@ -51,6 +52,11 @@ const (
 	ViaAgent     = "agent"
 	ViaStation   = "station"
 )
+
+// StationPermissions are all a shared station's operator may ever hold
+// (manufacturing phase 2 M134): Check admits an operator only while they hold
+// every one of them, and a rule naming any other key refuses them.
+var StationPermissions = []string{"manufacturing:access", "manufacturing:shop-floor"}
 
 // Station reports the station the principal acts at, and whether it is a
 // station's operator at all (Via.Kind ViaStation).
@@ -175,17 +181,25 @@ func HasPermissions(ctx context.Context, a Access, keys ...string) bool {
 		return false
 	}
 	if r, ok := RequestFrom(ctx); ok {
-		rule := Rule{Kind: RulePermission, Names: keys}
 		// A station's operator reached the handler only through the router's
 		// wrap, for an operation open to stations (WithPrincipal is set by
-		// nothing else on a request); the handler's own question is asked with
-		// the same leave, and Check still intersects the keys (M134).
+		// nothing else on a request), and the wrap's Check found them holding
+		// every one of StationPermissions (M134). The handler's question is
+		// answered from that principal, never by a second Check: what the
+		// operator may hold is StationPermissions and nothing more, and a
+		// second Check could end the operator's session in the middle of the
+		// handler.
 		if p, ok := PrincipalFrom(ctx); ok {
 			if _, station := p.Station(); station {
-				rule.Station = StationAllowed
+				for _, key := range keys {
+					if !slices.Contains(StationPermissions, key) {
+						return false
+					}
+				}
+				return true
 			}
 		}
-		_, err := a.Check(r, rule)
+		_, err := a.Check(r, Rule{Kind: RulePermission, Names: keys})
 		return err == nil
 	}
 	if userID, ok := AsUserFrom(ctx); ok {
@@ -216,8 +230,13 @@ type StationAccess interface {
 	// network allowlist is ErrUnauthenticated, for Access.Reject.
 	CheckStation(r *http.Request) (stationID uuid.UUID, isStation bool, err error)
 	// StationLive reports whether the station is still paired, unrevoked and
-	// unexpired, for the socket's 60-second re-check.
-	StationLive(ctx context.Context, stationID uuid.UUID) (bool, error)
+	// unexpired, and ip — the address the socket's handshake came from — still
+	// inside its network allowlist, for the socket's 60-second re-check.
+	StationLive(ctx context.Context, stationID uuid.UUID, ip string) (bool, error)
+	// StationKnown reports whether a station of that id is registered, in
+	// use or not: what a module that keeps settings per station checks an id
+	// against before it keeps one.
+	StationKnown(ctx context.Context, stationID uuid.UUID) (bool, error)
 }
 
 // Access authenticates a request and evaluates an access rule. Identity

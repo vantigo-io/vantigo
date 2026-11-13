@@ -85,6 +85,10 @@ func IssueInvitationForTest(ctx context.Context, pool *pgxpool.Pool, email strin
 // for the station tests.
 const StationCookieName = stationCookieName
 
+// StationAttemptsLimit is how many operator sign-ins a station verifies in
+// its window, failed or not.
+var StationAttemptsLimit = policyStationAttempts.Limit
+
 var (
 	ValidatePIN          = validatePIN
 	NormalizePairingCode = normalizePairingCode
