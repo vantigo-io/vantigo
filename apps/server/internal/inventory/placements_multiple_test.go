@@ -14,7 +14,7 @@ import (
 // TestPlacement_Multiple is manufacturing phase 2 M105: a placement's
 // multiple is set and answered, more than 0, rounds the low-stock list's
 // suggestion up before the packaging, and is set by the import's optional
-// sixth column, a file without it clearing it.
+// sixth column, a file without it leaving it as it is.
 func TestPlacement_Multiple(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -49,10 +49,15 @@ func TestPlacement_Multiple(t *testing.T) {
 		r.Rows[0].Outcome != gen.InventoryPlacementImportOutcomeQuantityInvalid {
 		t.Errorf("import = %+v", r)
 	}
-	placementImportResult(t, importPlacements(c, true, "sku;site;primary_location;reorder_point;maximum\nBOLT-M8;OSL;;20;30\n"),
+	// A file without the column leaves the multiple as it is, and a
+	// placement it creates has none.
+	placementImportResult(t, importPlacements(c, true, "sku;site;primary_location;reorder_point;maximum\nBOLT-M8;OSL;;25;35\nNUT-M8;OSL;;3;9\n"),
 		http.StatusCreated, "import without the column")
-	if n := h.Count(t, `SELECT count(*) FROM inventory.placements WHERE variant_id = $1 AND multiple IS NULL`, varBolt); n != 1 {
-		t.Errorf("a file without the column kept the multiple")
+	if n := h.Count(t, `SELECT count(*) FROM inventory.placements WHERE variant_id = $1 AND multiple = 6 AND reorder_point = 25`, varBolt); n != 1 {
+		t.Errorf("a file without the column changed the multiple")
+	}
+	if n := h.Count(t, `SELECT count(*) FROM inventory.placements WHERE variant_id = $1 AND multiple IS NULL`, varNut); n != 1 {
+		t.Errorf("a new placement from a file without the column has a multiple")
 	}
 }
 

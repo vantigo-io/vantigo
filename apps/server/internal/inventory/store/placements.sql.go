@@ -928,7 +928,9 @@ FROM (SELECT unnest($4::int[]) AS variant_id, unnest($5::bigint[]) AS site_id,
              unnest($9::numeric[]) AS multiple, unnest($10::text[]) AS sku, unnest($11::text[]) AS product_name) AS u
 ON CONFLICT (variant_id, site_id) DO UPDATE
 SET primary_location_id = excluded.primary_location_id, reorder_point = excluded.reorder_point,
-    maximum = excluded.maximum, multiple = excluded.multiple, sku = excluded.sku, product_name = excluded.product_name,
+    maximum = excluded.maximum,
+    multiple = CASE WHEN $12::bool THEN inventory.placements.multiple ELSE excluded.multiple END,
+    sku = excluded.sku, product_name = excluded.product_name,
     updated_by_user_id = excluded.updated_by_user_id, updated_by_display = excluded.updated_by_display,
     revision = inventory.placements.revision + 1, updated_at = excluded.updated_at
 `
@@ -945,12 +947,15 @@ type UpsertPlacementsParams struct {
 	Multiples          []pgtype.Numeric
 	Skus               []string
 	ProductNames       []string
+	KeepMultiple       bool
 }
 
 // UpsertPlacements is the placements import's commit (I61): each row sets
 // all four fields, last wins, bumping the revision of one already there.
 // The arrays are read row by row; a primary location of 0 is none, and a
-// null reorder point or maximum clears it. Rows clearing all three go to
+// null reorder point, maximum or multiple clears it — but with keep_multiple
+// (a file without the multiple column, M105) every placement already there
+// keeps its multiple and a new one has none. Rows clearing all three go to
 // DeletePlacementsOf instead.
 func (q *Queries) UpsertPlacements(ctx context.Context, arg UpsertPlacementsParams) error {
 	_, err := q.db.Exec(ctx, upsertPlacements,
@@ -965,6 +970,7 @@ func (q *Queries) UpsertPlacements(ctx context.Context, arg UpsertPlacementsPara
 		arg.Multiples,
 		arg.Skus,
 		arg.ProductNames,
+		arg.KeepMultiple,
 	)
 	return err
 }

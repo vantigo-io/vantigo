@@ -632,7 +632,8 @@ func sourceParams(src contracts.StockSource) store.LockSourceReservationsParams 
 }
 
 // ReservationsFor answers every reservation the document holds, by line id
-// then site id.
+// then site id. It takes no lock and must not: Orders reads it in a
+// read-only transaction.
 func (l ledger) ReservationsFor(ctx context.Context, tx pgx.Tx, src contracts.StockSource) ([]contracts.Reservation, error) {
 	if err := src.Validate(); err != nil {
 		return nil, err
@@ -651,6 +652,51 @@ func (l ledger) ReservationsFor(ctx context.Context, tx pgx.Tx, src contracts.St
 	}
 	slices.SortFunc(out, func(a, b contracts.Reservation) int {
 		return cmp.Or(cmp.Compare(a.LineID, b.LineID), cmp.Compare(a.SiteID, b.SiteID))
+	})
+	return out, nil
+}
+
+// ReservationsForSources answers every reservation of the documents, in
+// one statement and without a lock, by source id, line id then site id
+// (manufacturing phase 2 M107a).
+func (l ledger) ReservationsForSources(ctx context.Context, tx pgx.Tx, srcs []contracts.StockSource) ([]contracts.SourceReservation, error) {
+	if len(srcs) > contracts.MaxStockSources {
+		return nil, fmt.Errorf("inventory: a reservations read names %d documents, more than %d", len(srcs), contracts.MaxStockSources)
+	}
+	if len(srcs) == 0 {
+		return nil, nil
+	}
+	params := store.ReservationsOfSourcesParams{}
+	for _, src := range srcs {
+		if err := src.Validate(); err != nil {
+			return nil, err
+		}
+		params.SourceModules = append(params.SourceModules, src.Module)
+		params.SourceKinds = append(params.SourceKinds, src.Kind)
+		params.SourceIds = append(params.SourceIds, strconv.FormatInt(src.ID, 10))
+	}
+	rows, err := store.New(tx).ReservationsOfSources(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the reservations of %d documents: %w", len(srcs), err)
+	}
+	out := make([]contracts.SourceReservation, 0, len(rows))
+	for _, r := range rows {
+		id, err := strconv.ParseInt(r.SourceID, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("inventory: reservation %d has the source id %q: %w", r.ID, r.SourceID, err)
+		}
+		lineID, err := strconv.ParseInt(r.SourceLineID, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("inventory: reservation %d has the line id %q: %w", r.ID, r.SourceLineID, err)
+		}
+		out = append(out, contracts.SourceReservation{
+			Source:      contracts.StockSource{Module: r.SourceModule, Kind: r.SourceKind, ID: id},
+			Reservation: contracts.Reservation{VariantID: r.VariantID, LineID: lineID, SiteID: r.SiteID, Quantity: decimalText(ratFromNumeric(r.Quantity))},
+		})
+	}
+	slices.SortFunc(out, func(a, b contracts.SourceReservation) int {
+		return cmp.Or(cmp.Compare(a.Source.Module, b.Source.Module), cmp.Compare(a.Source.Kind, b.Source.Kind),
+			cmp.Compare(a.Source.ID, b.Source.ID), cmp.Compare(a.LineID, b.LineID), cmp.Compare(a.SiteID, b.SiteID))
 	})
 	return out, nil
 }

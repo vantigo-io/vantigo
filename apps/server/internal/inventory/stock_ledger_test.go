@@ -136,6 +136,20 @@ func TestStockLedger_ReserveRefuseRelease(t *testing.T) {
 		t.Errorf("available bolts = %s, want 3", got)
 	}
 
+	// The batched read, in a read-only transaction: each document's
+	// reservations once, a document named twice or holding none answered
+	// with nothing more.
+	ro, err := h.Pool().BeginTx(t.Context(), pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		t.Fatalf("begin read-only: %v", err)
+	}
+	batch, err := l.ReservationsForSources(t.Context(), ro, []contracts.StockSource{other, order, order})
+	_ = ro.Rollback(t.Context())
+	if err != nil || len(batch) != 2 || batch[0].Source != order || batch[0].LineID != 11 || batch[1].LineID != 12 ||
+		batch[1].Quantity != "2.5" {
+		t.Errorf("ReservationsForSources = %+v, %v", batch, err)
+	}
+
 	// The read: on hand and available, in total and per site.
 	onHand, err := stockOf(h).OnHand(t.Context(), []int32{varBolt, varWasher}, nil)
 	if err != nil || len(onHand) != 2 || onHand[0].Quantity != "15" || len(onHand[0].Sites) != 1 || onHand[1].Quantity != "0" || len(onHand[1].Sites) != 0 {

@@ -163,6 +163,54 @@ func (q *Queries) LockSourceReservations(ctx context.Context, arg LockSourceRese
 	return items, nil
 }
 
+const reservationsOfSources = `-- name: ReservationsOfSources :many
+SELECT r.id, r.variant_id, r.site_id, r.quantity, r.source_module, r.source_kind, r.source_id, r.source_line_id, r.created_at, r.updated_at FROM inventory.reservations r
+JOIN (SELECT DISTINCT unnest($1::text[]) AS source_module, unnest($2::text[]) AS source_kind,
+             unnest($3::text[]) AS source_id) AS s
+  ON r.source_module = s.source_module AND r.source_kind = s.source_kind AND r.source_id = s.source_id
+ORDER BY r.id
+`
+
+type ReservationsOfSourcesParams struct {
+	SourceModules []string
+	SourceKinds   []string
+	SourceIds     []string
+}
+
+// ReservationsOfSources is every reservation of the documents given, the
+// arrays read row by row, by id (StockLedger.ReservationsForSources). It
+// must stay lock-free, as SourceReservations.
+func (q *Queries) ReservationsOfSources(ctx context.Context, arg ReservationsOfSourcesParams) ([]InventoryReservation, error) {
+	rows, err := q.db.Query(ctx, reservationsOfSources, arg.SourceModules, arg.SourceKinds, arg.SourceIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InventoryReservation
+	for rows.Next() {
+		var i InventoryReservation
+		if err := rows.Scan(
+			&i.ID,
+			&i.VariantID,
+			&i.SiteID,
+			&i.Quantity,
+			&i.SourceModule,
+			&i.SourceKind,
+			&i.SourceID,
+			&i.SourceLineID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setReservations = `-- name: SetReservations :exec
 UPDATE inventory.reservations r
 SET quantity = u.quantity, updated_at = $1::timestamptz
@@ -242,7 +290,9 @@ type SourceReservationsParams struct {
 	SourceID     string
 }
 
-// SourceReservations is every reservation of the document.
+// SourceReservations is every reservation of the document. It must stay
+// lock-free: StockLedger.ReservationsFor answers it to a caller's read-only
+// transaction (Orders' SalesOrderLines.Unreserved).
 func (q *Queries) SourceReservations(ctx context.Context, arg SourceReservationsParams) ([]InventoryReservation, error) {
 	rows, err := q.db.Query(ctx, sourceReservations, arg.SourceModule, arg.SourceKind, arg.SourceID)
 	if err != nil {
