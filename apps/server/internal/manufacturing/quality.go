@@ -248,7 +248,8 @@ func checksIncomplete(title, detail string, missing []store.MissingChecksOfWorkO
 // the order's lock (which every result takes too): every check of every work
 // order before the output work order — the last that is not cancelled — and
 // the output work order's first-piece checks must have a result. Precedes is
-// by sequence until F's dependencies.
+// the work order graph's (manufacturing phase 2 M114): the work orders from
+// which the output work order is reachable, cancelled ones left out.
 func productionGate(ctx context.Context, txq *store.Queries, orderID int64) error {
 	wos, err := txq.WorkOrdersOfOrder(ctx, orderID)
 	if err != nil {
@@ -263,9 +264,14 @@ func productionGate(ctx context.Context, txq *store.Queries, orderID int64) erro
 	if output == nil {
 		return nil
 	}
-	var before []int64
+	graph, err := readGraph(ctx, txq, []int64{orderID})
+	if err != nil {
+		return err
+	}
+	precedes := graph.ancestors(output.ID)
+	before := []int64{}
 	for _, w := range wos {
-		if w.Status != workOrderCancelled && w.Sequence < output.Sequence {
+		if w.Status != workOrderCancelled && precedes[w.ID] {
 			before = append(before, w.ID)
 		}
 	}

@@ -175,6 +175,46 @@ func (q *Queries) DeleteBomOperationsExcept(ctx context.Context, arg DeleteBomOp
 	return err
 }
 
+const deleteDependenciesOfBom = `-- name: DeleteDependenciesOfBom :exec
+DELETE FROM manufacturing.bom_operation_dependencies
+WHERE operation_id IN (SELECT id FROM manufacturing.bom_operations WHERE bom_id = $1)
+`
+
+// DeleteDependenciesOfBom removes the BoM's graph: an edit replaces it.
+func (q *Queries) DeleteDependenciesOfBom(ctx context.Context, bomID int64) error {
+	_, err := q.db.Exec(ctx, deleteDependenciesOfBom, bomID)
+	return err
+}
+
+const dependenciesOfBoms = `-- name: DependenciesOfBoms :many
+SELECT d.operation_id, d.depends_on_id FROM manufacturing.bom_operation_dependencies d
+JOIN manufacturing.bom_operations o ON o.id = d.operation_id
+WHERE o.bom_id = ANY($1::bigint[])
+ORDER BY d.operation_id, d.depends_on_id
+`
+
+// DependenciesOfBoms is the operations' graph of the BoMs (M112): each edge,
+// the operation and the one it depends on.
+func (q *Queries) DependenciesOfBoms(ctx context.Context, bomIds []int64) ([]ManufacturingBomOperationDependency, error) {
+	rows, err := q.db.Query(ctx, dependenciesOfBoms, bomIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ManufacturingBomOperationDependency
+	for rows.Next() {
+		var i ManufacturingBomOperationDependency
+		if err := rows.Scan(&i.OperationID, &i.DependsOnID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBom = `-- name: GetBom :one
 SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern FROM manufacturing.boms WHERE id = $1
 `
@@ -348,19 +388,23 @@ func (q *Queries) InsertBomLine(ctx context.Context, arg InsertBomLineParams) (M
 }
 
 const insertBomOperation = `-- name: InsertBomOperation :one
-INSERT INTO manufacturing.bom_operations (bom_id, sequence, name, work_center_id, setup_minutes, minutes_per_cycle, instructions)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, bom_id, sequence, name, work_center_id, setup_minutes, minutes_per_cycle, instructions
+INSERT INTO manufacturing.bom_operations (bom_id, sequence, name, work_center_id, work_center_group_id, setup_minutes,
+                                          minutes_per_cycle, send_ahead_quantity, instructions)
+VALUES ($1, $2, $3, $4, $5, $6,
+        $7, $8, $9)
+RETURNING id, bom_id, sequence, name, work_center_id, setup_minutes, minutes_per_cycle, instructions, work_center_group_id, send_ahead_quantity
 `
 
 type InsertBomOperationParams struct {
-	BomID           int64
-	Sequence        int32
-	Name            string
-	WorkCenterID    int64
-	SetupMinutes    pgtype.Numeric
-	MinutesPerCycle pgtype.Numeric
-	Instructions    string
+	BomID             int64
+	Sequence          int32
+	Name              string
+	WorkCenterID      *int64
+	WorkCenterGroupID *int64
+	SetupMinutes      pgtype.Numeric
+	MinutesPerCycle   pgtype.Numeric
+	SendAheadQuantity pgtype.Numeric
+	Instructions      string
 }
 
 func (q *Queries) InsertBomOperation(ctx context.Context, arg InsertBomOperationParams) (ManufacturingBomOperation, error) {
@@ -369,8 +413,10 @@ func (q *Queries) InsertBomOperation(ctx context.Context, arg InsertBomOperation
 		arg.Sequence,
 		arg.Name,
 		arg.WorkCenterID,
+		arg.WorkCenterGroupID,
 		arg.SetupMinutes,
 		arg.MinutesPerCycle,
+		arg.SendAheadQuantity,
 		arg.Instructions,
 	)
 	var i ManufacturingBomOperation
@@ -383,8 +429,24 @@ func (q *Queries) InsertBomOperation(ctx context.Context, arg InsertBomOperation
 		&i.SetupMinutes,
 		&i.MinutesPerCycle,
 		&i.Instructions,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
 	)
 	return i, err
+}
+
+const insertBomOperationDependency = `-- name: InsertBomOperationDependency :exec
+INSERT INTO manufacturing.bom_operation_dependencies (operation_id, depends_on_id) VALUES ($1, $2)
+`
+
+type InsertBomOperationDependencyParams struct {
+	OperationID int64
+	DependsOnID int64
+}
+
+func (q *Queries) InsertBomOperationDependency(ctx context.Context, arg InsertBomOperationDependencyParams) error {
+	_, err := q.db.Exec(ctx, insertBomOperationDependency, arg.OperationID, arg.DependsOnID)
+	return err
 }
 
 const linesOfBoms = `-- name: LinesOfBoms :many
@@ -567,13 +629,18 @@ func (q *Queries) OldestOtherActiveBom(ctx context.Context, arg OldestOtherActiv
 }
 
 const operationsOfBoms = `-- name: OperationsOfBoms :many
-SELECT o.id, o.bom_id, o.sequence, o.name, o.work_center_id, o.setup_minutes, o.minutes_per_cycle, o.instructions, w.code AS work_center_code, w.name AS work_center_name, w.site_id AS work_center_site_id,
+SELECT o.id, o.bom_id, o.sequence, o.name, o.work_center_id, o.setup_minutes, o.minutes_per_cycle, o.instructions, o.work_center_group_id, o.send_ahead_quantity, w.id AS center_id, w.code AS work_center_code, w.name AS work_center_name, w.site_id AS work_center_site_id,
        w.status AS work_center_status, w.capacity AS work_center_capacity,
        w.time_efficiency AS work_center_time_efficiency, w.setup_minutes AS work_center_setup_minutes,
        w.cleanup_minutes AS work_center_cleanup_minutes, w.machine_cost_per_hour AS work_center_machine_cost_per_hour,
-       w.labour_cost_per_hour AS work_center_labour_cost_per_hour
+       w.labour_cost_per_hour AS work_center_labour_cost_per_hour,
+       g.code AS group_code, g.name AS group_name
 FROM manufacturing.bom_operations o
-JOIN manufacturing.work_centers w ON w.id = o.work_center_id
+LEFT JOIN manufacturing.work_center_groups g ON g.id = o.work_center_group_id
+JOIN manufacturing.work_centers w ON w.id = COALESCE(o.work_center_id,
+    (SELECT c.id FROM manufacturing.work_center_group_members m JOIN manufacturing.work_centers c ON c.id = m.work_center_id
+     WHERE m.group_id = o.work_center_group_id
+     ORDER BY (c.status = 'active') DESC, c.code LIMIT 1))
 WHERE o.bom_id = ANY($1::bigint[])
 ORDER BY o.bom_id, o.sequence, o.id
 `
@@ -583,10 +650,13 @@ type OperationsOfBomsRow struct {
 	BomID                        int64
 	Sequence                     int32
 	Name                         string
-	WorkCenterID                 int64
+	WorkCenterID                 *int64
 	SetupMinutes                 pgtype.Numeric
 	MinutesPerCycle              pgtype.Numeric
 	Instructions                 string
+	WorkCenterGroupID            *int64
+	SendAheadQuantity            pgtype.Numeric
+	CenterID                     int64
 	WorkCenterCode               string
 	WorkCenterName               string
 	WorkCenterSiteID             int64
@@ -597,10 +667,16 @@ type OperationsOfBomsRow struct {
 	WorkCenterCleanupMinutes     pgtype.Numeric
 	WorkCenterMachineCostPerHour pgtype.Numeric
 	WorkCenterLabourCostPerHour  pgtype.Numeric
+	GroupCode                    *string
+	GroupName                    *string
 }
 
 // OperationsOfBoms is the operations of the BoMs, by BoM and sequence, each
-// with its work center's code, name, site and rates.
+// with its work center's code, name, site and rates. An operation that
+// targets a group (manufacturing phase 2 M118) is read with the group's
+// first active member by code — the one a confirm snapshots — else, with no
+// active member, its first member: center_id is that center, work_center_id
+// the operation's own (null for a group).
 func (q *Queries) OperationsOfBoms(ctx context.Context, bomIds []int64) ([]OperationsOfBomsRow, error) {
 	rows, err := q.db.Query(ctx, operationsOfBoms, bomIds)
 	if err != nil {
@@ -619,6 +695,9 @@ func (q *Queries) OperationsOfBoms(ctx context.Context, bomIds []int64) ([]Opera
 			&i.SetupMinutes,
 			&i.MinutesPerCycle,
 			&i.Instructions,
+			&i.WorkCenterGroupID,
+			&i.SendAheadQuantity,
+			&i.CenterID,
 			&i.WorkCenterCode,
 			&i.WorkCenterName,
 			&i.WorkCenterSiteID,
@@ -629,6 +708,8 @@ func (q *Queries) OperationsOfBoms(ctx context.Context, bomIds []int64) ([]Opera
 			&i.WorkCenterCleanupMinutes,
 			&i.WorkCenterMachineCostPerHour,
 			&i.WorkCenterLabourCostPerHour,
+			&i.GroupCode,
+			&i.GroupName,
 		); err != nil {
 			return nil, err
 		}
@@ -806,21 +887,24 @@ func (q *Queries) UpdateBom(ctx context.Context, arg UpdateBomParams) (Manufactu
 
 const updateBomOperation = `-- name: UpdateBomOperation :one
 UPDATE manufacturing.bom_operations
-SET sequence = $1, name = $2, work_center_id = $3, setup_minutes = $4,
-    minutes_per_cycle = $5, instructions = $6
-WHERE id = $7 AND bom_id = $8
-RETURNING id, bom_id, sequence, name, work_center_id, setup_minutes, minutes_per_cycle, instructions
+SET sequence = $1, name = $2, work_center_id = $3,
+    work_center_group_id = $4, setup_minutes = $5,
+    minutes_per_cycle = $6, send_ahead_quantity = $7, instructions = $8
+WHERE id = $9 AND bom_id = $10
+RETURNING id, bom_id, sequence, name, work_center_id, setup_minutes, minutes_per_cycle, instructions, work_center_group_id, send_ahead_quantity
 `
 
 type UpdateBomOperationParams struct {
-	Sequence        int32
-	Name            string
-	WorkCenterID    int64
-	SetupMinutes    pgtype.Numeric
-	MinutesPerCycle pgtype.Numeric
-	Instructions    string
-	ID              int64
-	BomID           int64
+	Sequence          int32
+	Name              string
+	WorkCenterID      *int64
+	WorkCenterGroupID *int64
+	SetupMinutes      pgtype.Numeric
+	MinutesPerCycle   pgtype.Numeric
+	SendAheadQuantity pgtype.Numeric
+	Instructions      string
+	ID                int64
+	BomID             int64
 }
 
 // UpdateBomOperation rewrites an operation the edit keeps; 0 rows is an id
@@ -830,8 +914,10 @@ func (q *Queries) UpdateBomOperation(ctx context.Context, arg UpdateBomOperation
 		arg.Sequence,
 		arg.Name,
 		arg.WorkCenterID,
+		arg.WorkCenterGroupID,
 		arg.SetupMinutes,
 		arg.MinutesPerCycle,
+		arg.SendAheadQuantity,
 		arg.Instructions,
 		arg.ID,
 		arg.BomID,
@@ -846,6 +932,8 @@ func (q *Queries) UpdateBomOperation(ctx context.Context, arg UpdateBomOperation
 		&i.SetupMinutes,
 		&i.MinutesPerCycle,
 		&i.Instructions,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
 	)
 	return i, err
 }

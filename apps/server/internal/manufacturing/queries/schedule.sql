@@ -14,10 +14,15 @@
 SELECT pg_advisory_xact_lock(19783, @work_center_id::int);
 
 -- name: WorkCenterIDsOfOrders :many
--- WorkCenterIDsOfOrders is every work center the orders' work orders name.
-SELECT DISTINCT work_center_id FROM manufacturing.work_orders
-WHERE order_id = ANY(@order_ids::bigint[])
-ORDER BY work_center_id;
+-- WorkCenterIDsOfOrders is every work center the orders' work orders name,
+-- and every member of the groups they target (manufacturing phase 2 M115,
+-- M119): a plan or a drag may move a group work order to any of them.
+SELECT work_center_id::bigint AS id FROM manufacturing.work_orders WHERE order_id = ANY(@order_ids::bigint[])
+UNION
+SELECT m.work_center_id FROM manufacturing.work_center_group_members m
+JOIN manufacturing.work_orders w ON w.work_center_group_id = m.group_id
+WHERE w.order_id = ANY(@order_ids::bigint[])
+ORDER BY id;
 
 -- name: WorkCenterIDsAtSite :many
 -- WorkCenterIDsAtSite is every work center at the site, of any status: plan
@@ -95,7 +100,8 @@ UPDATE manufacturing.orders SET actual = @actual WHERE id = @id;
 -- cut there.
 SELECT s.id, s.work_order_id, s.work_center_id, s.starts_at,
        (CASE WHEN w.status = 'done' AND w.finished_at IS NOT NULL THEN LEAST(s.ends_at, w.finished_at) ELSE s.ends_at END)::timestamptz AS ends_at,
-       w.sequence, w.name, w.status, w.revision, w.planned_start, w.planned_finish,
+       w.sequence, w.name, w.status, w.revision, w.planned_start, w.planned_finish, w.work_center_group_id,
+       EXISTS (SELECT 1 FROM manufacturing.time_logs l WHERE l.work_order_id = w.id)::boolean AS has_logs,
        o.id AS order_id, o.number AS order_number, o.suffix AS order_suffix, o.variant_id AS order_variant_id,
        o.priority AS order_priority, o.due_date AS order_due_date, o.status AS order_status
 FROM manufacturing.work_order_slots s

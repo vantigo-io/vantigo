@@ -75,6 +75,13 @@ const (
 	codeSerialQuantity    = "serial_quantity"     // 400
 	codeLotNotAllowed     = "lot_not_allowed"     // 400
 
+	// Routing (manufacturing phase 2 M112–M119).
+	codeOperationCycle       = "operation_cycle"          // 400
+	codeOperationUnknown     = "operation_unknown"        // 400
+	codeWorkCenterNotInGroup = "work_center_not_in_group" // 400
+	codeWorkOrderStarted     = "work_order_started"       // 409
+	codeWorkOrderMemberFixed = "work_order_member_fixed"  // 409
+
 	// A line's codes (ManufacturingProblemLine.code), each also a problem's
 	// own code when it is the first failing line's or a field's.
 	codeVariantNotGoods     = "variant_not_goods"
@@ -99,6 +106,7 @@ var refusalCodes = []string{
 	codeLotPatternInvalid, codePicksMismatch, codeSerialQuantity, codeLotNotAllowed,
 	codeCheckLimitsInvalid, codePhotoRequired, codeChecksIncomplete, codeCheckNotOpen, codeDeviationClosed,
 	codePhotoTooLarge, codePhotoType, codeStorageNotConfig,
+	codeOperationCycle, codeOperationUnknown, codeWorkCenterNotInGroup, codeWorkOrderStarted, codeWorkOrderMemberFixed,
 }
 
 // errDependencyUnavailable is every accessor's answer when the contract it

@@ -7,10 +7,67 @@
 
 -- name: InsertWorkOrder :one
 INSERT INTO manufacturing.work_orders (
-    order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle,
-    capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, status)
-VALUES (@order_id, @operation_id, @sequence, @name, @work_center_id, @setup_minutes, @cleanup_minutes, @minutes_per_cycle,
-        @capacity, @time_efficiency, @machine_rate, @labour_rate, @instructions, @expected_minutes, @status)
+    order_id, operation_id, sequence, name, work_center_id, work_center_group_id, setup_minutes, cleanup_minutes, minutes_per_cycle,
+    capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, status,
+    send_ahead_quantity, bom_output_quantity, own_setup)
+VALUES (@order_id, @operation_id, @sequence, @name, @work_center_id, sqlc.narg(work_center_group_id), @setup_minutes, @cleanup_minutes, @minutes_per_cycle,
+        @capacity, @time_efficiency, @machine_rate, @labour_rate, @instructions, @expected_minutes, @status,
+        sqlc.narg(send_ahead_quantity), @bom_output_quantity, @own_setup)
+RETURNING *;
+
+-- name: InsertWorkOrderDependency :exec
+-- InsertWorkOrderDependency is one edge of the order's graph, copied from
+-- its operations' at confirm (manufacturing phase 2 M113).
+INSERT INTO manufacturing.work_order_dependencies (work_order_id, depends_on_id) VALUES (@work_order_id, @depends_on_id);
+
+-- name: DependenciesOfOrders :many
+-- DependenciesOfOrders is the work orders' graph of the orders (M113): each
+-- edge, the work order and the one it depends on.
+SELECT d.work_order_id, d.depends_on_id FROM manufacturing.work_order_dependencies d
+JOIN manufacturing.work_orders w ON w.id = d.work_order_id
+WHERE w.order_id = ANY(@order_ids::bigint[])
+ORDER BY d.work_order_id, d.depends_on_id;
+
+-- name: SetWorkOrderMember :one
+-- SetWorkOrderMember moves a group work order to another member of its group
+-- (M118, M119): the member's figures are taken again and the expected
+-- minutes recomputed with them — never once a time log exists, which the
+-- caller has judged.
+UPDATE manufacturing.work_orders
+SET work_center_id = @work_center_id, setup_minutes = @setup_minutes, cleanup_minutes = @cleanup_minutes,
+    capacity = @capacity, time_efficiency = @time_efficiency, machine_rate = sqlc.narg(machine_rate),
+    labour_rate = sqlc.narg(labour_rate), expected_minutes = @expected_minutes, revision = revision + 1
+WHERE id = @id
+RETURNING *;
+
+-- name: WorkOrdersWithLogs :many
+-- WorkOrdersWithLogs is which of the work orders have a time log: a group
+-- work order's member is fixed once one does (M119).
+SELECT DISTINCT work_order_id::bigint AS id FROM manufacturing.time_logs
+WHERE work_order_id = ANY(@ids::bigint[])
+ORDER BY id;
+
+-- name: GroupMembers :many
+-- GroupMembers is the members of the groups, by group, with the center.
+SELECT m.group_id, sqlc.embed(c) FROM manufacturing.work_center_group_members m
+JOIN manufacturing.work_centers c ON c.id = m.work_center_id
+WHERE m.group_id = ANY(@group_ids::bigint[])
+ORDER BY m.group_id, c.code;
+
+-- name: QuantityRegistration :one
+-- QuantityRegistration is the registration a clientRequestId made, for its
+-- replay.
+SELECT * FROM manufacturing.work_order_quantities WHERE client_request_id = @client_request_id;
+
+-- name: InsertQuantityRegistration :one
+INSERT INTO manufacturing.work_order_quantities (work_order_id, client_request_id, quantity, user_id, user_display, registered_at)
+VALUES (@work_order_id, @client_request_id, @quantity, @user_id, @user_display, @now::timestamptz)
+RETURNING *;
+
+-- name: AddQuantityDone :one
+-- AddQuantityDone raises the good units the work order has passed on (M116).
+UPDATE manufacturing.work_orders SET quantity_done = quantity_done + @quantity, revision = revision + 1
+WHERE id = @id
 RETURNING *;
 
 -- name: GetWorkOrder :one
@@ -40,13 +97,31 @@ ORDER BY w.id;
 -- name: WorkCenterQueue :many
 -- WorkCenterQueue is the work center's queue (M31): its ready, in-progress
 -- and paused work orders of open orders, by planned start, then the order's
--- priority, then its due date.
+-- priority, then its due date. A group work order whose member is not fixed
+-- yet — unplanned with no log (manufacturing phase 2 M119) — is not here but
+-- under Group work (GroupWorkQueue).
 SELECT w.id FROM manufacturing.work_orders w JOIN manufacturing.orders o ON o.id = w.order_id
 WHERE w.work_center_id = @work_center_id
   AND w.status IN ('ready', 'in_progress', 'paused')
   AND o.status IN ('confirmed', 'in_progress')
+  AND (w.work_center_group_id IS NULL OR w.planned_start IS NOT NULL
+       OR EXISTS (SELECT 1 FROM manufacturing.time_logs l WHERE l.work_order_id = w.id))
 ORDER BY w.planned_start ASC NULLS LAST, (o.priority = 'urgent') DESC, o.due_date ASC NULLS LAST,
          o.number, o.suffix, w.sequence, w.id
+LIMIT 500;
+
+-- name: GroupWorkQueue :many
+-- GroupWorkQueue is a work center's Group work (M119): the ready group work
+-- orders of open orders whose member is not fixed yet — unplanned, with no
+-- log — of every group the center is an active member of, by the order's
+-- priority, then its due date.
+SELECT w.id FROM manufacturing.work_orders w JOIN manufacturing.orders o ON o.id = w.order_id
+JOIN manufacturing.work_center_group_members m ON m.group_id = w.work_center_group_id AND m.work_center_id = @work_center_id
+WHERE w.status = 'ready'
+  AND o.status IN ('confirmed', 'in_progress')
+  AND w.planned_start IS NULL
+  AND NOT EXISTS (SELECT 1 FROM manufacturing.time_logs l WHERE l.work_order_id = w.id)
+ORDER BY (o.priority = 'urgent') DESC, o.due_date ASC NULLS LAST, o.number, o.suffix, w.sequence, w.id
 LIMIT 500;
 
 -- name: LastWorkOrderOfOrders :many
@@ -84,17 +159,23 @@ SET status = 'done', started_at = COALESCE(started_at, @now::timestamptz), finis
 WHERE id = @id
 RETURNING *;
 
--- name: ReadyNextWorkOrder :many
--- ReadyNextWorkOrder readies the order's next work order once one finishes
--- (M27): the first by sequence that is neither done nor cancelled, only when
--- it is pending — so every one before it is done or cancelled. One started
--- out of sequence is left as it is, and the ones after it wait for it.
+-- name: ReadyWorkOrders :many
+-- ReadyWorkOrders readies every pending work order of the order whose
+-- predecessors allow it (manufacturing phase 2 M114): each predecessor is
+-- done or cancelled, or has passed on its send-ahead quantity — one at or
+-- above the order's quantity counts as none (M116). Run after every finish
+-- and every quantity registered. One started out of turn is left as it is,
+-- and the ones after it wait for it.
 UPDATE manufacturing.work_orders w SET status = 'ready', revision = w.revision + 1
-WHERE w.id = (SELECT n.id FROM manufacturing.work_orders n
-              WHERE n.order_id = @order_id AND n.status NOT IN ('done', 'cancelled')
-              ORDER BY n.sequence, n.id LIMIT 1)
-  AND w.status = 'pending'
-RETURNING *;
+FROM manufacturing.orders o
+WHERE o.id = w.order_id AND w.order_id = @order_id AND w.status = 'pending'
+  AND NOT EXISTS (
+      SELECT 1 FROM manufacturing.work_order_dependencies d
+      JOIN manufacturing.work_orders p ON p.id = d.depends_on_id
+      WHERE d.work_order_id = w.id AND p.status NOT IN ('done', 'cancelled')
+        AND NOT (p.send_ahead_quantity IS NOT NULL AND p.send_ahead_quantity < o.quantity
+                 AND p.quantity_done >= p.send_ahead_quantity))
+RETURNING w.*;
 
 -- name: CancelOpenWorkOrders :many
 -- CancelOpenWorkOrders cancels every work order of the order not done

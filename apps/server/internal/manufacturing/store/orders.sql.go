@@ -739,7 +739,10 @@ WITH filtered AS (
       AND ($6::bigint IS NULL OR o.site_id = $6)
       AND ($7::bigint IS NULL
            OR (o.status = 'draft' AND EXISTS (
-                SELECT 1 FROM manufacturing.bom_operations op WHERE op.bom_id = o.bom_id AND op.work_center_id = $7))
+                SELECT 1 FROM manufacturing.bom_operations op WHERE op.bom_id = o.bom_id
+                  AND (op.work_center_id = $7
+                       OR op.work_center_group_id IN (SELECT m.group_id FROM manufacturing.work_center_group_members m
+                                                      WHERE m.work_center_id = $7))))
            OR EXISTS (
                 SELECT 1 FROM manufacturing.work_orders wo WHERE wo.order_id = o.id AND wo.work_center_id = $7))
       AND ($8::int IS NULL OR o.variant_id = $8)

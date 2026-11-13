@@ -378,7 +378,8 @@ func (q *Queries) RecentDoneWorkOrders(ctx context.Context, arg RecentDoneWorkOr
 const scheduleSlots = `-- name: ScheduleSlots :many
 SELECT s.id, s.work_order_id, s.work_center_id, s.starts_at,
        (CASE WHEN w.status = 'done' AND w.finished_at IS NOT NULL THEN LEAST(s.ends_at, w.finished_at) ELSE s.ends_at END)::timestamptz AS ends_at,
-       w.sequence, w.name, w.status, w.revision, w.planned_start, w.planned_finish,
+       w.sequence, w.name, w.status, w.revision, w.planned_start, w.planned_finish, w.work_center_group_id,
+       EXISTS (SELECT 1 FROM manufacturing.time_logs l WHERE l.work_order_id = w.id)::boolean AS has_logs,
        o.id AS order_id, o.number AS order_number, o.suffix AS order_suffix, o.variant_id AS order_variant_id,
        o.priority AS order_priority, o.due_date AS order_due_date, o.status AS order_status
 FROM manufacturing.work_order_slots s
@@ -399,24 +400,26 @@ type ScheduleSlotsParams struct {
 }
 
 type ScheduleSlotsRow struct {
-	ID             int64
-	WorkOrderID    int64
-	WorkCenterID   int64
-	StartsAt       time.Time
-	EndsAt         time.Time
-	Sequence       int32
-	Name           string
-	Status         string
-	Revision       int32
-	PlannedStart   *time.Time
-	PlannedFinish  *time.Time
-	OrderID        int64
-	OrderNumber    int64
-	OrderSuffix    int32
-	OrderVariantID int32
-	OrderPriority  string
-	OrderDueDate   pgtype.Date
-	OrderStatus    string
+	ID                int64
+	WorkOrderID       int64
+	WorkCenterID      int64
+	StartsAt          time.Time
+	EndsAt            time.Time
+	Sequence          int32
+	Name              string
+	Status            string
+	Revision          int32
+	PlannedStart      *time.Time
+	PlannedFinish     *time.Time
+	WorkCenterGroupID *int64
+	HasLogs           bool
+	OrderID           int64
+	OrderNumber       int64
+	OrderSuffix       int32
+	OrderVariantID    int32
+	OrderPriority     string
+	OrderDueDate      pgtype.Date
+	OrderStatus       string
 }
 
 // ScheduleSlots is the board's bars (M36): the slots at the work centers
@@ -445,6 +448,8 @@ func (q *Queries) ScheduleSlots(ctx context.Context, arg ScheduleSlotsParams) ([
 			&i.Revision,
 			&i.PlannedStart,
 			&i.PlannedFinish,
+			&i.WorkCenterGroupID,
+			&i.HasLogs,
 			&i.OrderID,
 			&i.OrderNumber,
 			&i.OrderSuffix,
@@ -561,7 +566,7 @@ const setWorkOrderPlan = `-- name: SetWorkOrderPlan :one
 UPDATE manufacturing.work_orders
 SET planned_start = $1, planned_finish = $2, revision = revision + 1
 WHERE id = $3
-RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision
+RETURNING id, order_id, operation_id, sequence, name, work_center_id, setup_minutes, cleanup_minutes, minutes_per_cycle, capacity, time_efficiency, machine_rate, labour_rate, instructions, expected_minutes, planned_start, planned_finish, status, started_at, finished_at, revision, work_center_group_id, send_ahead_quantity, quantity_done, bom_output_quantity, own_setup
 `
 
 type SetWorkOrderPlanParams struct {
@@ -597,6 +602,11 @@ func (q *Queries) SetWorkOrderPlan(ctx context.Context, arg SetWorkOrderPlanPara
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.Revision,
+		&i.WorkCenterGroupID,
+		&i.SendAheadQuantity,
+		&i.QuantityDone,
+		&i.BomOutputQuantity,
+		&i.OwnSetup,
 	)
 	return i, err
 }
@@ -832,12 +842,17 @@ func (q *Queries) WorkCenterIDsAtSite(ctx context.Context, siteID int64) ([]int6
 }
 
 const workCenterIDsOfOrders = `-- name: WorkCenterIDsOfOrders :many
-SELECT DISTINCT work_center_id FROM manufacturing.work_orders
-WHERE order_id = ANY($1::bigint[])
-ORDER BY work_center_id
+SELECT work_center_id::bigint AS id FROM manufacturing.work_orders WHERE order_id = ANY($1::bigint[])
+UNION
+SELECT m.work_center_id FROM manufacturing.work_center_group_members m
+JOIN manufacturing.work_orders w ON w.work_center_group_id = m.group_id
+WHERE w.order_id = ANY($1::bigint[])
+ORDER BY id
 `
 
-// WorkCenterIDsOfOrders is every work center the orders' work orders name.
+// WorkCenterIDsOfOrders is every work center the orders' work orders name,
+// and every member of the groups they target (manufacturing phase 2 M115,
+// M119): a plan or a drag may move a group work order to any of them.
 func (q *Queries) WorkCenterIDsOfOrders(ctx context.Context, orderIds []int64) ([]int64, error) {
 	rows, err := q.db.Query(ctx, workCenterIDsOfOrders, orderIds)
 	if err != nil {
@@ -846,11 +861,11 @@ func (q *Queries) WorkCenterIDsOfOrders(ctx context.Context, orderIds []int64) (
 	defer rows.Close()
 	var items []int64
 	for rows.Next() {
-		var work_center_id int64
-		if err := rows.Scan(&work_center_id); err != nil {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		items = append(items, work_center_id)
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

@@ -827,11 +827,14 @@ type ManufacturingBomList struct {
 	Total int32                     `json:"total"`
 }
 
-// ManufacturingBomOperation An operation of a BoM (M12), run in sequence order.
+// ManufacturingBomOperation An operation of a BoM (M12), after the operations it depends on (manufacturing phase 2 M112), at a work center or a work center group (M118).
 type ManufacturingBomOperation struct {
 	// Checks Its quality checks, by sequence (manufacturing phase 2 M95).
 	Checks []ManufacturingCheckTemplate `json:"checks"`
-	Id     int64                        `json:"id"`
+
+	// DependsOn The keys of the operations it runs after (M112); empty when it can start at once.
+	DependsOn []string `json:"dependsOn"`
+	Id        int64    `json:"id"`
 
 	// Instructions Markdown.
 	Instructions string `json:"instructions"`
@@ -842,19 +845,34 @@ type ManufacturingBomOperation struct {
 	// MinutesPerCycle Exact decimal, more than 0.
 	MinutesPerCycle string `json:"minutesPerCycle"`
 	Name            string `json:"name"`
-	Sequence        int32  `json:"sequence"`
+
+	// SendAheadQuantity Exact decimal; the good units it passes on before its successors may start (M116), null for none.
+	SendAheadQuantity *string `json:"sendAheadQuantity"`
+	Sequence          int32   `json:"sequence"`
 
 	// SetupMinutes Exact decimal; null when the work center's setup applies.
-	SetupMinutes   *string `json:"setupMinutes"`
-	WorkCenterCode string  `json:"workCenterCode"`
-	WorkCenterId   int64   `json:"workCenterId"`
-	WorkCenterName string  `json:"workCenterName"`
+	SetupMinutes *string `json:"setupMinutes"`
+
+	// WorkCenterCode The work center's code, or the group's for an operation that targets a group.
+	WorkCenterCode string `json:"workCenterCode"`
+
+	// WorkCenterGroupId The work center group it targets (M118); null when it targets one work center.
+	WorkCenterGroupId *int64 `json:"workCenterGroupId"`
+
+	// WorkCenterId The work center it targets; null when it targets a group.
+	WorkCenterId *int64 `json:"workCenterId"`
+
+	// WorkCenterName The work center's name, or the group's.
+	WorkCenterName string `json:"workCenterName"`
 }
 
 // ManufacturingBomOperationInput An operation as the editor sends it.
 type ManufacturingBomOperationInput struct {
 	// Checks Its quality checks, in order (M95): at most 20; absent or empty for none. They replace the operation's checks.
 	Checks *[]ManufacturingCheckTemplateInput `json:"checks,omitempty"`
+
+	// DependsOn The keys of the operations of this request it runs after (M112): absent for the operation before it by sequence, empty to start at once. A key no operation has is operation_unknown, a cycle operation_cycle.
+	DependsOn *[]string `json:"dependsOn,omitempty"`
 
 	// Id An existing operation of this BoM to keep; absent for a new one.
 	Id *int64 `json:"id,omitempty"`
@@ -868,13 +886,19 @@ type ManufacturingBomOperationInput struct {
 	// MinutesPerCycle Exact decimal, more than 0.
 	MinutesPerCycle string `json:"minutesPerCycle"`
 	Name            string `json:"name"`
-	Sequence        int32  `json:"sequence"`
+
+	// SendAheadQuantity Exact decimal, more than 0; the good units it passes on before its successors may start (M116). Null or absent for none.
+	SendAheadQuantity *string `json:"sendAheadQuantity,omitempty"`
+	Sequence          int32   `json:"sequence"`
 
 	// SetupMinutes Exact decimal, 0 or more; null or absent for the work center's setup.
 	SetupMinutes *string `json:"setupMinutes,omitempty"`
 
-	// WorkCenterId An active work center (work_center_unknown).
-	WorkCenterId int64 `json:"workCenterId"`
+	// WorkCenterGroupId An active work center group with an active member (work_center_unknown), instead of workCenterId (M118).
+	WorkCenterGroupId *int64 `json:"workCenterGroupId,omitempty"`
+
+	// WorkCenterId An active work center (work_center_unknown). Exactly one of workCenterId and workCenterGroupId.
+	WorkCenterId *int64 `json:"workCenterId,omitempty"`
 }
 
 // ManufacturingBomOverview A BoM exploded at a quantity, up to 10 levels and 2000 nodes.
@@ -1805,7 +1829,7 @@ type ManufacturingPlanAllResult struct {
 // ManufacturingPriority An order's priority (M17).
 type ManufacturingPriority string
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111).
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_cycle (400: an operation's dependsOn makes a cycle; the detail names the path, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119).
 type ManufacturingProblem struct {
 	// Checks checks_incomplete only: every check with no result that stops it (M98).
 	Checks *[]ManufacturingMissingCheck `json:"checks,omitempty"`
@@ -2150,6 +2174,15 @@ type ManufacturingQualityDeviationList struct {
 // ManufacturingQualityDeviationStatus defines model for ManufacturingQualityDeviationStatus.
 type ManufacturingQualityDeviationStatus string
 
+// ManufacturingQuantityInput Register quantity (manufacturing phase 2 M116): good units a work order passes on to its successors. Nothing is posted to stock.
+type ManufacturingQuantityInput struct {
+	// ClientRequestId The client's id for the registration; sent again it registers nothing more and answers 200.
+	ClientRequestId openapi_types.UUID `json:"clientRequestId"`
+
+	// Quantity Exact decimal, more than 0, at most three decimals (quantity_invalid).
+	Quantity string `json:"quantity"`
+}
+
 // ManufacturingReplenishmentRule A variant's automatic creation at a site (M111); both false when it has no rule.
 type ManufacturingReplenishmentRule struct {
 	AutoConfirm bool  `json:"autoConfirm"`
@@ -2214,6 +2247,9 @@ type ManufacturingRescheduleInput struct {
 	// Revision The work order's revision the client read (revision_conflict).
 	Revision int32     `json:"revision"`
 	Start    time.Time `json:"start"`
+
+	// WorkCenterId A group work order dropped on another member's row (manufacturing phase 2 M119): that member, re-snapshotted. A center outside the group is work_center_not_in_group; a work order with a time log is work_order_started.
+	WorkCenterId *int64 `json:"workCenterId,omitempty"`
 }
 
 // ManufacturingReservationStatus What the list shows of an open order's components (M21a), from the stored reserved copies: every line's remaining requirement reserved, some reserved, or none.
@@ -2279,10 +2315,13 @@ type ManufacturingScheduleBar struct {
 	EndsAt time.Time `json:"endsAt"`
 
 	// Late The work order's planned finish falls after its order's due date.
-	Late        bool   `json:"late"`
-	Name        string `json:"name"`
-	OrderId     int64  `json:"orderId"`
-	OrderNumber string `json:"orderNumber"`
+	Late bool `json:"late"`
+
+	// MemberIds The other members' rows it may be dragged to (M119); empty when it targets no group or a time log has fixed its member.
+	MemberIds   *[]int64 `json:"memberIds,omitempty"`
+	Name        string   `json:"name"`
+	OrderId     int64    `json:"orderId"`
+	OrderNumber string   `json:"orderNumber"`
 
 	// PlannedFinish The work order's planned finish.
 	PlannedFinish *time.Time `json:"plannedFinish"`
@@ -2297,8 +2336,11 @@ type ManufacturingScheduleBar struct {
 	Urgent bool                         `json:"urgent"`
 
 	// Variant A catalog variant as Manufacturing names it.
-	Variant     ManufacturingVariantRef `json:"variant"`
-	WorkOrderId int64                   `json:"workOrderId"`
+	Variant ManufacturingVariantRef `json:"variant"`
+
+	// WorkCenterGroupId The group a group work order targets (manufacturing phase 2 M118); null otherwise.
+	WorkCenterGroupId *int64 `json:"workCenterGroupId,omitempty"`
+	WorkOrderId       int64  `json:"workOrderId"`
 
 	// WorkOrderRevision The work order's revision, for a reschedule.
 	WorkOrderRevision int32 `json:"workOrderRevision"`
@@ -2426,6 +2468,9 @@ type ManufacturingSiteList struct {
 type ManufacturingStartInput struct {
 	// Force Start a pending work order out of sequence; the log is marked forced. Without it a pending work order is work_order_pending.
 	Force *bool `json:"force,omitempty"`
+
+	// WorkCenterId The member a group work order is started at, from its Group work (manufacturing phase 2 M119): that member, re-snapshotted. Another member than the one fixed is work_order_member_fixed; a center outside the group work_center_not_in_group.
+	WorkCenterId *int64 `json:"workCenterId,omitempty"`
 }
 
 // ManufacturingStats The overview's counts.
@@ -2826,6 +2871,67 @@ type ManufacturingWorkCenterBlock struct {
 	Since  time.Time                   `json:"since"`
 }
 
+// ManufacturingWorkCenterGroup A work center group (manufacturing phase 2 M117): interchangeable work centers of one site an operation may target; planning chooses the member that finishes first (M119).
+type ManufacturingWorkCenterGroup struct {
+	// Code 1–16 characters A–Z and 0–9, unique among groups.
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int64     `json:"id"`
+
+	// Members Its work centers, by code.
+	Members  []ManufacturingWorkCenterRef `json:"members"`
+	Name     string                       `json:"name"`
+	Revision int32                        `json:"revision"`
+	SiteCode string                       `json:"siteCode"`
+	SiteId   int64                        `json:"siteId"`
+	SiteName string                       `json:"siteName"`
+
+	// Status A work center's or a BoM's status.
+	Status    ManufacturingStatus `json:"status"`
+	UpdatedAt time.Time           `json:"updatedAt"`
+}
+
+// ManufacturingWorkCenterGroupInput A new work center group.
+type ManufacturingWorkCenterGroupInput struct {
+	// Code 1–16 characters A–Z and 0–9 after upper-casing, unique among groups (work_center_code_taken).
+	Code string `json:"code"`
+
+	// MemberIds 1–50 active work centers of the site (work_center_unknown, work_center_other_site).
+	MemberIds []int64 `json:"memberIds"`
+	Name      string  `json:"name"`
+
+	// SiteId An active Inventory site (site_unknown).
+	SiteId int64 `json:"siteId"`
+}
+
+// ManufacturingWorkCenterGroupList Work center groups, by code.
+type ManufacturingWorkCenterGroupList struct {
+	Items []ManufacturingWorkCenterGroup `json:"items"`
+}
+
+// ManufacturingWorkCenterGroupRef A work center group as a work order names it.
+type ManufacturingWorkCenterGroupRef struct {
+	Code string `json:"code"`
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// ManufacturingWorkCenterGroupUpdate A work center group's fields and members, under its revision.
+type ManufacturingWorkCenterGroupUpdate struct {
+	// Code 1–16 characters A–Z and 0–9 after upper-casing, unique among groups (work_center_code_taken).
+	Code string `json:"code"`
+
+	// MemberIds 1–50 work centers of the site; a center added must be active (work_center_unknown, work_center_other_site).
+	MemberIds []int64 `json:"memberIds"`
+	Name      string  `json:"name"`
+
+	// Revision The revision the client read (revision_conflict).
+	Revision int32 `json:"revision"`
+
+	// SiteId An active Inventory site (site_unknown); it does not change while an active bill of materials targets the group (work_center_other_site).
+	SiteId int64 `json:"siteId"`
+}
+
 // ManufacturingWorkCenterInput A new work center. A field left out takes its default.
 type ManufacturingWorkCenterInput struct {
 	// Capacity 1 or more; default 1.
@@ -2865,7 +2971,10 @@ type ManufacturingWorkCenterList struct {
 // ManufacturingWorkCenterQueue A work center's queue (M31): its ready, in-progress and paused work orders of open orders, by planned start, then the order's priority, then its due date.
 type ManufacturingWorkCenterQueue struct {
 	Block *ManufacturingWorkCenterBlock `json:"block"`
-	Items []ManufacturingWorkOrder      `json:"items"`
+
+	// GroupWork Group work (manufacturing phase 2 M119): the ready work orders of the groups this center is a member of whose member is not fixed yet — unplanned, with no time log. Starting one here sets this center.
+	GroupWork *[]ManufacturingWorkOrder `json:"groupWork,omitempty"`
+	Items     []ManufacturingWorkOrder  `json:"items"`
 
 	// WorkCenter A work center as a work order names it.
 	WorkCenter ManufacturingWorkCenterRef `json:"workCenter"`
@@ -2930,13 +3039,16 @@ type ManufacturingWorkOrder struct {
 	// CleanupMinutes Exact decimal, as at confirm.
 	CleanupMinutes string `json:"cleanupMinutes"`
 
+	// DependsOn The work orders of its order it runs after (manufacturing phase 2 M113).
+	DependsOn *[]int64 `json:"dependsOn,omitempty"`
+
 	// DeviationMinutes actualMinutes − expectedMinutes, the duration deviation (M41).
 	DeviationMinutes int64 `json:"deviationMinutes"`
 
 	// DeviationPercent deviationMinutes ÷ expectedMinutes × 100, half-up to one decimal; null when nothing is expected.
 	DeviationPercent *string `json:"deviationPercent"`
 
-	// ExpectedMinutes setup + cleanup + cycles × minutesPerCycle × 100 / timeEfficiency, cycles = ⌈(order quantity / output quantity) / capacity⌉, half-up to the minute; computed at confirm and never recomputed (M28a).
+	// ExpectedMinutes setup + cleanup + cycles × minutesPerCycle × 100 / timeEfficiency, cycles = ⌈(order quantity / output quantity) / capacity⌉, half-up to the minute; computed at confirm and never recomputed (M28a) — but for a group work order moved to another member before any time is logged, which takes that member's figures (manufacturing phase 2 M118).
 	ExpectedMinutes int64      `json:"expectedMinutes"`
 	FinishedAt      *time.Time `json:"finishedAt"`
 	Id              int64      `json:"id"`
@@ -2946,6 +3058,9 @@ type ManufacturingWorkOrder struct {
 
 	// LoggedMinutes Productive minutes logged on it, open logs counted to now, rounded down.
 	LoggedMinutes int64 `json:"loggedMinutes"`
+
+	// MemberFixed A group work order's member can no longer change — a time log exists (manufacturing phase 2 M119). False for a work order of no group.
+	MemberFixed *bool `json:"memberFixed,omitempty"`
 
 	// MinutesPerCycle Exact decimal: the time for one cycle (M28a).
 	MinutesPerCycle string `json:"minutesPerCycle"`
@@ -2959,8 +3074,14 @@ type ManufacturingWorkOrder struct {
 	OrderId       int64                       `json:"orderId"`
 	PlannedFinish *time.Time                  `json:"plannedFinish"`
 	PlannedStart  *time.Time                  `json:"plannedStart"`
-	Revision      int32                       `json:"revision"`
-	Sequence      int32                       `json:"sequence"`
+
+	// QuantityDone Exact decimal; the good units passed on by Register quantity (manufacturing phase 2 M116).
+	QuantityDone *string `json:"quantityDone,omitempty"`
+	Revision     int32   `json:"revision"`
+
+	// SendAheadQuantity Exact decimal; the good units it passes on before its successors may start (M116), null for none.
+	SendAheadQuantity *string `json:"sendAheadQuantity,omitempty"`
+	Sequence          int32   `json:"sequence"`
 
 	// SetupMinutes Exact decimal: the operation's setup, else the work center's, as at confirm.
 	SetupMinutes string     `json:"setupMinutes"`
@@ -2974,6 +3095,9 @@ type ManufacturingWorkOrder struct {
 
 	// WorkCenter A work center as a work order names it.
 	WorkCenter ManufacturingWorkCenterRef `json:"workCenter"`
+
+	// WorkCenterGroup The group its operation targets (manufacturing phase 2 M118); workCenter is the member chosen. Null when it targets one work center.
+	WorkCenterGroup *ManufacturingWorkCenterGroupRef `json:"workCenterGroup,omitempty"`
 }
 
 // ManufacturingWorkOrderCheck A check of a work order as it was copied at confirm (M96), with its result in force.
@@ -3248,6 +3372,13 @@ type SearchManufacturingVariantsParams struct {
 	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListManufacturingWorkCenterGroupsParams defines parameters for ListManufacturingWorkCenterGroups.
+type ListManufacturingWorkCenterGroupsParams struct {
+	// Status Default active.
+	Status *ManufacturingStatusFilter `form:"status,omitempty" json:"status,omitempty"`
+	SiteId *int64                     `form:"siteId,omitempty" json:"siteId,omitempty"`
+}
+
 // ListManufacturingWorkCentersParams defines parameters for ListManufacturingWorkCenters.
 type ListManufacturingWorkCentersParams struct {
 	// Status Default active.
@@ -3344,6 +3475,18 @@ type PlanAllManufacturingOrdersJSONRequestBody = ManufacturingPlanAllInput
 // CorrectManufacturingTimeLogJSONRequestBody defines body for CorrectManufacturingTimeLog for application/json ContentType.
 type CorrectManufacturingTimeLogJSONRequestBody = ManufacturingTimeLogCorrection
 
+// CreateManufacturingWorkCenterGroupJSONRequestBody defines body for CreateManufacturingWorkCenterGroup for application/json ContentType.
+type CreateManufacturingWorkCenterGroupJSONRequestBody = ManufacturingWorkCenterGroupInput
+
+// UpdateManufacturingWorkCenterGroupJSONRequestBody defines body for UpdateManufacturingWorkCenterGroup for application/json ContentType.
+type UpdateManufacturingWorkCenterGroupJSONRequestBody = ManufacturingWorkCenterGroupUpdate
+
+// ArchiveManufacturingWorkCenterGroupJSONRequestBody defines body for ArchiveManufacturingWorkCenterGroup for application/json ContentType.
+type ArchiveManufacturingWorkCenterGroupJSONRequestBody = ManufacturingRevisionInput
+
+// ReactivateManufacturingWorkCenterGroupJSONRequestBody defines body for ReactivateManufacturingWorkCenterGroup for application/json ContentType.
+type ReactivateManufacturingWorkCenterGroupJSONRequestBody = ManufacturingRevisionInput
+
 // CreateManufacturingWorkCenterJSONRequestBody defines body for CreateManufacturingWorkCenter for application/json ContentType.
 type CreateManufacturingWorkCenterJSONRequestBody = ManufacturingWorkCenterInput
 
@@ -3370,6 +3513,9 @@ type FinishManufacturingWorkOrderJSONRequestBody = ManufacturingFinishInput
 
 // UploadManufacturingCheckPhotoMultipartRequestBody defines body for UploadManufacturingCheckPhoto for multipart/form-data ContentType.
 type UploadManufacturingCheckPhotoMultipartRequestBody UploadManufacturingCheckPhotoMultipartBody
+
+// RegisterManufacturingWorkOrderQuantityJSONRequestBody defines body for RegisterManufacturingWorkOrderQuantity for application/json ContentType.
+type RegisterManufacturingWorkOrderQuantityJSONRequestBody = ManufacturingQuantityInput
 
 // RescheduleManufacturingWorkOrderJSONRequestBody defines body for RescheduleManufacturingWorkOrder for application/json ContentType.
 type RescheduleManufacturingWorkOrderJSONRequestBody = ManufacturingRescheduleInput
@@ -3547,6 +3693,24 @@ type ServerInterface interface {
 	// SearchManufacturingVariants Search the catalog's goods variants
 	// (GET /api/v1/manufacturing/variants)
 	SearchManufacturingVariants(w http.ResponseWriter, r *http.Request, params SearchManufacturingVariantsParams)
+	// ListManufacturingWorkCenterGroups List work center groups
+	// (GET /api/v1/manufacturing/work-center-groups)
+	ListManufacturingWorkCenterGroups(w http.ResponseWriter, r *http.Request, params ListManufacturingWorkCenterGroupsParams)
+	// CreateManufacturingWorkCenterGroup Create a work center group
+	// (POST /api/v1/manufacturing/work-center-groups)
+	CreateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request)
+	// GetManufacturingWorkCenterGroup Get a work center group
+	// (GET /api/v1/manufacturing/work-center-groups/{id})
+	GetManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateManufacturingWorkCenterGroup Update a work center group
+	// (PUT /api/v1/manufacturing/work-center-groups/{id})
+	UpdateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request, id int64)
+	// ArchiveManufacturingWorkCenterGroup Archive a work center group
+	// (POST /api/v1/manufacturing/work-center-groups/{id}/archive)
+	ArchiveManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request, id int64)
+	// ReactivateManufacturingWorkCenterGroup Reactivate a work center group
+	// (POST /api/v1/manufacturing/work-center-groups/{id}/reactivate)
+	ReactivateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request, id int64)
 	// ListManufacturingWorkCenters List work centers
 	// (GET /api/v1/manufacturing/work-centers)
 	ListManufacturingWorkCenters(w http.ResponseWriter, r *http.Request, params ListManufacturingWorkCentersParams)
@@ -3604,6 +3768,9 @@ type ServerInterface interface {
 	// GetManufacturingCheckPhoto Download a check's photo
 	// (GET /api/v1/manufacturing/work-orders/{id}/photos/{photoId})
 	GetManufacturingCheckPhoto(w http.ResponseWriter, r *http.Request, id int64, photoId int64)
+	// RegisterManufacturingWorkOrderQuantity Register a work order's quantity
+	// (POST /api/v1/manufacturing/work-orders/{id}/quantity)
+	RegisterManufacturingWorkOrderQuantity(w http.ResponseWriter, r *http.Request, id int64)
 	// RescheduleManufacturingWorkOrder Reschedule a work order
 	// (POST /api/v1/manufacturing/work-orders/{id}/reschedule)
 	RescheduleManufacturingWorkOrder(w http.ResponseWriter, r *http.Request, id int64)
@@ -5549,6 +5716,170 @@ func (siw *ServerInterfaceWrapper) SearchManufacturingVariants(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// ListManufacturingWorkCenterGroups operation middleware
+func (siw *ServerInterfaceWrapper) ListManufacturingWorkCenterGroups(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListManufacturingWorkCenterGroupsParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "siteId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "siteId", r.URL.Query(), &params.SiteId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "siteId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "siteId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListManufacturingWorkCenterGroups(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateManufacturingWorkCenterGroup operation middleware
+func (siw *ServerInterfaceWrapper) CreateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateManufacturingWorkCenterGroup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingWorkCenterGroup operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingWorkCenterGroup(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateManufacturingWorkCenterGroup operation middleware
+func (siw *ServerInterfaceWrapper) UpdateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateManufacturingWorkCenterGroup(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ArchiveManufacturingWorkCenterGroup operation middleware
+func (siw *ServerInterfaceWrapper) ArchiveManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ArchiveManufacturingWorkCenterGroup(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReactivateManufacturingWorkCenterGroup operation middleware
+func (siw *ServerInterfaceWrapper) ReactivateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReactivateManufacturingWorkCenterGroup(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListManufacturingWorkCenters operation middleware
 func (siw *ServerInterfaceWrapper) ListManufacturingWorkCenters(w http.ResponseWriter, r *http.Request) {
 
@@ -6107,6 +6438,32 @@ func (siw *ServerInterfaceWrapper) GetManufacturingCheckPhoto(w http.ResponseWri
 	handler.ServeHTTP(w, r)
 }
 
+// RegisterManufacturingWorkOrderQuantity operation middleware
+func (siw *ServerInterfaceWrapper) RegisterManufacturingWorkOrderQuantity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RegisterManufacturingWorkOrderQuantity(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RescheduleManufacturingWorkOrder operation middleware
 func (siw *ServerInterfaceWrapper) RescheduleManufacturingWorkOrder(w http.ResponseWriter, r *http.Request) {
 
@@ -6411,6 +6768,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/stats", wrapper.GetManufacturingStats)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/manufacturing/time-logs/{id}", wrapper.CorrectManufacturingTimeLog)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/variants", wrapper.SearchManufacturingVariants)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups", wrapper.ListManufacturingWorkCenterGroups)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups", wrapper.CreateManufacturingWorkCenterGroup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups/{id}", wrapper.GetManufacturingWorkCenterGroup)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups/{id}", wrapper.UpdateManufacturingWorkCenterGroup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups/{id}/archive", wrapper.ArchiveManufacturingWorkCenterGroup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups/{id}/reactivate", wrapper.ReactivateManufacturingWorkCenterGroup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-centers", wrapper.ListManufacturingWorkCenters)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-centers", wrapper.CreateManufacturingWorkCenter)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/manufacturing/work-centers/{id}", wrapper.DeleteManufacturingWorkCenter)
@@ -6430,6 +6793,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/pause", wrapper.PauseManufacturingWorkOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/photos", wrapper.UploadManufacturingCheckPhoto)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/photos/{photoId}", wrapper.GetManufacturingCheckPhoto)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/quantity", wrapper.RegisterManufacturingWorkOrderQuantity)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/reschedule", wrapper.RescheduleManufacturingWorkOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/scrap", wrapper.ReportManufacturingWorkOrderScrap)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-orders/{id}/start", wrapper.StartManufacturingWorkOrder)
@@ -10821,6 +11185,509 @@ func (response SearchManufacturingVariants503ApplicationProblemPlusJSONResponse)
 	return err
 }
 
+type ListManufacturingWorkCenterGroupsRequestObject struct {
+	Params ListManufacturingWorkCenterGroupsParams
+}
+
+type ListManufacturingWorkCenterGroupsResponseObject interface {
+	VisitListManufacturingWorkCenterGroupsResponse(w http.ResponseWriter) error
+}
+
+type ListManufacturingWorkCenterGroups200JSONResponse ManufacturingWorkCenterGroupList
+
+func (response ListManufacturingWorkCenterGroups200JSONResponse) VisitListManufacturingWorkCenterGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingWorkCenterGroups401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingWorkCenterGroups401JSONResponse) VisitListManufacturingWorkCenterGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingWorkCenterGroups403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingWorkCenterGroups403JSONResponse) VisitListManufacturingWorkCenterGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingWorkCenterGroups503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ListManufacturingWorkCenterGroups503ApplicationProblemPlusJSONResponse) VisitListManufacturingWorkCenterGroupsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingWorkCenterGroupRequestObject struct {
+	Body *CreateManufacturingWorkCenterGroupJSONRequestBody
+}
+
+type CreateManufacturingWorkCenterGroupResponseObject interface {
+	VisitCreateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error
+}
+
+type CreateManufacturingWorkCenterGroup201JSONResponse ManufacturingWorkCenterGroup
+
+func (response CreateManufacturingWorkCenterGroup201JSONResponse) VisitCreateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingWorkCenterGroup400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingWorkCenterGroup400ApplicationProblemPlusJSONResponse) VisitCreateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingWorkCenterGroup401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateManufacturingWorkCenterGroup401JSONResponse) VisitCreateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingWorkCenterGroup403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateManufacturingWorkCenterGroup403JSONResponse) VisitCreateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingWorkCenterGroup409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingWorkCenterGroup409ApplicationProblemPlusJSONResponse) VisitCreateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse) VisitCreateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingWorkCenterGroupRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetManufacturingWorkCenterGroupResponseObject interface {
+	VisitGetManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingWorkCenterGroup200JSONResponse ManufacturingWorkCenterGroup
+
+func (response GetManufacturingWorkCenterGroup200JSONResponse) VisitGetManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingWorkCenterGroup401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingWorkCenterGroup401JSONResponse) VisitGetManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingWorkCenterGroup403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingWorkCenterGroup403JSONResponse) VisitGetManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingWorkCenterGroup404Response struct {
+}
+
+func (response GetManufacturingWorkCenterGroup404Response) VisitGetManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse) VisitGetManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingWorkCenterGroupRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateManufacturingWorkCenterGroupJSONRequestBody
+}
+
+type UpdateManufacturingWorkCenterGroupResponseObject interface {
+	VisitUpdateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error
+}
+
+type UpdateManufacturingWorkCenterGroup200JSONResponse ManufacturingWorkCenterGroup
+
+func (response UpdateManufacturingWorkCenterGroup200JSONResponse) VisitUpdateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingWorkCenterGroup400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingWorkCenterGroup400ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingWorkCenterGroup401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateManufacturingWorkCenterGroup401JSONResponse) VisitUpdateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingWorkCenterGroup403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateManufacturingWorkCenterGroup403JSONResponse) VisitUpdateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingWorkCenterGroup404Response struct {
+}
+
+func (response UpdateManufacturingWorkCenterGroup404Response) VisitUpdateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateManufacturingWorkCenterGroup409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingWorkCenterGroup409ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response UpdateManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse) VisitUpdateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveManufacturingWorkCenterGroupRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ArchiveManufacturingWorkCenterGroupJSONRequestBody
+}
+
+type ArchiveManufacturingWorkCenterGroupResponseObject interface {
+	VisitArchiveManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error
+}
+
+type ArchiveManufacturingWorkCenterGroup200JSONResponse ManufacturingWorkCenterGroup
+
+func (response ArchiveManufacturingWorkCenterGroup200JSONResponse) VisitArchiveManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveManufacturingWorkCenterGroup401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ArchiveManufacturingWorkCenterGroup401JSONResponse) VisitArchiveManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveManufacturingWorkCenterGroup403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ArchiveManufacturingWorkCenterGroup403JSONResponse) VisitArchiveManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveManufacturingWorkCenterGroup404Response struct {
+}
+
+func (response ArchiveManufacturingWorkCenterGroup404Response) VisitArchiveManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ArchiveManufacturingWorkCenterGroup409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ArchiveManufacturingWorkCenterGroup409ApplicationProblemPlusJSONResponse) VisitArchiveManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ArchiveManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ArchiveManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse) VisitArchiveManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReactivateManufacturingWorkCenterGroupRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ReactivateManufacturingWorkCenterGroupJSONRequestBody
+}
+
+type ReactivateManufacturingWorkCenterGroupResponseObject interface {
+	VisitReactivateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error
+}
+
+type ReactivateManufacturingWorkCenterGroup200JSONResponse ManufacturingWorkCenterGroup
+
+func (response ReactivateManufacturingWorkCenterGroup200JSONResponse) VisitReactivateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReactivateManufacturingWorkCenterGroup401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReactivateManufacturingWorkCenterGroup401JSONResponse) VisitReactivateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReactivateManufacturingWorkCenterGroup403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReactivateManufacturingWorkCenterGroup403JSONResponse) VisitReactivateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReactivateManufacturingWorkCenterGroup404Response struct {
+}
+
+func (response ReactivateManufacturingWorkCenterGroup404Response) VisitReactivateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReactivateManufacturingWorkCenterGroup409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ReactivateManufacturingWorkCenterGroup409ApplicationProblemPlusJSONResponse) VisitReactivateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReactivateManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ReactivateManufacturingWorkCenterGroup503ApplicationProblemPlusJSONResponse) VisitReactivateManufacturingWorkCenterGroupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListManufacturingWorkCentersRequestObject struct {
 	Params ListManufacturingWorkCentersParams
 }
@@ -12502,6 +13369,121 @@ func (response GetManufacturingCheckPhoto503ApplicationProblemPlusJSONResponse) 
 	return err
 }
 
+type RegisterManufacturingWorkOrderQuantityRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *RegisterManufacturingWorkOrderQuantityJSONRequestBody
+}
+
+type RegisterManufacturingWorkOrderQuantityResponseObject interface {
+	VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error
+}
+
+type RegisterManufacturingWorkOrderQuantity200JSONResponse ManufacturingShopFloorResult
+
+func (response RegisterManufacturingWorkOrderQuantity200JSONResponse) VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterManufacturingWorkOrderQuantity400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response RegisterManufacturingWorkOrderQuantity400ApplicationProblemPlusJSONResponse) VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterManufacturingWorkOrderQuantity401JSONResponse externalRef0.AuthErrorResponse
+
+func (response RegisterManufacturingWorkOrderQuantity401JSONResponse) VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterManufacturingWorkOrderQuantity403JSONResponse externalRef0.AuthErrorResponse
+
+func (response RegisterManufacturingWorkOrderQuantity403JSONResponse) VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterManufacturingWorkOrderQuantity403ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response RegisterManufacturingWorkOrderQuantity403ApplicationProblemPlusJSONResponse) VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterManufacturingWorkOrderQuantity404Response struct {
+}
+
+func (response RegisterManufacturingWorkOrderQuantity404Response) VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type RegisterManufacturingWorkOrderQuantity409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response RegisterManufacturingWorkOrderQuantity409ApplicationProblemPlusJSONResponse) VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterManufacturingWorkOrderQuantity503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response RegisterManufacturingWorkOrderQuantity503ApplicationProblemPlusJSONResponse) VisitRegisterManufacturingWorkOrderQuantityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RescheduleManufacturingWorkOrderRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *RescheduleManufacturingWorkOrderJSONRequestBody
@@ -12521,6 +13503,20 @@ func (response RescheduleManufacturingWorkOrder200JSONResponse) VisitRescheduleM
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RescheduleManufacturingWorkOrder400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response RescheduleManufacturingWorkOrder400ApplicationProblemPlusJSONResponse) VisitRescheduleManufacturingWorkOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13156,6 +14152,24 @@ type StrictServerInterface interface {
 	// SearchManufacturingVariants Search the catalog's goods variants
 	// (GET /api/v1/manufacturing/variants)
 	SearchManufacturingVariants(ctx context.Context, request SearchManufacturingVariantsRequestObject) (SearchManufacturingVariantsResponseObject, error)
+	// ListManufacturingWorkCenterGroups List work center groups
+	// (GET /api/v1/manufacturing/work-center-groups)
+	ListManufacturingWorkCenterGroups(ctx context.Context, request ListManufacturingWorkCenterGroupsRequestObject) (ListManufacturingWorkCenterGroupsResponseObject, error)
+	// CreateManufacturingWorkCenterGroup Create a work center group
+	// (POST /api/v1/manufacturing/work-center-groups)
+	CreateManufacturingWorkCenterGroup(ctx context.Context, request CreateManufacturingWorkCenterGroupRequestObject) (CreateManufacturingWorkCenterGroupResponseObject, error)
+	// GetManufacturingWorkCenterGroup Get a work center group
+	// (GET /api/v1/manufacturing/work-center-groups/{id})
+	GetManufacturingWorkCenterGroup(ctx context.Context, request GetManufacturingWorkCenterGroupRequestObject) (GetManufacturingWorkCenterGroupResponseObject, error)
+	// UpdateManufacturingWorkCenterGroup Update a work center group
+	// (PUT /api/v1/manufacturing/work-center-groups/{id})
+	UpdateManufacturingWorkCenterGroup(ctx context.Context, request UpdateManufacturingWorkCenterGroupRequestObject) (UpdateManufacturingWorkCenterGroupResponseObject, error)
+	// ArchiveManufacturingWorkCenterGroup Archive a work center group
+	// (POST /api/v1/manufacturing/work-center-groups/{id}/archive)
+	ArchiveManufacturingWorkCenterGroup(ctx context.Context, request ArchiveManufacturingWorkCenterGroupRequestObject) (ArchiveManufacturingWorkCenterGroupResponseObject, error)
+	// ReactivateManufacturingWorkCenterGroup Reactivate a work center group
+	// (POST /api/v1/manufacturing/work-center-groups/{id}/reactivate)
+	ReactivateManufacturingWorkCenterGroup(ctx context.Context, request ReactivateManufacturingWorkCenterGroupRequestObject) (ReactivateManufacturingWorkCenterGroupResponseObject, error)
 	// ListManufacturingWorkCenters List work centers
 	// (GET /api/v1/manufacturing/work-centers)
 	ListManufacturingWorkCenters(ctx context.Context, request ListManufacturingWorkCentersRequestObject) (ListManufacturingWorkCentersResponseObject, error)
@@ -13213,6 +14227,9 @@ type StrictServerInterface interface {
 	// GetManufacturingCheckPhoto Download a check's photo
 	// (GET /api/v1/manufacturing/work-orders/{id}/photos/{photoId})
 	GetManufacturingCheckPhoto(ctx context.Context, request GetManufacturingCheckPhotoRequestObject) (GetManufacturingCheckPhotoResponseObject, error)
+	// RegisterManufacturingWorkOrderQuantity Register a work order's quantity
+	// (POST /api/v1/manufacturing/work-orders/{id}/quantity)
+	RegisterManufacturingWorkOrderQuantity(ctx context.Context, request RegisterManufacturingWorkOrderQuantityRequestObject) (RegisterManufacturingWorkOrderQuantityResponseObject, error)
 	// RescheduleManufacturingWorkOrder Reschedule a work order
 	// (POST /api/v1/manufacturing/work-orders/{id}/reschedule)
 	RescheduleManufacturingWorkOrder(ctx context.Context, request RescheduleManufacturingWorkOrderRequestObject) (RescheduleManufacturingWorkOrderResponseObject, error)
@@ -14830,6 +15847,188 @@ func (sh *strictHandler) SearchManufacturingVariants(w http.ResponseWriter, r *h
 	}
 }
 
+// ListManufacturingWorkCenterGroups operation middleware
+func (sh *strictHandler) ListManufacturingWorkCenterGroups(w http.ResponseWriter, r *http.Request, params ListManufacturingWorkCenterGroupsParams) {
+	var request ListManufacturingWorkCenterGroupsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListManufacturingWorkCenterGroups(ctx, request.(ListManufacturingWorkCenterGroupsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListManufacturingWorkCenterGroups")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListManufacturingWorkCenterGroupsResponseObject); ok {
+		if err := validResponse.VisitListManufacturingWorkCenterGroupsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateManufacturingWorkCenterGroup operation middleware
+func (sh *strictHandler) CreateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request) {
+	var request CreateManufacturingWorkCenterGroupRequestObject
+
+	var body CreateManufacturingWorkCenterGroupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateManufacturingWorkCenterGroup(ctx, request.(CreateManufacturingWorkCenterGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateManufacturingWorkCenterGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateManufacturingWorkCenterGroupResponseObject); ok {
+		if err := validResponse.VisitCreateManufacturingWorkCenterGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingWorkCenterGroup operation middleware
+func (sh *strictHandler) GetManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetManufacturingWorkCenterGroupRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingWorkCenterGroup(ctx, request.(GetManufacturingWorkCenterGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingWorkCenterGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingWorkCenterGroupResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingWorkCenterGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateManufacturingWorkCenterGroup operation middleware
+func (sh *strictHandler) UpdateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateManufacturingWorkCenterGroupRequestObject
+
+	request.Id = id
+
+	var body UpdateManufacturingWorkCenterGroupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateManufacturingWorkCenterGroup(ctx, request.(UpdateManufacturingWorkCenterGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateManufacturingWorkCenterGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateManufacturingWorkCenterGroupResponseObject); ok {
+		if err := validResponse.VisitUpdateManufacturingWorkCenterGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ArchiveManufacturingWorkCenterGroup operation middleware
+func (sh *strictHandler) ArchiveManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ArchiveManufacturingWorkCenterGroupRequestObject
+
+	request.Id = id
+
+	var body ArchiveManufacturingWorkCenterGroupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ArchiveManufacturingWorkCenterGroup(ctx, request.(ArchiveManufacturingWorkCenterGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ArchiveManufacturingWorkCenterGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ArchiveManufacturingWorkCenterGroupResponseObject); ok {
+		if err := validResponse.VisitArchiveManufacturingWorkCenterGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReactivateManufacturingWorkCenterGroup operation middleware
+func (sh *strictHandler) ReactivateManufacturingWorkCenterGroup(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ReactivateManufacturingWorkCenterGroupRequestObject
+
+	request.Id = id
+
+	var body ReactivateManufacturingWorkCenterGroupJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReactivateManufacturingWorkCenterGroup(ctx, request.(ReactivateManufacturingWorkCenterGroupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReactivateManufacturingWorkCenterGroup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReactivateManufacturingWorkCenterGroupResponseObject); ok {
+		if err := validResponse.VisitReactivateManufacturingWorkCenterGroupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListManufacturingWorkCenters operation middleware
 func (sh *strictHandler) ListManufacturingWorkCenters(w http.ResponseWriter, r *http.Request, params ListManufacturingWorkCentersParams) {
 	var request ListManufacturingWorkCentersRequestObject
@@ -15385,6 +16584,39 @@ func (sh *strictHandler) GetManufacturingCheckPhoto(w http.ResponseWriter, r *ht
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetManufacturingCheckPhotoResponseObject); ok {
 		if err := validResponse.VisitGetManufacturingCheckPhotoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RegisterManufacturingWorkOrderQuantity operation middleware
+func (sh *strictHandler) RegisterManufacturingWorkOrderQuantity(w http.ResponseWriter, r *http.Request, id int64) {
+	var request RegisterManufacturingWorkOrderQuantityRequestObject
+
+	request.Id = id
+
+	var body RegisterManufacturingWorkOrderQuantityJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterManufacturingWorkOrderQuantity(ctx, request.(RegisterManufacturingWorkOrderQuantityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterManufacturingWorkOrderQuantity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterManufacturingWorkOrderQuantityResponseObject); ok {
+		if err := validResponse.VisitRegisterManufacturingWorkOrderQuantityResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

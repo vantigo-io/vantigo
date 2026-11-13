@@ -64,6 +64,7 @@ type bomValues struct {
 	note        string
 	lotPattern  *string // nil: not sent — the default on a create, kept on an update
 	ops         []opValues
+	deps        [][]string // each operation's predecessors, by key, in ops' order (M112)
 	lines       []lineValues
 }
 
@@ -72,7 +73,9 @@ type opValues struct {
 	id           *int64
 	sequence     int32
 	name         string
-	workCenterID int64
+	workCenterID *int64
+	groupID      *int64 // the work center group it targets instead (M118)
+	sendAhead    *big.Rat
 	setup        *big.Rat
 	perCycle     *big.Rat
 	instructions string
@@ -174,9 +177,22 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 	keys := map[string]bool{}
 	ids := map[int64]bool{}
 	sequences := map[int32]bool{}
+	dependsOn := make([][]string, len(in.Operations))
+	sent := make([]bool, len(in.Operations))
 	for i, op := range in.Operations {
 		at := fmt.Sprintf("operations[%d].", i)
-		o := opValues{id: op.Id, sequence: op.Sequence, workCenterID: op.WorkCenterId}
+		o := opValues{id: op.Id, sequence: op.Sequence, workCenterID: op.WorkCenterId, groupID: op.WorkCenterGroupId}
+		if (o.workCenterID == nil) == (o.groupID == nil) {
+			j.f.add(at+"workCenterId", "Exactly one of workCenterId and workCenterGroupId")
+		}
+		if op.DependsOn != nil {
+			dependsOn[i], sent[i] = *op.DependsOn, true
+		}
+		if op.SendAheadQuantity != nil {
+			q, msg := parsePositive(*op.SendAheadQuantity, quantityPlaces, maxQuantity)
+			j.f.addCoded(at+"sendAheadQuantity", codeQuantityInvalid, msg)
+			o.sendAhead = q
+		}
 		o.key = strings.TrimSpace(op.Key)
 		switch n := utf8.RuneCountInString(o.key); {
 		case n < 1 || n > maxOperationKey:
@@ -217,6 +233,9 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 			o.checks = judgeChecks(&j.f, at, *op.Checks)
 		}
 		v.ops = append(v.ops, o)
+	}
+	if !j.f.failed() {
+		v.deps = judgeDependencies(&j.f, v.ops, dependsOn, sent)
 	}
 
 	for i, line := range in.Lines {
@@ -300,18 +319,24 @@ func storedComponents(lines []store.ManufacturingBomLine) []int32 {
 }
 
 // judgeOperations is the rules on the operations that read this module's
-// rows: each names an active work center (work_center_unknown), all of them
-// at one site (work_center_other_site, M12a), and an operation kept by id is
-// one of this BoM's.
+// rows: each names an active work center, or an active work center group with
+// an active member (work_center_unknown, manufacturing phase 2 M118), all of
+// them at one site (work_center_other_site, M12a), and an operation kept by
+// id is one of this BoM's.
 func judgeOperations(ctx context.Context, txq *store.Queries, ops []opValues, storedOps map[int64]bool) error {
 	if len(ops) == 0 {
 		return nil
 	}
-	ids := make([]int64, 0, len(ops))
+	var ids, groupIDs []int64
 	for _, o := range ops {
-		ids = append(ids, o.workCenterID)
+		if o.workCenterID != nil {
+			ids = append(ids, *o.workCenterID)
+		}
+		if o.groupID != nil {
+			groupIDs = append(groupIDs, *o.groupID)
+		}
 	}
-	centers, err := txq.WorkCentersByIDs(ctx, ids)
+	centers, err := txq.WorkCentersByIDs(ctx, orEmpty(ids))
 	if err != nil {
 		return err
 	}
@@ -319,15 +344,36 @@ func judgeOperations(ctx context.Context, txq *store.Queries, ops []opValues, st
 	for _, c := range centers {
 		byID[c.ID] = c
 	}
+	groups, err := txq.WorkCenterGroupsByIDs(ctx, orEmpty(groupIDs))
+	if err != nil {
+		return err
+	}
+	groupByID := map[int64]store.ManufacturingWorkCenterGroup{}
+	for _, g := range groups {
+		groupByID[g.ID] = g
+	}
+	members, err := groupMembers(ctx, txq, groupIDs)
+	if err != nil {
+		return err
+	}
 	var f fieldErrors
 	sites := map[int64]bool{}
 	for i, o := range ops {
-		c, ok := byID[o.workCenterID]
-		if !ok || c.Status != statusActive {
-			f.addCoded(fmt.Sprintf("operations[%d].workCenterId", i), codeWorkCenterUnknown, "Not an active work center")
-			continue
+		if o.groupID != nil {
+			g, ok := groupByID[*o.groupID]
+			if !ok || g.Status != statusActive || !slices.ContainsFunc(members[g.ID], func(c store.ManufacturingWorkCenter) bool { return c.Status == statusActive }) {
+				f.addCoded(fmt.Sprintf("operations[%d].workCenterGroupId", i), codeWorkCenterUnknown, "Not an active work center group with an active member")
+				continue
+			}
+			sites[g.SiteID] = true
+		} else {
+			c, ok := byID[*o.workCenterID]
+			if !ok || c.Status != statusActive {
+				f.addCoded(fmt.Sprintf("operations[%d].workCenterId", i), codeWorkCenterUnknown, "Not an active work center")
+				continue
+			}
+			sites[c.SiteID] = true
 		}
-		sites[c.SiteID] = true
 		if o.id != nil && !storedOps[*o.id] {
 			f.add(fmt.Sprintf("operations[%d].id", i), "Not an operation of this bill of materials")
 		}
@@ -397,13 +443,17 @@ func writeStructure(ctx context.Context, txq *store.Queries, bomID int64, v bomV
 	if err := txq.DeleteChecksOfBom(ctx, bomID); err != nil {
 		return err
 	}
+	if err := txq.DeleteDependenciesOfBom(ctx, bomID); err != nil {
+		return err
+	}
 	opIDs := map[string]int64{}
 	for _, o := range v.ops {
 		setup := numeric(o.setup, minutePlaces)
 		if o.id != nil {
 			row, err := txq.UpdateBomOperation(ctx, store.UpdateBomOperationParams{
-				ID: *o.id, BomID: bomID, Sequence: o.sequence, Name: o.name, WorkCenterID: o.workCenterID,
-				SetupMinutes: setup, MinutesPerCycle: numeric(o.perCycle, minutePlaces), Instructions: o.instructions,
+				ID: *o.id, BomID: bomID, Sequence: o.sequence, Name: o.name, WorkCenterID: o.workCenterID, WorkCenterGroupID: o.groupID,
+				SetupMinutes: setup, MinutesPerCycle: numeric(o.perCycle, minutePlaces), SendAheadQuantity: numeric(o.sendAhead, quantityPlaces),
+				Instructions: o.instructions,
 			})
 			if err != nil {
 				return err
@@ -415,8 +465,9 @@ func writeStructure(ctx context.Context, txq *store.Queries, bomID int64, v bomV
 			continue
 		}
 		row, err := txq.InsertBomOperation(ctx, store.InsertBomOperationParams{
-			BomID: bomID, Sequence: o.sequence, Name: o.name, WorkCenterID: o.workCenterID,
-			SetupMinutes: setup, MinutesPerCycle: numeric(o.perCycle, minutePlaces), Instructions: o.instructions,
+			BomID: bomID, Sequence: o.sequence, Name: o.name, WorkCenterID: o.workCenterID, WorkCenterGroupID: o.groupID,
+			SetupMinutes: setup, MinutesPerCycle: numeric(o.perCycle, minutePlaces), SendAheadQuantity: numeric(o.sendAhead, quantityPlaces),
+			Instructions: o.instructions,
 		})
 		if err != nil {
 			return err
@@ -424,6 +475,19 @@ func writeStructure(ctx context.Context, txq *store.Queries, bomID int64, v bomV
 		opIDs[o.key] = row.ID
 		if err := writeChecks(ctx, txq, row.ID, o.checks); err != nil {
 			return err
+		}
+	}
+	// The graph, by the request's keys (M112).
+	for i, o := range v.ops {
+		if i >= len(v.deps) {
+			break
+		}
+		for _, key := range v.deps[i] {
+			if err := txq.InsertBomOperationDependency(ctx, store.InsertBomOperationDependencyParams{
+				OperationID: opIDs[o.key], DependsOnID: opIDs[key],
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	for _, l := range v.lines {
@@ -802,7 +866,7 @@ func (s *server) ReactivateManufacturingBom(ctx context.Context, req gen.Reactiv
 		}
 		ops := make([]opValues, 0, len(stored))
 		for _, o := range stored {
-			ops = append(ops, opValues{workCenterID: o.WorkCenterID})
+			ops = append(ops, opValues{workCenterID: o.WorkCenterID, groupID: o.WorkCenterGroupID})
 		}
 		if err := judgeOperations(ctx, txq, ops, nil); err != nil {
 			return err

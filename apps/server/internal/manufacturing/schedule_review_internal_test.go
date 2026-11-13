@@ -107,12 +107,12 @@ func manyBookings(n int) []span {
 	return randomBookings(r, at(2026, time.March, 2, 0, 0), 300, n)
 }
 
-// TestPlanChain_ManyBookingsStayFast is the review's M5: placing hundreds of
+// TestPlanGraph_ManyBookingsStayFast is the review's M5: placing hundreds of
 // work orders on a center with tens of thousands of bookings reads each
 // booking a bounded number of times per work order, not once per day of the
 // horizon, so it finishes well inside a second where the first fill took
 // minutes — and books no time twice.
-func TestPlanChain_ManyBookingsStayFast(t *testing.T) {
+func TestPlanGraph_ManyBookingsStayFast(t *testing.T) {
 	t.Parallel()
 	cals := map[int64]workCalendar{1: testCalendar(t, weekdays(iv("07:00", "15:00")))}
 	booked := map[int64][]span{1: book(nil, manyBookings(20000))}
@@ -120,7 +120,7 @@ func TestPlanChain_ManyBookingsStayFast(t *testing.T) {
 	var took time.Duration
 	for range 200 {
 		began := time.Now()
-		got, _, ok := planChain(cals, booked, []planWork{{id: 1, center: 1, need: 90 * time.Minute}}, start, start)
+		got, _, ok := planGraph(cals, booked, []planWork{work(1, 1, 90*time.Minute)}, start, start)
 		took += time.Since(began)
 		if !ok {
 			t.Fatal("no capacity")

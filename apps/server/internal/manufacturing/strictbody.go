@@ -177,6 +177,10 @@ const (
 	checkResultInputSchema    = "ManufacturingCheckResultInput"
 	deviationInputSchema      = "ManufacturingQualityDeviationInput"
 	deviationCloseInputSchema = "ManufacturingDeviationCloseInput"
+
+	groupInputSchema    = "ManufacturingWorkCenterGroupInput"
+	groupUpdateSchema   = "ManufacturingWorkCenterGroupUpdate"
+	quantityInputSchema = "ManufacturingQuantityInput"
 )
 
 // closedSchemas are the request schemas whose handlers refuse a property the
@@ -189,6 +193,7 @@ var closedSchemas = []string{
 	productionLineInputSchema, productionLotInputSchema, outputLotInputSchema, outputSerialsInputSchema, closeInputSchema, startInputSchema, finishInputSchema, scrapInputSchema, scrapLineInputSchema,
 	blockInputSchema, correctionSchema, timeLogInputSchema,
 	checkTemplateInputSchema, checkResultInputSchema, deviationInputSchema, deviationCloseInputSchema,
+	groupInputSchema, groupUpdateSchema, quantityInputSchema,
 }
 
 // weekPatternDays is a week pattern's arrays, one per weekday, each of
