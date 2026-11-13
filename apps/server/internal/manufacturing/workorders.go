@@ -397,6 +397,10 @@ func (s *server) StartManufacturingWorkOrder(ctx context.Context, req gen.StartM
 			return err
 		}
 		n.workOrder(w.ID, w.OrderID, w.WorkCenterID)
+		// Started, a group work order leaves every member's Group work (M119).
+		if err := n.groupWork(ctx, txq, w); err != nil {
+			return err
+		}
 		return n.send(ctx, tx)
 	})
 	if db.IsUniqueViolation(err, openLogIndex) {
@@ -638,6 +642,9 @@ func (s *server) FinishManufacturingWorkOrder(ctx context.Context, req gen.Finis
 		for _, x := range next {
 			n.workOrder(x.ID, x.OrderID, x.WorkCenterID)
 		}
+		if err := n.groupWork(ctx, txq, next...); err != nil {
+			return err
+		}
 		if err := txq.SetOrderInProgress(ctx, store.SetOrderInProgressParams{ID: o.ID, Now: now}); err != nil {
 			return err
 		}
@@ -773,6 +780,9 @@ func (s *server) RegisterManufacturingWorkOrderQuantity(ctx context.Context, req
 			}
 			for _, x := range readied {
 				n.workOrder(x.ID, x.OrderID, x.WorkCenterID)
+			}
+			if err := n.groupWork(ctx, txq, readied...); err != nil {
+				return err
 			}
 			n.workOrder(w.ID, w.OrderID, w.WorkCenterID)
 			return n.send(ctx, tx)

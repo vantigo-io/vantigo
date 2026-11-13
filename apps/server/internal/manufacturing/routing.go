@@ -314,3 +314,25 @@ func withLogs(ctx context.Context, q *store.Queries, ids []int64) (map[int64]boo
 func notInGroup(title string) error {
 	return refuseField(title, "workCenterId", codeWorkCenterNotInGroup, "Not a member of the work order's work center group")
 }
+
+// groupWork notes the queue of every member of the groups wos target
+// (manufacturing phase 2 M119, §17): a group work order is on each one's
+// Group work until its member is fixed, so each of them changes with it.
+func (n *notices) groupWork(ctx context.Context, q *store.Queries, wos ...store.ManufacturingWorkOrder) error {
+	var groups []int64
+	for _, w := range wos {
+		if w.WorkCenterGroupID != nil {
+			groups = append(groups, *w.WorkCenterGroupID)
+		}
+	}
+	members, err := groupMembers(ctx, q, groups)
+	if err != nil {
+		return err
+	}
+	for _, centers := range members {
+		for _, c := range centers {
+			n.workCenters[c.ID] = true
+		}
+	}
+	return nil
+}

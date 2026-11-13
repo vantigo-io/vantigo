@@ -283,6 +283,9 @@ func (s *server) confirmOrder(ctx context.Context, tx pgx.Tx, txq *store.Queries
 	for _, w := range workOrders {
 		notes.workOrder(w.ID, w.OrderID, w.WorkCenterID)
 	}
+	if err := notes.groupWork(ctx, txq, workOrders...); err != nil {
+		return nil, err
+	}
 	components, err := txq.ListOrderComponents(ctx, o.ID)
 	if err != nil {
 		return nil, err
