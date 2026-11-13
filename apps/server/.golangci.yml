@@ -1851,6 +1851,7 @@ linters:
             - "**/internal/contracts/**"
             - "**/internal/apicommon/**"
             - "**/internal/bankfeed/**"
+            - "**/internal/brreg/**"
             - "**/internal/buildinfo/**"
             - "**/internal/holidays/**"
             - "**/internal/config/**"

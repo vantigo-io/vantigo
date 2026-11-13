@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/vantigo-io/vantigo/server/internal/brreg"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -578,7 +579,7 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 	if cur != nil {
 		curPostal, curInvoice = cur.Postal, cur.Invoice
 	}
-	var registryAddress *brregAddress
+	var registryAddress *brreg.Address
 	if r.Identity != nil && r.Identity.Source == "brreg" {
 		registryAddress = p.Registry.address()
 	}
@@ -702,7 +703,7 @@ func (l importLayout) resolve(p importPlan, cur *customerState, vocab importVoca
 // file that is complete is never touched by it. incomplete reports an
 // address that still failed; fromRegistry is the import's fields of the
 // address the registry filled ("postalLine1" …), nil when it filled none.
-func (l importLayout) address(p importPlan, g csvGroup, addrType string, cur *addressSnapshot, create bool, reg *brregAddress, failAll func(func(string) string, map[string][]string)) (has bool, addr *validatedAddress, incomplete bool, fromRegistry []string) {
+func (l importLayout) address(p importPlan, g csvGroup, addrType string, cur *addressSnapshot, create bool, reg *brreg.Address, failAll func(func(string) string, map[string][]string)) (has bool, addr *validatedAddress, incomplete bool, fromRegistry []string) {
 	var parts addressParts
 	if l.has(g) {
 		parts = l.addressParts(p.Raw, addrType, cur)
@@ -781,7 +782,7 @@ func (l importLayout) addressParts(raw map[string]string, addrType string, cur *
 // street's second line; the postal code, the city and the country. An
 // address the file places in another country than the registry's is left as
 // it is: the two are not the same place.
-func (a addressParts) filledFrom(reg *brregAddress) addressParts {
+func (a addressParts) filledFrom(reg *brreg.Address) addressParts {
 	line1, line2, postalCode, city, country := registryAddressParts(reg)
 	if c := strings.ToLower(strings.TrimSpace(a[5])); c != "" && c != country {
 		return a
