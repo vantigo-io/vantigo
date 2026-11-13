@@ -601,13 +601,14 @@ When less than the quantity was produced, you are asked whether to **create a ba
 Choose **Cancel order** on a draft, a confirmed or an in-progress order while nothing has
 been produced, consumed or scrapped on it. Its reservations are released and it keeps its
 number. Any time still running on its work orders is ended, and its work orders are
-cancelled. Once something has been registered it cannot be cancelled; close it instead. A
-done or cancelled order is final.
+cancelled. Once something has been registered it cannot be cancelled; close it instead. An
+order split into parts is not cancelled while one of its parts is still open: cancel or
+finish the parts first. A done or cancelled order is final.
 
 ### Split an order
 
 Choose **Split** on a draft or confirmed order before anything has been registered on it
-and before any time has been logged on its work orders.
+and before any time or quantity has been logged on its work orders.
 
 1. Type the quantity of each part. The order keeps the first; **Add part** adds another,
    up to 20. The parts must add up to the order's quantity: the dialog shows the sum.
@@ -626,9 +627,11 @@ is made for the same sales order line.
 
 In **Manufacturing orders**, tick two or more orders and choose **Merge**. They must make
 the same product by the same bill of materials at the same site, all be drafts or all be
-confirmed, have nothing registered and no time logged, and come from the same place — all
+confirmed, have nothing registered and no time or quantity logged, and come from the same place — all
 made by hand, all from suggestions, or all for the same sales order line or parent order.
-Orders of different origins are not merged, so neither promise is lost.
+Orders of different origins are not merged, so neither promise is lost. The orders are
+merged as the list showed them: if one was changed since, the merge is refused and the
+list asks you to try again. Ticks are cleared when you change the filter or the page.
 
 The order with the lowest number survives, with the quantities added up and the earliest
 due date; the others are cancelled with **Merged into** pointing to it. Every order is
@@ -644,19 +647,35 @@ recalled lot.
 1. For a product tracked in lots or serial numbers, choose the **Lot** among those the
    order's productions made; each says how much of it is left to take apart.
 2. Type the **Quantity**, at most what is left, and a **Note** if you like.
-3. Choose **Unbuild**.
+3. **Take from** is the order's output location and **Put the components at** its
+   component location; choose others if the goods or the parts are elsewhere.
+4. Choose **Unbuild**.
 
-The finished goods are taken from the order's output location, and the components go
-back to its component location — or the site's main location — each into the lot it was
-taken from. Only what the productions that made the chosen lot consumed comes back, in
-proportion: an unbuild never puts components into lots another lot was made from. A lot
-on hold can be taken apart — that is how a recalled item is dealt with — and then every
-lot it restores to gets a **quarantine** hold of its own, so held material does not come
-back usable. The order shows how much was **Unbuilt**; its cost is not worked out again.
-Inventory records an **Unbuild** movement, which a lot's
-[trace](/en/user/inventory/) shows as an end and never follows.
+The components go back each into the lot it was taken from — or, with no component
+location, to the site's main location. Only what the productions that made the chosen lot
+consumed comes back, in proportion — what they consumed made the good units and the
+scrapped ones, so a unit taken apart gives back what one unit used: an unbuild never puts
+components into lots another lot was made from. A part tracked by serial number comes
+back whole: taking apart fewer units than would give back whole serials is refused —
+unbuild whole units. An order whose productions made by-products is not unbuilt from the
+order, since what it used did not make the product alone; take such goods apart by the
+bill of materials instead. The order shows how much was **Unbuilt**; its cost is not
+worked out again. Inventory records an **Unbuild** movement, which a lot's
+[trace](/en/user/inventory/) shows as an end and never follows, linking to the unbuild.
 
-**Unbuilds** in the sidebar lists every unbuild with what it restored.
+A lot on hold can be taken apart — that is how a recalled item is dealt with — and then
+every lot it restores to is put in **quarantine** by the unbuild, so held material does
+not come back usable. The quarantine is on the whole of each lot restored to, what it
+held before included. Once the lots are inspected, someone with **Manage quality** opens
+the unbuild and chooses **Release the quarantine**; a hold put by anything else stays.
+
+**Unbuilds** in the sidebar lists every unbuild with what it restored, and marks one whose
+quarantine is not yet released. Choose an unbuild's number to open its page: what it took
+apart, from where and to where, and what it restored into which lots.
+
+An unbuild by a bill of materials, rather than from an order, can take apart any lot of
+the product — one an order made included. It is not held to what that order has left to
+take apart, and the order does not count it as unbuilt.
 
 ### Read an order's history
 
@@ -1057,8 +1076,10 @@ each one's **Cost share** of the estimate and of the actual, and its cost per un
 closed; **The product** carries the rest, and the order's **Cost per unit** is that rest
 divided by the good units made. A by-product that was not produced has no cost per unit
 — it says **Not produced**, with the part it would have had — and its share stays with
-the product. The **Production cost** report lists the by-products of the orders closed
-in the period.
+the product. Each by-product's part is rounded to øre once and the product carries the
+rest, so the parts add up to the total. The **Production cost** report lists the
+by-products of the orders closed in the period; its CSV has them in a section of their
+own below the orders.
 
 When a component had no standard cost, or a work center no rate, it is counted as 0 and
 the panel says the estimate or the actual is incomplete. Amounts are rounded to two
@@ -1307,7 +1328,7 @@ cannot be delegated.
 | **Manufacturing orders**, an order, its availability, its productions and its **History** | ✓ | – | – |
 | **New manufacturing order**, **Save**, **Confirm**, **Reserve now**, **Add component**, changing a component, **Close**, **Cancel order** | ✓ | ✓ | – |
 | **Split**, **Merge**, **Unbuild** | ✓ | ✓ | – |
-| **Unbuilds** | ✓ | – | – |
+| **Unbuilds**, an unbuild | ✓ | – | – |
 | **Register production** | ✓ | either | either |
 | **Shop floor**, a work center's **Queue**, a work order, **My work**, an order's **Work orders** and **Time logs** | ✓ | – | – |
 | **Start**, **Start anyway**, **Pause**, **Finish**, **Report scrap**, **Block**, **Unblock** | ✓ | either | either |
@@ -1321,8 +1342,9 @@ cannot be delegated.
 | **Create draft MOs**, **Create and confirm**, **Dismiss**, **Run now**, the automatic replenishment switches | ✓ | ✓ | – |
 
 Registering a production, and every action on the shop floor, needs Use Manufacturing and
-either of the other two. Closing a deviation and **Release its holds** need **Manage
-quality** (`manufacturing:quality-manage`) beside Use Manufacturing; editing the checks
+either of the other two. Closing a deviation, **Release its holds** and an unbuild's
+**Release the quarantine** need **Manage quality** (`manufacturing:quality-manage`)
+beside Use Manufacturing; editing the checks
 of an operation is part of editing the bill of materials. The Assistant does not take shop-floor actions: an operator
 clocks in themselves. The stock
 figures in the overview and on an order are Manufacturing's own and need
