@@ -19,7 +19,11 @@ const MaxKitLevels = 3
 //   - It reads on the pool, in one snapshot per call; the consumer calls it
 //     before its transaction, never inside one.
 //   - It answers only the kit variants among variantIDs: a variant with no
-//     default active kit BoM is absent, never an error.
+//     default active kit BoM is absent, never an error — absent means "not a
+//     kit". A kit variant is present with its components; present with none
+//     (every component rounded away, which a provider's BoM rules should
+//     prevent) means "a kit with no components", and the consumer refuses
+//     it rather than sell it as an ordinary line.
 //   - A component that is itself a kit (its default active BoM is a kit) is
 //     exploded into its own components, its quantity multiplied through; one
 //     variant reached twice is answered once, the quantities summed, in the

@@ -299,8 +299,19 @@ func (s *server) judgeBom(ctx context.Context, in bomFields, schema string) (bom
 
 // judgeKit is a kit's rules (manufacturing phase 2 M144): lines only — no
 // operations, no by-products — and never made to order, each refused
-// kit_not_manufactured on its field.
+// kit_not_manufactured on its field; and a line's quantity per kit, its
+// quantity over the output quantity, is not 0 at three decimals
+// (quantity_invalid on the line) — contracts.KitStructure leaves such a
+// component out, and a kit of nothing but those would explode to nothing.
 func judgeKit(j *judgement, v bomValues) {
+	if v.output != nil && v.output.Sign() > 0 {
+		for i, l := range v.lines {
+			if l.quantity != nil && text(new(big.Rat).Quo(l.quantity, v.output), quantityPlaces) == "0" {
+				j.line(i, codeQuantityInvalid, fmt.Sprintf("Per kit the quantity is %s ÷ %s, which is 0 at three decimals",
+					text(l.quantity, quantityPlaces), text(v.output, quantityPlaces)))
+			}
+		}
+	}
 	const why = "A kit is not manufactured: "
 	if len(v.ops) > 0 {
 		j.f.addCoded("operations", codeKitNotManufactured, why+"it has no operations")

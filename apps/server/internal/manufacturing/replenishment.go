@@ -453,12 +453,15 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 		return 0, 0, err
 	}
 	bomOf := map[int32]store.ManufacturingBom{}
+	kits := map[int32]bool{}
 	for _, b := range boms {
-		// A kit is never made (manufacturing phase 2 M144): its variant is
-		// suggested as one with no BoM.
-		if b.Kind != kindKit {
-			bomOf[b.VariantID] = b
+		// A kit is never made nor bought (manufacturing phase 2 M144): it
+		// is sold as its components, which are suggested for themselves.
+		if b.Kind == kindKit {
+			kits[b.VariantID] = true
+			continue
 		}
+		bomOf[b.VariantID] = b
 	}
 	reorderRows, err := pool.OpenReorderVariantsAt(ctx, siteID)
 	if err != nil {
@@ -470,6 +473,9 @@ func (s *server) replenishSite(ctx context.Context, runID, siteID int64, today t
 	}
 	var plans []suggestionPlan
 	for _, p := range placements {
+		if kits[p.VariantID] {
+			continue
+		}
 		proj := projection{
 			onHand: orZeroRat(textRat(p.OnHand)), reserved: orZeroRat(textRat(p.Reserved)), incoming: orZeroRat(textRat(p.Incoming)),
 			inProduction: orZeroRat(supply[p.VariantID]), neededByProduction: orZeroRat(components[p.VariantID]),
