@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — å arkivere, gjenaktivere og slette en, og å gruppere arbeidsstasjoner som kan erstatte hverandre; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner eller arbeidsstasjonsgrupper med instruksjonene sine, hva hver operasjon avhenger av og overføringsantallet, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, Gruppearbeid, å registrere et antall som sendes videre, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, operasjoner side om side og etter et overføringsantall, medlemmet i en gruppe en arbeidsordre planlegges ved, å flytte en arbeidsordre ved å dra den — også til raden til et annet medlem — eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; kvalitet — kontrollene på en operasjon, å registrere dem ved stasjonen, hva de stopper, og avvik — å melde et, å sette produksjonen i karantene, å lukke det og å oppheve sperrene; påfyllingsforslag — hva som er fremskrevet, hva som foreslås produsert eller kjøpt og innen når, å opprette utkast eller bekreftede ordrer fra dem, å avvise et, å kjøre nå, å eksportere innkjøpsforslagene og automatisk oppretting på en stykkliste; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
+description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — å arkivere, gjenaktivere og slette en, og å gruppere arbeidsstasjoner som kan erstatte hverandre; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner eller arbeidsstasjonsgrupper med instruksjonene sine, hva hver operasjon avhenger av og overføringsantallet, og hvilken operasjon som forbruker en linje, og biproduktene med sin andel av kostnaden — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den, dele den opp, slå sammen ordrer, demontere det en ferdig ordre laget og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, Gruppearbeid, å registrere et antall som sendes videre, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, operasjoner side om side og etter et overføringsantall, medlemmet i en gruppe en arbeidsordre planlegges ved, å flytte en arbeidsordre ved å dra den — også til raden til et annet medlem — eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, fordelingen på biproduktene, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; kvalitet — kontrollene på en operasjon, å registrere dem ved stasjonen, hva de stopper, og avvik — å melde et, å sette produksjonen i karantene, å lukke det og å oppheve sperrene; påfyllingsforslag — hva som er fremskrevet, hva som foreslås produsert eller kjøpt og innen når, å opprette utkast eller bekreftede ordrer fra dem, å avvise et, å kjøre nå, å eksportere innkjøpsforslagene og automatisk oppretting på en stykkliste; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
 sidebar:
   order: 66
 sources:
@@ -38,6 +38,7 @@ Sidemenyen viser:
 | **Oversikt** | **Rapporter** i toppen; **Ordrer som skal startes i dag**, **Ordrer som pågår** og **Forsinkede ordrer**, og ordrene som er forsinket eller forfaller denne uken; **Aktive arbeidsstasjoner**, **Blokkerte arbeidsstasjoner**, **Aktive stykklister** og **Forslag å produsere**: hvor mange det er |
 | **Produksjonsordrer** | Alle åpne produksjonsordrer, med nummer, produkt, antall, lagersted, forfallsdato og reservasjonsstatus |
 | **Forslag** | Hva som bør produseres eller kjøpes inn så beholdningen holder seg over hvert produkts bestillingspunkt, lagersted for lagersted, med begrunnelsen og datoen det trengs innen |
+| **Demonteringer** | Hver demontering, nyeste først: hva den tok fra hverandre, fra hvilken ordre og hvilket parti, og komponentene den ga tilbake |
 | **Verksted** | Arbeidsstasjonenes køer, der operatørene starter, setter på pause og fullfører arbeidsordrer, og **Mitt arbeid** |
 | **Produksjonsplan** | Tavlen: arbeidsordrene som er planlagt på hver arbeidsstasjon, dag for dag, med belastningen, og ordrene som gjenstår å planlegge |
 | **Avvik** | Det som gikk galt: alle avvik, de åpne først, med ordre, produkt og partier, og om de holdes i karantene |
@@ -204,7 +205,16 @@ medlem blir stående i gruppen, men det planlegges ikke lenger arbeid ved det.
    - **Merknad**.
 
    Samme komponent kan stå på to linjer.
-6. Velg **Opprett stykkliste**. På en stykkliste som finnes, heter knappen **Lagre**.
+6. Under **Biprodukter** velger du **Legg til biprodukt** for alt annet operasjonene
+   lager — sagflis fra kapping, myse fra ost. Hvert har:
+   - **Biprodukt**, en vare valgt slik produktet ble valgt;
+   - **Antall** som lages per produsert antall, mer enn 0 med høyst tre desimaler;
+   - **Kostnadsandel**, prosenten av ordrens kostnad det bærer, fra 0 til 100 med høyst
+     to desimaler, ingen med mindre den endres.
+
+   Andelene kan til sammen være høyst 100 %; produktet bærer resten, som delen viser. En
+   stykkliste har høyst 20 biprodukter.
+7. Velg **Opprett stykkliste**. På en stykkliste som finnes, heter knappen **Lagre**.
 
 En stykkliste har høyst 200 linjer og 50 operasjoner. En linje kan navngi en operasjon du
 la til i samme redigering, før noen av dem er lagret.
@@ -266,6 +276,10 @@ stykklisten etterpå endrer ikke kontrollene til en ordre som allerede er bekref
   navngir linjen.
 - **Spre operasjonene over lagersteder.** Hver operasjons arbeidsstasjon må stå på samme
   lagersted.
+- **Lage sitt eget produkt eller en komponent som biprodukt.** Et biprodukt kan verken
+  være stykklistens produkt eller en av komponentene — og heller ikke, gjennom
+  komponentenes egne stykklister, brukes til å lage produktet: det er en sirkel, og nektes
+  som en.
 
 ## Standardstykklisten og de alternative stykklistene
 
@@ -490,8 +504,17 @@ nekter av en annen grunn; da registreres ingenting. Ordren går over til **Påg�
 registrere mer enn ordrens antall er tillatt: siden viser overskuddet. Sendes samme
 registrering to ganger — et dobbeltklikk, en tapt forbindelse — bokføres den bare én gang.
 
+**Biprodukter.** Når ordrens stykkliste har biprodukter, lister dialogen dem under
+**Biprodukter**, hvert forhåndsutfylt med det det gode antallet skal gi: det forventede
+antallet × antallet / ordrens antall. Endre antallet som ble laget av hvert, 0 for
+ingenting. Et biprodukt som spores i partier, går inn i partiet nummeret navngir —
+ordrens partinummermønster gjengitt for det, med mindre du skriver et annet. Biprodukter
+legges på ordrens utgangslokasjon, i samme produksjonsbevegelse. Et biprodukt som spores
+med serienummer, nektes: spor det i partier.
+
 En registrert produksjon kan ikke angres i Produksjon. Rett en feil med en justering i
-[Lager](/nb/user/inventory/).
+[Lager](/nb/user/inventory/), eller ta ferdigvarer fra hverandre med en
+[demontering](#demonter-det-en-ordre-laget).
 
 ### Partier og serienumre
 
@@ -586,12 +609,68 @@ beholder nummeret sitt. Tid som fortsatt løper på arbeidsordrene, avsluttes, o
 arbeidsordrene kanselleres. Når noe er registrert, kan den ikke kanselleres; lukk den i
 stedet. En ferdig eller kansellert ordre er endelig.
 
+### Del opp en ordre
+
+Velg **Del opp** på et utkast eller en bekreftet ordre før noe er registrert på den og
+før det er registrert tid på arbeidsordrene.
+
+1. Skriv inn antallet i hver del. Ordren beholder den første; **Legg til del** legger til
+   en til, opptil 20. Delene må til sammen bli ordrens antall: dialogen viser summen.
+2. Velg **Del opp**.
+
+Hver del utover den første blir en ny ordre, nummerert som en restordre av den
+opprinnelige — **MO-12-2**, **MO-12-3** — med **Delt fra** som peker tilbake, og samme
+stykkliste, opprinnelse, forfallsdato, lokasjoner, prioritet og ansvarlig. En planlagt
+ordre tas ut av planen, og alle delene starter uten plan: planlegg dem igjen på tavlen. En
+bekreftet ordre frigjør reservasjonene sine; komponentlinjene, biproduktene og
+arbeidsordrene tas for hver dels antall, arbeidsordrenes forventede minutter regnes ut på
+nytt, og hver del reserverer igjen. Linjene som mangler, navngis. En del av en ordre laget
+mot ordre lages for samme salgsordrelinje.
+
+### Slå sammen ordrer
+
+Under **Produksjonsordrer** krysser du av for to eller flere ordrer og velger **Slå
+sammen**. De må lage samme produkt etter samme stykkliste på samme lagersted, alle være
+utkast eller alle være bekreftet, ikke ha noe registrert og ingen registrert tid, og
+komme fra samme sted — alle laget for hånd, alle fra forslag, eller alle for samme
+salgsordrelinje eller overordnede ordre. Ordrer med ulik opprinnelse slås ikke sammen, så
+ingen av løftene går tapt.
+
+Ordren med lavest nummer blir stående, med antallene lagt sammen og den tidligste
+forfallsdatoen; de andre kanselleres med **Slått sammen med** som peker til den. Alle
+ordrene tas ut av planen. Bekreftede ordrer frigjør reservasjonene; den som blir stående,
+tar over de andres komponentlinjer og biprodukter, arbeidsordrenes forventede minutter
+regnes ut på nytt, og den reserverer igjen.
+
+### Demonter det en ordre laget
+
+Velg **Demonter** på en ferdig ordre for å ta ferdigvarer fra hverandre — en enhet med
+feil, et parti som tilbakekalles.
+
+1. For et produkt som spores i partier eller med serienumre, velger du **Parti** blant dem
+   ordrens produksjoner laget; hvert sier hvor mye av det som er igjen å demontere.
+2. Skriv inn **Antall**, høyst det som er igjen, og en **Merknad** om du vil.
+3. Velg **Demonter**.
+
+Ferdigvarene tas fra ordrens utgangslokasjon, og komponentene går tilbake til
+komponentlokasjonen — eller lagerstedets hovedlokasjon — hver inn i partiet den ble tatt
+fra. Bare det produksjonene som laget det valgte partiet forbrukte, kommer tilbake, i
+forhold: en demontering legger aldri komponenter inn i partier et annet parti ble laget
+av. Et parti som er holdt tilbake, kan demonteres — slik håndteres en tilbakekalt vare —
+og da får hvert parti det gir tilbake til, en egen **karantene**, så materiale som er
+holdt tilbake ikke kommer tilbake brukbart. Ordren viser hvor mye som er **demontert**;
+kostnaden regnes ikke ut på nytt. Lager registrerer en **Demontering**-bevegelse, som
+[sporingen](/nb/user/inventory/) av et parti viser som en ende og aldri følger.
+
+**Demonteringer** i sidemenyen lister hver demontering med det den ga tilbake.
+
 ### Les historikken til en ordre
 
 Ordresiden viser **Historikk**: hver hendelse — opprettet, endret, bekreftet, reservert,
 en produksjon registrert med mengdene, en komponent lagt til eller endret, lukket,
-kansellert, en restordre opprettet, en tidsregistrering korrigert eller lagt til — med
-hvem som gjorde det og når. Ingenting i den kan
+kansellert, en restordre opprettet, en tidsregistrering korrigert eller lagt til, delt
+opp, delt fra en annen ordre, ordrer slått sammen inn i den, slått sammen med en annen,
+demontert — med hvem som gjorde det og når. Ingenting i den kan
 endres eller fjernes.
 
 ### Arbeidsordrer og tidsregistreringer på ordresiden
@@ -991,6 +1070,14 @@ et **Kostnad**-panel med, for hver del — **Komponenter**, **Maskin**, **Arbeid
   laget.
 - **Nedetid per årsak** lister tiden arbeidsstasjonene sto stille. Den belastes aldri.
 
+**Biprodukter.** Når ordren lager biprodukter, viser **Fordelt på biproduktene** hvert
+biprodukts **Kostnadsandel** av estimatet og det faktiske, og kostnaden per enhet etter
+avslutning; **Produktet** bærer resten, og ordrens **Kostnad per enhet** er den resten
+delt på de gode enhetene som ble laget. Et biprodukt som ikke ble produsert, har ingen
+kostnad per enhet — det står **Ikke produsert**, med andelen det ville hatt — og andelen
+blir hos produktet. Rapporten **Produksjonskostnad** lister biproduktene til ordrene som
+ble lukket i perioden.
+
 Når en komponent manglet standardkost, eller en arbeidsstasjon manglet sats, regnes den
 som 0, og panelet sier at estimatet eller det faktiske er ufullstendig. Beløpene rundes
 til to desimaler, så delene kan avvike fra totalen med 0,01.
@@ -1239,6 +1326,8 @@ delegeres.
 | --- | --- | --- | --- |
 | **Produksjonsordrer**, en ordre, tilgjengeligheten, produksjonene og **Historikk** | ✓ | – | – |
 | **Ny produksjonsordre**, **Lagre**, **Bekreft**, **Reserver nå**, **Legg til komponent**, å endre en komponent, **Lukk**, **Kanseller ordre** | ✓ | ✓ | – |
+| **Del opp**, **Slå sammen**, **Demonter** | ✓ | ✓ | – |
+| **Demonteringer** | ✓ | – | – |
 | **Registrer produksjon** | ✓ | en av dem | en av dem |
 | **Verksted**, en arbeidsstasjons **Kø**, en arbeidsordre, **Mitt arbeid**, en ordres **Arbeidsordrer** og **Tidsregistreringer** | ✓ | – | – |
 | **Start**, **Start likevel**, **Pause**, **Ferdig**, **Meld svinn**, **Blokker**, **Opphev blokkering** | ✓ | en av dem | en av dem |
