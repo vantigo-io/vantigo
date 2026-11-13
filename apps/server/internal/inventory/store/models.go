@@ -201,6 +201,7 @@ type InventoryPlacement struct {
 	UpdatedByUserID   *uuid.UUID
 	UpdatedByDisplay  *string
 	UpdatedAt         time.Time
+	Multiple          pgtype.Numeric
 }
 
 type InventoryReservation struct {

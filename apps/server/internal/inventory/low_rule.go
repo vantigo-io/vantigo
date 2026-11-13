@@ -19,17 +19,18 @@ import (
 //	target    = maximum, or reorderPoint + 1 when there is no maximum
 //	needed    = target − projected, at least 1 when low
 //
-// The suggestion is needed rounded up to a whole number of the variant's
-// smallest packaging — fewest units, then sort order, then id — or needed
+// The suggestion is needed rounded up to a whole number of the placement's
+// multiple when it has one (manufacturing phase 2 M105), then to a whole
+// number of the variant's smallest packaging — fewest units, then sort order, then id — or needed
 // itself when the variant has none. It may pass the maximum, and says by how
 // much.
 
 // lowLevels is what the rule reads of one variant at one site.
 type lowLevels struct {
 	onHand, reserved, incoming *big.Rat
-	// reorderPoint and maximum are nil when unset.
-	reorderPoint, maximum *big.Rat
-	packagings            []contracts.PackagingEntry
+	// reorderPoint, maximum and multiple are nil when unset.
+	reorderPoint, maximum, multiple *big.Rat
+	packagings                      []contracts.PackagingEntry
 }
 
 // lowVerdict is the rule's answer. needed, suggested and packaging are set
@@ -64,10 +65,13 @@ func judgeLow(l lowLevels) lowVerdict {
 		v.needed = one
 	}
 	v.suggested = v.needed
+	if l.multiple != nil && l.multiple.Sign() > 0 {
+		v.suggested = new(big.Rat).Mul(l.multiple, new(big.Rat).SetInt64(ceilQuotient(v.needed, l.multiple)))
+	}
 	if p := smallestPackaging(l.packagings); p != nil {
 		size := ratFromText(p.Quantity)
 		v.packaging = p
-		v.count = ceilQuotient(v.needed, size)
+		v.count = ceilQuotient(v.suggested, size)
 		v.suggested = new(big.Rat).Mul(size, new(big.Rat).SetInt64(v.count))
 	}
 	if l.maximum != nil {

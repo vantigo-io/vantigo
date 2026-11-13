@@ -67,6 +67,28 @@ type Stock interface {
 	// a deviation opened from a lot). An id that names no lot has no entry.
 	// It refuses more than MaxStockVariants ids, as a failure.
 	LotRefs(ctx context.Context, lotIDs []int64) ([]LotRef, error)
+	// Placements is every placement at the site with a reorder point, with
+	// what the low-stock rule reads (inventory phase 2 I56): usable on hand
+	// (manufacturing phase 2 M63: held and expired lots left out), reserved
+	// and incoming by transfer. Manufacturing adds its own orders and
+	// Orders' unreserved demand to it (manufacturing phase 2 M106, M107). It
+	// answers them by variant id, in one snapshot, none for a site that is
+	// unknown or not active; more than MaxStockPlacements is a failure.
+	Placements(ctx context.Context, siteID int64) ([]StockPlacement, error)
+}
+
+// MaxStockPlacements is the most placements one Stock.Placements read
+// answers (manufacturing phase 2 M106).
+const MaxStockPlacements = 5000
+
+// StockPlacement is one placement as Stock.Placements answers it: the
+// rule's figures as exact decimal text with no trailing zeros. Maximum and
+// Multiple are "" when unset; OnHand is usable on hand at the site.
+type StockPlacement struct {
+	VariantID                  int32
+	ReorderPoint               string
+	Maximum, Multiple          string
+	OnHand, Reserved, Incoming string
 }
 
 // LotRef is one lot as Stock.LotRefs answers it.

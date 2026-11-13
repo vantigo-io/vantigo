@@ -120,6 +120,41 @@ func (st stock) Lots(ctx context.Context, variantIDs []int32, siteID int64) ([]c
 	return out, nil
 }
 
+// Placements answers every placement with a reorder point at an active
+// site, with the low-stock rule's figures on usable on hand (manufacturing
+// phase 2 M106), in one statement on the pool.
+func (st stock) Placements(ctx context.Context, siteID int64) ([]contracts.StockPlacement, error) {
+	today, err := st.s.today(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := store.New(st.s.deps.Pool).StockPlacementsAt(ctx, store.StockPlacementsAtParams{
+		Today: pgtype.Date{Time: today, Valid: true}, SiteID: siteID, RowLimit: contracts.MaxStockPlacements + 1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("inventory: read the placements at site %d: %w", siteID, err)
+	}
+	if len(rows) > contracts.MaxStockPlacements {
+		return nil, fmt.Errorf("inventory: site %d has more than %d placements with a reorder point", siteID, contracts.MaxStockPlacements)
+	}
+	out := make([]contracts.StockPlacement, 0, len(rows))
+	for _, r := range rows {
+		p := contracts.StockPlacement{
+			VariantID: r.VariantID, ReorderPoint: decimalText(ratFromText(r.ReorderPoint)),
+			OnHand: decimalText(ratFromText(r.OnHand)), Reserved: decimalText(ratFromText(r.Reserved)),
+			Incoming: decimalText(ratFromText(r.Incoming)),
+		}
+		if m := optionalRat(r.Maximum); m != nil {
+			p.Maximum = decimalText(m)
+		}
+		if m := optionalRat(r.Multiple); m != nil {
+			p.Multiple = decimalText(m)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 // LotRefs answers the lots named, by id (manufacturing phase 2 M99).
 func (st stock) LotRefs(ctx context.Context, lotIDs []int64) ([]contracts.LotRef, error) {
 	if len(lotIDs) > contracts.MaxStockVariants {

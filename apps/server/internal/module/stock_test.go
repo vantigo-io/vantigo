@@ -38,6 +38,10 @@ func (fakeStock) Lots(context.Context, []int32, int64) ([]contracts.StockLot, er
 
 func (fakeStock) LotRefs(context.Context, []int64) ([]contracts.LotRef, error) { return nil, nil }
 
+func (fakeStock) Placements(context.Context, int64) ([]contracts.StockPlacement, error) {
+	return nil, nil
+}
+
 type fakeStockLedger struct{}
 
 func (fakeStockLedger) Reserve(context.Context, pgx.Tx, contracts.StockSource, int64, time.Time, []contracts.StockLine) error {

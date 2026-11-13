@@ -309,6 +309,11 @@ func (f *fakeStock) SiteLocations(context.Context, int64) ([]contracts.StockSite
 	return nil, errors.New("fake stock: orders never lists a site's locations")
 }
 
+// Placements is Manufacturing's; Orders never calls it.
+func (f *fakeStock) Placements(context.Context, int64) ([]contracts.StockPlacement, error) {
+	return nil, errors.New("fake stock: orders never reads placements")
+}
+
 // LotRefs is Manufacturing's; Orders never calls it.
 func (f *fakeStock) LotRefs(context.Context, []int64) ([]contracts.LotRef, error) {
 	return nil, errors.New("fake stock: orders never reads lots by id")
