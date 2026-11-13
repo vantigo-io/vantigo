@@ -158,6 +158,10 @@ func (fakeSalesOrderLines) OrderLines(context.Context, int64) ([]contracts.Sales
 	return nil, nil
 }
 
+func (fakeSalesOrderLines) Unreserved(context.Context, []int32, int64) ([]contracts.UnreservedDemand, error) {
+	return nil, nil
+}
+
 type fakeProduction struct{}
 
 func (fakeProduction) ForOrderLines(context.Context, []int64) ([]contracts.LineProduction, error) {

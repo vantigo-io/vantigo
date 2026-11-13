@@ -197,3 +197,35 @@ func TestOrder_ShowsProduction(t *testing.T) {
 		t.Errorf("with Manufacturing off = %+v %+v", l.HasBom, l.Production)
 	}
 }
+
+// TestSalesOrderLines_Unreserved is manufacturing phase 2 M107a: per open
+// goods line of a confirmed sales order at the site, the open quantity less
+// what it holds reserved — a line confirmed without reserving counted
+// whole, a reserved one not at all, a draft's never, and only the variants
+// asked.
+func TestSalesOrderLines_Unreserved(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true})
+	c := h.SignIn(t, stockKeys...)
+	setDefaultSite(t, c, siteOslo)
+	h.stock.put(varBolt, locA1, "5")
+	h.stock.put(varFood, locA1, "100")
+
+	reserved := createOrder(t, c, custBusiness, productLine(varFood, 2))
+	mustStatus(t, confirmWith(t, c, reserved, true), http.StatusOK, "confirm reserving")
+	open := createOrder(t, c, custBusiness, productLine(varFood, 3), productLine(varBolt, 8))
+	mustStatus(t, confirmWith(t, c, open, false), http.StatusOK, "confirm without reserving")
+	createOrder(t, c, custBusiness, productLine(varFood, 1)) // a draft
+
+	p := orders.Module().SalesOrderLines(h.Deps())
+	got, err := p.Unreserved(t.Context(), []int32{varFood}, siteOslo)
+	if err != nil {
+		t.Fatalf("Unreserved: %v", err)
+	}
+	if len(got) != 1 || got[0].OrderID != open.Id || got[0].VariantID != varFood || got[0].Quantity != "3" {
+		t.Errorf("Unreserved = %+v, want the unreserved order's food line of 3", got)
+	}
+	if got, _ := p.Unreserved(t.Context(), []int32{varFood}, siteOslo+100); len(got) != 0 {
+		t.Errorf("another site = %+v", got)
+	}
+}

@@ -30,6 +30,7 @@ type fakeSalesOrderLines struct {
 	// onOrderLines, when set, runs once in the next OrderLines, before it
 	// answers: the worker's window between its read and its transaction.
 	onOrderLines func()
+	unreserved   map[int64][]contracts.UnreservedDemand
 }
 
 // beforeAnswer installs the OrderLines hook, run once.
@@ -56,6 +57,30 @@ func (f *fakeSalesOrderLines) Lines(ctx context.Context, ids []int64) ([]contrac
 		}
 	}
 	return out, nil
+}
+
+// Unreserved is the seeded unreserved demand of the variants at the site.
+func (f *fakeSalesOrderLines) Unreserved(ctx context.Context, ids []int32, site int64) ([]contracts.UnreservedDemand, error) {
+	lockedContractCalls.note(ctx, "fake SalesOrderLines.Unreserved")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []contracts.UnreservedDemand
+	for _, d := range f.unreserved[site] {
+		if slices.Contains(ids, d.VariantID) {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+// seedUnreserved is what Unreserved answers at the site.
+func (f *fakeSalesOrderLines) seedUnreserved(site int64, ds ...contracts.UnreservedDemand) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unreserved == nil {
+		f.unreserved = map[int64][]contracts.UnreservedDemand{}
+	}
+	f.unreserved[site] = append(f.unreserved[site], ds...)
 }
 
 func (f *fakeSalesOrderLines) OrderLines(ctx context.Context, id int64) ([]contracts.SalesOrderLine, error) {

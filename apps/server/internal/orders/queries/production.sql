@@ -50,3 +50,18 @@ SELECT DISTINCT ON (line_id) line_id, manufacturing_order_id, site_id,
 FROM orders.line_production_ready
 WHERE order_id = @order_id
 ORDER BY line_id, marked_at DESC, manufacturing_order_id DESC;
+
+-- name: OpenGoodsLinesAt :many
+-- OpenGoodsLinesAt is the open goods lines of confirmed sales orders
+-- fulfilled from the site, of the variants given (manufacturing phase 2
+-- M107a): delivered by delivery documents, with something open (ordered less
+-- cancelled less delivered), by order then line.
+SELECT l.id, l.owner_id AS order_id, l.variant_id::int AS variant_id,
+       (l.quantity - l.qty_cancelled - l.qty_delivered)::numeric(14, 3) AS open_quantity
+FROM orders.lines l
+JOIN orders.orders o ON o.id = l.owner_id
+WHERE l.owner_kind = 'order' AND l.kind = 'product' AND l.delivery_method = 'delivery'
+  AND l.variant_id = ANY(@variant_ids::int[]) AND l.quantity IS NOT NULL
+  AND l.quantity - l.qty_cancelled - l.qty_delivered > 0
+  AND o.status = 'confirmed' AND o.site_id = @site_id::bigint
+ORDER BY l.owner_id, l.id;

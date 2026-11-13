@@ -42,6 +42,59 @@ func (q *Queries) MarkLineReady(ctx context.Context, arg MarkLineReadyParams) er
 	return err
 }
 
+const openGoodsLinesAt = `-- name: OpenGoodsLinesAt :many
+SELECT l.id, l.owner_id AS order_id, l.variant_id::int AS variant_id,
+       (l.quantity - l.qty_cancelled - l.qty_delivered)::numeric(14, 3) AS open_quantity
+FROM orders.lines l
+JOIN orders.orders o ON o.id = l.owner_id
+WHERE l.owner_kind = 'order' AND l.kind = 'product' AND l.delivery_method = 'delivery'
+  AND l.variant_id = ANY($1::int[]) AND l.quantity IS NOT NULL
+  AND l.quantity - l.qty_cancelled - l.qty_delivered > 0
+  AND o.status = 'confirmed' AND o.site_id = $2::bigint
+ORDER BY l.owner_id, l.id
+`
+
+type OpenGoodsLinesAtParams struct {
+	VariantIds []int32
+	SiteID     int64
+}
+
+type OpenGoodsLinesAtRow struct {
+	ID           int64
+	OrderID      int64
+	VariantID    int32
+	OpenQuantity pgtype.Numeric
+}
+
+// OpenGoodsLinesAt is the open goods lines of confirmed sales orders
+// fulfilled from the site, of the variants given (manufacturing phase 2
+// M107a): delivered by delivery documents, with something open (ordered less
+// cancelled less delivered), by order then line.
+func (q *Queries) OpenGoodsLinesAt(ctx context.Context, arg OpenGoodsLinesAtParams) ([]OpenGoodsLinesAtRow, error) {
+	rows, err := q.db.Query(ctx, openGoodsLinesAt, arg.VariantIds, arg.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OpenGoodsLinesAtRow
+	for rows.Next() {
+		var i OpenGoodsLinesAtRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrderID,
+			&i.VariantID,
+			&i.OpenQuantity,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const orderOfLine = `-- name: OrderOfLine :one
 SELECT owner_id FROM orders.lines WHERE id = $1 AND owner_kind = 'order'
 `

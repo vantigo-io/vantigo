@@ -33,6 +33,20 @@ type SalesOrderLines interface {
 	// OrderLines is every such line of one sales order; none when the order
 	// does not exist.
 	OrderLines(ctx context.Context, orderID int64) ([]SalesOrderLine, error)
+	// Unreserved is what open sales order lines of the variants, fulfilled
+	// from the site, still need that they do not hold reserved
+	// (manufacturing phase 2 M107a): per line of a confirmed sales order, the
+	// open quantity less what it holds reserved, > 0 only, by order then
+	// line. It names at most MaxStockPlacements variants.
+	Unreserved(ctx context.Context, variantIDs []int32, siteID int64) ([]UnreservedDemand, error)
+}
+
+// UnreservedDemand is one sales order line's unreserved open quantity, as
+// SalesOrderLines.Unreserved answers it: exact decimal text, more than 0.
+type UnreservedDemand struct {
+	OrderID, LineID int64
+	VariantID       int32
+	Quantity        string
 }
 
 // SalesOrderLine is one goods line of a sales order as SalesOrderLines
