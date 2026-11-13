@@ -1043,7 +1043,14 @@ What the design deferred, each waiting for what is named:
 - **Operation dependencies (parallel operations).**
 - **Alternative work centers, a drag to another center, overlap.**
 - **Auto-computed standard times**, reading delivery D's time deviation.
-- **Reorder rules creating manufacturing orders**, using Inventory placement's minimum.
+- **Replenishment suggestions (built, R)**: projected stock per placed variant and site —
+  usable on hand, reserved and incoming from Inventory, open orders and reorder drafts as
+  supply, open orders' unreserved component demand and Orders' unreserved sales demand,
+  make-to-order pairs left out — suggestions to make or buy rounded to the placement's
+  new multiple, a nightly and on-demand lease worker, orders of origin reorder created as
+  drafts or confirmed from the Suggestions page, and automatic creation per product and
+  site, off by default
+  ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#replenishment)).
 - **By-products, kits, unbuild, split and merge.**
 - **Following a sales order's changed quantity** (`orders.sales_order.changed`), which
   make-to-order does not in phase 1, and **reserving a sub-assembly's output to its

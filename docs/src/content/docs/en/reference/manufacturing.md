@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -13,6 +13,7 @@ sources:
   - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
   - apps/server/internal/db/migrations/00167_manufacturing_lots.sql
   - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
+  - apps/server/internal/db/migrations/00171_manufacturing_replenishment.sql
   - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/events_manufacturing.go
   - apps/host/frontend/src/routes/manufacturing
@@ -33,7 +34,7 @@ the holder — delivery B, [manufacturing orders](#manufacturing-orders), and de
 [make-to-order and sub-assembly orders](#make-to-order-and-sub-assemblies), which completes
 phase 1. Of phase 2
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-12-manufacturing-phase2-design.md),
-decisions M49–M146), layer M adds [lots on productions](#lots-on-productions). Delivery 0, the seams in Inventory and Products this module builds on, is
+decisions M49–M146), layer M adds [lots on productions](#lots-on-productions), Q [quality](#quality) and R [replenishment](#replenishment). Delivery 0, the seams in Inventory and Products this module builds on, is
 described in [Inventory](/en/reference/inventory/#production) and
 [Products](/en/reference/products/).
 
@@ -128,7 +129,9 @@ Recording a check's result, uploading its photo and reporting a deviation follow
 shop floor's rule — `access`, then `shop-floor` or `orders-manage` in the handler — and
 the first two are `x-vantigo-assistant: never`, as is reading a photo; a deviation on a
 lot needs Inventory's `locations-view` and `stock-view` too; closing a deviation and releasing its
-holds are checked against `access` **and** `quality-manage`.
+holds are checked against `access` **and** `quality-manage`. The suggestions, the runs and
+a variant's replenishment rules are read with `access`; creating orders from suggestions,
+dismissing one, starting a run and setting a rule with `access` **and** `orders-manage`.
 
 ### Cost shaping
 
@@ -426,7 +429,7 @@ A manufacturing order (M17; nb *produksjonsordre*) makes a quantity of one varia
 of its BoMs, at one site. Delivery B gives it its component lines, reservations,
 productions, close, backorder, cancel and history; delivery C its
 [work orders](#work-orders-and-the-shop-floor); its schedule and its cost are D's, and the
-origins `sales_order` and `parent` [E's](#make-to-order-and-sub-assemblies).
+origins `sales_order` and `parent` [E's](#make-to-order-and-sub-assemblies), and `reorder` an order made from a [suggestion](#replenishment).
 
 ### The number
 
@@ -1757,6 +1760,130 @@ their display names, and a `revision`.
 A deviation's free text is not personal data by intent; its opener's and closer's user
 ids stay with their display names (M104).
 
+## Replenishment
+
+Phase 2's R (M105–M111) suggests what to make or buy before a placed variant runs short.
+The rule is Inventory's placement: its reorder point, maximum and multiple per (variant,
+site) (M105, X).
+
+### Projected stock
+
+For each variant with a reorder point at an active site (M107):
+
+```
+projected = usable onHand − reserved + incoming        (contracts.Stock.Placements)
+          + Σ supply orders' (quantity − produced), ≥ 0
+          − Σ open orders' (required − consumed − scrapped − reserved), ≥ 0, per component line
+          − Σ unreserved open sales demand              (contracts.SalesOrderLines.Unreserved)
+```
+
+- **Supply orders** are the site's `confirmed` and `in_progress` orders of the variant,
+  and its **drafts of origin `reorder`** — a suggestion made into a draft is not suggested
+  again the next night. Other drafts count for nothing.
+- **Make-to-order output is left out** (origin `sales_order`): it is promised to its
+  line. So is that line's demand: every sales order line a live (draft, confirmed, in
+  progress) make-to-order order names as `origin_line_id` is dropped from Orders' answer,
+  so an MTO pair neither adds nor removes. Sub-assembly orders (origin `parent`) count;
+  their parent's component demand is subtracted.
+- **Component demand** is that of the site's open orders, make-to-order ones too: they
+  still consume their components. Reserved stock is in Inventory's `reserved` already, so
+  only what a line does not hold reserved — Manufacturing's own copy, `reserved` on the
+  line — is subtracted.
+- **Sales demand** is Orders' to say: per open goods line of a confirmed sales order at the
+  site, its open quantity less what it holds reserved there, more than 0 — a line
+  confirmed without reserving, or reserved short ([Orders](/en/reference/orders/#unreserved-demand)).
+  With Orders off the slot is nil, the term is 0, and the run's `salesCounted` is false.
+
+Figures are exact decimals; nothing is rounded until the quantity.
+
+### The suggestion
+
+By Inventory's low-stock rule (M108): **low** when `projected ≤ reorderPoint`; the
+target is the maximum, or `reorderPoint + 1`; `needed = target − projected`, at least 1,
+rounded **up** to a whole number of the multiple when one is set, then up to three
+decimals. **Make** when the variant has a default active BoM (`bom_id` names it), else
+**buy**. **Need-by** is today (the business zone's) when usable on hand less reserved is
+already at or below the reorder point, else today plus the BoM's `leadTimeDays` business
+days (weekends and Norwegian public holidays skipped); a buy is needed today. The
+**reason** keeps every term (`projected`, `reorderPoint`, `maximum`, `multiple`, `onHand`,
+`reserved`, `incoming`, `inProduction`, `neededByProduction`, `neededBySales`); sales
+demand is only ever a sum, never a customer or an order, so it is shown to every holder of
+`manufacturing:access` (rule 12, consumer-gated). A variant the catalog no longer knows is
+skipped.
+
+### The job
+
+The lease worker **`manufacturing.replenishment`** (every 30 seconds, built through
+`module.Workers`, M109):
+
+- **Nightly**: once 02:00 has passed in the business zone it queues the day's run, once
+  per day however many workers see it (`ux_replenishment_runs_nightly`).
+- **On demand**: `POST /replenishment/runs {siteId?}` (`orders-manage`) answers **202**
+  with the run. At most one a minute: a person's run asked for less than a minute ago is
+  answered instead of a new one, under a transaction-scoped advisory lock.
+- **The lease.** A run is claimed by one statement that moves `status` to `running` and
+  `lease_until` ten minutes on (`FOR UPDATE SKIP LOCKED`); a running run whose lease has
+  run out — its worker died — is claimed again, and one claimed more than three times
+  fails. No session lock and no connection is held between steps.
+- **Per active site** (or the one asked for): `Stock.Placements`, then
+  `SalesOrderLines.Unreserved` for the placements' variants, then the module's own orders
+  and default BoMs, every one on the pool and none inside a transaction; then **one
+  transaction** takes the site's advisory lock, marks its open suggestions `superseded`
+  and inserts the new ones. A suggestion acted on — `done` or `dismissed` — is kept. So a
+  pool of one finishes a run.
+- **Automatic creation** follows, one transaction per order (below).
+- A run records `suggestions`, `orders_created`, `sales_counted` and, failed, its
+  `error`; runs finished more than 90 days ago are pruned with their suggestions that are
+  no longer open. `GET /replenishment/runs` lists the newest 20.
+
+### Suggestions and their actions
+
+`manufacturing.suggestions` (M110): `run_id`, `site_id`, `variant_id` with the SKU and
+name snapshotted, `kind`, `quantity`, `need_by`, `reason`, `bom_id`, `status` (`open`,
+`done`, `dismissed`, `superseded`), `reorder_open`, `order_id`, who acted with the display
+name, and when. One open suggestion per (site, variant) (`ux_suggestions_open`).
+
+- `GET /replenishment/suggestions?siteId=` — the open ones per active site, make before
+  buy, then by SKU, with the last run and `salesCounted`.
+- `POST /replenishment/suggestions/orders {items: [{suggestionId, quantity?}], confirm}`
+  (`orders-manage`, 1–200 items, none twice): per item, in **its own transaction**, an
+  order of origin **`reorder`** at the suggestion's site for its quantity or the one sent,
+  due on its need-by date, from the variant's default active BoM. Judged on the pool first
+  (the BoM — `bom_required` for a buy suggestion — and the site through `judgePlace`), then
+  under the lock order of a new order: `LockVariants`, the suggestion `FOR UPDATE` (no
+  longer open is `suggestion_not_open`), the BoM re-read, the counter; with `confirm` the
+  order is confirmed as `Confirm` does, M20a's two passes, where shortage never refuses.
+  The suggestion becomes `done` with the order. The answer lists `made` and `failed`, each
+  failure with its code; one failure never stops the others.
+- `POST /replenishment/suggestions/{id}/dismiss` (`orders-manage`) — `dismissed` until
+  the next run; one not open is **409** `suggestion_not_open`.
+- `GET /stats` answers `suggestionsToMake`, the open make suggestions.
+
+### Automatic creation
+
+`manufacturing.replenishment_rules (variant_id, site_id, auto_create, auto_confirm)`, set
+with `PUT /replenishment/rules/{variantId}/{siteId}` (`orders-manage`; both off removes
+the row; `autoConfirm` needs `autoCreate`) and read with
+`GET /replenishment/rules?variantId=` — every active site, off when it has no row. Off by
+default. When on, the run makes the order of each new make suggestion of the variant
+itself, as the system, through the same path as the action above, and confirms it with
+`auto_confirm`. **It skips a variant with an order of origin `reorder` still `draft`,
+`confirmed` or `in_progress` at the site**, and marks the suggestion `reorder_open`
+(*An MO from an earlier suggestion is open*), so a night whose order has not started yet
+adds no second one. A refusal is logged and leaves the suggestion open.
+
+### Live
+
+The topic **`manufacturing.suggestions:<siteId>`** (`manufacturing:access`), event
+**`suggestions.changed`** with the site id, on a run's replacement and on every action;
+the suggestions page refetches.
+
+### The data model of replenishment
+
+Migration `00171_manufacturing_replenishment`: `replenishment_runs` (`kind` `nightly` or
+`manual`, `nightly_for` unique, `status`, `lease_until`, `attempts`, the tallies),
+`suggestions`, `replenishment_rules`, and `ck_orders_origin_kind` gaining `reorder`.
+
 ## The variant holder
 
 The module fills the many-provider slot **`Module.VariantReferences`** with a
@@ -1876,6 +2003,7 @@ bodies are strict: an unknown property is a 400.
 | `deviation_closed` | 409 | Closing a closed deviation; releasing the holds of an open one (M103) |
 | `lot_not_of_order` | 400 | A deviation reported on an order and a lot the order neither made nor consumed, at `lotId` (M99) |
 | `lots_view_required` | 403 | A deviation reported on a lot without `inventory:locations-view` and `inventory:stock-view` (M99) |
+| `suggestion_not_open` | 409 | Dismissing a suggestion acted on, dismissed or replaced by a later run; among `failed` when an order is asked of one (M111) |
 | `attachment_too_large` | 400 | A photo over 10 MB |
 | `attachment_type` | 415 | A photo that is not a JPEG or PNG by its own bytes |
 | `storage_not_configured` | 503 | A photo with no object store configured |

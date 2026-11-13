@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, å flytte en arbeidsordre ved å dra den eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; kvalitet — kontrollene på en operasjon, å registrere dem ved stasjonen, hva de stopper, og avvik — å melde et, å sette produksjonen i karantene, å lukke det og å oppheve sperrene; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
+description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, å flytte en arbeidsordre ved å dra den eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; kvalitet — kontrollene på en operasjon, å registrere dem ved stasjonen, hva de stopper, og avvik — å melde et, å sette produksjonen i karantene, å lukke det og å oppheve sperrene; påfyllingsforslag — hva som er fremskrevet, hva som foreslås produsert eller kjøpt og innen når, å opprette utkast eller bekreftede ordrer fra dem, å avvise et, å kjøre nå, å eksportere innkjøpsforslagene og automatisk oppretting på en stykkliste; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
 sidebar:
   order: 66
 sources:
@@ -35,8 +35,9 @@ Sidemenyen viser:
 
 | Område i sidemenyen | Hva det inneholder |
 | --- | --- |
-| **Oversikt** | **Rapporter** i toppen; **Ordrer som skal startes i dag**, **Ordrer som pågår** og **Forsinkede ordrer**, og ordrene som er forsinket eller forfaller denne uken; **Aktive arbeidsstasjoner**, **Blokkerte arbeidsstasjoner** og **Aktive stykklister**: hvor mange det er |
+| **Oversikt** | **Rapporter** i toppen; **Ordrer som skal startes i dag**, **Ordrer som pågår** og **Forsinkede ordrer**, og ordrene som er forsinket eller forfaller denne uken; **Aktive arbeidsstasjoner**, **Blokkerte arbeidsstasjoner**, **Aktive stykklister** og **Forslag å produsere**: hvor mange det er |
 | **Produksjonsordrer** | Alle åpne produksjonsordrer, med nummer, produkt, antall, lagersted, forfallsdato og reservasjonsstatus |
+| **Forslag** | Hva som bør produseres eller kjøpes inn så beholdningen holder seg over hvert produkts bestillingspunkt, lagersted for lagersted, med begrunnelsen og datoen det trengs innen |
 | **Verksted** | Arbeidsstasjonenes køer, der operatørene starter, setter på pause og fullfører arbeidsordrer, og **Mitt arbeid** |
 | **Produksjonsplan** | Tavlen: arbeidsordrene som er planlagt på hver arbeidsstasjon, dag for dag, med belastningen, og ordrene som gjenstår å planlegge |
 | **Avvik** | Det som gikk galt: alle avvik, de åpne først, med ordre, produkt og partier, og om de holdes i karantene |
@@ -1038,6 +1039,75 @@ Etter **Kasser** eller **Returner** skriver du av det som er igjen med en
 [justering](/nb/user/inventory/) i Lager, eller returnerer det, og velger så **Opphev
 sperrene** på avviket.
 
+## Påfyllingsforslag
+
+**Forslag** (under **Produksjonsordrer** i sidemenyen) forteller hva du bør produsere,
+eller kjøpe inn, før et produkt går tomt. Det bygger på **bestillingspunktet**,
+**maksbeholdningen** og **multiplumet** som er satt på produktets påfylling på et
+lagersted i Lager — se
+[Angi hovedlokasjon og bestillingspunkt for en vare](/nb/user/inventory/#angi-hovedlokasjon-og-bestillingspunkt-for-en-vare)
+— og bare produkter med et bestillingspunkt der vurderes.
+
+For hvert slikt produkt og lagersted regner Produksjon ut den **fremskrevne**
+beholdningen: det som er brukbart på lager (partier på vent og utgåtte partier holdes
+utenfor), minus det som er reservert, pluss det som er på vei dit med en overføring, pluss
+det åpne produksjonsordrer — og utkastene laget fra tidligere forslag — fortsatt skal
+produsere av det, minus det åpne ordrer fortsatt trenger av det som komponent og ikke har
+reservert, minus det åpne salgsordrer fortsatt trenger av det og ikke har reservert. En
+ordre produsert mot ordre for en salgsordre holdes utenfor, og det samme gjør
+salgsordrelinjen den lages for: de to utligner hverandre.
+
+Når den fremskrevne beholdningen er på eller under bestillingspunktet, foreslås produktet:
+
+- **Produsere** når det har en aktiv standardstykkliste, **Kjøpe** når det ikke har det.
+- **Antallet** fyller opp til maksbeholdningen — eller til én over bestillingspunktet når
+  det ikke er noen maksbeholdning — rundet opp til et helt antall av multiplumet når det
+  er satt.
+- **Trengs innen** er i dag når det som er på lager, minus det som er reservert, allerede
+  er på eller under bestillingspunktet; ellers i dag pluss stykklistens ledetid, i
+  virkedager. Et innkjøpsforslag trengs i dag.
+- **Begrunnelsen** sier det i tall: *Fremskrevet 6 er på eller under bestillingspunktet
+  20: brukbar beholdning 30, reservert 25, innkommende 2, i produksjon 3, trengs i
+  produksjon 0, trengs til salgsordrer 4.* Det salgsordrene trenger, vises bare som en
+  sum: ingen kunde eller ordre navngis.
+
+Forslagene lages hver natt kl. 02.00, i virksomhetens egen tidssone, og hver natts
+forslag erstatter de forrige. **Kjør nå** lager dem med en gang (høyst én gang i
+minuttet); siden viser når de sist ble laget. Når Ordre ikke er i bruk, sier
+**Salgsordrer er ikke regnet med** at etterspørselen fra salg holdes utenfor.
+
+### Lag ordrer fra forslag
+
+1. Åpne **Forslag**. Hvert lagersted har sin egen tabell, med produsere-radene først.
+2. Kryss av radene som skal produseres. Endre et **antall** hvis du vil ha et annet.
+3. Velg **Opprett utkast** for å få utkast å se over, eller **Opprett og bekreft** for å
+   bekrefte dem med en gang og reservere komponentene slik **Bekreft** gjør — mangel
+   stopper det ikke.
+
+Hver rad blir én produksjonsordre, med opprinnelse **Forslag**, på forslagets lagersted,
+med forfall på datoen det trengs innen, fra produktets standardstykkliste. En rad det ikke
+kunne lages ordre fra, sier hvorfor. Å opprette ordrer krever **Administrere
+produksjonsordrer**.
+
+**Avvis** skjuler et forslag til neste kjøring, som foreslår det igjen hvis det fortsatt
+trengs. Kjøpe-rader kan ikke gjøres om til ordrer — Vantigo har ikke innkjøp ennå — men
+**Eksporter innkjøpsforslag** laster dem ned som en CSV-fil å bestille fra.
+
+### Automatisk oppretting
+
+På et produkts standardstykkliste viser **Automatisk påfylling** hvert aktive lagersted
+med to brytere, begge av som standard:
+
+- **Opprett automatisk** — nattkjøringen oppretter selv den foreslåtte
+  produksjonsordren, som utkast.
+- **Bekreft også** — og bekrefter den.
+
+Nattkjøringen oppretter aldri en ordre til mens en fra et tidligere forslag for produktet
+fortsatt er et utkast eller åpen på lagerstedet; forslaget vises da med *En
+produksjonsordre fra et tidligere forslag er åpen*. Ordrer laget slik opprettes uten at
+noen har sett på dem, så siden advarer før du slår det på. Å endre det krever
+**Administrere produksjonsordrer**.
+
 ## Å slette et produkt en stykkliste bruker
 
 Produkter nekter å slette en variant, eller å gjøre produktet til en tjeneste, så lenge en
@@ -1077,6 +1147,8 @@ delegeres.
 | **Opprett underordrer**, og **Opprett produksjonsordre** på en salgsordres linje | ✓ | ✓ | – |
 | **Avvik**, et avvik, ordrens **Kontrollresultater** | ✓ | – | – |
 | Å registrere en kontroll, **Ta bilde**, **Meld avvik** | ✓ | en av dem | en av dem |
+| **Forslag**, en stykklistes **Automatisk påfylling** | ✓ | – | – |
+| **Opprett utkast**, **Opprett og bekreft**, **Avvis**, **Kjør nå**, bryterne for automatisk påfylling | ✓ | ✓ | – |
 
 Å registrere en produksjon, og hver handling i verkstedet, krever Bruke Produksjon og en
 av de to andre. Å lukke et avvik og **Opphev sperrene** krever **Administrere kvalitet**

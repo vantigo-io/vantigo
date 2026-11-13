@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: Turning Manufacturing on — the two modules it requires, the migration and the manufacturing schema, granting it to a least-privilege role — the six permissions and what each gives, the quality permission that closes deviations, the sensitive cost permission and who should hold it, who manages manufacturing orders and who registers production, who works on the shop floor and who corrects time logs, who plans the schedule, the roles to build from them; the business time zone the work centers' calendars run in; setting up tablets on the floor — an account per operator, a current browser, keeping the screen awake, the work center each tablet remembers, the camera and the network; the storage the checks' photos take; how to verify it, and what can go wrong.
+description: Turning Manufacturing on — the two modules it requires, the migration and the manufacturing schema, granting it to a least-privilege role — the six permissions and what each gives, the quality permission that closes deviations, the sensitive cost permission and who should hold it, who manages manufacturing orders and who registers production, who works on the shop floor and who corrects time logs, who plans the schedule, the roles to build from them; the business time zone the work centers' calendars run in; setting up tablets on the floor — an account per operator, a current browser, keeping the screen awake, the work center each tablet remembers, the camera and the network; the storage the checks' photos take; the nightly replenishment job and automatic creation, off by default; how to verify it, and what can go wrong.
 sidebar:
   order: 51
 sources:
@@ -11,6 +11,8 @@ sources:
   - apps/server/internal/db/migrations/00159_manufacturing_schedule.sql
   - apps/server/internal/db/migrations/00160_manufacturing_mto.sql
   - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
+  - apps/server/internal/db/migrations/00171_manufacturing_replenishment.sql
+  - apps/server/internal/manufacturing/replenishment.go
 ---
 
 The Manufacturing module (**Produksjon** in Norwegian) describes how the business makes
@@ -64,7 +66,7 @@ people use it is in [Manufacturing](/en/user/manufacturing/), and every rule in 
 
 3. The **Manufacturing** tile appears for everyone with `manufacturing:access`.
 
-The module has no settings of its own. It starts two background workers, and neither
+The module has no settings of its own. It starts its background workers, and none
 needs anything configured:
 
 - `manufacturing-erasure`, which once a day blanks the free-text notes on time logs
@@ -78,6 +80,18 @@ needs anything configured:
   hand it the confirmed orders; with Orders off it makes none, and everything else in
   Manufacturing works as before. Its requests that keep failing are left `failed` in
   `manufacturing.mto_requests` with the last error, after eight attempts.
+- `manufacturing.replenishment`, the replenishment job: every night at **02:00 in the
+  business time zone** (**Workspace settings**), and whenever someone presses **Run now**
+  on **Suggestions**, it replaces each active site's suggestions of what to make or buy
+  ([Replenishment](/en/reference/manufacturing/#replenishment)). It reads the reorder
+  points, maximums and multiples set on placements in Inventory, and, with Orders
+  enabled, the sales orders' unreserved demand — without Orders the page says *Sales
+  orders not counted*. A run is leased, so two worker processes never run one twice, and
+  a run whose worker stopped is taken up again after ten minutes. Runs are kept 90 days
+  in `manufacturing.replenishment_runs`.
+
+The migration `00171_manufacturing_replenishment.sql` adds the runs, the suggestions and
+the rules of automatic creation to the schema.
 
 ## Give people access
 
@@ -177,6 +191,26 @@ check — the operator took it and left — is removed after a day by the worker
 `manufacturing.object-deletions`, which runs in the worker process with the others and
 retries until the store confirms.
 
+## Automatic replenishment
+
+Automatic creation is **off** everywhere until someone turns it on, per product and site,
+under **Automatic replenishment** on the product's default bill of materials (it needs
+Manage manufacturing orders). When on, the nightly run creates the manufacturing order a
+suggestion asks for itself — as a draft, or confirmed too with **Confirm too** — with
+nobody looking at it first. Turn it on only for products whose demand is steady, and
+give Manage manufacturing orders to those who should decide it.
+
+The run never creates a second order for a product while one from an earlier suggestion
+is still a draft or open at the site. To see what it did, read the newest runs as the
+database owner:
+
+```sql
+SELECT kind, site_id, status, requested_at, finished_at, suggestions, orders_created, sales_counted, error
+FROM manufacturing.replenishment_runs
+ORDER BY requested_at DESC
+LIMIT 10;
+```
+
 ## Verify
 
 1. As someone with Manage bills of materials and work centers, open **Manufacturing** →
@@ -212,6 +246,10 @@ retries until the store confirms.
     then confirm a sales order with it in Orders. Within a minute **Manufacturing orders**
     lists a confirmed order with origin **Sales order** and the sales order's number, and
     the sales order's line shows it.
+12. In Inventory, give the product a reorder point above what is on hand at the site.
+    Open **Manufacturing** → **Suggestions** and choose **Run now**: within a minute the
+    product is listed as **Make** with its reason. Tick it and choose **Create draft MOs**:
+    a draft with origin **Suggestion** is listed under **Manufacturing orders**.
 
 ### Look into make-to-order
 
@@ -262,6 +300,12 @@ WHERE sales_order_id = <the sales order's id>;
 | No **Plan**, **Unplan** or **Plan all**, and bars cannot be moved | The person lacks Manage manufacturing orders | Grant it to planners |
 | Planning is refused: a work order does not fit within 365 days | The work center is closed, or fully booked, for the next year: no pattern, a long closure | Correct the weekly pattern or the closures, or unplan other orders |
 | The schedule plans at the wrong hours | The business time zone is not the factory's | Set it under **Workspace settings** |
+| **Suggestions** is empty | No placement in Inventory has a reorder point, nothing is low, or no run has been made | Set reorder points; choose **Run now** |
+| **Suggestions** says *No run yet* after a night | No worker process runs | Start the worker process ([Installation](/en/admin/installation/)) |
+| **Suggestions** says *Sales orders not counted* | Orders is not enabled | Enable Orders, or accept that sales demand is left out |
+| A run in `replenishment_runs` is `failed` | Its `error` says why — Inventory not answering, or a site with more than 5000 placements with a reorder point | Fix the cause; the next run makes the suggestions again |
+| Automatic creation made no order | An order from an earlier suggestion of the product is still a draft or open, or the order was refused (logged by `manufacturing.replenishment`) | Finish or cancel the earlier order; read the worker's log |
+| `permission denied for table suggestions` in the log after the upgrade | The role was granted table by table, before `00171` | Run the `GRANT` statements again ([Database roles](/en/admin/installation/#database-roles)) |
 | No **Cost** panel on an order, no **Production cost** report | The person lacks See manufacturing costs | Grant it to those who should see costs |
 | A production is refused for stock | The site does not hold enough of a component, or the site is archived in Inventory | Receive or move the stock, reactivate the site, or correct with an Inventory adjustment |
 | A confirmed sales order gets no manufacturing order | The product's default bill of materials is not **Make to order**, Orders or the worker process is not running, the line already has an order, or the bill of materials has no operations and the sales order names no site | Mark the bill of materials, start the workers, give the sales order a site; the reason of each line left out is in `manufacturing.mto_requests.reasons` |

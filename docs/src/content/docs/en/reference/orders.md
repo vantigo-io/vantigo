@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its lots proposed FEFO, chosen and posted per lot, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; who received a lot — contracts.DeliveryTrace for Inventory's trace, provider-gated on orders:access; make-to-order — contracts.SalesOrderLines for Manufacturing, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve"
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its lots proposed FEFO, chosen and posted per lot, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; who received a lot — contracts.DeliveryTrace for Inventory's trace, provider-gated on orders:access; make-to-order — contracts.SalesOrderLines for Manufacturing, its Unreserved demand for replenishment, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve"
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -739,6 +739,22 @@ customer's **id** (never the name), the variant, the **open quantity** (ordered 
 cancelled less delivered, at least 0, exact decimal text), the order's delivery date,
 site and status. An id that is not such a line is absent. It reads on the pool and refuses
 more than 500 ids.
+
+### Unreserved demand
+
+`SalesOrderLines` has a third call for Manufacturing's
+[replenishment](/en/reference/manufacturing/#replenishment) (manufacturing phase 2
+M107a): **`Unreserved(variantIDs, siteID)`** answers, per open goods line of a
+**confirmed** sales order fulfilled from the site — a product line of one of the variants,
+delivered by delivery documents, with something open — the open quantity less what the
+line holds reserved at the site, **more than 0 only**: an `UnreservedDemand` with the
+order id, the line id, the variant and the quantity as exact decimal text. A line
+confirmed without reserving counts whole; one reserved short counts what is short; a
+draft's never. What a line holds is Inventory's to say: the lines and every order's
+reservations are read in **one read-only, repeatable-read snapshot** on the pool, the
+reservations through `StockLedger.ReservationsFor` on that transaction — the one
+connection the call holds. It is consumer-gated like the other two and carries no
+personal data; Manufacturing shows only the sum. More than 5000 variants is a failure.
 
 ### Production on the order
 

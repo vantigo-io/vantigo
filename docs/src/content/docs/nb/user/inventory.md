@@ -793,7 +793,7 @@ antallet overføringer på vei til og fra lagerstedet — *2 åpne overføringer
 
 ## Angi hovedlokasjon og bestillingspunkt for en vare
 
-En **påfylling** er tre innstillinger for én vare på ett lagersted, hver av dem valgfri:
+En **påfylling** er fire innstillinger for én vare på ett lagersted, hver av dem valgfri:
 
 - **Hovedlokasjon** — *Der varen mottas og plukkes som standard. Varer kan fortsatt ligge
   hvor som helst.* Den er et forslag, aldri en regel: en varemottakslinje, sendingen og
@@ -803,19 +803,25 @@ En **påfylling** er tre innstillinger for én vare på ett lagersted, hver av d
   eller mer, i varens enhet.
 - **Maksbeholdning** — *Forslaget fyller opp til den.* Mer enn 0, og aldri lavere enn
   bestillingspunktet.
+- **Multiplum** — *Et forslag rundes opp til et helt antall av den, for eksempel en
+  partistørrelse.* Mer enn 0. Produksjons
+  [påfyllingsforslag](/nb/user/manufacturing/#påfyllingsforslag) runder til det, og det
+  gjør også listen over lav beholdning nedenfor. Alene holder det ikke på en påfylling:
+  sett også en hovedlokasjon, et bestillingspunkt eller en maksbeholdning.
 
 Åpne varens beholdningsside (fra oppslaget eller **Beholdning**-kortet på produktsiden).
-Under hvert lagersted viser den lagerstedets **Bestillingspunkt** og **Maksbeholdning** når
-de er satt, og **Lav** mens varen er lav der. Trykk **Endre påfylling** under lagerstedet
+Under hvert lagersted viser den lagerstedets **Bestillingspunkt**, **Maksbeholdning** og
+**Multiplum** når de er satt, og **Lav** mens varen er lav der. Trykk **Endre påfylling** under lagerstedet
 (det krever **Justere beholdning** og begge visningsrettighetene); et lagersted som ikke
 har noe av varen, er også med, så du kan angi påfyllingen før det første varemottaket.
-Dialogen **Påfylling på Sentrallageret** har de tre feltene; trykk **Lagre** — *Påfylling
+Dialogen **Påfylling på Sentrallageret** har de fire feltene; trykk **Lagre** — *Påfylling
 lagret*. **Fjern** sletter påfyllingen — *Påfylling fjernet* — og varen har ikke lenger
 noen hovedlokasjon, noe bestillingspunkt eller noen maksbeholdning på lagerstedet.
 
 Dialogen avviser det den ikke kan ta vare på:
 
 - en maksbeholdning på 0 — *Maksbeholdningen må være mer enn 0.*;
+- et multiplum på 0 — *Multiplumet må være mer enn 0.*;
 - en maksbeholdning lavere enn bestillingspunktet — *Maksbeholdningen kan ikke være lavere
   enn bestillingspunktet.*;
 - ingenting satt — *Velg en hovedlokasjon, et bestillingspunkt eller en maksbeholdning —
@@ -854,7 +860,8 @@ står det *Ingenting er på eller under bestillingspunktet.*
 **Forslaget.** Listen foreslår det som fyller varen opp: til **maksbeholdningen**, eller,
 uten en, til **én over bestillingspunktet**, slik at et mottak av forslaget tar raden ut
 av listen — å fylle bare *til* bestillingspunktet ville latt den være lav. Det er alltid
-minst 1. Når varen har [pakninger](/nb/user/products/#pakninger), rundes forslaget **opp**
+minst 1. Når påfyllingen har et **multiplum**, rundes forslaget først opp til et helt
+antall av det. Når varen har [pakninger](/nb/user/products/#pakninger), rundes forslaget **opp**
 til et helt antall av den **minste** pakningen, og raden sier det under antallet:
 
 - *21 trengs* — ingenting å runde av;
@@ -1046,17 +1053,19 @@ sidemenyen (det krever **Justere beholdning** og begge visningsrettighetene) og 
 
 1. Trykk **Last ned mal** for `placements.csv`, med overskriften
    `sku,site,primary_location,reorder_point,maximum` — nøyaktig de fem kolonnene, i
-   hvilken som helst rekkefølge. Fyll inn én rad per vare og lagersted: varens
+   hvilken som helst rekkefølge, og en sjette, `multiple`, hvis du vil angi multiplumet. Fyll inn én rad per vare og lagersted: varens
    **varenummer**, lagerstedets **kode** (`OSL`), hovedlokasjonens **fulle kode**
-   (`OSL-A-03-2`), **bestillingspunktet** og **maksbeholdningen**, i varens enhet.
+   (`OSL-A-03-2`), **bestillingspunktet** og **maksbeholdningen** (og **multiplumet**), i
+   varens enhet.
    Skilletegn, desimalkomma og grensen på 5000 rader er som for
    [inngående beholdning](#importer-inngående-beholdning).
-2. **Hver rad setter alle tre feltene.** En tom celle tømmer feltet, og en rad der alle
-   tre er tomme, **fjerner** påfyllingen. Nevner en fil samme vare og lagersted to ganger,
+2. **Hver rad setter alle feltene.** En tom celle tømmer feltet — en fil uten kolonnen
+   `multiple` tømmer multiplumet — og en rad der hovedlokasjon, bestillingspunkt og
+   maksbeholdning alle er tomme, **fjerner** påfyllingen. Nevner en fil samme vare og lagersted to ganger,
    gjelder den siste raden.
 3. Velg **CSV-fil** og trykk **Prøvekjøring**. Ingenting skrives: hver rad viser
    **Varenummer**, **Lagersted**, **Hovedlokasjon**, **Bestillingspunkt**,
-   **Maksbeholdning** og **Resultat** — **OK**, **Lagerstedet finnes ikke**,
+   **Maksbeholdning**, **Multiplum** og **Resultat** — **OK**, **Lagerstedet finnes ikke**,
    **Lagerstedet er arkivert**, **Ikke en aktiv lokasjon på lagerstedet**,
    **Varenummeret finnes ikke**, **En tjeneste, holdes ikke på lager**, **Ikke et gyldig
    antall** eller **Maksbeholdningen er lavere enn bestillingspunktet**.
