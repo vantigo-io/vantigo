@@ -12,6 +12,51 @@ import (
 	"github.com/google/uuid"
 )
 
+const activeHoldsOfLots = `-- name: ActiveHoldsOfLots :many
+SELECT id, lot_id, kind, cause, note, source_module, source_kind, source_id, created_by_user_id, created_by_display, created_at, released_at, released_by_user_id, released_by_display, release_note FROM inventory.lot_holds
+WHERE lot_id = ANY($1::bigint[]) AND released_at IS NULL
+ORDER BY (kind = 'block') DESC, created_at, id
+`
+
+// ActiveHoldsOfLots is the active holds on the lots, blocks first, oldest
+// first within each: what an unbuild of a held lot carries onto the lots it
+// restores (manufacturing phase 2 M123).
+func (q *Queries) ActiveHoldsOfLots(ctx context.Context, lotIds []int64) ([]InventoryLotHold, error) {
+	rows, err := q.db.Query(ctx, activeHoldsOfLots, lotIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InventoryLotHold
+	for rows.Next() {
+		var i InventoryLotHold
+		if err := rows.Scan(
+			&i.ID,
+			&i.LotID,
+			&i.Kind,
+			&i.Cause,
+			&i.Note,
+			&i.SourceModule,
+			&i.SourceKind,
+			&i.SourceID,
+			&i.CreatedByUserID,
+			&i.CreatedByDisplay,
+			&i.CreatedAt,
+			&i.ReleasedAt,
+			&i.ReleasedByUserID,
+			&i.ReleasedByDisplay,
+			&i.ReleaseNote,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const activeHoldsOfSource = `-- name: ActiveHoldsOfSource :many
 
 SELECT id, lot_id, kind, cause, note, source_module, source_kind, source_id, created_by_user_id, created_by_display, created_at, released_at, released_by_user_id, released_by_display, release_note FROM inventory.lot_holds

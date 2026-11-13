@@ -1040,7 +1040,54 @@ func (l ledger) Produce(ctx context.Context, tx pgx.Tx, src contracts.StockSourc
 			return contracts.StockPosted{}, err
 		}
 	}
+	if p.Unbuild {
+		if err := l.quarantineRestored(ctx, tx, txq, doc, p, res.picks); err != nil {
+			return contracts.StockPosted{}, err
+		}
+	}
 	return contracts.StockPosted{MovementID: res.movementID, Picks: res.picks}, nil
+}
+
+// quarantineRestored is an unbuild's hold on what it restores (manufacturing
+// phase 2 M123): when a lot it consumed holds an active hold, every lot it
+// restores to gets a quarantine hold from the unbuild, with the consumed
+// lot's cause — a block's first — so held material does not come back
+// usable. It runs inside the same Produce, after the posting.
+func (l ledger) quarantineRestored(ctx context.Context, tx pgx.Tx, txq *store.Queries, doc contracts.StockSource, p contracts.StockProduction,
+	picks []contracts.StockPick) error {
+	var consumed []int64
+	for _, c := range p.Consume {
+		if c.LotID != 0 {
+			consumed = append(consumed, c.LotID)
+		}
+	}
+	for _, pk := range picks {
+		consumed = append(consumed, pk.LotID)
+	}
+	var restored []int64
+	for _, pr := range p.Produce {
+		if pr.LotID != 0 && !slices.Contains(restored, pr.LotID) {
+			restored = append(restored, pr.LotID)
+		}
+	}
+	if len(consumed) == 0 || len(restored) == 0 {
+		return nil
+	}
+	held, err := txq.ActiveHoldsOfLots(ctx, consumed)
+	if err != nil {
+		return fmt.Errorf("inventory: read the holds of the lots an unbuild took: %w", err)
+	}
+	if len(held) == 0 {
+		return nil
+	}
+	slices.Sort(restored)
+	holds := make([]contracts.LotHold, 0, len(restored))
+	by := contracts.LotActor{UserID: p.PostedByUserID, Display: p.PostedByDisplay}
+	for _, id := range restored {
+		holds = append(holds, contracts.LotHold{LotID: id, Kind: "quarantine", Cause: held[0].Cause, By: by,
+			Note: "Restored by an unbuild of a held lot"})
+	}
+	return l.s.holdLots(ctx, tx, txq, sourceText(doc), holds, restored)
 }
 
 // issueLineOf is an issue's lineOf for issueError: line i's variant and line

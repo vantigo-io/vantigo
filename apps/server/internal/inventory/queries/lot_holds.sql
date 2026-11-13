@@ -65,3 +65,11 @@ SET released_at = @now::timestamptz, released_by_user_id = sqlc.narg(released_by
     released_by_display = sqlc.narg(released_by_display), release_note = sqlc.narg(release_note)
 WHERE id = @id AND lot_id = @lot_id AND released_at IS NULL
 RETURNING *;
+
+-- name: ActiveHoldsOfLots :many
+-- ActiveHoldsOfLots is the active holds on the lots, blocks first, oldest
+-- first within each: what an unbuild of a held lot carries onto the lots it
+-- restores (manufacturing phase 2 M123).
+SELECT * FROM inventory.lot_holds
+WHERE lot_id = ANY(@lot_ids::bigint[]) AND released_at IS NULL
+ORDER BY (kind = 'block') DESC, created_at, id;
