@@ -291,12 +291,14 @@ velger når du oppretter den; en stykklistes type endres aldri.
    til **Sett**.
 2. Legg til en linje for hver komponent og hvor mange ett sett holder — per
    produksjonsmengden, som på enhver stykkliste. En komponent kan selv være et sett:
-   komponentene dens regnes da med.
+   komponentene dens regnes da med. En linje som blir 0 per sett med tre desimaler —
+   0,4 med en produksjonsmengde på 1000 — avvises på linjen.
 3. Velg **Opprett stykkliste**. Listen og stykklistens side merker den **Sett**.
 
 Et sett lages aldri. Det har bare linjer: ingen operasjoner, ingen biprodukter, ikke noe
 partimønster og ingen produksjon mot ordre, og redigeringen tilbyr dem ikke. En
-produksjonsordre på et sett avvises, et sett får ikke påfyllingsforslag om å lages, og en
+produksjonsordre på et sett avvises, et sett får ingen påfyllingsforslag — verken om å lages
+eller om å kjøpes; komponentene får sine — og en
 salgsordrelinje med et sett tilbyr ingen produksjonsordre. Sett kan ligge i hverandre i
 høyst **tre nivåer** — et sett, et sett blant komponentene og ett blant deres — og for et sett
 som er produktets standard, teller også settene over det.

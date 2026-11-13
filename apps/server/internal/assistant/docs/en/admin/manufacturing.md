@@ -250,8 +250,9 @@ ORDER BY requested_at DESC
 LIMIT 10;
 ```
 
-A product whose default bill of materials is a **kit** gets no suggestion to make it: a
-kit is never made, and its components are suggested as any other product's.
+A product whose default bill of materials is a **kit** gets no suggestion at all, neither to
+make nor to buy it: a kit is never made and is sold as its components, which are suggested
+as any other product's. Give the kit's components, not the kit, reorder points.
 
 ## Verify
 

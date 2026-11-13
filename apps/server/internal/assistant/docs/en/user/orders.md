@@ -233,8 +233,26 @@ line; the kit itself never is. On a confirmed order at a site the kit's **Availa
 how many kits its components make of what is available: the least, over its components,
 of what is available of each divided by how many one kit holds. The kit counts as
 delivered the whole kits its components' deliveries make, and is offered to invoice
-alone; its invoice covers its components. The pick list prints the components only; the
-packing slip prints the kit with its components under it.
+alone; its invoice covers its components, and the order counts as invoiced and done by the
+kit's line. The pick list prints the components only; the packing slip prints the kit with
+its components under it.
+
+**Register delivered** treats a kit by how the order is delivered. On an order delivered by
+delivery documents the kit's line is not offered — its components are, and the kit counts
+the whole kits they make. On an order marked delivered by hand (no site, or Inventory not
+keeping stock) the kit's line is offered and its components are not: registering the kit
+registers each component with it, the kit's quantity times how many one kit holds, and
+taking it back takes them back.
+
+When the components were delivered unevenly — more of one than of another — and you
+**Cancel the rest**, the kit keeps the whole kits delivered and the rest of it is
+cancelled. A component delivered beyond those whole kits stays delivered and is never
+invoiced, since only whole kits carry a price: the change log says **Delivered beyond whole
+kits, not invoiced** on that component, with how much. The order is done when the kept kits
+are invoiced.
+
+When something is refused, the line named is the kit's line, also when the reason is one of
+its components — for example a component short at the site on **Confirm**.
 
 Without Manufacturing, a kit's product is sold as an ordinary goods line, reserved and
 delivered itself.

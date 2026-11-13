@@ -258,8 +258,9 @@ ORDER BY requested_at DESC
 LIMIT 10;
 ```
 
-Et produkt med et **sett** som standardstykkliste får ikke forslag om å lages: et sett
-lages aldri, og komponentene foreslås som ethvert annet produkts.
+Et produkt med et **sett** som standardstykkliste får ingen forslag, verken om å lages eller
+om å kjøpes: et sett lages aldri og selges som komponentene, som foreslås som ethvert annet
+produkts. Gi settets komponenter, ikke settet, bestillingspunkter.
 
 ## Kontroller
 
