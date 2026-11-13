@@ -610,6 +610,16 @@ func TestStation_IdleAndAbsoluteExpiry(t *testing.T) {
 		t.Fatal("the idle session was not ended as idle")
 	}
 
+	// A one-minute timeout slides with activity inside the minute.
+	brisk := h.pairStation(t, registerStation(t, owner, map[string]any{"name": "Brisk", "idleMinutes": 1}).PairingCode)
+	quick := mustSwitchIn(t, brisk, opID)
+	for range 4 {
+		h.advance(50 * time.Second)
+		if _, err := h.access.Check(h.stationRequest(brisk, quick.Token), allowedRule); err != nil {
+			t.Fatalf("active every 50 seconds at a one-minute station: %v", err)
+		}
+	}
+
 	// Twelve hours end a session however active it is.
 	patient := h.pairStation(t, registerStation(t, owner, map[string]any{"name": "Patient", "idleMinutes": 60}).PairingCode)
 	station = patient

@@ -1037,8 +1037,10 @@ func (s *server) operatorFailed(ctx context.Context, r *http.Request, st store.I
 	}
 	alert := !d.Allowed
 	var failures int32
+	// The person chosen, or the badge's holder — recorded even when no
+	// such person exists, so the audit says who was tried; never the PIN.
 	var target *uuid.UUID
-	if known {
+	if userID != uuid.Nil {
 		target = &userID
 	}
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {

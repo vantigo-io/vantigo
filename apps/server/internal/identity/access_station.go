@@ -304,7 +304,10 @@ func (a *Access) checkStation(ctx context.Context, r *http.Request, rule contrac
 	if !ok {
 		return contracts.Principal{}, contracts.ErrForbidden
 	}
-	if err := a.q.TouchOperatorSession(ctx, store.TouchOperatorSessionParams{ID: op.ID, Now: now}); err != nil {
+	// The idle window slides once it is a quarter of the timeout old, at most
+	// a minute, so an operator active within the timeout is never ended idle.
+	every := min(time.Duration(st.IdleMinutes)*time.Minute/4, time.Minute)
+	if err := a.q.TouchOperatorSession(ctx, store.TouchOperatorSessionParams{ID: op.ID, Now: now, Every: interval(every)}); err != nil {
 		return contracts.Principal{}, fmt.Errorf("identity: touch operator session: %w", err)
 	}
 	return contracts.Principal{

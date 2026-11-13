@@ -909,17 +909,19 @@ const touchOperatorSession = `-- name: TouchOperatorSession :exec
 UPDATE identity.station_operator_sessions
 SET last_activity_at = $1::timestamptz
 WHERE id = $2 AND ended_at IS NULL
-  AND last_activity_at <= $1::timestamptz - interval '1 minute'
+  AND last_activity_at <= $1::timestamptz - $3::interval
 `
 
 type TouchOperatorSessionParams struct {
-	Now time.Time
-	ID  uuid.UUID
+	Now   time.Time
+	ID    uuid.UUID
+	Every pgtype.Interval
 }
 
-// TouchOperatorSession slides the idle window at most once a minute.
+// TouchOperatorSession slides the idle window once it is every old: a
+// quarter of the station's idle timeout, at most a minute.
 func (q *Queries) TouchOperatorSession(ctx context.Context, arg TouchOperatorSessionParams) error {
-	_, err := q.db.Exec(ctx, touchOperatorSession, arg.Now, arg.ID)
+	_, err := q.db.Exec(ctx, touchOperatorSession, arg.Now, arg.ID, arg.Every)
 	return err
 }
 
