@@ -1040,16 +1040,19 @@ are judged.
 For each such product and site, Manufacturing works out the **projected** stock: what is
 usable on hand (held and expired lots left out), less what is reserved, plus what is on
 its way there by transfer, plus what open manufacturing orders — and the drafts made from
-earlier suggestions — will still make of it, less what open orders still need of it as a
-component and have not reserved, less what open sales orders still need of it and have
-not reserved. An order made to order for a sales order is left out, and so is the sales
-order line it is made for: the two cancel out.
+earlier suggestions — will still make of it, less what open orders and those drafts
+still need of it as a component and have not reserved, less what open sales orders still
+need of it and have not reserved. An order made to order for a sales order is left out,
+and the sales order line it is made for counts only for what that order does not still
+make: what the order has already produced is on hand, promised to the line.
 
 When the projected stock is at or below the reorder point, the product is suggested:
 
 - **Make** when it has a default active bill of materials, **Buy** when it has none.
 - The **quantity** fills up to the maximum — or to one above the reorder point when there
-  is no maximum — rounded up to a whole number of the multiple when one is set.
+  is no maximum — rounded up to a whole number of the multiple when one is set. It is
+  always at least 1, as on Inventory's low-stock list, even for a product counted in
+  decimals.
 - **Need by** is today when what is on hand, less what is reserved, is already at or below
   the reorder point; otherwise today plus the bill of materials' lead time, in business
   days. A buy suggestion is needed today.
@@ -1059,21 +1062,25 @@ When the projected stock is at or below the reorder point, the product is sugges
   order is named.
 
 The suggestions are made every night at 02:00, in the business's own time zone, and each
-night's replace the last. **Run now** makes them at once (at most once a minute); the
-page shows when they were last made. When Orders is not in use, **Sales orders not
+night's replace the last. **Run now** makes them at once (at most once a minute for
+each site); the page shows when they were last made, reads them again until the run has
+finished, and whenever a site's suggestions change. When Orders is not in use, **Sales orders not
 counted** says that sales demand is left out.
 
 ### Make orders from suggestions
 
 1. Open **Suggestions**. Each site has its own table, the make rows first.
-2. Tick the rows to make. Change a **quantity** if you want another.
+2. Tick the rows to make. Change a **quantity** if you want another — more than 0, with
+   your decimal separator.
 3. Choose **Create draft MOs** to get drafts to look over, or **Create and confirm** to
    confirm them at once, reserving their components as **Confirm** does — a shortage
    does not stop it.
 
 Each row becomes one manufacturing order, of origin **Suggestion**, at the suggestion's
 site, due on its need-by date, from the product's default bill of materials. A row whose
-order could not be made says why. Creating orders needs **Manage manufacturing orders**.
+order could not be made says why — among them a product that already has an order from an
+earlier suggestion still a draft or open at the site, which is then listed with *An MO
+from an earlier suggestion is open*. Creating orders needs **Manage manufacturing orders**.
 
 **Dismiss** hides a suggestion until the next run, which suggests it again if it is still
 needed. Buy rows cannot be made into orders — there is no purchasing in Vantigo yet — but

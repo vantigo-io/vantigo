@@ -707,7 +707,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     M107a), carries no customer at all — order and line ids, the variant and the open
     quantity a line does not hold reserved — and its consumer, the replenishment job,
     calls it with no principal and shows only the sum. Orders reads the reservations it
-    subtracts through `StockLedger.ReservationsFor` on its own read-only transaction:
+    subtracts through `StockLedger.ReservationsForSources`, in batches, on its own
+    read-only transaction — the ledger's reads take no lock, so they may:
     a provider may call the ledger on a transaction of its own, never on the caller's. The consumer decides before it
     calls, with the request's context and never inside a transaction, and shows only
     what its own rule allows; the provider answers whatever was logged. A contract is
@@ -1296,7 +1297,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     reserved), `Release` (a line's
     reservation, part of it, or all of the document's), `Issue` (one movement of kind
     `issue`, taking stock off its locations and consuming the lines' reservations,
-    idempotent by the document) and `ReservationsFor`. Manufacturing calls two more
+    idempotent by the document), `ReservationsFor` and `ReservationsForSources` (many
+    documents' in one statement; both reads lock-free). Manufacturing calls two more
     (manufacturing design M2–M3): `ReserveForProduction` (`Reserve` at a site that need
     not fulfil orders) and `Produce` (one movement of kind `production`, consume lines
     from-only and produce lines to-only in one site, consuming the reservations as

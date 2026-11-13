@@ -750,10 +750,10 @@ delivered by delivery documents, with something open — the open quantity less 
 line holds reserved at the site, **more than 0 only**: an `UnreservedDemand` with the
 order id, the line id, the variant and the quantity as exact decimal text. A line
 confirmed without reserving counts whole; one reserved short counts what is short; a
-draft's never. What a line holds is Inventory's to say: the lines and every order's
+draft's never. What a line holds is Inventory's to say: the lines and their orders'
 reservations are read in **one read-only, repeatable-read snapshot** on the pool, the
-reservations through `StockLedger.ReservationsFor` on that transaction — the one
-connection the call holds. It is consumer-gated like the other two and carries no
+reservations through `StockLedger.ReservationsForSources` on that transaction, one
+statement per 1000 orders — the one connection the call holds. It is consumer-gated like the other two and carries no
 personal data; Manufacturing shows only the sum. More than 5000 variants is a failure.
 
 ### Production on the order

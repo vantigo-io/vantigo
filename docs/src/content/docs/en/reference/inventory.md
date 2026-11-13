@@ -227,6 +227,9 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     PostedByDisplay, Today, ExpiredOverride}) (StockPosted{MovementID, Picks}, error)`;
   - `ReservationsFor(ctx, tx, src) ([]Reservation{VariantID, LineID, SiteID, Quantity},
     error)`;
+  - `ReservationsForSources(ctx, tx, srcs) ([]SourceReservation{Source, Reservation},
+    error)` — `ReservationsFor` of at most `MaxStockSources` (1000) documents in one
+    statement;
   - `ReserveForProduction(ctx, tx, src, siteID, today, lines []StockLine)` — `Reserve`
     without the *fulfils orders* check;
   - `Produce(ctx, tx, src, StockProduction{Document, SiteID, Consume []ConsumeLine{VariantID,
@@ -1589,7 +1592,11 @@ already reserved lowers available, which may go negative, and the reservations s
   document, so a second `Issue` for the same document answers the first movement and
   consumes nothing again when the body is the same (the same lines in the same order, the
   same quantities as text); one with another body is refused `document_reused`.
-- **`ReservationsFor`** reads what the document holds, by line id then site id.
+- **`ReservationsFor`** reads what the document holds, by line id then site id;
+  **`ReservationsForSources`** reads it for many documents in one statement, by source,
+  line id then site id, a document named twice answered once, more than 1000 a failure.
+  Both **take no lock**, and must not: Orders reads them in a read-only transaction
+  ([Unreserved demand](/en/reference/orders/#unreserved-demand)).
 
 **Inventory's own decreases ignore reservations.** An adjustment, a move and a count are
 corrections of fact: they may take on hand below what is reserved, and available then
@@ -2042,8 +2049,9 @@ body (`text/csv`) and sets placements across every site (I61):
   more and `maximum` and `multiple` more than 0, at most three decimals, else
   `quantity_invalid`; and
   `maximum_below_reorder_point`.
-- **Each row sets every field**, an empty cell clearing its field — a file without the
-  `multiple` column clears the multiple — and a row clearing the primary location, the
+- **Each row sets every field the file has**, an empty cell clearing its field — a file
+  without the `multiple` column leaves every placement's multiple as it is (the upsert's
+  `keep_multiple`), and a placement it creates has none — and a row clearing the primary location, the
   reorder point and the maximum **deletes** the placement. A variant and site named twice: the last
   row wins.
 - **A dry run** — `dryRun` defaults to **true** — answers 200 with every row and `ok`.

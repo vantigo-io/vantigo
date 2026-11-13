@@ -1052,17 +1052,19 @@ For hvert slikt produkt og lagersted regner Produksjon ut den **fremskrevne**
 beholdningen: det som er brukbart på lager (partier på vent og utgåtte partier holdes
 utenfor), minus det som er reservert, pluss det som er på vei dit med en overføring, pluss
 det åpne produksjonsordrer — og utkastene laget fra tidligere forslag — fortsatt skal
-produsere av det, minus det åpne ordrer fortsatt trenger av det som komponent og ikke har
-reservert, minus det åpne salgsordrer fortsatt trenger av det og ikke har reservert. En
-ordre produsert mot ordre for en salgsordre holdes utenfor, og det samme gjør
-salgsordrelinjen den lages for: de to utligner hverandre.
+produsere av det, minus det åpne ordrer og disse utkastene fortsatt trenger av det som
+komponent og ikke har reservert, minus det åpne salgsordrer fortsatt trenger av det og
+ikke har reservert. En ordre produsert mot ordre for en salgsordre holdes utenfor, og
+salgsordrelinjen den lages for, teller bare for det ordren ikke fortsatt skal produsere:
+det ordren allerede har produsert, er på lager, lovet bort til linjen.
 
 Når den fremskrevne beholdningen er på eller under bestillingspunktet, foreslås produktet:
 
 - **Produsere** når det har en aktiv standardstykkliste, **Kjøpe** når det ikke har det.
 - **Antallet** fyller opp til maksbeholdningen — eller til én over bestillingspunktet når
   det ikke er noen maksbeholdning — rundet opp til et helt antall av multiplumet når det
-  er satt.
+  er satt. Det er alltid minst 1, som på lavbeholdningslisten i Lager, også for et
+  produkt som telles i desimaler.
 - **Trengs innen** er i dag når det som er på lager, minus det som er reservert, allerede
   er på eller under bestillingspunktet; ellers i dag pluss stykklistens ledetid, i
   virkedager. Et innkjøpsforslag trengs i dag.
@@ -1073,20 +1075,24 @@ Når den fremskrevne beholdningen er på eller under bestillingspunktet, foresl�
 
 Forslagene lages hver natt kl. 02.00, i virksomhetens egen tidssone, og hver natts
 forslag erstatter de forrige. **Kjør nå** lager dem med en gang (høyst én gang i
-minuttet); siden viser når de sist ble laget. Når Ordre ikke er i bruk, sier
+minuttet for hvert lagersted); siden viser når de sist ble laget, leser dem på nytt til
+kjøringen er ferdig, og hver gang et lagersteds forslag endres. Når Ordre ikke er i bruk, sier
 **Salgsordrer er ikke regnet med** at etterspørselen fra salg holdes utenfor.
 
 ### Lag ordrer fra forslag
 
 1. Åpne **Forslag**. Hvert lagersted har sin egen tabell, med produsere-radene først.
-2. Kryss av radene som skal produseres. Endre et **antall** hvis du vil ha et annet.
+2. Kryss av radene som skal produseres. Endre et **antall** hvis du vil ha et annet —
+   mer enn 0, med ditt desimaltegn.
 3. Velg **Opprett utkast** for å få utkast å se over, eller **Opprett og bekreft** for å
    bekrefte dem med en gang og reservere komponentene slik **Bekreft** gjør — mangel
    stopper det ikke.
 
 Hver rad blir én produksjonsordre, med opprinnelse **Forslag**, på forslagets lagersted,
 med forfall på datoen det trengs innen, fra produktets standardstykkliste. En rad det ikke
-kunne lages ordre fra, sier hvorfor. Å opprette ordrer krever **Administrere
+kunne lages ordre fra, sier hvorfor — blant annet et produkt som allerede har en ordre fra
+et tidligere forslag som fortsatt er et utkast eller åpen på lagerstedet; forslaget vises
+da med *En produksjonsordre fra et tidligere forslag er åpen*. Å opprette ordrer krever **Administrere
 produksjonsordrer**.
 
 **Avvis** skjuler et forslag til neste kjøring, som foreslår det igjen hvis det fortsatt

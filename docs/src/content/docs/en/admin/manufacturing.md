@@ -86,9 +86,14 @@ needs anything configured:
   ([Replenishment](/en/reference/manufacturing/#replenishment)). It reads the reorder
   points, maximums and multiples set on placements in Inventory, and, with Orders
   enabled, the sales orders' unreserved demand — without Orders the page says *Sales
-  orders not counted*. A run is leased, so two worker processes never run one twice, and
-  a run whose worker stopped is taken up again after ten minutes. Runs are kept 90 days
-  in `manufacturing.replenishment_runs`.
+  orders not counted*. A run is leased for ten minutes and the lease is renewed before
+  each site, so no other worker process takes it up while its worker is alive. A run
+  whose worker stopped is taken up again once its lease has run out; the worker that
+  lost it stops before its next site, and only the one holding the run records its end.
+  A site that fails does not stop the others: the run is then `failed`, its `error`
+  naming each failed site, and the other sites' suggestions are made. A site archived
+  in Inventory has its open suggestions replaced by nothing on the next run. Runs are
+  kept 90 days in `manufacturing.replenishment_runs`.
 
 The migration `00171_manufacturing_replenishment.sql` adds the runs, the suggestions and
 the rules of automatic creation to the schema.
@@ -201,7 +206,8 @@ nobody looking at it first. Turn it on only for products whose demand is steady,
 give Manage manufacturing orders to those who should decide it.
 
 The run never creates a second order for a product while one from an earlier suggestion
-is still a draft or open at the site. To see what it did, read the newest runs as the
+is still a draft or open at the site — not even when two runs, or a run and a person,
+act at once: the check is made with the product locked. To see what it did, read the newest runs as the
 database owner:
 
 ```sql
@@ -303,7 +309,8 @@ WHERE sales_order_id = <the sales order's id>;
 | **Suggestions** is empty | No placement in Inventory has a reorder point, nothing is low, or no run has been made | Set reorder points; choose **Run now** |
 | **Suggestions** says *No run yet* after a night | No worker process runs | Start the worker process ([Installation](/en/admin/installation/)) |
 | **Suggestions** says *Sales orders not counted* | Orders is not enabled | Enable Orders, or accept that sales demand is left out |
-| A run in `replenishment_runs` is `failed` | Its `error` says why — Inventory not answering, or a site with more than 5000 placements with a reorder point | Fix the cause; the next run makes the suggestions again |
+| A run in `replenishment_runs` is `failed` | Its `error` names each site that failed and why — Inventory not answering, or a site with more than 5000 placements with a reorder point; the other sites' suggestions were made | Fix the cause; the next run makes the suggestions again |
+| A run in `replenishment_runs` stays `running` | Its worker stopped, or lost the run to another worker after its lease ran out | Nothing: it is taken up again once its lease has run out (ten minutes) |
 | Automatic creation made no order | An order from an earlier suggestion of the product is still a draft or open, or the order was refused (logged by `manufacturing.replenishment`) | Finish or cancel the earlier order; read the worker's log |
 | `permission denied for table suggestions` in the log after the upgrade | The role was granted table by table, before `00171` | Run the `GRANT` statements again ([Database roles](/en/admin/installation/#database-roles)) |
 | No **Cost** panel on an order, no **Production cost** report | The person lacks See manufacturing costs | Grant it to those who should see costs |

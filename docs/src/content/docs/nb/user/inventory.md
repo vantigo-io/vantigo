@@ -1059,8 +1059,9 @@ sidemenyen (det krever **Justere beholdning** og begge visningsrettighetene) og 
    varens enhet.
    Skilletegn, desimalkomma og grensen på 5000 rader er som for
    [inngående beholdning](#importer-inngående-beholdning).
-2. **Hver rad setter alle feltene.** En tom celle tømmer feltet — en fil uten kolonnen
-   `multiple` tømmer multiplumet — og en rad der hovedlokasjon, bestillingspunkt og
+2. **Hver rad setter alle feltene i filen.** En tom celle tømmer feltet — en fil uten
+   kolonnen `multiple` lar hvert multiplum være som det er, og en påfylling den oppretter,
+   får ikke noe — og en rad der hovedlokasjon, bestillingspunkt og
    maksbeholdning alle er tomme, **fjerner** påfyllingen. Nevner en fil samme vare og lagersted to ganger,
    gjelder den siste raden.
 3. Velg **CSV-fil** og trykk **Prøvekjøring**. Ingenting skrives: hver rad viser
