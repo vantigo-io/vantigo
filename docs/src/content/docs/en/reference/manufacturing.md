@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; routing — operations as a graph with dependsOn, only on earlier operations and every branch joining the last, readying and planning by the graph, the send-ahead quantity and Register quantity, work center groups, the member planning or the shop floor chooses, its re-snapshot and when it is fixed, and the drags between members; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; routing — operations as a graph with dependsOn, only on earlier operations and every branch joining the last, readying and planning by the graph, the send-ahead quantity and Register quantity, work center groups, the member planning or the shop floor chooses, its re-snapshot and when it is fixed, and the drags between members; BoM depth — by-products with their cost share, their snapshot, production and lots and the cost split, unbuilds from a chosen lot or by a BoM with the reverse movement and the quarantine of what a held lot restores, and the split and merge of orders under the schedule's locks; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
   - apps/server/internal/db/migrations/00171_manufacturing_replenishment.sql
   - apps/server/internal/db/migrations/00172_manufacturing_routing.sql
+  - apps/server/internal/db/migrations/00173_manufacturing_bom_depth.sql
   - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/events_manufacturing.go
   - apps/host/frontend/src/routes/manufacturing
@@ -103,7 +104,7 @@ status, not its availability, which only the order page computes
 | --- | --- | --- | --- | --- |
 | `manufacturing:access` | Use Manufacturing / Bruke Produksjon | See the app; read the meta, the stats, the sites and their locations, the variant and people searches, work centers and their closures, BoMs and their overview, manufacturing orders, their history, their production prefill and their productions; the work orders, the time logs, a work center's queue and My work; the schedule board; the utilisation and time-deviation reports | no | yes |
 | `manufacturing:boms-manage` | Manage bills of materials and work centers / Administrere stykklister og arbeidsstasjoner | Create, update, archive, reactivate and delete work centers; add and delete closures; create, update, archive and reactivate work center groups; create, update, archive and reactivate BoMs and make one the default | no | yes |
-| `manufacturing:orders-manage` | Manage manufacturing orders / Administrere produksjonsordrer | Create, update, confirm, reserve, close and cancel manufacturing orders; add and change their component lines; register a production; every shop-floor action; correct a time log and add a missing one; plan, plan all, unplan and reschedule, and set an order's requested start | no | yes |
+| `manufacturing:orders-manage` | Manage manufacturing orders / Administrere produksjonsordrer | Create, update, confirm, reserve, close, cancel, split and merge manufacturing orders; unbuild finished goods; add and change their component lines; register a production; every shop-floor action; correct a time log and add a missing one; plan, plan all, unplan and reschedule, and set an order's requested start | no | yes |
 | `manufacturing:shop-floor` | Work on the shop floor / Arbeide i verkstedet | Register a production; start, pause and finish a work order, report scrap, block and unblock a work center | no | yes |
 | `manufacturing:costs-view` | See manufacturing costs / Se produksjonskostnader | Every cost field in a response — an order's `cost` among them — writing a work center's rates, and the production-cost report | **yes** | **no** |
 | `manufacturing:quality-manage` | Manage quality / Administrere kvalitet | Close a deviation, which releases its own holds unless it is closed as scrap or return, and release the holds of one closed so (M102) | no | yes |
@@ -2093,6 +2094,171 @@ Migration `00171_manufacturing_replenishment`: `replenishment_runs` (`kind` `nig
 `manual`, `nightly_for` unique, `status`, `lease_until`, `attempts`, the tallies),
 `suggestions`, `replenishment_rules`, and `ck_orders_origin_kind` gaining `reorder`.
 
+## BoM depth
+
+Layer G (M120–M128), migration `00173_manufacturing_bom_depth.sql`: a BoM's
+**by-products** with their share of the cost, **unbuilds** that take finished goods
+apart, and the **split** and **merge** of orders.
+
+### By-products
+
+`bom_outputs (bom_id, variant_id, quantity, cost_share, sort_order)` holds a BoM's
+by-products (M120), written by the BoM request's `outputs` and answered as the BoM's
+`outputs`; an update that leaves `outputs` out removes them. Each is judged with the
+lines, after `LockVariants` locked the by-products' variants with the product and the
+components:
+
+- at most 20 (a field error on `outputs`), each variant once;
+- `quantity` more than 0 with at most three decimals, per the BoM's output quantity;
+  `costShare` 0–100 with at most two decimals, default 0;
+- goods only (`variant_not_found`, `variant_not_goods` on `outputs[i].variantId`);
+- never the BoM's own variant — **400** `output_is_product` — nor one of its components —
+  **400** `output_is_component`;
+- the shares together at most 100 — **400** `cost_share_over` on `outputs`; the product
+  carries the rest.
+
+**The cycle walk covers outputs.** A by-product stops the walk as the product does: a
+component that is, or is made through its default BoMs from, one of the BoM's
+by-products is `bom_cycle`. The graph also gains an edge from each by-product of a
+default active BoM to that BoM's components, so a BoM consuming another's by-product
+walks into the BoM that makes it.
+
+Confirm copies the by-products onto `order_outputs` (M121) with the SKU, name and unit,
+the share, and `expected` = quantity × the order's quantity ÷ the BoM's output quantity,
+half-up to three decimals; a draft answers them as its BoM makes them now, without ids.
+The order answers `outputs` with `expected`, `produced`, `costShare` and the variant's
+tracking. The variants an order write locks include its by-products' (a draft's BoM's).
+
+**A production** sends `outputs: [{outputId, quantity, lot?}]`; one left out makes
+nothing, `quantity` 0 likewise. An `outputId` that is not one of the order's is a field
+error on `outputs[i].outputId`. Each by-product made is another **produce line** of the
+one `Produce`: its variant, its `order_outputs` id as the line, the order's **output
+location** — never the production's `toLocationId` — and, for a lot-tracked one, the lot
+named by `lot.number` or the order's pattern rendered for the by-product's SKU, found or
+made by `EnsureLots` at step 7a with the counted-number skips the product's lot has. A
+by-product tracked by serial number is **400** `serial_quantity`; `lot` on an untracked
+one `lot_not_allowed`. The order's quarantining deviations hold the by-products' lots
+as they hold the product's (M99). `order_outputs` ids are their own table's, so one may
+equal the order's id or a component line's: produce lines are keyed by (variant, line
+id). `production_byproducts` keeps what each production made of each by-product, with
+its lot; the production answers `byProducts`, the order's lots `byProducts` (those with a
+lot), and the production draft `byProducts`, each proposed as its expected × the
+quantity ÷ the order's quantity, with a lot-tracked one's previewed number.
+
+**The cost split** (M122). At close the exact actual total is split: each by-product
+carries `costShare` % of it, and its cost per unit is that part ÷ its produced quantity;
+the product carries the rest, and the order's `costPerUnit` is the rest ÷ the good output.
+A by-product that produced nothing has no cost per unit — `notProduced` — and its share
+stays with the product; its `actual` is the part it would have had. The estimate is split
+by the same shares. The order's cost answers `byProducts` (`estimate`, `actual`,
+`costPerUnit` once fixed, `notProduced`) and `mainActual`; the split is fixed with the
+actual at close. The production-cost report answers `byProducts`, one row per by-product
+of each order, and a product's cost per unit over its orders is their main parts ÷ their
+good output.
+
+### Unbuilds
+
+An **unbuild** (`unbuilds`, numbered **UB-<n>** from the counter row `unbuild`; nb
+*demontering*) takes finished goods apart (M123). `POST /unbuilds` names a done order
+(`orderId`) or a BoM (`bomId`) — exactly one — the `quantity`, a `clientRequestId` and
+optionally a `note`, the locations and, free-standing, a `siteId`:
+
+- **From a done order** (otherwise 409 `order_not_open`): its BoM, product and site. For a
+  tracked product `lotId` is required (`lot_required`) and must be a lot the order's
+  productions made (`lot_not_of_order`); the quantity is at most what that lot received
+  from them less what was unbuilt from it, or for an untracked product the order's good
+  output less what was unbuilt (`unbuild_too_much`, 400). It restores only what the
+  **productions that put output in the chosen lot** consumed (scrap left out), each
+  production in proportion to what it put in the lot: per production, its consumption
+  per component and lot × the quantity × what it put in the lot ÷ (what they put there
+  together × its own good output). Each component's figure is rounded half-up to three
+  decimals, each lot's part too but the last, which takes the remainder. A component goes
+  back into the lot it was taken from; an untracked one without a lot. An untracked
+  product's unbuild restores from every production of the order.
+- **Free-standing, by a BoM**: the BoM's lines without scrap for the quantity, half-up to
+  three decimals, one line per variant. A tracked component needs `components[]` naming
+  its lot — an existing `lotId` of the variant, or a new `lot` with its `number` —
+  else `lot_required`; an untracked one names none (`lot_not_allowed`). A tracked product
+  needs `lotId`. The site is `siteId`, else the BoM's work centers', else the first
+  active one.
+
+The finished goods are taken from `fromLocationId` (default the order's output location,
+else the site's root) and the components put on `toLocationId` (default the order's
+component location, else the root), active locations of the site (`location_unknown`).
+
+The lock order: `LockVariants` on the product and every component; the order `FOR
+UPDATE` — so two unbuilds of one order judge what is left one after the other — or, free
+standing, the BoM `FOR SHARE` with its lines read again; the counter; the unbuild's row;
+`EnsureLots` for the new lots; then **one `Produce` with `Unbuild: true`** under the
+document `manufacturing/unbuild/<id>`: the finished item a consume line, the components
+produce lines. Inventory posts it as a movement of kind **`unbuild`**, whose consume line
+may take a held or expired lot; when the lot taken holds an active hold, Inventory
+quarantines every lot restored to, in the same `Produce` (see
+[Inventory](/en/reference/inventory/#production)). The trace treats the movement as a
+reverse edge, never expanded, and the block does not cross it (M88). Inventory's refusals
+pass through as 409. A `clientRequestId` sent again with the same body answers the first
+unbuild, 200; with another, 409 `client_request_reused`.
+
+The order's cost is not recomputed. The order answers `unbuilt`, and its lots each
+output lot's `unbuilt`; its timeline gains `unbuilt`. `GET /unbuilds` pages them newest
+first, of one order with `orderId`; `GET /unbuilds/{id}` answers one with its `lines`.
+
+### Split and merge
+
+**Split** (`POST /orders/{id}/split`, M124) takes `quantities`, 2–20, each more than 0,
+summing to the order's quantity (`split_sum`, 400), under the order's `revision`. The
+order must be a draft or confirmed with no production and no time log — in progress, or
+either, is 409 `order_has_work`; done or cancelled `order_not_open`. The order keeps the
+first quantity; each other is a new order numbered as a backorder of its root (MO-12-2,
+MO-12-3) with `split_from_id` set, the same BoM, origin, due date, requested start,
+locations, priority, responsible, note and lot pattern. The original is unplanned — its
+open work orders' slots removed, its window cleared — and every part starts unplanned. A
+confirmed original releases its reservations; its component lines and by-products are
+split by the quantities (each part half-up to three decimals, the last the remainder),
+its work orders' expected minutes recomputed for its quantity (M126), each part gets
+copies of the lines, by-products, work orders with their graph and checks — their
+expected minutes for the part's — its estimate, and is confirmed; then the original and
+every part reserve again, two-pass. A draft's parts are drafts. The answer is the order,
+its `parts` and the lines left short.
+
+**Merge** (`POST /orders/merge`, M125) takes 2–20 `orders`, each `{id, revision}`. Each
+must be a draft or confirmed with no production and no time log (`order_has_work`,
+`order_not_open`); all of one variant, BoM and site, all drafts or all confirmed, and of
+the **same origin** — all `manual`, all `reorder`, all for the same sales order line, or
+all children of the same parent — else **400** `merge_mismatch`: mixing a make-to-order
+order with a manual one is refused, so neither promise is lost. The one with the lowest
+number (then suffix) survives with the summed quantity and the earliest due date; the
+others end their work orders and are `cancelled` with `merged_into_id`. Every order is
+unplanned. Confirmed ones release their reservations; the survivor gains each merged
+order's lines — a BoM line added to its own of the same variant and operation, an added
+line or one it has not as a line of its own — and by-products, its work orders' expected
+minutes are recomputed and its estimate fixed again, and it reserves again. The answer is
+the survivor, the `merged` and the lines left short.
+
+**The locks** (M127). Both run through `withScheduledOrders`: the schedule's advisory
+lock of every work center of every order involved — the members of a group work order's
+group too — in id order before any row lock, because unplanning removes their slots; then
+`LockVariants`, the orders `FOR UPDATE` in id order, their work orders in id order, and
+last the ledger — release, then reserve. A work order at a center not locked starts the
+write again.
+
+**Make-to-order** (M124). `ux_orders_origin_line` leaves out split parts as it leaves out
+backorders: `WHERE origin_kind = 'sales_order' AND backorder_of_id IS NULL AND
+split_from_id IS NULL AND status <> 'cancelled'`. A sales order line keeps one live
+order; its parts are that order's chain, and `ForOrderLines` returns them with it.
+
+The order answers `splitFromId` and `splitFrom`, `mergedIntoId` and `mergedInto`, and the
+`splitParts` and `mergedFrom` made from it. The timeline gains `split` and `split_from`,
+`merged` and `merged_into` (M128), each naming the other orders.
+
+### The data model of BoM depth
+
+Migration `00173_manufacturing_bom_depth`: `bom_outputs`, `order_outputs`,
+`production_byproducts`, `unbuilds` (with the chosen `lot_id` and its number, the
+`client_request_id` unique), `unbuild_lines`, `orders.split_from_id` and
+`orders.merged_into_id`, and the amended `ux_orders_origin_line`. The `unbuild` counter
+row is made by its first use.
+
 ## The variant holder
 
 The module fills the many-provider slot **`Module.VariantReferences`** with a
@@ -2111,7 +2277,9 @@ O30 on purpose: a service can be neither consumed nor produced.
 
 From delivery B the holder also counts the **manufacturing orders** that are not `done` or
 `cancelled` and name the variant, as their product or on a component line; `n` is the
-BoMs and the orders together. A done or cancelled order holds nothing.
+BoMs and the orders together. A done or cancelled order holds nothing. From layer G a
+by-product counts as a line does: an active BoM making the variant as a by-product, and
+an open order with it among its by-products, hold it.
 
 ## Personal data
 
@@ -2124,13 +2292,14 @@ names its `responsibleUserId`; a production its poster (`posted_by_user_id`,
 `posted_by_display`), an event its actor (`actor_user_id`, `actor_display`), and a time
 log its operator (`user_id`, `user_display`), the supervisor who corrected it
 (`corrected_by`, `corrected_by_display`) and whose words its note is (`note_by`,
-`note_by_display`). These user ids stay with their display snapshot
+`note_by_display`), and an unbuild its poster (`posted_by_user_id`, `posted_by_display`). These user ids stay with their display snapshot
 as records after identity erases the person, as Inventory's ledger keeps its poster
 (rule 19 of the [module boundaries](/en/contributing/module-boundaries/)).
 
 A time log's free-text `note` is its writer's own words and does not stay. The writer is
 not the operator: it is the supervisor who corrected or added the log, or the person who
-blocked the work center, kept as the log's `note_by` (`note_by_display`). No module is
+blocked the work center, kept as the log's `note_by` (`note_by_display`). An unbuild's
+`note` is its poster's words likewise, and the sweep blanks it too. No module is
 told of an erasure, so the module asks (rule 19): its background worker
 `manufacturing-erasure`, once a day pages through the writers of the notes, 200 user ids
 at a time, asks `contracts.UserDirectory.Users` which still exist, and blanks every note
@@ -2223,6 +2392,13 @@ bodies are strict: an unknown property is a 400.
 | `work_order_is_output` | 409 | Register quantity on the output work order, the last that is not cancelled (M116) |
 | `quantity_over_order` | 400 | Register quantity that would take the work order's passed-on total past the order's quantity (M116) |
 | `work_center_group_empty` | 409 | A confirm of an order whose operation targets a group with no active work center (M118) |
+| `output_is_product` | 400 | A by-product that is the BoM's own variant (M120) |
+| `output_is_component` | 400 | A by-product that is one of the BoM's components (M120) |
+| `cost_share_over` | 400 | By-products' cost shares summing to more than 100 (M120) |
+| `unbuild_too_much` | 400 | An unbuild of more than the order — or the chosen lot — has left to take apart (M123) |
+| `split_sum` | 400 | A split's quantities that do not sum to the order's (M124) |
+| `merge_mismatch` | 400 | A merge of orders of another variant, BoM or site, of drafts with confirmed orders, or of different origins (M125) |
+| `order_has_work` | 409 | A split or a merge of an order in progress, or with a production or a time log (M124, M125) |
 | `attachment_too_large` | 400 | A photo over 10 MB |
 | `attachment_type` | 415 | A photo that is not a JPEG or PNG by its own bytes |
 | `storage_not_configured` | 503 | A photo with no object store configured |
@@ -2295,6 +2471,11 @@ every order write may answer 503 `dependency_unavailable`.
 | `GET /orders/{id}/lots` (`getManufacturingOrderLots`) | access | 200 [the lots made and consumed](#lots-on-productions); 404 |
 | `POST /orders/{id}/close` (`closeManufacturingOrder`) | orders-manage | 200 `{order, backorder, shortLines}`; 404; 409 `order_not_open`, `checks_incomplete`, `quantity_short` |
 | `POST /orders/{id}/cancel` (`cancelManufacturingOrder`) | orders-manage | 200; 404; 409 `order_not_open`, `order_has_production` |
+| `POST /orders/{id}/split` (`splitManufacturingOrder`) | orders-manage | 200 `{order, parts, shortLines}` ([split](#split-and-merge)); 400 fields, `quantity_invalid`, `split_sum`; 404; 409 `order_has_work`, `order_not_open`, `revision_conflict`, Inventory's refusals |
+| `POST /orders/merge` (`mergeManufacturingOrders`) | orders-manage | 200 `{order, merged, shortLines}` ([merge](#split-and-merge)); 400 fields, `merge_mismatch`; 404; 409 `order_has_work`, `order_not_open`, `revision_conflict`, Inventory's refusals |
+| `GET /unbuilds` (`listManufacturingUnbuilds`) | access | 200 a page of [unbuilds](#unbuilds), newest first; `orderId`, `page`, `pageSize`; 400 the paging out of range |
+| `POST /unbuilds` (`createManufacturingUnbuild`) | orders-manage | 201 the unbuild; 200 a replay; 400 fields, `quantity_invalid`, `unbuild_too_much`, `lot_required`, `lot_not_of_order`, `lot_not_allowed`, `lot_unknown`, `serial_quantity`, `location_unknown`, `site_unknown`; 404; 409 `order_not_open`, `client_request_reused`, Inventory's refusals |
+| `GET /unbuilds/{id}` (`getManufacturingUnbuild`) | access | 200 one unbuild with its lines; 404 |
 | `GET /orders/{id}/events` (`listManufacturingOrderEvents`) | access | 200 [the history](#history), oldest first; 404 |
 | `GET /productions/{id}` (`getManufacturingProduction`) | access | 200 one production with its lines; 404 |
 | `GET /orders/{id}/work-orders` (`listManufacturingOrderWorkOrders`) | access | 200 the order's [work orders](#work-orders) by sequence; 404 |

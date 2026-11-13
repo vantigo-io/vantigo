@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — archiving, reactivating and deleting one, and grouping interchangeable work centers; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers or work center groups with their instructions, what each operation depends on and its send-ahead quantity, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, Group work, registering a quantity passed on, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, operations side by side and after a send-ahead quantity, the member of a group a work order is planned at, moving a work order by dragging it — to another member's row too — or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; replenishment suggestions — what is projected, what is suggested to make or buy and by when, creating draft or confirmed orders from them, dismissing one, running it now, exporting the buy suggestions and automatic creation on a bill of materials; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — archiving, reactivating and deleting one, and grouping interchangeable work centers; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers or work center groups with their instructions, what each operation depends on and its send-ahead quantity, and which operation consumes a line, and its by-products with their share of the cost — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it, splitting it, merging orders, unbuilding what a done order made and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, Group work, registering a quantity passed on, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, operations side by side and after a send-ahead quantity, the member of a group a work order is planned at, moving a work order by dragging it — to another member's row too — or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, its split over the by-products, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; replenishment suggestions — what is projected, what is suggested to make or buy and by when, creating draft or confirmed orders from them, dismissing one, running it now, exporting the buy suggestions and automatic creation on a bill of materials; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -38,6 +38,7 @@ The **Manufacturing** tile is shown to everyone with **Use Manufacturing**
 | **Overview** | **Reports** in its header; **Orders to start today**, **Orders in progress** and **Late orders**, and the orders late or due this week; **Active work centers**, **Blocked work centers**, **Active bills of materials** and **Suggestions to make**: how many there are |
 | **Manufacturing orders** | Every open manufacturing order, with its number, product, quantity, site, due date and reservation status |
 | **Suggestions** | What to make or buy so that stock stays above each product's reorder point, site by site, with the reason and the date it is needed by |
+| **Unbuilds** | Every unbuild, newest first: what it took apart, from which order and lot, and the components it restored |
 | **Shop floor** | The work centers' queues, where operators start, pause and finish work orders, and **My work** |
 | **Production schedule** | The board: each work center's planned work orders, day by day, with its load, and the orders still to plan |
 | **Deviations** | What went wrong: every deviation, open ones first in view, with its order, product and lots, and whether it holds them in quarantine |
@@ -201,7 +202,16 @@ in the group, but work is no longer planned at it.
    - **Note**.
 
    The same component may appear on two lines.
-6. Choose **Create bill of materials**. On a BoM that exists, the button is **Save**.
+6. Under **By-products**, choose **Add by-product** for anything else the operations make —
+   sawdust from cutting, whey from cheese. Each has:
+   - **By-product**, a goods variant picked as the product was;
+   - **Quantity** made per output quantity, more than 0 with at most three decimals;
+   - **Cost share**, the percent of the order's cost it carries, 0 to 100 with at most
+     two decimals, none unless changed.
+
+   The shares together may be at most 100 %; the product carries the rest, which the
+   section shows. A BoM has at most 20 by-products.
+7. Choose **Create bill of materials**. On a BoM that exists, the button is **Save**.
 
 A BoM has at most 200 lines and 50 operations. A line can name an operation you added in
 the same edit, before either is saved.
@@ -259,6 +269,9 @@ of materials afterwards does not change the checks of an order already confirmed
   a service, or deleted, since cannot be saved on a BoM; the refusal names the line.
 - **Spread its operations over sites.** Every operation's work center must stand at the
   same site.
+- **Make its own product or a component as a by-product.** A by-product may be neither
+  the BoM's product nor one of its components — nor, through the components' own BoMs, be
+  used to make the product: that is a circle, refused as one.
 
 ## The default and the alternative bills of materials
 
@@ -485,8 +498,17 @@ progress**. Registering more than the order's quantity is allowed: the page show
 overrun. Sending the same registration twice — a double click, a lost connection — posts it
 only once.
 
+**By-products.** When the order's bill of materials has by-products, the dialog lists
+them under **By-products**, each prefilled with what the good quantity should give: its
+expected quantity × the quantity / the order's quantity. Change the quantity made of
+each, 0 for none. A by-product tracked in lots goes into the lot its number names — the
+order's lot number pattern rendered for it unless you type another. By-products are put
+on the order's output location, in the same Production movement. A by-product tracked by
+serial number is refused: track it in lots.
+
 A registered production cannot be undone in Manufacturing. Correct a mistake with an
-adjustment in [Inventory](/en/user/inventory/).
+adjustment in [Inventory](/en/user/inventory/), or take finished goods apart with an
+[unbuild](#unbuild-what-an-order-made).
 
 ### Lots and serial numbers
 
@@ -582,12 +604,67 @@ number. Any time still running on its work orders is ended, and its work orders 
 cancelled. Once something has been registered it cannot be cancelled; close it instead. A
 done or cancelled order is final.
 
+### Split an order
+
+Choose **Split** on a draft or confirmed order before anything has been registered on it
+and before any time has been logged on its work orders.
+
+1. Type the quantity of each part. The order keeps the first; **Add part** adds another,
+   up to 20. The parts must add up to the order's quantity: the dialog shows the sum.
+2. Choose **Split**.
+
+Each part beyond the first becomes a new order numbered as a backorder of the original —
+**MO-12-2**, **MO-12-3** — with **Split from** pointing back, and the same bill of
+materials, origin, due date, locations, priority and responsible person. A planned order
+is unplanned, and every part starts unplanned: plan them again on the board. A confirmed
+order releases its reservations; its component lines, by-products and work orders are
+taken for each part's quantity, the work orders' expected minutes worked out again, and
+every part reserves again. The lines left short are named. A part of a make-to-order order
+is made for the same sales order line.
+
+### Merge orders
+
+In **Manufacturing orders**, tick two or more orders and choose **Merge**. They must make
+the same product by the same bill of materials at the same site, all be drafts or all be
+confirmed, have nothing registered and no time logged, and come from the same place — all
+made by hand, all from suggestions, or all for the same sales order line or parent order.
+Orders of different origins are not merged, so neither promise is lost.
+
+The order with the lowest number survives, with the quantities added up and the earliest
+due date; the others are cancelled with **Merged into** pointing to it. Every order is
+unplanned. Confirmed ones release their reservations; the survivor takes the others'
+component lines and by-products, its work orders' expected minutes are worked out again,
+and it reserves again.
+
+### Unbuild what an order made
+
+Choose **Unbuild** on a done order to take finished goods apart — a faulty unit, a
+recalled lot.
+
+1. For a product tracked in lots or serial numbers, choose the **Lot** among those the
+   order's productions made; each says how much of it is left to take apart.
+2. Type the **Quantity**, at most what is left, and a **Note** if you like.
+3. Choose **Unbuild**.
+
+The finished goods are taken from the order's output location, and the components go
+back to its component location — or the site's main location — each into the lot it was
+taken from. Only what the productions that made the chosen lot consumed comes back, in
+proportion: an unbuild never puts components into lots another lot was made from. A lot
+on hold can be taken apart — that is how a recalled item is dealt with — and then every
+lot it restores to gets a **quarantine** hold of its own, so held material does not come
+back usable. The order shows how much was **Unbuilt**; its cost is not worked out again.
+Inventory records an **Unbuild** movement, which a lot's
+[trace](/en/user/inventory/) shows as an end and never follows.
+
+**Unbuilds** in the sidebar lists every unbuild with what it restored.
+
 ### Read an order's history
 
 The order page shows its **History**: every event — created, changed, confirmed,
 reserved, a production registered with its quantities, a component added or changed,
-closed, cancelled, a backorder created, a time log corrected or added — with who did it
-and when. Nothing in it can be
+closed, cancelled, a backorder created, a time log corrected or added, split, split from
+another order, orders merged into it, merged into another, unbuilt — with who did it and
+when. Nothing in it can be
 changed or removed.
 
 ### Work orders and time logs on the order page
@@ -975,6 +1052,14 @@ and **Total** — the **Estimate**, the **Actual**, the **Deviation** and the
 - **Downtime by reason** lists the time the work centers stood still. It is never
   charged.
 
+**By-products.** When the order makes by-products, **Split over the by-products** shows
+each one's **Cost share** of the estimate and of the actual, and its cost per unit once
+closed; **The product** carries the rest, and the order's **Cost per unit** is that rest
+divided by the good units made. A by-product that was not produced has no cost per unit
+— it says **Not produced**, with the part it would have had — and its share stays with
+the product. The **Production cost** report lists the by-products of the orders closed
+in the period.
+
 When a component had no standard cost, or a work center no rate, it is counted as 0 and
 the panel says the estimate or the actual is incomplete. Amounts are rounded to two
 decimals, so the parts may differ from the total by 0.01.
@@ -1221,6 +1306,8 @@ cannot be delegated.
 | --- | --- | --- | --- |
 | **Manufacturing orders**, an order, its availability, its productions and its **History** | ✓ | – | – |
 | **New manufacturing order**, **Save**, **Confirm**, **Reserve now**, **Add component**, changing a component, **Close**, **Cancel order** | ✓ | ✓ | – |
+| **Split**, **Merge**, **Unbuild** | ✓ | ✓ | – |
+| **Unbuilds** | ✓ | – | – |
 | **Register production** | ✓ | either | either |
 | **Shop floor**, a work center's **Queue**, a work order, **My work**, an order's **Work orders** and **Time logs** | ✓ | – | – |
 | **Start**, **Start anyway**, **Pause**, **Finish**, **Report scrap**, **Block**, **Unblock** | ✓ | either | either |
