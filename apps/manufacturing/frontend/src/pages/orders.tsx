@@ -3,6 +3,7 @@ import {
   Anchor,
   Badge,
   Button,
+  Checkbox,
   Group,
   MultiSelect,
   Pagination,
@@ -14,15 +15,17 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconAlertCircle, IconClipboardList, IconPlus, IconSearch } from "@tabler/icons-react";
-import { useQuery } from "@tanstack/react-query";
+import { IconAlertCircle, IconArrowsJoin, IconClipboardList, IconPlus, IconSearch } from "@tabler/icons-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import {
+  mergeOrders,
   ORDER_PAGE_SIZE,
   orderOrigins,
+  orderQueryOptions,
   orderSorts,
   orderStatuses,
   ordersQueryOptions,
@@ -34,6 +37,7 @@ import { manufacturingSitesQueryOptions } from "../api/sites";
 import type { ManufacturingVariantRef } from "../api/variants";
 import { PersonPicker } from "../components/person-picker";
 import { VariantPicker } from "../components/variant-picker";
+import { useRecordActions } from "../lib/actions";
 import { canManageOrders } from "../lib/capabilities";
 import { orderStatusColor, reservationColor, useManufacturingFormat } from "../lib/format";
 import {
@@ -80,6 +84,32 @@ export const OrdersPage = () => {
         : (orders.data?.items.find((order) => order.responsible?.id === search.responsibleUserId)?.responsible ??
           undefined);
   const siteName = new Map((sites.data ?? []).map((site) => [site.id, site.code]));
+  // Merge (manufacturing phase 2 M125): the drafts and confirmed orders chosen here.
+  const client = useQueryClient();
+  const { run, confirm } = useRecordActions();
+  const [chosen, setChosen] = useState<readonly number[]>([]);
+  const manage = canManageOrders(meta.data);
+  const mergeable = (status: string) => status === "draft" || status === "confirmed";
+  const chosenNumbers = (orders.data?.items ?? [])
+    .filter((order) => chosen.includes(order.id))
+    .map((order) => order.number);
+  const merge = () =>
+    confirm(
+      t("mergeOrdersTitle"),
+      t("mergeOrdersBody", { numbers: chosenNumbers.join(", ") }),
+      t("mergeOrders"),
+      () =>
+        void run(
+          async () => {
+            const read = await Promise.all(chosen.map((id) => client.fetchQuery(orderQueryOptions(id))));
+            const result = await mergeOrders(read.map((order) => ({ id: order.id, revision: order.revision })));
+            setChosen([]);
+            void navigate(orderLinkOptions(result.order.id));
+          },
+          t("ordersMerged"),
+          t("couldNotMerge"),
+        ),
+    );
 
   const filter = (patch: Partial<OrdersSearch>) =>
     void navigate({ to: ORDERS_ROUTE_PATH, search: { ...search, page: undefined, ...patch }, replace: true });
@@ -91,14 +121,26 @@ export const OrdersPage = () => {
         title={t("navOrders")}
         description={t("ordersDescription")}
         actions={
-          canManageOrders(meta.data) && (
-            <Button
-              data-assist="manufacturing.orders.new"
-              leftSection={<IconPlus size={16} />}
-              renderRoot={(props) => <Link to={NEW_ORDER_ROUTE_PATH} {...props} />}
-            >
-              {t("newOrder")}
-            </Button>
+          manage && (
+            <Group gap="xs">
+              {chosen.length >= 2 && (
+                <Button
+                  variant="default"
+                  data-assist="manufacturing.orders.merge"
+                  leftSection={<IconArrowsJoin size={16} />}
+                  onClick={merge}
+                >
+                  {t("mergeOrdersCount", { count: chosen.length })}
+                </Button>
+              )}
+              <Button
+                data-assist="manufacturing.orders.new"
+                leftSection={<IconPlus size={16} />}
+                renderRoot={(props) => <Link to={NEW_ORDER_ROUTE_PATH} {...props} />}
+              >
+                {t("newOrder")}
+              </Button>
+            </Group>
           )
         }
       />
@@ -214,6 +256,7 @@ export const OrdersPage = () => {
                 <Table highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
+                      {manage && <Table.Th w={40} />}
                       <Table.Th>{t("orderNumber")}</Table.Th>
                       <Table.Th>{t("product")}</Table.Th>
                       <Table.Th>{t("producedOfQuantity")}</Table.Th>
@@ -227,6 +270,22 @@ export const OrdersPage = () => {
                   <Table.Tbody>
                     {orders.data.items.map((order) => (
                       <Table.Tr key={order.id}>
+                        {manage && (
+                          <Table.Td>
+                            {mergeable(order.status) && (
+                              <Checkbox
+                                aria-label={t("chooseToMerge", { number: order.number })}
+                                checked={chosen.includes(order.id)}
+                                onChange={(event) => {
+                                  const on = event.currentTarget.checked;
+                                  setChosen((current) =>
+                                    on ? [...current, order.id] : current.filter((id) => id !== order.id),
+                                  );
+                                }}
+                              />
+                            )}
+                          </Table.Td>
+                        )}
                         <Table.Td>
                           <Group gap={4} wrap="nowrap">
                             <Anchor renderRoot={(props) => <Link {...orderLinkOptions(order.id)} {...props} />}>

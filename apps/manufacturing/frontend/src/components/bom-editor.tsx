@@ -22,7 +22,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { createBom, MAX_BOM_LINES, MAX_BOM_OPERATIONS, type ManufacturingBom, updateBom } from "../api/boms";
+import {
+  createBom,
+  MAX_BOM_LINES,
+  MAX_BOM_OPERATIONS,
+  MAX_BOM_OUTPUTS,
+  type ManufacturingBom,
+  updateBom,
+} from "../api/boms";
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import { isRevisionConflict, refusalCode, refusalCodes, refusedFields, refusedLines } from "../api/request";
 import { workCenterGroupsQueryOptions, workCentersQueryOptions } from "../api/work-centers";
@@ -32,15 +39,19 @@ import {
   bomUpdateBody,
   type EditorLine,
   type EditorOperation,
+  type EditorOutput,
   editorOf,
   editorProblems,
   emptyEditor,
   newLine,
   newOperation,
+  newOutput,
   operationLevels,
+  outputShareTotal,
   removeOperation,
 } from "../lib/bom-body";
 import { canManageBoms } from "../lib/capabilities";
+import { subtractDecimal } from "../lib/decimal";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
 import { LOT_NUMBER, renderLotPattern, sampleLotNumber } from "../lib/lots";
 import { BOMS_ROUTE_PATH, bomLinkOptions } from "../lib/routes";
@@ -49,6 +60,7 @@ import { VariantPicker } from "./variant-picker";
 
 /** Which header field a refusal code belongs to, when it is one field's. */
 const codeField: Record<string, string> = {
+  cost_share_over: "outputs",
   bom_code_taken: "code",
   variant_not_goods: "variantId",
   variant_not_found: "variantId",
@@ -91,6 +103,11 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
       operations: current.operations.map((operation) =>
         operation.key === key ? { ...operation, ...patch } : operation,
       ),
+    }));
+  const setOutput = (rowKey: string, patch: Partial<EditorOutput>) =>
+    setState((current) => ({
+      ...current,
+      outputs: current.outputs.map((output) => (output.rowKey === rowKey ? { ...output, ...patch } : output)),
     }));
   const setLine = (rowKey: string, patch: Partial<EditorLine>) =>
     setState((current) => ({
@@ -618,6 +635,118 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
         </Stack>
       </PageSection>
 
+      <PageSection
+        title={t("byProducts")}
+        actions={
+          !readOnly && (
+            <Button
+              variant="light"
+              size="xs"
+              leftSection={<IconPlus size={14} />}
+              disabled={state.outputs.length >= MAX_BOM_OUTPUTS}
+              onClick={() => setState((current) => ({ ...current, outputs: [...current.outputs, newOutput()] }))}
+            >
+              {t("addByproduct")}
+            </Button>
+          )
+        }
+      >
+        <Stack gap="xs" data-assist="manufacturing.bom.outputs">
+          <Text size="sm" c="dimmed">
+            {t("byProductsHint")}
+          </Text>
+          {state.outputs.length > 0 && (
+            <Table.ScrollContainer minWidth={700}>
+              <Table verticalSpacing="xs">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("byProduct")}</Table.Th>
+                    <Table.Th w={140}>{t("quantity")}</Table.Th>
+                    <Table.Th w={140}>{t("costShare")}</Table.Th>
+                    {!readOnly && <Table.Th w={40} />}
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {state.outputs.map((output, index) => {
+                    const at = `outputs[${index}]`;
+                    const row = t("byProductRow", { number: index + 1 });
+                    return (
+                      <Table.Tr key={output.rowKey}>
+                        <Table.Td>
+                          <VariantPicker
+                            compact
+                            label={`${row}: ${t("byProduct")}`}
+                            disabled={readOnly}
+                            value={output.variant}
+                            onChange={(variant) => setOutput(output.rowKey, { variant })}
+                            error={errors[`${at}.variantId`]}
+                          />
+                        </Table.Td>
+                        <Table.Td>
+                          <TextInput
+                            aria-label={`${row}: ${t("quantity")}`}
+                            inputMode="decimal"
+                            disabled={readOnly}
+                            value={output.quantity}
+                            rightSection={
+                              output.variant ? (
+                                <Text size="xs" c="dimmed">
+                                  {output.variant.unit}
+                                </Text>
+                              ) : undefined
+                            }
+                            onChange={(event) => setOutput(output.rowKey, { quantity: event.currentTarget.value })}
+                            error={errors[`${at}.quantity`]}
+                          />
+                        </Table.Td>
+                        <Table.Td>
+                          <TextInput
+                            aria-label={`${row}: ${t("costShare")}`}
+                            placeholder={t("noCostShare")}
+                            inputMode="decimal"
+                            disabled={readOnly}
+                            value={output.costShare}
+                            rightSection={
+                              <Text size="xs" c="dimmed">
+                                %
+                              </Text>
+                            }
+                            onChange={(event) => setOutput(output.rowKey, { costShare: event.currentTarget.value })}
+                            error={errors[`${at}.costShare`]}
+                          />
+                        </Table.Td>
+                        {!readOnly && (
+                          <Table.Td>
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              aria-label={t("removeByproduct", { number: index + 1 })}
+                              onClick={() =>
+                                setState((current) => ({
+                                  ...current,
+                                  outputs: current.outputs.filter((one) => one.rowKey !== output.rowKey),
+                                }))
+                              }
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Table.Td>
+                        )}
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+          {state.outputs.length > 0 && (
+            <Text size="sm" c={errors.outputs ? "red" : "dimmed"}>
+              {errors.outputs ?? t("mainProductShare", { share: subtractShare(outputShareTotal(state.outputs)) })}
+            </Text>
+          )}
+        </Stack>
+      </PageSection>
+
       {problem && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotSave")}>
           {problem}
@@ -636,6 +765,9 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
     </Stack>
   );
 };
+
+/** What the main product carries of the cost: 100 less the by-products' shares, never below 0. */
+const subtractShare = (total: string) => subtractDecimal("100", total);
 
 interface LotPatternInputProps {
   value: string;

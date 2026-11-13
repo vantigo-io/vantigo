@@ -118,6 +118,8 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
   // A tracked component's lots as the person chose them; absent, the draft's proposal, taken by Inventory (AutoLot).
   const [lotEdits, setLotEdits] = useState<Record<number, LotRowValues[]>>({});
   const [output, setOutput] = useState<OutputValues>({});
+  // The by-products as typed (manufacturing phase 2 M121); untouched, the draft's proportional proposal.
+  const [byEdits, setByEdits] = useState<Record<number, { quantity?: string; number?: string }>>({});
 
   // The prefill follows the quantities once they are decimals; the first read takes the server's defaults.
   const wantedQuantity = quantity === undefined ? undefined : decimalOrUndefined(quantity);
@@ -157,7 +159,17 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
     setEdits((current) =>
       Object.fromEntries(Object.entries(current).map(([id, edit]) => [id, { ...edit, consumed: undefined }])),
     );
+    setByEdits((current) =>
+      Object.fromEntries(Object.entries(current).map(([id, edit]) => [id, { ...edit, quantity: undefined }])),
+    );
   };
+  const byProducts = (draft.data?.byProducts ?? []).map((line) => ({
+    line,
+    quantity: byEdits[line.outputId]?.quantity ?? line.proposed,
+    number: byEdits[line.outputId]?.number,
+  }));
+  const setByproduct = (outputId: number, patch: { quantity?: string; number?: string }) =>
+    setByEdits((current) => ({ ...current, [outputId]: { ...current[outputId], ...patch } }));
 
   const setLots = (componentId: number, rows: LotRowValues[] | undefined) => {
     setDeviations([]);
@@ -191,7 +203,8 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
         (values.consumed.trim() !== "" && !isDecimal(values.consumed)) ||
         (values.scrap.trim() !== "" && !isDecimal(values.scrap)) ||
         lotsMismatch(line.componentId, values),
-    );
+    ) ||
+    byProducts.some((entry) => decimalOrUndefined(entry.quantity) === undefined);
 
   const draftOutput = draft.data?.output;
   const outputBody = (): Pick<ManufacturingProductionInput, "outputLot" | "outputSerials"> => {
@@ -219,6 +232,18 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
     outputScrap: normalizeDecimal(outputScrap || "0"),
     toLocationId: shownToLocationId,
     ...outputBody(),
+    ...(byProducts.length > 0
+      ? {
+          outputs: byProducts.map((entry) => {
+            const number = entry.number?.trim();
+            return {
+              outputId: entry.line.outputId,
+              quantity: normalizeDecimal(entry.quantity || "0"),
+              ...(number ? { lot: { number } } : {}),
+            };
+          }),
+        }
+      : {}),
     lines: lines.flatMap(({ line, values }) => {
       const consumed = decimalOrUndefined(values.consumed);
       const scrap = decimalOrUndefined(values.scrap);
@@ -353,6 +378,59 @@ const ProductionForm = ({ order, onClose, finish }: Omit<ProductionDialogProps, 
             }}
           />
         </SimpleGrid>
+      )}
+      {byProducts.length > 0 && (
+        <Stack gap={4} data-assist="manufacturing.production.byproducts">
+          <Text size="sm" fw={500}>
+            {t("byProducts")}
+          </Text>
+          <Table.ScrollContainer minWidth={560}>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("byProduct")}</Table.Th>
+                  <Table.Th>{t("expected")}</Table.Th>
+                  <Table.Th>{t("producedQuantity")}</Table.Th>
+                  <Table.Th>{t("outputLotNumber")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {byProducts.map(({ line, quantity: typed, number }) => (
+                  <Table.Tr key={line.outputId}>
+                    <Table.Td>
+                      <Text size="sm">{line.variant.sku}</Text>
+                      <Text size="xs" c="dimmed">
+                        {line.variant.productName}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>{showQuantity(line.expected, line.variant.unit)}</Table.Td>
+                    <Table.Td>
+                      <TextInput
+                        aria-label={t("byProductQuantityOf", { sku: line.variant.sku })}
+                        inputMode="decimal"
+                        value={typed}
+                        onChange={(event) => setByproduct(line.outputId, { quantity: event.currentTarget.value })}
+                        error={decimalOrUndefined(typed) === undefined}
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      {line.tracking === "lot" ? (
+                        <TextInput
+                          aria-label={t("byProductLotOf", { sku: line.variant.sku })}
+                          maxLength={20}
+                          value={number ?? line.lotNumber ?? ""}
+                          onChange={(event) => setByproduct(line.outputId, { number: event.currentTarget.value })}
+                        />
+                      ) : (
+                        "—"
+                      )}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Stack>
       )}
       {draft.error ? (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotLoad")}>

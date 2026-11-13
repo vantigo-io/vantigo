@@ -6,12 +6,22 @@ import {
   SCHEDULE_ROUTE_PATH,
   SHOP_FLOOR_ROUTE_PATH,
   SUGGESTIONS_ROUTE_PATH,
+  UNBUILDS_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
 } from "./routes";
 
 /** One sidebar destination of the app (manufacturing design M7); the host owns its label and icon. */
 export interface ManufacturingNavItem {
-  key: "overview" | "orders" | "suggestions" | "shopFloor" | "schedule" | "deviations" | "boms" | "workCenters";
+  key:
+    | "overview"
+    | "orders"
+    | "suggestions"
+    | "unbuilds"
+    | "shopFloor"
+    | "schedule"
+    | "deviations"
+    | "boms"
+    | "workCenters";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -35,6 +45,8 @@ export const manufacturingNavItems: readonly ManufacturingNavItem[] = [
   { key: "orders", label: "navOrders", to: ORDERS_ROUTE_PATH, requiredPermissions: access },
   // The replenishment suggestions (manufacturing phase 2 M111); acting on them is orders-manage's.
   { key: "suggestions", label: "navSuggestions", to: SUGGESTIONS_ROUTE_PATH, requiredPermissions: access },
+  // The unbuilds (manufacturing phase 2 M123), read with the app's key; one is made from a done order's page.
+  { key: "unbuilds", label: "navUnbuilds", to: UNBUILDS_ROUTE_PATH, requiredPermissions: access },
   { key: "shopFloor", label: "navShopFloor", to: SHOP_FLOOR_ROUTE_PATH, requiredPermissions: access },
   { key: "schedule", label: "navSchedule", to: SCHEDULE_ROUTE_PATH, requiredPermissions: access },
   // The deviations (manufacturing phase 2 M99), read with the app's key; closing one is quality-manage's.

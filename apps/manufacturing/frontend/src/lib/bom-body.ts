@@ -3,6 +3,7 @@ import type {
   ManufacturingBomInput,
   ManufacturingBomLineInput,
   ManufacturingBomOperationInput,
+  ManufacturingBomOutputInput,
   ManufacturingBomUpdate,
 } from "../api/boms";
 import type {
@@ -11,7 +12,7 @@ import type {
   ManufacturingCheckTemplateInput,
 } from "../api/quality";
 import type { ManufacturingVariantRef } from "../api/variants";
-import { compareDecimal, isDecimal, isPositiveDecimal, normalizeDecimal } from "./decimal";
+import { addDecimal, compareDecimal, isDecimal, isPositiveDecimal, normalizeDecimal } from "./decimal";
 
 /**
  * The BoM editor's state and the request it sends (manufacturing design
@@ -87,11 +88,29 @@ export interface EditorLine {
   note: string;
 }
 
+/** One by-product row (manufacturing phase 2 M120): what the BoM makes beside its product, and its share of the cost. */
+export interface EditorOutput {
+  rowKey: string;
+  variant?: ManufacturingVariantRef;
+  quantity: string;
+  /** Percent of the order's cost, empty for none. */
+  costShare: string;
+}
+
 export interface BomEditorState {
   header: BomHeader;
   operations: EditorOperation[];
   lines: EditorLine[];
+  outputs: EditorOutput[];
 }
+
+/** A new by-product row. */
+export const newOutput = (variant?: ManufacturingVariantRef): EditorOutput => ({
+  rowKey: `output-${++nextKey}`,
+  variant,
+  quantity: variant ? "1" : "",
+  costShare: "",
+});
 
 let nextKey = 0;
 
@@ -176,6 +195,7 @@ export const emptyEditor = (variant?: ManufacturingVariantRef): BomEditorState =
   },
   operations: [],
   lines: [],
+  outputs: [],
 });
 
 /** A saved BoM as the editor's state: each operation keyed by its server key, each line naming it by that key. */
@@ -234,6 +254,14 @@ export const editorOf = (bom: ManufacturingBom): BomEditorState => ({
           : (bom.operations.find((operation) => operation.id === line.operationId)?.key ?? null)),
       sortOrder: line.sortOrder,
       note: line.note,
+    })),
+  outputs: [...(bom.outputs ?? [])]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((output) => ({
+      rowKey: `output-${++nextKey}`,
+      variant: output.variant,
+      quantity: output.quantity,
+      costShare: isPositiveDecimal(output.costShare) ? output.costShare : "",
     })),
 });
 
@@ -327,8 +355,25 @@ const shared = (state: BomEditorState) => {
     lotPattern: state.header.lotPattern.trim() === "" ? "{MO}" : state.header.lotPattern.trim(),
     operations: state.operations.map((operation, index) => operationBody(operation, index, keys)),
     lines: state.lines.map((line, index) => lineBody(line, index, keys)),
+    // Always sent: an update without them removes them (M120).
+    outputs: state.outputs.map(
+      (output, index): ManufacturingBomOutputInput => ({
+        variantId: output.variant?.id ?? 0,
+        quantity: normalizeDecimal(output.quantity),
+        costShare: output.costShare.trim() === "" ? "0" : normalizeDecimal(output.costShare),
+        sortOrder: (index + 1) * 10,
+      }),
+    ),
   };
 };
+
+/** The by-products' shares together, as exact decimal text. */
+export const outputShareTotal = (outputs: readonly EditorOutput[]): string =>
+  outputs.reduce(
+    (sum, output) =>
+      output.costShare.trim() !== "" && isDecimal(output.costShare, 2) ? addDecimal(sum, output.costShare) : sum,
+    "0",
+  );
 
 /** A new BoM's request: the variant, and whether it becomes its variant's default. */
 export const bomCreateBody = (state: BomEditorState): ManufacturingBomInput => ({
@@ -406,6 +451,17 @@ export const editorProblems = (state: BomEditorState): Record<string, string> =>
     )
       problems[`${at}.scrapPercent`] = "scrap";
   });
+  state.outputs.forEach((output, index) => {
+    const at = `outputs[${index}]`;
+    if (!output.variant) problems[`${at}.variantId`] = "required";
+    if (!isDecimal(output.quantity) || !isPositiveDecimal(output.quantity)) problems[`${at}.quantity`] = "quantity";
+    if (
+      output.costShare.trim() !== "" &&
+      (!isDecimal(output.costShare, 2) || compareDecimal(output.costShare, "100") > 0)
+    )
+      problems[`${at}.costShare`] = "costShare";
+  });
+  if (compareDecimal(outputShareTotal(state.outputs), "100") > 0) problems.outputs = "costShareOver";
   return problems;
 };
 

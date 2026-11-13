@@ -14,6 +14,8 @@ const parts = (total: string, incomplete = false) => ({
 });
 
 const cost = {
+  byProducts: [],
+  mainActual: "1650.00",
   estimate: parts("1500.00"),
   actual: parts("1650.00", true),
   actualFixed: true,

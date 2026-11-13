@@ -34,6 +34,15 @@ export type ManufacturingProductionDraftLine = Schemas["ManufacturingProductionD
 export type ManufacturingLotChoice = Schemas["ManufacturingLotChoice"];
 export type ManufacturingProductionLotInput = Schemas["ManufacturingProductionLotInput"];
 export type ManufacturingOrderLots = Schemas["ManufacturingOrderLots"];
+export type ManufacturingOrderOutput = Schemas["ManufacturingOrderOutput"];
+export type ManufacturingProductionOutputInput = Schemas["ManufacturingProductionOutputInput"];
+export type ManufacturingProductionDraftByproduct = Schemas["ManufacturingProductionDraftByproduct"];
+export type ManufacturingByproductCost = Schemas["ManufacturingByproductCost"];
+export type ManufacturingOrderSplitResult = Schemas["ManufacturingOrderSplitResult"];
+export type ManufacturingOrderMergeResult = Schemas["ManufacturingOrderMergeResult"];
+export type ManufacturingUnbuild = Schemas["ManufacturingUnbuild"];
+export type ManufacturingUnbuildInput = Schemas["ManufacturingUnbuildInput"];
+export type ManufacturingUnbuildList = Schemas["ManufacturingUnbuildList"];
 
 /** Every state of an order (M19), in the order it goes through them. */
 export const orderStatuses: readonly ManufacturingOrderStatus[] = [
@@ -75,6 +84,11 @@ export const orderEventKinds: readonly ManufacturingOrderEventKind[] = [
   "check_recorded",
   "deviation_opened",
   "deviation_closed",
+  "split",
+  "split_from",
+  "merged",
+  "merged_into",
+  "unbuilt",
 ];
 
 /** A page of the order list. */
@@ -242,6 +256,32 @@ export const closeOrder = (orderId: number, revision: number, backorder?: boolea
 
 export const cancelOrder = (orderId: number, revision: number) =>
   send<ManufacturingOrder>(`/api/v1/manufacturing/orders/${orderId}/cancel`, json("POST", { revision }));
+
+/** Splits a draft or confirmed order into quantities summing to its own, the first kept (manufacturing phase 2 M124). */
+export const splitOrder = (orderId: number, revision: number, quantities: readonly string[]) =>
+  send<ManufacturingOrderSplitResult>(
+    `/api/v1/manufacturing/orders/${orderId}/split`,
+    json("POST", { revision, quantities }),
+  );
+
+/** Merges orders into the one with the lowest number (M125). */
+export const mergeOrders = (orders: readonly { id: number; revision: number }[]) =>
+  send<ManufacturingOrderMergeResult>("/api/v1/manufacturing/orders/merge", json("POST", { orders }));
+
+/** A page of unbuilds, newest first; of one order with orderId (M123). */
+export const unbuildsQueryOptions = (filter: { orderId?: number; page?: number } = {}) =>
+  queryOptions({
+    queryKey: [MANUFACTURING_QUERY_KEY, "unbuilds", filter.orderId ?? 0, filter.page ?? 1],
+    queryFn: ({ signal }) =>
+      request<ManufacturingUnbuildList>(
+        `/api/v1/manufacturing/unbuilds${queryString({ orderId: filter.orderId, page: filter.page && filter.page > 1 ? filter.page : undefined })}`,
+        { signal },
+      ),
+  });
+
+/** Takes finished goods apart (M123): 201, or 200 for a replay of the same clientRequestId. */
+export const createUnbuild = (input: ManufacturingUnbuildInput) =>
+  send<ManufacturingUnbuild>("/api/v1/manufacturing/unbuilds", json("POST", input));
 
 /**
  * Listens to the orders' live topics (M25) and refetches on an event: the

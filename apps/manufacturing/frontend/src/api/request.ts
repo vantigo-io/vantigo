@@ -149,6 +149,13 @@ export const refusalCodes = [
   "work_order_is_output",
   "quantity_over_order",
   "work_center_group_empty",
+  "output_is_product",
+  "output_is_component",
+  "cost_share_over",
+  "unbuild_too_much",
+  "split_sum",
+  "merge_mismatch",
+  "order_has_work",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 
