@@ -203,6 +203,36 @@ func TestKits_RegisterDeliveredWithDeliveryDocuments(t *testing.T) {
 	}
 }
 
+// A component's undo lowers the whole kits its kit counts delivered, and the
+// kit carries the invoice: what a draft invoice holds of the kit keeps its
+// components delivered, as it keeps a line of its own (M145).
+func TestKits_UndoingAComponentHoldsTheKitToItsDraftInvoice(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, harnessOptions{stock: true, kits: pairKit()})
+	seedKit(h)
+	c := h.SignIn(t, stockKeys...)
+	setDefaultSite(t, c, siteOslo)
+	h.stock.put(varBolt, locA1, "10")
+	h.stock.put(varFood, locA1, "10")
+	o := confirmOrder(t, c, createOrder(t, c, custBusiness, productLine(varKit, 3)))
+	kit := lineOf(t, o, varKit)
+	bolt, food := childrenOf(o, kit.Id)[0], childrenOf(o, kit.Id)[1]
+	res := markLines(c, t, o, false, gen.OrdersDeliveredLine{LineId: bolt.Id, Quantity: 2}, gen.OrdersDeliveredLine{LineId: food.Id, Quantity: 2})
+	mustStatus(t, res, http.StatusOK, "mark the children")
+	o = orderOf(t, res)
+	if k := lineOf(t, o, varKit); k.QtyDelivered != 2 {
+		t.Fatalf("kit delivered %v, want 2", k.QtyDelivered)
+	}
+	allocate(t, orders.Module().BillableOrders(h.Deps()), kit.Id, "2")
+
+	o = getOrder(t, c, o.Id)
+	expectRefusal(t, markLines(c, t, o, true, gen.OrdersDeliveredLine{LineId: food.Id, Quantity: 1}),
+		http.StatusConflict, "line_in_draft_invoice", "undo a component of a kit in a draft invoice")
+	if k := lineOf(t, getOrder(t, c, o.Id), varKit); k.QtyDelivered != 2 {
+		t.Errorf("kit delivered %v after the refused undo, want 2", k.QtyDelivered)
+	}
+}
+
 // Without a site the order's lines are marked by hand: marking the kit marks
 // its children in step, the kit's × per kit, an undo takes them back with
 // it, and a child is not marked on its own (M145).

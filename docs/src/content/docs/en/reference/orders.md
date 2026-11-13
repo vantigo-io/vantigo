@@ -879,7 +879,11 @@ index is the line's among the order's lines that are no kit's child.
 - **Delivered by hand** ([Delivered by hand](#delivered-by-hand)). A kit line delivered by
   delivery documents is never marked by hand: **mark-delivered** and **undo-delivered**
   refuse it, **400** `line_invalid` on its row; a child of it marked by hand brings the kit
-  to the whole kits its children make, as a posted delivery does. A kit line marked by hand
+  to the whole kits its children make, as a posted delivery does. An **undo** of a child
+  holds the kit, which carries the invoice, to the rule of a line of its own: invoiced on
+  delivery, the whole kits left may not fall below what is invoiced of the kit (**400**
+  `delivered_below_invoiced` on the child's row) nor below that and what a draft invoice
+  holds of it (**409** `line_in_draft_invoice`). A kit line marked by hand
   (an order without a site, or Inventory off) marks its children **in step** in the same
   transaction — each child's delivered becomes the kit's × per kit, half-up at three
   decimals, within 0 and its ordered less cancelled, logged `delivered_marked` or
