@@ -1522,12 +1522,30 @@ describe("the dashboard's manufacturing card", () => {
           ordersToStartToday: 0,
           ordersInProgress: 0,
           ordersLate: 0,
+          suggestionsToMake: 0,
           today: "2026-11-11",
         },
         formatNumber,
         t,
       ),
     ).toEqual({ value: "1,200", hint: 'dashboard.manufacturingWorkCentersHint:{"count":4}' });
+    // The open suggestions to make join the hint when there are any (manufacturing phase 2 M111).
+    expect(
+      manufacturingKpi(
+        {
+          activeBoms: 2,
+          activeWorkCenters: 1,
+          blockedWorkCenters: 0,
+          ordersToStartToday: 0,
+          ordersInProgress: 0,
+          ordersLate: 0,
+          suggestionsToMake: 3,
+          today: "2026-11-11",
+        },
+        formatNumber,
+        t,
+      ).hint,
+    ).toBe('dashboard.manufacturingWorkCentersHint:{"count":1} · dashboard.manufacturingSuggestionsHint:{"count":3}');
     for (const lng of ["en", "nb"])
       expect(i18n.t("dashboard.manufacturingWorkCentersHint", { ns: "host", lng, count: 3 })).toContain("3");
   });

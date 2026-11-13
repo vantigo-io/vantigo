@@ -18,6 +18,7 @@ import {
   SCHEDULE_ROUTE_PATH,
   SHOP_FLOOR_ROUTE_PATH,
   SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
+  SUGGESTIONS_ROUTE_PATH,
   WORK_CENTER_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
   WORK_ORDER_ROUTE_PATH,
@@ -79,6 +80,7 @@ describe("the Manufacturing routes", () => {
       REPORTS_ROUTE_PATH,
       DEVIATIONS_ROUTE_PATH,
       DEVIATION_ROUTE_PATH,
+      SUGGESTIONS_ROUTE_PATH,
     ]) {
       const concrete = path
         .replace("$bomId", "7")

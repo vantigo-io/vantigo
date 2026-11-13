@@ -931,8 +931,8 @@ export const planningKpi = (
 /**
  * Manufacturing's KPI (delivery A): the active bills of materials, with the
  * active work centers as the hint, from `GET /manufacturing/stats`, which
- * asks for manufacturing:access alone. The manufacturing orders' figures join
- * with delivery B.
+ * asks for manufacturing:access alone, and the open suggestions to make
+ * (manufacturing phase 2 M111) beside them when there are any.
  */
 export const manufacturingKpi = (
   stats: ManufacturingStats | undefined,
@@ -942,7 +942,13 @@ export const manufacturingKpi = (
   stats
     ? {
         value: formatNumber(stats.activeBoms),
-        hint: t("dashboard.manufacturingWorkCentersHint", { count: stats.activeWorkCenters }),
+        hint: [
+          t("dashboard.manufacturingWorkCentersHint", { count: stats.activeWorkCenters }),
+          stats.suggestionsToMake > 0 &&
+            t("dashboard.manufacturingSuggestionsHint", { count: stats.suggestionsToMake }),
+        ]
+          .filter(Boolean)
+          .join(" · "),
       }
     : { value: "—", hint: undefined };
 
