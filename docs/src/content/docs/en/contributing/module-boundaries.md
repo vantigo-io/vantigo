@@ -151,10 +151,14 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    `DeliveryTrace` (`contracts.DeliveryTrace`, orders — its posted deliveries with their
    order and customer id, which Inventory's trace shows as who received a lot;
    provider-gated, rule 12, refusing with `ErrForbidden`; optional, nil when Orders is
-   off) — all three resolved from the enabled modules by `withProduction`, after the
-   stock slots, by Compose and `module.Workers` alike, no provider reading another while
-   it is built; `modtest.WithSalesOrderLines`, `modtest.WithProduction` and
-   `modtest.WithDeliveryTrace` preset them —, and `Workforce`
+   off) and `KitStructure` (`contracts.KitStructure`, manufacturing — a kit variant's
+   components with how many one kit holds, which Orders copies onto a kit line's child
+   lines; ungated, rule 12; optional, nil when Manufacturing is off, and a kit variant is
+   then an ordinary goods line) — all four resolved from the enabled modules by
+   `withProduction`, after the stock slots, by Compose and `module.Workers` alike, no
+   provider reading another while it is built; `modtest.WithSalesOrderLines`,
+   `modtest.WithProduction`, `modtest.WithDeliveryTrace` and `modtest.WithKitStructure`
+   preset them —, and `Workforce`
    (`contracts.Workforce`, staff — the competence catalogue, who holds which competence
    valid on a date, the people in employment and their capacity over a window, the
    caller's own person, its own account in an external directory, and how a proposed
@@ -714,6 +718,17 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     what its own rule allows; the provider answers whatever was logged. A contract is
     one class or the other, said in its doc comment: a provider-gated read is never
     called without a principal, and a consumer-gated one never trusted to filter.
+
+    A read with nothing to gate is a third, **ungated** kind, and says so in its doc
+    comment too: `contracts.KitStructure` (Manufacturing → Orders, manufacturing phase 2
+    M145) answers only which variants make up a kit and how many of each — no cost, no
+    person, no figure a role is denied — so neither side checks a permission: an order's
+    author need not hold `manufacturing:access` for the kit's components to be copied
+    onto the order. Its consumer still calls it with the request's context, on the pool
+    and never inside a transaction, and shows only quantities. A read is made ungated
+    only when everything it answers is something any caller of its consumer may see;
+    add a field that is not, and it becomes one of the two classes above
+    ([Manufacturing](/en/reference/manufacturing/#kitstructure)).
 13. **Staff writes a provider's directory.** The fifth sanctioned cross-module
     direction, Staff → a provider module, made for the accounts and groups of the
     people Staff registers: `contracts.IdentityProvisioner`, in the many-provider slot

@@ -250,6 +250,9 @@ ORDER BY requested_at DESC
 LIMIT 10;
 ```
 
+A product whose default bill of materials is a **kit** gets no suggestion to make it: a
+kit is never made, and its components are suggested as any other product's.
+
 ## Verify
 
 1. As someone with Manage bills of materials and work centers, open **Manufacturing** →

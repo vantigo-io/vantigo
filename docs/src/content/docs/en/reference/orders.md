@@ -1,6 +1,6 @@
 ---
 title: "Orders module"
-description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its lots proposed FEFO, chosen and posted per lot, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; who received a lot — contracts.DeliveryTrace for Inventory's trace, provider-gated on orders:access; make-to-order — contracts.SalesOrderLines for Manufacturing, its Unreserved demand for replenishment, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve"
+description: "The quotes and sales orders made for customers: the module and the modules it requires, the nine permissions, the document header and its customer snapshot, lines, pricing and the arithmetic, the concurrency token, number series, the quote's states and revisions, accept, copy and templates, the order's life, versions and change log, delivery marked by hand, invoicing from orders — the allocations, the billable read, the invoiced-work holder and the draft-invoice rules —, subscriptions — the plan, the period calendar, proration, the due rule and the twelve-month limit, the per-period allocations, billed through, dated lines and changes, pause, resume, end and cancel —, PDFs, sending and the cover mail, the events, the handler and the five workers, the holders, retention, the customer summary, the sales warnings and their override, packagings on lines, the variant grid, the analysis views and their CSV files, deliveries and stock — the site, reservations at confirm and on edits, the delivery, its lots proposed FEFO, chosen and posted per lot, its pick list and packing slip, the back order and invoicing on delivery —, shipping — carrier accounts and their sealed keys, shipments booked once under their key, labels and waybills, the tracking worker, the shipping notice and the shipping line with its estimate —, the refusal codes, the assist targets and every endpoint with its permission and status codes.; who received a lot — contracts.DeliveryTrace for Inventory's trace, provider-gated on orders:access; make-to-order — contracts.SalesOrderLines for Manufacturing, its Unreserved demand for replenishment, a goods line's production through contracts.Production, and the orders.mto-reserve handler's produced, ready to reserve; kits — a kit line's child lines copied from contracts.KitStructure, rescaled with it, reserved, delivered and invoiced through it, and its availability"
 sources:
   - apps/server/internal/orders
   - apps/orders/frontend
@@ -14,7 +14,9 @@ sources:
   - apps/server/internal/db/migrations/00127_orders_shipping.sql
   - apps/server/internal/db/migrations/00161_orders_mto_ready.sql
   - apps/server/internal/db/migrations/00166_orders_delivery_lots.sql
+  - apps/server/internal/db/migrations/00177_orders_kits.sql
   - apps/server/internal/contracts/production.go
+  - apps/server/internal/contracts/kit_structure.go
   - apps/server/internal/contracts/billable_orders.go
   - apps/server/internal/contracts/events_orders.go
   - apps/host/frontend/src/routes/orders
@@ -129,6 +131,9 @@ greater than 0 with at most three decimals; a unit price is 0 or more with at mo
 decimals; a discount is 0–100 % with at most two. A quote's product line may be
 **optional** (O21): it is printed, marked as optional, and left out of the totals; an
 order or a section or note line never is (`optional_not_allowed`).
+
+An order's **kit line** has **child lines**, one per component, which the server writes
+from it (`parentLineId`, `perKit`): see [Kits](#kits).
 
 ### Pricing
 
@@ -803,6 +808,74 @@ then says the goods are ready and offers its existing **Reserve now**
 ([Reservations](#reservations)), which reserves at the order's site. When the goods were
 made at another site, Reserve now cannot pick them up, and the page says a transfer is
 needed first. Migration `00161_orders_mto_ready.sql` adds the table.
+
+## Kits
+
+A kit is goods sold together under one variant and delivered as its components
+(manufacturing phase 2 M145, M146; [Manufacturing](/en/reference/manufacturing/#kits)).
+A reservation names one variant — the ledger's reserve refuses a line id with two — so
+each component is an order line of its own, a **child line** of the kit line:
+`orders.lines.parent_line_id` names the kit line (cascading: a kit line deleted takes its
+children) and `per_kit numeric(14,3)` how much of it one kit holds, set together or not at
+all (migration `00177_orders_kits`). `OrdersLine` answers both as `parentLineId` and
+`perKit`, absent on every other line. Kits are an order's: a quote, a template and a
+subscription have none.
+
+### The copy
+
+The composition is copied onto the order when the kit line is **added** — a new product
+line with a variant and a quantity, or a kept line whose variant changed — from
+Manufacturing's **`contracts.KitStructure`** (`contracts/kit_structure.go`), read on the
+pool before the save's transaction (`withKits`, from `priceOrderInputs` on a create and on
+a draft's or a confirmed order's save, and on an accept into an order). A variant
+KitStructure answers is a kit; each component becomes a child line after its kit:
+
+- its catalog snapshot (SKU, name, unit, product) from the catalog, read with it — a
+  component the catalog no longer answers is **400** `variant_not_found` on the kit's
+  line;
+- its quantity the kit's × per kit, half-up at three decimals — 0 is **400**
+  `quantity_invalid` on the kit's line;
+- price **0**, price source `manual`, no discount or packaging, the kit line's VAT code;
+- its delivery method and invoice policy settled as any goods line's.
+
+A **kept** kit line keeps its stored children under their ids, rescaled to its quantity
+the same way, in the same transaction — so a confirmed order's reservations follow each
+child as any edited line's ([Reservations](#reservations)), and the change log names each
+child's quantity change. KitStructure is not read again for it: a later BoM change never
+reaches an order's existing kit lines, and a line added before its variant became a kit
+stays an ordinary line. A save sends the kit line alone; an input line naming one of the
+order's child lines by id is **left out** before pricing, so a client sending the lines
+back as read changes nothing. A removed kit line takes its children with it, under the
+removal's rules (a child with progress refuses it, `line_has_progress`). The children count
+towards the 500 lines.
+
+Without Manufacturing (a nil slot) nothing is copied: a kit variant is an ordinary goods
+line. KitStructure is ungated, so the author needs no Manufacturing permission.
+
+### Stock, delivery and invoicing
+
+- **Reservations.** A line with children is not **reservable** (`reservable(l, kitsOf(lines))`);
+  its children reserve, are released and follow edits as any goods line.
+- **Deliveries.** The kit line is never proposed, named on a delivery
+  (`line_not_found`) or picked; its children are, with their lots. When a delivery is
+  posted, the kit line's delivered becomes the **whole kits** its children make — the least,
+  over them, of delivered ÷ per kit, rounded down to three decimals, at most ordered less
+  cancelled (`syncKits`) — so the order's delivery status and the kit's invoicing on
+  delivery follow. A kit line delivered by hand (Inventory off) is marked by hand, as its
+  children are.
+- **Invoicing.** The kit line carries the price and is the only one offered to invoice: the
+  billable read leaves child lines out. When the kit's invoiced quantity moves — an issue or
+  a credit through the invoiced-work holder — each child's invoiced becomes the kit's × per
+  kit, at most its quantity, so a delivered and invoiced kit order is done.
+- **Availability** (M146). On the order's read, a kit line's `available` is the least, over
+  its children, of what is available of the child's variant at the site ÷ per kit, rounded
+  down to three decimals; null when one has no figure.
+- **Manufacturing.** `SalesOrderLines` — its lines and its unreserved demand — leaves the kit
+  line out and answers its children, so make-to-order and replenishment see the components;
+  `Production.HasBOM` answers false for a kit, so the line offers no manufacturing order.
+- **Printing.** The pick list prints the children only; the packing slip prints a row of the
+  kit — its description and what was ordered of it — with its children under it, indented;
+  the order's and quote's PDF prints the children under their kit, with no price.
 
 ## Deliveries and stock
 

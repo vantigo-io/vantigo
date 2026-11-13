@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; routing — operations as a graph with dependsOn, only on earlier operations and every branch joining the last, readying and planning by the graph, the send-ahead quantity and Register quantity, work center groups, the member planning or the shop floor chooses, its re-snapshot and when it is fixed, and the drags between members; BoM depth — by-products with their cost share, their snapshot, production and lots and the cost split, unbuilds from a chosen lot or by a BoM with the reverse movement and the quarantine of what a held lot restores, and the split and merge of orders under the schedule's locks; shared shop-floor stations — the operations open to them, the station's work centers checked before every handler, the lists cut down, the station recorded on what is done there and the live topics a station hears; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; routing — operations as a graph with dependsOn, only on earlier operations and every branch joining the last, readying and planning by the graph, the send-ahead quantity and Register quantity, work center groups, the member planning or the shop floor chooses, its re-snapshot and when it is fixed, and the drags between members; BoM depth — by-products with their cost share, their snapshot, production and lots and the cost split, unbuilds from a chosen lot or by a BoM with the reverse movement and the quarantine of what a held lot restores, and the split and merge of orders under the schedule's locks; shared shop-floor stations — the operations open to them, the station's work centers checked before every handler, the lists cut down, the station recorded on what is done there and the live topics a station hears; the refusals, the switch and the endpoints.; kits — a kit BoM with lines only, never made, nesting three levels, and contracts.KitStructure for Orders"
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -17,7 +17,9 @@ sources:
   - apps/server/internal/db/migrations/00172_manufacturing_routing.sql
   - apps/server/internal/db/migrations/00173_manufacturing_bom_depth.sql
   - apps/server/internal/db/migrations/00175_manufacturing_stations.sql
+  - apps/server/internal/db/migrations/00176_manufacturing_kits.sql
   - apps/server/internal/contracts/production.go
+  - apps/server/internal/contracts/kit_structure.go
   - apps/server/internal/contracts/events_manufacturing.go
   - apps/host/frontend/src/routes/manufacturing
 ---
@@ -37,7 +39,7 @@ the holder — delivery B, [manufacturing orders](#manufacturing-orders), and de
 [make-to-order and sub-assembly orders](#make-to-order-and-sub-assemblies), which completes
 phase 1. Of phase 2
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-12-manufacturing-phase2-design.md),
-decisions M49–M146), layer M adds [lots on productions](#lots-on-productions), Q [quality](#quality), R [replenishment](#replenishment) and F [routing](#routing): operation dependencies, the send-ahead quantity and work center groups. Delivery 0, the seams in Inventory and Products this module builds on, is
+decisions M49–M146), layer M adds [lots on productions](#lots-on-productions), Q [quality](#quality), R [replenishment](#replenishment) and F [routing](#routing): operation dependencies, the send-ahead quantity and work center groups, and K [kits](#kits). Delivery 0, the seams in Inventory and Products this module builds on, is
 described in [Inventory](/en/reference/inventory/#production) and
 [Products](/en/reference/products/).
 
@@ -2381,6 +2383,68 @@ Migration `00175_manufacturing_stations`: `station_work_centers` (no foreign key
 `stations`, one schema per module), `station_work_center_changes` (the record of each
 change) and `station_id` on `time_logs`, `productions`, `check_results` and `deviations`.
 
+## Kits
+
+Layer K (manufacturing phase 2 M144–M146): a **kit** is goods sold together under one
+variant and picked as its components. It is a BoM whose `kind` is `kit`
+(`boms.kind`, migration `00176_manufacturing_kits`, `normal` by default; a CHECK keeps a
+kit from `make_to_order`). The kind is the create's (`kind` on `ManufacturingBomInput`,
+default `normal`); an update has no `kind` and keeps the stored one, so a BoM's kind never
+changes. `ManufacturingBom` and `ManufacturingBomSummary` answer it.
+
+### What a kit is not
+
+A kit is never made (M144). Its write is judged by `judgeKit` beside the BoM's shape, each
+failure **400** `kit_not_manufactured` on its field, in the one 400 with the others:
+
+- `operations` — a kit has none;
+- `outputs` — it has no by-products;
+- `makeToOrder` — it is never made to order, so never the default MTO reads.
+
+A **manufacturing order** of a kit BoM — the variant's default or one named by `bomId` —
+is **400** `kit_not_manufactured` on `variantId` or `bomId` (`orderBom`, which every
+create, draft change and suggestion's action goes through). Replenishment treats a kit's
+variant as one with no BoM (no *make* suggestion), the sub-assembly read gives a kit
+component no `defaultBomId`, and `Production.HasBOM` answers false for a kit variant, so
+Orders offers no manufacturing order on a kit line. The cycle and depth walk counts a kit
+as any BoM.
+
+### How deep kits nest
+
+Kits nest at most **`contracts.MaxKitLevels`** (3) levels: the kit is level 1, a component
+whose default active BoM is a kit level 2, one among its components level 3. `walkKit`
+runs after `walkBom`, under the graph lock, on every write that walks the graph — create,
+update, reactivate, make default and the promotion on archive (which skips a BoM that
+would fail, as for the depth walk). It counts the kits below through the components'
+default active kit BoMs and, for a kit that is or becomes its variant's default, the kits
+above it — the variants whose default active BoM is a kit naming it
+(`DefaultKitsNamingVariants`), through theirs. More than three in a chain is **400**
+`bom_too_deep` with the kit's own title. A normal BoM nests no kit and is not walked.
+
+### KitStructure
+
+Manufacturing provides **`contracts.KitStructure`** (`contracts/kit_structure.go`), the
+slot `Module.KitStructure`, resolved from the enabled modules only — nil when
+Manufacturing is off — for Orders' kit lines
+([Orders](/en/reference/orders/#kits)). `Kits(ctx, variantIDs)` answers, per variant
+among the ids whose **default active BoM is a kit**, its components as
+`KitComponent{VariantID, PerKit}`:
+
+- each line's quantity per the BoM's output quantity, multiplied through;
+- a component whose own default active BoM is a kit is exploded into its components, down
+  to three levels (a deeper one, which the writes never allow, would be answered as a
+  component);
+- a variant reached twice is answered once, the quantities summed, in the order first
+  reached (lines by sort order);
+- `PerKit` is exact decimal text half-up at three decimals; a component that rounds to 0
+  is left out.
+
+A variant with no kit, or a normal default BoM, is absent. The read is **ungated**: it
+carries no cost and no person, only which variants make up a kit and how many, and the
+consumer decides what to show (module-boundaries rule 12's third kind). It reads in one
+read-only, repeatable-read transaction on the pool. Orders calls it before its own
+transaction, never inside one.
+
 ## The variant holder
 
 The module fills the many-provider slot **`Module.VariantReferences`** with a
@@ -2461,11 +2525,12 @@ bodies are strict: an unknown property is a 400.
 | `work_center_unknown` | 400 | An operation's work center is missing or archived (M12) |
 | `work_center_other_site` | 400 | Operations at more than one site; changing a work center's `siteId` while an active BoM has an operation at it, on `siteId` (M12a); an order at another site than its BoM's operations (M17a) |
 | `bom_cycle` | 400 | A component is, at some depth, the BoM's own variant; `path` names the cycle (M14) |
-| `bom_too_deep` | 400 | The walk passes 10 levels, counting the default BoMs above a default, or the overview meets a made node below the 10th (M14) |
+| `bom_too_deep` | 400 | The walk passes 10 levels, counting the default BoMs above a default, or the overview meets a made node below the 10th (M14); a kit nesting more than three kits deep, counting the default kits above a default (M144) |
 | `bom_too_large` | 400 | The overview passes 2,000 nodes (M15a), or an operation's expected time passes 10^12 minutes |
 | `bom_not_active` | 409 | Make default or edit of an archived BoM (M14a); confirm of an order whose BoM is archived |
 | `quantity_invalid` | 400 | Not more than 0, or more than three decimals; a line's code on a line; a production's quantities |
 | `bom_required` | 400 | A new order for a variant with no active BoM (M17) |
+| `kit_not_manufactured` | 400 | A kit BoM with operations, by-products or make-to-order, on its field; a manufacturing order of a kit BoM (M144) |
 | `location_unknown` | 400 | An order's location, or a production's, is not an active location of the order's site (M17a) |
 | `required_below_used` | 400 | A component line's `required` below its `consumed + scrapped` (M18a) |
 | `order_not_draft` | 409 | Confirm of an order that is not a draft, or a change of a draft-only field on a confirmed or in-progress order (M19) |
@@ -2575,7 +2640,7 @@ every order write may answer 503 `dependency_unavailable`.
 | `POST /work-centers/{id}/closures` (`createManufacturingClosure`) | boms-manage | 201; 400 dates, `closures_too_many`; 404 |
 | `DELETE /work-centers/{id}/closures/{closureId}` (`deleteManufacturingClosure`) | boms-manage | 204; 404 |
 | `GET /boms` (`listManufacturingBoms`) | access | 200 — `items` and `total`; `variantId`, `status`, `q`, `limit` clamped to 1–200, `offset` |
-| `POST /boms` (`createManufacturingBom`) | boms-manage | 201; 400 fields, lines, `variant_not_goods`, `variant_not_found`, `too_many_lines`, `too_many_operations`, `operation_key_unknown`, `work_center_unknown`, `work_center_other_site`, `bom_cycle`, `bom_too_deep`; 409 `bom_code_taken`, `revision_conflict` |
+| `POST /boms` (`createManufacturingBom`) | boms-manage | 201; 400 fields, lines, `variant_not_goods`, `variant_not_found`, `too_many_lines`, `too_many_operations`, `operation_key_unknown`, `work_center_unknown`, `work_center_other_site`, `bom_cycle`, `bom_too_deep`, `kit_not_manufactured`; 409 `bom_code_taken`, `revision_conflict` |
 | `GET /boms/{id}` (`getManufacturingBom`) | access | 200 with operations and lines; 404 |
 | `PUT /boms/{id}` (`updateManufacturingBom`) | boms-manage | 200; 400 as create; 404; 409 `bom_code_taken`, `bom_not_active`, `revision_conflict` |
 | `POST /boms/{id}/archive` (`archiveManufacturingBom`) | boms-manage | 200; 404; 409 |
@@ -2585,7 +2650,7 @@ every order write may answer 503 `dependency_unavailable`.
 | `GET /sites/{id}/locations` (`listManufacturingSiteLocations`) | access | 200 — every location of the site, archived ones too, by full code |
 | `GET /people` (`searchManufacturingPeople`) | access | 200 — users matching `q`, by display name, for an order's responsible |
 | `GET /orders` (`listManufacturingOrders`) | access | 200 — a page of [the list](#the-list); 400 a filter or the paging out of range |
-| `POST /orders` (`createManufacturingOrder`) | orders-manage | 201 a draft; 400 fields, `bom_required`, `site_unknown`, `location_unknown`, `work_center_other_site`, `quantity_invalid`, `sales_order_line_unknown`; 409 `bom_not_active`, `sales_order_line_has_order`; 503 Orders off with a `salesOrderLineId` |
+| `POST /orders` (`createManufacturingOrder`) | orders-manage | 201 a draft; 400 fields, `bom_required`, `kit_not_manufactured`, `site_unknown`, `location_unknown`, `work_center_other_site`, `quantity_invalid`, `sales_order_line_unknown`; 409 `bom_not_active`, `sales_order_line_has_order`; 503 Orders off with a `salesOrderLineId` |
 | `POST /orders/{id}/children` (`createManufacturingChildOrders`) | orders-manage | 200 `{order, children}`; 400 `component_unknown`, `bom_required`, `nothing_missing`, `work_center_other_site`, `site_unknown`; 404; 409 `order_not_open`, `revision_conflict`, Inventory's refusals |
 | `GET /sales-order-lines/{id}` (`getManufacturingSalesOrderLine`) | orders-manage | 200 the line read through Orders, its default BoM and the orders made for it; 404; 503 Orders off |
 | `GET /orders/{id}` (`getManufacturingOrder`) | access | 200 with its lines and live availability; 404 |

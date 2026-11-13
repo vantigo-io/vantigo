@@ -1073,7 +1073,14 @@ What the design deferred, each waiting for what is named:
   its own live path, and the station recorded on what is done there
   ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#shared-stations),
   [Shop-floor stations](docs/src/content/docs/en/admin/authentication.md#shop-floor-stations)).
-- **Kits.**
+- **Kits (built, K)**: a BoM of kind kit — lines only, never made, nesting three levels —
+  whose components Orders copies onto a kit line's child lines through the ungated
+  `contracts.KitStructure`, rescaled with the kit's quantity; each child reserved, picked
+  with its lots and delivered as any goods line, the kit counting the whole kits
+  delivered and carrying the price and the invoice; the kit's availability the least of
+  its children's; the packing slip printing the kit with its children under it
+  ([Manufacturing](docs/src/content/docs/en/reference/manufacturing.md#kits),
+  [Orders](docs/src/content/docs/en/reference/orders.md#kits)).
 - **Following a sales order's changed quantity** (`orders.sales_order.changed`), which
   make-to-order does not in phase 1, and **reserving a sub-assembly's output to its
   parent** automatically.
