@@ -127,6 +127,7 @@ CREATE UNIQUE INDEX ux_deviations_number ON manufacturing.deviations (number);
 CREATE INDEX ix_deviations_status ON manufacturing.deviations (status, opened_at DESC, id DESC);
 CREATE INDEX ix_deviations_order ON manufacturing.deviations (order_id) WHERE order_id IS NOT NULL;
 CREATE INDEX ix_deviations_lot ON manufacturing.deviations (lot_id) WHERE lot_id IS NOT NULL;
+CREATE INDEX ix_deviations_check_result ON manufacturing.deviations (check_result_id) WHERE check_result_id IS NOT NULL;
 
 -- The lots a deviation put a hold on (M99), with their numbers as they were:
 -- the deviation's own record of its HoldLots calls, which its page lists and

@@ -694,7 +694,9 @@ func closeAnswers() answers[gen.CloseManufacturingOrderResponseObject] {
 // root (M17b), with the same BoM, origin, place and dates, confirmed at once
 // because the original was — so it reserves again; false closes short. The
 // backorder's confirm is the one that does not refuse an archived BoM: it
-// keeps its original's, whatever happened to it since.
+// keeps its original's, whatever happened to it since. An order with good
+// output closes only when every check of its work orders not cancelled has a
+// result (closeGate, checks_incomplete).
 func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManufacturingOrderRequestObject) (gen.CloseManufacturingOrderResponseObject, error) {
 	in := req.Body
 	who, err := s.actorOf(ctx)
@@ -721,6 +723,9 @@ func (s *server) CloseManufacturingOrder(ctx context.Context, req gen.CloseManuf
 		}
 		if !isOpen(o.Status) {
 			return orderNotOpen(o.Status)
+		}
+		if err := closeGate(ctx, txq, o); err != nil {
+			return err
 		}
 		rest := new(big.Rat).Sub(ratOrZero(o.Quantity), ratOrZero(o.Produced))
 		if rest.Sign() > 0 && in.Backorder == nil {

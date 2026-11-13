@@ -13,6 +13,52 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addResultToDeviation = `-- name: AddResultToDeviation :one
+UPDATE manufacturing.deviations
+SET check_result_id = $1, description = left(description || $2::text, 5000), revision = revision + 1
+WHERE id = $3
+RETURNING id, number, title, description, order_id, work_order_id, check_result_id, lot_id, lot_number, variant_id, disposition, status, quarantine, holds_released, opened_by_user_id, opened_by_display, opened_at, closed_by_user_id, closed_by_display, closed_at, closing_note, revision
+`
+
+type AddResultToDeviationParams struct {
+	CheckResultID *int64
+	Addition      string
+	ID            int64
+}
+
+// AddResultToDeviation points the deviation at the check's latest failed
+// result and adds its reading to the description, within its 5000
+// characters.
+func (q *Queries) AddResultToDeviation(ctx context.Context, arg AddResultToDeviationParams) (ManufacturingDeviation, error) {
+	row := q.db.QueryRow(ctx, addResultToDeviation, arg.CheckResultID, arg.Addition, arg.ID)
+	var i ManufacturingDeviation
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.Title,
+		&i.Description,
+		&i.OrderID,
+		&i.WorkOrderID,
+		&i.CheckResultID,
+		&i.LotID,
+		&i.LotNumber,
+		&i.VariantID,
+		&i.Disposition,
+		&i.Status,
+		&i.Quarantine,
+		&i.HoldsReleased,
+		&i.OpenedByUserID,
+		&i.OpenedByDisplay,
+		&i.OpenedAt,
+		&i.ClosedByUserID,
+		&i.ClosedByDisplay,
+		&i.ClosedAt,
+		&i.ClosingNote,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const checkPhotoForShare = `-- name: CheckPhotoForShare :one
 SELECT id, work_order_id, object_key, content_type, size_bytes, uploaded_by_user_id, uploaded_by_display, created_at FROM manufacturing.check_photos WHERE id = $1 FOR SHARE
 `
@@ -284,15 +330,6 @@ func (q *Queries) CurrentCheckResult(ctx context.Context, workOrderCheckID int64
 	return i, err
 }
 
-const deleteCheckPhoto = `-- name: DeleteCheckPhoto :exec
-DELETE FROM manufacturing.check_photos WHERE id = $1
-`
-
-func (q *Queries) DeleteCheckPhoto(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, deleteCheckPhoto, id)
-	return err
-}
-
 const deleteChecksOfBom = `-- name: DeleteChecksOfBom :exec
 DELETE FROM manufacturing.bom_operation_checks
 WHERE operation_id IN (SELECT id FROM manufacturing.bom_operations WHERE bom_id = $1)
@@ -312,6 +349,23 @@ DELETE FROM manufacturing.object_deletions WHERE object_key = $1
 func (q *Queries) DeleteObjectDeletion(ctx context.Context, objectKey string) error {
 	_, err := q.db.Exec(ctx, deleteObjectDeletion, objectKey)
 	return err
+}
+
+const deleteUnattachedCheckPhoto = `-- name: DeleteUnattachedCheckPhoto :execrows
+DELETE FROM manufacturing.check_photos p
+WHERE p.id = $1
+  AND NOT EXISTS (SELECT 1 FROM manufacturing.check_results r WHERE r.photo_id = p.id)
+`
+
+// DeleteUnattachedCheckPhoto deletes the photo while no result names it,
+// judged again by the delete's own snapshot: a result recorded with it after
+// the sweep read it keeps it, and 0 rows says so (M97).
+func (q *Queries) DeleteUnattachedCheckPhoto(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUnattachedCheckPhoto, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const dueObjectDeletions = `-- name: DueObjectDeletions :many
@@ -787,6 +841,27 @@ func (q *Queries) LockWorkOrderCheck(ctx context.Context, arg LockWorkOrderCheck
 	return i, err
 }
 
+const lotOfOrder = `-- name: LotOfOrder :one
+SELECT (EXISTS (SELECT 1 FROM manufacturing.production_outputs po JOIN manufacturing.productions p ON p.id = po.production_id
+                WHERE p.order_id = $1 AND po.lot_id = $2)
+     OR EXISTS (SELECT 1 FROM manufacturing.production_line_lots l JOIN manufacturing.productions p ON p.id = l.production_id
+                WHERE p.order_id = $1 AND l.lot_id = $2))::boolean AS of_order
+`
+
+type LotOfOrderParams struct {
+	OrderID int64
+	LotID   int64
+}
+
+// LotOfOrder reports whether the order's productions made the lot or
+// consumed it.
+func (q *Queries) LotOfOrder(ctx context.Context, arg LotOfOrderParams) (bool, error) {
+	row := q.db.QueryRow(ctx, lotOfOrder, arg.OrderID, arg.LotID)
+	var of_order bool
+	err := row.Scan(&of_order)
+	return of_order, err
+}
+
 const lotsOfDeviations = `-- name: LotsOfDeviations :many
 SELECT deviation_id, lot_id, lot_number, held_at FROM manufacturing.deviation_lots WHERE deviation_id = ANY($1::bigint[]) ORDER BY deviation_id, lot_number, lot_id
 `
@@ -916,6 +991,48 @@ func (q *Queries) NextDeviationNumber(ctx context.Context) (int64, error) {
 	var number int64
 	err := row.Scan(&number)
 	return number, err
+}
+
+const openDeviationOfCheck = `-- name: OpenDeviationOfCheck :one
+SELECT d.id, d.number, d.title, d.description, d.order_id, d.work_order_id, d.check_result_id, d.lot_id, d.lot_number, d.variant_id, d.disposition, d.status, d.quarantine, d.holds_released, d.opened_by_user_id, d.opened_by_display, d.opened_at, d.closed_by_user_id, d.closed_by_display, d.closed_at, d.closing_note, d.revision FROM manufacturing.deviations d
+JOIN manufacturing.check_results r ON r.id = d.check_result_id
+WHERE r.work_order_check_id = $1 AND d.status = 'open'
+ORDER BY d.id
+LIMIT 1
+FOR UPDATE OF d
+`
+
+// OpenDeviationOfCheck takes the open deviation a failed result of the check
+// opened, FOR UPDATE after the check: a fail recorded again while it is open
+// is added to it rather than opening another (M99).
+func (q *Queries) OpenDeviationOfCheck(ctx context.Context, workOrderCheckID int64) (ManufacturingDeviation, error) {
+	row := q.db.QueryRow(ctx, openDeviationOfCheck, workOrderCheckID)
+	var i ManufacturingDeviation
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.Title,
+		&i.Description,
+		&i.OrderID,
+		&i.WorkOrderID,
+		&i.CheckResultID,
+		&i.LotID,
+		&i.LotNumber,
+		&i.VariantID,
+		&i.Disposition,
+		&i.Status,
+		&i.Quarantine,
+		&i.HoldsReleased,
+		&i.OpenedByUserID,
+		&i.OpenedByDisplay,
+		&i.OpenedAt,
+		&i.ClosedByUserID,
+		&i.ClosedByDisplay,
+		&i.ClosedAt,
+		&i.ClosingNote,
+		&i.Revision,
+	)
+	return i, err
 }
 
 const openQuarantineDeviationsOfOrder = `-- name: OpenQuarantineDeviationsOfOrder :many

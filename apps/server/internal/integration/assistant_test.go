@@ -198,9 +198,11 @@ var markedByHand = map[string]string{
 	"blockManufacturingWorkCenter":      "never",
 	"unblockManufacturingWorkCenter":    "never",
 	// A check's result and its photo are the station's (manufacturing phase 2
-	// M97): an agent neither measures nor photographs.
+	// M97): an agent neither measures nor photographs, and a photo is a file
+	// it never fetches.
 	"recordManufacturingCheckResult": "never",
 	"uploadManufacturingCheckPhoto":  "never",
+	"getManufacturingCheckPhoto":     "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

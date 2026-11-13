@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -44,6 +45,8 @@ const (
 	codeChecksIncomplete   = "checks_incomplete"    // 409
 	codeCheckNotOpen       = "check_not_open"       // 409
 	codeDeviationClosed    = "deviation_closed"     // 409
+	codeLotNotOfOrder      = "lot_not_of_order"     // 400
+	codeLotsViewRequired   = "lots_view_required"   // 403
 )
 
 // The kinds, frequencies and results of a check (M95, M97).
@@ -297,6 +300,35 @@ func finishGate(ctx context.Context, txq *store.Queries, workOrderID int64) erro
 	return checksIncomplete("Checks are missing", fmt.Sprintf("%d check(s) of the work order have no result; record them before it finishes.", len(missing)), missing)
 }
 
+// closeGate is M98's gate on an order's close: once the order has good
+// output, every check of each of its work orders that is not cancelled has a
+// result — a check left without one is refused, not closed over; a fail is
+// a result. A cancelled work order's checks are not asked for.
+func closeGate(ctx context.Context, txq *store.Queries, o store.ManufacturingOrder) error {
+	if ratOrZero(o.Produced).Sign() <= 0 {
+		return nil
+	}
+	wos, err := txq.WorkOrdersOfOrder(ctx, o.ID)
+	if err != nil {
+		return err
+	}
+	var open []int64
+	for _, w := range wos {
+		if w.Status != workOrderCancelled {
+			open = append(open, w.ID)
+		}
+	}
+	missing, err := txq.MissingChecksOfWorkOrders(ctx, store.MissingChecksOfWorkOrdersParams{WorkOrderIds: open,
+		Frequencies: []string{frequencyEach, frequencyFirstPiece}})
+	if err != nil {
+		return err
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return checksIncomplete("Checks are missing", fmt.Sprintf("%d check(s) of the order's work orders have no result; record them before the order closes.", len(missing)), missing)
+}
+
 // checkResultAnswers are a result's typed refusals.
 func checkResultAnswers() answers[gen.RecordManufacturingCheckResultResponseObject] {
 	return answers[gen.RecordManufacturingCheckResultResponseObject]{
@@ -388,6 +420,12 @@ func (s *server) RecordManufacturingCheckResult(ctx context.Context, req gen.Rec
 		if err != nil {
 			return err
 		}
+		// A value is a measure's reading: sent with any other kind it is
+		// not kept.
+		reading := value
+		if c.Kind != checkMeasure {
+			reading = nil
+		}
 		if in.PhotoId != nil {
 			photo, err := txq.CheckPhotoForShare(ctx, *in.PhotoId)
 			if noRows(err) || (err == nil && photo.WorkOrderID != w.ID) {
@@ -412,7 +450,7 @@ func (s *server) RecordManufacturingCheckResult(ctx context.Context, req gen.Rec
 			}
 		}
 		recorded, err := txq.InsertCheckResult(ctx, store.InsertCheckResultParams{WorkOrderCheckID: c.ID, Result: result,
-			Value: measureNumeric(value), Note: note, PhotoID: in.PhotoId, UserID: who.id, UserDisplay: who.display, Now: now})
+			Value: measureNumeric(reading), Note: note, PhotoID: in.PhotoId, UserID: who.id, UserDisplay: who.display, Now: now})
 		if err != nil {
 			return err
 		}
@@ -430,17 +468,37 @@ func (s *server) RecordManufacturingCheckResult(ctx context.Context, req gen.Rec
 		n.workOrder(w.ID, w.OrderID, w.WorkCenterID)
 		if result == resultFail {
 			description := c.Title
-			if value != nil {
-				description = fmt.Sprintf("%s: %s%s, limits %s–%s.", c.Title, text(value, measurePlaces), unitText(c.Unit),
+			if reading != nil {
+				description = fmt.Sprintf("%s: %s%s, limits %s–%s.", c.Title, text(reading, measurePlaces), unitText(c.Unit),
 					limitText(c.MinValue), limitText(c.MaxValue))
 			}
 			if note != nil {
 				description += "\n\n" + *note
 			}
-			if _, err := s.openDeviation(ctx, tx, txq, deviationDraft{
-				title: truncate("Check failed: "+c.Title, maxCheckTitle), description: description, orderID: &o.ID, workOrderID: &w.ID,
-				checkResultID: &recorded.ID, quarantine: c.QuarantineOnFail,
-			}, who, now); err != nil {
+			// A fail recorded again while the check's deviation is open is
+			// added to it — its reading, and the deviation pointing at the
+			// latest result — rather than opening another (M99).
+			open, err := txq.OpenDeviationOfCheck(ctx, c.ID)
+			switch {
+			case err == nil:
+				if _, err := txq.AddResultToDeviation(ctx, store.AddResultToDeviationParams{ID: open.ID, CheckResultID: &recorded.ID,
+					Addition: fmt.Sprintf("\n\nFailed again, %s, by %s: %s", now.UTC().Format(time.RFC3339), who.display, description)}); err != nil {
+					return err
+				}
+				if err := notifyOrder(ctx, tx, o.ID); err != nil {
+					return err
+				}
+				if err := notifyDeviation(ctx, tx, open.ID); err != nil {
+					return err
+				}
+			case noRows(err):
+				if _, err := s.openDeviation(ctx, tx, txq, deviationDraft{
+					title: truncate("Check failed: "+c.Title, maxCheckTitle), description: description, orderID: &o.ID, workOrderID: &w.ID,
+					checkResultID: &recorded.ID, quarantine: c.QuarantineOnFail,
+				}, who, now); err != nil {
+					return err
+				}
+			default:
 				return err
 			}
 		}

@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -26,7 +27,9 @@ import (
 // The generated decoder reads the body once, into the typed request, so the
 // raw bytes are kept for the handler by keepRawBody, which every operation
 // runs through after the router has authenticated, authorised and capped it.
-// Every body is kept; every one is JSON and capped by the router.
+// Every JSON body is kept, capped by the router; a check's photo, the one
+// multipart upload, is not copied — its handler reads the parts itself and no
+// closed schema judges it.
 
 // rawBodyKey is the context key keepRawBody stores a request's body under.
 type rawBodyKey struct{}
@@ -37,7 +40,7 @@ type rawBodyKey struct{}
 // failure, which the decoder answers as it would have.
 func keepRawBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body == nil || r.Body == http.NoBody {
+		if r.Body == nil || r.Body == http.NoBody || strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/") {
 			next.ServeHTTP(w, r)
 			return
 		}

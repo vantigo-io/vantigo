@@ -94,8 +94,13 @@ ORDER BY p.id
 LIMIT @row_limit
 FOR UPDATE SKIP LOCKED;
 
--- name: DeleteCheckPhoto :exec
-DELETE FROM manufacturing.check_photos WHERE id = @id;
+-- name: DeleteUnattachedCheckPhoto :execrows
+-- DeleteUnattachedCheckPhoto deletes the photo while no result names it,
+-- judged again by the delete's own snapshot: a result recorded with it after
+-- the sweep read it keeps it, and 0 rows says so (M97).
+DELETE FROM manufacturing.check_photos p
+WHERE p.id = @id
+  AND NOT EXISTS (SELECT 1 FROM manufacturing.check_results r WHERE r.photo_id = p.id);
 
 -- name: InsertObjectDeletion :exec
 -- InsertObjectDeletion queues an object whose row is gone, in the
@@ -138,6 +143,34 @@ INSERT INTO manufacturing.deviations (number, title, description, order_id, work
 VALUES (@number, @title, @description, sqlc.narg(order_id), sqlc.narg(work_order_id), sqlc.narg(check_result_id), sqlc.narg(lot_id),
         sqlc.narg(lot_number), sqlc.narg(variant_id), @quarantine, sqlc.narg(opened_by_user_id), @opened_by_display, @now)
 RETURNING *;
+
+-- name: OpenDeviationOfCheck :one
+-- OpenDeviationOfCheck takes the open deviation a failed result of the check
+-- opened, FOR UPDATE after the check: a fail recorded again while it is open
+-- is added to it rather than opening another (M99).
+SELECT d.* FROM manufacturing.deviations d
+JOIN manufacturing.check_results r ON r.id = d.check_result_id
+WHERE r.work_order_check_id = @work_order_check_id AND d.status = 'open'
+ORDER BY d.id
+LIMIT 1
+FOR UPDATE OF d;
+
+-- name: AddResultToDeviation :one
+-- AddResultToDeviation points the deviation at the check's latest failed
+-- result and adds its reading to the description, within its 5000
+-- characters.
+UPDATE manufacturing.deviations
+SET check_result_id = @check_result_id, description = left(description || @addition::text, 5000), revision = revision + 1
+WHERE id = @id
+RETURNING *;
+
+-- name: LotOfOrder :one
+-- LotOfOrder reports whether the order's productions made the lot or
+-- consumed it.
+SELECT (EXISTS (SELECT 1 FROM manufacturing.production_outputs po JOIN manufacturing.productions p ON p.id = po.production_id
+                WHERE p.order_id = @order_id AND po.lot_id = @lot_id)
+     OR EXISTS (SELECT 1 FROM manufacturing.production_line_lots l JOIN manufacturing.productions p ON p.id = l.production_id
+                WHERE p.order_id = @order_id AND l.lot_id = @lot_id))::boolean AS of_order;
 
 -- name: GetDeviation :one
 SELECT * FROM manufacturing.deviations WHERE id = @id;
