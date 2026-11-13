@@ -404,7 +404,7 @@ func applyLineChanges(ctx context.Context, txq *store.Queries, sch schedule, pri
 		}
 		p.id = nil
 		p.validFrom, p.validTo, p.chainID = pgDate(&from), validTo, chain
-		if _, err := insertLine(ctx, txq, ownerSubscription, sch.sub.ID, position, p); err != nil {
+		if _, err := insertLine(ctx, txq, ownerSubscription, sch.sub.ID, position, p, nil); err != nil {
 			return fmt.Errorf("orders: write subscription %d's line: %w", sch.sub.ID, err)
 		}
 		return nil

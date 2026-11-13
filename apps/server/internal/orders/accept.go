@@ -91,6 +91,11 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 	if err != nil {
 		return answer(err, resp)
 	}
+	// The order's kit lines are added with their children (manufacturing
+	// phase 2 M145).
+	if lines, err = s.withKits(ctx, lines, nil, invalidAcceptTitle); err != nil {
+		return answer(err, resp)
+	}
 	by, err := s.actorFor(ctx)
 	if err != nil {
 		return nil, err

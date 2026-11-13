@@ -42,6 +42,7 @@ import (
 	"math/big"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -170,9 +171,11 @@ func openToDeliver(l store.OrdersLine) *big.Rat {
 }
 
 // reservable reports whether a stored line reserves stock: a product line
-// with a variant, delivered by delivery documents.
-func reservable(l store.OrdersLine) bool {
-	return l.Kind == kindProduct && l.VariantID != nil && l.Quantity.Valid && l.DeliveryMethod == methodDelivery
+// with a variant, delivered by delivery documents, that is not a kit line —
+// kits names the order's kit lines (kitsOf), whose children reserve instead
+// (manufacturing phase 2 M145).
+func reservable(l store.OrdersLine, kits map[int64]bool) bool {
+	return l.Kind == kindProduct && l.VariantID != nil && l.Quantity.Valid && l.DeliveryMethod == methodDelivery && !kits[l.ID]
 }
 
 // reservedByLine is what the order holds reserved, per line, summed over the
@@ -252,9 +255,10 @@ func (s *server) reserveLines(ctx context.Context, tx pgx.Tx, o store.OrdersOrde
 		return nil
 	}
 	var reserve []contracts.StockLine
+	kits := kitsOf(lines)
 	for _, l := range lines {
 		q := want[l.ID]
-		if q == nil || q.Sign() <= 0 || !reservable(l) {
+		if q == nil || q.Sign() <= 0 || !reservable(l, kits) {
 			continue
 		}
 		reserve = append(reserve, contracts.StockLine{VariantID: *l.VariantID, LineID: l.ID, Quantity: stockText(q)})
@@ -342,8 +346,9 @@ func (s *server) reserveOpen(ctx context.Context, tx pgx.Tx, o store.OrdersOrder
 		return false, err
 	}
 	want := map[int64]*big.Rat{}
+	kits := kitsOf(lines)
 	for _, l := range lines {
-		if !reservable(l) {
+		if !reservable(l, kits) {
 			continue
 		}
 		q := openToDeliver(l)
@@ -380,6 +385,7 @@ func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.Orde
 	}
 	was := byID(before)
 	now := byID(after)
+	kitsBefore, kitsAfter := kitsOf(before), kitsOf(after)
 	// itemChanged reports whether a kept line's variant changed.
 	itemChanged := func(l store.OrdersLine) bool {
 		old, ok := was[l.ID]
@@ -389,7 +395,7 @@ func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.Orde
 	for id, q := range reserved {
 		l, kept := now[id]
 		switch {
-		case !kept, itemChanged(l), !reservable(l) && s.stockKept():
+		case !kept, itemChanged(l), !reservable(l, kitsAfter) && s.stockKept():
 			release[id] = nil
 		default:
 			if open := openToDeliver(l); q.Cmp(open) > 0 {
@@ -402,12 +408,12 @@ func (s *server) adjustReservations(ctx context.Context, tx pgx.Tx, o store.Orde
 	}
 	want := map[int64]*big.Rat{}
 	for _, l := range after {
-		if !reservable(l) {
+		if !reservable(l, kitsAfter) {
 			continue
 		}
 		open := openToDeliver(l)
 		grew := open
-		if old, ok := was[l.ID]; ok && reservable(old) && !itemChanged(l) {
+		if old, ok := was[l.ID]; ok && reservable(old, kitsBefore) && !itemChanged(l) {
 			grew = new(big.Rat).Sub(open, openToDeliver(old))
 		}
 		held := new(big.Rat).Set(orZero(reserved[l.ID]))
@@ -591,6 +597,25 @@ func (s *server) withStockFigures(ctx context.Context, out *gen.OrdersOrder) err
 		if l.VariantId != nil && available != nil {
 			if q, ok := available[*l.VariantId]; ok {
 				l.Available = ptr(wire(q, quantityPlaces))
+			}
+		}
+	}
+	// A kit line's available is the kits its children make (M146).
+	if available != nil {
+		children := map[int64][]store.OrdersLine{}
+		for _, l := range out.Lines {
+			if l.ParentLineId != nil && l.PerKit != nil {
+				per, _ := new(big.Rat).SetString(strconv.FormatFloat(*l.PerKit, 'f', -1, 64))
+				children[*l.ParentLineId] = append(children[*l.ParentLineId], store.OrdersLine{VariantID: l.VariantId, PerKit: numeric(per, quantityPlaces)})
+			}
+		}
+		for i := range out.Lines {
+			l := &out.Lines[i]
+			if kids := children[l.Id]; len(kids) > 0 {
+				l.Available = nil
+				if q := kitAvailable(kids, available); q != nil {
+					l.Available = ptr(wire(q, quantityPlaces))
+				}
 			}
 		}
 	}

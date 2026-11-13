@@ -101,7 +101,8 @@ func confirmTx(ctx context.Context, s *server, tx pgx.Tx, txq *store.Queries, or
 		return order, fmt.Errorf("orders: confirm order %d: %w", order.ID, err)
 	}
 	actions := overrideActions(overridden, o.reason)
-	if s.atSite(row.SiteID) && slices.ContainsFunc(lines, reservable) {
+	kits := kitsOf(lines)
+	if s.atSite(row.SiteID) && slices.ContainsFunc(lines, func(l store.OrdersLine) bool { return reservable(l, kits) }) {
 		if reserve {
 			// Every goods line's open quantity, at the site (O46): the first
 			// shortfall refuses the confirm, naming every short line.

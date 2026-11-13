@@ -46,8 +46,11 @@ func headerInputOfOrderUpdate(b gen.OrdersOrderUpdate) headerInput {
 // optional on an order (optional_not_allowed), and a kept line keeps its kind
 // (line_kind_changed). frozen is a confirmed order's save: its kept lines are
 // priced from their own rows (keptFrozen), and the catalog is read only for
-// the others.
+// the others. A kit line's children follow it (withKits, manufacturing phase
+// 2 M145).
 func (s *server) priceOrderInputs(ctx context.Context, inputs []lineInput, existing []store.OrdersLine, h header, reprice, frozen bool) ([]pricedLine, error) {
+	// A kit's children are written from their kit (kits.go).
+	inputs = withoutKitChildren(inputs, existing)
 	if err := judgeKinds(inputs, existing); err != nil {
 		return nil, err
 	}
@@ -74,7 +77,7 @@ func (s *server) priceOrderInputs(ctx context.Context, inputs []lineInput, exist
 	if len(failures) > 0 {
 		return nil, refuseLines(invalidOrderTitle, failures)
 	}
-	return priced, nil
+	return s.withKits(ctx, priced, existing, invalidOrderTitle)
 }
 
 // CreateSalesOrder Create an order
