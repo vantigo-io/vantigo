@@ -18,11 +18,21 @@ export interface DeliveredDialogProps {
  * Register delivered, or undo it (O32): a quantity per product line,
  * defaulting to what is left to deliver — or, to undo, to what was
  * delivered. A line left at 0 is not changed. The server refuses beyond
- * ordered less cancelled (`over_delivery`) and below 0.
+ * ordered less cancelled (`over_delivery`) and below 0. A kit
+ * (manufacturing phase 2 M145) delivered by delivery documents is delivered
+ * as its child lines and is not offered; a kit marked by hand marks its
+ * children with it, and they are not offered.
  */
 export const DeliveredDialog = ({ mode, lines, loading, error, onSubmit, onClose }: DeliveredDialogProps) => {
   const { t, quantity } = useOrdersFormat();
-  const products = lines.filter((line) => line.kind === "product");
+  const kits = new Set(lines.flatMap((line) => (line.parentLineId == null ? [] : [line.parentLineId])));
+  const byDocuments = new Set(lines.filter((line) => line.deliveryMethod === "delivery").map((line) => line.id));
+  const products = lines.filter(
+    (line) =>
+      line.kind === "product" &&
+      !(kits.has(line.id) && byDocuments.has(line.id)) &&
+      !(line.parentLineId != null && !byDocuments.has(line.parentLineId)),
+  );
   const [quantities, setQuantities] = useState<Record<number, number | "">>(() =>
     Object.fromEntries(
       products.map((line) => [line.id, mode === "mark" ? remainingToDeliver(line) : line.qtyDelivered]),

@@ -73,6 +73,7 @@ describe("the orders catalog", () => {
         "unlocked",
         "delivered_marked",
         "delivered_undone",
+        "delivered_beyond_kits",
         "draft_allocations_released",
         "activated",
         "paused",
