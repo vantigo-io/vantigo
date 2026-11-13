@@ -748,8 +748,10 @@ station_unknown`), and the socket belongs to the station, whichever operator is 
   the station may hear — Manufacturing's work-center and work-order topics, for the
   station's own work centers. `live.AuthorizeStation` runs one as the hub does, for a module's
   test.
-- **The 60-second re-check** asks `StationLive(ctx, stationID)` instead of a session: a
-  revoked or expired station closes the socket with `4401`, and every subscription is
+- **The 60-second re-check** asks `StationLive(ctx, stationID, pairing, ip)` instead of a
+  session, with the pairing `CheckStation` answered at the handshake and the handshake's
+  address: a station that is revoked, expired, paired again in another browser or no longer
+  reached from inside its allowlist closes the socket with `4401`, and every subscription is
   authorised again against the current work centers.
 - **No presence** is announced from a station's socket, and it writes no document.
 - **The limits are per station**: the connect rate limit is keyed by the station, and the
