@@ -2549,6 +2549,11 @@ export interface components {
             /** @description From the stored copies (M21a); null unless the order is confirmed or in progress. */
             reservationStatus: components["schemas"]["ManufacturingReservationStatus"] | null;
             responsible: components["schemas"]["ManufacturingPerson"] | null;
+            /**
+             * Format: int32
+             * @description The order's revision as the list read it, for a merge chosen from the list (manufacturing phase 2 M125).
+             */
+            revision: number;
             /** Format: int64 */
             siteId: number;
             status: components["schemas"]["ManufacturingOrderStatus"];

@@ -890,7 +890,18 @@ func TestBomDepth_MergeMatchesLinesInOrder(t *testing.T) {
 	createBom(t, c, in)
 	a, _ := confirmedBike(t, c, "1")
 	b, _ := confirmedBike(t, c, "1")
-	res := c.Do(http.MethodPost, ordersPath+"/merge", gen.ManufacturingOrderMergeInput{Orders: []gen.ManufacturingOrderMergeItem{
+	// The list carries each order's revision, which a merge chosen from it
+	// sends.
+	var list gen.ManufacturingOrderPage
+	res := c.Do(http.MethodGet, ordersPath, nil)
+	mustStatus(t, res, http.StatusOK, "the list")
+	res.JSON(&list)
+	for _, o := range list.Items {
+		if o.Id == a.Id && o.Revision != a.Revision {
+			t.Errorf("the list's revision of %s = %d, want %d", o.Number, o.Revision, a.Revision)
+		}
+	}
+	res = c.Do(http.MethodPost, ordersPath+"/merge", gen.ManufacturingOrderMergeInput{Orders: []gen.ManufacturingOrderMergeItem{
 		{Id: a.Id, Revision: a.Revision}, {Id: b.Id, Revision: b.Revision}}})
 	mustStatus(t, res, http.StatusOK, "merge")
 	s := mergeOf(t, res).Order

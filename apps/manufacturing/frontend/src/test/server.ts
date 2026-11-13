@@ -265,6 +265,7 @@ export const orderSummaryOf = (order: ManufacturingOrder): ManufacturingOrderSum
   reservationStatus: order.reservationStatus,
   backorderOfId: order.backorderOfId,
   createdAt: order.createdAt,
+  revision: order.revision,
 });
 
 /**

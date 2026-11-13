@@ -1244,7 +1244,7 @@ func summaryOf(o store.ManufacturingOrder, entries map[int32]contracts.VariantEn
 		Id: o.ID, Number: orderNumber(o.Number, o.Suffix), Variant: refOf(entries, o.VariantID, costs), BomId: o.BomID,
 		Quantity: numericText(o.Quantity, quantityPlaces), Produced: numericText(o.Produced, quantityPlaces),
 		Status: gen.ManufacturingOrderStatus(o.Status), SiteId: o.SiteID, PlannedStart: o.PlannedStart, PlannedFinish: o.PlannedFinish,
-		Priority: gen.ManufacturingPriority(o.Priority), BackorderOfId: o.BackorderOfID, CreatedAt: o.CreatedAt,
+		Priority: gen.ManufacturingPriority(o.Priority), BackorderOfId: o.BackorderOfID, CreatedAt: o.CreatedAt, Revision: o.Revision,
 		Origin: gen.ManufacturingOrderOriginInfo{Kind: gen.ManufacturingOrigin(o.OriginKind), OrderId: o.OriginOrderID,
 			LineId: o.OriginLineID, Reference: o.OriginReference, Cancelled: o.OriginCancelled},
 	}
@@ -1369,7 +1369,7 @@ func (s *server) ListManufacturingOrders(ctx context.Context, req gen.ListManufa
 			Produced: r.Produced, SiteID: r.SiteID, DueDate: r.DueDate, PlannedStart: r.PlannedStart, PlannedFinish: r.PlannedFinish,
 			Priority: r.Priority, ResponsibleUserID: r.ResponsibleUserID, OriginKind: r.OriginKind, OriginOrderID: r.OriginOrderID,
 			OriginLineID: r.OriginLineID, OriginReference: r.OriginReference, OriginCancelled: r.OriginCancelled, BackorderOfID: r.BackorderOfID,
-			Status: r.Status, CreatedAt: r.CreatedAt}
+			Status: r.Status, CreatedAt: r.CreatedAt, Revision: r.Revision}
 		var reservation *string
 		if r.ReservationStatus != "" {
 			reservation = &r.ReservationStatus

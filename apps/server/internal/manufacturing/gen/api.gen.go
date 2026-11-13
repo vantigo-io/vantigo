@@ -1838,7 +1838,10 @@ type ManufacturingOrderSummary struct {
 	// ReservationStatus From the stored copies (M21a); null unless the order is confirmed or in progress.
 	ReservationStatus *ManufacturingReservationStatus `json:"reservationStatus"`
 	Responsible       *ManufacturingPerson            `json:"responsible"`
-	SiteId            int64                           `json:"siteId"`
+
+	// Revision The order's revision as the list read it, for a merge chosen from the list (manufacturing phase 2 M125).
+	Revision int32 `json:"revision"`
+	SiteId   int64 `json:"siteId"`
 
 	// Status A manufacturing order's state (M19).
 	Status ManufacturingOrderStatus `json:"status"`
