@@ -1,0 +1,59 @@
+{
+  "_comment": "Hand-written from the Account and AccountsResponse schemas of Folio's OpenAPI document (https://api.folio.no/v2/api.yml, read 2026-11-13). Not recorded from a real Folio account. The last account's type is outside Folio's enum on purpose, for a type the adapter does not know. The adapter ignores this field.",
+  "accounts": [
+    {
+      "accountNumber": "36061234567",
+      "balance": "15230.50",
+      "balanceUpdatedAt": "2026-11-12T14:02:00Z",
+      "matchingTransactionsAt": "2026-11-12T14:02:00Z",
+      "completeTransactionsAt": "2026-11-10T09:00:00Z",
+      "name": "Driftskonto",
+      "type": "Operational"
+    },
+    {
+      "accountNumber": "36065555555",
+      "balance": "4100.00",
+      "balanceUpdatedAt": "2026-11-11T08:00:00Z",
+      "matchingTransactionsAt": "2026-11-11T08:00:00Z",
+      "completeTransactionsAt": "2026-11-11T08:00:00Z",
+      "name": "Skattetrekk",
+      "type": "Tax"
+    },
+    {
+      "accountNumber": "36069876543",
+      "balance": "50000.00",
+      "balanceUpdatedAt": "2026-11-12T14:02:00Z",
+      "matchingTransactionsAt": "2026-11-12T14:02:00Z",
+      "completeTransactionsAt": "2026-11-12T14:02:00Z",
+      "name": "Sparekonto",
+      "type": "Savings"
+    },
+    {
+      "accountNumber": "36061111111",
+      "balance": "0.00",
+      "balanceUpdatedAt": "2026-10-01T08:00:00Z",
+      "matchingTransactionsAt": "2026-10-01T08:00:00Z",
+      "completeTransactionsAt": "2026-10-01T08:00:00Z",
+      "name": "Moms",
+      "type": "Earmarks"
+    },
+    {
+      "accountNumber": "9836061277190",
+      "balance": "1200.00",
+      "balanceUpdatedAt": "2026-11-12T10:00:00Z",
+      "matchingTransactionsAt": "2026-11-12T10:00:00Z",
+      "completeTransactionsAt": "2026-11-12T10:00:00Z",
+      "name": "Kort",
+      "type": "Card"
+    },
+    {
+      "accountNumber": "36062222222",
+      "balance": "0.00",
+      "balanceUpdatedAt": "2026-11-01T08:00:00Z",
+      "matchingTransactionsAt": "2026-11-01T08:00:00Z",
+      "completeTransactionsAt": "2026-11-01T08:00:00Z",
+      "name": "Ny kontotype",
+      "type": "Pension"
+    }
+  ]
+}

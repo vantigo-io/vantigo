@@ -1,0 +1,118 @@
+{
+  "_comment": "Hand-written from the Transaction and TransactionResponse schemas of Folio's OpenAPI document (https://api.folio.no/v2/api.yml, read 2026-11-13), as the answer for account 36061234567. Not recorded from a real Folio account: whether creditor.accountNumber is the account asked for on a credit, in which form, and whether kid arrives on an incoming payment are unverified (design R4, R8). The adapter ignores this field.",
+  "transactions": {
+    "booked": [
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a01",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c01",
+        "description": "Betaling med KID",
+        "bookingDate": "2026-11-10",
+        "kid": "1000010010",
+        "creditor": { "name": "Eksempel AS", "accountNumber": "36061234567" },
+        "debtor": { "name": "Kari Nordmann", "accountNumber": "12345678903" },
+        "transactionAmount": { "amount": "1250.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "1250.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": false
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a02",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c02",
+        "description": "Faktura 10002",
+        "bookingDate": "2026-11-10",
+        "creditor": { "name": "Eksempel AS", "accountNumber": "36061234567" },
+        "debtor": { "name": "Ola Nordmann", "accountNumber": "98765432109" },
+        "transactionAmount": { "amount": "499.50", "currency": "NOK" },
+        "currencyAmount": { "amount": "499.50", "currency": "NOK" },
+        "attachments": [],
+        "complete": false
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a03",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c03",
+        "paymentId": "7c3e2b10-9a4d-4e5f-8b6a-3c2d1e0f9a03",
+        "description": "Leverandør Rør AS",
+        "bookingDate": "2026-11-11",
+        "kid": "2000020025",
+        "creditor": { "name": "Rør AS", "accountNumber": "98760012345" },
+        "debtor": { "name": "Eksempel AS", "accountNumber": "36061234567" },
+        "transactionAmount": { "amount": "8000.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "8000.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": true
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a04",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c04",
+        "description": "KAFFEBRENNERIET",
+        "bookingDate": "2026-11-11",
+        "cardAuthorization": {
+          "cardId": "8f1fc8d3-7900-4c05-8d67-f513ef760111",
+          "merchantId": "285f4fe1-00aa-40cf-8d22-d7b024473bbb",
+          "merchantName": "KAFFEBRENNERIET",
+          "mcc": 5814,
+          "terminalId": "14655964",
+          "physicalTerminal": true,
+          "currencyAmount": { "amount": "89.00", "currency": "NOK" }
+        },
+        "creditor": { "name": "KAFFEBRENNERIET" },
+        "debtor": { "name": "Eksempel AS", "accountNumber": "36061234567" },
+        "transactionAmount": { "amount": "89.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "89.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": false
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a05",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c05",
+        "description": "Til sparekonto",
+        "bookingDate": "2026-11-12",
+        "creditorEventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c55",
+        "creditor": { "name": "Sparekonto", "accountNumber": "36069876543" },
+        "debtor": { "name": "Driftskonto", "accountNumber": "36061234567" },
+        "transactionAmount": { "amount": "5000.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "5000.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": true
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a06",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c06",
+        "description": "Fra skattetrekk",
+        "bookingDate": "2026-11-12",
+        "creditorEventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c06",
+        "creditor": { "name": "Driftskonto", "accountNumber": "36061234567" },
+        "debtor": { "name": "Skattetrekk", "accountNumber": "36065555555" },
+        "transactionAmount": { "amount": "300.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "300.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": true
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a07",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c07",
+        "description": "Betaling med KID",
+        "bookingDate": "2026-11-12",
+        "kid": "1000020018",
+        "creditor": { "name": "Eksempel AS", "accountNumber": "NO14 3606 1234 567" },
+        "debtor": { "name": "Per Hansen", "accountNumber": "15031234567" },
+        "transactionAmount": { "amount": "0.01", "currency": "NOK" },
+        "currencyAmount": { "amount": "0.01", "currency": "NOK" },
+        "attachments": [],
+        "complete": false
+      },
+      {
+        "id": "0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a08",
+        "eventId": "5d1e7a40-0f2b-4b7a-8c11-2a6e9b3f4c08",
+        "description": "Innbetaling",
+        "bookingDate": "2026-11-13",
+        "creditor": { "name": "Eksempel AS" },
+        "debtor": { "name": "Lise Berg", "accountNumber": "12340056789" },
+        "transactionAmount": { "amount": "750.00", "currency": "NOK" },
+        "currencyAmount": { "amount": "750.00", "currency": "NOK" },
+        "attachments": [],
+        "complete": false
+      }
+    ]
+  }
+}

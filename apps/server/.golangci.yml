@@ -1804,6 +1804,8 @@ linters:
               desc: "googletest is a test fake: only _test.go files may import it"
             - pkg: github.com/vantigo-io/vantigo/server/internal/meta/metatest
               desc: "metatest is a test fake: only _test.go files may import it"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/bankfeed/folio/foliotest
+              desc: "foliotest is a test fake: only _test.go files may import it"
         operations:
           # The dispatcher calls any operation of the merged contract
           # in-process, through the router, as the assistant's person or as an
@@ -1848,6 +1850,7 @@ linters:
             - "**/internal/module/**"
             - "**/internal/contracts/**"
             - "**/internal/apicommon/**"
+            - "**/internal/bankfeed/**"
             - "**/internal/buildinfo/**"
             - "**/internal/holidays/**"
             - "**/internal/config/**"
