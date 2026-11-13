@@ -17,7 +17,10 @@ import { type EditableLine, fromLine, incompleteLines } from "./lines";
 export const useEditorState = (document: Quote | Order | Subscription) => {
   const { t } = useOrdersFormat();
   const [header, setHeader] = useState<HeaderState>(() => headerOf(document));
-  const [lines, setLines] = useState<EditableLine[]>(() => document.lines.map((line) => fromLine(line)));
+  // A kit's child lines are the server's, written from their kit
+  // (manufacturing phase 2 M145): the editor holds the kit alone.
+  const ownLines = document.lines.filter((line) => line.parentLineId == null);
+  const [lines, setLines] = useState<EditableLine[]>(() => ownLines.map((line) => fromLine(line)));
   const [dirty, setDirty] = useState(false);
   const [refused, setRefused] = useState<ReadonlyMap<number, string>>(new Map());
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -78,7 +81,7 @@ export const useEditorState = (document: Quote | Order | Subscription) => {
     checkLines,
     showRefusal,
     hasOptional: lines.some((line) => line.optional),
-    stale: lines.some((line) => line.changed) || lines.length !== document.lines.length,
+    stale: lines.some((line) => line.changed) || lines.length !== ownLines.length,
   };
 };
 

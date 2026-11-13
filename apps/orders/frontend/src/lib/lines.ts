@@ -75,6 +75,16 @@ const savedPackagings = (line: Line, current: readonly VariantPackaging[] = []):
   return saved && !current.some((p) => p.id === saved.id) ? [...current, saved] : [...current];
 };
 
+/** An order's child lines by their kit line's id (manufacturing phase 2 M145). */
+export const kitChildrenOf = (lines: readonly Line[]): Map<number, Line[]> => {
+  const out = new Map<number, Line[]>();
+  for (const line of lines) {
+    if (line.parentLineId == null) continue;
+    out.set(line.parentLineId, [...(out.get(line.parentLineId) ?? []), line]);
+  }
+  return out;
+};
+
 /** A line the server answered, as an editor row, offered its variant's current packagings when they are known. */
 export const fromLine = (line: Line, current?: readonly VariantPackaging[]): EditableLine => ({
   key: `line-${line.id}`,
