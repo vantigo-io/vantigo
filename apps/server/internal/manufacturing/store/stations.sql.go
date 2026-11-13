@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -28,6 +29,32 @@ DELETE FROM manufacturing.station_work_centers WHERE station_id = $1
 
 func (q *Queries) DeleteStationWorkCenters(ctx context.Context, stationID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteStationWorkCenters, stationID)
+	return err
+}
+
+const insertStationWorkCenterChange = `-- name: InsertStationWorkCenterChange :exec
+INSERT INTO manufacturing.station_work_center_changes (station_id, before_ids, after_ids, actor_user_id, actor_display, changed_at)
+VALUES ($1, $2::bigint[], $3::bigint[], $4, $5, $6)
+`
+
+type InsertStationWorkCenterChangeParams struct {
+	StationID    uuid.UUID
+	BeforeIds    []int64
+	AfterIds     []int64
+	ActorUserID  *uuid.UUID
+	ActorDisplay string
+	Now          time.Time
+}
+
+func (q *Queries) InsertStationWorkCenterChange(ctx context.Context, arg InsertStationWorkCenterChangeParams) error {
+	_, err := q.db.Exec(ctx, insertStationWorkCenterChange,
+		arg.StationID,
+		arg.BeforeIds,
+		arg.AfterIds,
+		arg.ActorUserID,
+		arg.ActorDisplay,
+		arg.Now,
+	)
 	return err
 }
 
@@ -99,7 +126,7 @@ SELECT EXISTS (
     WHERE w.id = $1
       AND (EXISTS (SELECT 1 FROM manufacturing.station_work_centers s
                    WHERE s.station_id = $2 AND s.work_center_id = w.work_center_id)
-           OR (NOT $3::boolean AND w.work_center_group_id IS NOT NULL AND EXISTS (
+           OR (NOT $3::boolean AND w.work_center_group_id IS NOT NULL AND w.status IN ('pending', 'ready') AND EXISTS (
                    SELECT 1 FROM manufacturing.work_center_group_members m
                    JOIN manufacturing.station_work_centers s ON s.work_center_id = m.work_center_id AND s.station_id = $2
                    WHERE m.group_id = w.work_center_group_id)))
@@ -114,9 +141,9 @@ type StationServesWorkOrderParams struct {
 
 // StationServesWorkOrder reports whether a work order is at one of the
 // station's centers or — a group's work order (manufacturing phase 2 M119)
-// not yet fixed at a member — whether one of its group's members is. With
-// fixed_only the group does not count: an action on a started work order is
-// judged where it runs.
+// not yet started, so not yet fixed at a member — whether one of its group's
+// members is. With fixed_only the group does not count: an action on a
+// started work order is judged where it runs.
 func (q *Queries) StationServesWorkOrder(ctx context.Context, arg StationServesWorkOrderParams) (bool, error) {
 	row := q.db.QueryRow(ctx, stationServesWorkOrder, arg.WorkOrderID, arg.StationID, arg.FixedOnly)
 	var serves bool

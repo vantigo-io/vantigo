@@ -8436,7 +8436,7 @@ paths:
             x-vantigo-access: permission:manufacturing:access
             x-vantigo-assistant: never
         put:
-            description: Replaces the work centers a shared shop-floor station serves (M131). Its shop floor opens on them, and every request its operators make that names a work center, a work order or a production is checked against them. Archived work centers may stay; an unknown one is work_center_unknown. At most 100.
+            description: Replaces the work centers a shared shop-floor station serves (M131). Its shop floor opens on them, and every request its operators make that names a work center, a work order or a production is checked against them. Archived work centers may stay; an unknown one is work_center_unknown. At most 100. A station Identity does not know is 404. A change is recorded with who made it and the centers before and after.
             operationId: putManufacturingStationWorkCenters
             parameters:
                 - in: path
@@ -8476,6 +8476,8 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
+                "404":
+                    description: Not Found — no such station. The body is empty.
             summary: Set a station's work centers
             tags:
                 - Manufacturing

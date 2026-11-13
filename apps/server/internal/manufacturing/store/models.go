@@ -333,6 +333,16 @@ type ManufacturingStationWorkCenter struct {
 	WorkCenterID int64
 }
 
+type ManufacturingStationWorkCenterChange struct {
+	ID           int64
+	StationID    uuid.UUID
+	BeforeIds    []int64
+	AfterIds     []int64
+	ActorUserID  *uuid.UUID
+	ActorDisplay string
+	ChangedAt    time.Time
+}
+
 type ManufacturingSuggestion struct {
 	ID             int64
 	RunID          int64

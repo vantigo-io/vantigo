@@ -11888,6 +11888,14 @@ func (response PutManufacturingStationWorkCenters403JSONResponse) VisitPutManufa
 	return err
 }
 
+type PutManufacturingStationWorkCenters404Response struct {
+}
+
+func (response PutManufacturingStationWorkCenters404Response) VisitPutManufacturingStationWorkCentersResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetManufacturingStatsRequestObject struct {
 }
 
