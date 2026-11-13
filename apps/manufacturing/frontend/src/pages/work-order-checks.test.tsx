@@ -81,6 +81,32 @@ describe("the work order's Checks panel (manufacturing phase 2 M101)", () => {
     expect(sent(fetchMock, "POST", /\/checks\/2\/result$/)[0].body).toEqual({ value: "99.5" });
   });
 
+  it("turns a measure's sign with a button, for a keypad without a minus", async () => {
+    const fetchMock = stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      workOrders: [workOrderFixture({ checks })],
+      write: (method, path) =>
+        method === "POST" && /\/checks\/\d+\/result$/.test(path)
+          ? jsonResponse(200, {
+              workOrder: workOrderFixture({ checks }),
+              instructions: "",
+              components: [],
+              openLogs: [],
+              myOpenLog: null,
+              block: null,
+            })
+          : undefined,
+    });
+    renderRoute(URL);
+    const weight = (await screen.findByText("Fill weight")).closest("[data-check-id]") as HTMLElement;
+    await userEvent.type(within(weight).getByLabelText(/Measured value/), "0,5");
+    await userEvent.click(within(weight).getByRole("button", { name: "Plus or minus" }));
+    expect(within(weight).getByLabelText(/Measured value/)).toHaveValue("-0,5");
+    await userEvent.click(within(weight).getByRole("button", { name: "Record" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/checks\/2\/result$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/checks\/2\/result$/)[0].body).toEqual({ value: "-0.5" });
+  });
+
   it("takes a photo through the camera input and records it with its photo", async () => {
     const fetchMock = stubManufacturingApi({
       meta: { canWorkShopFloor: true },

@@ -1,6 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { ApiValidationError, MANUFACTURING_QUERY_KEY, refusalCode, refusalCodes, refusedPath } from "../api/request";
+import {
+  ApiValidationError,
+  MANUFACTURING_QUERY_KEY,
+  refusalCode,
+  refusalCodes,
+  refusedChecks,
+  refusedPath,
+} from "../api/request";
 import { formatDecimal, roundDecimal } from "./decimal";
 import "../i18n";
 
@@ -34,7 +41,7 @@ export const useManufacturingFormat = () => {
 
 /**
  * The words for a refusal: the module's own for a code it answers
- * (`refusal.<code>`, a cycle with its path of SKUs), else what the server
+ * (`refusal.<code>`, a cycle with its path of SKUs, missing checks by name), else what the server
  * said — a field error's first message, or the problem's detail. A failure
  * with no HTTP status never reached the server and says so; an answer
  * without words of its own says its status.
@@ -46,6 +53,13 @@ export const refusalMessage = (t: TFunction, error: Error): string => {
   if (code === "bom_cycle") {
     const path = refusedPath(error);
     if (path.length > 0) return t("refusal.bom_cycle_path", { path: path.map((step) => step.sku).join(" → ") });
+  }
+  if (code === "checks_incomplete") {
+    const checks = refusedChecks(error);
+    if (checks.length > 0)
+      return t("refusal.checks_incomplete_named", {
+        checks: checks.map((check) => `${check.workOrderSequence} · ${check.workOrderName}: ${check.title}`).join("; "),
+      });
   }
   if (code && (refusalCodes as readonly string[]).includes(code)) return t(`refusal.${code}`);
   if (error instanceof ApiValidationError) {

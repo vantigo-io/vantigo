@@ -97,7 +97,7 @@ export const DeviationsPage = () => {
         }
       />
       <DeviationDialog
-        opened={reporting}
+        opened={reporting && canRecordQuality(meta.data)}
         onClose={() => setReporting(false)}
         orderId={search.orderId}
         lotId={search.lotId}
