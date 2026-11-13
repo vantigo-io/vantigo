@@ -9,8 +9,12 @@ import { TOUCH_CARD_MIN_HEIGHT } from "../lib/shop-floor";
 const operatorsText = (workOrder: ManufacturingWorkOrder) =>
   workOrder.operators.map((operator) => operator.user.displayName).join(", ");
 
-/** One work order of a queue or a list as a large card linking to its view (M31). */
-export const WorkOrderCard = ({ workOrder }: { workOrder: ManufacturingWorkOrder }) => {
+/**
+ * One work order of a queue or a list as a large card linking to its view
+ * (M31); with `onOpen`, a button that opens it in place instead (a station's
+ * page, which links nowhere).
+ */
+export const WorkOrderCard = ({ workOrder, onOpen }: { workOrder: ManufacturingWorkOrder; onOpen?: () => void }) => {
   const { t, quantity, day } = useManufacturingFormat();
   const { order } = workOrder;
   const running = operatorsText(workOrder);
@@ -19,7 +23,18 @@ export const WorkOrderCard = ({ workOrder }: { workOrder: ManufacturingWorkOrder
       withBorder
       padding="lg"
       mih={TOUCH_CARD_MIN_HEIGHT}
-      renderRoot={(props) => <Link {...workOrderLinkOptions(workOrder.id)} {...props} />}
+      renderRoot={(props) =>
+        onOpen ? (
+          <button
+            type="button"
+            {...props}
+            onClick={onOpen}
+            style={{ ...props.style, textAlign: "start", width: "100%" }}
+          />
+        ) : (
+          <Link {...workOrderLinkOptions(workOrder.id)} {...props} />
+        )
+      }
       aria-label={`${order.number} · ${workOrder.name}`}
     >
       <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">

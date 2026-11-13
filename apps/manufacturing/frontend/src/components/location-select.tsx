@@ -1,6 +1,7 @@
-import { Select } from "@mantine/core";
+import { Select, Text } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { siteLocationsQueryOptions } from "../api/locations";
+import { useAtStation } from "../lib/station";
 
 export interface LocationSelectProps {
   label: string;
@@ -33,7 +34,18 @@ export const LocationSelect = ({
   error,
   compact,
 }: LocationSelectProps) => {
-  const locations = useQuery({ ...siteLocationsQueryOptions(siteId ?? 0), enabled: siteId !== undefined });
+  // A station reads no site's locations (M135): the default location stands.
+  const atStation = useAtStation();
+  const locations = useQuery({
+    ...siteLocationsQueryOptions(siteId ?? 0),
+    enabled: siteId !== undefined && !atStation,
+  });
+  if (atStation)
+    return compact ? (
+      <Text size="sm" c="dimmed">
+        {placeholder ?? "—"}
+      </Text>
+    ) : null;
   const options = (locations.data ?? [])
     .filter((location) => location.active || location.id === value)
     .map((location) => ({ value: String(location.id), label: location.fullCode }));

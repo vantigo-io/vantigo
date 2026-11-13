@@ -1055,6 +1055,14 @@ export const manufacturingCatalog = {
     unbuildQuarantineReleased: "Quarantine released",
     unbuildReleasedAt: "Quarantine released",
     unbuildNotFound: "There is no such unbuild.",
+    // A shared shop-floor station (manufacturing phase 2 M140).
+    stationNoWorkCenters: "This station serves no work center yet",
+    stationNoWorkCentersHint:
+      "An administrator chooses the work centers a station serves under Workspace → Stations. Until then there is nothing to work on here.",
+    stationBack: "Back",
+    stationWorkCenters: "Work centers",
+    stationWorkCentersHint:
+      "The station's shop floor opens on these work centers, and its operators reach only them and the work orders at them.",
   },
   nb: {
     manufacturing: "Produksjon",
@@ -2103,6 +2111,13 @@ export const manufacturingCatalog = {
     unbuildQuarantineReleased: "Karantenen er opphevet",
     unbuildReleasedAt: "Karantene opphevet",
     unbuildNotFound: "Det finnes ingen slik demontering.",
+    stationNoWorkCenters: "Denne stasjonen betjener ingen arbeidsstasjon ennå",
+    stationNoWorkCentersHint:
+      "En administrator velger hvilke arbeidsstasjoner en stasjon betjener under Arbeidsområde → Stasjoner. Til da er det ingenting å arbeide med her.",
+    stationBack: "Tilbake",
+    stationWorkCenters: "Arbeidsstasjoner",
+    stationWorkCentersHint:
+      "Stasjonens verksted åpner på disse arbeidsstasjonene, og operatørene når bare dem og arbeidsordrene ved dem.",
   },
 } satisfies CatalogResources;
 

@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/live"
@@ -292,5 +295,60 @@ func TestStation_LiveTopics(t *testing.T) {
 	other := h.atStation(t, everything...)
 	if err := live.AuthorizeStation(ctx, h.Deps().Access, other.station, topics["manufacturing.work-center"], key(f.saw.Id)); err == nil {
 		t.Error("another station heard SAW")
+	}
+}
+
+// stationOperation is one entry of the station page's allowed set.
+type stationOperation struct {
+	OperationID string `json:"operationId"`
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+}
+
+// TestStation_ThePagesAllowedSetIsTheContracts holds the station page's list
+// of the requests it may make (apps/manufacturing/frontend/src/
+// station-operations.json, which the page's own test checks every request
+// against) to the contracts: Manufacturing's entries are exactly its
+// operations marked x-vantigo-station, Identity's exactly the station's own
+// endpoints, so a request the router would refuse fails the page's test.
+func TestStation_ThePagesAllowedSetIsTheContracts(t *testing.T) {
+	t.Parallel()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "manufacturing", "frontend", "src", "station-operations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file map[string][]stationOperation
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	contract := func(name string, keep func(op *openapi3.Operation) bool) []stationOperation {
+		doc, err := openapi.Load(context.Background(), name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []stationOperation
+		for path, item := range doc.Paths.Map() {
+			for method, op := range item.Operations() {
+				if keep(op) {
+					out = append(out, stationOperation{OperationID: op.OperationID, Method: method, Path: path})
+				}
+			}
+		}
+		return out
+	}
+	byID := func(ops []stationOperation) []stationOperation {
+		slices.SortFunc(ops, func(a, b stationOperation) int { return strings.Compare(a.OperationID, b.OperationID) })
+		return ops
+	}
+	marked := contract("manufacturing", func(op *openapi3.Operation) bool { return op.Extensions["x-vantigo-station"] == "allowed" })
+	if got, want := byID(file["manufacturing"]), byID(marked); !slices.Equal(got, want) {
+		t.Errorf("the page's Manufacturing operations = %v\nthe contract's x-vantigo-station operations = %v", got, want)
+	}
+	stations := contract("identity", func(op *openapi3.Operation) bool {
+		return strings.HasPrefix(op.OperationID, "getIdentityStation") && op.OperationID != "getIdentityStations" ||
+			strings.HasPrefix(op.OperationID, "postIdentityStationOperators") || op.OperationID == "postIdentityStationPair"
+	})
+	if got, want := byID(file["identity"]), byID(stations); !slices.Equal(got, want) {
+		t.Errorf("the page's Identity operations = %v\nthe station endpoints = %v", got, want)
 	}
 }

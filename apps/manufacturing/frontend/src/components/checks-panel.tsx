@@ -16,6 +16,7 @@ import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } fr
 import { resizePhoto } from "../lib/photo";
 import { toggleSign } from "../lib/quality";
 import { deviationLinkOptions } from "../lib/routes";
+import { useAtStation } from "../lib/station";
 import { Markdown } from "./markdown";
 
 /** The station's buttons: well past a 48 px touch target (M101). */
@@ -41,6 +42,7 @@ const CheckRow = ({
   canRecord: boolean;
 }) => {
   const { t, decimal, stamp } = useManufacturingFormat();
+  const atStation = useAtStation();
   const invalidate = useInvalidateManufacturing();
   const [busy, setBusy] = useState(false);
   const [value, setValue] = useState("");
@@ -143,12 +145,13 @@ const CheckRow = ({
                 {result.note}
               </Text>
             )}
-            {result.photoId !== null && (
+            {result.photoId !== null && !atStation && (
               <Anchor href={checkPhotoUrl(workOrderId, result.photoId)} target="_blank" rel="noreferrer" size="md">
                 {t("viewPhoto")}
               </Anchor>
             )}
-            {result.deviationId !== null && (
+            {result.deviationId !== null && atStation && <Text size="md">{result.deviationNumber}</Text>}
+            {result.deviationId !== null && !atStation && (
               <Anchor
                 size="md"
                 renderRoot={(props) => <Link {...deviationLinkOptions(result.deviationId ?? 0)} {...props} />}
