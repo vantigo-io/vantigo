@@ -703,7 +703,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     which calls with no principal. `SalesOrderLines` carries the customer's id and never
     their name: Manufacturing shows the name only to a caller who also holds
     `orders:access`, read through `contracts.CustomerDirectory` (manufacturing design
-    M43a). The consumer decides before it
+    M43a). Its third call, `Unreserved(variantIDs, siteID)` (manufacturing phase 2
+    M107a), carries no customer at all — order and line ids, the variant and the open
+    quantity a line does not hold reserved — and its consumer, the replenishment job,
+    calls it with no principal and shows only the sum. Orders reads the reservations it
+    subtracts through `StockLedger.ReservationsFor` on its own read-only transaction:
+    a provider may call the ledger on a transaction of its own, never on the caller's. The consumer decides before it
     calls, with the request's context and never inside a transaction, and shows only
     what its own rule allows; the provider answers whatever was logged. A contract is
     one class or the other, said in its doc comment: a provider-gated read is never
@@ -1341,8 +1346,8 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     - **It is composed whatever `MODULES` says**, as rule 8's holders are: a
       reservation made while Inventory was on is still released by a cancel, an edit or
       a manual marking after it is turned off. Whether to reserve and issue at all the
-      caller reads from `Deps.Stock`, the read of on hand, available, the lots, the sites and the
-      locations holding a variant (`contracts.Stock`, a single-provider slot set only when
+      caller reads from `Deps.Stock`, the read of on hand, available, the lots, the sites,
+      the placements and the locations holding a variant (`contracts.Stock`, a single-provider slot set only when
       Inventory is enabled), on the pool and never inside the caller's transaction. Each
       `contracts.StockLocation` that `Stock.Locations` answers carries **`Primary`**
       (`contracts/stock.go`, Inventory phase 2 I55): whether the location is the variant's
@@ -1991,7 +1996,9 @@ manufacturing-order write's own transaction, whose answer is where it judges a v
 goods and takes an order line's snapshot (rule 21) — and `contracts.Stock` (inventory,
 **required**): `Sites`, `SiteLocations`, `Locations` and `Available` — the site a work
 center stands at and an order's locations, where a production's components lie, and
-the availability of the BoM overview and the order page — all on the pool, before or
+the availability of the BoM overview and the order page — and `Placements` (manufacturing
+phase 2 M106), the placements with a reorder point and their usable on hand, reserved
+and incoming, which the replenishment job projects from — all on the pool, before or
 after a transaction. Its orders call `contracts.StockLedger` (rule 24) on the order
 write's own transaction, after `LockVariants` and the order's row: `ReserveForProduction`,
 `Release`, `Produce` and `ReservationsFor`. Identity's `Deps.Users`
@@ -2011,8 +2018,11 @@ Orders' order page; it handles `orders.sales_order.confirmed` and
 `orders.sales_order.cancelled` and publishes `manufacturing.order.done` (rule 23). It
 writes nothing outside the `manufacturing` schema, and has two background workers:
 `manufacturing-erasure`, the rule-19 sweep that blanks the notes of erased operators' time
-logs, and `manufacturing.mto-worker`, which makes the orders the make-to-order requests
-ask for, holding no connection while it reads a contract.
+logs, `manufacturing.mto-worker`, which makes the orders the make-to-order requests
+ask for, holding no connection while it reads a contract, and the lease worker
+`manufacturing.replenishment` (phase 2 M109), which reads `Stock.Placements` and
+`SalesOrderLines.Unreserved` the same way before it replaces a site's suggestions in one
+transaction of its own; it is no handler (rule 23).
 `MODULES` refuses it without `products` or `inventory`. See
 [Manufacturing](/en/reference/manufacturing/).
 

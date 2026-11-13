@@ -85,7 +85,7 @@ shorter than yours:
 | [Products](/en/user/products/) | Products, Categories, Tax categories |
 | [Inventory](/en/user/inventory/) | Overview, Lots, Expiring, Transfers, Movements, Receipts, Counts, Low stock, Import opening balances (and placements) |
 | [Orders](/en/user/orders/) | Quotes, Sales orders, Deliveries, Subscriptions, Quote templates, Sales analysis, Orders settings |
-| [Manufacturing](/en/user/manufacturing/) | Overview, Manufacturing orders, Shop floor, Production schedule, Deviations, Bills of materials, Work centers |
+| [Manufacturing](/en/user/manufacturing/) | Overview, Manufacturing orders, Suggestions, Shop floor, Production schedule, Deviations, Bills of materials, Work centers |
 | [Knowledge](/en/user/knowledge/) | Articles, Trash |
 | [Energy](/en/user/energy/) | Metering points |
 | [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |

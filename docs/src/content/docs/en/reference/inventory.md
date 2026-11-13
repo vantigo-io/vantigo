@@ -1,6 +1,6 @@
 ---
 title: "Inventory module"
-description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; and their screens (L1b) — the lots list, a lot's page and its edit, the lot page's holds, a lot's files in the inventory-lots storage scope and their deletion worker, stock per lot and held, the lookup's LOT token and lot numbers, and Inventory's live topics; and the rest of Inventory with lots (L2) — counts per lot, a lot on each transfer line, the import's lot columns, the expiring list and its CSV, the lots' attention items and lot labels; and traceability (T) — the trace of a lot both ways over its movement lines, unbuilds as reverse edges, who received it through Orders' contracts.DeliveryTrace, its CSV and PDF, the block with its downstream list walked again inside the block, and GS1-128 lot labels; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; inspection on receipt — a variant's rules and the receipt's inspection hold; the nine permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
+description: "The stock of the catalog's goods in warehouses and stores: sites, each the root of a tree of typed locations with codes and full codes, created one at a time or in bulk, re-parented, archived and deleted under their rules; the ledger of immutable movements — adjustments, moves, goods receipts and counts — whose lines keep a balance per variant and location, exact to three decimals, never below zero, goods only, within one site, idempotent by a client key, and may be entered in packagings; counts that freeze the expected quantities, are counted and post their differences as one movement; location labels; the opening-balance import; the catalog's variants read and locked through contracts.ProductCatalog on the posting's own transaction, and the VariantReferenceHolder that makes Products refuse to delete a stocked or reserved variant or make its product a service; reservations per site and the issue movement kind behind contracts.Stock and contracts.StockLedger, which Orders reserves and delivers through, and the site's Fulfils orders flag; the production movement kind and the reserve for production, which Manufacturing consumes and produces through; transfers between sites — drafts with their own number series, the send, the receive in parts, the difference closed with a reason, the send and receive in one, the cancel — written as actions in one order, posted as transfer_out and transfer_in movements each within its site, idempotent by derived and client keys, their stock in transit as a quantity on the line, the in_transit hold and the følgeseddel; placements — a variant's primary location, reorder point and maximum per site, the primary location as every form's default and contracts.StockLocation.Primary, the low-stock rule and the rounding up to whole packagings, the low-stock list, its CSV and Create transfer from it, and the placements import, idempotent by the file; lots (manufacturing phase 2 L1a) — numbered quantities of a tracked variant, a balance per (variant, location, lot), holds owned by the documents that put them and the status they give, expiry against the workspace's today, FEFO and AutoLot, usable on hand, the lot-aware ledger contracts; and their screens (L1b) — the lots list, a lot's page and its edit, the lot page's holds, a lot's files in the inventory-lots storage scope and their deletion worker, stock per lot and held, the lookup's LOT token and lot numbers, and Inventory's live topics; and the rest of Inventory with lots (L2) — counts per lot, a lot on each transfer line, the import's lot columns, the expiring list and its CSV, the lots' attention items and lot labels; and traceability (T) — the trace of a lot both ways over its movement lines, unbuilds as reverse edges, who received it through Orders' contracts.DeliveryTrace, its CSV and PDF, the block with its downstream list walked again inside the block, and GS1-128 lot labels; the reads — a location's contents, a product's and a variant's stock with what is incoming, the stock totals with what is in transit, the stock at sites, the movements, the transfers, the lookup by code and the dashboard's figures and attention items, low stock among them; inspection on receipt — a variant's rules and the receipt's inspection hold; a placement's multiple and contracts.Stock.Placements for replenishment; the nine permissions and the both-views rule; the lock orders; the personal data kept as ledger records; the refusals, the switch, what comes next and the endpoints."
 sources:
   - apps/server/internal/inventory
   - apps/inventory/frontend
@@ -15,6 +15,7 @@ sources:
   - apps/server/internal/db/migrations/00164_inventory_lot_attachments.sql
   - apps/server/internal/db/migrations/00165_inventory_lot_counts_transfers.sql
   - apps/server/internal/db/migrations/00169_inventory_variant_rules.sql
+  - apps/server/internal/db/migrations/00170_inventory_placement_multiple.sql
   - apps/server/internal/contracts/stock.go
   - apps/host/frontend/src/routes/inventory
 ---
@@ -195,6 +196,15 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
     `VariantID`, `Number`, `Status` (manufacturing phase 2 M99) — what Manufacturing
     reads on the pool before it opens a deviation of a lot, so it can lock the lot's
     variant first. An unknown id has no entry; more than 1000 ids is a failure.
+  - `Placements(ctx, siteID)` — every [placement](#placement) with a reorder point at
+    the site, by variant id, with what the low-stock rule reads: a `StockPlacement` with
+    `VariantID`, `ReorderPoint`, `Maximum` and `Multiple` (`""` when unset), and
+    `OnHand` — **usable** on hand at the site, held and expired lots left out — `Reserved`
+    and `Incoming` by transfer (manufacturing phase 2 M106). One statement on the pool, the
+    low-stock list's figures; none for a site that is unknown or not active. More than
+    `MaxStockPlacements` (5000) is a failure. Manufacturing's
+    [replenishment](/en/reference/manufacturing/#replenishment) adds its own orders and
+    Orders' unreserved demand to it.
 
   `OnHand` and `Available` read on the pool in one snapshot, answer every variant asked
   in the order asked (one with nothing at `"0"` and no sites), as exact decimal text,
@@ -1850,21 +1860,26 @@ balances, and changes no stock.
 
 ### The placement
 
-Its three fields are each optional (I54):
+Its four fields are each optional (I54, manufacturing phase 2 M105):
 
 - **`primaryLocationId`** — an **active location of the site**, or null; anything else
   is `placement_location_invalid` (400);
 - **`reorderPoint`** — a quantity (I11) of 0 or more, or null;
 - **`maximum`** — a quantity of more than 0, or null, and **never below the reorder
-  point**: `maximum_below_reorder_point` (400).
+  point**: `maximum_below_reorder_point` (400);
+- **`multiple`** — a quantity of more than 0, or null (absent in the body is null): what
+  a suggestion is rounded up to a whole number of (migration
+  `00170_inventory_placement_multiple`, `ck_placements_multiple`). It is not one of the
+  fields that keep a placement: with only a multiple it is `placement_empty`, and a
+  placement whose primary location is cleared with nothing else set is removed with it.
 
-A placement with all three null is **deleted, never stored**: a `PUT` of three nulls is
+A placement with the first three null is **deleted, never stored**: a `PUT` of three nulls is
 `placement_empty` (400) — `DELETE` removes it — and the table's CHECK holds it. The write
 snapshots the variant's **SKU and name** for the [low-stock list](#the-low-stock-list)'s
 order and search; the list shows the catalog's current values.
 
 **`PUT /variants/{variantId}/placements/{siteId}`** (`stock-adjust` with both views)
-writes it, its body `{primaryLocationId, reorderPoint, maximum}`, an unknown property
+writes it, its body `{primaryLocationId, reorderPoint, maximum, multiple}`, an unknown property
 refused (I61):
 
 - with **`If-None-Match: *`** it **creates** the placement and answers **201**; one
@@ -1937,8 +1952,10 @@ reorder point is never low.
 
 ### Rounding to whole packagings
 
-When the variant has [packagings](/en/reference/products/#packagings) (I57), the
-**suggested** quantity is `needed` rounded **up** to a whole number of its **smallest**
+When the placement has a **multiple** (manufacturing phase 2 M105), `needed` is first
+rounded **up** to a whole number of it, `⌈needed ÷ multiple⌉ × multiple`. When the
+variant has [packagings](/en/reference/products/#packagings) (I57), the
+**suggested** quantity is that rounded **up** to a whole number of its **smallest**
 packaging — the fewest units, then `sort_order`, then id, among those holding more than
 0 — that is, `⌈needed ÷ size⌉ × size`; without one it is `needed`. The row carries
 `needed`, `suggested` and the packaging with its count, and the screen says so wherever a
@@ -1980,7 +1997,7 @@ point, not the catalog. Then, per page:
   variant (`OpenDraftsTo`).
 
 Each row carries the site, the variant, `onHand`, `reserved`, `available`, `incoming`,
-`reorderPoint`, `maximum`, `needed`, `suggested`, the `packaging` (`{id, name, kind,
+`reorderPoint`, `maximum`, `multiple`, `needed`, `suggested`, the `packaging` (`{id, name, kind,
 quantity, count}`), `elsewhere` and `openDrafts`. A missing catalog is 503.
 
 **Create transfer** is the UI's (I59): rows at **one** site are chosen and a from site —
@@ -2012,8 +2029,9 @@ body (`text/csv`) and sets placements across every site (I61):
 - **The file** is read by `srv/fileimport` as the
   [opening-balance import](#the-opening-balance-import)'s is — encoding, separator,
   4 MiB, **5000 rows** — and its header names **exactly** `sku`, `site`,
-  `primary_location`, `reorder_point` and `maximum`, in any order and any case; anything
-  else is a 400 on `file`.
+  `primary_location`, `reorder_point` and `maximum`, and optionally `multiple`
+  (manufacturing phase 2 M105), in any order and any case; anything else is a 400 on
+  `file`.
 - **Each row** is resolved before any transaction — the SKUs in **one `LookupSKUs`**, the
   sites by code and the locations by full code in one read each — and judged as a `PUT`
   would judge it, the first failure its outcome: a cell beyond the header
@@ -2021,10 +2039,12 @@ body (`text/csv`) and sets placements across every site (I61):
   `variant_not_found` or `variant_not_stockable` (a SKU two variants match ignoring case
   resolves to the first by id); `primary_location`, when given, a full code of an
   active location of that site, else `placement_location_invalid`; `reorder_point` 0 or
-  more and `maximum` more than 0, at most three decimals, else `quantity_invalid`; and
+  more and `maximum` and `multiple` more than 0, at most three decimals, else
+  `quantity_invalid`; and
   `maximum_below_reorder_point`.
-- **Each row sets all three fields**, an empty cell clearing its field, and a row
-  clearing all three **deletes** the placement. A variant and site named twice: the last
+- **Each row sets every field**, an empty cell clearing its field — a file without the
+  `multiple` column clears the multiple — and a row clearing the primary location, the
+  reorder point and the maximum **deletes** the placement. A variant and site named twice: the last
   row wins.
 - **A dry run** — `dryRun` defaults to **true** — answers 200 with every row and `ok`.
   A commit with any failing row writes **nothing** and answers 200 with `ok: false`.

@@ -771,7 +771,7 @@ filtered to the site.
 
 ## Set an item's primary location and reorder point
 
-A **placement** is three settings of one item at one site, each optional:
+A **placement** is four settings of one item at one site, each optional:
 
 - **Primary location** — *Where it is received and picked by default. Stock may still
   lie anywhere.* It is a suggestion, never a rule: a receipt line, a transfer's send and
@@ -780,19 +780,25 @@ A **placement** is three settings of one item at one site, each optional:
   in the item's unit.
 - **Maximum** — *The suggestion fills up to it.* More than 0, and never below the
   reorder point.
+- **Multiple** — *A suggestion is rounded up to a whole number of it, such as a batch
+  size.* More than 0. Manufacturing's [replenishment
+  suggestions](/en/user/manufacturing/#replenishment-suggestions) round to it, and so does
+  the low-stock list below. On its own it keeps no placement: set a primary location, a
+  reorder point or a maximum too.
 
 Open the item's stock page (from the lookup or the product page's **Stock** card). Under
-each site it shows the site's **Reorder point** and **Maximum** when they are set, and
+each site it shows the site's **Reorder point**, **Maximum** and **Multiple** when they are set, and
 **Low** while the item is low there. Press **Edit placement** under the site (it needs
 **Adjust stock** and both views); a site that holds none of the item is listed too, so
 you can set its placement before the first receipt. The dialog **Placement at Central
-warehouse** has the three fields; press **Save** — *Placement saved*. **Remove** deletes
+warehouse** has the four fields; press **Save** — *Placement saved*. **Remove** deletes
 the placement — *Placement removed* — and the item has no primary location, reorder
 point or maximum at the site any more.
 
 The dialog refuses what it cannot keep:
 
 - a maximum of 0 — *The maximum must be more than 0.*;
+- a multiple of 0 — *The multiple must be more than 0.*;
 - a maximum below the reorder point — *The maximum cannot be below the reorder point.*;
 - nothing set — *Set a primary location, a reorder point or a maximum — or remove the
   placement.*;
@@ -828,7 +834,8 @@ nothing low it says *Nothing is at or below its reorder point.*
 **The suggestion.** The list suggests what fills the item up: to its **maximum**, or,
 without one, to **one above the reorder point**, so that receiving the suggestion takes
 the row off the list — filling it only *to* the reorder point would leave it low. It is
-always at least 1. When the item has [packagings](/en/user/products/#packagings), the
+always at least 1. When the placement has a **multiple**, the suggestion is first rounded
+up to a whole number of it. When the item has [packagings](/en/user/products/#packagings), the
 suggestion is rounded **up** to a whole number of its **smallest** packaging, and the row
 says so under the quantity:
 
@@ -1012,15 +1019,16 @@ stock** and both views) and choose **Placements** under **What to import**.
 
 1. Press **Download template** for `placements.csv`, with the header
    `sku,site,primary_location,reorder_point,maximum` — exactly those five columns, in any
-   order. Fill in one row per item and site: the item's **SKU**, the site's **code**
+   order, and a sixth, `multiple`, if you want to set the multiple. Fill in one row per item and site: the item's **SKU**, the site's **code**
    (`OSL`), the primary location's **full code** (`OSL-A-03-2`), the **reorder point**
-   and the **maximum**, in the item's unit. Separators, decimal commas and the 5000-row
+   and the **maximum** (and the **multiple**), in the item's unit. Separators, decimal commas and the 5000-row
    limit are as for [opening balances](#import-opening-balances).
-2. **Each row sets all three fields.** An empty cell clears its field, and a row with all
-   three empty **removes** the placement. When a file names the same item and site twice,
+2. **Each row sets every field.** An empty cell clears its field — a file without the
+   `multiple` column clears the multiple — and a row with the primary location, reorder
+   point and maximum all empty **removes** the placement. When a file names the same item and site twice,
    the last row wins.
 3. Choose the **CSV file** and press **Dry run**. Nothing is written: each row shows its
-   **SKU**, **Site**, **Primary location**, **Reorder point**, **Maximum** and
+   **SKU**, **Site**, **Primary location**, **Reorder point**, **Maximum**, **Multiple** and
    **Outcome** — **OK**, **No such site**, **The site is archived**, **Not an active
    location of the site**, **No such SKU**, **A service, not kept in stock**, **Not a
    valid quantity** or **The maximum is below the reorder point**.
