@@ -395,12 +395,15 @@ arrives in quarantine until someone has inspected it. Switching it needs **Adjus
 From then on, every receipt of the item puts each lot it creates, or adds to, under a
 quarantine hold of cause **Inspection**, named by the receipt's movement. The receipt says
 so when it is posted: *2 lots held for inspection*. Received into a lot that holds stock
-already, the whole lot is in quarantine — what was there before with it — because a lot
-is one quantity: release it once the new goods are inspected.
+already, the whole lot is in quarantine — what was there before with it, the quantity
+accepted earlier included — because a lot is one quantity: release it once the new goods
+are inspected. While it is held, what is reserved of the item stays reserved, but a
+delivery does not propose or take the held lot: it picks another, or waits.
 
 The lots awaiting inspection are the inspection queue: the home page links to them as
-*Lots awaiting inspection*, and they are the **Lots** list filtered on **Quarantine** with
-the cause **Inspection**. On a lot's page, **Release** on the receipt's hold — with
+*Lots awaiting inspection*, and they are the **Lots** list filtered on the cause
+**Inspection**, with stock or without — every lot under an inspection hold, also one a
+recall has blocked as well. On a lot's page, **Release** on the receipt's hold — with
 **Manage lots** — ends it like any of the page's own holds.
 
 ### Report a deviation of a lot

@@ -168,10 +168,15 @@ under omfanget `manufacturing-quality`. Uten objektlagring satt opp nektes det �
 (*storage_not_configured*), og en bildekontroll kan ikke registreres; alle andre
 kontroller virker.
 
-Hvert bilde er en JPEG eller PNG på høyst 10 MB, slik nettbrettets kamera skrev det, uten
-det som står i det om hvor og når det ble tatt. Et bilde er en kvalitetsregistrering: det
-beholdes like lenge som arbeidsordren, også når resultatet registreres på nytt. Regn med
-noen få megabyte per bildekontroll per arbeidsordre. Et bilde som er lastet opp, men aldri
+Hvert bilde er en JPEG eller PNG på høyst 10 MB, uten det som står i det om hvor og når
+det ble tatt. Verkstedet gjør et stort bilde mindre før det sendes — høyst 2560 piksler på
+den lengste siden, som JPEG — så de fleste bildene er godt under det. Opplastingen er den
+ene forespørselen i Produksjon som slipper forbi plattformens grense på 1 MB: en omvendt
+proxy foran Vantigo må slippe en forespørsel på litt over 10 MB gjennom til
+`/api/v1/manufacturing/work-orders/*/photos`, ellers nektes et stort bilde der. Et bilde
+er en kvalitetsregistrering: det beholdes like lenge som arbeidsordren, også når
+resultatet registreres på nytt. Regn med omtrent en megabyte per bildekontroll per
+arbeidsordre. Et bilde som er lastet opp, men aldri
 registrert på en kontroll — operatøren tok det og gikk — fjernes etter et døgn av
 arbeideren `manufacturing.object-deletions`, som går i arbeiderprosessen sammen med de
 andre og prøver igjen til lageret bekrefter.
