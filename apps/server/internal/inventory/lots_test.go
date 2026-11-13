@@ -673,7 +673,8 @@ func TestLots_EnsureLotsAndProduce(t *testing.T) {
 		t.Fatal(err)
 	}
 	unbuild := contracts.StockProduction{Document: contracts.StockSource{Module: "manufacturing", Kind: "unbuild", ID: 1}, SiteID: s.site.Id, Today: testToday,
-		Consume: []contracts.ConsumeLine{{VariantID: varLot, LineID: 3, FromLocationID: s.shelf2.Id, Quantity: "1", LotID: ids[0]}}}
+		Consume: []contracts.ConsumeLine{{VariantID: varLot, LineID: 3, FromLocationID: s.shelf2.Id, Quantity: "1", LotID: ids[0]}},
+		Produce: []contracts.ProduceLine{{VariantID: varLot, LineID: 3, ToLocationID: s.shelf1.Id, Quantity: "1", LotID: ids[1]}}}
 	p = unbuild
 	if _, err := produce(); refusalCode(err) != contracts.StockLotBlocked {
 		t.Errorf("a production consuming a blocked lot = %v", err)
@@ -685,6 +686,12 @@ func TestLots_EnsureLotsAndProduce(t *testing.T) {
 	}
 	if kind := modtest.One[string](t, h.Harness, `SELECT kind FROM inventory.movements WHERE id = $1`, posted.MovementID); kind != "unbuild" {
 		t.Errorf("the unbuild's kind = %s", kind)
+	}
+	// What it restored is quarantined by the unbuild, with the blocked lot's
+	// cause, so held material does not come back usable (M123).
+	if got := modtest.One[string](t, h.Harness, `SELECT l.status || ' ' || h.kind || ' ' || h.cause || ' ' || h.source_kind || '/' || h.source_id
+		FROM inventory.lots l JOIN inventory.lot_holds h ON h.lot_id = l.id AND h.released_at IS NULL WHERE l.id = $1`, ids[1]); got != "quarantine quarantine recall unbuild/1" {
+		t.Errorf("the restored lot = %s", got)
 	}
 	assertLedgerConsistent(t, h)
 }
