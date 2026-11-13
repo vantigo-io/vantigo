@@ -19,6 +19,7 @@ import {
   SHOP_FLOOR_ROUTE_PATH,
   SHOP_FLOOR_WORK_CENTER_ROUTE_PATH,
   SUGGESTIONS_ROUTE_PATH,
+  UNBUILD_ROUTE_PATH,
   UNBUILDS_ROUTE_PATH,
   WORK_CENTER_ROUTE_PATH,
   WORK_CENTERS_ROUTE_PATH,
@@ -32,6 +33,7 @@ import { Route as DeviationRoute } from "./manufacturing/deviations.$deviationId
 import { Route as OrderRoute } from "./manufacturing/orders.$orderId";
 import { Route as ShopFloorWorkCenterRoute } from "./manufacturing/shop-floor.work-centers.$workCenterId";
 import { Route as WorkOrderRoute } from "./manufacturing/shop-floor.work-orders.$workOrderId";
+import { Route as UnbuildRoute } from "./manufacturing/unbuilds.$unbuildId";
 import { Route as WorkCenterRoute } from "./manufacturing/work-centers.$workCenterId";
 
 /** Drives a route's `beforeLoad` with the params given; returns what it throws. */
@@ -83,13 +85,15 @@ describe("the Manufacturing routes", () => {
       DEVIATION_ROUTE_PATH,
       SUGGESTIONS_ROUTE_PATH,
       UNBUILDS_ROUTE_PATH,
+      UNBUILD_ROUTE_PATH,
     ]) {
       const concrete = path
         .replace("$bomId", "7")
         .replace("$workCenterId", "3")
         .replace("$orderId", "5")
         .replace("$workOrderId", "40")
-        .replace("$deviationId", "9");
+        .replace("$deviationId", "9")
+        .replace("$unbuildId", "11");
       const ids = matchedRouteIds(concrete);
       expect(ids, concrete).toContain("/manufacturing");
       expect(ids.at(-1), concrete).toBe(path);
@@ -111,5 +115,7 @@ describe("the Manufacturing routes", () => {
     expect(runBeforeLoad(WorkCenterRoute, { workCenterId: "3" })).toBeUndefined();
     expect(isNotFound(runBeforeLoad(DeviationRoute, { deviationId: "DEV-9" }))).toBe(true);
     expect(runBeforeLoad(DeviationRoute, { deviationId: "9" })).toBeUndefined();
+    expect(isNotFound(runBeforeLoad(UnbuildRoute, { unbuildId: "UB-1" }))).toBe(true);
+    expect(runBeforeLoad(UnbuildRoute, { unbuildId: "11" })).toBeUndefined();
   });
 });
