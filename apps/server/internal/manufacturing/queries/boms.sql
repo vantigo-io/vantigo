@@ -61,9 +61,9 @@ SELECT EXISTS (SELECT 1 FROM manufacturing.boms WHERE code = @code AND id <> @id
 
 -- name: InsertBom :one
 INSERT INTO manufacturing.boms (variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note,
-                                lot_pattern, created_at, updated_at)
+                                lot_pattern, kind, created_at, updated_at)
 VALUES (@variant_id, sqlc.narg(code), @output_quantity, @is_default, @make_to_order, @lead_time_days, @note,
-        @lot_pattern, @now::timestamptz, @now::timestamptz)
+        @lot_pattern, COALESCE(sqlc.narg(kind)::text, 'normal'), @now::timestamptz, @now::timestamptz)
 RETURNING *;
 
 -- name: UpdateBom :one
@@ -118,9 +118,20 @@ SELECT EXISTS (SELECT 1 FROM manufacturing.boms
 -- DefaultActiveBomsOfVariants is, per variant among variant_ids that has
 -- one, its default active BoM: the cycle and depth walk (M14) and the
 -- overview (M15) recurse through it.
-SELECT id, variant_id, output_quantity FROM manufacturing.boms
+SELECT id, variant_id, output_quantity, kind FROM manufacturing.boms
 WHERE variant_id = ANY(@variant_ids::int[]) AND is_default AND status = 'active'
 ORDER BY variant_id;
+
+-- name: DefaultKitsNamingVariants :many
+-- DefaultKitsNamingVariants is, per variant among variant_ids, the variants
+-- whose default active BoM is a kit naming it on a line: the kit walk's way
+-- up, to count the kits above a kit that becomes its variant's default
+-- (manufacturing phase 2 M144).
+SELECT DISTINCT l.variant_id AS component_id, b.variant_id AS parent_id
+FROM manufacturing.bom_lines l
+JOIN manufacturing.boms b ON b.id = l.bom_id
+WHERE l.variant_id = ANY(@variant_ids::int[]) AND b.is_default AND b.status = 'active' AND b.kind = 'kit'
+ORDER BY component_id, parent_id;
 
 -- name: DefaultBomsNamingVariants :many
 -- DefaultBomsNamingVariants is, per variant among variant_ids, the variants

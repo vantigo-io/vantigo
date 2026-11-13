@@ -2219,7 +2219,7 @@ export interface components {
         OrdersLine: {
             /**
              * Format: double
-             * @description What is available of the line's variant at the order's site — on hand less every reservation there — as Inventory answers it (O45). Null when stock is not kept, the order names no site, or the line names no goods variant. May be negative.
+             * @description What is available of the line's variant at the order's site — on hand less every reservation there — as Inventory answers it (O45). On a kit line, how many kits its child lines make: the least over the children of available ÷ perKit, rounded down to three decimals (manufacturing phase 2 M146). Null when stock is not kept, the order names no site, or the line names no goods variant. May be negative.
              */
             available?: number | null;
             /** @enum {string} */
@@ -2259,6 +2259,16 @@ export interface components {
             optional: boolean;
             /** Format: int32 */
             packagingId?: number | null;
+            /**
+             * Format: int64
+             * @description The kit line this line is a child of (manufacturing phase 2 M145): a component of the kit, copied onto the order from Manufacturing's kit BoM when the kit line was added. A child line reserves, is delivered and picks lots as any goods line; it is priced 0, is not invoiced on its own — its invoiced follows its kit's — and its quantity is its kit's × perKit. Absent on every other line.
+             */
+            parentLineId?: number | null;
+            /**
+             * Format: double
+             * @description How much of a child line one kit holds (manufacturing phase 2 M145), at most three decimals; absent on every other line.
+             */
+            perKit?: number | null;
             /** @description The name of the packaging the line was entered in, as it was then (O15). */
             packagingName?: string | null;
             /** Format: double */
@@ -2382,7 +2392,7 @@ export interface components {
              */
             siteId: number;
         };
-        /** @description A line as the editor saves it; the document's lines are replaced whole on save, a line naming its id kept as that line (O15). A product line with a variantId is priced from the catalog unless unitPrice is given, which makes the price manual (O16); entered including VAT when the document's prices include VAT (O19). */
+        /** @description A line as the editor saves it; the document's lines are replaced whole on save, a line naming its id kept as that line (O15). A product line with a variantId is priced from the catalog unless unitPrice is given, which makes the price manual (O16); entered including VAT when the document's prices include VAT (O19). An order's kit lines bring their child lines themselves (manufacturing phase 2 M145): a new product line whose variant is a kit in Manufacturing gets a child line per component, a kept kit line keeps its children, rescaled to its quantity, and a line sent with a child line's id is left out — a save sends the kit line alone. */
         OrdersLineInput: {
             /** @description A product line's description; the text of a section or a note line, which the PDF prints under its name. */
             description?: string;

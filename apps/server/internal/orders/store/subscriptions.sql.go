@@ -1031,7 +1031,7 @@ func (q *Queries) LockCustomerSubscriptions(ctx context.Context, customerID int3
 }
 
 const lockLinesByIDs = `-- name: LockLinesByIDs :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id FROM orders.lines WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id, per_kit FROM orders.lines WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
 `
 
 // LockLinesByIDs takes lines of any owner FOR UPDATE in id order, after
@@ -1083,6 +1083,7 @@ func (q *Queries) LockLinesByIDs(ctx context.Context, ids []int64) ([]OrdersLine
 			&i.ValidFrom,
 			&i.ValidTo,
 			&i.ChainID,
+			&i.PerKit,
 		); err != nil {
 			return nil, err
 		}
@@ -1821,7 +1822,7 @@ func (q *Queries) SubscriptionChangesOf(ctx context.Context, ownerID int64) ([]O
 }
 
 const subscriptionLinesOf = `-- name: SubscriptionLinesOf :many
-SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id FROM orders.lines
+SELECT id, owner_kind, owner_id, position, kind, parent_line_id, variant_id, sku, name, unit, description, quantity, unit_price, discount_percent, packaging_id, packaging_quantity, price_source, vat_code_id, vat_code, vat_rate_percent, vat_category, line_gross, line_allowance, line_net, external_line_id, invoice_policy, optional, qty_cancelled, qty_delivered, qty_invoiced, delivery_method, product_id, packaging_name, valid_from, valid_to, chain_id, per_kit FROM orders.lines
 WHERE owner_kind = 'subscription' AND owner_id = ANY($1::bigint[])
 ORDER BY owner_id, position, valid_from NULLS FIRST, id
 `
@@ -1874,6 +1875,7 @@ func (q *Queries) SubscriptionLinesOf(ctx context.Context, ids []int64) ([]Order
 			&i.ValidFrom,
 			&i.ValidTo,
 			&i.ChainID,
+			&i.PerKit,
 		); err != nil {
 			return nil, err
 		}

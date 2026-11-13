@@ -36,7 +36,7 @@ func (q *Queries) CancelMtoRequest(ctx context.Context, arg CancelMtoRequestPara
 }
 
 const defaultBomsOfVariants = `-- name: DefaultBomsOfVariants :many
-SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern FROM manufacturing.boms
+SELECT id, variant_id, code, output_quantity, is_default, make_to_order, lead_time_days, note, status, revision, created_at, updated_at, lot_pattern, kind FROM manufacturing.boms
 WHERE variant_id = ANY($1::int[]) AND is_default AND status = 'active'
 ORDER BY variant_id
 `
@@ -66,6 +66,7 @@ func (q *Queries) DefaultBomsOfVariants(ctx context.Context, variantIds []int32)
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.LotPattern,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}

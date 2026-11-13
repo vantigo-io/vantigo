@@ -229,6 +229,12 @@ type Deps struct {
 	// way, from Module.DeliveryTrace, beside SalesOrderLines; it is nil when
 	// Orders is off.
 	DeliveryTrace contracts.DeliveryTrace
+	// KitStructure is Manufacturing's ungated read of its kit BoMs' components
+	// (contracts.KitStructure, manufacturing phase 2 M145), which Orders
+	// copies onto a kit line's child lines. Compose and Workers set it the
+	// same way, from Module.KitStructure, beside SalesOrderLines; it is nil
+	// when Manufacturing is off.
+	KitStructure contracts.KitStructure
 	// Workforce is Staff's register of competences, the one sanctioned way a
 	// module reads who holds what (see contracts.Workforce, staff competence
 	// design S15). Compose sets it, on every module's Deps copy, from
@@ -676,6 +682,10 @@ type Module struct {
 	// and Workers call it beside SalesOrderLines, from Deps.Pool and
 	// Deps.Access.
 	DeliveryTrace func(Deps) contracts.DeliveryTrace
+	// KitStructure builds this module's contracts.KitStructure, if it
+	// provides one (manufacturing). At most one enabled module may set it;
+	// Compose and Workers call it beside SalesOrderLines, from Deps.Pool.
+	KitStructure func(Deps) contracts.KitStructure
 	// Workforce builds this module's contracts.Workforce implementation, if
 	// it provides one (staff). At most one enabled module may set it; Compose
 	// and Workers call it before anything they build runs — after they have

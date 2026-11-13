@@ -72,6 +72,7 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 		Id: b.ID, Variant: refOf(entries, b.VariantID, costs), Code: b.Code,
 		OutputQuantity: numericText(b.OutputQuantity, quantityPlaces), IsDefault: b.IsDefault, MakeToOrder: b.MakeToOrder,
 		LeadTimeDays: b.LeadTimeDays, Note: b.Note, LotPattern: b.LotPattern, Status: gen.ManufacturingStatus(b.Status), Revision: b.Revision,
+		Kind:       gen.ManufacturingBomKind(b.Kind),
 		Operations: make([]gen.ManufacturingBomOperation, 0, len(ops)), Lines: make([]gen.ManufacturingBomLine, 0, len(lines)),
 		Outputs: make([]gen.ManufacturingBomOutput, 0, len(outs)), CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt,
 	}
@@ -202,7 +203,7 @@ func (s *server) ListManufacturingBoms(ctx context.Context, req gen.ListManufact
 			Id: r.ID, Variant: refOf(entries, r.VariantID, costs), Code: r.Code,
 			OutputQuantity: numericText(r.OutputQuantity, quantityPlaces), IsDefault: r.IsDefault, MakeToOrder: r.MakeToOrder,
 			Status: gen.ManufacturingStatus(r.Status), Revision: r.Revision, LineCount: r.LineCount,
-			OperationCount: r.OperationCount, UpdatedAt: r.UpdatedAt,
+			OperationCount: r.OperationCount, UpdatedAt: r.UpdatedAt, Kind: gen.ManufacturingBomKind(r.Kind),
 		})
 	}
 	return gen.ListManufacturingBoms200JSONResponse{Items: items, Total: total}, nil

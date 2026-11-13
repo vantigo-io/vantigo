@@ -174,6 +174,7 @@ type OrdersLine struct {
 	ValidFrom         pgtype.Date
 	ValidTo           pgtype.Date
 	ChainID           *int64
+	PerKit            pgtype.Numeric
 }
 
 type OrdersLineProductionReady struct {
