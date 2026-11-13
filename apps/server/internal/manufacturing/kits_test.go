@@ -136,3 +136,49 @@ func TestKits_KitStructureExplodes(t *testing.T) {
 		}
 	}
 }
+
+// A kit's line whose quantity per kit — its quantity over the output
+// quantity — is 0 at three decimals is refused quantity_invalid on the line,
+// at a create and at an update; 0.0005 rounds half-up to 0.001 and is kept
+// (M144, M145).
+func TestKits_LineThatRoundsToNothingRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+
+	p := expectRefusal(t, c.Do(http.MethodPost, bomsPath, kitInput(varBike, "1000", line(varFrame, "0.4"), line(varWheel, "2000"))),
+		http.StatusBadRequest, "quantity_invalid", "a line of nothing per kit")
+	if p.Lines == nil || len(*p.Lines) != 1 || (*p.Lines)[0].Index != 0 {
+		t.Errorf("lines %+v, want the first line alone", p.Lines)
+	}
+	kit := createBom(t, c, kitInput(varBike, "1000", line(varFrame, "0.5"), line(varWheel, "2000")))
+	u := updateOf(kit)
+	u.Lines = append(u.Lines, line(varBolt, "0.1"))
+	p = expectRefusal(t, c.Do(http.MethodPut, bomPath(kit.Id), u), http.StatusBadRequest, "quantity_invalid", "a line of nothing added")
+	if p.Lines == nil || len(*p.Lines) != 1 || (*p.Lines)[0].Index != 2 {
+		t.Errorf("lines %+v, want the third line alone", p.Lines)
+	}
+	// A normal BoM is not a kit: the same line is kept.
+	createBom(t, c, bomInput(varFrame, "1000", line(varTube, "0.4")))
+}
+
+// Replenishment suggests nothing for a kit, neither to make nor to buy: it
+// is sold as its components, each suggested for itself (M144).
+func TestKits_ReplenishmentSkipsKits(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, everything...)
+	createBom(t, c, kitInput(varBike, "1", line(varFrame, "1"), line(varWheel, "2")))
+	h.stock.setPlacements(siteMain,
+		contracts.StockPlacement{VariantID: varBike, ReorderPoint: "10", OnHand: "0", Reserved: "0", Incoming: "0"},
+		contracts.StockPlacement{VariantID: varWheel, ReorderPoint: "10", OnHand: "0", Reserved: "0", Incoming: "0"},
+	)
+	runReplenishment(t, h)
+	got := suggestions(t, c, siteMain)
+	if _, ok := got[varBike]; ok {
+		t.Errorf("the kit was suggested: %+v", got[varBike])
+	}
+	if w, ok := got[varWheel]; !ok || w.Kind != gen.Buy {
+		t.Errorf("suggestions %+v, want the wheel bought", got)
+	}
+}
