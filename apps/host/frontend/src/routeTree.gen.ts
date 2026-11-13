@@ -82,7 +82,6 @@ import { Route as ManufacturingIndexRouteImport } from './routes/manufacturing/i
 import { Route as ManufacturingReportsRouteImport } from './routes/manufacturing/reports'
 import { Route as ManufacturingScheduleRouteImport } from './routes/manufacturing/schedule'
 import { Route as ManufacturingSuggestionsRouteImport } from './routes/manufacturing/suggestions'
-import { Route as ManufacturingUnbuildsRouteImport } from './routes/manufacturing/unbuilds'
 import { Route as OrdersIndexRouteImport } from './routes/orders/index'
 import { Route as OrdersAnalysisRouteImport } from './routes/orders/analysis'
 import { Route as OrdersSettingsRouteImport } from './routes/orders/settings'
@@ -172,6 +171,8 @@ import { Route as ManufacturingOrdersOrderIdRouteImport } from './routes/manufac
 import { Route as ManufacturingOrdersNewRouteImport } from './routes/manufacturing/orders.new'
 import { Route as ManufacturingShopFloorIndexRouteImport } from './routes/manufacturing/shop-floor.index'
 import { Route as ManufacturingShopFloorMineRouteImport } from './routes/manufacturing/shop-floor.mine'
+import { Route as ManufacturingUnbuildsIndexRouteImport } from './routes/manufacturing/unbuilds.index'
+import { Route as ManufacturingUnbuildsUnbuildIdRouteImport } from './routes/manufacturing/unbuilds.$unbuildId'
 import { Route as ManufacturingWorkCentersIndexRouteImport } from './routes/manufacturing/work-centers.index'
 import { Route as ManufacturingWorkCentersWorkCenterIdRouteImport } from './routes/manufacturing/work-centers.$workCenterId'
 import { Route as ManufacturingWorkCentersNewRouteImport } from './routes/manufacturing/work-centers.new'
@@ -590,11 +591,6 @@ const ManufacturingSuggestionsRoute =
     path: '/suggestions',
     getParentRoute: () => ManufacturingRoute,
   } as any)
-const ManufacturingUnbuildsRoute = ManufacturingUnbuildsRouteImport.update({
-  id: '/unbuilds',
-  path: '/unbuilds',
-  getParentRoute: () => ManufacturingRoute,
-} as any)
 const OrdersIndexRoute = OrdersIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -1061,6 +1057,18 @@ const ManufacturingShopFloorMineRoute =
     path: '/shop-floor/mine',
     getParentRoute: () => ManufacturingRoute,
   } as any)
+const ManufacturingUnbuildsIndexRoute =
+  ManufacturingUnbuildsIndexRouteImport.update({
+    id: '/unbuilds/',
+    path: '/unbuilds/',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
+const ManufacturingUnbuildsUnbuildIdRoute =
+  ManufacturingUnbuildsUnbuildIdRouteImport.update({
+    id: '/unbuilds/$unbuildId',
+    path: '/unbuilds/$unbuildId',
+    getParentRoute: () => ManufacturingRoute,
+  } as any)
 const ManufacturingWorkCentersIndexRoute =
   ManufacturingWorkCentersIndexRouteImport.update({
     id: '/work-centers/',
@@ -1401,7 +1409,6 @@ export interface FileRoutesByFullPath {
   '/manufacturing/reports': typeof ManufacturingReportsRoute
   '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/manufacturing/suggestions': typeof ManufacturingSuggestionsRoute
-  '/manufacturing/unbuilds': typeof ManufacturingUnbuildsRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1488,6 +1495,7 @@ export interface FileRoutesByFullPath {
   '/manufacturing/orders/$orderId': typeof ManufacturingOrdersOrderIdRoute
   '/manufacturing/orders/new': typeof ManufacturingOrdersNewRoute
   '/manufacturing/shop-floor/mine': typeof ManufacturingShopFloorMineRoute
+  '/manufacturing/unbuilds/$unbuildId': typeof ManufacturingUnbuildsUnbuildIdRoute
   '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
   '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
@@ -1531,6 +1539,7 @@ export interface FileRoutesByFullPath {
   '/manufacturing/deviations/': typeof ManufacturingDeviationsIndexRoute
   '/manufacturing/orders/': typeof ManufacturingOrdersIndexRoute
   '/manufacturing/shop-floor/': typeof ManufacturingShopFloorIndexRoute
+  '/manufacturing/unbuilds/': typeof ManufacturingUnbuildsIndexRoute
   '/manufacturing/work-centers/': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries/': typeof OrdersDeliveriesIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
@@ -1594,7 +1603,6 @@ export interface FileRoutesByTo {
   '/manufacturing/reports': typeof ManufacturingReportsRoute
   '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/manufacturing/suggestions': typeof ManufacturingSuggestionsRoute
-  '/manufacturing/unbuilds': typeof ManufacturingUnbuildsRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1678,6 +1686,7 @@ export interface FileRoutesByTo {
   '/manufacturing/orders/$orderId': typeof ManufacturingOrdersOrderIdRoute
   '/manufacturing/orders/new': typeof ManufacturingOrdersNewRoute
   '/manufacturing/shop-floor/mine': typeof ManufacturingShopFloorMineRoute
+  '/manufacturing/unbuilds/$unbuildId': typeof ManufacturingUnbuildsUnbuildIdRoute
   '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
   '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
@@ -1721,6 +1730,7 @@ export interface FileRoutesByTo {
   '/manufacturing/deviations': typeof ManufacturingDeviationsIndexRoute
   '/manufacturing/orders': typeof ManufacturingOrdersIndexRoute
   '/manufacturing/shop-floor': typeof ManufacturingShopFloorIndexRoute
+  '/manufacturing/unbuilds': typeof ManufacturingUnbuildsIndexRoute
   '/manufacturing/work-centers': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries': typeof OrdersDeliveriesIndexRoute
   '/orders/orders': typeof OrdersOrdersIndexRoute
@@ -1807,7 +1817,6 @@ export interface FileRoutesById {
   '/manufacturing/reports': typeof ManufacturingReportsRoute
   '/manufacturing/schedule': typeof ManufacturingScheduleRoute
   '/manufacturing/suggestions': typeof ManufacturingSuggestionsRoute
-  '/manufacturing/unbuilds': typeof ManufacturingUnbuildsRoute
   '/orders/analysis': typeof OrdersAnalysisRoute
   '/orders/settings': typeof OrdersSettingsRoute
   '/orders/templates': typeof OrdersTemplatesRoute
@@ -1894,6 +1903,7 @@ export interface FileRoutesById {
   '/manufacturing/orders/$orderId': typeof ManufacturingOrdersOrderIdRoute
   '/manufacturing/orders/new': typeof ManufacturingOrdersNewRoute
   '/manufacturing/shop-floor/mine': typeof ManufacturingShopFloorMineRoute
+  '/manufacturing/unbuilds/$unbuildId': typeof ManufacturingUnbuildsUnbuildIdRoute
   '/manufacturing/work-centers/$workCenterId': typeof ManufacturingWorkCentersWorkCenterIdRoute
   '/manufacturing/work-centers/new': typeof ManufacturingWorkCentersNewRoute
   '/orders/deliveries/$deliveryId': typeof OrdersDeliveriesDeliveryIdRoute
@@ -1937,6 +1947,7 @@ export interface FileRoutesById {
   '/manufacturing/deviations/': typeof ManufacturingDeviationsIndexRoute
   '/manufacturing/orders/': typeof ManufacturingOrdersIndexRoute
   '/manufacturing/shop-floor/': typeof ManufacturingShopFloorIndexRoute
+  '/manufacturing/unbuilds/': typeof ManufacturingUnbuildsIndexRoute
   '/manufacturing/work-centers/': typeof ManufacturingWorkCentersIndexRoute
   '/orders/deliveries/': typeof OrdersDeliveriesIndexRoute
   '/orders/orders/': typeof OrdersOrdersIndexRoute
@@ -2024,7 +2035,6 @@ export interface FileRouteTypes {
     | '/manufacturing/reports'
     | '/manufacturing/schedule'
     | '/manufacturing/suggestions'
-    | '/manufacturing/unbuilds'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -2111,6 +2121,7 @@ export interface FileRouteTypes {
     | '/manufacturing/orders/$orderId'
     | '/manufacturing/orders/new'
     | '/manufacturing/shop-floor/mine'
+    | '/manufacturing/unbuilds/$unbuildId'
     | '/manufacturing/work-centers/$workCenterId'
     | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
@@ -2154,6 +2165,7 @@ export interface FileRouteTypes {
     | '/manufacturing/deviations/'
     | '/manufacturing/orders/'
     | '/manufacturing/shop-floor/'
+    | '/manufacturing/unbuilds/'
     | '/manufacturing/work-centers/'
     | '/orders/deliveries/'
     | '/orders/orders/'
@@ -2217,7 +2229,6 @@ export interface FileRouteTypes {
     | '/manufacturing/reports'
     | '/manufacturing/schedule'
     | '/manufacturing/suggestions'
-    | '/manufacturing/unbuilds'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -2301,6 +2312,7 @@ export interface FileRouteTypes {
     | '/manufacturing/orders/$orderId'
     | '/manufacturing/orders/new'
     | '/manufacturing/shop-floor/mine'
+    | '/manufacturing/unbuilds/$unbuildId'
     | '/manufacturing/work-centers/$workCenterId'
     | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
@@ -2344,6 +2356,7 @@ export interface FileRouteTypes {
     | '/manufacturing/deviations'
     | '/manufacturing/orders'
     | '/manufacturing/shop-floor'
+    | '/manufacturing/unbuilds'
     | '/manufacturing/work-centers'
     | '/orders/deliveries'
     | '/orders/orders'
@@ -2429,7 +2442,6 @@ export interface FileRouteTypes {
     | '/manufacturing/reports'
     | '/manufacturing/schedule'
     | '/manufacturing/suggestions'
-    | '/manufacturing/unbuilds'
     | '/orders/analysis'
     | '/orders/settings'
     | '/orders/templates'
@@ -2516,6 +2528,7 @@ export interface FileRouteTypes {
     | '/manufacturing/orders/$orderId'
     | '/manufacturing/orders/new'
     | '/manufacturing/shop-floor/mine'
+    | '/manufacturing/unbuilds/$unbuildId'
     | '/manufacturing/work-centers/$workCenterId'
     | '/manufacturing/work-centers/new'
     | '/orders/deliveries/$deliveryId'
@@ -2559,6 +2572,7 @@ export interface FileRouteTypes {
     | '/manufacturing/deviations/'
     | '/manufacturing/orders/'
     | '/manufacturing/shop-floor/'
+    | '/manufacturing/unbuilds/'
     | '/manufacturing/work-centers/'
     | '/orders/deliveries/'
     | '/orders/orders/'
@@ -3131,13 +3145,6 @@ declare module '@tanstack/react-router' {
       path: '/suggestions'
       fullPath: '/manufacturing/suggestions'
       preLoaderRoute: typeof ManufacturingSuggestionsRouteImport
-      parentRoute: typeof ManufacturingRoute
-    }
-    '/manufacturing/unbuilds': {
-      id: '/manufacturing/unbuilds'
-      path: '/unbuilds'
-      fullPath: '/manufacturing/unbuilds'
-      preLoaderRoute: typeof ManufacturingUnbuildsRouteImport
       parentRoute: typeof ManufacturingRoute
     }
     '/orders/': {
@@ -3761,6 +3768,20 @@ declare module '@tanstack/react-router' {
       path: '/shop-floor/mine'
       fullPath: '/manufacturing/shop-floor/mine'
       preLoaderRoute: typeof ManufacturingShopFloorMineRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/unbuilds/': {
+      id: '/manufacturing/unbuilds/'
+      path: '/unbuilds'
+      fullPath: '/manufacturing/unbuilds/'
+      preLoaderRoute: typeof ManufacturingUnbuildsIndexRouteImport
+      parentRoute: typeof ManufacturingRoute
+    }
+    '/manufacturing/unbuilds/$unbuildId': {
+      id: '/manufacturing/unbuilds/$unbuildId'
+      path: '/unbuilds/$unbuildId'
+      fullPath: '/manufacturing/unbuilds/$unbuildId'
+      preLoaderRoute: typeof ManufacturingUnbuildsUnbuildIdRouteImport
       parentRoute: typeof ManufacturingRoute
     }
     '/manufacturing/work-centers/': {
@@ -4407,19 +4428,20 @@ interface ManufacturingRouteChildren {
   ManufacturingReportsRoute: typeof ManufacturingReportsRoute
   ManufacturingScheduleRoute: typeof ManufacturingScheduleRoute
   ManufacturingSuggestionsRoute: typeof ManufacturingSuggestionsRoute
-  ManufacturingUnbuildsRoute: typeof ManufacturingUnbuildsRoute
   ManufacturingIndexRoute: typeof ManufacturingIndexRoute
   ManufacturingBomsNewRoute: typeof ManufacturingBomsNewRoute
   ManufacturingDeviationsDeviationIdRoute: typeof ManufacturingDeviationsDeviationIdRoute
   ManufacturingOrdersOrderIdRoute: typeof ManufacturingOrdersOrderIdRoute
   ManufacturingOrdersNewRoute: typeof ManufacturingOrdersNewRoute
   ManufacturingShopFloorMineRoute: typeof ManufacturingShopFloorMineRoute
+  ManufacturingUnbuildsUnbuildIdRoute: typeof ManufacturingUnbuildsUnbuildIdRoute
   ManufacturingWorkCentersWorkCenterIdRoute: typeof ManufacturingWorkCentersWorkCenterIdRoute
   ManufacturingWorkCentersNewRoute: typeof ManufacturingWorkCentersNewRoute
   ManufacturingBomsIndexRoute: typeof ManufacturingBomsIndexRoute
   ManufacturingDeviationsIndexRoute: typeof ManufacturingDeviationsIndexRoute
   ManufacturingOrdersIndexRoute: typeof ManufacturingOrdersIndexRoute
   ManufacturingShopFloorIndexRoute: typeof ManufacturingShopFloorIndexRoute
+  ManufacturingUnbuildsIndexRoute: typeof ManufacturingUnbuildsIndexRoute
   ManufacturingWorkCentersIndexRoute: typeof ManufacturingWorkCentersIndexRoute
   ManufacturingBomsBomIdOverviewRoute: typeof ManufacturingBomsBomIdOverviewRoute
   ManufacturingShopFloorWorkCentersWorkCenterIdRoute: typeof ManufacturingShopFloorWorkCentersWorkCenterIdRoute
@@ -4431,7 +4453,6 @@ const ManufacturingRouteChildren: ManufacturingRouteChildren = {
   ManufacturingReportsRoute: ManufacturingReportsRoute,
   ManufacturingScheduleRoute: ManufacturingScheduleRoute,
   ManufacturingSuggestionsRoute: ManufacturingSuggestionsRoute,
-  ManufacturingUnbuildsRoute: ManufacturingUnbuildsRoute,
   ManufacturingIndexRoute: ManufacturingIndexRoute,
   ManufacturingBomsNewRoute: ManufacturingBomsNewRoute,
   ManufacturingDeviationsDeviationIdRoute:
@@ -4439,6 +4460,7 @@ const ManufacturingRouteChildren: ManufacturingRouteChildren = {
   ManufacturingOrdersOrderIdRoute: ManufacturingOrdersOrderIdRoute,
   ManufacturingOrdersNewRoute: ManufacturingOrdersNewRoute,
   ManufacturingShopFloorMineRoute: ManufacturingShopFloorMineRoute,
+  ManufacturingUnbuildsUnbuildIdRoute: ManufacturingUnbuildsUnbuildIdRoute,
   ManufacturingWorkCentersWorkCenterIdRoute:
     ManufacturingWorkCentersWorkCenterIdRoute,
   ManufacturingWorkCentersNewRoute: ManufacturingWorkCentersNewRoute,
@@ -4446,6 +4468,7 @@ const ManufacturingRouteChildren: ManufacturingRouteChildren = {
   ManufacturingDeviationsIndexRoute: ManufacturingDeviationsIndexRoute,
   ManufacturingOrdersIndexRoute: ManufacturingOrdersIndexRoute,
   ManufacturingShopFloorIndexRoute: ManufacturingShopFloorIndexRoute,
+  ManufacturingUnbuildsIndexRoute: ManufacturingUnbuildsIndexRoute,
   ManufacturingWorkCentersIndexRoute: ManufacturingWorkCentersIndexRoute,
   ManufacturingBomsBomIdOverviewRoute: ManufacturingBomsBomIdOverviewRoute,
   ManufacturingShopFloorWorkCentersWorkCenterIdRoute:
