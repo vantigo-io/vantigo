@@ -1,6 +1,6 @@
 ---
 title: Manufacturing
-description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — and archiving, reactivating and deleting one; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers with their instructions, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, moving a work order by dragging it or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; replenishment suggestions — what is projected, what is suggested to make or buy and by when, creating draft or confirmed orders from them, dismissing one, running it now, exporting the buy suggestions and automatic creation on a bill of materials; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
+description: The Manufacturing app — its sidebar and the Overview; setting up a work center — its code, site, capacity, time efficiency, setup and cleanup, cost rates, its weekly working pattern and its closures — archiving, reactivating and deleting one, and grouping interchangeable work centers; making a bill of materials for a product — its output quantity, its lines with scrap, its operations at work centers or work center groups with their instructions, what each operation depends on and its send-ahead quantity, and which operation consumes a line — the default and the alternative bills of materials, archiving and reactivating them; reading a bill of materials' overview — the quantities with scrap, made and bought, what is available at a site, the expected minutes and, for those who see costs, the rolled-up cost; making a manufacturing order — creating, changing and confirming it, reserving its components and the short lines, adding and changing a component, registering a production with its prefill and the deviation warning, the lot it makes, serial numbers and the lots it consumes, the order's Lots tab, closing it with or without a backorder, cancelling it and reading its history — and the overview's order figures; the shop floor — choosing your work center, its queue, starting, pausing and finishing a work order, starting one out of sequence, Group work, registering a quantity passed on, switching to another, registering production at the last operation, reporting scrap, blocking and unblocking a stopped work center, My work and the 12-hour warning; and for supervisors the order's work orders and time logs, correcting a log and adding a missing one; the production schedule — planning an order and planning all, its requested start, reading the board's load, colours and closed days, operations side by side and after a send-ahead quantity, the member of a group a work order is planned at, moving a work order by dragging it — to another member's row too — or with Move to, and removing a plan; an order's cost — the estimate, the actual, the deviation and the cost per unit, and the work orders' time deviation; the reports — production cost, work-center utilisation and time deviation, and downloading them; quality — the checks of an operation, recording them at the station, what they stop, and deviations — reporting one, putting the output in quarantine, closing it and releasing its holds; replenishment suggestions — what is projected, what is suggested to make or buy and by when, creating draft or confirmed orders from them, dismissing one, running it now, exporting the buy suggestions and automatic creation on a bill of materials; why Products refuses to delete a variant a bill of materials or an open manufacturing order names; and who sees what.
 sidebar:
   order: 66
 sources:
@@ -128,6 +128,24 @@ days again.
 When someone else saved the work center after you opened it, your save is refused and you
 are asked to reload, so that nobody overwrites another's change unseen.
 
+## Group interchangeable work centers
+
+When two or more work centers can do the same work — two saws, three welding cells — put
+them in a **work center group**. An operation can then target the group instead of one
+work center, and each order's work order goes to whichever member finishes it first.
+
+1. Open **Work centers**. Under **Work center groups**, choose **New group**.
+2. Give the group a **Code** (1 to 16 letters A–Z and digits, unique among the groups) and
+   a **Name**, choose its **Site**, and pick its **Members**: active work centers of that
+   site.
+3. Choose **Save**.
+
+**Edit** changes the code, the name and the members. A group's site cannot change while an
+active bill of materials has an operation that targets it, and a member's own site cannot
+change while it is in a group. **Archive** is refused while an active bill of materials
+targets the group; **Reactivate** brings an archived group back. An archived member stays
+in the group, but work is no longer planned at it.
+
 ## Make a bill of materials
 
 1. Open **Bills of materials** and choose **New bill of materials**.
@@ -154,8 +172,16 @@ are asked to reload, so that nobody overwrites another's change unseen.
    they are done. Each has:
    - **Seq.**, the order it runs in;
    - **Operation**, its name, such as *Cut*, *Weld* or *Paint*;
-   - **Work center**, among the active ones. All the operations of one BoM must be at
-     work centers on the **same site**;
+   - **Work center**, among the active ones — or a **Group** of work centers, which lets
+     planning and the shop floor choose the member (see
+     [Group interchangeable work centers](#group-interchangeable-work-centers)). All the
+     operations of one BoM must be at work centers on the **same site**;
+   - **Depends on**, the operations it runs after. A new operation depends on the one added
+     before it; clear the field for one that can start at once, or pick two or more for
+     one that waits for several. Operations that depend on the same one run side by side;
+   - **Send-ahead quantity**, optional: how many good units this operation passes on before
+     the operations after it may start, so they can overlap with it. Empty means they wait
+     until it is finished;
    - **Setup minutes**, optional: leave it empty to use the work center's;
    - **Minutes per cycle**, more than 0: the time one cycle of the work center takes;
    - **Instructions**, in Markdown, up to 20,000 characters: what the operator needs to
@@ -178,6 +204,12 @@ are asked to reload, so that nobody overwrites another's change unseen.
 
 A BoM has at most 200 lines and 50 operations. A line can name an operation you added in
 the same edit, before either is saved.
+
+Below the operations, **Order of the operations** shows them in steps: step 1 is what can
+start at once, each next step what runs after the steps before it, and the operations of
+one step run side by side. Operations that depend on each other in a circle are refused —
+the editor says so before it sends, and the server names the circle. Removing an operation
+others depended on makes them depend on what it depended on, so the order stays.
 
 **Editing** a BoM saves its lines and operations as you see them, in one go. When you
 remove an operation a line named, the line simply no longer names one. The edit is
@@ -564,7 +596,10 @@ The **expected minutes** are worked out once, at confirm, from the operation and
 center as they were then: the setup, the cleanup, and the cycles the order's quantity
 needs at the work center's capacity and time efficiency, rounded to the minute — the same
 figure as the [overview](#read-a-bill-of-materials-overview) gives. Later changes to the
-bill of materials or the work center do not change them.
+bill of materials or the work center do not change them — with one exception: a work order
+of a group moved to another member before any time is logged on it takes that member's
+setup, cleanup, capacity, efficiency and rates, and its expected minutes are worked out
+again with them. An operation's own setup stays its own.
 
 **Time logs** lists every log on the order's work orders: the **Person**, the **Work
 order**, the **Kind** — **Productive**, or **Downtime** with its reason — **Started**,
@@ -616,7 +651,7 @@ A work order goes through these states:
 
 | State | What it means |
 | --- | --- |
-| **Pending** | An earlier operation of the order is not finished yet |
+| **Pending** | An operation it depends on is not finished yet, or has not passed on its send-ahead quantity |
 | **Ready** | It can be started |
 | **In progress** | Someone is working on it |
 | **Paused** | It was started, and nobody is working on it now |
@@ -654,19 +689,43 @@ screen.
    nobody else is working on it, the work order is **Paused**. Choose **Start** to go on.
 4. Choose **Finish** when the operation is done for the whole order, and confirm
    **Finish this work order?**. Finishing ends the time of everyone still working on it,
-   marks it **Done**, and makes the next operation **Ready** at its work center. Finish is
-   not offered on a pending work order. Finishing one that someone else has just finished
+   marks it **Done**, and makes **Ready** every operation that depended on it once all it
+   depends on are done — two operations that depended on it both become ready together, and
+   one that waits for two becomes ready only when both are done. Finish is not offered on a
+   pending work order. Finishing one that someone else has just finished
    is not an error.
 
 Several operators can work on one work order at once, each with their own time.
 
 ### Start a work order out of sequence
 
-Operations run in order: a work order is **Pending** until the one before it is done.
+Operations run in the order their bill of materials gives: a work order is **Pending**
+until every operation it depends on is done.
 When you choose **Start** on it, you are told *An earlier operation is not finished*. When
 the work overlaps in practice, choose **Start anyway**: the work starts as usual, and the
 time log is marked **Out of order**, so the supervisor can see it. **Cancel** leaves it
 pending.
+
+### Group work
+
+When the work center is a member of a work center group, its page also shows **Group
+work**: the group's work orders that are ready and that no member has taken yet — none is
+planned and no time is logged on them. The same work orders show on every member's page.
+Choose **Start here** to take one: it moves to this work center, with this work center's
+setup, efficiency and rates, and its time starts. From then on it is shown only in this
+work center's **Queue**. When another member took it a moment before you, you are told the
+work order was taken at another work center, and the list is read again.
+
+### Pass a quantity on
+
+When an operation has a **send-ahead quantity**, the operations after it may start before
+it is finished, once it has passed that many good units on. On a work order that is not the
+last, choose **Register quantity**, enter the good units you are passing on, and choose
+**Register quantity**. Nothing is posted to stock — only the last operation's production
+does that. The work order shows **Passed on**, such as *4 pcs of 10 pcs passed on before
+the next may start*, and the next operations become **Ready** as soon as the quantity is
+reached. The work order's first-piece checks must be recorded first. Sending the same
+registration twice registers it once.
 
 ### Switch to another work order
 
@@ -797,9 +856,18 @@ planning, moving and removing a plan need **Manage manufacturing orders**.
 ### Plan an order
 
 On a confirmed or in-progress order, choose **Plan**. Each work order that is not done is
-placed on its work center's calendar, one after the other in their sequence, in the first
+placed on its work center's calendar after the work orders it depends on, in the first
 free time long enough to hold it: the work center's open hours, less the time other work
-orders already hold there. A work order that does not fit in one stretch is cut into
+orders already hold there. Operations that depend on the same one are planned side by side
+on their own work centers, and one that waits for several starts after the last of them
+finishes. After an operation with a **send-ahead quantity**, the next starts once the time
+for that quantity has been worked — the setup and its cycles — and is held so that it does
+not finish before its predecessor plus the time of its own last batch.
+
+A work order of a **work center group** is tried at every active member that is not
+blocked, and planned at the one where it finishes first; when two finish at the same
+moment, the one with the higher efficiency, then the lower code, is chosen. Its figures and
+expected minutes are then that member's. Once time is logged on it, it stays at its member. A work order that does not fit in one stretch is cut into
 pieces around breaks, nights, closed days and other bookings. The order's **Planned**
 dates then run from the first piece's start to the last piece's finish.
 
@@ -863,9 +931,14 @@ dragged it. Or press the bar, and in **Move … to…** choose the **Day** and *
 your own time zone, and it also offers to open the order.
 
 The work order takes the first free time from the moment you chose — from now, if that
-has passed. The later work orders of the same order follow it only when they would
-otherwise start before it is finished; work orders of other orders never move. A move to
-another work center is not possible yet.
+has passed. The work orders that depend on it, directly or further on, follow it only when
+they would otherwise start too early — before it is finished, or before its send-ahead
+quantity is through; work orders of other orders never move.
+
+A work order of a work center group whose member is not fixed yet can also be dragged up or
+down onto another member's row, or moved there with **Work center** in **Move … to…**: it
+then runs at that member, with its figures. Any other row is refused. Once time is logged on
+the work order it stays at its member, and a move to another row is refused.
 
 ## The cost of an order
 
@@ -877,6 +950,9 @@ and **Total** — the **Estimate**, the **Actual**, the **Deviation** and the
 - The **estimate** is made when the order is confirmed: the components' required
   quantities at their standard cost, and the work orders' expected hours at the work
   center's machine rate and at its labour rate, for one operator. A draft has none yet.
+  For an operation that targets a group, the estimate uses the member the work order was
+  first given, the group's first active one by code.
+- The **actual** of a group's work order uses the rates of the member it was done at.
 - The **actual** runs while the order is open (**Running**): what was consumed and
   scrapped at the same standard cost; the machine for the time each work order was
   worked, counted once however many operators were on it; and labour for every

@@ -1,6 +1,6 @@
 ---
 title: Produksjon
-description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — og å arkivere, gjenaktivere og slette en; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner med instruksjonene sine, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, å flytte en arbeidsordre ved å dra den eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; kvalitet — kontrollene på en operasjon, å registrere dem ved stasjonen, hva de stopper, og avvik — å melde et, å sette produksjonen i karantene, å lukke det og å oppheve sperrene; påfyllingsforslag — hva som er fremskrevet, hva som foreslås produsert eller kjøpt og innen når, å opprette utkast eller bekreftede ordrer fra dem, å avvise et, å kjøre nå, å eksportere innkjøpsforslagene og automatisk oppretting på en stykkliste; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
+description: Produksjon-appen — sidemenyen og Oversikt; å sette opp en arbeidsstasjon — koden, lagerstedet, kapasiteten, effektiviteten, rigging og rydding, kostnadssatsene, ukemønsteret og stengningene — å arkivere, gjenaktivere og slette en, og å gruppere arbeidsstasjoner som kan erstatte hverandre; å lage en stykkliste for et produkt — det produserte antallet, linjene med svinn, operasjonene på arbeidsstasjoner eller arbeidsstasjonsgrupper med instruksjonene sine, hva hver operasjon avhenger av og overføringsantallet, og hvilken operasjon som forbruker en linje — standardstykklisten og de alternative stykklistene, å arkivere og gjenaktivere dem; å lese oversikten over en stykkliste — mengdene med svinn, det som lages og det som kjøpes, det som er tilgjengelig på et lagersted, de forventede minuttene og, for dem som ser kostnader, den samlede kostnaden; å lage en produksjonsordre — opprette, endre og bekrefte den, reservere komponentene og linjene som mangler, legge til og endre en komponent, registrere en produksjon med forhåndsutfyllingen og avviksvarselet, partiet den lager, serienumre og partiene den forbruker, fanen Partier på ordren, lukke den med eller uten restordre, kansellere den og lese historikken — og oversiktens ordretall; verkstedet — å velge arbeidsstasjonen din, køen, å starte, sette på pause og fullføre en arbeidsordre, å starte en utenfor rekkefølgen, Gruppearbeid, å registrere et antall som sendes videre, å bytte til en annen, å registrere produksjon på den siste operasjonen, å melde svinn, å blokkere og oppheve blokkeringen av en arbeidsstasjon som har stoppet, Mitt arbeid og varselet etter 12 timer; og for arbeidsledere ordrens arbeidsordrer og tidsregistreringer, å korrigere en registrering og å legge til en som mangler; produksjonsplanen — å planlegge en ordre og å planlegge alle, ønsket start, å lese tavlens belastning, farger og stengte dager, operasjoner side om side og etter et overføringsantall, medlemmet i en gruppe en arbeidsordre planlegges ved, å flytte en arbeidsordre ved å dra den — også til raden til et annet medlem — eller med Flytt til, og å fjerne en plan; kostnaden for en ordre — estimatet, det faktiske, avviket og kostnaden per enhet, og arbeidsordrenes tidsavvik; rapportene — produksjonskostnad, utnyttelse av arbeidsstasjoner og tidsavvik, og å laste dem ned; kvalitet — kontrollene på en operasjon, å registrere dem ved stasjonen, hva de stopper, og avvik — å melde et, å sette produksjonen i karantene, å lukke det og å oppheve sperrene; påfyllingsforslag — hva som er fremskrevet, hva som foreslås produsert eller kjøpt og innen når, å opprette utkast eller bekreftede ordrer fra dem, å avvise et, å kjøre nå, å eksportere innkjøpsforslagene og automatisk oppretting på en stykkliste; hvorfor Produkter nekter å slette en variant en stykkliste eller en åpen produksjonsordre navngir; og hvem som ser hva.
 sidebar:
   order: 66
 sources:
@@ -129,6 +129,25 @@ Når noen andre har lagret arbeidsstasjonen etter at du åpnet den, nektes lagri
 du blir bedt om å laste inn på nytt, slik at ingen overskriver en annens endring uten å se
 den.
 
+## Grupper arbeidsstasjoner som kan erstatte hverandre
+
+Når to eller flere arbeidsstasjoner kan gjøre det samme arbeidet — to sager, tre
+sveiseceller — legger du dem i en **arbeidsstasjonsgruppe**. En operasjon kan da bruke
+gruppen i stedet for én arbeidsstasjon, og arbeidsordren for hver ordre går til det
+medlemmet som blir ferdig med den først.
+
+1. Åpne **Arbeidsstasjoner**. Under **Arbeidsstasjonsgrupper** velger du **Ny gruppe**.
+2. Gi gruppen en **Kode** (1 til 16 bokstaver A–Z og sifre, unik blant gruppene) og et
+   **Navn**, velg **Lagersted**, og velg **Medlemmer**: aktive arbeidsstasjoner på det
+   lagerstedet.
+3. Velg **Lagre**.
+
+**Rediger** endrer koden, navnet og medlemmene. Lagerstedet til en gruppe kan ikke endres
+så lenge en aktiv stykkliste har en operasjon som bruker den, og lagerstedet til et medlem
+kan ikke endres så lenge det er med i en gruppe. **Arkiver** nektes så lenge en aktiv
+stykkliste bruker gruppen; **Gjenaktiver** henter en arkivert gruppe tilbake. Et arkivert
+medlem blir stående i gruppen, men det planlegges ikke lenger arbeid ved det.
+
 ## Lag en stykkliste
 
 1. Åpne **Stykklister** og velg **Ny stykkliste**.
@@ -156,8 +175,17 @@ den.
    rekkefølgen de gjøres. Hver har:
    - **Rekkef.**, rekkefølgen den kjøres i;
    - **Operasjon**, navnet, for eksempel *Kapp*, *Sveis* eller *Lakk*;
-   - **Arbeidsstasjon**, blant de aktive. Alle operasjonene i én stykkliste må være på
-     arbeidsstasjoner på **samme lagersted**;
+   - **Arbeidsstasjon**, blant de aktive — eller en **Gruppe** av arbeidsstasjoner, slik at
+     planleggingen og verkstedet velger medlemmet (se
+     [Grupper arbeidsstasjoner som kan erstatte hverandre](#grupper-arbeidsstasjoner-som-kan-erstatte-hverandre)).
+     Alle operasjonene i én stykkliste må være på arbeidsstasjoner på **samme lagersted**;
+   - **Avhenger av**, operasjonene den kjøres etter. En ny operasjon avhenger av den som ble
+     lagt til før den; tøm feltet for en som kan starte med en gang, eller velg to eller
+     flere for en som venter på flere. Operasjoner som avhenger av den samme, kjøres side om
+     side;
+   - **Overføringsantall**, valgfritt: hvor mange godkjente enheter operasjonen sender
+     videre før operasjonene etter den kan starte, slik at de kan overlappe med den. Tomt
+     betyr at de venter til den er ferdig;
    - **Rigg-minutter**, valgfritt: la feltet stå tomt for å bruke arbeidsstasjonens;
    - **Minutter per syklus**, mer enn 0: tiden én syklus på arbeidsstasjonen tar;
    - **Instruksjoner**, i Markdown, opptil 20 000 tegn: det operatøren trenger å vite ved
@@ -180,6 +208,13 @@ den.
 
 En stykkliste har høyst 200 linjer og 50 operasjoner. En linje kan navngi en operasjon du
 la til i samme redigering, før noen av dem er lagret.
+
+Under operasjonene viser **Rekkefølgen på operasjonene** dem i trinn: trinn 1 er det som
+kan starte med en gang, hvert neste trinn det som kjøres etter trinnene før, og
+operasjonene på samme trinn kjøres side om side. Operasjoner som avhenger av hverandre i
+en sirkel, nektes — redigeringsvinduet sier fra før det sender, og serveren navngir
+sirkelen. Fjerner du en operasjon andre avhang av, avhenger de av det den avhang av, så
+rekkefølgen blir stående.
 
 **Å redigere** en stykkliste lagrer linjene og operasjonene slik du ser dem, i én
 omgang. Når du fjerner en operasjon en linje navnga, navngir linjen rett og slett ingen
@@ -567,7 +602,10 @@ De **forventede minuttene** regnes ut én gang, ved bekreftelsen, fra operasjone
 arbeidsstasjonen slik de var da: riggingen, ryddingen og syklusene ordrens antall trenger
 med arbeidsstasjonens kapasitet og effektivitet, rundet til hele minutter — det samme
 tallet som [oversikten](#les-oversikten-over-en-stykkliste) gir. Senere endringer i
-stykklisten eller arbeidsstasjonen endrer dem ikke.
+stykklisten eller arbeidsstasjonen endrer dem ikke — med ett unntak: en arbeidsordre i en
+gruppe som flyttes til et annet medlem før det er registrert tid på den, får det medlemmets
+rigging, rydding, kapasitet, effektivitet og satser, og de forventede minuttene regnes ut
+på nytt med dem. En operasjons egen rigging forblir dens egen.
 
 **Tidsregistreringer** lister hver registrering på ordrens arbeidsordrer: **Person**,
 **Arbeidsordre**, **Type** — **Produktiv**, eller **Stopptid** med årsaken — **Startet**,
@@ -622,7 +660,7 @@ En arbeidsordre går gjennom disse statusene:
 
 | Status | Hva den betyr |
 | --- | --- |
-| **Venter** | En tidligere operasjon i ordren er ikke ferdig ennå |
+| **Venter** | En operasjon den avhenger av er ikke ferdig ennå, eller har ikke sendt videre overføringsantallet sitt |
 | **Klar** | Den kan startes |
 | **Pågår** | Noen arbeider på den |
 | **Pauset** | Den er startet, og ingen arbeider på den nå |
@@ -660,19 +698,44 @@ hver side i verkstedet.
    fortsette.
 4. Velg **Ferdig** når operasjonen er gjort for hele ordren, og bekreft **Fullføre denne
    arbeidsordren?**. Å fullføre avslutter tiden til alle som fortsatt arbeider på den,
-   setter den til **Ferdig**, og gjør neste operasjon **Klar** på arbeidsstasjonen sin.
-   Ferdig tilbys ikke på en arbeidsordre som venter. Å fullføre en som noen andre nettopp
+   setter den til **Ferdig**, og gjør **Klar** hver operasjon som avhang av den, når alt den
+   avhenger av er ferdig — to operasjoner som avhang av den, blir klare sammen, og en som
+   venter på to, blir klar først når begge er ferdige. Ferdig tilbys ikke på en
+   arbeidsordre som venter. Å fullføre en som noen andre nettopp
    har fullført, er ikke en feil.
 
 Flere operatører kan arbeide på én arbeidsordre samtidig, hver med sin egen tid.
 
 ### Start en arbeidsordre utenfor rekkefølgen
 
-Operasjonene kjøres i rekkefølge: en arbeidsordre **Venter** til den før er ferdig. Når du
+Operasjonene kjøres i rekkefølgen stykklisten gir: en arbeidsordre **Venter** til hver
+operasjon den avhenger av er ferdig. Når du
 velger **Start** på den, får du beskjed om at *En tidligere operasjon er ikke ferdig*. Når
 arbeidet overlapper i praksis, velger du **Start likevel**: arbeidet starter som vanlig,
 og tidsregistreringen merkes **Utenfor rekkefølge**, så arbeidslederen ser det.
 **Avbryt** lar den bli stående og vente.
+
+### Gruppearbeid
+
+Når arbeidsstasjonen er med i en arbeidsstasjonsgruppe, viser siden også **Gruppearbeid**:
+gruppens arbeidsordrer som er klare, og som ingen medlemmer har tatt ennå — ingen er
+planlagt, og det er ikke registrert tid på dem. De samme arbeidsordrene vises på siden
+til hvert medlem. Velg **Start her** for å ta en: den flyttes til denne arbeidsstasjonen,
+med denne arbeidsstasjonens rigging, effektivitet og satser, og tiden din starter. Fra da
+av vises den bare i **Kø** for denne arbeidsstasjonen. Har et annet medlem tatt den et
+øyeblikk før deg, får du beskjed om at arbeidsordren er tatt ved en annen
+arbeidsstasjon, og listen leses på nytt.
+
+### Send et antall videre
+
+Når en operasjon har et **overføringsantall**, kan operasjonene etter den starte før den er
+ferdig, så snart den har sendt så mange godkjente enheter videre. På en arbeidsordre som
+ikke er den siste, velger du **Registrer antall**, skriver inn de godkjente enhetene du
+sender videre, og velger **Registrer antall**. Ingenting bokføres på lager — bare
+produksjonen på den siste operasjonen gjør det. Arbeidsordren viser **Sendt videre**, for
+eksempel *4 stk av 10 stk sendt videre før neste kan starte*, og de neste operasjonene blir
+**Klar** så snart antallet er nådd. Arbeidsordrens førstestykkekontroller må være
+registrert først. Sender du samme registrering to ganger, registreres den én gang.
 
 ### Bytt til en annen arbeidsordre
 
@@ -805,9 +868,19 @@ og fjerne en plan krever **Administrere produksjonsordrer**.
 ### Planlegg en ordre
 
 På en bekreftet eller påbegynt ordre velger du **Planlegg**. Hver arbeidsordre som ikke er
-ferdig, legges inn i arbeidsstasjonens kalender, den ene etter den andre i rekkefølgen
-sin, i den første ledige tiden som er lang nok: arbeidsstasjonens åpningstid, minus tiden
-andre arbeidsordrer allerede har der. En arbeidsordre som ikke får plass i ett strekk,
+ferdig, legges inn i arbeidsstasjonens kalender etter arbeidsordrene den avhenger av, i
+den første ledige tiden som er lang nok: arbeidsstasjonens åpningstid, minus tiden andre
+arbeidsordrer allerede har der. Operasjoner som avhenger av den samme, planlegges side om
+side på hver sin arbeidsstasjon, og en som venter på flere, starter etter at den siste av
+dem er ferdig. Etter en operasjon med **overføringsantall** starter den neste når tiden for
+det antallet er arbeidet — riggingen og syklusene — og den holdes slik at den ikke blir
+ferdig før forgjengeren pluss tiden for sitt eget siste parti.
+
+En arbeidsordre i en **arbeidsstasjonsgruppe** prøves ved hvert aktivt medlem som ikke er
+blokkert, og planlegges ved det der den blir ferdig først; blir to ferdige samtidig, velges
+den med høyest effektivitet, deretter den laveste koden. Tallene og de forventede
+minuttene er da det medlemmets. Når det er registrert tid på den, blir den ved medlemmet
+sitt. En arbeidsordre som ikke får plass i ett strekk,
 deles i biter rundt pauser, netter, stengte dager og andre bookinger. Ordrens **Planlagt**
 går da fra starten på den første biten til slutten på den siste.
 
@@ -875,9 +948,15 @@ langt som du dro. Eller trykk på stolpen, og i **Flytt … til …** velger du 
 er i din egen tidssone, og den tilbyr også å åpne ordren.
 
 Arbeidsordren får den første ledige tiden fra tidspunktet du valgte — fra nå, hvis det er
-passert. De senere arbeidsordrene i samme ordre følger etter bare når de ellers ville
-startet før den er ferdig; arbeidsordrer i andre ordrer flyttes aldri. Å flytte til en
-annen arbeidsstasjon er ikke mulig ennå.
+passert. Arbeidsordrene som avhenger av den, direkte eller lenger ut, følger etter bare når
+de ellers ville startet for tidlig — før den er ferdig, eller før overføringsantallet er
+nådd; arbeidsordrer i andre ordrer flyttes aldri.
+
+En arbeidsordre i en arbeidsstasjonsgruppe der medlemmet ikke er fast ennå, kan også dras
+opp eller ned til raden til et annet medlem, eller flyttes dit med **Arbeidsstasjon** i
+**Flytt … til …**: den kjøres da ved det medlemmet, med tallene derfra. Andre rader nektes.
+Når det er registrert tid på arbeidsordren, blir den ved medlemmet sitt, og en flytting til
+en annen rad nektes.
 
 ## Kostnaden for en ordre
 
@@ -887,7 +966,11 @@ et **Kostnad**-panel med, for hver del — **Komponenter**, **Maskin**, **Arbeid
 
 - **Estimatet** lages når ordren bekreftes: komponentenes nødvendige mengder til
   standardkost, og arbeidsordrenes forventede timer til arbeidsstasjonens maskinsats og
-  arbeidssats, for én operatør. Et utkast har ikke noe ennå.
+  arbeidssats, for én operatør. Et utkast har ikke noe ennå. For en operasjon som bruker en
+  gruppe, bruker estimatet medlemmet arbeidsordren først fikk, gruppens første aktive etter
+  kode.
+- **Det faktiske** for en arbeidsordre i en gruppe bruker satsene til medlemmet den ble
+  gjort ved.
 - **Det faktiske** løper mens ordren er åpen (**Løpende**): det som ble forbrukt og
   kassert, til samme standardkost; maskinen for tiden det ble arbeidet på hver
   arbeidsordre, talt én gang uansett hvor mange operatører som var på den; og arbeid for
