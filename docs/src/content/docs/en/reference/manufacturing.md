@@ -1774,21 +1774,29 @@ For each variant with a reorder point at an active site (M107):
 projected = usable onHand − reserved + incoming        (contracts.Stock.Placements)
           + Σ supply orders' (quantity − produced), ≥ 0
           − Σ open orders' (required − consumed − scrapped − reserved), ≥ 0, per component line
+          − Σ reorder drafts' BoM lines, scaled to the draft's quantity with the scrap
           − Σ unreserved open sales demand              (contracts.SalesOrderLines.Unreserved)
+              less, per line, what live MTO orders still make for it, ≥ 0
 ```
 
 - **Supply orders** are the site's `confirmed` and `in_progress` orders of the variant,
   and its **drafts of origin `reorder`** — a suggestion made into a draft is not suggested
   again the next night. Other drafts count for nothing.
 - **Make-to-order output is left out** (origin `sales_order`): it is promised to its
-  line. So is that line's demand: every sales order line a live (draft, confirmed, in
-  progress) make-to-order order names as `origin_line_id` is dropped from Orders' answer,
-  so an MTO pair neither adds nor removes. Sub-assembly orders (origin `parent`) count;
+  line. So is the part of that line's demand it will cover: for every sales order line a
+  live (draft, confirmed, in progress) make-to-order order names as `origin_line_id`, the
+  line's unreserved quantity counts less what those orders still make (`quantity −
+  produced`, ≥ 0, summed), at least 0. What they have produced already is in on hand,
+  promised to the line, so it stays the line's demand and is not counted twice; a line
+  larger than its order counts the rest. Sub-assembly orders (origin `parent`) count;
   their parent's component demand is subtracted.
 - **Component demand** is that of the site's open orders, make-to-order ones too: they
   still consume their components. Reserved stock is in Inventory's `reserved` already, so
   only what a line does not hold reserved — Manufacturing's own copy, `reserved` on the
-  line — is subtracted.
+  line — is subtracted. A **reorder draft**, counted as supply, counts its demand too:
+  it has no component lines before its confirm, so its BoM's lines are scaled to its
+  quantity with their scrap and rounded up to three decimals, as the confirm will copy
+  them.
 - **Sales demand** is Orders' to say: per open goods line of a confirmed sales order at the
   site, its open quantity less what it holds reserved there, more than 0 — a line
   confirmed without reserving, or reserved short ([Orders](/en/reference/orders/#unreserved-demand)).
@@ -1799,9 +1807,10 @@ Figures are exact decimals; nothing is rounded until the quantity.
 ### The suggestion
 
 By Inventory's low-stock rule (M108): **low** when `projected ≤ reorderPoint`; the
-target is the maximum, or `reorderPoint + 1`; `needed = target − projected`, at least 1,
-rounded **up** to a whole number of the multiple when one is set, then up to three
-decimals. **Make** when the variant has a default active BoM (`bom_id` names it), else
+target is the maximum, or `reorderPoint + 1`; `needed = target − projected`, at least 1
+— as Inventory's `judgeLow`, whatever the unit, so a variant counted in decimals is
+suggested its true quantity only above 1 — rounded **up** to a whole number of the
+multiple when one is set, then up to three decimals. **Make** when the variant has a default active BoM (`bom_id` names it), else
 **buy**. **Need-by** is today (the business zone's) when usable on hand less reserved is
 already at or below the reorder point, else today plus the BoM's `leadTimeDays` business
 days (weekends and Norwegian public holidays skipped); a buy is needed today. The
@@ -1819,12 +1828,18 @@ The lease worker **`manufacturing.replenishment`** (every 30 seconds, built thro
 - **Nightly**: once 02:00 has passed in the business zone it queues the day's run, once
   per day however many workers see it (`ux_replenishment_runs_nightly`).
 - **On demand**: `POST /replenishment/runs {siteId?}` (`orders-manage`) answers **202**
-  with the run. At most one a minute: a person's run asked for less than a minute ago is
-  answered instead of a new one, under a transaction-scoped advisory lock.
-- **The lease.** A run is claimed by one statement that moves `status` to `running` and
-  `lease_until` ten minutes on (`FOR UPDATE SKIP LOCKED`); a running run whose lease has
-  run out — its worker died — is claimed again, and one claimed more than three times
-  fails. No session lock and no connection is held between steps.
+  with the run. At most one a minute per site: a person's run of the same site — or of
+  every site, with no `siteId` — asked for less than a minute ago is answered instead of
+  a new one (`site_id IS NOT DISTINCT FROM`), under a transaction-scoped advisory lock.
+- **The lease.** A run is claimed by one statement that moves `status` to `running`,
+  `lease_until` ten minutes on and `attempts` up (`FOR UPDATE SKIP LOCKED`); a running
+  run whose lease has run out — its worker died, or is stuck — is claimed again, and one
+  claimed more than three times fails. The claim is its `attempts`: before each site the
+  worker renews the lease `WHERE attempts = @attempts`, and a run claimed again since
+  answers no row, so the worker stops before that site; the end is written the same way,
+  so only the claim holding the run finishes it. No session lock and no connection is
+  held between steps.
+- **First**, the open suggestions of every site no longer active are `superseded`.
 - **Per active site** (or the one asked for): `Stock.Placements`, then
   `SalesOrderLines.Unreserved` for the placements' variants, then the module's own orders
   and default BoMs, every one on the pool and none inside a transaction; then **one
@@ -1832,6 +1847,9 @@ The lease worker **`manufacturing.replenishment`** (every 30 seconds, built thro
   and inserts the new ones. A suggestion acted on — `done` or `dismissed` — is kept. So a
   pool of one finishes a run.
 - **Automatic creation** follows, one transaction per order (below).
+- **A site that fails** — a contract or a statement refusing — is logged and the run
+  goes on to the next; the run is then `failed`, its `error` naming each failed site
+  (`site MAIN: …; site BRANCH: …`), its tallies the other sites'.
 - A run records `suggestions`, `orders_created`, `sales_counted` and, failed, its
   `error`; runs finished more than 90 days ago are pruned with their suggestions that are
   no longer open. `GET /replenishment/runs` lists the newest 20.
@@ -1851,13 +1869,20 @@ name, and when. One open suggestion per (site, variant) (`ux_suggestions_open`).
   due on its need-by date, from the variant's default active BoM. Judged on the pool first
   (the BoM — `bom_required` for a buy suggestion — and the site through `judgePlace`), then
   under the lock order of a new order: `LockVariants`, the suggestion `FOR UPDATE` (no
-  longer open is `suggestion_not_open`), the BoM re-read, the counter; with `confirm` the
+  longer open is `suggestion_not_open`), **no order of origin `reorder` of the variant
+  still `draft`, `confirmed` or `in_progress` at the site** — else the suggestion is
+  marked `reorder_open`, that committed, and the item fails `reorder_open`; read under
+  `LockVariants`, two creations of one variant see each other's order — the BoM
+  re-read, the counter; with `confirm` the
   order is confirmed as `Confirm` does, M20a's two passes, where shortage never refuses.
   The suggestion becomes `done` with the order. The answer lists `made` and `failed`, each
-  failure with its code; one failure never stops the others.
+  failure with its code; one failure never stops the others. A quantity that is not more
+  than 0 with at most three decimals is **400** `quantity_invalid` at
+  `items[i].quantity`, nothing made.
 - `POST /replenishment/suggestions/{id}/dismiss` (`orders-manage`) — `dismissed` until
   the next run; one not open is **409** `suggestion_not_open`.
-- `GET /stats` answers `suggestionsToMake`, the open make suggestions.
+- `GET /stats` answers `suggestionsToMake`, the open make suggestions of the active
+  sites (0 with Inventory off).
 
 ### Automatic creation
 
@@ -1870,7 +1895,9 @@ itself, as the system, through the same path as the action above, and confirms i
 `auto_confirm`. **It skips a variant with an order of origin `reorder` still `draft`,
 `confirmed` or `in_progress` at the site**, and marks the suggestion `reorder_open`
 (*An MO from an earlier suggestion is open*), so a night whose order has not started yet
-adds no second one. A refusal is logged and leaves the suggestion open.
+adds no second one. The skip is read on the pool; one made since — by a person, or a run
+at once — is caught under `LockVariants` by the create above (`reorder_open`). A refusal
+is logged and leaves the suggestion open.
 
 ### Live
 
@@ -2004,6 +2031,7 @@ bodies are strict: an unknown property is a 400.
 | `lot_not_of_order` | 400 | A deviation reported on an order and a lot the order neither made nor consumed, at `lotId` (M99) |
 | `lots_view_required` | 403 | A deviation reported on a lot without `inventory:locations-view` and `inventory:stock-view` (M99) |
 | `suggestion_not_open` | 409 | Dismissing a suggestion acted on, dismissed or replaced by a later run; among `failed` when an order is asked of one (M111) |
+| `reorder_open` | 409 | Among `failed` when an order is asked of a suggestion whose variant has an order from an earlier suggestion still `draft`, `confirmed` or `in_progress` at the site; the suggestion is marked `reorder_open` (M111) |
 | `attachment_too_large` | 400 | A photo over 10 MB |
 | `attachment_type` | 415 | A photo that is not a JPEG or PNG by its own bytes |
 | `storage_not_configured` | 503 | A photo with no object store configured |

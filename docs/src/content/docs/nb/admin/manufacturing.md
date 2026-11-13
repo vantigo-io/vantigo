@@ -87,9 +87,15 @@ trenger noe oppsett:
   eller kjøpes ([påfylling](/en/reference/manufacturing/#replenishment)). Den leser
   bestillingspunktene, maksbeholdningene og multiplumene som er satt på påfyllinger i
   Lager, og, med Ordre slått på, salgsordrenes ureserverte etterspørsel — uten Ordre sier
-  siden *Salgsordrer er ikke regnet med*. En kjøring er leaset, så to arbeidsprosesser
-  kjører aldri én to ganger, og en kjøring der arbeideren stoppet, tas opp igjen etter ti
-  minutter. Kjøringene beholdes i 90 dager i `manufacturing.replenishment_runs`.
+  siden *Salgsordrer er ikke regnet med*. En kjøring er leaset i ti minutter, og leasen
+  fornyes før hvert lagersted, så ingen annen arbeidsprosess tar den opp mens arbeideren
+  lever. En kjøring der arbeideren stoppet, tas opp igjen når leasen er utløpt; arbeideren
+  som mistet den, stopper før neste lagersted, og bare den som har kjøringen, registrerer
+  at den er ferdig. Et lagersted som feiler, stopper ikke de andre: kjøringen blir da
+  `failed`, med `error` som nevner hvert lagersted som feilet, og de andre lagerstedenes
+  forslag lages. Et lagersted som er arkivert i Lager, får sine åpne forslag erstattet av
+  ingenting ved neste kjøring. Kjøringene beholdes i 90 dager i
+  `manufacturing.replenishment_runs`.
 
 Migreringen `00171_manufacturing_replenishment.sql` legger kjøringene, forslagene og
 reglene for automatisk oppretting til i skjemaet.
@@ -205,7 +211,8 @@ på den først. Slå den bare på for produkter med jevn etterspørsel, og gi Ad
 produksjonsordrer til dem som skal avgjøre det.
 
 Kjøringen oppretter aldri en ordre til for et produkt mens en fra et tidligere forslag
-fortsatt er et utkast eller åpen på lagerstedet. For å se hva den gjorde, les de nyeste
+fortsatt er et utkast eller åpen på lagerstedet — heller ikke når to kjøringer, eller en
+kjøring og en person, handler samtidig: kontrollen gjøres med produktet låst. For å se hva den gjorde, les de nyeste
 kjøringene som databaseeier:
 
 ```sql
@@ -313,6 +320,7 @@ WHERE sales_order_id = <salgsordrens id>;
 | **Forslag** er tom | Ingen påfylling i Lager har et bestillingspunkt, ingenting er lavt, eller ingen kjøring er gjort | Sett bestillingspunkter; velg **Kjør nå** |
 | **Forslag** sier *Ikke kjørt ennå* etter en natt | Ingen arbeidsprosess kjører | Start arbeidsprosessen ([Installasjon](/nb/admin/installation/)) |
 | **Forslag** sier *Salgsordrer er ikke regnet med* | Ordre er ikke slått på | Slå på Ordre, eller godta at etterspørselen fra salg holdes utenfor |
-| En kjøring i `replenishment_runs` er `failed` | `error` sier hvorfor — Lager svarer ikke, eller et lagersted har mer enn 5000 påfyllinger med bestillingspunkt | Rett årsaken; neste kjøring lager forslagene på nytt |
+| En kjøring i `replenishment_runs` er `failed` | `error` nevner hvert lagersted som feilet og hvorfor — Lager svarer ikke, eller et lagersted har mer enn 5000 påfyllinger med bestillingspunkt; de andre lagerstedenes forslag ble laget | Rett årsaken; neste kjøring lager forslagene på nytt |
+| En kjøring i `replenishment_runs` blir stående `running` | Arbeideren stoppet, eller mistet kjøringen til en annen arbeider etter at leasen var utløpt | Ingenting: den tas opp igjen når leasen er utløpt (ti minutter) |
 | Automatisk oppretting laget ingen ordre | En ordre fra et tidligere forslag for produktet er fortsatt et utkast eller åpen, eller ordren ble nektet (logget av `manufacturing.replenishment`) | Fullfør eller kanseller den forrige ordren; les arbeiderens logg |
 | `permission denied for table suggestions` i loggen etter oppgraderingen | Rollen fikk rettigheter tabell for tabell, før `00171` | Kjør `GRANT`-setningene på nytt ([Databaseroller](/nb/admin/installation/#databaseroller)) |

@@ -1023,8 +1023,9 @@ stock** and both views) and choose **Placements** under **What to import**.
    (`OSL`), the primary location's **full code** (`OSL-A-03-2`), the **reorder point**
    and the **maximum** (and the **multiple**), in the item's unit. Separators, decimal commas and the 5000-row
    limit are as for [opening balances](#import-opening-balances).
-2. **Each row sets every field.** An empty cell clears its field — a file without the
-   `multiple` column clears the multiple — and a row with the primary location, reorder
+2. **Each row sets every field in the file.** An empty cell clears its field — a file
+   without the `multiple` column leaves every multiple as it is, and a placement it
+   creates has none — and a row with the primary location, reorder
    point and maximum all empty **removes** the placement. When a file names the same item and site twice,
    the last row wins.
 3. Choose the **CSV file** and press **Dry run**. Nothing is written: each row shows its
