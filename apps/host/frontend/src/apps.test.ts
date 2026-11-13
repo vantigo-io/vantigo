@@ -13,6 +13,7 @@ import {
   IconHammer,
   IconListDetails,
   IconPackageImport,
+  IconPuzzle,
   IconTool,
   IconTransfer,
   IconTrendingDown,
@@ -170,6 +171,7 @@ describe("the app registry", () => {
       "/manufacturing",
       "/manufacturing/orders",
       "/manufacturing/suggestions",
+      "/manufacturing/unbuilds",
       "/manufacturing/shop-floor",
       "/manufacturing/schedule",
       "/manufacturing/deviations",
@@ -799,7 +801,7 @@ describe("the app registry", () => {
   // M7): Overview, Manufacturing orders, Shop floor, Production schedule,
   // Bills of materials and Work centers, each offered by manufacturing:access;
   // the labels and icons are the host's.
-  it("registers Manufacturing with the package's eight destinations, all manufacturing:access's", () => {
+  it("registers Manufacturing with the package's nine destinations, all manufacturing:access's", () => {
     const manufacturing = appForKey("manufacturing");
     expect(manufacturing).toMatchObject({
       module: "manufacturing",
@@ -813,6 +815,7 @@ describe("the app registry", () => {
       ["navigation.manufacturingOverview", "/manufacturing", ["manufacturing:access"]],
       ["navigation.manufacturingOrders", "/manufacturing/orders", ["manufacturing:access"]],
       ["navigation.manufacturingSuggestions", "/manufacturing/suggestions", ["manufacturing:access"]],
+      ["navigation.manufacturingUnbuilds", "/manufacturing/unbuilds", ["manufacturing:access"]],
       ["navigation.manufacturingShopFloor", "/manufacturing/shop-floor", ["manufacturing:access"]],
       ["navigation.manufacturingSchedule", "/manufacturing/schedule", ["manufacturing:access"]],
       ["navigation.manufacturingDeviations", "/manufacturing/deviations", ["manufacturing:access"]],
@@ -823,6 +826,7 @@ describe("the app registry", () => {
       IconBuildingFactory2,
       IconClipboardList,
       IconBulb,
+      IconPuzzle,
       IconHammer,
       IconCalendarTime,
       IconZoomExclamation,
