@@ -88,15 +88,44 @@ that have been missed:
 - the host's per-module registrations: `moduleKeys`, `apps.ts`, the layout route,
   `i18n.ts`, the admin permission labels, the dashboard and the spotlight, and the
   API client in `sessionClients` (`apps/host/frontend/src/api/session-handlers.ts`).
+- **the public site**: the module's page on <https://vantigo.io>, which lives in another
+  repository — see [The public site](#the-public-site) below.
 
 A pull request's CI runs against the base it branched from. When another pull request
 has touched a module registry since, rebase onto the latest `main` and let CI run again
 right before merging — otherwise the new module and the new registry each pass alone
 and break `main` together.
 
+## The public site
+
+Vantigo's marketing site is its own repository,
+[vantigo-io/vantigo-landing](https://github.com/vantigo-io/vantigo-landing) (private;
+usually checked out beside this one, as `../vantigo-landing`). It has one page per
+app — `vantigo.io/apps/customers` — that says what the app is about, what it solves and
+how, with animated product scenes, and it lists every app on its front page. Nothing in
+this repository can check that site, so it is kept true by this rule:
+
+**A new app is not finished until it has its page on the public site, and a change a
+customer could be sold on — a new capability, a renamed or removed one, an app that
+goes from coming to live — reaches the app's page there.** The site may only say what
+the user guide here documents, so write the guide pages first, in both languages, and
+the landing page from them.
+
+- For a new app, follow *Adding an app* in that repository's `AGENTS.md`: name it in the
+  two catalogs, write `web/src/apps/<key>.ts` in English and Norwegian from
+  `docs/src/content/docs/{en,nb}/user/<module>.md`, register it, and run its checks.
+  Open that pull request alongside this repository's, and link the two.
+- `mise run apps:check` in the landing repository compares the apps it shows with the
+  user guide pages here and names what is missing.
+- A plan for a new app or a customer-visible feature lists the landing page as its own
+  step, next to the documentation pages.
+- If the landing repository is not available to you, say so when you hand the work
+  over, and name the app and what its page must say — do not let it pass silently.
+
 ## Finishing a change
 
 Before calling a change done: the Go gate (`mise run server:check`, `mise run server:test`),
 the frontend gate (`mise run frontend:check`) and the documentation gate
 (`mise run docs:check`) pass, and the commit message follows Conventional Commits as
-the history shows.
+the history shows. A new app, or a change a customer could be sold on, also has its
+pull request in the landing repository ([The public site](#the-public-site)).
