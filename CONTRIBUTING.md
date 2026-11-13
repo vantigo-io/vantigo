@@ -14,7 +14,7 @@ mise install              # Go, Bun, lint and release tools, and Java (only for 
 bun install --frozen-lockfile
 
 mise run server:db        # PostgreSQL for tests (55432) and development (55433)
-mise run server:seed      # populate the showcase demo dataset (20 users, 200 companies, 75 projects, ...)
+mise run server:seed      # populate the showcase demo dataset (20 users, 200 companies, 75 projects, a workshop, ...)
 mise run server:test      # go test against a real PostgreSQL
 mise run server:check     # golangci-lint, govulncheck, shellcheck, actionlint, goreleaser check
 mise run frontend:check   # format, lint, typecheck and tests for every frontend workspace
@@ -54,13 +54,50 @@ No command, or an unknown one, prints usage on stderr and exits 2.
 
 Running `mise run server:seed` populates a rich, idempotent showcase dataset (`Vantigo Demo AS`) across every module:
 
-- **20 users & staff records** (each with a static 256×256 headshot photo checked in under [`apps/server/cmd/vantigo/avatars/`](apps/server/cmd/vantigo/avatars/)) across 4 departments (`LEAD`, `ENG`, `CONS`, `OPS`) and 7 RBAC role personas
+- **20 users & staff records** (each with a static 256×256 headshot photo checked in under [`apps/server/cmd/vantigo/avatars/`](apps/server/cmd/vantigo/avatars/)) across 4 departments (`LEAD`, `ENG`, `CONS`, `OPS`) and 9 RBAC role personas
 - **200 customer companies** (with realistic Norwegian organization numbers, industries, and credit limits) and **400 contacts** (2 contacts per company)
 - **50 products** across consulting, cloud, energy, software, and training categories
 - **75 projects** with tasks, member allocations, and billable rate overrides
 - **240 time entries** and **30 expenses** (mix of approved and submitted)
 - **30 invoices** across paid, partially paid, open, overdue, and draft states
 - **10 energy metering points** (`NO1`–`NO5`) and **10 customer support conversations**
+- **A small furniture and metal workshop** for Inventory, Manufacturing and Orders (below)
+
+#### The demo workshop
+
+The workshop gives Inventory, Manufacturing and Orders something to show. Its 12 goods
+(SKUs `VRK-…`) are written into the catalog with the rest of the dataset. Everything
+else is made after that transaction, through the modules' own API composed in
+process and called as the personas, so movements, balances, lots, reservations,
+numbers, work orders, schedules and costs are exactly what the interface would have
+made. The step runs once: when the site `VERK` exists, `mise run server:seed` skips
+it. An installation seeded before the workshop existed gets it on its next seed.
+
+- **Goods:** finished *Arbeidsbenk Pro 160* (serial-tracked) and *Lagerreol Industri 90*
+  (made to order), the kit *Arbeidsbenk startsett* (workbench, tool board and vise),
+  the resold *Verktøytavle perforert 120* and *Benkeskruestikk 125 mm*, the
+  sub-assemblies *Benkeramme stål 160* and *Benkeplate bjørk 160*, the raw steel tube,
+  screws and plywood, the lot-tracked powder paint *Pulverlakk RAL 7016* (with expiry)
+  and the by-product *Stålkapp*.
+- **Inventory:** the site `VERK` (*Verkstedet Lillestrøm*, Orders' default site) with
+  the locations `MOTTAK`, `RAA`, `HALV` and `FERDIG`; opening stock received in four
+  receipts; the paint in lots `P2511-A`, `P2509-B` (expires in three weeks) and
+  `P2511-C` (in quarantine for inspection); reorder points on the steel tube and the
+  frame, which the replenishment run turns into a buy and a make suggestion.
+- **Manufacturing:** the work centers `KAPP`, `SVEIS`, `MONT` and `LAKK` and the group
+  `ETTERARB`; BoMs `RAMME-160` (with the offcuts as a by-product), `PLATE-160`,
+  `ARB-160` (two levels, a parallel branch and two quality checks), `REOL-90` (make to
+  order) and the kit `SETT-START`. Orders: `MO-1` done (time logged, checks passed,
+  serials `AB-1001`–`AB-1002` produced), `MO-2` in progress (its cutting started by the
+  operator), `MO-3` confirmed and short of frames and tops, `MO-4` late, `MO-5` a draft,
+  and `MO-6` made by the make-to-order worker for the first sales order.
+- **Orders:** three sales orders — one confirmed for two shelf units (made to order),
+  one confirmed for the starter kit with its child lines reserved, and a draft.
+
+Two personas run it beside their usual role: **Magnus Bakken** is the *Production
+Planner* and **Kasper Myhre** and **Oliver Aas** are *Shop Floor Operators*. PINs,
+badges and stations are not seeded: their hashes depend on `APP_SECRET`, so make them
+in the interface.
 
 All 20 seeded accounts share the password **`VantigoIsAwesome!`** and have verified emails with MFA disabled so you can immediately sign in and test different permission boundaries:
 
@@ -75,6 +112,12 @@ All 20 seeded accounts share the password **`VantigoIsAwesome!`** and have verif
 | **Customer Success** | Manages customer companies, contacts, merges, and imports; handles support inbox conversations and channels; manages energy metering points. |
 | **Consultant** | Logs own time entries and expenses; views and works on assigned projects; read-only access to customers, products, and energy metering points. |
 | **Read-Only Auditor** | Read-only access across customers, products, projects, time, expenses, invoices, staff, energy, and communications; no write or approval permissions. |
+| **Production Planner** | Runs the workshop: work centers, bills of materials, manufacturing orders, the schedule, quality and costs; receives, moves and counts stock; manages sales orders and deliveries. Held beside another role. |
+| **Shop Floor Operator** | `manufacturing:access` and `manufacturing:shop-floor` only: starts, pauses and finishes work orders and records their checks. Held beside another role. |
+
+Practice Lead, Finance & Billing, Customer Success and Read-Only Auditor also see
+stock and sales orders, and the first three work with sales orders to the extent
+their role suggests.
 
 #### Seeded Users (`password: VantigoIsAwesome!`)
 
@@ -83,7 +126,7 @@ All 20 seeded accounts share the password **`VantigoIsAwesome!`** and have verif
 | 1 | <img src="apps/server/cmd/vantigo/avatars/01-astrid-lindqvist.jpg" width="48" height="48" alt="Astrid Lindqvist" /> | Astrid Lindqvist | **Owner (`SystemAdmin`)** | Managing Partner | `LEAD` | `owner@vantigo.local` | `VantigoIsAwesome!` |
 | 2 | <img src="apps/server/cmd/vantigo/avatars/02-henrik-solberg.jpg" width="48" height="48" alt="Henrik Solberg" /> | Henrik Solberg | **Practice Lead** | Practice Director | `LEAD` | `henrik.solberg@vantigo.local` | `VantigoIsAwesome!` |
 | 3 | <img src="apps/server/cmd/vantigo/avatars/03-ingrid-nygaard.jpg" width="48" height="48" alt="Ingrid Nygård" /> | Ingrid Nygård | **Practice Lead** | Principal Architect | `ENG` | `ingrid.nygaard@vantigo.local` | `VantigoIsAwesome!` |
-| 4 | <img src="apps/server/cmd/vantigo/avatars/04-magnus-bakken.jpg" width="48" height="48" alt="Magnus Bakken" /> | Magnus Bakken | **Practice Lead** | Delivery Lead | `CONS` | `magnus.bakken@vantigo.local` | `VantigoIsAwesome!` |
+| 4 | <img src="apps/server/cmd/vantigo/avatars/04-magnus-bakken.jpg" width="48" height="48" alt="Magnus Bakken" /> | Magnus Bakken | **Practice Lead** + **Production Planner** | Delivery Lead | `CONS` | `magnus.bakken@vantigo.local` | `VantigoIsAwesome!` |
 | 5 | <img src="apps/server/cmd/vantigo/avatars/05-sofie-haugen.jpg" width="48" height="48" alt="Sofie Haugen" /> | Sofie Haugen | **Finance & Billing** | Finance & Operations Manager | `OPS` | `sofie.haugen@vantigo.local` | `VantigoIsAwesome!` |
 | 6 | <img src="apps/server/cmd/vantigo/avatars/06-erik-johansen.jpg" width="48" height="48" alt="Erik Johansen" /> | Erik Johansen | **Practice Lead** | Regional Lead West | `CONS` | `erik.johansen@vantigo.local` | `VantigoIsAwesome!` |
 | 7 | <img src="apps/server/cmd/vantigo/avatars/07-nora-berg.jpg" width="48" height="48" alt="Nora Berg" /> | Nora Berg | **Consultant** | Senior Cloud Consultant | `ENG` | `nora.berg@vantigo.local` | `VantigoIsAwesome!` |
@@ -95,9 +138,9 @@ All 20 seeded accounts share the password **`VantigoIsAwesome!`** and have verif
 | 13 | <img src="apps/server/cmd/vantigo/avatars/13-frida-eide.jpg" width="48" height="48" alt="Frida Eide" /> | Frida Eide | **Consultant** | Management Consultant | `CONS` | `frida.eide@vantigo.local` | `VantigoIsAwesome!` |
 | 14 | <img src="apps/server/cmd/vantigo/avatars/14-tobias-strand.jpg" width="48" height="48" alt="Tobias Strand" /> | Tobias Strand | **HR & People Manager** | HR & Compliance Lead | `OPS` | `tobias.strand@vantigo.local` | `VantigoIsAwesome!` |
 | 15 | <img src="apps/server/cmd/vantigo/avatars/15-maja-holm.jpg" width="48" height="48" alt="Maja Holm" /> | Maja Holm | **Customer Success** | Customer Success Lead | `OPS` | `maja.holm@vantigo.local` | `VantigoIsAwesome!` |
-| 16 | <img src="apps/server/cmd/vantigo/avatars/16-oliver-aas.jpg" width="48" height="48" alt="Oliver Aas" /> | Oliver Aas | **Consultant** | Data & Analytics Engineer | `ENG` | `oliver.aas@vantigo.local` | `VantigoIsAwesome!` |
+| 16 | <img src="apps/server/cmd/vantigo/avatars/16-oliver-aas.jpg" width="48" height="48" alt="Oliver Aas" /> | Oliver Aas | **Consultant** + **Shop Floor Operator** | Data & Analytics Engineer | `ENG` | `oliver.aas@vantigo.local` | `VantigoIsAwesome!` |
 | 17 | <img src="apps/server/cmd/vantigo/avatars/17-amalie-vik.jpg" width="48" height="48" alt="Amalie Vik" /> | Amalie Vik | **Consultant** | Project Consultant | `CONS` | `amalie.vik@vantigo.local` | `VantigoIsAwesome!` |
-| 18 | <img src="apps/server/cmd/vantigo/avatars/18-kasper-myhre.jpg" width="48" height="48" alt="Kasper Myhre" /> | Kasper Myhre | **Consultant** | Fullstack Engineer | `ENG` | `kasper.myhre@vantigo.local` | `VantigoIsAwesome!` |
+| 18 | <img src="apps/server/cmd/vantigo/avatars/18-kasper-myhre.jpg" width="48" height="48" alt="Kasper Myhre" /> | Kasper Myhre | **Consultant** + **Shop Floor Operator** | Fullstack Engineer | `ENG` | `kasper.myhre@vantigo.local` | `VantigoIsAwesome!` |
 | 19 | <img src="apps/server/cmd/vantigo/avatars/19-hedda-bo.jpg" width="48" height="48" alt="Hedda Bø" /> | Hedda Bø | **HR & People Manager** | People & Culture Partner | `OPS` | `hedda.bo@vantigo.local` | `VantigoIsAwesome!` |
 | 20 | <img src="apps/server/cmd/vantigo/avatars/20-mathias-rask.jpg" width="48" height="48" alt="Mathias Rask" /> | Mathias Rask | **Read-Only Auditor** | Internal Auditor | `OPS` | `mathias.rask@vantigo.local` | `VantigoIsAwesome!` |
 

@@ -46,13 +46,16 @@ type demoStaffSeed struct {
 	costRate    float64
 	annualPay   float64
 	roleName    string
+	// extraRoles are custom roles held beside roleName: the workshop's
+	// planner and shop-floor operators (seed_manufacturing.go).
+	extraRoles []string
 }
 
 var demoStaffMembers = []demoStaffSeed{
 	{email: demoOwnerEmail, firstName: "Astrid", lastName: "Lindqvist", preferred: "Astrid", jobTitle: "Managing Partner", deptCode: "LEAD", locationIdx: 0, birthDate: "1982-04-14", startDate: "2020-01-15", billRate: 2100, costRate: 950, annualPay: 1450000, roleName: "Owner"},
 	{email: "henrik.solberg@vantigo.local", firstName: "Henrik", lastName: "Solberg", preferred: "Henrik", jobTitle: "Practice Director", deptCode: "LEAD", locationIdx: 0, birthDate: "1984-09-22", startDate: "2020-03-01", billRate: 1950, costRate: 890, annualPay: 1320000, roleName: "Practice Lead"},
 	{email: "ingrid.nygaard@vantigo.local", firstName: "Ingrid", lastName: "Nygård", preferred: "Ingrid", jobTitle: "Principal Architect", deptCode: "ENG", locationIdx: 0, birthDate: "1986-11-08", startDate: "2020-08-15", billRate: 1850, costRate: 840, annualPay: 1240000, roleName: "Practice Lead"},
-	{email: "magnus.bakken@vantigo.local", firstName: "Magnus", lastName: "Bakken", preferred: "Magnus", jobTitle: "Delivery Lead", deptCode: "CONS", locationIdx: 0, birthDate: "1985-02-19", startDate: "2021-01-10", billRate: 1750, costRate: 800, annualPay: 1180000, roleName: "Practice Lead"},
+	{email: "magnus.bakken@vantigo.local", firstName: "Magnus", lastName: "Bakken", preferred: "Magnus", jobTitle: "Delivery Lead", deptCode: "CONS", locationIdx: 0, birthDate: "1985-02-19", startDate: "2021-01-10", billRate: 1750, costRate: 800, annualPay: 1180000, roleName: "Practice Lead", extraRoles: []string{"Production Planner"}},
 	{email: "sofie.haugen@vantigo.local", firstName: "Sofie", lastName: "Haugen", preferred: "Sofie", jobTitle: "Finance & Operations Manager", deptCode: "OPS", locationIdx: 0, birthDate: "1987-06-30", startDate: "2021-02-01", billRate: 1650, costRate: 760, annualPay: 1120000, roleName: "Finance & Billing"},
 	{email: "erik.johansen@vantigo.local", firstName: "Erik", lastName: "Johansen", preferred: "Erik", jobTitle: "Regional Lead West", deptCode: "CONS", locationIdx: 1, birthDate: "1983-12-03", startDate: "2021-04-01", billRate: 1800, costRate: 820, annualPay: 1210000, roleName: "Practice Lead"},
 	{email: "nora.berg@vantigo.local", firstName: "Nora", lastName: "Berg", preferred: "Nora", jobTitle: "Senior Cloud Consultant", deptCode: "ENG", locationIdx: 0, birthDate: "1990-03-17", startDate: "2021-08-15", billRate: 1650, costRate: 740, annualPay: 1050000, roleName: "Consultant"},
@@ -64,9 +67,9 @@ var demoStaffMembers = []demoStaffSeed{
 	{email: "frida.eide@vantigo.local", firstName: "Frida", lastName: "Eide", preferred: "Frida", jobTitle: "Management Consultant", deptCode: "CONS", locationIdx: 0, birthDate: "1993-04-09", startDate: "2023-01-10", billRate: 1500, costRate: 680, annualPay: 920000, roleName: "Consultant"},
 	{email: "tobias.strand@vantigo.local", firstName: "Tobias", lastName: "Strand", preferred: "Tobias", jobTitle: "HR & Compliance Lead", deptCode: "OPS", locationIdx: 0, birthDate: "1987-11-21", startDate: "2023-02-01", billRate: 1750, costRate: 790, annualPay: 1140000, roleName: "HR & People Manager"},
 	{email: "maja.holm@vantigo.local", firstName: "Maja", lastName: "Holm", preferred: "Maja", jobTitle: "Customer Success Lead", deptCode: "OPS", locationIdx: 0, birthDate: "1994-02-14", startDate: "2023-04-01", billRate: 1450, costRate: 650, annualPay: 880000, roleName: "Customer Success"},
-	{email: "oliver.aas@vantigo.local", firstName: "Oliver", lastName: "Aas", preferred: "Oliver", jobTitle: "Data & Analytics Engineer", deptCode: "ENG", locationIdx: 1, birthDate: "1993-09-07", startDate: "2023-08-15", billRate: 1550, costRate: 690, annualPay: 940000, roleName: "Consultant"},
+	{email: "oliver.aas@vantigo.local", firstName: "Oliver", lastName: "Aas", preferred: "Oliver", jobTitle: "Data & Analytics Engineer", deptCode: "ENG", locationIdx: 1, birthDate: "1993-09-07", startDate: "2023-08-15", billRate: 1550, costRate: 690, annualPay: 940000, roleName: "Consultant", extraRoles: []string{"Shop Floor Operator"}},
 	{email: "amalie.vik@vantigo.local", firstName: "Amalie", lastName: "Vik", preferred: "Amalie", jobTitle: "Project Consultant", deptCode: "CONS", locationIdx: 1, birthDate: "1995-06-16", startDate: "2024-01-08", billRate: 1400, costRate: 640, annualPay: 850000, roleName: "Consultant"},
-	{email: "kasper.myhre@vantigo.local", firstName: "Kasper", lastName: "Myhre", preferred: "Kasper", jobTitle: "Fullstack Engineer", deptCode: "ENG", locationIdx: 0, birthDate: "1995-12-11", startDate: "2024-03-01", billRate: 1450, costRate: 660, annualPay: 890000, roleName: "Consultant"},
+	{email: "kasper.myhre@vantigo.local", firstName: "Kasper", lastName: "Myhre", preferred: "Kasper", jobTitle: "Fullstack Engineer", deptCode: "ENG", locationIdx: 0, birthDate: "1995-12-11", startDate: "2024-03-01", billRate: 1450, costRate: 660, annualPay: 890000, roleName: "Consultant", extraRoles: []string{"Shop Floor Operator"}},
 	{email: "hedda.bo@vantigo.local", firstName: "Hedda", lastName: "Bø", preferred: "Hedda", jobTitle: "People & Culture Partner", deptCode: "OPS", locationIdx: 0, birthDate: "1992-03-29", startDate: "2024-05-01", billRate: 1400, costRate: 650, annualPay: 870000, roleName: "HR & People Manager"},
 	{email: "mathias.rask@vantigo.local", firstName: "Mathias", lastName: "Rask", preferred: "Mathias", jobTitle: "Internal Auditor", deptCode: "OPS", locationIdx: 0, birthDate: "1997-07-02", startDate: "2024-08-15", billRate: 1300, costRate: 600, annualPay: 780000, roleName: "Read-Only Auditor"},
 }
@@ -102,6 +105,9 @@ var demoCustomRoles = []demoRoleSpec{
 			"communications:conversations-view", "communications:conversations-reply", "communications:conversations-manage",
 			"energy:metering-points-view", "energy:meters-view", "energy:supply-periods-view", "energy:consumption-view",
 			"calendar:access", "calendar:view-colleagues",
+			"orders:access", "orders:quotes-manage", "orders:sales-manage", "orders:sales-confirm", "orders:analysis-view",
+			"inventory:locations-view", "inventory:stock-view",
+			"manufacturing:access",
 		},
 	},
 	{
@@ -124,6 +130,9 @@ var demoCustomRoles = []demoRoleSpec{
 			"products:tax-categories-view", "products:tax-categories-manage",
 			"staff:access", "staff:view",
 			"calendar:access", "calendar:view-colleagues",
+			"orders:access", "orders:sales-manage", "orders:analysis-view",
+			"inventory:locations-view", "inventory:stock-view",
+			"manufacturing:access", "manufacturing:costs-view",
 		},
 	},
 	{
@@ -162,6 +171,8 @@ var demoCustomRoles = []demoRoleSpec{
 			"invoices:access",
 			"time:access", "expenses:access", "staff:access", "staff:view",
 			"calendar:access",
+			"orders:access", "orders:quotes-manage", "orders:sales-manage", "orders:sales-confirm", "orders:deliveries-manage",
+			"inventory:locations-view", "inventory:stock-view",
 		},
 	},
 	{
@@ -200,6 +211,33 @@ var demoCustomRoles = []demoRoleSpec{
 			"energy:supply-periods-view", "energy:consumption-view",
 			"communications:conversations-view",
 			"calendar:access",
+			"orders:access", "orders:analysis-view",
+			"inventory:locations-view", "inventory:stock-view",
+			"manufacturing:access", "manufacturing:costs-view",
+		},
+	},
+	{
+		id:          uuid.MustParse("20000000-0000-4000-8000-000000000007"),
+		name:        "Production Planner",
+		description: "Plans and runs the workshop: work centers, bills of materials, manufacturing orders, quality, stock and sales orders.",
+		permissions: []string{
+			"manufacturing:access", "manufacturing:boms-manage", "manufacturing:orders-manage",
+			"manufacturing:shop-floor", "manufacturing:costs-view", "manufacturing:quality-manage",
+			"inventory:locations-view", "inventory:locations-manage", "inventory:stock-view", "inventory:stock-adjust",
+			"inventory:receipts-manage", "inventory:counts-manage", "inventory:transfers-manage", "inventory:lots-manage",
+			"orders:access", "orders:sales-manage", "orders:deliveries-manage",
+			"products:products-view", "products:variants-view", "products:pricing-view",
+			"products:categories-view", "products:tax-categories-view",
+			"staff:access", "staff:view",
+			"calendar:access",
+		},
+	},
+	{
+		id:          uuid.MustParse("20000000-0000-4000-8000-000000000008"),
+		name:        "Shop Floor Operator",
+		description: "Works on the shop floor: starts, pauses and finishes work orders and records their checks.",
+		permissions: []string{
+			"manufacturing:access", "manufacturing:shop-floor",
 		},
 	},
 }
@@ -218,6 +256,10 @@ func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config) int {
 
 	if err := seedDemoDataset(ctx, pool, logger); err != nil {
 		logger.Error("development seed failed", "error", err)
+		return 1
+	}
+	if err := seedDemoWorkshop(ctx, cfg, pool, logger); err != nil {
+		logger.Error("development workshop seed failed", "error", err)
 		return 1
 	}
 	return 0
@@ -246,6 +288,9 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 			}
 			if err := backfillDemoCalendar(ctx, tx, now); err != nil {
 				return fmt.Errorf("backfill demo calendar: %w", err)
+			}
+			if err := backfillDemoWorkshop(ctx, tx, now); err != nil {
+				return fmt.Errorf("backfill demo workshop: %w", err)
 			}
 			skipped = true
 			return nil
@@ -288,6 +333,10 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 			return fmt.Errorf("seed calendar: %w", err)
 		}
 
+		if err := seedWorkshopCatalog(ctx, tx, now); err != nil {
+			return fmt.Errorf("seed workshop catalog: %w", err)
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -303,7 +352,7 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 		"users", demoUserCount,
 		"companies", demoCustomerCount,
 		"contacts", demoCustomerCount * demoContactsPerCustomer,
-		"products", demoProductCount,
+		"products", demoProductCount + demoWorkshopProductCount,
 		"projects", demoProjectCount,
 	}
 	if createdDefaultOwner {
@@ -385,7 +434,7 @@ func seedIdentityAndStaff(ctx context.Context, tx pgx.Tx, now time.Time, pwHash 
 		return nil, false, err
 	}
 
-	// Create the 6 custom roles so testers can log in as different personas to test permission boundaries.
+	// Create the custom roles so testers can log in as different personas to test permission boundaries.
 	roleIDByName := make(map[string]uuid.UUID, len(demoCustomRoles))
 	for _, r := range demoCustomRoles {
 		roleID := r.id
@@ -429,11 +478,15 @@ func seedIdentityAndStaff(ctx context.Context, tx pgx.Tx, now time.Time, pwHash 
 		}
 		userIDs[i] = uid
 
-		customRoleID, ok := roleIDByName[m.roleName]
-		if !ok {
-			return nil, false, fmt.Errorf("unknown demo role %q", m.roleName)
+		roles := []uuid.UUID{identity.RoleUserID}
+		for _, name := range append([]string{m.roleName}, m.extraRoles...) {
+			customRoleID, ok := roleIDByName[name]
+			if !ok {
+				return nil, false, fmt.Errorf("unknown demo role %q", name)
+			}
+			roles = append(roles, customRoleID)
 		}
-		for _, rid := range []uuid.UUID{identity.RoleUserID, customRoleID} {
+		for _, rid := range roles {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO identity.user_roles (user_id, role_id)
 				VALUES ($1, $2)
