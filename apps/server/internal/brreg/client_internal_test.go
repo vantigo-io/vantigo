@@ -1,4 +1,4 @@
-package customers
+package brreg
 
 import (
 	"context"
@@ -7,11 +7,10 @@ import (
 	"time"
 )
 
-// This file white-box tests brreg.go's retry primitives directly (the
-// values_test.go convention: package customers, not customers_test) —
-// brregBackoff's jitter and cap, and waitBackoff's context-cancellation
-// behaviour — neither of which an HTTP-level test in brreg_test.go can pin
-// without either being flaky (asserting on a jittered wall-clock duration
+// This file white-box tests client.go's retry primitives directly —
+// defaultBackoff's jitter and cap, and waitBackoff's context-cancellation
+// behaviour — neither of which an HTTP-level test (Customers' brreg_test.go)
+// can pin without either being flaky (asserting on a jittered wall-clock duration
 // through a real request) or never sleeping at all.
 
 // TestBrregBackoff_IsBoundedAndJittered proves every draw across the three
@@ -20,35 +19,35 @@ import (
 // unbounded backoff.
 func TestBrregBackoff_IsBoundedAndJittered(t *testing.T) {
 	wantCaps := map[int]time.Duration{
-		1: brregBackoffBase,     // 200ms
-		2: 2 * brregBackoffBase, // 400ms
-		3: 4 * brregBackoffBase, // 800ms
+		1: backoffBase,     // 200ms
+		2: 2 * backoffBase, // 400ms
+		3: 4 * backoffBase, // 800ms
 	}
 	seen := map[int]map[time.Duration]bool{1: {}, 2: {}, 3: {}}
 	for range 200 {
 		for attempt, capForAttempt := range wantCaps {
-			d := brregBackoff(attempt)
+			d := defaultBackoff(attempt)
 			if d < 0 || d > capForAttempt {
-				t.Fatalf("brregBackoff(%d) = %v, want [0, %v]", attempt, d, capForAttempt)
+				t.Fatalf("defaultBackoff(%d) = %v, want [0, %v]", attempt, d, capForAttempt)
 			}
 			seen[attempt][d] = true
 		}
 	}
 	for attempt, draws := range seen {
 		if len(draws) < 2 {
-			t.Errorf("brregBackoff(%d) returned the same value on every one of 200 calls, want jitter", attempt)
+			t.Errorf("defaultBackoff(%d) returned the same value on every one of 200 calls, want jitter", attempt)
 		}
 	}
 }
 
 // TestBrregBackoff_NeverExceedsCap proves a later attempt's exponential
-// growth is clamped at brregBackoffCap (1s), not left to grow unbounded —
+// growth is clamped at backoffCap (1s), not left to grow unbounded —
 // attempt 4 would be 1.6s uncapped, well past the 1s ceiling the review
 // ruled.
 func TestBrregBackoff_NeverExceedsCap(t *testing.T) {
 	for range 200 {
-		if d := brregBackoff(4); d > brregBackoffCap {
-			t.Fatalf("brregBackoff(4) = %v, want capped at %v", d, brregBackoffCap)
+		if d := defaultBackoff(4); d > backoffCap {
+			t.Fatalf("defaultBackoff(4) = %v, want capped at %v", d, backoffCap)
 		}
 	}
 }

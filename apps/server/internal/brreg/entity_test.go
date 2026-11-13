@@ -1,4 +1,4 @@
-package customers
+package brreg
 
 import (
 	"errors"
@@ -11,18 +11,15 @@ import (
 	"time"
 )
 
-// This file tests (*brregClient).entity, brreg_entity.go's one export: the
-// Brreg client fetching one entity's full record, as opposed to brreg.go's
-// search. It is package customers (the brreg_internal_test.go convention),
-// so it constructs a *brregClient directly with newBrregClient and drives it
-// against a local httptest.Server — no HTTP handler, no modtest harness, no
-// database, exactly as global-constraints.md asks ("against httptest, exactly
-// as brreg_test.go does today" — that file happens to go through the
-// harness's handler too, but nothing about entity requires a handler, since
-// it is not itself an operation yet; Task 2 wires it to one).
+// This file tests (*Client).Entity (entity.go): the client fetching one
+// entity's full record, as opposed to client.go's search. It is package brreg
+// (white-box, as client_internal_test.go), so it constructs a *Client with New
+// and drives it against a local httptest.Server — no HTTP handler, no modtest
+// harness, no database. It moved here with the client from Customers
+// (accounting design R13), unchanged but for the names.
 
 // entityServer starts a local httptest server whose handler decides every
-// response, and returns a *brregClient wired to it with a zero backoff (no
+// response, and returns a *Client wired to it with a zero backoff (no
 // test here waits out a real retry) and the standard 15s production timeout
 // (ample for a loopback server). t.Cleanup closes the server.
 //
@@ -34,10 +31,10 @@ import (
 // stray once counted as a second attempt in TestEntity_UnknownOn404 under
 // -race in CI, although entity returns on a 404 before it could retry. A
 // stray gets 421 Misdirected Request and never touches a test's counters.
-func entityServer(t *testing.T, handler http.HandlerFunc) *brregClient {
+func entityServer(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, brregPath+"/") || r.Header.Get("Accept") != brregEntityMediaType {
+		if r.Method != http.MethodGet || !strings.HasPrefix(r.URL.Path, searchPath+"/") || r.Header.Get("Accept") != entityMediaType {
 			t.Logf("entityServer: ignoring a request that is not the client's: %s %s (Accept %q)", r.Method, r.URL.Path, r.Header.Get("Accept"))
 			w.WriteHeader(http.StatusMisdirectedRequest)
 			return
@@ -45,7 +42,7 @@ func entityServer(t *testing.T, handler http.HandlerFunc) *brregClient {
 		handler(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	return newBrregClient(srv.URL, 15*time.Second, nil, zeroBackoffEntity)
+	return New(srv.URL, 15*time.Second, nil, zeroBackoffEntity)
 }
 
 // zeroBackoffEntity stands in for the jittered production backoff, the same
@@ -58,7 +55,7 @@ func zeroBackoffEntity(int) time.Duration { return 0 }
 // defaulting to the v2 media type when contentType is "".
 func jsonEntityResponse(w http.ResponseWriter, status int, contentType, body string) {
 	if contentType == "" {
-		contentType = brregEntityMediaType
+		contentType = entityMediaType
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(status)
@@ -147,9 +144,9 @@ const foreignAddressEntityBody = `{
 	"forretningsadresse": {"land": "Polen", "landkode": "PL", "poststed": "81-336 GDYNIA", "adresse": ["ul. Budowniczych 12"]}
 }`
 
-func mustEntity(t *testing.T, c *brregClient, orgnr string) (brregEntityRecord, brregEntityOutcome) {
+func mustEntity(t *testing.T, c *Client, orgnr string) (Entity, Outcome) {
 	t.Helper()
-	rec, outcome, err := c.entity(t.Context(), orgnr)
+	rec, outcome, err := c.Entity(t.Context(), orgnr)
 	if err != nil {
 		t.Fatalf("entity(%q) error = %v, want nil", orgnr, err)
 	}
@@ -176,13 +173,13 @@ func TestEntity_FullRecordEveryField(t *testing.T) {
 		name  string
 		orgnr string
 		body  string
-		want  brregEntityRecord
+		want  Entity
 	}{
 		{
 			name:  "Equinor",
 			orgnr: "923609016",
 			body:  equinorEntityBody,
-			want: brregEntityRecord{
+			want: Entity{
 				OrganisationNumber:   "923609016",
 				Name:                 "EQUINOR ASA",
 				OrganisationFormCode: "ASA",
@@ -193,14 +190,14 @@ func TestEntity_FullRecordEveryField(t *testing.T) {
 				VATRegistered:        true,
 				FoundedOn:            timePtr(mustDate(t, "1972-06-14")),
 				Website:              "www.equinor.com",
-				BusinessAddress: &brregAddress{
+				BusinessAddress: &Address{
 					Lines:        []string{"Forusbeen 50"},
 					PostalCode:   "4035",
 					City:         "STAVANGER",
 					Municipality: "STAVANGER",
 					CountryCode:  "NO",
 				},
-				PostalAddress: &brregAddress{
+				PostalAddress: &Address{
 					Lines:        []string{"Postboks 8500"},
 					PostalCode:   "4035",
 					City:         "STAVANGER",
@@ -213,7 +210,7 @@ func TestEntity_FullRecordEveryField(t *testing.T) {
 			name:  "RegisterenhetenIBronnoysund",
 			orgnr: "974760673",
 			body:  brregSelfEntityBody,
-			want: brregEntityRecord{
+			want: Entity{
 				OrganisationNumber:       "974760673",
 				Name:                     "REGISTERENHETEN I BRØNNØYSUND",
 				OrganisationFormCode:     "ORGL",
@@ -226,14 +223,14 @@ func TestEntity_FullRecordEveryField(t *testing.T) {
 				Email:                    "firmapost@brreg.no",
 				Phone:                    "75 00 75 09",
 				ParentOrganisationNumber: "912660680",
-				BusinessAddress: &brregAddress{
+				BusinessAddress: &Address{
 					Lines:        []string{"Havnegata 48"},
 					PostalCode:   "8900",
 					City:         "BRØNNØYSUND",
 					Municipality: "BRØNNØY",
 					CountryCode:  "NO",
 				},
-				PostalAddress: &brregAddress{
+				PostalAddress: &Address{
 					Lines:        []string{"Postboks 900"},
 					PostalCode:   "8910",
 					City:         "BRØNNØYSUND",
@@ -250,10 +247,10 @@ func TestEntity_FullRecordEveryField(t *testing.T) {
 				jsonEntityResponse(w, http.StatusOK, "", tc.body)
 			})
 			rec, outcome := mustEntity(t, c, tc.orgnr)
-			if outcome != brregEntityFound {
-				t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+			if outcome != Found {
+				t.Fatalf("outcome = %v, want Found", outcome)
 			}
-			// reflect.DeepEqual dereferences the *int32/*time.Time/*brregAddress
+			// reflect.DeepEqual dereferences the *int32/*time.Time/*Address
 			// pointer fields and compares what they point to, so this catches a
 			// wrong value behind a pointer, not just a nil/non-nil mismatch.
 			if !reflect.DeepEqual(rec, tc.want) {
@@ -275,13 +272,13 @@ func TestEntity_ForeignAddressHasNoPostalCodeOrMunicipality(t *testing.T) {
 		jsonEntityResponse(w, http.StatusOK, "", foreignAddressEntityBody)
 	})
 	rec, outcome := mustEntity(t, c, "999999999")
-	if outcome != brregEntityFound {
-		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	if outcome != Found {
+		t.Fatalf("outcome = %v, want Found", outcome)
 	}
 	if rec.BusinessAddress == nil {
 		t.Fatalf("BusinessAddress = nil, want set")
 	}
-	want := brregAddress{
+	want := Address{
 		Lines:        []string{"ul. Budowniczych 12"},
 		PostalCode:   "",
 		City:         "81-336 GDYNIA",
@@ -315,8 +312,8 @@ func TestEntity_MobileMapsFromMobilField(t *testing.T) {
 		jsonEntityResponse(w, http.StatusOK, "", body)
 	})
 	rec, outcome := mustEntity(t, c, "923609016")
-	if outcome != brregEntityFound {
-		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	if outcome != Found {
+		t.Fatalf("outcome = %v, want Found", outcome)
 	}
 	if rec.Mobile != "90758800" {
 		t.Errorf("Mobile = %q, want %q", rec.Mobile, "90758800")
@@ -344,8 +341,8 @@ func TestEntity_EmployeesStaysNilWhenNotRegisteredEvenIfCountPresent(t *testing.
 		jsonEntityResponse(w, http.StatusOK, "", body)
 	})
 	rec, outcome := mustEntity(t, c, "923609016")
-	if outcome != brregEntityFound {
-		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	if outcome != Found {
+		t.Fatalf("outcome = %v, want Found", outcome)
 	}
 	if rec.Employees != nil {
 		t.Errorf("Employees = %v, want nil (harRegistrertAntallAnsatte is false even though antallAnsatte was sent)", *rec.Employees)
@@ -353,15 +350,15 @@ func TestEntity_EmployeesStaysNilWhenNotRegisteredEvenIfCountPresent(t *testing.
 }
 
 // TestEntity_AddressLinesAreTrimmedAndEmptyLinesDropped and
-// TestEntity_LandkodeIsUppercasedOrEmpty exercise brregAddressFrom directly
+// TestEntity_LandkodeIsUppercasedOrEmpty exercise addressFrom directly
 // (a pure unexported helper), the fastest way to pin the trimming/dropping
 // and landkode rules without routing every case through an HTTP fixture.
 func TestEntity_AddressLinesAreTrimmedAndEmptyLinesDropped(t *testing.T) {
 	t.Parallel()
-	wire := &brregAddressWire{Adresse: []string{"  Storgata 1  ", "", "   ", "c/o Someone"}}
-	got := brregAddressFrom(wire)
+	wire := &addressWire{Adresse: []string{"  Storgata 1  ", "", "   ", "c/o Someone"}}
+	got := addressFrom(wire)
 	if got == nil {
-		t.Fatalf("brregAddressFrom = nil, want set")
+		t.Fatalf("addressFrom = nil, want set")
 	}
 	want := []string{"Storgata 1", "c/o Someone"}
 	if strings.Join(got.Lines, "|") != strings.Join(want, "|") {
@@ -380,20 +377,20 @@ func TestEntity_LandkodeIsUppercasedOrEmpty(t *testing.T) {
 		"N":   "",
 	}
 	for in, want := range cases {
-		got := brregAddressFrom(&brregAddressWire{Landkode: in})
+		got := addressFrom(&addressWire{Landkode: in})
 		if got.CountryCode != want {
-			t.Errorf("brregAddressFrom(landkode=%q).CountryCode = %q, want %q", in, got.CountryCode, want)
+			t.Errorf("addressFrom(landkode=%q).CountryCode = %q, want %q", in, got.CountryCode, want)
 		}
 	}
 }
 
 // TestEntity_NilAddressStaysNil proves an absent forretningsadresse/postadresse
-// decodes to a nil *brregAddress, never a zero-valued one a caller could
+// decodes to a nil *Address, never a zero-valued one a caller could
 // mistake for "an address with every field blank".
 func TestEntity_NilAddressStaysNil(t *testing.T) {
 	t.Parallel()
-	if got := brregAddressFrom(nil); got != nil {
-		t.Errorf("brregAddressFrom(nil) = %+v, want nil", got)
+	if got := addressFrom(nil); got != nil {
+		t.Errorf("addressFrom(nil) = %+v, want nil", got)
 	}
 }
 
@@ -417,8 +414,8 @@ func TestEntity_StatusFlagsMapDirectly(t *testing.T) {
 		jsonEntityResponse(w, http.StatusOK, "", body)
 	})
 	rec, outcome := mustEntity(t, c, "111111111")
-	if outcome != brregEntityFound {
-		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	if outcome != Found {
+		t.Fatalf("outcome = %v, want Found", outcome)
 	}
 	if !rec.Bankrupt || !rec.UnderLiquidation || !rec.UnderForcedLiquidation {
 		t.Errorf("Bankrupt=%v UnderLiquidation=%v UnderForcedLiquidation=%v, want all true", rec.Bankrupt, rec.UnderLiquidation, rec.UnderForcedLiquidation)
@@ -449,8 +446,8 @@ func TestEntity_StatusDatesMapFromKonkursdatoAndUnderAvviklingDato(t *testing.T)
 		jsonEntityResponse(w, http.StatusOK, "", body)
 	})
 	rec, outcome := mustEntity(t, c, "111111111")
-	if outcome != brregEntityFound {
-		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	if outcome != Found {
+		t.Fatalf("outcome = %v, want Found", outcome)
 	}
 	if rec.BankruptOn == nil || !rec.BankruptOn.Equal(mustDate(t, "2019-03-04")) {
 		t.Errorf("BankruptOn = %v, want 2019-03-04", rec.BankruptOn)
@@ -482,17 +479,17 @@ func TestEntity_StatusDatesAreOptional(t *testing.T) {
 func TestEntity_OversizedBodyIsNotRetried(t *testing.T) {
 	t.Parallel()
 	var attempts atomic.Int32
-	oversized := strings.Repeat("a", brregEntityMaxBodyBytes+1)
+	oversized := strings.Repeat("a", entityMaxBodyBytes+1)
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		attempts.Add(1)
 		jsonEntityResponse(w, http.StatusOK, "", oversized)
 	})
-	_, _, err := c.entity(t.Context(), "923609016")
+	_, _, err := c.Entity(t.Context(), "923609016")
 	if err == nil {
 		t.Fatal("entity() error = nil, want an error for an oversized body")
 	}
-	if !errors.Is(err, errBrregUnavailable) {
-		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error = %v, want it to wrap ErrUnavailable", err)
 	}
 	if got := attempts.Load(); got != 1 {
 		t.Errorf("attempts = %d, want exactly 1 (an oversized body is never retried)", got)
@@ -512,12 +509,12 @@ func TestEntity_OrganisationNumberMismatchIsAnError(t *testing.T) {
 		attempts.Add(1)
 		jsonEntityResponse(w, http.StatusOK, "", equinorEntityBody)
 	})
-	_, _, err := c.entity(t.Context(), "974760673")
+	_, _, err := c.Entity(t.Context(), "974760673")
 	if err == nil {
 		t.Fatal("entity() error = nil, want an error for a body about another organisation")
 	}
-	if !errors.Is(err, errBrregUnavailable) {
-		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error = %v, want it to wrap ErrUnavailable", err)
 	}
 	if got := attempts.Load(); got != 1 {
 		t.Errorf("attempts = %d, want exactly 1 (a mismatch is not something a retry fixes)", got)
@@ -535,12 +532,12 @@ func TestEntity_DeletedEntityIsA200Body(t *testing.T) {
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		jsonEntityResponse(w, http.StatusOK, "", slettetEnhetBody)
 	})
-	rec, outcome, err := c.entity(t.Context(), "923609016")
+	rec, outcome, err := c.Entity(t.Context(), "923609016")
 	if err != nil {
 		t.Fatalf("entity() error = %v, want nil", err)
 	}
-	if outcome != brregEntityDeleted {
-		t.Fatalf("outcome = %v, want brregEntityDeleted", outcome)
+	if outcome != Deleted {
+		t.Fatalf("outcome = %v, want Deleted", outcome)
 	}
 	if rec.OrganisationNumber != "923609016" {
 		t.Errorf("OrganisationNumber = %q, want %q", rec.OrganisationNumber, "923609016")
@@ -565,14 +562,14 @@ func TestEntity_UnknownOn404(t *testing.T) {
 		attempts.Add(1)
 		w.WriteHeader(http.StatusNotFound)
 	})
-	rec, outcome, err := c.entity(t.Context(), "000000000")
+	rec, outcome, err := c.Entity(t.Context(), "000000000")
 	if err != nil {
 		t.Fatalf("entity() error = %v, want nil", err)
 	}
-	if outcome != brregEntityUnknown {
-		t.Fatalf("outcome = %v, want brregEntityUnknown", outcome)
+	if outcome != Unknown {
+		t.Fatalf("outcome = %v, want Unknown", outcome)
 	}
-	if rec != (brregEntityRecord{}) {
+	if rec != (Entity{}) {
 		t.Errorf("record = %+v, want zero value", rec)
 	}
 	if got := attempts.Load(); got != 1 {
@@ -590,12 +587,12 @@ func TestEntity_RemovedOn410(t *testing.T) {
 		jsonEntityResponse(w, http.StatusGone, "application/json",
 			`{"organisasjonsnummer":"923609016","slettedato":"2026-09-21","_links":{"self":{"href":"x"}}}`)
 	})
-	rec, outcome, err := c.entity(t.Context(), "923609016")
+	rec, outcome, err := c.Entity(t.Context(), "923609016")
 	if err != nil {
 		t.Fatalf("entity() error = %v, want nil", err)
 	}
-	if outcome != brregEntityRemoved {
-		t.Fatalf("outcome = %v, want brregEntityRemoved", outcome)
+	if outcome != Removed {
+		t.Fatalf("outcome = %v, want Removed", outcome)
 	}
 	if rec.DeletedOn == nil || !rec.DeletedOn.Equal(mustDate(t, "2026-09-21")) {
 		t.Errorf("DeletedOn = %v, want 2026-09-21", rec.DeletedOn)
@@ -620,8 +617,8 @@ func TestEntity_RetriesTransientFailureThenSucceeds(t *testing.T) {
 		jsonEntityResponse(w, http.StatusOK, "", equinorEntityBody)
 	})
 	rec, outcome := mustEntity(t, c, "923609016")
-	if outcome != brregEntityFound {
-		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	if outcome != Found {
+		t.Fatalf("outcome = %v, want Found", outcome)
 	}
 	if rec.Name != "EQUINOR ASA" {
 		t.Errorf("Name = %q, want EQUINOR ASA", rec.Name)
@@ -641,21 +638,21 @@ func TestEntity_WrongMediaTypeIsAnError(t *testing.T) {
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		jsonEntityResponse(w, http.StatusNotAcceptable, "application/problem+json", `{"title":"not acceptable"}`)
 	})
-	_, _, err := c.entity(t.Context(), "923609016")
+	_, _, err := c.Entity(t.Context(), "923609016")
 	if err == nil {
 		t.Fatal("entity() error = nil, want an error for a 406 with a non-matching content type")
 	}
 	if !strings.Contains(err.Error(), "application/problem+json") {
 		t.Errorf("error = %v, want it to name the content type actually received", err)
 	}
-	if !errors.Is(err, errBrregUnavailable) {
-		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error = %v, want it to wrap ErrUnavailable", err)
 	}
 }
 
 // TestEntity_HTMLContentTypeIsAnError is TestEntity_WrongMediaTypeIsAnError's
 // other named example (this file's doc comment on
-// validateBrregContentType): a 200 whose Content-Type is text/html —
+// validateContentType): a 200 whose Content-Type is text/html —
 // the shape a misbehaving proxy's error page would carry — is refused the
 // same way a wrong-typed 406 is, naming the content type it actually got.
 func TestEntity_HTMLContentTypeIsAnError(t *testing.T) {
@@ -663,20 +660,20 @@ func TestEntity_HTMLContentTypeIsAnError(t *testing.T) {
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		jsonEntityResponse(w, http.StatusOK, "text/html", "<html><body>not json</body></html>")
 	})
-	_, _, err := c.entity(t.Context(), "923609016")
+	_, _, err := c.Entity(t.Context(), "923609016")
 	if err == nil {
 		t.Fatal("entity() error = nil, want an error for a 200 with Content-Type text/html")
 	}
 	if !strings.Contains(err.Error(), "text/html") {
 		t.Errorf("error = %v, want it to name the content type actually received", err)
 	}
-	if !errors.Is(err, errBrregUnavailable) {
-		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error = %v, want it to wrap ErrUnavailable", err)
 	}
 }
 
 // TestEntity_JSONContentTypeWithCharsetIsAccepted proves
-// validateBrregContentType's use of mime.ParseMediaType, not a plain
+// validateContentType's use of mime.ParseMediaType, not a plain
 // string comparison: "application/json; charset=utf-8" still parses to the
 // bare media type "application/json", which this operation already accepts
 // alongside the pinned v2 type.
@@ -686,8 +683,8 @@ func TestEntity_JSONContentTypeWithCharsetIsAccepted(t *testing.T) {
 		jsonEntityResponse(w, http.StatusOK, "application/json; charset=utf-8", equinorEntityBody)
 	})
 	rec, outcome := mustEntity(t, c, "923609016")
-	if outcome != brregEntityFound {
-		t.Fatalf("outcome = %v, want brregEntityFound", outcome)
+	if outcome != Found {
+		t.Fatalf("outcome = %v, want Found", outcome)
 	}
 	if rec.Name != "EQUINOR ASA" {
 		t.Errorf("Name = %q, want EQUINOR ASA", rec.Name)
@@ -695,9 +692,9 @@ func TestEntity_JSONContentTypeWithCharsetIsAccepted(t *testing.T) {
 }
 
 // TestEntity_OversizedBodyIsAnError proves the end-to-end behaviour a caller
-// actually sees for a 2 MiB body: an error, wrapping errBrregUnavailable.
+// actually sees for a 2 MiB body: an error, wrapping ErrUnavailable.
 // It does not by itself pin *how* the cap is enforced — entityAttempt's own
-// io.LimitReader already stops reading at brregEntityMaxBodyBytes+1 bytes,
+// io.LimitReader already stops reading at entityMaxBodyBytes+1 bytes,
 // so a body past that point never reaches json.Unmarshal intact and would
 // fail to decode as truncated JSON even without the explicit length check
 // below; TestEntityAttempt_RefusesBodyOverOneMiB and
@@ -709,28 +706,28 @@ func TestEntity_OversizedBodyIsAnError(t *testing.T) {
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		jsonEntityResponse(w, http.StatusOK, "", oversized)
 	})
-	_, _, err := c.entity(t.Context(), "923609016")
+	_, _, err := c.Entity(t.Context(), "923609016")
 	if err == nil {
 		t.Fatal("entity() error = nil, want an error for a 2 MiB body")
 	}
-	if !errors.Is(err, errBrregUnavailable) {
-		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error = %v, want it to wrap ErrUnavailable", err)
 	}
 }
 
 // TestEntityAttempt_RefusesBodyOverOneMiB and
-// TestEntityAttempt_AcceptsBodyExactlyAtCap pin brregEntityMaxBodyBytes's
+// TestEntityAttempt_AcceptsBodyExactlyAtCap pin entityMaxBodyBytes's
 // exact boundary directly against entityAttempt (bypassing JSON decoding
 // entirely, so these do not depend on how a truncated body happens to fail
 // to parse): one byte over the cap is refused with an error naming the
 // cap, exactly at the cap is accepted with the whole body intact.
 func TestEntityAttempt_RefusesBodyOverOneMiB(t *testing.T) {
 	t.Parallel()
-	overCap := strings.Repeat("a", brregEntityMaxBodyBytes+1)
+	overCap := strings.Repeat("a", entityMaxBodyBytes+1)
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		jsonEntityResponse(w, http.StatusOK, "", overCap)
 	})
-	_, _, _, err := c.entityAttempt(t.Context(), brregEntityPath("923609016"))
+	_, _, _, err := c.entityAttempt(t.Context(), entityPath("923609016"))
 	if err == nil {
 		t.Fatal("entityAttempt error = nil, want an error for a body one byte over the cap")
 	}
@@ -741,16 +738,16 @@ func TestEntityAttempt_RefusesBodyOverOneMiB(t *testing.T) {
 
 func TestEntityAttempt_AcceptsBodyExactlyAtCap(t *testing.T) {
 	t.Parallel()
-	atCap := strings.Repeat("a", brregEntityMaxBodyBytes)
+	atCap := strings.Repeat("a", entityMaxBodyBytes)
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		jsonEntityResponse(w, http.StatusOK, "", atCap)
 	})
-	_, _, body, err := c.entityAttempt(t.Context(), brregEntityPath("923609016"))
+	_, _, body, err := c.entityAttempt(t.Context(), entityPath("923609016"))
 	if err != nil {
 		t.Fatalf("entityAttempt error = %v, want nil for a body exactly at the cap", err)
 	}
-	if len(body) != brregEntityMaxBodyBytes {
-		t.Errorf("len(body) = %d, want %d (the whole body, intact)", len(body), brregEntityMaxBodyBytes)
+	if len(body) != entityMaxBodyBytes {
+		t.Errorf("len(body) = %d, want %d (the whole body, intact)", len(body), entityMaxBodyBytes)
 	}
 }
 
@@ -763,12 +760,12 @@ func TestEntity_MalformedJSONIsAnError(t *testing.T) {
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		jsonEntityResponse(w, http.StatusOK, "", "not json")
 	})
-	_, _, err := c.entity(t.Context(), "923609016")
+	_, _, err := c.Entity(t.Context(), "923609016")
 	if err == nil {
 		t.Fatal("entity() error = nil, want an error for a malformed body")
 	}
-	if !errors.Is(err, errBrregUnavailable) {
-		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error = %v, want it to wrap ErrUnavailable", err)
 	}
 }
 
@@ -788,12 +785,12 @@ func TestEntity_MalformedDateIsAnError(t *testing.T) {
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
 		jsonEntityResponse(w, http.StatusOK, "", body)
 	})
-	_, _, err := c.entity(t.Context(), "923609016")
+	_, _, err := c.Entity(t.Context(), "923609016")
 	if err == nil {
 		t.Fatal("entity() error = nil, want an error for a malformed date")
 	}
-	if !errors.Is(err, errBrregUnavailable) {
-		t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+	if !errors.Is(err, ErrUnavailable) {
+		t.Errorf("error = %v, want it to wrap ErrUnavailable", err)
 	}
 }
 
@@ -807,11 +804,11 @@ func TestEntity_AcceptHeaderIsPinnedV2MediaType(t *testing.T) {
 		gotAccept.Store(r.Header.Get("Accept"))
 		jsonEntityResponse(w, http.StatusOK, "", equinorEntityBody)
 	})
-	if _, _, err := c.entity(t.Context(), "923609016"); err != nil {
+	if _, _, err := c.Entity(t.Context(), "923609016"); err != nil {
 		t.Fatalf("entity() error = %v, want nil", err)
 	}
-	if got, _ := gotAccept.Load().(string); got != brregEntityMediaType {
-		t.Errorf("Accept header = %q, want %q", got, brregEntityMediaType)
+	if got, _ := gotAccept.Load().(string); got != entityMediaType {
+		t.Errorf("Accept header = %q, want %q", got, entityMediaType)
 	}
 }
 
@@ -822,7 +819,7 @@ func TestEntity_AcceptHeaderIsSentOnEveryRetriedAttempt(t *testing.T) {
 	var attempts atomic.Int32
 	var wrongHeaderSeen atomic.Bool
 	c := entityServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Accept") != brregEntityMediaType {
+		if r.Header.Get("Accept") != entityMediaType {
 			wrongHeaderSeen.Store(true)
 		}
 		if attempts.Add(1) == 1 {
@@ -831,7 +828,7 @@ func TestEntity_AcceptHeaderIsSentOnEveryRetriedAttempt(t *testing.T) {
 		}
 		jsonEntityResponse(w, http.StatusOK, "", equinorEntityBody)
 	})
-	if _, _, err := c.entity(t.Context(), "923609016"); err != nil {
+	if _, _, err := c.Entity(t.Context(), "923609016"); err != nil {
 		t.Fatalf("entity() error = %v, want nil", err)
 	}
 	if attempts.Load() != 2 {
@@ -843,7 +840,7 @@ func TestEntity_AcceptHeaderIsSentOnEveryRetriedAttempt(t *testing.T) {
 }
 
 // TestEntity_RequestPathIsEnhetsregisteretEnheterOrgnr pins the exact path
-// this operation hits, as distinct from brregPath's own search usage.
+// this operation hits, as distinct from searchPath's own search usage.
 func TestEntity_RequestPathIsEnhetsregisteretEnheterOrgnr(t *testing.T) {
 	t.Parallel()
 	var gotPath atomic.Value
@@ -851,7 +848,7 @@ func TestEntity_RequestPathIsEnhetsregisteretEnheterOrgnr(t *testing.T) {
 		gotPath.Store(r.URL.Path)
 		jsonEntityResponse(w, http.StatusOK, "", equinorEntityBody)
 	})
-	if _, _, err := c.entity(t.Context(), "923609016"); err != nil {
+	if _, _, err := c.Entity(t.Context(), "923609016"); err != nil {
 		t.Fatalf("entity() error = %v, want nil", err)
 	}
 	want := "/enhetsregisteret/api/enheter/923609016"
@@ -860,20 +857,17 @@ func TestEntity_RequestPathIsEnhetsregisteretEnheterOrgnr(t *testing.T) {
 	}
 }
 
-// TestFeedUpdates_FailuresWrapErrBrregUnavailable is (*brregClient).updates'
-// own guard (brreg_feed.go), placed in this file rather than
-// brreg_feed_test.go because only this file's package (customers, not
-// customers_test) can see errBrregUnavailable directly and assert
-// errors.Is against it, instead of only "some error came back" — a mutation
-// that returned a bare, unwrapped error for one of these three failure kinds
-// would still fail brreg_feed_test.go's own
+// TestFeedUpdates_FailuresWrapErrBrregUnavailable is (*Client).Updates'
+// own guard (feed.go): every one of these three failure kinds wraps
+// ErrUnavailable, not merely "some error came back" — a mutation that
+// returned a bare, unwrapped error would still fail Customers'
 // TestBrregFeed_ReportsEveryUnusableAnswerAsUnavailable (it only checks
 // err != nil) but must fail here. entityServer is reused as-is: nothing
-// about it is entity-specific, it is just a *brregClient wired to a local
+// about it is entity-specific, it is just a *Client wired to a local
 // httptest.Server.
 func TestFeedUpdates_FailuresWrapErrBrregUnavailable(t *testing.T) {
 	t.Parallel()
-	oversizedFeedBody := strings.Repeat("a", brregFeedMaxBodyBytes+1)
+	oversizedFeedBody := strings.Repeat("a", feedMaxBodyBytes+1)
 	cases := []struct {
 		name        string
 		status      int
@@ -897,12 +891,12 @@ func TestFeedUpdates_FailuresWrapErrBrregUnavailable(t *testing.T) {
 				_, _ = w.Write([]byte(tc.body))
 			})
 			cursor := int64(1)
-			_, err := c.updates(t.Context(), feedCursor{UpdateID: &cursor})
+			_, err := c.Updates(t.Context(), FeedQuery{UpdateID: &cursor, Size: 1000})
 			if err == nil {
 				t.Fatalf("updates() error = nil, want an error for %s", tc.name)
 			}
-			if !errors.Is(err, errBrregUnavailable) {
-				t.Errorf("error = %v, want it to wrap errBrregUnavailable", err)
+			if !errors.Is(err, ErrUnavailable) {
+				t.Errorf("error = %v, want it to wrap ErrUnavailable", err)
 			}
 		})
 	}

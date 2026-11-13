@@ -1848,6 +1848,7 @@ linters:
             - "**/internal/module/**"
             - "**/internal/contracts/**"
             - "**/internal/apicommon/**"
+            - "**/internal/brreg/**"
             - "**/internal/buildinfo/**"
             - "**/internal/holidays/**"
             - "**/internal/config/**"
