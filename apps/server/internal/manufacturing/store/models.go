@@ -71,6 +71,15 @@ type ManufacturingBomOperationDependency struct {
 	DependsOnID int64
 }
 
+type ManufacturingBomOutput struct {
+	ID        int64
+	BomID     int64
+	VariantID int32
+	Quantity  pgtype.Numeric
+	CostShare pgtype.Numeric
+	SortOrder int32
+}
+
 type ManufacturingCheckPhoto struct {
 	ID                int64
 	WorkOrderID       int64
@@ -190,6 +199,8 @@ type ManufacturingOrder struct {
 	Actual              []byte
 	OriginCancelled     bool
 	LotPattern          string
+	SplitFromID         *int64
+	MergedIntoID        *int64
 }
 
 type ManufacturingOrderComponent struct {
@@ -220,6 +231,20 @@ type ManufacturingOrderEvent struct {
 	At           time.Time
 }
 
+type ManufacturingOrderOutput struct {
+	ID          int64
+	OrderID     int64
+	VariantID   int32
+	Sku         string
+	ProductName string
+	Unit        string
+	Quantity    pgtype.Numeric
+	CostShare   pgtype.Numeric
+	Expected    pgtype.Numeric
+	Produced    pgtype.Numeric
+	SortOrder   int32
+}
+
 type ManufacturingProduction struct {
 	ID              int64
 	OrderID         int64
@@ -232,6 +257,15 @@ type ManufacturingProduction struct {
 	PostedByUserID  *uuid.UUID
 	PostedByDisplay string
 	PostedAt        time.Time
+}
+
+type ManufacturingProductionByproduct struct {
+	ID           int64
+	ProductionID int64
+	OutputID     int64
+	LotID        *int64
+	LotNumber    *string
+	Quantity     pgtype.Numeric
 }
 
 type ManufacturingProductionLine struct {
@@ -330,6 +364,39 @@ type ManufacturingTimeLog struct {
 	CorrectedAt        *time.Time
 	NoteBy             *uuid.UUID
 	NoteByDisplay      string
+}
+
+type ManufacturingUnbuild struct {
+	ID              int64
+	Number          int64
+	OrderID         *int64
+	BomID           int64
+	VariantID       int32
+	Quantity        pgtype.Numeric
+	LotID           *int64
+	LotNumber       *string
+	SiteID          int64
+	FromLocationID  int64
+	ToLocationID    int64
+	MovementID      *int64
+	Note            string
+	PostedByUserID  *uuid.UUID
+	PostedByDisplay string
+	PostedAt        time.Time
+	ClientRequestID string
+	RequestHash     string
+}
+
+type ManufacturingUnbuildLine struct {
+	UnbuildID   int64
+	LineNo      int32
+	VariantID   int32
+	Sku         string
+	ProductName string
+	Unit        string
+	Quantity    pgtype.Numeric
+	LotID       *int64
+	LotNumber   *string
 }
 
 type ManufacturingWorkCenter struct {

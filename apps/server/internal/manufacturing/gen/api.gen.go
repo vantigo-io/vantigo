@@ -193,13 +193,18 @@ const (
 	ManufacturingOrderEventKindDeviationOpened  ManufacturingOrderEventKind = "deviation_opened"
 	ManufacturingOrderEventKindLineAdded        ManufacturingOrderEventKind = "line_added"
 	ManufacturingOrderEventKindLineChanged      ManufacturingOrderEventKind = "line_changed"
+	ManufacturingOrderEventKindMerged           ManufacturingOrderEventKind = "merged"
+	ManufacturingOrderEventKindMergedInto       ManufacturingOrderEventKind = "merged_into"
 	ManufacturingOrderEventKindOriginCancelled  ManufacturingOrderEventKind = "origin_cancelled"
 	ManufacturingOrderEventKindPlanned          ManufacturingOrderEventKind = "planned"
 	ManufacturingOrderEventKindProductionPosted ManufacturingOrderEventKind = "production_posted"
 	ManufacturingOrderEventKindRescheduled      ManufacturingOrderEventKind = "rescheduled"
 	ManufacturingOrderEventKindReserved         ManufacturingOrderEventKind = "reserved"
+	ManufacturingOrderEventKindSplit            ManufacturingOrderEventKind = "split"
+	ManufacturingOrderEventKindSplitFrom        ManufacturingOrderEventKind = "split_from"
 	ManufacturingOrderEventKindTimeLogAdded     ManufacturingOrderEventKind = "time_log_added"
 	ManufacturingOrderEventKindTimeLogCorrected ManufacturingOrderEventKind = "time_log_corrected"
+	ManufacturingOrderEventKindUnbuilt          ManufacturingOrderEventKind = "unbuilt"
 	ManufacturingOrderEventKindUnplanned        ManufacturingOrderEventKind = "unplanned"
 	ManufacturingOrderEventKindUpdated          ManufacturingOrderEventKind = "updated"
 )
@@ -229,6 +234,10 @@ func (e ManufacturingOrderEventKind) Valid() bool {
 		return true
 	case ManufacturingOrderEventKindLineChanged:
 		return true
+	case ManufacturingOrderEventKindMerged:
+		return true
+	case ManufacturingOrderEventKindMergedInto:
+		return true
 	case ManufacturingOrderEventKindOriginCancelled:
 		return true
 	case ManufacturingOrderEventKindPlanned:
@@ -239,9 +248,15 @@ func (e ManufacturingOrderEventKind) Valid() bool {
 		return true
 	case ManufacturingOrderEventKindReserved:
 		return true
+	case ManufacturingOrderEventKindSplit:
+		return true
+	case ManufacturingOrderEventKindSplitFrom:
+		return true
 	case ManufacturingOrderEventKindTimeLogAdded:
 		return true
 	case ManufacturingOrderEventKindTimeLogCorrected:
+		return true
+	case ManufacturingOrderEventKindUnbuilt:
 		return true
 	case ManufacturingOrderEventKindUnplanned:
 		return true
@@ -743,7 +758,10 @@ type ManufacturingBom struct {
 
 	// OutputQuantity Exact decimal, more than 0, at most three decimals.
 	OutputQuantity string `json:"outputQuantity"`
-	Revision       int32  `json:"revision"`
+
+	// Outputs The by-products (manufacturing phase 2 M120), at most 20.
+	Outputs  []ManufacturingBomOutput `json:"outputs"`
+	Revision int32                    `json:"revision"`
 
 	// SiteId The site of its operations' work centers, null when it has none.
 	SiteId *int64 `json:"siteId"`
@@ -778,6 +796,9 @@ type ManufacturingBomInput struct {
 
 	// OutputQuantity Exact decimal, more than 0, at most three decimals.
 	OutputQuantity string `json:"outputQuantity"`
+
+	// Outputs The by-products (manufacturing phase 2 M120), at most 20; an update that leaves it out removes them.
+	Outputs *[]ManufacturingBomOutputInput `json:"outputs,omitempty"`
 
 	// VariantId A goods variant (variant_not_goods), never changed after.
 	VariantId int32 `json:"variantId"`
@@ -901,6 +922,31 @@ type ManufacturingBomOperationInput struct {
 	WorkCenterId *int64 `json:"workCenterId,omitempty"`
 }
 
+// ManufacturingBomOutput A by-product of a BoM (manufacturing phase 2 M120): another goods variant its operations make, per the BoM's output quantity, carrying costShare percent of the order's cost.
+type ManufacturingBomOutput struct {
+	// CostShare Percent of the order's cost the by-product carries, 0–100 with at most two decimals; the main product takes the rest.
+	CostShare string `json:"costShare"`
+	Id        int64  `json:"id"`
+
+	// Quantity Made per the BoM's output quantity, exact decimal, more than 0.
+	Quantity  string `json:"quantity"`
+	SortOrder int32  `json:"sortOrder"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingBomOutputInput A by-product of a BoM (M120): goods, never the BoM's own variant (output_is_product) nor one of its components (output_is_component); the shares of a BoM sum to at most 100 (cost_share_over).
+type ManufacturingBomOutputInput struct {
+	// CostShare Percent of the order's cost, 0–100, at most two decimals; default 0.
+	CostShare *string `json:"costShare,omitempty"`
+
+	// Quantity Exact decimal, more than 0, at most three decimals, per the BoM's output quantity.
+	Quantity  string `json:"quantity"`
+	SortOrder *int32 `json:"sortOrder,omitempty"`
+	VariantId int32  `json:"variantId"`
+}
+
 // ManufacturingBomOverview A BoM exploded at a quantity, up to 10 levels and 2000 nodes.
 type ManufacturingBomOverview struct {
 	BomId int64 `json:"bomId"`
@@ -961,8 +1007,25 @@ type ManufacturingBomUpdate struct {
 	// OutputQuantity Exact decimal, more than 0, at most three decimals.
 	OutputQuantity string `json:"outputQuantity"`
 
+	// Outputs The by-products (manufacturing phase 2 M120), at most 20; an update that leaves it out removes them.
+	Outputs *[]ManufacturingBomOutputInput `json:"outputs,omitempty"`
+
 	// Revision The revision the client read (revision_conflict).
 	Revision int32 `json:"revision"`
+}
+
+// ManufacturingByproductCost A by-product's part of an order's cost (manufacturing phase 2 M122): costShare percent of the estimate and of the actual; its cost per unit is its part ÷ its produced quantity. One that produced nothing has no cost per unit: its share moves to the main product (notProduced), and actual is the part it would have had.
+type ManufacturingByproductCost struct {
+	Actual      *string `json:"actual"`
+	CostPerUnit *string `json:"costPerUnit"`
+	CostShare   string  `json:"costShare"`
+	Estimate    *string `json:"estimate"`
+	NotProduced bool    `json:"notProduced"`
+	OutputId    int64   `json:"outputId"`
+	Produced    string  `json:"produced"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
 }
 
 // ManufacturingCheckFrequency When a check is recorded (manufacturing phase 2 M95): each_work_order, once before the work order finishes; first_piece, before any output is registered past the work order, shown first at Start.
@@ -1384,7 +1447,14 @@ type ManufacturingOrder struct {
 
 	// LotPattern The lot pattern of the order's BoM, kept at confirm (manufacturing phase 2 M80); a draft shows the default.
 	LotPattern string `json:"lotPattern"`
-	Note       string `json:"note"`
+
+	// MergedFrom The orders merged into this one (M125).
+	MergedFrom []ManufacturingOrderLink `json:"mergedFrom"`
+	MergedInto *ManufacturingOrderLink  `json:"mergedInto"`
+
+	// MergedIntoId The order this one was merged into, cancelled (manufacturing phase 2 M125).
+	MergedIntoId *int64 `json:"mergedIntoId"`
+	Note         string `json:"note"`
 
 	// Number MO-<n>, or MO-<n>-<suffix> for a backorder (M17b).
 	Number string `json:"number"`
@@ -1395,6 +1465,9 @@ type ManufacturingOrder struct {
 
 	// OutputScrap Finished units produced and discarded (M22a).
 	OutputScrap string `json:"outputScrap"`
+
+	// Outputs The by-products (manufacturing phase 2 M121).
+	Outputs []ManufacturingOrderOutput `json:"outputs"`
 
 	// Overrun produced − quantity when more was produced, else 0 (M23).
 	Overrun string                  `json:"overrun"`
@@ -1426,10 +1499,20 @@ type ManufacturingOrder struct {
 	Responsible       *ManufacturingPerson            `json:"responsible"`
 	Revision          int32                           `json:"revision"`
 	SiteId            int64                           `json:"siteId"`
+	SplitFrom         *ManufacturingOrderLink         `json:"splitFrom"`
+
+	// SplitFromId The order this one was split from (manufacturing phase 2 M124).
+	SplitFromId *int64 `json:"splitFromId"`
+
+	// SplitParts The orders split from this one (M124).
+	SplitParts []ManufacturingOrderLink `json:"splitParts"`
 
 	// Status A manufacturing order's state (M19).
-	Status    ManufacturingOrderStatus `json:"status"`
-	UpdatedAt time.Time                `json:"updatedAt"`
+	Status ManufacturingOrderStatus `json:"status"`
+
+	// Unbuilt What unbuilds took apart of its output, exact decimal (manufacturing phase 2 M123).
+	Unbuilt   string    `json:"unbuilt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 
 	// Variant A catalog variant as Manufacturing names it.
 	Variant ManufacturingVariantRef `json:"variant"`
@@ -1511,7 +1594,10 @@ type ManufacturingOrderCost struct {
 	// ActualFixed The actual was fixed at close (M41).
 	ActualFixed bool `json:"actualFixed"`
 
-	// CostPerUnit At close: the actual total ÷ the good output (output scrap excluded), half-up to two decimals; null before close or when nothing good was produced.
+	// ByProducts The by-products' parts (M122); the main product carries the rest.
+	ByProducts []ManufacturingByproductCost `json:"byProducts"`
+
+	// CostPerUnit At close: the main product's part of the actual (the total less the by-products' parts, M122) ÷ the good output (output scrap excluded), half-up to two decimals; null before close or when nothing good was produced.
 	CostPerUnit *string                     `json:"costPerUnit"`
 	Deviation   *ManufacturingCostDeviation `json:"deviation"`
 
@@ -1520,6 +1606,9 @@ type ManufacturingOrderCost struct {
 
 	// Estimate Fixed at confirm (M39): Σ required × standard cost, Σ expected hours × the machine rate, Σ expected hours × the labour rate for one operator. Null on a draft.
 	Estimate *ManufacturingCostParts `json:"estimate"`
+
+	// MainActual The actual total less the parts of the by-products that produced something, half-up to two decimals; null on a draft.
+	MainActual *string `json:"mainActual"`
 }
 
 // ManufacturingOrderEvent One event of an order's timeline (M26).
@@ -1529,14 +1618,14 @@ type ManufacturingOrderEvent struct {
 	At           time.Time           `json:"at"`
 	Id           int64               `json:"id"`
 
-	// Kind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44); check_recorded a check's result at one of its work orders, deviation_opened and deviation_closed a deviation of it (manufacturing phase 2 M97, M99).
+	// Kind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor''s corrections (M29); planned, unplanned and rescheduled the schedule''s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44); check_recorded a check's result at one of its work orders, deviation_opened and deviation_closed a deviation of it (manufacturing phase 2 M97, M99); split and split_from, merged and merged_into the orders a split or a merge made or took, unbuilt an unbuild of its output (M128).
 	Kind ManufacturingOrderEventKind `json:"kind"`
 
 	// Payload The event's figures: quantities as exact decimal text, ids, numbers.
 	Payload map[string]interface{} `json:"payload"`
 }
 
-// ManufacturingOrderEventKind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor”s corrections (M29); planned, unplanned and rescheduled the schedule”s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44); check_recorded a check's result at one of its work orders, deviation_opened and deviation_closed a deviation of it (manufacturing phase 2 M97, M99).
+// ManufacturingOrderEventKind What an event of the timeline records (M26); time_log_corrected and time_log_added are a supervisor”s corrections (M29); planned, unplanned and rescheduled the schedule”s (M35, M36); children_created the sub-assembly orders made from it (M47) and origin_cancelled its sales order cancelled (M44); check_recorded a check's result at one of its work orders, deviation_opened and deviation_closed a deviation of it (manufacturing phase 2 M97, M99); split and split_from, merged and merged_into the orders a split or a merge made or took, unbuilt an unbuild of its output (M128).
 type ManufacturingOrderEventKind string
 
 // ManufacturingOrderEventList An order's timeline, oldest first.
@@ -1601,8 +1690,30 @@ type ManufacturingOrderLink struct {
 
 // ManufacturingOrderLots The lots an order's productions made and consumed (manufacturing phase 2 M83), for the order page's Lots tab.
 type ManufacturingOrderLots struct {
-	Components []ManufacturingOrderComponentLots `json:"components"`
-	Outputs    []ManufacturingOrderOutputLot     `json:"outputs"`
+	// ByProducts The lots the productions put by-products in (M121).
+	ByProducts []ManufacturingProductionByproduct `json:"byProducts"`
+	Components []ManufacturingOrderComponentLots  `json:"components"`
+	Outputs    []ManufacturingOrderOutputLot      `json:"outputs"`
+}
+
+// ManufacturingOrderMergeInput A merge (manufacturing phase 2 M125): 2–20 orders, each with the revision the client read.
+type ManufacturingOrderMergeInput struct {
+	Orders []ManufacturingOrderMergeItem `json:"orders"`
+}
+
+// ManufacturingOrderMergeItem One order of a merge.
+type ManufacturingOrderMergeItem struct {
+	Id       int64 `json:"id"`
+	Revision int32 `json:"revision"`
+}
+
+// ManufacturingOrderMergeResult The surviving order after a merge, the orders merged into it, and its lines left short when it reserved again.
+type ManufacturingOrderMergeResult struct {
+	Merged []ManufacturingOrderLink `json:"merged"`
+
+	// Order A manufacturing order (M17) with its component lines and their availability.
+	Order      ManufacturingOrder       `json:"order"`
+	ShortLines []ManufacturingShortLine `json:"shortLines"`
 }
 
 // ManufacturingOrderOriginInfo Where the order came from (M17).
@@ -1626,6 +1737,22 @@ type ManufacturingOrderOriginInfo struct {
 	Reference *string `json:"reference"`
 }
 
+// ManufacturingOrderOutput A by-product of an order (manufacturing phase 2 M121): snapshotted from its BoM at confirm, with what its productions made; on a draft it follows the BoM and has no id.
+type ManufacturingOrderOutput struct {
+	CostShare string `json:"costShare"`
+
+	// Expected quantity × the order's quantity ÷ the BoM's output quantity, half-up to three decimals.
+	Expected string `json:"expected"`
+	Id       *int64 `json:"id"`
+	Produced string `json:"produced"`
+
+	// Tracking How a variant's stock is tracked (manufacturing phase 2 M49).
+	Tracking ManufacturingTracking `json:"tracking"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
 // ManufacturingOrderOutputLot A lot the order's productions put good output in, with what they put there together.
 type ManufacturingOrderOutputLot struct {
 	LotId     int64  `json:"lotId"`
@@ -1637,6 +1764,9 @@ type ManufacturingOrderOutputLot struct {
 	// Quantity Exact decimal.
 	Quantity string `json:"quantity"`
 	Serial   bool   `json:"serial"`
+
+	// Unbuilt What unbuilds of the order took apart of the lot (M123).
+	Unbuilt string `json:"unbuilt"`
 }
 
 // ManufacturingOrderPage One page of the list.
@@ -1649,6 +1779,20 @@ type ManufacturingOrderPage struct {
 
 // ManufacturingOrderSort The list's order (M24).
 type ManufacturingOrderSort string
+
+// ManufacturingOrderSplitInput A split (manufacturing phase 2 M124): 2–20 quantities summing to the order's (split_sum), the first kept by the order.
+type ManufacturingOrderSplitInput struct {
+	Quantities []string `json:"quantities"`
+	Revision   int32    `json:"revision"`
+}
+
+// ManufacturingOrderSplitResult The order after a split, its new parts, and the lines left short when they reserved again.
+type ManufacturingOrderSplitResult struct {
+	// Order A manufacturing order (M17) with its component lines and their availability.
+	Order      ManufacturingOrder       `json:"order"`
+	Parts      []ManufacturingOrderLink `json:"parts"`
+	ShortLines []ManufacturingShortLine `json:"shortLines"`
+}
 
 // ManufacturingOrderStatus A manufacturing order's state (M19).
 type ManufacturingOrderStatus string
@@ -1829,7 +1973,7 @@ type ManufacturingPlanAllResult struct {
 // ManufacturingPriority An order's priority (M17).
 type ManufacturingPriority string
 
-// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_order (400: dependsOn names an operation that does not come before it by sequence, itself included, M112), operation_unjoined (400: an operation other than the last by sequence that no operation depends on, at its own dependsOn, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119), work_order_is_output (409: Register quantity on the output work order, M116), quantity_over_order (400: Register quantity past the order's quantity, M116), work_center_group_empty (409: a confirm of an order whose operation targets a group with no active work center, M118).
+// ManufacturingProblem An RFC 9457 problem with this module's refusal code (manufacturing design §3, §4, §15). code names the rule that refused and is what a client keys off, never the words: revision_conflict (409: the revision has moved on, or a race on a variant's default BoM), work_center_code_taken (409), work_center_in_use (409: an operation names the work center; archive it instead), work_center_has_open_work (409: an open work order names it, or it is blocked), closures_too_many (400: more than 100 closures), site_unknown (400: not an active Inventory site), site_archived (409: reactivating a work center whose site is archived, or from Inventory on a production), costs_view_required (403: a cost rate written without manufacturing:costs-view), variant_not_goods (400), variant_not_found (400), bom_code_taken (409), too_many_lines (400: more than 200), too_many_operations (400: more than 50), operation_key_unknown (400: a line names a key no operation has), work_center_unknown (400: an operation's work center is missing or archived), work_center_other_site (400: operations at more than one site, or an order at another site than its operations), bom_cycle (400: path names the cycle), bom_too_deep (400: more than 10 levels, counting the default BoMs above a default BoM's variant), bom_too_large (400: an overview past 2000 nodes, or an operation past 10^12 expected minutes), bom_not_active (409: an edit or make-default of an archived BoM, or an order of one), bom_required (400: a new order for a variant with no active BoM), location_unknown (400: not an active location of the order's site), required_below_used (400: a requirement below what is consumed and scrapped), order_not_draft (409: a draft's change or a confirm of an order that is not a draft), order_not_open (409: the order is not confirmed or in progress), order_has_production (409: a cancel after something was produced or consumed), consumption_differs (409: deviations name each line more than 10 % off; send acceptDeviation), quantity_short (409: a close of less than the quantity without backorder), client_request_reused (409: a clientRequestId sent before with another body), shop_floor_required (403: registering a production, a shop-floor action or a block needs manufacturing:shop-floor or manufacturing:orders-manage), work_center_blocked (409: a start at a blocked work center), work_order_pending (409: a start or finish of a work order an earlier one has not finished, without force), work_order_closed (409: a start or finish of a work order that is done or cancelled), log_conflict (409: two starts of one user at once), log_locked (409: a correction of a log older than 60 days), order_closed (409: a correction on an order that is done or cancelled), log_overlaps (400: a correction overlapping the users other logs), no_capacity (409: a work order does not fit on its work center's calendar within 365 days of the start, M35), period_too_long (400: a report's to more than 366 days after from, M42), sales_order_line_unknown (400: not a goods line of a sales order that is not cancelled, or of another variant, M45), sales_order_line_has_order (409: the sales order line already has its one live order, M44b), component_unknown (400: not a component line of the order, M47), nothing_missing (400: a sub-assembly order for a component line missing nothing, M47), quantity_invalid (400: not more than 0, or more than three decimals), lot_pattern_invalid (400: a BoM's lot pattern whose sample render is no lot number, or a production's rendered number that is none, manufacturing phase 2 M80), picks_mismatch (400: a component line's lots do not sum to its consumed and scrap, M82), serial_quantity (400: a serial product's good output that is not whole, or serials that are not one per unit, M81), lot_not_allowed (400: an output lot or serials for an untracked product), lot_dates_differ (400 at outputLot: a date sent differs from the existing output lot's, M80), lot_exists (400 at outputSerials.numbers[i] or outputSerials.first: a serial that exists already, or at outputLot.number when the order's counter found no free number in 100, M57, M81), check_limits_invalid (400: a measure check with neither min nor max, or a nominal outside them, M95), photo_required (400: a photo check recorded without a photo, M97), checks_incomplete (409: a production while a check of a work order before the output work order, or a first-piece check of the output work order, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order that is not cancelled has none; checks names them, M98), lot_not_of_order (400 at lotId: a deviation reported on an order and a lot the order neither made nor consumed, M99), lots_view_required (403: a deviation reported on a lot without inventory:locations-view and inventory:stock-view, M99), check_not_open (409: a result recorded on a work order that is done or cancelled, M103), deviation_closed (409: closing a closed deviation, or releasing the holds of an open one, M103), attachment_too_large (400: a photo over 10 MB), attachment_type (415: a photo that is not a JPEG or PNG), storage_not_configured (503: no object store for the photos), Inventory's other refusals passed through as 409 (insufficient_stock, insufficient_available, site_archived, variant_not_stocked, document_reused, lot_required, lot_unknown, lot_not_allowed, lot_expired, lot_blocked; lines name the component lines, and lotId the lot) and dependency_unavailable (503). A line's codes — variant_not_found, variant_not_goods, operation_key_unknown, quantity_invalid — are answered for every failing line at once in lines. errors carries the field errors of a 400, keyed by the camelCase path (lines[3].quantity, operations[1].workCenterId). A request the server could not decode answers a bare 400 with neither. suggestion_not_open (409: a suggestion acted on, dismissed or replaced by a later run, manufacturing phase 2 M111), reorder_open (409: an order from an earlier suggestion of the variant is still open or a draft at the site, M111), operation_order (400: dependsOn names an operation that does not come before it by sequence, itself included, M112), operation_unjoined (400: an operation other than the last by sequence that no operation depends on, at its own dependsOn, M112), operation_unknown (400: dependsOn names a key no operation of the request has, M112), work_center_not_in_group (400: a drag or a start of a group work order at a work center outside its group, or of a work order of no group at another center, M119), work_order_started (409: a drag of a group work order to another member once a time log exists, M119), work_order_member_fixed (409: a start of a group work order at another member than the one a time log or its plan fixed; the detail names it, M119), work_order_is_output (409: Register quantity on the output work order, M116), quantity_over_order (400: Register quantity past the order's quantity, M116), work_center_group_empty (409: a confirm of an order whose operation targets a group with no active work center, M118), output_is_product (400: a by-product that is the BoM's own variant, M120), output_is_component (400: a by-product that is one of the BoM's components, M120), cost_share_over (400: by-products' shares summing to more than 100, M120), unbuild_too_much (400: an unbuild of more than the order, or the lot, has left to take apart, M123), split_sum (400: a split's quantities that do not sum to the order's, M124), merge_mismatch (400: a merge of orders of another variant, BoM, site, state or origin, M125), order_has_work (409: a split or a merge of an order with a production or a time log, M124).
 type ManufacturingProblem struct {
 	// Checks checks_incomplete only: every check with no result that stops it (M98).
 	Checks *[]ManufacturingMissingCheck `json:"checks,omitempty"`
@@ -1877,9 +2021,11 @@ type ManufacturingProblemPathStep struct {
 
 // ManufacturingProduction A production posted against an order (M22).
 type ManufacturingProduction struct {
-	ClientRequestId string                        `json:"clientRequestId"`
-	Id              int64                         `json:"id"`
-	Lines           []ManufacturingProductionLine `json:"lines"`
+	// ByProducts The by-products it made (M121).
+	ByProducts      []ManufacturingProductionByproduct `json:"byProducts"`
+	ClientRequestId string                             `json:"clientRequestId"`
+	Id              int64                              `json:"id"`
+	Lines           []ManufacturingProductionLine      `json:"lines"`
 
 	// MovementId Inventory's production movement; null when nothing went into or out of stock.
 	MovementId  *int64 `json:"movementId"`
@@ -1900,6 +2046,32 @@ type ManufacturingProduction struct {
 	ToLocationId int64  `json:"toLocationId"`
 }
 
+// ManufacturingProductionByproduct What a production made of one of its order's by-products (manufacturing phase 2 M121), in one lot or, untracked, without one.
+type ManufacturingProductionByproduct struct {
+	LotId     *int64  `json:"lotId"`
+	LotNumber *string `json:"lotNumber"`
+	OutputId  int64   `json:"outputId"`
+	Quantity  string  `json:"quantity"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingProductionCostByproduct One by-product of a done order in the production cost report (manufacturing phase 2 M122).
+type ManufacturingProductionCostByproduct struct {
+	// Actual Its part of the actual; for one not produced, the part it would have had.
+	Actual      string  `json:"actual"`
+	CostPerUnit *string `json:"costPerUnit"`
+	CostShare   string  `json:"costShare"`
+	NotProduced bool    `json:"notProduced"`
+	Number      string  `json:"number"`
+	OrderId     int64   `json:"orderId"`
+	Produced    string  `json:"produced"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
 // ManufacturingProductionCostGroup One product's done orders and their totals.
 type ManufacturingProductionCostGroup struct {
 	Orders []ManufacturingProductionCostRow `json:"orders"`
@@ -1913,10 +2085,12 @@ type ManufacturingProductionCostGroup struct {
 
 // ManufacturingProductionCostReport The production cost report (M42): the done orders closed in the period, grouped by product.
 type ManufacturingProductionCostReport struct {
-	From   openapi_types.Date                 `json:"from"`
-	Groups []ManufacturingProductionCostGroup `json:"groups"`
-	SiteId *int64                             `json:"siteId"`
-	To     openapi_types.Date                 `json:"to"`
+	// ByProducts The by-products of the orders (M122), by order then by-product.
+	ByProducts []ManufacturingProductionCostByproduct `json:"byProducts"`
+	From       openapi_types.Date                     `json:"from"`
+	Groups     []ManufacturingProductionCostGroup     `json:"groups"`
+	SiteId     *int64                                 `json:"siteId"`
+	To         openapi_types.Date                     `json:"to"`
 }
 
 // ManufacturingProductionCostRow One done order's cost, as fixed at close (M41).
@@ -1953,7 +2127,8 @@ type ManufacturingProductionCostTotals struct {
 
 // ManufacturingProductionDraft The production dialog's prefill (M22a).
 type ManufacturingProductionDraft struct {
-	Lines []ManufacturingProductionDraftLine `json:"lines"`
+	ByProducts []ManufacturingProductionDraftByproduct `json:"byProducts"`
+	Lines      []ManufacturingProductionDraftLine      `json:"lines"`
 
 	// Output What a production of the draft's quantity makes (manufacturing phase 2 M80, M81). For a lot-tracked product, lotNumber is the number the order's pattern renders today — {N} shown as the next the counter hands out — and expiry and bestBefore the dates the variant's offsets give from today; for a serial product, serialFirst is the first default serial, continuing from the order's serials so far.
 	Output ManufacturingProductionDraftOutput `json:"output"`
@@ -1964,6 +2139,25 @@ type ManufacturingProductionDraft struct {
 	// Quantity The quantity asked for; default what remains to produce.
 	Quantity     string `json:"quantity"`
 	ToLocationId int64  `json:"toLocationId"`
+}
+
+// ManufacturingProductionDraftByproduct A by-product's prefill (M121).
+type ManufacturingProductionDraftByproduct struct {
+	Expected string `json:"expected"`
+
+	// LotNumber For a lot-tracked by-product, the number the order's pattern renders today for it; null otherwise.
+	LotNumber *string `json:"lotNumber"`
+	OutputId  int64   `json:"outputId"`
+	Produced  string  `json:"produced"`
+
+	// Proposed expected × quantity ÷ the order's quantity, half-up to three decimals.
+	Proposed string `json:"proposed"`
+
+	// Tracking How a variant's stock is tracked (manufacturing phase 2 M49).
+	Tracking ManufacturingTracking `json:"tracking"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
 }
 
 // ManufacturingProductionDraftLine A component line's prefill (M22a).
@@ -2026,6 +2220,9 @@ type ManufacturingProductionInput struct {
 	// OutputScrap Finished units produced and discarded, exact decimal, 0 or more; default 0.
 	OutputScrap   *string                          `json:"outputScrap,omitempty"`
 	OutputSerials *ManufacturingOutputSerialsInput `json:"outputSerials,omitempty"`
+
+	// Outputs The by-products made (M121), each at most once; one left out makes nothing. The production dialog prefills each proportionally to the good quantity.
+	Outputs *[]ManufacturingProductionOutputInput `json:"outputs,omitempty"`
 
 	// Quantity Good output, exact decimal, 0 or more; 0 only with consumption, scrap or output scrap.
 	Quantity string `json:"quantity"`
@@ -2111,6 +2308,17 @@ type ManufacturingProductionOutput struct {
 	// Quantity Exact decimal.
 	Quantity string `json:"quantity"`
 	Serial   bool   `json:"serial"`
+}
+
+// ManufacturingProductionOutputInput What a production makes of one by-product (manufacturing phase 2 M121), put at the order's output location; a lot-tracked one goes into the lot named, else the order's pattern rendered for it.
+type ManufacturingProductionOutputInput struct {
+	Lot *ManufacturingOutputLotInput `json:"lot,omitempty"`
+
+	// OutputId The order's by-product (order_outputs id).
+	OutputId int64 `json:"outputId"`
+
+	// Quantity Exact decimal, 0 or more, at most three decimals.
+	Quantity string `json:"quantity"`
 }
 
 // ManufacturingQualityDeviation A deviation (nb avvik, M99): opened by a failed check or by a person, linked to what it was opened from; quarantine holds the order's output lots and its lot while it is open.
@@ -2722,6 +2930,82 @@ type ManufacturingTimeLogList struct {
 
 // ManufacturingTracking How a variant's stock is tracked (manufacturing phase 2 M49).
 type ManufacturingTracking string
+
+// ManufacturingUnbuild An unbuild (manufacturing phase 2 M123), numbered UB-<n>: finished goods taken apart, from a done order's productions or by a BoM, posted to Inventory as one movement of kind unbuild.
+type ManufacturingUnbuild struct {
+	BomId           int64                      `json:"bomId"`
+	ClientRequestId string                     `json:"clientRequestId"`
+	FromLocationId  int64                      `json:"fromLocationId"`
+	Id              int64                      `json:"id"`
+	Lines           []ManufacturingUnbuildLine `json:"lines"`
+
+	// LotId The finished lot taken apart; null for an untracked product.
+	LotId      *int64  `json:"lotId"`
+	LotNumber  *string `json:"lotNumber"`
+	MovementId *int64  `json:"movementId"`
+	Note       string  `json:"note"`
+
+	// Number UB-<n>.
+	Number          string              `json:"number"`
+	OrderId         *int64              `json:"orderId"`
+	OrderNumber     *string             `json:"orderNumber"`
+	PostedAt        time.Time           `json:"postedAt"`
+	PostedByDisplay string              `json:"postedByDisplay"`
+	PostedByUserId  *openapi_types.UUID `json:"postedByUserId"`
+	Quantity        string              `json:"quantity"`
+	SiteId          int64               `json:"siteId"`
+	ToLocationId    int64               `json:"toLocationId"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingUnbuildComponentInput A free-standing unbuild's lot for a tracked component (M123): an existing lot (lotId) or a new one (lot).
+type ManufacturingUnbuildComponentInput struct {
+	Lot       *ManufacturingOutputLotInput `json:"lot,omitempty"`
+	LotId     *int64                       `json:"lotId,omitempty"`
+	VariantId int32                        `json:"variantId"`
+}
+
+// ManufacturingUnbuildInput An unbuild (M123). From a done order (orderId): for a tracked product the finished lot (lotId) chosen from those the order made, at most what that lot received from the order's productions less what was unbuilt from it (unbuild_too_much); it restores only what the productions that made the lot consumed, proportionally. Free-standing (bomId): the BoM's lines without scrap for the quantity; a tracked component needs its lot in components (lot_required).
+type ManufacturingUnbuildInput struct {
+	BomId           *int64                                `json:"bomId,omitempty"`
+	ClientRequestId string                                `json:"clientRequestId"`
+	Components      *[]ManufacturingUnbuildComponentInput `json:"components,omitempty"`
+
+	// FromLocationId Where the finished goods are taken from; default the order's output location, else the site's root.
+	FromLocationId *int64  `json:"fromLocationId,omitempty"`
+	LotId          *int64  `json:"lotId,omitempty"`
+	Note           *string `json:"note,omitempty"`
+	OrderId        *int64  `json:"orderId,omitempty"`
+
+	// Quantity Exact decimal, more than 0, at most three decimals.
+	Quantity string `json:"quantity"`
+
+	// SiteId A free-standing unbuild's site; default the BoM's work centers' site, else the first active site.
+	SiteId *int64 `json:"siteId,omitempty"`
+
+	// ToLocationId Where the components are put; default the order's component location, else the site's root.
+	ToLocationId *int64 `json:"toLocationId,omitempty"`
+}
+
+// ManufacturingUnbuildLine A component an unbuild restored.
+type ManufacturingUnbuildLine struct {
+	LotId     *int64  `json:"lotId"`
+	LotNumber *string `json:"lotNumber"`
+	Quantity  string  `json:"quantity"`
+
+	// Variant A catalog variant as Manufacturing names it.
+	Variant ManufacturingVariantRef `json:"variant"`
+}
+
+// ManufacturingUnbuildList A page of unbuilds, newest first.
+type ManufacturingUnbuildList struct {
+	Items    []ManufacturingUnbuild `json:"items"`
+	Page     int32                  `json:"page"`
+	PageSize int32                  `json:"pageSize"`
+	Total    int32                  `json:"total"`
+}
 
 // ManufacturingUtilisationReport The work-center utilisation report (M42): per work center and ISO week, the days of the week inside the period.
 type ManufacturingUtilisationReport struct {
@@ -3363,6 +3647,13 @@ type GetManufacturingScheduleParams struct {
 // GetManufacturingScheduleParamsDays defines parameters for GetManufacturingSchedule.
 type GetManufacturingScheduleParamsDays int32
 
+// ListManufacturingUnbuildsParams defines parameters for ListManufacturingUnbuilds.
+type ListManufacturingUnbuildsParams struct {
+	OrderId  *int64 `form:"orderId,omitempty" json:"orderId,omitempty"`
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // SearchManufacturingVariantsParams defines parameters for SearchManufacturingVariants.
 type SearchManufacturingVariantsParams struct {
 	// Q Matched against SKU, product name and barcode.
@@ -3427,6 +3718,9 @@ type ReleaseManufacturingDeviationHoldsJSONRequestBody = ManufacturingRevisionIn
 // CreateManufacturingOrderJSONRequestBody defines body for CreateManufacturingOrder for application/json ContentType.
 type CreateManufacturingOrderJSONRequestBody = ManufacturingOrderInput
 
+// MergeManufacturingOrdersJSONRequestBody defines body for MergeManufacturingOrders for application/json ContentType.
+type MergeManufacturingOrdersJSONRequestBody = ManufacturingOrderMergeInput
+
 // UpdateManufacturingOrderJSONRequestBody defines body for UpdateManufacturingOrder for application/json ContentType.
 type UpdateManufacturingOrderJSONRequestBody = ManufacturingOrderUpdate
 
@@ -3457,6 +3751,9 @@ type PostManufacturingProductionJSONRequestBody = ManufacturingProductionInput
 // ReserveManufacturingOrderJSONRequestBody defines body for ReserveManufacturingOrder for application/json ContentType.
 type ReserveManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
 
+// SplitManufacturingOrderJSONRequestBody defines body for SplitManufacturingOrder for application/json ContentType.
+type SplitManufacturingOrderJSONRequestBody = ManufacturingOrderSplitInput
+
 // UnplanManufacturingOrderJSONRequestBody defines body for UnplanManufacturingOrder for application/json ContentType.
 type UnplanManufacturingOrderJSONRequestBody = ManufacturingRevisionInput
 
@@ -3474,6 +3771,9 @@ type PlanAllManufacturingOrdersJSONRequestBody = ManufacturingPlanAllInput
 
 // CorrectManufacturingTimeLogJSONRequestBody defines body for CorrectManufacturingTimeLog for application/json ContentType.
 type CorrectManufacturingTimeLogJSONRequestBody = ManufacturingTimeLogCorrection
+
+// CreateManufacturingUnbuildJSONRequestBody defines body for CreateManufacturingUnbuild for application/json ContentType.
+type CreateManufacturingUnbuildJSONRequestBody = ManufacturingUnbuildInput
 
 // CreateManufacturingWorkCenterGroupJSONRequestBody defines body for CreateManufacturingWorkCenterGroup for application/json ContentType.
 type CreateManufacturingWorkCenterGroupJSONRequestBody = ManufacturingWorkCenterGroupInput
@@ -3579,6 +3879,9 @@ type ServerInterface interface {
 	// CreateManufacturingOrder Create a manufacturing order
 	// (POST /api/v1/manufacturing/orders)
 	CreateManufacturingOrder(w http.ResponseWriter, r *http.Request)
+	// MergeManufacturingOrders Merge manufacturing orders
+	// (POST /api/v1/manufacturing/orders/merge)
+	MergeManufacturingOrders(w http.ResponseWriter, r *http.Request)
 	// GetManufacturingOrder Get a manufacturing order
 	// (GET /api/v1/manufacturing/orders/{id})
 	GetManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
@@ -3621,6 +3924,9 @@ type ServerInterface interface {
 	// ReserveManufacturingOrder Reserve a manufacturing order's short lines
 	// (POST /api/v1/manufacturing/orders/{id}/reserve)
 	ReserveManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
+	// SplitManufacturingOrder Split a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/split)
+	SplitManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64)
 	// ListManufacturingOrderTimeLogs List a manufacturing order's time logs
 	// (GET /api/v1/manufacturing/orders/{id}/time-logs)
 	ListManufacturingOrderTimeLogs(w http.ResponseWriter, r *http.Request, id int64)
@@ -3690,6 +3996,15 @@ type ServerInterface interface {
 	// CorrectManufacturingTimeLog Correct a time log
 	// (PATCH /api/v1/manufacturing/time-logs/{id})
 	CorrectManufacturingTimeLog(w http.ResponseWriter, r *http.Request, id int64)
+	// ListManufacturingUnbuilds List unbuilds
+	// (GET /api/v1/manufacturing/unbuilds)
+	ListManufacturingUnbuilds(w http.ResponseWriter, r *http.Request, params ListManufacturingUnbuildsParams)
+	// CreateManufacturingUnbuild Unbuild finished goods
+	// (POST /api/v1/manufacturing/unbuilds)
+	CreateManufacturingUnbuild(w http.ResponseWriter, r *http.Request)
+	// GetManufacturingUnbuild Get an unbuild
+	// (GET /api/v1/manufacturing/unbuilds/{id})
+	GetManufacturingUnbuild(w http.ResponseWriter, r *http.Request, id int64)
 	// SearchManufacturingVariants Search the catalog's goods variants
 	// (GET /api/v1/manufacturing/variants)
 	SearchManufacturingVariants(w http.ResponseWriter, r *http.Request, params SearchManufacturingVariantsParams)
@@ -4540,6 +4855,20 @@ func (siw *ServerInterfaceWrapper) CreateManufacturingOrder(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// MergeManufacturingOrders operation middleware
+func (siw *ServerInterfaceWrapper) MergeManufacturingOrders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergeManufacturingOrders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetManufacturingOrder operation middleware
 func (siw *ServerInterfaceWrapper) GetManufacturingOrder(w http.ResponseWriter, r *http.Request) {
 
@@ -4933,6 +5262,32 @@ func (siw *ServerInterfaceWrapper) ReserveManufacturingOrder(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReserveManufacturingOrder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SplitManufacturingOrder operation middleware
+func (siw *ServerInterfaceWrapper) SplitManufacturingOrder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SplitManufacturingOrder(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5661,6 +6016,105 @@ func (siw *ServerInterfaceWrapper) CorrectManufacturingTimeLog(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CorrectManufacturingTimeLog(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListManufacturingUnbuilds operation middleware
+func (siw *ServerInterfaceWrapper) ListManufacturingUnbuilds(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListManufacturingUnbuildsParams
+
+	// ------------- Optional query parameter "orderId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "orderId", r.URL.Query(), &params.OrderId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "orderId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orderId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListManufacturingUnbuilds(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateManufacturingUnbuild operation middleware
+func (siw *ServerInterfaceWrapper) CreateManufacturingUnbuild(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateManufacturingUnbuild(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetManufacturingUnbuild operation middleware
+func (siw *ServerInterfaceWrapper) GetManufacturingUnbuild(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetManufacturingUnbuild(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6730,6 +7184,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/meta", wrapper.GetManufacturingMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders", wrapper.ListManufacturingOrders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders", wrapper.CreateManufacturingOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/merge", wrapper.MergeManufacturingOrders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}", wrapper.GetManufacturingOrder)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}", wrapper.UpdateManufacturingOrder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/cancel", wrapper.CancelManufacturingOrder)
@@ -6744,6 +7199,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/production-draft", wrapper.GetManufacturingProductionDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/productions", wrapper.PostManufacturingProduction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/reserve", wrapper.ReserveManufacturingOrder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/split", wrapper.SplitManufacturingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/time-logs", wrapper.ListManufacturingOrderTimeLogs)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/unplan", wrapper.UnplanManufacturingOrder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/orders/{id}/work-orders", wrapper.ListManufacturingOrderWorkOrders)
@@ -6767,6 +7223,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/sites/{id}/locations", wrapper.ListManufacturingSiteLocations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/stats", wrapper.GetManufacturingStats)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/manufacturing/time-logs/{id}", wrapper.CorrectManufacturingTimeLog)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/unbuilds", wrapper.ListManufacturingUnbuilds)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/unbuilds", wrapper.CreateManufacturingUnbuild)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/unbuilds/{id}", wrapper.GetManufacturingUnbuild)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/variants", wrapper.SearchManufacturingVariants)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups", wrapper.ListManufacturingWorkCenterGroups)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/manufacturing/work-center-groups", wrapper.CreateManufacturingWorkCenterGroup)
@@ -8205,6 +8664,106 @@ func (response CreateManufacturingOrder503ApplicationProblemPlusJSONResponse) Vi
 	return err
 }
 
+type MergeManufacturingOrdersRequestObject struct {
+	Body *MergeManufacturingOrdersJSONRequestBody
+}
+
+type MergeManufacturingOrdersResponseObject interface {
+	VisitMergeManufacturingOrdersResponse(w http.ResponseWriter) error
+}
+
+type MergeManufacturingOrders200JSONResponse ManufacturingOrderMergeResult
+
+func (response MergeManufacturingOrders200JSONResponse) VisitMergeManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeManufacturingOrders400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response MergeManufacturingOrders400ApplicationProblemPlusJSONResponse) VisitMergeManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeManufacturingOrders401JSONResponse externalRef0.AuthErrorResponse
+
+func (response MergeManufacturingOrders401JSONResponse) VisitMergeManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeManufacturingOrders403JSONResponse externalRef0.AuthErrorResponse
+
+func (response MergeManufacturingOrders403JSONResponse) VisitMergeManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeManufacturingOrders404Response struct {
+}
+
+func (response MergeManufacturingOrders404Response) VisitMergeManufacturingOrdersResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type MergeManufacturingOrders409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response MergeManufacturingOrders409ApplicationProblemPlusJSONResponse) VisitMergeManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeManufacturingOrders503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response MergeManufacturingOrders503ApplicationProblemPlusJSONResponse) VisitMergeManufacturingOrdersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetManufacturingOrderRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -9452,6 +10011,107 @@ func (response ReserveManufacturingOrder409ApplicationProblemPlusJSONResponse) V
 type ReserveManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
 
 func (response ReserveManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitReserveManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitManufacturingOrderRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *SplitManufacturingOrderJSONRequestBody
+}
+
+type SplitManufacturingOrderResponseObject interface {
+	VisitSplitManufacturingOrderResponse(w http.ResponseWriter) error
+}
+
+type SplitManufacturingOrder200JSONResponse ManufacturingOrderSplitResult
+
+func (response SplitManufacturingOrder200JSONResponse) VisitSplitManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitManufacturingOrder400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response SplitManufacturingOrder400ApplicationProblemPlusJSONResponse) VisitSplitManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitManufacturingOrder401JSONResponse externalRef0.AuthErrorResponse
+
+func (response SplitManufacturingOrder401JSONResponse) VisitSplitManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitManufacturingOrder403JSONResponse externalRef0.AuthErrorResponse
+
+func (response SplitManufacturingOrder403JSONResponse) VisitSplitManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitManufacturingOrder404Response struct {
+}
+
+func (response SplitManufacturingOrder404Response) VisitSplitManufacturingOrderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type SplitManufacturingOrder409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response SplitManufacturingOrder409ApplicationProblemPlusJSONResponse) VisitSplitManufacturingOrderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitManufacturingOrder503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response SplitManufacturingOrder503ApplicationProblemPlusJSONResponse) VisitSplitManufacturingOrderResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -11110,6 +11770,270 @@ func (response CorrectManufacturingTimeLog409ApplicationProblemPlusJSONResponse)
 type CorrectManufacturingTimeLog503ApplicationProblemPlusJSONResponse ManufacturingProblem
 
 func (response CorrectManufacturingTimeLog503ApplicationProblemPlusJSONResponse) VisitCorrectManufacturingTimeLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingUnbuildsRequestObject struct {
+	Params ListManufacturingUnbuildsParams
+}
+
+type ListManufacturingUnbuildsResponseObject interface {
+	VisitListManufacturingUnbuildsResponse(w http.ResponseWriter) error
+}
+
+type ListManufacturingUnbuilds200JSONResponse ManufacturingUnbuildList
+
+func (response ListManufacturingUnbuilds200JSONResponse) VisitListManufacturingUnbuildsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingUnbuilds400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ListManufacturingUnbuilds400ApplicationProblemPlusJSONResponse) VisitListManufacturingUnbuildsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingUnbuilds401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingUnbuilds401JSONResponse) VisitListManufacturingUnbuildsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingUnbuilds403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListManufacturingUnbuilds403JSONResponse) VisitListManufacturingUnbuildsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManufacturingUnbuilds503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response ListManufacturingUnbuilds503ApplicationProblemPlusJSONResponse) VisitListManufacturingUnbuildsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingUnbuildRequestObject struct {
+	Body *CreateManufacturingUnbuildJSONRequestBody
+}
+
+type CreateManufacturingUnbuildResponseObject interface {
+	VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error
+}
+
+type CreateManufacturingUnbuild200JSONResponse ManufacturingUnbuild
+
+func (response CreateManufacturingUnbuild200JSONResponse) VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingUnbuild201JSONResponse ManufacturingUnbuild
+
+func (response CreateManufacturingUnbuild201JSONResponse) VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingUnbuild400ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingUnbuild400ApplicationProblemPlusJSONResponse) VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingUnbuild401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateManufacturingUnbuild401JSONResponse) VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingUnbuild403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateManufacturingUnbuild403JSONResponse) VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingUnbuild404Response struct {
+}
+
+func (response CreateManufacturingUnbuild404Response) VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CreateManufacturingUnbuild409ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingUnbuild409ApplicationProblemPlusJSONResponse) VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManufacturingUnbuild503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response CreateManufacturingUnbuild503ApplicationProblemPlusJSONResponse) VisitCreateManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingUnbuildRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetManufacturingUnbuildResponseObject interface {
+	VisitGetManufacturingUnbuildResponse(w http.ResponseWriter) error
+}
+
+type GetManufacturingUnbuild200JSONResponse ManufacturingUnbuild
+
+func (response GetManufacturingUnbuild200JSONResponse) VisitGetManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingUnbuild401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingUnbuild401JSONResponse) VisitGetManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingUnbuild403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetManufacturingUnbuild403JSONResponse) VisitGetManufacturingUnbuildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManufacturingUnbuild404Response struct {
+}
+
+func (response GetManufacturingUnbuild404Response) VisitGetManufacturingUnbuildResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetManufacturingUnbuild503ApplicationProblemPlusJSONResponse ManufacturingProblem
+
+func (response GetManufacturingUnbuild503ApplicationProblemPlusJSONResponse) VisitGetManufacturingUnbuildResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -14038,6 +14962,9 @@ type StrictServerInterface interface {
 	// CreateManufacturingOrder Create a manufacturing order
 	// (POST /api/v1/manufacturing/orders)
 	CreateManufacturingOrder(ctx context.Context, request CreateManufacturingOrderRequestObject) (CreateManufacturingOrderResponseObject, error)
+	// MergeManufacturingOrders Merge manufacturing orders
+	// (POST /api/v1/manufacturing/orders/merge)
+	MergeManufacturingOrders(ctx context.Context, request MergeManufacturingOrdersRequestObject) (MergeManufacturingOrdersResponseObject, error)
 	// GetManufacturingOrder Get a manufacturing order
 	// (GET /api/v1/manufacturing/orders/{id})
 	GetManufacturingOrder(ctx context.Context, request GetManufacturingOrderRequestObject) (GetManufacturingOrderResponseObject, error)
@@ -14080,6 +15007,9 @@ type StrictServerInterface interface {
 	// ReserveManufacturingOrder Reserve a manufacturing order's short lines
 	// (POST /api/v1/manufacturing/orders/{id}/reserve)
 	ReserveManufacturingOrder(ctx context.Context, request ReserveManufacturingOrderRequestObject) (ReserveManufacturingOrderResponseObject, error)
+	// SplitManufacturingOrder Split a manufacturing order
+	// (POST /api/v1/manufacturing/orders/{id}/split)
+	SplitManufacturingOrder(ctx context.Context, request SplitManufacturingOrderRequestObject) (SplitManufacturingOrderResponseObject, error)
 	// ListManufacturingOrderTimeLogs List a manufacturing order's time logs
 	// (GET /api/v1/manufacturing/orders/{id}/time-logs)
 	ListManufacturingOrderTimeLogs(ctx context.Context, request ListManufacturingOrderTimeLogsRequestObject) (ListManufacturingOrderTimeLogsResponseObject, error)
@@ -14149,6 +15079,15 @@ type StrictServerInterface interface {
 	// CorrectManufacturingTimeLog Correct a time log
 	// (PATCH /api/v1/manufacturing/time-logs/{id})
 	CorrectManufacturingTimeLog(ctx context.Context, request CorrectManufacturingTimeLogRequestObject) (CorrectManufacturingTimeLogResponseObject, error)
+	// ListManufacturingUnbuilds List unbuilds
+	// (GET /api/v1/manufacturing/unbuilds)
+	ListManufacturingUnbuilds(ctx context.Context, request ListManufacturingUnbuildsRequestObject) (ListManufacturingUnbuildsResponseObject, error)
+	// CreateManufacturingUnbuild Unbuild finished goods
+	// (POST /api/v1/manufacturing/unbuilds)
+	CreateManufacturingUnbuild(ctx context.Context, request CreateManufacturingUnbuildRequestObject) (CreateManufacturingUnbuildResponseObject, error)
+	// GetManufacturingUnbuild Get an unbuild
+	// (GET /api/v1/manufacturing/unbuilds/{id})
+	GetManufacturingUnbuild(ctx context.Context, request GetManufacturingUnbuildRequestObject) (GetManufacturingUnbuildResponseObject, error)
 	// SearchManufacturingVariants Search the catalog's goods variants
 	// (GET /api/v1/manufacturing/variants)
 	SearchManufacturingVariants(ctx context.Context, request SearchManufacturingVariantsRequestObject) (SearchManufacturingVariantsResponseObject, error)
@@ -14758,6 +15697,37 @@ func (sh *strictHandler) CreateManufacturingOrder(w http.ResponseWriter, r *http
 	}
 }
 
+// MergeManufacturingOrders operation middleware
+func (sh *strictHandler) MergeManufacturingOrders(w http.ResponseWriter, r *http.Request) {
+	var request MergeManufacturingOrdersRequestObject
+
+	var body MergeManufacturingOrdersJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MergeManufacturingOrders(ctx, request.(MergeManufacturingOrdersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MergeManufacturingOrders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MergeManufacturingOrdersResponseObject); ok {
+		if err := validResponse.VisitMergeManufacturingOrdersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetManufacturingOrder operation middleware
 func (sh *strictHandler) GetManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
 	var request GetManufacturingOrderRequestObject
@@ -15187,6 +16157,39 @@ func (sh *strictHandler) ReserveManufacturingOrder(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReserveManufacturingOrderResponseObject); ok {
 		if err := validResponse.VisitReserveManufacturingOrderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SplitManufacturingOrder operation middleware
+func (sh *strictHandler) SplitManufacturingOrder(w http.ResponseWriter, r *http.Request, id int64) {
+	var request SplitManufacturingOrderRequestObject
+
+	request.Id = id
+
+	var body SplitManufacturingOrderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SplitManufacturingOrder(ctx, request.(SplitManufacturingOrderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SplitManufacturingOrder")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SplitManufacturingOrderResponseObject); ok {
+		if err := validResponse.VisitSplitManufacturingOrderResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -15814,6 +16817,89 @@ func (sh *strictHandler) CorrectManufacturingTimeLog(w http.ResponseWriter, r *h
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CorrectManufacturingTimeLogResponseObject); ok {
 		if err := validResponse.VisitCorrectManufacturingTimeLogResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListManufacturingUnbuilds operation middleware
+func (sh *strictHandler) ListManufacturingUnbuilds(w http.ResponseWriter, r *http.Request, params ListManufacturingUnbuildsParams) {
+	var request ListManufacturingUnbuildsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListManufacturingUnbuilds(ctx, request.(ListManufacturingUnbuildsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListManufacturingUnbuilds")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListManufacturingUnbuildsResponseObject); ok {
+		if err := validResponse.VisitListManufacturingUnbuildsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateManufacturingUnbuild operation middleware
+func (sh *strictHandler) CreateManufacturingUnbuild(w http.ResponseWriter, r *http.Request) {
+	var request CreateManufacturingUnbuildRequestObject
+
+	var body CreateManufacturingUnbuildJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateManufacturingUnbuild(ctx, request.(CreateManufacturingUnbuildRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateManufacturingUnbuild")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateManufacturingUnbuildResponseObject); ok {
+		if err := validResponse.VisitCreateManufacturingUnbuildResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManufacturingUnbuild operation middleware
+func (sh *strictHandler) GetManufacturingUnbuild(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetManufacturingUnbuildRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManufacturingUnbuild(ctx, request.(GetManufacturingUnbuildRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManufacturingUnbuild")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetManufacturingUnbuildResponseObject); ok {
+		if err := validResponse.VisitGetManufacturingUnbuildResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

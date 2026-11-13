@@ -96,6 +96,10 @@ func (w *erasureWorker) RunCycle(ctx context.Context) (int64, error) {
 				return blanked, fmt.Errorf("manufacturing: blank an erased operator's notes: %w", err)
 			}
 			blanked += n
+			if n, err = q.BlankUnbuildNotesOfUsers(ctx, gone); err != nil {
+				return blanked, fmt.Errorf("manufacturing: blank an erased poster's unbuild notes: %w", err)
+			}
+			blanked += n
 		}
 		after = ids[len(ids)-1]
 		if len(ids) < erasureChunk || ctx.Err() != nil {

@@ -832,10 +832,13 @@ func productionLotsOf(ctx context.Context, q *store.Queries, ids []int64) (map[i
 // GetManufacturingOrderLots is the lots an order's productions made and
 // consumed (M83), from Manufacturing's own rows.
 func (s *server) GetManufacturingOrderLots(ctx context.Context, req gen.GetManufacturingOrderLotsRequestObject) (gen.GetManufacturingOrderLotsResponseObject, error) {
-	out := gen.ManufacturingOrderLots{Outputs: []gen.ManufacturingOrderOutputLot{}, Components: []gen.ManufacturingOrderComponentLots{}}
+	out := gen.ManufacturingOrderLots{Outputs: []gen.ManufacturingOrderOutputLot{}, Components: []gen.ManufacturingOrderComponentLots{},
+		ByProducts: []gen.ManufacturingProductionByproduct{}}
 	var components []store.ManufacturingOrderComponent
 	var outputs []store.ManufacturingProductionOutput
 	var rows []store.ManufacturingProductionLineLot
+	var byRows []store.ProductionByproductsRow
+	var unbuilt []store.UnbuiltOfOrdersRow
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		if _, err := q.GetOrder(ctx, req.Id); noRows(err) {
 			return notFound()
@@ -850,6 +853,12 @@ func (s *server) GetManufacturingOrderLots(ctx context.Context, req gen.GetManuf
 			return err
 		}
 		if outputs, err = q.ProductionOutputs(ctx, ids); err != nil {
+			return err
+		}
+		if byRows, err = q.ProductionByproducts(ctx, ids); err != nil {
+			return err
+		}
+		if unbuilt, err = q.UnbuiltOfOrders(ctx, []int64{req.Id}); err != nil {
 			return err
 		}
 		rows, err = q.ProductionLineLots(ctx, ids)
@@ -867,12 +876,23 @@ func (s *server) GetManufacturingOrderLots(ctx context.Context, req gen.GetManuf
 		i, ok := made[o.LotID]
 		if !ok {
 			made[o.LotID] = len(out.Outputs)
-			out.Outputs = append(out.Outputs, gen.ManufacturingOrderOutputLot{LotId: o.LotID, LotNumber: o.LotNumber, Serial: o.Serial, Quantity: "0"})
+			out.Outputs = append(out.Outputs, gen.ManufacturingOrderOutputLot{LotId: o.LotID, LotNumber: o.LotNumber, Serial: o.Serial, Quantity: "0", Unbuilt: "0"})
 			i = made[o.LotID]
 		}
 		row := &out.Outputs[i]
 		row.Quantity = text(new(big.Rat).Add(mustRat(row.Quantity), ratOrZero(o.Quantity)), quantityPlaces)
 		row.Productions++
+	}
+	for _, u := range unbuilt {
+		if i, ok := made[u.LotID]; ok {
+			out.Outputs[i].Unbuilt = numericText(u.Quantity, quantityPlaces)
+		}
+	}
+	costs := s.has(ctx, permCostsView)
+	for _, r := range byRows {
+		if r.LotID != nil {
+			out.ByProducts = append(out.ByProducts, byproductAnswer(r, costs))
+		}
 	}
 	type key struct{ component, lot int64 }
 	sums := map[key]*gen.ManufacturingOrderConsumedLot{}
@@ -888,7 +908,6 @@ func (s *server) GetManufacturingOrderLots(ctx context.Context, req gen.GetManuf
 		c.Consumed = text(new(big.Rat).Add(mustRat(c.Consumed), ratOrZero(r.Consumed)), quantityPlaces)
 		c.Scrapped = text(new(big.Rat).Add(mustRat(c.Scrapped), ratOrZero(r.Scrapped)), quantityPlaces)
 	}
-	costs := s.has(ctx, permCostsView)
 	for _, c := range components {
 		lots := order[c.ID]
 		if len(lots) == 0 {

@@ -121,8 +121,12 @@ func (s *server) GetManufacturingProductionDraft(ctx context.Context, req gen.Ge
 	if err != nil {
 		return answer(err, draftAnswers())
 	}
+	byProducts, err := s.draftByproducts(ctx, o, r.outputs, quantity, today, costs)
+	if err != nil {
+		return answer(err, draftAnswers())
+	}
 	out := gen.GetManufacturingProductionDraft200JSONResponse{Quantity: text(quantity, quantityPlaces), OutputScrap: text(outputScrap, quantityPlaces),
-		ToLocationId: o.OutputLocationID, Lines: make([]gen.ManufacturingProductionDraftLine, 0, len(r.components)), Output: output}
+		ToLocationId: o.OutputLocationID, Lines: make([]gen.ManufacturingProductionDraftLine, 0, len(r.components)), Output: output, ByProducts: byProducts}
 	for _, c := range r.components {
 		proposed := proportional(ratOrZero(c.Required), base, ratOrZero(o.Quantity))
 		line := gen.ManufacturingProductionDraftLine{ComponentId: c.ID, Variant: componentRef(entries, c, costs),
@@ -209,7 +213,10 @@ type productionValues struct {
 	// (M80, M81), nil when not sent.
 	outputLot *outputLotValues
 	serials   *serialValues
-	hash      string
+	// outputs is what it makes of the order's by-products (manufacturing
+	// phase 2 M121), nil when none were sent.
+	outputs []byproductValue
+	hash    string
 }
 
 // judgeProduction is the request's shape (M22): every quantity 0 or more
@@ -263,10 +270,11 @@ func judgeProduction(in gen.ManufacturingProductionInput, f fieldErrors, prefix 
 	}
 	v.outputLot = judgeOutputLot(&f, prefix, in.OutputLot)
 	v.serials = judgeSerials(&f, prefix, in.OutputSerials)
+	v.outputs = judgeByproducts(&f, prefix, in.Outputs)
 	if f.failed() {
 		return v, f
 	}
-	if v.quantity.Sign() == 0 && v.outputScrap.Sign() == 0 && !something {
+	if v.quantity.Sign() == 0 && v.outputScrap.Sign() == 0 && !something && !makesByproduct(v.outputs) {
 		f.addCoded(prefix+"quantity", codeQuantityInvalid, "0 only with consumption, scrap or output scrap")
 		return v, f
 	}
@@ -299,13 +307,26 @@ func productionHash(v productionValues) string {
 		First                 string
 		Numbers               []string
 	}
-	body := struct {
+	type byproduct struct {
+		ID     int64   `json:"i"`
 		Q      string  `json:"q"`
-		O      string  `json:"o"`
-		To     *int64  `json:"t"`
-		Lines  []line  `json:"l"`
-		Output *output `json:"out,omitempty"`
+		Output *output `json:"lot,omitempty"`
+	}
+	body := struct {
+		Q          string      `json:"q"`
+		O          string      `json:"o"`
+		To         *int64      `json:"t"`
+		Lines      []line      `json:"l"`
+		Output     *output     `json:"out,omitempty"`
+		Byproducts []byproduct `json:"by,omitempty"`
 	}{Q: text(v.quantity, quantityPlaces), O: text(v.outputScrap, quantityPlaces), To: v.to}
+	for _, b := range v.outputs {
+		x := byproduct{ID: b.outputID, Q: text(b.quantity, quantityPlaces)}
+		if l := b.lot; l != nil {
+			x.Output = &output{N: l.number, Supplier: l.supplierLot, Made: dayText(l.production), Exp: dayText(l.expiry), BestBefore: dayText(l.bestBefore)}
+		}
+		body.Byproducts = append(body.Byproducts, x)
+	}
 	for _, l := range v.lines {
 		x := line{C: l.componentID, S: text(l.scrap, quantityPlaces), F: l.from, P: l.proposed}
 		if l.consumed != nil {
@@ -705,6 +726,14 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 			return 0, err
 		}
 	}
+	// 7a, 7b for the by-products (manufacturing phase 2 M121).
+	made, err := s.prepareByproducts(ctx, tx, txq, ledger, lo, prep, p.ID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.holdNewOutput(ctx, tx, txq, o.ID, byproductHolds(made), who, at); err != nil {
+		return 0, err
+	}
 	tracked := map[int32]bool{}
 	for id, e := range lo.locked {
 		tracked[id] = isTracked(e)
@@ -726,6 +755,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 				Quantity: out.quantity.FloatString(quantityPlaces), LotID: out.lotID})
 		}
 	}
+	production.Produce = append(production.Produce, byproductLines(o, made)...)
 	var posted contracts.StockPosted
 	if len(production.Consume) > 0 || len(production.Produce) > 0 {
 		// 7c. Produce.
@@ -777,6 +807,9 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 		}
 		outputIDs = append(outputIDs, out.lotID)
 	}
+	if err := writeByproducts(ctx, txq, p.ID, made); err != nil {
+		return 0, err
+	}
 	if err := syncReserved(ctx, ledger, tx, txq, o.ID); err != nil {
 		return 0, err
 	}
@@ -787,7 +820,7 @@ func (s *server) postProduction(ctx context.Context, tx pgx.Tx, txq *store.Queri
 	if err := event(ctx, txq, o.ID, gen.ManufacturingOrderEventKindProductionPosted, who, at, map[string]any{
 		"productionId": p.ID, "quantity": text(v.quantity, quantityPlaces), "outputScrap": text(v.outputScrap, quantityPlaces),
 		"lines": len(v.lines), "deviationAccepted": in.AcceptDeviation != nil && *in.AcceptDeviation,
-		"outputLots": outputIDs, "lotRows": lotRows,
+		"outputLots": outputIDs, "lotRows": lotRows, "byProducts": len(made),
 	}); err != nil {
 		return 0, err
 	}
@@ -1011,11 +1044,19 @@ func (s *server) productionAnswer(ctx context.Context, id int64) (gen.Manufactur
 	if err != nil {
 		return gen.ManufacturingProduction{}, err
 	}
+	byRows, err := q.ProductionByproducts(ctx, []int64{id})
+	if err != nil {
+		return gen.ManufacturingProduction{}, err
+	}
 	costs := s.has(ctx, permCostsView)
 	out := gen.ManufacturingProduction{Id: p.ID, OutputLots: made[id], OrderId: p.OrderID, OrderNumber: orderNumber(p.OrderNumber, p.OrderSuffix),
 		ClientRequestId: p.ClientRequestID, Quantity: numericText(p.Quantity, quantityPlaces), OutputScrap: numericText(p.OutputScrap, quantityPlaces),
 		ToLocationId: p.ToLocationID, MovementId: p.MovementID, PostedByUserId: p.PostedByUserID, PostedByDisplay: p.PostedByDisplay,
-		PostedAt: p.PostedAt, Lines: make([]gen.ManufacturingProductionLine, 0, len(lines))}
+		PostedAt: p.PostedAt, Lines: make([]gen.ManufacturingProductionLine, 0, len(lines)),
+		ByProducts: make([]gen.ManufacturingProductionByproduct, 0, len(byRows))}
+	for _, r := range byRows {
+		out.ByProducts = append(out.ByProducts, byproductAnswer(r, costs))
+	}
 	for _, l := range lines {
 		c := store.ManufacturingOrderComponent{ID: l.ComponentID, VariantID: l.VariantID, Sku: l.Sku, ProductName: l.ProductName, Unit: l.Unit}
 		ref := componentRef(nil, c, costs)

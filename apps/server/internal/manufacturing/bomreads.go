@@ -31,6 +31,7 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 		lines  []store.ManufacturingBomLine
 		checks []store.ManufacturingBomOperationCheck
 		edges  []store.ManufacturingBomOperationDependency
+		outs   []store.ManufacturingBomOutput
 	)
 	err := s.withReadTx(ctx, func(ctx context.Context, q *store.Queries) error {
 		var err error
@@ -52,13 +53,16 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 		if edges, err = q.DependenciesOfBoms(ctx, []int64{id}); err != nil {
 			return err
 		}
+		if outs, err = q.OutputsOfBoms(ctx, []int64{id}); err != nil {
+			return err
+		}
 		lines, err = q.LinesOfBoms(ctx, []int64{id})
 		return err
 	})
 	if err != nil {
 		return gen.ManufacturingBom{}, err
 	}
-	entries, err := s.catalogVariants(ctx, lockedVariants(b.VariantID, storedComponents(lines)))
+	entries, err := s.catalogVariants(ctx, lockedVariants(b.VariantID, append(storedComponents(lines), storedOutputs(outs)...)))
 	if err != nil {
 		return gen.ManufacturingBom{}, err
 	}
@@ -69,7 +73,11 @@ func (s *server) bomAnswer(ctx context.Context, id int64) (gen.ManufacturingBom,
 		OutputQuantity: numericText(b.OutputQuantity, quantityPlaces), IsDefault: b.IsDefault, MakeToOrder: b.MakeToOrder,
 		LeadTimeDays: b.LeadTimeDays, Note: b.Note, LotPattern: b.LotPattern, Status: gen.ManufacturingStatus(b.Status), Revision: b.Revision,
 		Operations: make([]gen.ManufacturingBomOperation, 0, len(ops)), Lines: make([]gen.ManufacturingBomLine, 0, len(lines)),
-		CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt,
+		Outputs: make([]gen.ManufacturingBomOutput, 0, len(outs)), CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt,
+	}
+	for _, o := range outs {
+		out.Outputs = append(out.Outputs, gen.ManufacturingBomOutput{Id: o.ID, Variant: refOf(entries, o.VariantID, costs),
+			Quantity: numericText(o.Quantity, quantityPlaces), CostShare: numericText(o.CostShare, percentPlaces), SortOrder: o.SortOrder})
 	}
 	depends := map[int64][]string{}
 	for _, e := range edges {

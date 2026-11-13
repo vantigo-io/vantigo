@@ -266,7 +266,7 @@ func (q *Queries) InsertMtoRequest(ctx context.Context, arg InsertMtoRequestPara
 
 const linesWithLiveOrder = `-- name: LinesWithLiveOrder :many
 SELECT origin_line_id::bigint AS line_id FROM manufacturing.orders
-WHERE origin_kind = 'sales_order' AND backorder_of_id IS NULL AND status <> 'cancelled'
+WHERE origin_kind = 'sales_order' AND backorder_of_id IS NULL AND split_from_id IS NULL AND status <> 'cancelled'
   AND origin_line_id = ANY($1::bigint[])
 `
 
@@ -366,7 +366,7 @@ func (q *Queries) OpenChildrenOfOrder(ctx context.Context, parentOrderID *int64)
 }
 
 const ordersForLines = `-- name: OrdersForLines :many
-SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern FROM manufacturing.orders
+SELECT id, number, suffix, variant_id, bom_id, quantity, produced, output_scrap, site_id, component_location_id, output_location_id, due_date, planned_start, planned_finish, priority, responsible_user_id, note, origin_kind, origin_order_id, origin_line_id, origin_reference, parent_order_id, backorder_of_id, status, confirmed_at, closed_at, revision, created_at, updated_at, requested_start, estimate, actual, origin_cancelled, lot_pattern, split_from_id, merged_into_id FROM manufacturing.orders
 WHERE origin_kind = 'sales_order' AND origin_line_id = ANY($1::bigint[]) AND status <> 'cancelled'
 ORDER BY origin_line_id, number, suffix
 `
@@ -418,6 +418,8 @@ func (q *Queries) OrdersForLines(ctx context.Context, lineIds []int64) ([]Manufa
 			&i.Actual,
 			&i.OriginCancelled,
 			&i.LotPattern,
+			&i.SplitFromID,
+			&i.MergedIntoID,
 		); err != nil {
 			return nil, err
 		}

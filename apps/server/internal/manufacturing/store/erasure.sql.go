@@ -32,11 +32,33 @@ func (q *Queries) BlankNotesOfUsers(ctx context.Context, userIds []uuid.UUID) (i
 	return result.RowsAffected(), nil
 }
 
+const blankUnbuildNotesOfUsers = `-- name: BlankUnbuildNotesOfUsers :execrows
+UPDATE manufacturing.unbuilds SET note = ''
+WHERE id IN (SELECT u.id FROM manufacturing.unbuilds u
+             WHERE u.posted_by_user_id = ANY($1::uuid[]) AND u.note <> ''
+             ORDER BY u.id
+             FOR UPDATE SKIP LOCKED)
+`
+
+// BlankUnbuildNotesOfUsers blanks the notes of the unbuilds the erased people
+// posted (manufacturing phase 2 M123), skipping rows another transaction holds.
+func (q *Queries) BlankUnbuildNotesOfUsers(ctx context.Context, userIds []uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, blankUnbuildNotesOfUsers, userIds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listNotedUserIDs = `-- name: ListNotedUserIDs :many
 
-SELECT DISTINCT note_by::uuid AS user_id
-FROM manufacturing.time_logs
-WHERE note_by IS NOT NULL AND note <> '' AND note_by > $1::uuid
+SELECT user_id FROM (
+    SELECT note_by::uuid AS user_id FROM manufacturing.time_logs
+    WHERE note_by IS NOT NULL AND note <> '' AND note_by > $1::uuid
+    UNION
+    SELECT posted_by_user_id::uuid FROM manufacturing.unbuilds
+    WHERE posted_by_user_id IS NOT NULL AND note <> '' AND posted_by_user_id > $1::uuid
+) noted
 ORDER BY user_id
 LIMIT $2
 `
@@ -52,6 +74,7 @@ type ListNotedUserIDsParams struct {
 // supervisor who corrected or added the log, or who blocked the work center).
 // ListNotedUserIDs is the people whose words a time log's note is, after a
 // given id, in id order: the sweep asks identity which of them still exist.
+// An unbuild's note is its poster's words too (manufacturing phase 2 M123).
 func (q *Queries) ListNotedUserIDs(ctx context.Context, arg ListNotedUserIDsParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listNotedUserIDs, arg.After, arg.BatchSize)
 	if err != nil {

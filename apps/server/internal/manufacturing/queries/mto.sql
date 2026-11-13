@@ -51,7 +51,7 @@ ORDER BY variant_id;
 -- LinesWithLiveOrder is which of the sales order lines already have their
 -- one live order (M44b's index).
 SELECT origin_line_id::bigint AS line_id FROM manufacturing.orders
-WHERE origin_kind = 'sales_order' AND backorder_of_id IS NULL AND status <> 'cancelled'
+WHERE origin_kind = 'sales_order' AND backorder_of_id IS NULL AND split_from_id IS NULL AND status <> 'cancelled'
   AND origin_line_id = ANY(@line_ids::bigint[]);
 
 -- name: OrdersForLines :many

@@ -109,6 +109,11 @@ func (s *server) GetManufacturingProductionCostReport(ctx context.Context, req g
 	var ids []int32
 	for _, o := range orders {
 		ids = append(ids, o.VariantID)
+		if a := unmarshalCost(o.Actual); a != nil {
+			for _, b := range a.ByProducts {
+				ids = append(ids, b.VariantID)
+			}
+		}
 	}
 	entries, err := s.catalogVariants(ctx, slices.Compact(slices.Sorted(slices.Values(ids))))
 	if err != nil {
@@ -127,8 +132,8 @@ func (s *server) GetManufacturingProductionCostReport(ctx context.Context, req g
 // total good output.
 func productionCostOf(orders []store.ManufacturingOrder, entries map[int32]contracts.VariantEntry, p reportPeriod, siteID *int64) gen.ManufacturingProductionCostReport {
 	out := gen.ManufacturingProductionCostReport{From: openapi_types.Date{Time: p.from}, To: openapi_types.Date{Time: p.to}, SiteId: siteID,
-		Groups: []gen.ManufacturingProductionCostGroup{}}
-	type sums struct{ produced, estimate, actual, devEstimate, deviation *big.Rat }
+		Groups: []gen.ManufacturingProductionCostGroup{}, ByProducts: []gen.ManufacturingProductionCostByproduct{}}
+	type sums struct{ produced, estimate, actual, main, devEstimate, deviation *big.Rat }
 	byVariant := map[int32]*gen.ManufacturingProductionCostGroup{}
 	totals := map[int32]*sums{}
 	var order []int32
@@ -137,7 +142,7 @@ func productionCostOf(orders []store.ManufacturingOrder, entries map[int32]contr
 		if !ok {
 			g = &gen.ManufacturingProductionCostGroup{Variant: refOf(entries, o.VariantID, true), Orders: []gen.ManufacturingProductionCostRow{}}
 			byVariant[o.VariantID] = g
-			totals[o.VariantID] = &sums{new(big.Rat), new(big.Rat), new(big.Rat), new(big.Rat), new(big.Rat)}
+			totals[o.VariantID] = &sums{new(big.Rat), new(big.Rat), new(big.Rat), new(big.Rat), new(big.Rat), new(big.Rat)}
 			order = append(order, o.VariantID)
 		}
 		t := totals[o.VariantID]
@@ -154,7 +159,19 @@ func productionCostOf(orders []store.ManufacturingOrder, entries map[int32]contr
 		if actual != nil {
 			row.Actual = &actual.Total
 			row.CostPerUnit = actual.CostPerUnit
+			// The main product's part only (manufacturing phase 2 M122): the
+			// product's cost per unit is what it carried.
+			main := actual.Total
+			if actual.MainTotal != nil {
+				main = *actual.MainTotal
+			}
 			t.actual.Add(t.actual, mustRat(actual.Total))
+			t.main.Add(t.main, mustRat(main))
+			for _, b := range actual.ByProducts {
+				out.ByProducts = append(out.ByProducts, gen.ManufacturingProductionCostByproduct{OrderId: o.ID, Number: row.Number,
+					Variant: refOf(entries, b.VariantID, true), CostShare: b.Share, Produced: b.Produced, Actual: b.Amount,
+					CostPerUnit: b.CostPerUnit, NotProduced: b.NotProduced})
+			}
 			// The cost per unit of the total is the actual over the output it
 			// paid for: an order with no actual adds to neither.
 			t.produced.Add(t.produced, ratOrZero(o.Produced))
@@ -176,7 +193,7 @@ func productionCostOf(orders []store.ManufacturingOrder, entries map[int32]contr
 		g.Totals = gen.ManufacturingProductionCostTotals{
 			Orders: int32(len(g.Orders)), Produced: text(t.produced, quantityPlaces), Estimate: amountText(t.estimate),
 			Actual: amountText(t.actual), Deviation: amountText(t.deviation), DeviationPercent: percentOf(t.deviation, t.devEstimate),
-			CostPerUnit: costPerUnitOf(t.actual, t.produced),
+			CostPerUnit: costPerUnitOf(t.main, t.produced),
 		}
 		out.Groups = append(out.Groups, *g)
 	}

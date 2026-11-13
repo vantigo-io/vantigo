@@ -697,10 +697,10 @@ func (s *fakeStock) produce(ctx context.Context, tx pgx.Tx, src contracts.StockS
 			switch {
 			case lot == nil || lot.variant != l.VariantID:
 				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLotUnknown, VariantID: l.VariantID, LineID: l.LineID, Index: i, LotID: l.LotID, Detail: "No such lot."})
-			case lot.status != contracts.LotAvailable:
+			case lot.status != contracts.LotAvailable && !p.Unbuild:
 				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLotBlocked, VariantID: l.VariantID, LineID: l.LineID, Index: i, LotID: l.LotID,
 					LocationID: l.FromLocationID, Detail: "The lot is on hold."})
-			case contracts.LotExpired(lot.expiry, p.Today) && (!l.AllowExpired || !p.ExpiredOverride):
+			case contracts.LotExpired(lot.expiry, p.Today) && (!l.AllowExpired || !p.ExpiredOverride) && !p.Unbuild:
 				refused = append(refused, contracts.StockLineRefusal{Code: contracts.StockLotExpired, VariantID: l.VariantID, LineID: l.LineID, Index: i, LotID: l.LotID,
 					LocationID: l.FromLocationID, Detail: "The lot is expired."})
 			case lotTake[lk].Cmp(orZero(s.lotHeld[lk])) > 0:

@@ -137,8 +137,9 @@ type lockedOrder struct {
 }
 
 // orderVariants is the variants a write on the order locks: its product,
-// its component lines' variants and, while it is a draft, its BoM's lines'
-// (which confirm snapshots).
+// its component lines' and by-products' variants and, while it is a draft,
+// its BoM's lines' and by-products' (which confirm snapshots; manufacturing
+// phase 2 M121).
 func orderVariants(ctx context.Context, q *store.Queries, o store.ManufacturingOrder) ([]int32, error) {
 	ids := []int32{o.VariantID}
 	components, err := q.ComponentVariantsOfOrder(ctx, o.ID)
@@ -146,6 +147,11 @@ func orderVariants(ctx context.Context, q *store.Queries, o store.ManufacturingO
 		return nil, err
 	}
 	ids = append(ids, components...)
+	outputs, err := q.OutputVariantsOfOrder(ctx, o.ID)
+	if err != nil {
+		return nil, err
+	}
+	ids = append(ids, outputs...)
 	if o.Status == orderDraft {
 		lines, err := q.LinesOfBoms(ctx, []int64{o.BomID})
 		if err != nil {
@@ -154,6 +160,11 @@ func orderVariants(ctx context.Context, q *store.Queries, o store.ManufacturingO
 		for _, l := range lines {
 			ids = append(ids, l.VariantID)
 		}
+		more, err := bomOutputsOf(ctx, q, o.BomID)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, more...)
 	}
 	slices.Sort(ids)
 	return slices.Compact(ids), nil
@@ -517,7 +528,11 @@ func bomVariants(ctx context.Context, q *store.Queries, bomID int64) ([]int32, e
 	for _, l := range lines {
 		out = append(out, l.VariantID)
 	}
-	return out, nil
+	outputs, err := bomOutputsOf(ctx, q, bomID)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, outputs...), nil
 }
 
 // createOrderAnswers are the create's typed refusals.
@@ -786,6 +801,8 @@ type orderRows struct {
 	related    map[int64]store.ManufacturingOrder
 	workOrders []store.ManufacturingWorkOrder // once confirmed, for the cost and the plan
 	logs       []store.ManufacturingTimeLog
+	outputs    []store.ManufacturingOrderOutput // the by-products; a draft's as its BoM makes them (M121)
+	unbuilt    *big.Rat                         // what unbuilds took apart of its output (M123)
 }
 
 func (s *server) readOrder(ctx context.Context, id int64) (orderRows, error) {
@@ -809,6 +826,21 @@ func (s *server) readOrder(ctx context.Context, id int64) (orderRows, error) {
 			if r.bomLines, err = q.LinesOfBoms(ctx, []int64{o.BomID}); err != nil {
 				return err
 			}
+			outs, err := q.OutputsOfBoms(ctx, []int64{o.BomID})
+			if err != nil {
+				return err
+			}
+			r.outputs = draftOutputs(o, r.bom, outs)
+		} else if r.outputs, err = q.OutputsOfOrders(ctx, []int64{o.ID}); err != nil {
+			return err
+		}
+		unbuilt, err := q.UnbuiltOfOrders(ctx, []int64{o.ID})
+		if err != nil {
+			return err
+		}
+		r.unbuilt = new(big.Rat)
+		for _, u := range unbuilt {
+			r.unbuilt.Add(r.unbuilt, ratOrZero(u.Quantity))
 		}
 		if r.links, err = q.OrderLinks(ctx, &o.ID); err != nil {
 			return err
@@ -822,7 +854,7 @@ func (s *server) readOrder(ctx context.Context, id int64) (orderRows, error) {
 			}
 		}
 		var ids []int64
-		for _, p := range []*int64{o.BackorderOfID, o.ParentOrderID} {
+		for _, p := range []*int64{o.BackorderOfID, o.ParentOrderID, o.SplitFromID, o.MergedIntoID} {
 			if p != nil {
 				ids = append(ids, *p)
 			}
@@ -891,6 +923,33 @@ func draftComponents(o store.ManufacturingOrder, bom store.ManufacturingBom, lin
 		required := requiredOf(ratOrZero(l.Quantity), ratOrZero(l.ScrapPercent), ratOrZero(o.Quantity), ratOrZero(bom.OutputQuantity))
 		out = append(out, store.ManufacturingOrderComponent{VariantID: l.VariantID, Required: numeric(required, quantityPlaces),
 			OperationID: l.OperationID, SortOrder: l.SortOrder, Note: l.Note})
+	}
+	return out
+}
+
+// draftOutputs is a draft's by-products as its BoM makes them now (M121):
+// they follow the BoM until confirmed, so they have no id.
+func draftOutputs(o store.ManufacturingOrder, bom store.ManufacturingBom, outputs []store.ManufacturingBomOutput) []store.ManufacturingOrderOutput {
+	out := make([]store.ManufacturingOrderOutput, 0, len(outputs))
+	for _, x := range outputs {
+		out = append(out, store.ManufacturingOrderOutput{VariantID: x.VariantID, Quantity: x.Quantity, CostShare: x.CostShare,
+			Expected:  numeric(expectedOutput(ratOrZero(x.Quantity), ratOrZero(o.Quantity), ratOrZero(bom.OutputQuantity)), quantityPlaces),
+			SortOrder: x.SortOrder})
+	}
+	return out
+}
+
+// outputAnswer is a by-product as the order answers it.
+func outputAnswer(x store.ManufacturingOrderOutput, entries map[int32]contracts.VariantEntry, costs bool) gen.ManufacturingOrderOutput {
+	ref := refOf(entries, x.VariantID, costs)
+	if ref.Sku == "" {
+		ref.Sku, ref.ProductName, ref.Unit = x.Sku, x.ProductName, x.Unit
+	}
+	out := gen.ManufacturingOrderOutput{Variant: ref, Expected: numericText(x.Expected, quantityPlaces), Produced: numericText(x.Produced, quantityPlaces),
+		CostShare: numericText(x.CostShare, percentPlaces), Tracking: trackingOf(entries[x.VariantID])}
+	if x.ID != 0 {
+		id := x.ID
+		out.Id = &id
 	}
 	return out
 }
@@ -965,6 +1024,10 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 	for _, c := range components {
 		ids = append(ids, c.VariantID)
 	}
+	componentIDs := slices.Clone(ids[1:])
+	for _, x := range r.outputs {
+		ids = append(ids, x.VariantID)
+	}
 	entries, err := s.catalogVariants(ctx, slices.Compact(slices.Sorted(slices.Values(ids))))
 	if err != nil {
 		return gen.ManufacturingOrder{}, err
@@ -972,7 +1035,7 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 	var available map[int32]contracts.StockQuantity
 	if len(components) > 0 {
 		site := o.SiteID
-		if available, err = s.stockAvailable(ctx, ids[1:], &site); err != nil {
+		if available, err = s.stockAvailable(ctx, componentIDs, &site); err != nil {
 			return gen.ManufacturingOrder{}, err
 		}
 	}
@@ -1008,6 +1071,11 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		ConfirmedAt: o.ConfirmedAt, ClosedAt: o.ClosedAt, Revision: o.Revision, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
 		Warnings:   warningsOf(o, entries, components),
 		LateByDays: lateByDays(o.PlannedFinish, dateOf(o.DueDate), zone),
+		Outputs:    make([]gen.ManufacturingOrderOutput, 0, len(r.outputs)), SplitFromId: o.SplitFromID, MergedIntoId: o.MergedIntoID,
+		SplitParts: []gen.ManufacturingOrderLink{}, MergedFrom: []gen.ManufacturingOrderLink{}, Unbuilt: text(r.unbuilt, quantityPlaces),
+	}
+	for _, x := range r.outputs {
+		out.Outputs = append(out.Outputs, outputAnswer(x, entries, costs))
 	}
 	if d := dateOf(o.RequestedStart); d != nil {
 		out.RequestedStart = &openapi_types.Date{Time: *d}
@@ -1017,7 +1085,7 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 		out.RequestedStartDefault = &openapi_types.Date{Time: d}
 	}
 	if costs {
-		out.Cost = orderCostOf(o, r.components, r.workOrders, r.logs, s.deps.Clock())
+		out.Cost = orderCostOf(o, r.components, r.workOrders, r.logs, s.deps.Clock(), r.outputs, entries)
 	}
 	if o.BackorderOfID != nil {
 		if x, ok := r.related[*o.BackorderOfID]; ok {
@@ -1031,12 +1099,30 @@ func (s *server) orderAnswer(ctx context.Context, id int64) (gen.ManufacturingOr
 			out.Parent = &link
 		}
 	}
+	if o.SplitFromID != nil {
+		if x, ok := r.related[*o.SplitFromID]; ok {
+			link := linkOf(x)
+			out.SplitFrom = &link
+		}
+	}
+	if o.MergedIntoID != nil {
+		if x, ok := r.related[*o.MergedIntoID]; ok {
+			link := linkOf(x)
+			out.MergedInto = &link
+		}
+	}
 	for _, x := range r.links {
 		if x.BackorderOfID != nil && *x.BackorderOfID == o.ID {
 			out.Backorders = append(out.Backorders, linkOf(x))
 		}
 		if x.ParentOrderID != nil && *x.ParentOrderID == o.ID {
 			out.Children = append(out.Children, linkOf(x))
+		}
+		if x.SplitFromID != nil && *x.SplitFromID == o.ID {
+			out.SplitParts = append(out.SplitParts, linkOf(x))
+		}
+		if x.MergedIntoID != nil && *x.MergedIntoID == o.ID {
+			out.MergedFrom = append(out.MergedFrom, linkOf(x))
 		}
 	}
 	for i, c := range components {
