@@ -112,9 +112,10 @@ The image is one binary with a dispatch table; the command is the first argument
 
 `seed` also exists for local development and demo environments (`APP_ENV=development`; it
 exits 2 outside it): it applies migrations and populates an idempotent Norwegian demo
-dataset across all modules (20 users across 7 permission roles, 200 companies with 400
-contacts, 50 products, 75 projects, time entries, expenses, invoices, energy metering
-points, and customer conversations). No command, or an unknown one, prints usage on
+dataset across all modules (20 users across 9 permission roles, 200 companies with 400
+contacts, 62 products, 75 projects, time entries, expenses, invoices, energy metering
+points, customer conversations, and a small workshop with its stock, bills of materials,
+manufacturing orders and sales orders). No command, or an unknown one, prints usage on
 stderr and exits 2, so a typo in a job definition fails loudly rather than quietly
 becoming a web server.
 

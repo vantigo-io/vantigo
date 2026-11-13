@@ -112,9 +112,10 @@ Imaget er én binær med en kommandotabell; kommandoen er det første argumentet
 
 `seed` finnes også for lokal utvikling og demomiljøer (`APP_ENV=development`; den
 avslutter med 2 utenfor det): den kjører migreringer og fyller inn et idempotent norsk
-demodatasett på tvers av alle moduler (20 brukere fordelt på 7 tilgangsroller, 200
-bedrifter med 400 kontakter, 50 produkter, 75 prosjekter, timeregistreringer, utlegg,
-fakturaer, målepunkter og kundesamtaler). Ingen kommando, eller en ukjent en, skriver
+demodatasett på tvers av alle moduler (20 brukere fordelt på 9 tilgangsroller, 200
+bedrifter med 400 kontakter, 62 produkter, 75 prosjekter, timeregistreringer, utlegg,
+fakturaer, målepunkter, kundesamtaler og et lite verksted med lager, stykklister,
+produksjonsordrer og salgsordrer). Ingen kommando, eller en ukjent en, skriver
 bruksanvisning til stderr og avslutter med 2, så en skrivefeil i en jobbdefinisjon
 feiler høylytt i stedet for stille å bli en webserver.
 
