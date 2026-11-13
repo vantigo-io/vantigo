@@ -158,7 +158,7 @@ const TraceRow = ({
     const delivery = node.delivery;
     const label =
       node.kind === "unbuild"
-        ? t(usage ? "traceUnbuilt" : "traceReturnedByUnbuild", { id: movement?.source?.id ?? movement?.id })
+        ? t(usage ? "traceUnbuilt" : "traceReturnedByUnbuild")
         : node.kind === "transfer_out" && movement?.toSiteName
           ? t("traceSentTo", { site: movement.toSiteName })
           : t(`kind_${node.kind}`);
@@ -177,6 +177,16 @@ const TraceRow = ({
               {t("movementNumber", { id: movement.id })}
             </Anchor>
           )}
+          {node.kind === "unbuild" &&
+            (() => {
+              // The unbuild's page in Manufacturing, which names it UB-n (M123).
+              const href = sourceHref(movement?.source ? { ...movement.source } : undefined);
+              return href ? (
+                <Anchor size="sm" href={href}>
+                  {t("traceUnbuildLink")}
+                </Anchor>
+              ) : null;
+            })()}
           {node.quantity !== undefined && <Text size="sm">{quantity(node.quantity, unit)}</Text>}
           {movement && (
             <Text size="xs" c="dimmed">

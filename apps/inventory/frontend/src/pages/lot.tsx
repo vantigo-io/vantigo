@@ -80,6 +80,7 @@ import {
   reportDeviationHref,
   siteLinkOptions,
   traceLinkOptions,
+  unbuildHref,
   variantStockLinkOptions,
 } from "../lib/routes";
 
@@ -137,6 +138,14 @@ const SourceLink = ({
     return (
       <Anchor size="sm" renderRoot={(props) => <Link to={deviation as never} {...props} />}>
         {t("deviationById", { id: source.id })}
+      </Anchor>
+    );
+  // An unbuild of a held lot quarantines what it restored; its page releases it (M123).
+  const unbuild = unbuildHref(source);
+  if (unbuild)
+    return (
+      <Anchor size="sm" renderRoot={(props) => <Link to={unbuild as never} {...props} />}>
+        {t("holdSource_unbuild")}
       </Anchor>
     );
   if (source.module === "inventory" && source.kind === "movement" && /^\d+$/.test(source.id))

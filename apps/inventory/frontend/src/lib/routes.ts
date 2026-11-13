@@ -112,17 +112,19 @@ export const expiringLinkOptions = (search: { days?: number; siteId?: number } =
 /**
  * Where a movement's source opens in another module, when it has a page
  * there: a production's manufacturing order, whose id the movement keeps as
- * its source line id (manufacturing design M5), and an unbuild's list
- * (manufacturing phase 2 M123). Undefined for any other source, and when the
- * backend does not mount Manufacturing — no injected list (the Vite dev
- * server) means every module.
+ * its source line id (manufacturing design M5), and an unbuild's page, by
+ * the unbuild's id the movement keeps as its source id (manufacturing phase 2
+ * M123). Undefined for any other source, and when the backend does not mount
+ * Manufacturing — no injected list (the Vite dev server) means every module.
  */
 export const sourceHref = (
   source: InventoryMovement["source"],
   enabled: readonly string[] | undefined = appConfig().modules,
 ): string | undefined => {
   if (source?.module === "manufacturing" && source.kind === "unbuild")
-    return enabled && !enabled.includes("manufacturing") ? undefined : "/manufacturing/unbuilds";
+    return /^\d+$/.test(source.id) && (!enabled || enabled.includes("manufacturing"))
+      ? `/manufacturing/unbuilds/${source.id}`
+      : undefined;
   if (
     source?.module !== "manufacturing" ||
     source.kind !== "production" ||
@@ -161,6 +163,18 @@ export const deviationHref = (
   /^\d+$/.test(source.id) &&
   manufacturingMounted(enabled)
     ? `/manufacturing/deviations/${source.id}`
+    : undefined;
+
+/** A hold's unbuild in Manufacturing (source manufacturing/unbuild/<id>, M123), when the module is mounted. */
+export const unbuildHref = (
+  source: { module: string; kind: string; id: string },
+  enabled: readonly string[] | undefined = appConfig().modules,
+): string | undefined =>
+  source.module === "manufacturing" &&
+  source.kind === "unbuild" &&
+  /^\d+$/.test(source.id) &&
+  manufacturingMounted(enabled)
+    ? `/manufacturing/unbuilds/${source.id}`
     : undefined;
 
 /** Report a deviation of the lot in Manufacturing, when the module is mounted. */
