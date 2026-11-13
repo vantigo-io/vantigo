@@ -42,6 +42,9 @@ const SitePlacement = ({
     ...(placement?.maximum !== null && placement?.maximum !== undefined
       ? [`${t("maximumLevel")} ${quantity(placement.maximum, variant.unit)}`]
       : []),
+    ...(placement?.multiple !== null && placement?.multiple !== undefined
+      ? [`${t("multiple")} ${quantity(placement.multiple, variant.unit)}`]
+      : []),
   ];
   if (levels.length === 0 && !canEdit) return null;
   return (

@@ -70,6 +70,11 @@ describe("a variant's placement at a site (I54, I61)", () => {
     expect(puts(fetchMock)).toHaveLength(0);
 
     await retype(within(dialog).getByRole("textbox", { name: "Maximum" }), "40");
+    // The multiple a suggestion is rounded up to (manufacturing phase 2 M105).
+    await retype(within(dialog).getByRole("textbox", { name: "Multiple" }), "0");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByText("The multiple must be more than 0.")).toBeInTheDocument();
+    await retype(within(dialog).getByRole("textbox", { name: "Multiple" }), "12");
     await choose(dialog, "Primary location", "OSL-A-02");
     await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(puts(fetchMock)).toHaveLength(1));
@@ -77,10 +82,12 @@ describe("a variant's placement at a site (I54, I61)", () => {
     expect(put.url).toContain("/api/v1/inventory/variants/101/placements/1");
     expect(put.ifNoneMatch).toBe("*");
     expect(put.ifMatch).toBeNull();
-    expect(put.body).toEqual({ primaryLocationId: 13, reorderPoint: 10, maximum: 40 });
+    expect(put.body).toEqual({ primaryLocationId: 13, reorderPoint: 10, maximum: 40, multiple: 12 });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(
-      await within(await siteBlock("OSL · Oslo lager")).findByText("Reorder point 10 pcs · Maximum 40 pcs"),
+      await within(await siteBlock("OSL · Oslo lager")).findByText(
+        "Reorder point 10 pcs · Maximum 40 pcs · Multiple 12 pcs",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -155,6 +162,7 @@ describe("the placement dialog's revision (I61)", () => {
     primaryLocationId: null,
     reorderPoint: 10,
     maximum: null,
+    multiple: null,
     revision,
     low: false,
   });
