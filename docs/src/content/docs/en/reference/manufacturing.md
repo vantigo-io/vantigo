@@ -2333,7 +2333,12 @@ picker never calls Inventory; the page shows no product image and no other page'
 `manufacturing.station_work_centers (station_id, work_center_id)` holds the work centers a
 station serves, read and replaced with `GET`/`PUT /stations/{stationId}/work-centers`
 (`boms-manage` to replace; an unknown work center is `work_center_unknown`; at most 100). A
-station that serves none reaches none.
+station that serves none reaches none. The replace asks Identity whether the station exists
+(`contracts.StationAccess.StationKnown`) and answers `404` for one it does not know, so no
+centers are kept for a station that was never registered. A replace that changes the set
+writes a row to `manufacturing.station_work_center_changes`: the station, the centers before
+and after, and who made it (user id and name, kept after an erasure as an order's events
+are); one that changes nothing writes nothing.
 
 The module's strict middleware judges every station request **before its handler**
 (M131), by what the request names, and answers `403 station_scope` (a problem) when it is
@@ -2342,7 +2347,7 @@ outside the station's centers:
 | Request | Judged by |
 | --- | --- |
 | The queue, a block, an unblock | The work center named |
-| A work order read | Its work center, or for a group's work order not yet fixed a member of its group |
+| A work order read | Its work center, or for a group's work order not yet started (pending or ready) a member of its group |
 | A start | The member named (and the work order reachable), else the work order's work center |
 | Pause, finish, register quantity, scrap, a check result, a photo | The work order's work center |
 | The production draft, a production | The order's last work order that is not cancelled |
@@ -2356,7 +2361,9 @@ outside its centers; any request type the middleware does not know is refused.
 
 `time_logs`, `productions`, `check_results` and `deviations` carry `station_id`: the station
 a start, a block's downtime log, a production, a result or a deviation was made at, `null`
-from a person's own browser. The operator is the principal's user, as anywhere; one open log
+from a person's own browser. On a block, each operator's productive log at the center ends
+and their downtime log carries the station their productive log ran at, wherever the
+block was made. The operator is the principal's user, as anywhere; one open log
 per user holds across stations and the user's own browser.
 
 ### Live
@@ -2371,8 +2378,8 @@ centers.
 ### The data model of stations
 
 Migration `00175_manufacturing_stations`: `station_work_centers` (no foreign key to Identity's
-`stations`, one schema per module) and `station_id` on `time_logs`, `productions`,
-`check_results` and `deviations`.
+`stations`, one schema per module), `station_work_center_changes` (the record of each
+change) and `station_id` on `time_logs`, `productions`, `check_results` and `deviations`.
 
 ## The variant holder
 
@@ -2547,7 +2554,7 @@ every order write may answer 503 `dependency_unavailable`.
 | --- | --- | --- |
 | `GET /meta` (`getManufacturingMeta`) | access | 200 — the caller's abilities (`canTraceLots` among them) and the currency |
 | `GET /stations/{stationId}/work-centers` (`getManufacturingStationWorkCenters`) | access; never the Assistant | 200 the work center ids a station serves |
-| `PUT /stations/{stationId}/work-centers` (`putManufacturingStationWorkCenters`) | boms-manage; never the Assistant | 200; 400 `work_center_unknown`, more than 100 |
+| `PUT /stations/{stationId}/work-centers` (`putManufacturingStationWorkCenters`) | boms-manage; never the Assistant | 200; 400 `work_center_unknown`, more than 100; 404 a station Identity does not know |
 | `GET /stats` (`getManufacturingStats`) | access | 200 — active and blocked work centers, active BoMs; orders to start today, in progress and late; the business calendar's `today` |
 | `GET /sites` (`listManufacturingSites`) | access | 200 — Inventory's active sites: `id`, `code`, `name`, `rootLocationId` |
 | `GET /variants` (`searchManufacturingVariants`) | access | 200 — goods variants of active products matching `q`, each with `hasBom`; `limit` clamped to 1–50, default 20 |

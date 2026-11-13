@@ -195,14 +195,20 @@ the network allowlist, PINs, badges, the backoff and the alerts) is described un
 3. **Give each operator a PIN or a badge.** People set their own PIN under **Settings →
    Security → Station PIN**; an administrator enrols badges on **Workspace admin → Users**.
    Who may switch in is whoever holds Work on the shop floor (`manufacturing:shop-floor`) and
-   has one.
+   has one; a badge can only be enrolled for such a person.
 4. **Keep the station a station.** A person who signs in to Vantigo on the tablet makes it
    their own browser until they sign out; the station page says so and refuses to work.
+5. **Keep the idle timeout short.** Anyone at the tablet can tap a signed-in operator's chip
+   and work as them until that operator is switched out or idle for the station's timeout;
+   a few minutes suits a tablet people walk away from. See
+   [Who can act as whom at a tablet](/en/admin/authentication/#who-can-act-as-whom-at-a-tablet).
 
 At a station an operator holds Use Manufacturing and Work on the shop floor and nothing
 more, whatever their roles elsewhere — an Owner included — so no cost is shown there, and
-the order's lots, its other pages and the product images are left out. Time logs,
-productions, check results and deviations record the station they were made at.
+the order's lots, its other pages and the product images are left out. An operator whose
+role loses Work on the shop floor is signed out at their next request there. Time logs,
+productions, check results and deviations record the station they were made at, and every
+change of a station's work centers is recorded with who made it.
 
 ## Photos of the checks
 

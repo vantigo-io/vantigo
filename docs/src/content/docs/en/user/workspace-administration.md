@@ -117,19 +117,37 @@ screen; it exists in the API for an Owner whose own session is MFA-verified.
 **Stations** lists the shared tablets on the shop floor where operators switch in with a
 PIN or a badge ([working at a station](/en/user/manufacturing/#work-at-a-shared-station)).
 It needs `identity:manage`, and is there while Manufacturing is on. Each row shows the
-station's **State** (*Waiting to be paired*, *Paired*, *Pairing expired*, *Not paired* or
-*Revoked*), its **Last activity** with the address, who is **Signed in** at it, and
-**Failed sign-ins** when repeated wrong PINs or badges there mailed the administrators.
+station's **State** (*Waiting to be paired*, *Paired* — with *New code waiting* while a new
+pairing code has not been used — *Pairing expired*, *Not paired* or *Revoked*), its **Last
+activity** with the address, who is **Signed in** at it, and **Failed sign-ins** when
+repeated wrong PINs or badges there mailed the administrators.
 
-1. Choose **Register a station** and give it a **Name**. Set the **Idle timeout**, whether
-   to **Require the PIN with a badge** (on unless only cards are used in a controlled area),
-   the **Allowed networks** it may be used from (empty for any) and the **Work centers** it
-   serves — the last needs Manage bills of materials and work centers.
+1. Choose **Register a station** and give it a **Name**. Set the **Idle timeout** (keep it
+   short: anyone at the tablet can tap a signed-in person's chip and work as them until
+   then), whether to **Require the PIN with a badge** (on unless only cards are used in a
+   controlled area), the **Allowed networks** it may be used from (empty for any) and the
+   **Work centers** it serves — changing these needs Manage bills of materials and work
+   centers; without it the field only shows them.
 2. Choose **Save**. The **Pairing code** appears once: on the tablet, open the address shown
-   and enter the code within 15 minutes.
+   and enter the code within 15 minutes. If the work centers could not be saved, the code
+   is shown all the same and a message says so: edit the station to set them.
 3. To change a station, choose **Edit** in its row's menu. **New pairing code** pairs it
    again — after its 90 days, or on a new tablet — and **Revoke** stops it at once and signs
-   everyone at it out.
+   everyone at it out. If the work centers cannot be read, the form says so and does not
+   save; close it and try again.
+4. Turning **Require the PIN with a badge** off asks for your **Current password** unless
+   you signed in within the last ten minutes, and the administrators are mailed.
+5. Beside each person **Signed in**, **End** signs them out of that station at once. A
+   person with failed sign-ins in a row there is listed with how many; **Reset** lets them
+   try again at once.
+
+On a user's dialog, **Shop-floor station** shows whether they have a PIN and a badge —
+*Needs re-enrolment* when one no longer works and must be set again. **Clear PIN** removes
+the PIN. To enrol a badge, scan the card into **Badge**, add your **Current password**
+unless you signed in within the last ten minutes, and choose **Enrol badge**: a badge can
+only be enrolled for someone who may work on the shop floor, the person is mailed about it,
+and a card that cannot be enrolled is refused without saying why. Setting or clearing a PIN
+or a badge signs the person out at every station.
 
 The administrator's details — the token, the backoff and the alerts — are under
 [Shop-floor stations](/en/admin/authentication/#shop-floor-stations).

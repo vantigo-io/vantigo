@@ -1,6 +1,6 @@
 ---
 title: "Identitet, autentisering og utrulling"
-description: "Lokale kontoer, brukere Ansatte styrer, kontoene Ansatte kunngjør og rollene Ansatte kan gi, delte stasjoner i verkstedet med tilkobling, PIN-koder, kort og ventetid, OIDC-leverandøren for arbeidsstyrken og SCIM, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
+description: "Lokale kontoer, brukere Ansatte styrer, kontoene Ansatte kunngjør og rollene Ansatte kan gi, delte nettbrettstasjoner i verkstedet med tilkobling, PIN-koder, kort og ventetid, OIDC-leverandøren for arbeidsstyrken og SCIM, e-post, proxy-tillit, nøkkelmaterialet som utledes fra APP_SECRET og migreringer."
 sidebar:
   order: 20
 sources:
@@ -54,7 +54,7 @@ per feil.
 | `vantigo.2fa` | Billetten for en ventende tofaktorinnlogging, 5 minutter | `HttpOnly`, `SameSite=Strict` |
 | `vantigo.oidc` | OIDC-state, nonce og PKCE-verifikator, forseglet | `HttpOnly`, `SameSite=Lax` |
 | `vantigo.identity.external` | Den validerte eksterne identiteten mellom tilbakekall og fullføring, forseglet | `HttpOnly`, `SameSite=Lax` |
-| `vantigo.station` | Tokenet til en delt stasjon i verkstedet, 90 dager (se [Stasjoner i verkstedet](#stasjoner-i-verkstedet)) | `HttpOnly`, `SameSite=Strict`, begrenset til basisbanen |
+| `vantigo.station` | Tokenet til en delt nettbrettstasjon i verkstedet, 90 dager (se [Nettbrettstasjoner i verkstedet](#nettbrettstasjoner-i-verkstedet)) | `HttpOnly`, `SameSite=Strict`, begrenset til basisbanen |
 
 Alle fem er `Secure` nøyaktig når `APP_URL` er en https-opprinnelse (en
 `Secure`-informasjonskapsel når aldri fram til en http-opprinnelse). De to
@@ -973,69 +973,97 @@ tilgangskontrollen.
 | `InvitationAcceptance` | 20 / minutt | Validering og aksept av invitasjon |
 | `UserManagement` | 30 / minutt | Eiers brukeradministrasjon, å ta inn brukere under Ansatte og ansattrollene |
 | `OwnerAvatarRead` | 300 / minutt | Lesing av eieres avatarer |
-| `StationPairing` | 10 / 15 minutter | Tilkobling av en stasjon med en kode |
-| `station-operator-sign-in` | 10 feil / 5 minutter | Mislykkede operatørpålogginger på én stasjon, nøkkel stasjonen; svarer uten `Retry-After` |
+| `StationPairing` | 10 / 15 minutter | Tilkobling av en nettbrettstasjon med en kode |
+| `StationPairingGlobal` | 60 / time | Tilkoblingsforsøk i hele installasjonen, uansett adresse |
+| `StationOperatorSignIn` | 120 / minutt | Operatørpålogginger fra én adresse, før noe arbeid (nettbrettene på et anlegg kan dele adresse) |
+| `station-operator-attempts` | 30 / 5 minutter | Operatørpålogginger én nettbrettstasjon kontrollerer, mislykket eller ikke, nøkkel nettbrettstasjonen; tas før PIN-koden kontrolleres; svarer uten `Retry-After` |
+| `station-operator-sign-in` | 10 feil / 5 minutter | Mislykkede operatørpålogginger på én nettbrettstasjon, nøkkel nettbrettstasjonen; svarer uten `Retry-After` |
+| `BadgeEnrolment` | 60 / 15 minutter | Registrering av kort |
 
-Alle policyer unntatt `login-attempts` og `station-operator-sign-in` bruker klientadressen som nøkkel, og det er
+Alle policyer unntatt `login-attempts`, `StationPairingGlobal`, `station-operator-attempts` og
+`station-operator-sign-in` bruker klientadressen som nøkkel, og det er
 derfor `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` betyr noe bak en proxy: setter du
 dem feil, deler alle forespørsler én bøtte, eller en klient velger sin egen.
 
-## Stasjoner i verkstedet
+## Nettbrettstasjoner i verkstedet
 
-En **stasjon** er et delt nettbrett i verkstedet (Produksjon, fase 2). Den er en registrert
+En **nettbrettstasjon** er et delt nettbrett i verkstedet (Produksjon, fase 2). Den er en registrert
 **enhet**, aldri en person: med informasjonskapselen alene kan den bare vise hvem som kan
 logge på, logge operatører på og av, og lytte etter direkteoppdateringer for sine egne
 arbeidsstasjoner. Hver modulforespørsel den gjør er en **operatørs** — en person som logget
-på stasjonen med PIN-kode eller kort — og når bare verkstedet i Produksjon. Stasjonene står
-under **Administrer arbeidsområde → Stasjoner** når Produksjon er slått på; siden og
+på nettbrettstasjonen med PIN-kode eller kort — og når bare verkstedet i Produksjon. Nettbrettstasjonene står
+under **Administrer arbeidsområde → Nettbrettstasjoner** når Produksjon er slått på; siden og
 endepunktene krever `identity:manage`.
 
-### Registrer og koble til en stasjon
+### Registrer og koble til en nettbrettstasjon
 
-1. Under **Administrer arbeidsområde → Stasjoner** velger du **Registrer en stasjon**: et
+1. Under **Administrer arbeidsområde → Nettbrettstasjoner** velger du **Registrer en nettbrettstasjon**: et
    navn, tidsavbruddet ved inaktivitet (5 minutter som standard, 1 til 60), om et kort også
    krever eierens PIN-kode, en valgfri liste over tillatte nettverk og, for den som har
-   `manufacturing:boms-manage`, arbeidsstasjonene den betjener. Revideres som
-   `station_registered`.
+   `manufacturing:boms-manage`, arbeidsstasjonene den betjener (uten den tillatelsen vises
+   feltet, men kan ikke endres). Revideres som `station_registered`. Kan ikke
+   arbeidsstasjonene lagres, lagres nettbrettstasjonen likevel og koden vises; siden sier at
+   arbeidsstasjonene ikke ble lagret, og de settes ved å redigere nettbrettstasjonen.
 2. Svaret er en **koblingskode**: åtte tegn i Crockford base32, gyldig i **15 minutter**,
    vist én gang og lagret bare som en SHA-256-hash.
 3. Åpne `/station` under `APP_URL` på nettbrettet og skriv inn koden. Tilkoblingen bruker
-   den opp, lager et 256-biters stasjonstoken, lagrer hashen og setter informasjonskapselen
+   den opp, lager et 256-biters nettbrettstasjonstoken, lagrer hashen og setter informasjonskapselen
    `vantigo.station` i **90 dager**. Tilkobling er hastighetsbegrenset per adresse
-   (`StationPairing`). Revideres som `station_paired`.
-4. **En nettleser er en stasjon eller en persons, aldri begge.** Er noen logget inn i
+   (`StationPairing`) og for hele installasjonen (`StationPairingGlobal`). En kode som
+   prøves fra en adresse utenfor nettbrettstasjonens [tillatte nettverk](#tillatte-nettverk), avvises
+   som en ugyldig kode. Revideres som `station_paired`; hvert avvist forsøk revideres som
+   `station_pairing_failed` med adressen det kom fra.
+4. **En nettleser er en nettbrettstasjon eller en persons, aldri begge.** Er noen logget inn i
    Vantigo i nettleseren som kobles til, avsluttes den økten og informasjonskapselen
    fjernes i samme svar (revidert som `station_session_signed_out`). Logger en person seg
-   senere inn på nettbrettet, avviser stasjonen hver forespørsel med
+   senere inn på nettbrettet, avviser nettbrettstasjonen hver forespørsel med
    `409 station_has_session`, og siden ber dem logge ut: til de gjør det, er nettbrettet
    deres nettleser.
 
-Etter 90 dager svarer stasjonen `station_unknown` og viser tilkoblingsskjemaet igjen: velg
-**Ny koblingskode** på stasjonens rad og koble den til på nytt (revidert som
+Etter 90 dager svarer nettbrettstasjonen `station_unknown` og viser tilkoblingsskjemaet igjen: velg
+**Ny koblingskode** på nettbrettstasjonens rad og koble den til på nytt (revidert som
 `station_repaired`). En ny kode erstatter tokenet, så den nettleseren som hadde det gamle,
-er ikke lenger stasjonen.
+er ikke lenger nettbrettstasjonen. Til den nye koden er brukt, er en nettbrettstasjon i bruk fortsatt
+**Tilkoblet**, merket **Ny kode venter**: tokenet virker til koden erstatter det.
 
-### Tilbakekall en stasjon
+### Endre en nettbrettstasjon
 
-**Tilbakekall** fjerner stasjonens token og en eventuell kode og avslutter alle
+**Rediger** på nettbrettstasjonens rad endrer navn, tidsavbrudd ved inaktivitet, kortregel, tillatte
+nettverk og arbeidsstasjoner. Hver endring revideres som `station_changed` med
+innstillingene før og etter; endrede tillatte nettverk revideres også som
+`station_networks_changed`. Kan ikke nettbrettstasjonens arbeidsstasjoner leses når skjemaet åpnes,
+sperres lagring i stedet for å ta dem for ingen. En endring av arbeidsstasjonene registreres
+av Produksjon med hvem som gjorde den (se
+[referansen for Produksjon](/en/reference/manufacturing/#the-stations-work-centers)).
+
+**Å slå av *Krev PIN-kode sammen med kort*** — på en ny eller en eksisterende nettbrettstasjon —
+krever det nåværende passordet ditt med mindre du logget inn for under ti minutter siden
+(ellers `403 reauthentication_required`), og alle som har `identity:manage`, får e-post om at
+nettbrettstasjonen nå godtar et kort alene.
+
+### Tilbakekall en nettbrettstasjon
+
+**Tilbakekall** fjerner nettbrettstasjonens token og en eventuell kode og avslutter alle
 operatørøkter på den i én transaksjon (revidert som `station_revoked`). Den aller neste
-forespørselen med den gamle informasjonskapselen er `401 station_unknown`, og stasjonens
+forespørselen med den gamle informasjonskapselen er `401 station_unknown`, og nettbrettstasjonens
 direktekobling lukkes ved neste kontroll hvert minutt. Tidsregistreringer som står åpne,
-fortsetter: en arbeidsleder retter dem som alle andre. En tilbakekalt stasjon tas i bruk
+fortsetter: en arbeidsleder retter dem som alle andre. En tilbakekalt nettbrettstasjon tas i bruk
 igjen med en ny koblingskode.
 
 ### Tillatte nettverk
 
-**Tillatte nettverk** binder en stasjon til adressene den kan brukes fra: én adresse eller
-ett CIDR-nettverk per linje (`192.168.10.0/24`), høyst 50. Hver stasjonsforespørsel fra en
-annen adresse er `station_unknown`. Adressen er klientens slik hastighetsbegrenseren
+**Tillatte nettverk** binder en nettbrettstasjon til adressene den kan brukes fra: én adresse eller
+ett CIDR-nettverk per linje (`192.168.10.0/24`), høyst 50. Hver nettbrettstasjonsforespørsel fra en
+annen adresse er `station_unknown`, tilkobling derfra avvises, og nettbrettstasjonens direktekobling
+lukkes ved neste kontroll hvert minutt når adressen den koblet til fra ikke lenger er på
+listen. Adressen er klientens slik hastighetsbegrenseren
 leser den bak proxyen, så `TRUSTED_PROXY_HOPS` og `TRUSTED_PROXY_CIDRS` må være riktige før
 en slik liste betyr noe. En endring revideres som `station_networks_changed`.
 
 ### PIN-koder og kort
 
 - **En PIN-kode** er seks sifre, satt av personen selv under **Innstillinger → Sikkerhet →
-  PIN-kode for stasjoner** med nåværende passord eller innen ti minutter etter innlogging.
+  PIN-kode for nettbrettstasjoner** med nåværende passord eller innen ti minutter etter innlogging.
   Ett siffer gjentatt og stigende eller synkende rekker (`123456`) avvises. Den hashes med
   **argon2id med passordparametrene over en HMAC-SHA-256 av PIN-koden** under en nøkkel
   utledet fra `APP_SECRET` (en *pepper*), slik at tabellen alene ikke kan gjennomsøkes over
@@ -1043,67 +1071,113 @@ en slik liste betyr noe. En endring revideres som `station_networks_changed`.
   aldri sette eller lese den. Revideres som `pin_set`, `pin_disabled` (personen) og
   `pin_cleared` (en administrator).
 - **Et kort** er koden en kortleser som skriver som et tastatur, sender. En administrator
-  registrerer det ved å skanne kortet inn i feltet på brukerens side; det lagres som en HMAC
-  under en egen nøkkel utledet fra `APP_SECRET`, unik per person. Revideres som
-  `badge_enrolled` og `badge_cleared`.
+  registrerer det ved å skanne kortet inn i feltet på brukerens side, bare for en person som
+  har `manufacturing:shop-floor`, og med sitt eget nåværende passord med mindre de logget inn
+  for under ti minutter siden. Det lagres som en HMAC under en egen nøkkel utledet fra
+  `APP_SECRET`, unik per person. Et kort som ikke kan registreres, gir ett
+  `409 badge_unavailable` som ikke sier hvem det tilhører. Personen får e-post om at et kort
+  ble registrert for dem. Registrering er hastighetsbegrenset per adresse (`BadgeEnrolment`).
+  Revideres som `badge_enrolled` og `badge_cleared`.
+- **Et feil nåværende passord** gitt for å sette en PIN-kode, registrere et kort eller la en
+  nettbrettstasjon godta et kort alene teller på `login-attempts`, med kontoen som nøkkel i stedet for
+  en e-postadresse og en adresse: ti feil på et minutt, og det neste er `429`.
+- **En PIN-kode eller et kort som settes eller fjernes** — av personen eller en
+  administrator — avslutter personens operatørøkter på alle nettbrettstasjoner med en gang og
+  nullstiller de mislykkede påloggingene deres overalt.
 - **Et kort krever også PIN-koden som standard** (*Krev PIN-kode sammen med kort*), så et
-  funnet kort er ikke nok. Slås det av, logger et kort alene eieren på den stasjonen — bare
+  funnet kort er ikke nok. Slås det av, logger et kort alene eieren på den nettbrettstasjonen — bare
   egnet for en kortterminal i et kontrollert område.
 - Ingen av dem er noen gang en innloggingslegitimasjon: innlogging, MFA, passnøkler og
-  enkel pålogging leser dem aldri. Roteres `APP_SECRET`, blir alle PIN-koder og kort
-  ubrukelige: personene setter PIN-kodene sine på nytt, og kortene registreres på nytt.
+  enkel pålogging leser dem aldri.
+- **Nøkkelversjon og ny registrering.** Hver PIN-kode og hvert kort lagres med versjonen av
+  den utledede nøkkelen det ble laget under. En eldre versjon kontrolleres aldri som riktig;
+  brukerens side viser den som **Må registreres på nytt**, og personens **Innstillinger →
+  Sikkerhet** ber dem sette PIN-koden på nytt. Roteres `APP_SECRET`, blir alle PIN-koder og
+  kort ubrukelige uten det merket: etter en rotasjon setter personene PIN-kodene sine på
+  nytt, og kortene registreres på nytt.
 
 ### Operatørpålogging, ventetid og varsler
 
 De som kan logge på, er alle aktive personer med `manufacturing:shop-floor` som har en
-PIN-kode eller et kort; stasjonen viser navn og initialer og ikke noe mer.
+PIN-kode eller et kort; nettbrettstasjonen viser navn og initialer og ikke noe mer.
 
-- **Ti mislykkede pålogginger på fem minutter** stenger stasjonen for pålogging resten av
-  vinduet (`429`, uten `Retry-After`).
-- **Økende ventetid per (stasjon, person), aldri en utestengning:** fra den femte feilen
-  på rad for én person på én stasjon venter neste forsøk 30 sekunder, doblet for hver
-  videre feil opp til 15 minutter. Et forsøk før det avvises uten å bli kontrollert. Et
-  vellykket forsøk nullstiller det, og samme person på en annen stasjon bremses ikke.
-  Ingen ved et nettbrett kan stenge en kollega ute fra verkstedet.
+- **Tretti pålogginger på fem minutter, og ti mislykkede,** stenger nettbrettstasjonen for pålogging
+  resten av vinduet (`429`, uten `Retry-After`). De tretti telles før PIN-koden
+  kontrolleres, så uansett hvor mange forsøk som kommer samtidig, kontrolleres ikke flere
+  enn tretti.
+- **Én om gangen per person:** forsøk for én person på én nettbrettstasjon tas etter tur, så hvert
+  forsøk ser ventetiden det forrige etterlot. Serveren kontrollerer høyst seks PIN-koder
+  samtidig; et forsøk som ikke får plass innen to sekunder, er `429`.
+- **Økende ventetid per (nettbrettstasjon, person), aldri en utestengning:** fra den femte feilen
+  på rad for én person på én nettbrettstasjon venter neste forsøk 30 sekunder, doblet for hver
+  videre feil opp til 15 minutter. Et forsøk før det avvises uten å bli kontrollert, og
+  teller ikke på noen av nettbrettstasjonens grenser. Et vellykket forsøk nullstiller det, en rekke
+  der siste feil er en time gammel begynner på nytt, og samme person på en annen nettbrettstasjon
+  bremses ikke. Ingen ved et nettbrett kan stenge en kollega ute fra verkstedet.
+- **Nullstill en persons ventetid:** nettbrettstasjonens rad viser personene med en rekke feil der;
+  **Nullstill** fjerner én med en gang (revidert som `operator_backoff_reset`).
 - Alle feil gir det samme `401 operator_sign_in_failed`, og PIN-koden kontrolleres mot en
-  fast hash for en ukjent person, en uten PIN-kode og en som venter, slik at tiden ikke
-  skiller dem bedre enn svaret gjør. Revideres som `operator_sign_in_failed` med stasjonen
-  og personen som ble valgt, aldri PIN-koden.
-- **Varsel:** hver tiende feil på rad for én person, og når stasjonens grense nås, skrives
+  fast hash for en ukjent person og en uten PIN-kode, med de samme oppslagene for en person
+  som ikke finnes, slik at tiden ikke skiller dem bedre enn svaret gjør. Revideres som
+  `operator_sign_in_failed` med nettbrettstasjonen og personen som ble valgt, aldri PIN-koden.
+- **Varsel:** hver tiende feil på rad for én person, og når nettbrettstasjonens grense nås, skrives
   `operator_backoff` til revisjonsloggen, og de som har `identity:manage`, får e-post
-  gjennom systemets e-post — **høyst én gang i timen per stasjon**. Stasjonslisten merker
-  stasjonen.
-- Høyst **ti** operatører er pålogget en stasjon samtidig (`too_many_operators`); logger
+  gjennom systemets e-post — **høyst én gang i timen per nettbrettstasjon**. Nettbrettstasjonslisten merker
+  nettbrettstasjonen.
+- Høyst **ti** operatører er pålogget en nettbrettstasjon samtidig (`too_many_operators`); logger
   noen som allerede er pålogget, på igjen, erstattes økten deres.
 
 ### Operatørøkter og hva de når
 
-En operatørs forespørsler har stasjonens informasjonskapsel og `Authorization: Station
+En operatørs forespørsler har nettbrettstasjonens informasjonskapsel og `Authorization: Station
 <token>`; siden holder tokenet bare i minnet, så en ny innlasting ber operatørene logge på
-igjen. En økt avsluttes når operatøren **logges av** (med stasjonens informasjonskapsel
-alene, så en brikke kan lukkes etter en innlasting), etter stasjonens **tidsavbrudd ved
-inaktivitet** målt med serverens klokke, etter **12 timer**, når personen ikke lenger kan
-handle (deaktivert, ventende, deaktivert av katalogen), når stasjonen tilbakekalles eller
-kobles til på nytt, og når samme person logger på igjen. Et token kopiert til en annen
-stasjons nettleser er `401 operator_session_ended`. Revideres som `operator_signed_in` og
-`operator_signed_out` med årsaken.
+igjen. En økt avsluttes, med sin årsak:
+
+| Årsak | Når |
+| --- | --- |
+| `switched_out` | **Logg av** på nettbrettstasjonen (med nettbrettstasjonens informasjonskapsel alene, så en brikke kan lukkes etter en innlasting) |
+| `ended_by_admin` | **Avslutt** ved operatøren på nettbrettstasjonens rad under Administrer arbeidsområde → Nettbrettstasjoner |
+| `idle` | Nettbrettstasjonens **tidsavbrudd ved inaktivitet** gikk, målt med serverens klokke, uten en forespørsel med operatørens token |
+| `expired` | **12 timer** etter påloggingen, uansett aktivitet |
+| `user_inactive` | Personen kan ikke lenger handle (deaktivert, ventende, deaktivert av katalogen, slettet eller slettet for godt) eller har ikke lenger `manufacturing:shop-floor` — oppdaget ved neste forespørsel, også en lesing |
+| `credentials_changed` | Personens PIN-kode eller kort ble satt eller fjernet |
+| `signed_out` | Personens økter ble logget ut: tilbakestilling eller endring av passord, utlogging overalt, deaktivering |
+| `revoked`, `replaced` | Nettbrettstasjonen ble tilbakekalt eller koblet til på nytt, eller samme person logget på igjen her |
+
+Hver avslutning revideres som `operator_signed_out` med årsaken — også de serveren finner
+når neste pålogging rydder nettbrettstasjonen. Et token kopiert til en annen nettbrettstasjons nettleser er
+`401 operator_session_ended`. Nettbrettstasjonssidens varsel om inaktivitet følger den siste
+besvarte forespørselen for operatøren; direkteoppdateringer henter på nytt med den aktive
+operatørens token, så en nettbrettstasjon som viser endringer holder den operatøren pålogget, og et
+trykk på skjermen nær tidsavbruddet sender en forespørsel som også gjør det.
+
+### Hvem kan handle som hvem ved et nettbrett
+
+Hver operatør som er pålogget en nettbrettstasjon, har en brikke i linjen, og **den som står ved
+nettbrettet, kan trykke på hvilken som helst brikke og handle som den personen** til de
+logges av eller tidsavbruddet går. PIN-koden viser hvem som logget på, ikke hvem som står ved
+skjermen etterpå. Hold tidsavbruddet **kort** — noen få minutter — på nettbrettstasjoner folk går fra,
+be operatørene logge av når de går, og bruk **Avslutt** på nettbrettstasjonens rad for å logge noen av
+fra din egen pult.
 
 Det en operatør kan gjøre, begrenses på tre måter:
 
-- **Bare operasjoner merket for stasjoner.** Ruteren svarer en stasjons operatør bare for
+- **Bare operasjoner merket for nettbrettstasjoner.** Ruteren svarer en nettbrettstasjons operatør bare for
   operasjoner der kontrakten har `x-vantigo-station: allowed` (verkstedet i Produksjon);
   enhver annen operasjon er `403 station_scope`. En tilgangskontroll gjort utenfor
   ruteren — en egen handler, et plattformendepunkt, dokumentasjonen — behandler
-  stasjonslegitimasjon som ingen anroper i det hele tatt.
+  nettbrettstasjonslegitimasjon som ingen anroper i det hele tatt.
 - **Bare verkstedets tillatelser.** Operatørens tillatelser snittes med
-  `manufacturing:access` og `manufacturing:shop-floor`: en eier på en stasjon har de to og
-  ikke noe mer, og ingen kostnader vises.
-- **Bare stasjonens arbeidsstasjoner**, som Produksjon kontrollerer ved hver forespørsel.
+  `manufacturing:access` og `manufacturing:shop-floor`: en eier på en nettbrettstasjon har de to og
+  ikke noe mer, og ingen kostnader vises. En operatør må ha **begge** for hver forespørsel,
+  også lesinger: en person hvis rolle mister `manufacturing:shop-floor`, logges av ved neste
+  forespørsel.
+- **Bare nettbrettstasjonens arbeidsstasjoner**, som Produksjon kontrollerer ved hver forespørsel.
 
 ### Forespørsler på tvers av nettsteder
 
-Stasjonens informasjonskapsel er `SameSite=Strict`, og operatørforespørsler har tokenet i
-en header et skjema fra et annet nettsted ikke kan sende, så stasjoner trenger ikke noe
+Nettbrettstasjonens informasjonskapsel er `SameSite=Strict`, og operatørforespørsler har tokenet i
+en header et skjema fra et annet nettsted ikke kan sende, så nettbrettstasjoner trenger ikke noe
 CSRF-token. Endepunktene som tar informasjonskapselen alene (pålogging, avlogging,
 tilkobling), er POST-forespørsler som avvises på tvers av nettsteder av den samme
 `CrossOriginProtection` som alle andre usikre forespørsler; direktekoblingens håndtrykk
@@ -1111,12 +1185,17 @@ kontrollerer opprinnelsen slik det gjør for en person.
 
 ### Hva som revideres
 
-`station_registered`, `station_paired`, `station_repaired`, `station_revoked`,
-`station_networks_changed`, `station_session_signed_out`, `pin_set`, `pin_disabled`,
-`pin_cleared`, `badge_enrolled`, `badge_cleared`, `operator_signed_in`,
-`operator_sign_in_failed`, `operator_backoff` og `operator_signed_out`, hver i
-autorisasjonsrevisjonsloggen ved siden av endringen den beskriver. Sletting av en bruker
-sletter PIN-kode, kort og operatørøkter sammen med brukeren.
+`station_registered`, `station_paired`, `station_pairing_failed`, `station_repaired`,
+`station_revoked`, `station_changed`, `station_networks_changed`,
+`station_session_signed_out`, `pin_set`, `pin_disabled`, `pin_cleared`, `badge_enrolled`,
+`badge_cleared`, `operator_signed_in`, `operator_sign_in_failed`, `operator_backoff`,
+`operator_backoff_reset` og `operator_signed_out` (med årsaken), hver i
+autorisasjonsrevisjonsloggen ved siden av endringen den beskriver.
+
+Sletting eller sletting for godt av en bruker sletter PIN-kode og kort og avslutter
+operatørøktene; øktenes rader blir stående som nettbrettstasjonenes historikk, uten token og uten
+brukeren. En slettet brukers økter beholder navnet de hadde; en bruker slettet for godt får
+navnet erstattet med `[erased]`.
 
 ## URL-er for invitasjon og gjenoppretting
 
@@ -1241,7 +1320,7 @@ mål som SMTP. Tokenet sladdes overalt der konfigurasjonen skrives ut.
 prosessen bruker utledes fra med HKDF-SHA256 — én utledet nøkkel per formål — og brukes
 som AES-256-GCM (CSRF- og informasjonskapselforsegling, OIDC-state, kryptering av
 TOTP-hemmeligheter, OIDC-klienthemmeligheten, kanalpassord i Kommunikasjon) eller som en
-HMAC-nøkkel (stasjonenes PIN-pepper og kortkoder).
+HMAC-nøkkel (nettbrettstasjonenes PIN-pepper og kortkoder).
 Formålsstrengen bindes inn som ekstra autentiserte data, slik at en verdi forseglet for
 ett formål ikke kan åpnes under et annet, og en nøkkel-id-byte gir rom for et
 framtidig rotasjonsopplegg.
