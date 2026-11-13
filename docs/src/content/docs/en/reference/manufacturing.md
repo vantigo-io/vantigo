@@ -1,6 +1,6 @@
 ---
 title: "Manufacturing module"
-description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; the refusals, the switch and the endpoints."
+description: "How the business makes its goods: the module and the two modules it requires; the six permissions and the cost shaping; work centers — code, site, capacity, time efficiency, setup and cleanup, the rates, the weekly working pattern on a 15-minute grid and the closures, archive, reactivate and delete; bills of materials — the product, the output quantity, lines with scrap, operations at work centers on one site, the client keys that link them, the replace-on-edit under a revision, the default and the alternatives, archive and the promotion of the next default; the lock order — LockVariants, then the BoM graph's advisory lock; the cycle and depth walk; the overview — requirements rounded up, made and bought, availability, M28a's expected minutes and the rolled-up cost; manufacturing orders — the number and the backorder suffix, the draft and its defaults, the states and what each lets change, the confirm that snapshots the BoM into component lines and reserves them in two passes, Reserve now, adding and changing component lines, availability computed live on the order page and the stored reservation status, the discontinued-variant warning, the list and its filters, the production with its proportional prefill, the 10 % consumption warning, the split over locations and the idempotent post through StockLedger.Produce, its lots — the lot pattern and its counter, the output lot through EnsureLots, serials, consumed lots named or taken with AutoLot, the one re-proposal, the deadlock retried once, the draft's lots and the order's lots read — close with or without a backorder, cancel, the history; work orders — the snapshot at confirm, the states, M28a's expected minutes fixed at confirm; time logs — start with one open log per user and force, pause, finish with an optional production, scrap, block and unblock with the downtime logs, the 12-hour flag, the supervisor's corrections and additions under the 60-day lock; the queue and My work; the shop-floor permission rule; the order lock order with the work orders, the work center and the time logs; the live topics and presence; the VariantReferenceHolder; personal data and the erasure sweep; the data model; the production schedule — the calendar in the business time zone, planning forward into slots from the requested start or its default, plan all, unplan, reschedule, the window and lateness, the board and its live topic, the schedule's advisory lock class 19783 before every row lock; the cost — the estimate at confirm, the running actual, the actual fixed at close with the cost per unit, the deviation and its rounding, the duration deviation; the reports — production cost, work-center utilisation and time deviation, in JSON or CSV; make-to-order — the manufacturing.mto handler and its requests, the manufacturing.mto-worker and its lease, the one live order per sales order line, the origin-cancelled flag, the manual order for a line, contracts.SalesOrderLines and contracts.Production with their classes, manufacturing.order.done; sub-assembly orders and their due date; quality — check templates on operations, their snapshot, results judged by the server and superseded, photos and their deletion worker, what the checks gate, deviations with their quarantine holds through the stock ledger, close and release, the lock order and the live topic; replenishment — projected stock from contracts.Stock.Placements, the module's own orders and contracts.SalesOrderLines.Unreserved, the suggestion rule with the multiple and the need-by date, the manufacturing.replenishment lease worker nightly and on demand, the suggestions and their actions, origin reorder and automatic creation; routing — operations as a graph with dependsOn and its cycle check, readying and planning by the graph, the send-ahead quantity and Register quantity, work center groups, the member planning or the shop floor chooses, its re-snapshot and when it is fixed, and the drags between members; the refusals, the switch and the endpoints."
 sources:
   - apps/server/internal/manufacturing
   - apps/manufacturing/frontend
@@ -14,6 +14,7 @@ sources:
   - apps/server/internal/db/migrations/00167_manufacturing_lots.sql
   - apps/server/internal/db/migrations/00168_manufacturing_quality.sql
   - apps/server/internal/db/migrations/00171_manufacturing_replenishment.sql
+  - apps/server/internal/db/migrations/00172_manufacturing_routing.sql
   - apps/server/internal/contracts/production.go
   - apps/server/internal/contracts/events_manufacturing.go
   - apps/host/frontend/src/routes/manufacturing
@@ -34,7 +35,7 @@ the holder — delivery B, [manufacturing orders](#manufacturing-orders), and de
 [make-to-order and sub-assembly orders](#make-to-order-and-sub-assemblies), which completes
 phase 1. Of phase 2
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-12-manufacturing-phase2-design.md),
-decisions M49–M146), layer M adds [lots on productions](#lots-on-productions), Q [quality](#quality) and R [replenishment](#replenishment). Delivery 0, the seams in Inventory and Products this module builds on, is
+decisions M49–M146), layer M adds [lots on productions](#lots-on-productions), Q [quality](#quality), R [replenishment](#replenishment) and F [routing](#routing): operation dependencies, the send-ahead quantity and work center groups. Delivery 0, the seams in Inventory and Products this module builds on, is
 described in [Inventory](/en/reference/inventory/#production) and
 [Products](/en/reference/products/).
 
@@ -101,7 +102,7 @@ status, not its availability, which only the order page computes
 | Key | Display (en / nb) | Covers | Sensitive | Delegable |
 | --- | --- | --- | --- | --- |
 | `manufacturing:access` | Use Manufacturing / Bruke Produksjon | See the app; read the meta, the stats, the sites and their locations, the variant and people searches, work centers and their closures, BoMs and their overview, manufacturing orders, their history, their production prefill and their productions; the work orders, the time logs, a work center's queue and My work; the schedule board; the utilisation and time-deviation reports | no | yes |
-| `manufacturing:boms-manage` | Manage bills of materials and work centers / Administrere stykklister og arbeidsstasjoner | Create, update, archive, reactivate and delete work centers; add and delete closures; create, update, archive and reactivate BoMs and make one the default | no | yes |
+| `manufacturing:boms-manage` | Manage bills of materials and work centers / Administrere stykklister og arbeidsstasjoner | Create, update, archive, reactivate and delete work centers; add and delete closures; create, update, archive and reactivate work center groups; create, update, archive and reactivate BoMs and make one the default | no | yes |
 | `manufacturing:orders-manage` | Manage manufacturing orders / Administrere produksjonsordrer | Create, update, confirm, reserve, close and cancel manufacturing orders; add and change their component lines; register a production; every shop-floor action; correct a time log and add a missing one; plan, plan all, unplan and reschedule, and set an order's requested start | no | yes |
 | `manufacturing:shop-floor` | Work on the shop floor / Arbeide i verkstedet | Register a production; start, pause and finish a work order, report scrap, block and unblock a work center | no | yes |
 | `manufacturing:costs-view` | See manufacturing costs / Se produksjonskostnader | Every cost field in a response — an order's `cost` among them — writing a work center's rates, and the production-cost report | **yes** | **no** |
@@ -259,7 +260,12 @@ At most **50** per BoM (M12; `too_many_operations`, 400). Each has:
 - a `sequence` — operations run in sequence order; two operations of one BoM with the
   same `sequence`, or the same `id`, are refused as field errors on the second;
 - a `name`, 1–200 characters;
-- a `workCenterId` for an **active** work center (`work_center_unknown`, 400);
+- a `workCenterId` for an **active** work center (`work_center_unknown`, 400), or instead a
+  `workCenterGroupId` for an active [work center group](#work-center-groups) with an
+  active member (`work_center_unknown`, 400 on it); exactly one of the two, else a field
+  error on `workCenterId`;
+- `dependsOn`, the keys of the operations it runs after ([Routing](#routing)), and
+  `sendAheadQuantity`, nullable ([the send-ahead quantity](#the-send-ahead-quantity));
 - `setupMinutes`, optional and nullable: when empty, the work center's setup applies;
 - `minutesPerCycle`, more than 0: the time of one cycle of the work center's capacity;
 - `instructions`, Markdown of at most 20,000 characters.
@@ -976,13 +982,15 @@ operation, snapshotting:
   delivery D's estimate reads;
 - `expectedMinutes` ([below](#expected-minutes)).
 
-Later edits of the BoM or the work center never reach a work order. An order whose BoM has
-no operations has no work orders, and a draft has none. The first work order by sequence
-is `ready`; the others are `pending`. Operations do not run in parallel in phase 1.
+Later edits of the BoM or the work center never reach a work order — but for a
+[group work order's member](#the-member) changed before any time is logged. An order whose
+BoM has no operations has no work orders, and a draft has none. The operations' graph is
+copied between the work orders ([Routing](#routing)): those with no predecessor are
+`ready`, the others `pending`.
 
 | Status | Meaning |
 | --- | --- |
-| `pending` | An earlier work order of the order is not done |
+| `pending` | A work order it depends on is not done, nor has passed on its send-ahead quantity |
 | `ready` | It may be started |
 | `in_progress` | A productive time log is open on it |
 | `paused` | It was started, and no productive log is open; a block's downtime logs leave it `paused` (M29a) |
@@ -1008,7 +1016,12 @@ expected = setup + cleanup + cycles × minutesPerCycle × 100 / timeEfficiency
 ```
 
 rounded half-up to the minute, from the snapshot's figures. It is computed at confirm and
-never recomputed: an order's quantity does not change after confirm. It is the same
+not recomputed: an order's quantity does not change after confirm. Phase 2 amends M28a in
+one case (M118): a [group work order](#the-member) moved to another member before any time
+log exists takes that member's setup (unless the operation set its own), cleanup,
+capacity, efficiency and rates, and its expected minutes are computed again with them,
+from the order's quantity and the BoM's output quantity as they were at confirm. Nothing
+measured is lost: the member is fixed once a log exists. It is the same
 formula the [overview](#the-overview) answers for an operation, with one difference: where
 the overview refuses a figure past 10¹² minutes with `bom_too_large`, the snapshot at
 confirm caps it at 10¹² and confirms.
@@ -1037,7 +1050,9 @@ until someone pauses, finishes or corrects it. `GET /work-orders/{id}/time-logs`
 
 ### Start
 
-`POST /work-orders/{id}/start {force?}` opens a productive log for the caller (M29, M29a).
+`POST /work-orders/{id}/start {force?, workCenterId?}` opens a productive log for the
+caller (M29, M29a). `workCenterId` starts a group work order at that member
+([The member](#the-member)).
 
 - The caller's open log **elsewhere** — on another work order, at any work center — is
   ended at now first, in the same transaction; the answer's `closedLog` names it.
@@ -1062,10 +1077,9 @@ or a block's downtime. With no productive log left open on it, the work order is
 ### Finish
 
 `POST /work-orders/{id}/finish {quantity?, production?}` ends **every** open log on the
-work order and sets it `done`. Then the order's first work order by sequence that is
-neither `done` nor `cancelled` becomes `ready` — only when it is `pending`, so every one
-before it is finished. One started out of sequence with `force` is left as it is, and the
-ones after it wait until it is finished too.
+work order and sets it `done`. Then every `pending` work order of the order whose
+predecessors now allow it becomes `ready` ([Readying](#readying)). One started out of turn
+with `force` is left as it is, and the ones after it wait until it is finished too.
 
 - `quantity`, optional, is what the caller made at this operation, kept on the caller's
   open log. With no open log of the caller's on the work order it would be lost, and is
@@ -1159,7 +1173,8 @@ note, which stays on the log alone; the log answers `correctedBy` and `corrected
   `plannedStart`, then the order's priority (`urgent` first), then its due date. Each
   carries the order's number, the product, the remaining quantity, the due date, the
   reservation status and who runs it. While the center is blocked the answer carries its
-  `block`.
+  `block`. A group work order whose member is not fixed is not among the `items` but in
+  `groupWork` ([The member](#the-member)).
 - **The work order view** (`GET /work-orders/{id}`) is the work order with its
   instructions, the order's component lines consumed at its operation (M11) with their
   live [availability](#availability), every open log on it, the caller's own open log
@@ -1233,9 +1248,13 @@ neither `done` nor `cancelled` — read from the slots, never from a work order'
 
    450 minutes is a 7.5-hour day, used for this estimate only; a business day skips
    weekends and Norwegian public holidays.
-2. **The work orders** that are not `done` or `cancelled` are placed forward, one after
-   the other by sequence. Each is cut into pieces that fill the free time of its work
-   center in order, starting no earlier than its predecessor's finish. A `ready` or
+2. **The work orders** that are not `done` or `cancelled` are placed forward in a
+   topological order of the [graph](#routing), by sequence among those ready together
+   (M115). Each is cut into pieces that fill the free time of its work center in order,
+   starting no earlier than the latest of its predecessors' finishes — or their
+   [send-ahead offsets](#the-send-ahead-quantity) — and never before the search start. A
+   [group work order](#the-member) is tried at each member and placed at the one that
+   finishes first. A `ready` or
    `pending` work order needs its `expectedMinutes`. One that is `in_progress` or `paused`
    needs only its **remaining** minutes — expected less the productive minutes logged on
    it, the union of its productive logs so time two operators logged at once counts once
@@ -1281,9 +1300,15 @@ revision, moves one work order on the board:
 
 - the work order takes the first free time of its work center from `start` — from now
   when `start` is past — cut into pieces as planning does;
-- the later work orders of the same order that are planned move to after it **only** when
-  they would otherwise start before its finish; those that already start after it stay;
+- its successors in the [graph](#routing), direct or not, that are planned move — in a
+  topological order, each on its own work center — **only** when they would otherwise
+  start before their predecessors' finish (or [send-ahead offset](#the-send-ahead-quantity))
+  or finish before their last send-ahead batch; those that already fit stay;
 - no other order's work order ever moves.
+
+With `workCenterId`, a group work order moves to that member ([The member](#the-member)):
+a center that is not an active member of its group is **400** `work_center_not_in_group`,
+and a work order with a time log is **409** `work_order_started`.
 
 It is refused **409** `revision_conflict` on a stale revision, `order_not_open` when the
 order is not open, `work_order_closed` when the work order is done or cancelled, and
@@ -1295,15 +1320,18 @@ order's planned start moved as far as the bar was, and **Move to…** starts fro
 order's planned start, reading the day and time typed in the viewer's own time zone.
 
 For planning, plan all and reschedule, now is cut to the second, so a piece that starts
-at now is never shorter than the microsecond Postgres keeps. Moving a work
-order to another work center is phase 2.
+at now is never shorter than the microsecond Postgres keeps.
 
 ### The schedule's locks
 
 Free time is read from the slots, so two plans that read it at once could book the same
 time. M35a prevents it with an advisory lock of its own: every plan, plan all, unplan and
 reschedule takes **`pg_advisory_xact_lock(19783, workCenterID)`** for every work center
-it touches, in id order, **before any row lock** — before `LockVariants` too. `19783` is
+it touches, in id order, **before any row lock** — before `LockVariants` too. The centers
+touched are those of every work order of the orders — so a drag holds the centers of all
+the successors it may move — and every member of the groups their work orders target
+(M115, M119). A work order, or a group member, found under the locks on a center not
+locked starts the write again (`errRelock`). `19783` is
 `0x4D47`, the class after the BoM graph's `19782` (whose key 1 is
 [the BoM graph](#locks)). Then it follows the canonical
 [order lock order](#the-order-lock-order): `LockVariants`, the orders `FOR UPDATE` in id
@@ -1321,7 +1349,9 @@ its closures and, per day, the open intervals, whether the day is closed (`holid
 `closure`), the capacity, the planned minutes and the **load** — planned minutes ÷ the
 day's capacity, in per cent, above 100 when overbooked — and the **bars**: each slot with
 its work order, the order's number, the product, whether the order is urgent and whether
-it is late (its planned finish after its due date). A `done` work order's slots end at
+it is late (its planned finish after its due date), and for a group work order its
+`workCenterGroupId` and the `memberIds` it may be dragged to — empty once a time log
+fixes its member. A `done` work order's slots end at
 its `finishedAt`: those after it are left out, and the one it finished in is cut there, in
 the bars, the planned minutes and the load alike — the free time already ignores a done
 work order's slots. It also answers the site's **unscheduled** orders: open orders with no
@@ -1689,9 +1719,13 @@ The **output work order** is the last that is not cancelled.
   **`checks_incomplete`** (409, `checks` naming each check) while any check, of either
   frequency, of a work order before the output work order has no result, or any
   `first_piece` check of the output work order has none. A scrap-only production is not
-  gated. *Before* is by sequence.
+  gated. *Before* is by the [graph](#routing) (M114): the work orders from which the
+  output work order is reachable; a parallel branch that does not lead to it is not
+  asked for.
 - **Finish** of a work order is refused `checks_incomplete` while any of its own checks
   has no result.
+- **Register quantity** on a work order is refused `checks_incomplete` while any of its
+  own `first_piece` checks has no result (M116).
 - **Close** of an order with good output (`produced` more than 0) is refused
   `checks_incomplete`, naming them, while any check of a work order that is not
   cancelled has no result — read before the close cancels the work orders not done. A
@@ -1759,6 +1793,131 @@ their display names, and a `revision`.
 
 A deviation's free text is not personal data by intent; its opener's and closer's user
 ids stay with their display names (M104).
+
+## Routing
+
+Layer F (M112–M119) makes a BoM's operations a **graph**, lets a successor start before
+its predecessor is done with a **send-ahead quantity**, and lets an operation target a
+**work center group**. Migration `00172_manufacturing_routing.sql` fills the graph of
+every existing BoM and work order from the sequences — each after the one before it — so
+phase 1's line keeps its meaning.
+
+### The graph
+
+`bom_operation_dependencies (operation_id, depends_on_id)` holds the edges (M112). In the
+BoM request each operation's `dependsOn` names the **keys** of operations of the same
+request:
+
+- absent, the operation depends on the one before it by `sequence` — the first on none;
+- `[]` means it can start at once;
+- a key no operation of the request has is **400** `operation_unknown` on
+  `operations[i].dependsOn`;
+- a cycle — a self-dependency included — is **400** `operation_cycle`, the field error on
+  `operations` naming the path by the operations' names.
+
+The answer gives each operation's `dependsOn` as keys (the ids as text). An edit replaces
+the graph with the request's. The confirm copies the edges onto
+`work_order_dependencies (work_order_id, depends_on_id)` between the order's work orders
+(M113); each work order answers `dependsOn`, the ids of the work orders it runs after.
+
+### Readying
+
+A work order is `ready` when every predecessor is `done` or `cancelled`, or — for one that
+is not — has reached its send-ahead quantity (M114). At confirm the work orders with no
+predecessor are `ready`. After every finish and every Register quantity,
+`ReadyWorkOrders` readies every `pending` work order of the order whose predecessors now
+allow it, in the same transaction; two branches of a fork become ready together, and a
+join only when all its predecessors allow it. `force` (M27) still starts a pending one.
+
+### The send-ahead quantity
+
+`bom_operations.send_ahead_quantity` (exact decimal, more than 0, nullable) is copied onto
+the work order (M116). A work order also keeps `quantityDone`, the good units passed on.
+
+- **Register quantity**, `POST /work-orders/{id}/quantity {quantity, clientRequestId}`,
+  needs `manufacturing:shop-floor` or `orders-manage` (`shop_floor_required`, 403). It adds
+  `quantity` (more than 0, at most three decimals; `quantity_invalid`) to `quantityDone`,
+  posts nothing to stock, and readies the successors. It is refused `work_order_closed`
+  on a done or cancelled work order, `work_order_pending` on a pending one,
+  `order_not_open`, and `checks_incomplete` while a first-piece check of the work order
+  has no result. Each registration is kept in `work_order_quantities` with who made it; sent
+  again with its `clientRequestId` for the same work order and quantity it registers
+  nothing more and answers 200, and with anything else is **409**
+  `client_request_reused`.
+- A successor of a work order with a send-ahead quantity becomes `ready` once that work
+  order's `quantityDone` reaches it.
+- **In the plan**, the successor may start once its predecessor has worked the send-ahead
+  quantity from its planned start — its setup and the cycles of that quantity, less the
+  time already logged — and may not finish before the predecessor's planned finish plus
+  the successor's own time for the last batch (the cycles of the send-ahead quantity at
+  its center, without setup).
+- A send-ahead quantity at or above the order's quantity behaves as none.
+
+### Work center groups
+
+A group (M117; `work_center_groups`, `work_center_group_members`) has a `code` of 1–16
+characters A–Z and 0–9, unique among the groups (`work_center_code_taken`, 409), a name, a
+site and 1–50 members, every one a work center of the group's site
+(`work_center_other_site`, 400) and, when added, active (`work_center_unknown`, 400).
+`GET /work-center-groups` lists them (active by default), and
+`POST /work-center-groups`, `PUT /work-center-groups/{id}` under the revision,
+`POST …/archive` and `POST …/reactivate` write them; the writes need
+`manufacturing:boms-manage`. A group's site does not change while an active BoM targets it,
+nor does a member's while it is in a group (`work_center_other_site`); archiving is
+refused while an active BoM targets the group (`work_center_in_use`, 409), and
+reactivating while its site is archived (`site_archived`, 409). A group write takes the
+BoM graph's lock, then the group's row, then its members `FOR SHARE` in id order. A member
+is never deleted (`work_center_in_use`).
+
+An operation targets a center or a group (M118): `bom_operations.work_center_id` is
+nullable beside `work_center_group_id`, exactly one of them set. The BoM answers a group
+operation with `workCenterGroupId`, `workCenterId` null and the group's code and name.
+
+### The member
+
+A group work order keeps its group in `work_center_group_id` and its member in
+`work_center_id` (M118, M119):
+
+- **At confirm** the member is the group's first active member by code (its first member,
+  with none active), and the figures are snapshotted from it.
+- **Planning** tries each member that is active and not blocked, with that member's
+  figures, and places the work order at the one with the **earliest finish**; ties go to
+  the higher time efficiency, then the lower code. Each member's schedule lock is taken
+  before any row lock.
+- **The board** lets a group work order be dragged to another member's row
+  ([Reschedule](#reschedule)).
+- **On the floor**, a `ready` group work order that is unplanned and has no time log is in
+  every member's queue under `groupWork`; `POST /work-orders/{id}/start {workCenterId}`
+  at a member moves it there. A center outside the group is **400**
+  `work_center_not_in_group`.
+- **Fixed.** Once a time log exists the member is fixed: the work order is in that
+  member's queue only, planning keeps it there, a drag to another member is **409**
+  `work_order_started`, and a start at another member is **409**
+  `work_order_member_fixed`, the detail naming the member. A start at another member of a
+  planned work order is refused the same way: move it on the board instead.
+- **Moving** sets the member and takes its setup (unless the operation set its own),
+  cleanup, capacity, efficiency and both rates again, recomputing the expected minutes
+  ([Expected minutes](#expected-minutes)); the cost
+  ([the running actual](#the-running-actual)) uses the member's rates. The estimate fixed at
+  confirm keeps the first member's.
+
+A group work order's changes are heard on the work center topic of every member
+(`manufacturing.work-center:<id>`), since its Group work changes with it.
+
+### The data model of routing
+
+Migration `00172_manufacturing_routing.sql` adds, in the `manufacturing` schema:
+
+| Table or column | Holds |
+| --- | --- |
+| `bom_operation_dependencies` | The operations' graph: `operation_id` after `depends_on_id`, both cascading, never the same |
+| `work_order_dependencies` | The work orders' graph, copied at confirm (filled from the sequences for every existing order) |
+| `bom_operations.work_center_group_id`, `work_center_id` nullable | The group an operation targets; exactly one of the two set |
+| `bom_operations.send_ahead_quantity`, `work_orders.send_ahead_quantity` | The send-ahead quantity, more than 0 or `null` |
+| `work_orders.quantity_done` | The good units passed on by Register quantity |
+| `work_orders.work_center_group_id`, `bom_output_quantity`, `own_setup` | The group, the BoM's output quantity at confirm and whether the setup is the operation's own — what a member change computes the figures again from |
+| `work_order_quantities` | Each registration: the work order, the `client_request_id` (unique), the quantity, who and when |
+| `work_center_groups`, `work_center_group_members` | The groups — code unique, site, status, revision — and their members (a member's work center restricting) |
 
 ## Replenishment
 
@@ -2032,6 +2191,11 @@ bodies are strict: an unknown property is a 400.
 | `lots_view_required` | 403 | A deviation reported on a lot without `inventory:locations-view` and `inventory:stock-view` (M99) |
 | `suggestion_not_open` | 409 | Dismissing a suggestion acted on, dismissed or replaced by a later run; among `failed` when an order is asked of one (M111) |
 | `reorder_open` | 409 | Among `failed` when an order is asked of a suggestion whose variant has an order from an earlier suggestion still `draft`, `confirmed` or `in_progress` at the site; the suggestion is marked `reorder_open` (M111) |
+| `operation_cycle` | 400 | A BoM whose operations' `dependsOn` make a cycle; the field error on `operations` names the path (M112) |
+| `operation_unknown` | 400 | A `dependsOn` naming a key no operation of the request has (M112) |
+| `work_center_not_in_group` | 400 | A drag or a start of a group work order at a work center that is not an active member of its group, or of a work order of no group at another center (M119) |
+| `work_order_started` | 409 | A drag of a group work order to another member once a time log exists (M119) |
+| `work_order_member_fixed` | 409 | A start of a group work order at another member than the one a time log or its plan fixed; the detail names it (M119) |
 | `attachment_too_large` | 400 | A photo over 10 MB |
 | `attachment_type` | 415 | A photo that is not a JPEG or PNG by its own bytes |
 | `storage_not_configured` | 503 | A photo with no object store configured |
@@ -2070,6 +2234,12 @@ every order write may answer 503 `dependency_unavailable`.
 | `DELETE /work-centers/{id}` (`deleteManufacturingWorkCenter`) | boms-manage | 204; 404; 409 `work_center_in_use`, `revision_conflict` (`revision` in the query) |
 | `POST /work-centers/{id}/archive` (`archiveManufacturingWorkCenter`) | boms-manage | 200; 404; 409 `work_center_has_open_work`, `revision_conflict`; 503 `dependency_unavailable` |
 | `POST /work-centers/{id}/reactivate` (`reactivateManufacturingWorkCenter`) | boms-manage | 200; 404; 409 `site_archived`, `revision_conflict` |
+| `GET /work-center-groups` (`listManufacturingWorkCenterGroups`) | access | 200 the [groups](#work-center-groups) by code, `status` (active by default) and `siteId` |
+| `POST /work-center-groups` (`createManufacturingWorkCenterGroup`) | boms-manage | 201; 400 fields, `site_unknown`, `work_center_unknown`, `work_center_other_site`; 409 `work_center_code_taken` |
+| `GET /work-center-groups/{id}` (`getManufacturingWorkCenterGroup`) | access | 200; 404 |
+| `PUT /work-center-groups/{id}` (`updateManufacturingWorkCenterGroup`) | boms-manage | 200; 400 fields, `site_unknown`, `work_center_unknown`, `work_center_other_site`; 404; 409 `work_center_code_taken`, `revision_conflict` |
+| `POST /work-center-groups/{id}/archive` (`archiveManufacturingWorkCenterGroup`) | boms-manage | 200; 404; 409 `work_center_in_use`, `revision_conflict` |
+| `POST /work-center-groups/{id}/reactivate` (`reactivateManufacturingWorkCenterGroup`) | boms-manage | 200; 404; 409 `site_archived`, `revision_conflict` |
 | `GET /work-centers/{id}/closures` (`listManufacturingClosures`) | access | 200 — by `fromDate`; 404 |
 | `POST /work-centers/{id}/closures` (`createManufacturingClosure`) | boms-manage | 201; 400 dates, `closures_too_many`; 404 |
 | `DELETE /work-centers/{id}/closures/{closureId}` (`deleteManufacturingClosure`) | boms-manage | 204; 404 |
@@ -2106,7 +2276,8 @@ every order write may answer 503 `dependency_unavailable`.
 | `POST /work-centers/{id}/block` (`blockManufacturingWorkCenter`) | shop-floor or orders-manage; never the Assistant | 200 the queue; 400 fields; 403 `shop_floor_required`; 404; 409 `revision_conflict` |
 | `POST /work-centers/{id}/unblock` (`unblockManufacturingWorkCenter`) | shop-floor or orders-manage; never the Assistant | 200 the queue; 403 `shop_floor_required`; 404; 409 `revision_conflict` |
 | `GET /work-orders/{id}` (`getManufacturingWorkOrder`) | access | 200 the work order view; 404 |
-| `POST /work-orders/{id}/start` (`startManufacturingWorkOrder`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `work_order_closed`, `work_order_pending`, `work_center_blocked`, `log_conflict`, `revision_conflict` |
+| `POST /work-orders/{id}/start` (`startManufacturingWorkOrder`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 400 `work_center_not_in_group`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `work_order_closed`, `work_order_pending`, `work_center_blocked`, `log_conflict`, `revision_conflict`, `work_order_member_fixed` |
+| `POST /work-orders/{id}/quantity` (`registerManufacturingWorkOrderQuantity`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 400 fields, `quantity_invalid`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `work_order_closed`, `work_order_pending`, `checks_incomplete`, `client_request_reused` ([the send-ahead quantity](#the-send-ahead-quantity)) |
 | `POST /work-orders/{id}/pause` (`pauseManufacturingWorkOrder`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `revision_conflict` |
 | `POST /work-orders/{id}/finish` (`finishManufacturingWorkOrder`) | shop-floor or orders-manage; never the Assistant | 200 `{workOrder, closedLog, production}`; 400 fields, `quantity_invalid`, `location_unknown`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `work_order_closed`, `work_order_pending`, `checks_incomplete`, `revision_conflict`, the production's `consumption_differs`, `client_request_reused` and Inventory's refusals |
 | `POST /work-orders/{id}/scrap` (`reportManufacturingWorkOrderScrap`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `client_request_reused`, Inventory's refusals |
@@ -2117,7 +2288,7 @@ every order write may answer 503 `dependency_unavailable`.
 | `POST /orders/{id}/plan` (`planManufacturingOrder`) | orders-manage | 200 the order; 404; 409 `revision_conflict`, `order_not_open`, `no_capacity` |
 | `POST /orders/{id}/unplan` (`unplanManufacturingOrder`) | orders-manage | 200 the order; 404; 409 `revision_conflict`, `order_not_open` |
 | `POST /schedule/plan-all` (`planAllManufacturingOrders`) | orders-manage | 200 `{planned, noCapacity}`; 409 `revision_conflict` |
-| `POST /work-orders/{id}/reschedule` (`rescheduleManufacturingWorkOrder`) | orders-manage | 200 the order's work orders; 404; 409 `revision_conflict`, `order_not_open`, `work_order_closed`, `no_capacity` |
+| `POST /work-orders/{id}/reschedule` (`rescheduleManufacturingWorkOrder`) | orders-manage | 200 the order's work orders; 400 `work_center_not_in_group`; 404; 409 `revision_conflict`, `order_not_open`, `work_order_closed`, `work_order_started`, `no_capacity` |
 | `GET /schedule` (`getManufacturingSchedule`) | access | 200 [the board](#the-board); 400 `days` |
 | `GET /reports/production-cost` (`getManufacturingProductionCostReport`) | access and costs-view | 200 JSON or CSV; 400 the period, `period_too_long` |
 | `GET /reports/utilisation` (`getManufacturingUtilisationReport`) | access | 200 JSON or CSV; 400 the period, `period_too_long` |
