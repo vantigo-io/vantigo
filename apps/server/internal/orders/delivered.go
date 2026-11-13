@@ -56,6 +56,10 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 			}
 			kits := kitsOf(lines)
 			var handKits []int
+			// kitRows is, per kit delivered by documents, the request's first
+			// row naming one of its components: where a refusal for the kit
+			// is put.
+			kitRows := map[int64]int{}
 			var allocs lineAllocations
 			if undo {
 				rows, err := orderAllocations(ctx, txq, o.ID)
@@ -91,6 +95,11 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 				}
 				if kits[l.ID] {
 					handKits = append(handKits, at)
+				}
+				if l.ParentLineID != nil {
+					if _, seen := kitRows[*l.ParentLineID]; !seen {
+						kitRows[*l.ParentLineID] = i
+					}
 				}
 				before := ratOrZero(l.QtyDelivered)
 				after := new(big.Rat)
@@ -137,6 +146,32 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 				actions = append(actions, markKitChildren(lines, lines[k], undo)...)
 			}
 			syncKits(lines)
+			if undo {
+				// A component's undo lowers the whole kits its kit counts
+				// delivered. The kit carries the invoice, so it is held to
+				// the rule a line of its own is: invoiced on delivery, what
+				// is invoiced or in a draft invoice stays delivered.
+				for _, l := range lines {
+					row, touched := kitRows[l.ID]
+					if !touched || l.InvoicePolicy != policyOnDelivery {
+						continue
+					}
+					delivered := ratOrZero(l.QtyDelivered)
+					if delivered.Cmp(ratOrZero(l.QtyInvoiced)) < 0 {
+						failures = append(failures, lineFailure{index: row, code: codeDeliveredBelowInvoiced,
+							detail: fmt.Sprintf("Line %d, the kit, is invoiced on delivery; the components of what is invoiced stay delivered.", l.Position)})
+						continue
+					}
+					if billed := new(big.Rat).Add(ratOrZero(l.QtyInvoiced), allocs.drafted(l.ID)); delivered.Cmp(billed) < 0 {
+						return o, nil, conflict(codeLineInDraftInvoice, "The line is in a draft invoice",
+							fmt.Sprintf("Line %d, the kit, is invoiced on delivery and %s of it is in a draft invoice; its components stay delivered until the draft is issued or deleted, or its allocations released.",
+								l.Position, allocs.drafted(l.ID).FloatString(quantityPlaces)))
+					}
+				}
+				if len(failures) > 0 {
+					return o, nil, refuseLines(invalidDeliveryTitle, failures)
+				}
+			}
 			for _, l := range lines {
 				if err := txq.SetLineBuckets(ctx, store.SetLineBucketsParams{
 					ID: l.ID, QtyCancelled: l.QtyCancelled, QtyDelivered: l.QtyDelivered, QtyInvoiced: l.QtyInvoiced,
