@@ -49,6 +49,9 @@ const (
 	actionUnlocked           = "unlocked"
 	actionDeliveredMarked    = "delivered_marked"
 	actionDeliveredUndone    = "delivered_undone"
+	// A kit's component delivered beyond the whole kits a cancel of the
+	// remainder left (manufacturing phase 2 M145): to is the excess.
+	actionDeliveredBeyondKits = "delivered_beyond_kits"
 	// actionWarningOverridden is a block warning overridden at confirm
 	// (O33): from is the warning, to the reason.
 	actionWarningOverridden = "warning_overridden"
@@ -196,12 +199,14 @@ func openQuantity(ordered, cancelled, done *big.Rat) *big.Rat {
 // progressOf is an order's derived delivery and invoice status (O18): none
 // while nothing is delivered (invoiced), delivered (invoiced) when every
 // product line's delivered (invoiced) and cancelled cover what was ordered,
-// partial between.
+// partial between. A kit's child line counts toward the delivery status
+// only: it is invoiced as its kit, which counts for it (manufacturing phase 2
+// M145).
 func progressOf(lines []store.OrdersLine) (delivery, invoice string) {
-	status := func(done func(store.OrdersLine) *big.Rat, full string) string {
+	status := func(done func(store.OrdersLine) *big.Rat, full string, children bool) string {
 		any, all, products := false, true, 0
 		for _, l := range lines {
-			if l.Kind != kindProduct || !l.Quantity.Valid {
+			if l.Kind != kindProduct || !l.Quantity.Valid || (!children && l.ParentLineID != nil) {
 				continue
 			}
 			products++
@@ -221,8 +226,8 @@ func progressOf(lines []store.OrdersLine) (delivery, invoice string) {
 		}
 		return progressPartial
 	}
-	delivery = status(func(l store.OrdersLine) *big.Rat { return ratOrZero(l.QtyDelivered) }, progressDelivered)
-	invoice = status(func(l store.OrdersLine) *big.Rat { return ratOrZero(l.QtyInvoiced) }, progressInvoiced)
+	delivery = status(func(l store.OrdersLine) *big.Rat { return ratOrZero(l.QtyDelivered) }, progressDelivered, true)
+	invoice = status(func(l store.OrdersLine) *big.Rat { return ratOrZero(l.QtyInvoiced) }, progressInvoiced, false)
 	return delivery, invoice
 }
 
@@ -315,8 +320,11 @@ func (s *server) ListSalesOrders(ctx context.Context, req gen.ListSalesOrdersReq
 // product line satisfied — what is cancelled and invoiced covers what was
 // ordered, and so do cancelled and the larger of delivered and invoiced. An
 // order whose remainder was cancelled whole is done; one delivered and not
-// invoiced waits for its invoice. It is shown, never stored; ListOrders and
-// the retention sweep (AnonymiseCustomerOrders) carry the same rule in SQL.
+// invoiced waits for its invoice. A kit's child line is invoiced as its kit
+// (manufacturing phase 2 M145): cancelled and the larger of delivered and
+// invoiced cover it, its kit answering for the invoice. It is shown, never
+// stored; ListOrders and the retention sweep (AnonymiseCustomerOrders) carry
+// the same rule in SQL.
 func isDone(o store.OrdersOrder, lines []store.OrdersLine) bool {
 	if o.Status != orderConfirmed {
 		return false
@@ -333,7 +341,7 @@ func isDone(o store.OrdersOrder, lines []store.OrdersLine) bool {
 		if invoiced.Cmp(done) > 0 {
 			done = invoiced
 		}
-		if new(big.Rat).Add(cancelled, invoiced).Cmp(ordered) < 0 || new(big.Rat).Add(cancelled, done).Cmp(ordered) < 0 {
+		if (l.ParentLineID == nil && new(big.Rat).Add(cancelled, invoiced).Cmp(ordered) < 0) || new(big.Rat).Add(cancelled, done).Cmp(ordered) < 0 {
 			return false
 		}
 	}

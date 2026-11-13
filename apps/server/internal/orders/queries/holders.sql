@@ -65,7 +65,8 @@ WHERE customer_id = sqlc.arg(customer_id) AND anonymised_at IS NULL;
 -- cancelled as a draft — when cutoff is NULL; and, for the retention sweep,
 -- every confirmed order whose retention has run: cancelled, or done, before
 -- cutoff. Done is ListOrders' rule: confirmed with every product line's
--- cancelled and invoiced covering what was ordered. The column list is the
+-- cancelled and invoiced covering what was ordered, a kit's child line
+-- invoiced as its kit. The column list is the
 -- quotes'; updated_at moves, so an editor holding the order before is stale.
 UPDATE orders.orders o SET
     customer_name = '', customer_organisation_number = NULL, customer_foreign_id = NULL,
@@ -86,7 +87,7 @@ WHERE o.customer_id = sqlc.arg(customer_id) AND o.anonymised_at IS NULL
                           AND l.kind = 'product' AND l.quantity IS NOT NULL)
               AND NOT EXISTS (SELECT 1 FROM orders.lines l WHERE l.owner_kind = 'order' AND l.owner_id = o.id
                           AND l.kind = 'product' AND l.quantity IS NOT NULL
-                          AND (l.qty_cancelled + l.qty_invoiced < l.quantity
+                          AND ((l.parent_line_id IS NULL AND l.qty_cancelled + l.qty_invoiced < l.quantity)
                                OR l.qty_cancelled + greatest(l.qty_delivered, l.qty_invoiced) < l.quantity)))))
   );
 
@@ -190,7 +191,8 @@ DELETE FROM orders.documents WHERE id = sqlc.arg(id);
 -- name: OpenDocumentsOfVariant :one
 -- OpenDocumentsOfVariant is how many open documents name a variant (O30): a
 -- draft or sent quote, an order not cancelled with a line of it that is
--- not done — delivered or invoiced short of what is ordered less cancelled —
+-- not done — delivered or invoiced short of what is ordered less cancelled,
+-- a kit's child line invoiced as its kit (manufacturing phase 2 M145) —
 -- and a subscription still billing on today — draft, active or paused, or
 -- ended on or after today — with a line of it in force on or after today
 -- (O42), and a draft delivery naming it (O47).
@@ -203,7 +205,8 @@ SELECT (
   + (SELECT count(DISTINCT o.id) FROM orders.orders o
      JOIN orders.lines l ON l.owner_kind = 'order' AND l.owner_id = o.id
      WHERE l.variant_id = sqlc.arg(variant_id) AND o.status <> 'cancelled'
-       AND (l.qty_delivered + l.qty_cancelled < l.quantity OR l.qty_invoiced + l.qty_cancelled < l.quantity))
+       AND (l.qty_delivered + l.qty_cancelled < l.quantity
+            OR (l.parent_line_id IS NULL AND l.qty_invoiced + l.qty_cancelled < l.quantity)))
   + (SELECT count(DISTINCT s.id) FROM orders.subscriptions s
      JOIN orders.lines l ON l.owner_kind = 'subscription' AND l.owner_id = s.id
      WHERE l.variant_id = sqlc.arg(variant_id)

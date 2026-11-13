@@ -380,7 +380,8 @@ type backlogTally struct {
 // zone: each line's quantity not delivered, and delivered not invoiced, at
 // its net amount over its quantity rounded to øre per line — the customer
 // summary's valuation — the latter aged from the latest delivery marked on the
-// line, else the order's confirmation.
+// line, else the order's confirmation. A kit's child line is invoiced as its
+// kit (manufacturing phase 2 M145): never delivered not invoiced.
 func backlog(rows []store.BacklogLinesRow, today time.Time, zone *time.Location) gen.OrdersBacklog {
 	byCurrency := map[string]*backlogTally{}
 	for _, r := range rows {
@@ -400,7 +401,7 @@ func backlog(rows []store.BacklogLinesRow, today time.Time, zone *time.Location)
 			t.ordered[r.OwnerID] = true
 			t.orderedAmount.Add(&t.orderedAmount, value(open))
 		}
-		if notInvoiced := new(big.Rat).Sub(delivered, ratOrZero(r.QtyInvoiced)); notInvoiced.Sign() > 0 {
+		if notInvoiced := new(big.Rat).Sub(delivered, ratOrZero(r.QtyInvoiced)); notInvoiced.Sign() > 0 && !r.KitChild {
 			v := value(notInvoiced)
 			t.delivered[r.OwnerID] = true
 			t.deliveredAmount.Add(&t.deliveredAmount, v)

@@ -92,7 +92,10 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		return answer(err, resp)
 	}
 	// The order's kit lines are added with their children (manufacturing
-	// phase 2 M145).
+	// phase 2 M145), a refusal naming a child on its kit's row (atInputs).
+	for i := range lines {
+		lines[i].input = i
+	}
 	if lines, err = s.withKits(ctx, lines, nil, invalidAcceptTitle); err != nil {
 		return answer(err, resp)
 	}
@@ -176,7 +179,7 @@ func (s *server) AcceptQuote(ctx context.Context, req gen.AcceptQuoteRequestObje
 		return nil
 	})
 	if err != nil {
-		return answer(err, resp)
+		return answer(atInputs(err, lines), resp)
 	}
 	if confirmed != nil && afterOrderConfirmed != nil {
 		afterOrderConfirmed(ctx, s, *confirmed, printed)

@@ -1856,7 +1856,7 @@ type OrdersChange struct {
 	Version int32        `json:"version"`
 }
 
-// OrdersChangeAction One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, warning_overridden (a block warning overridden at confirm: from is the warning, to the reason), draft_allocations_released (the order's draft invoice allocations released by hand, O36: to is how many). lineId names the line when the action is about one; from and to are the values before and after as text.
+// OrdersChangeAction One typed action (O26, O32): line_added, line_removed, quantity_changed, price_changed, discount_changed, text_changed, delivery_changed, contact_changed, reference_changed, cancelled_remaining, held, released, locked, unlocked, delivered_marked, delivered_undone, delivered_beyond_kits (a cancel of the remainder left a kit's component delivered beyond the whole kits kept, manufacturing phase 2 M145: lineId is the component's line, to the excess, delivered and never invoiced), warning_overridden (a block warning overridden at confirm: from is the warning, to the reason), draft_allocations_released (the order's draft invoice allocations released by hand, O36: to is how many). lineId names the line when the action is about one; from and to are the values before and after as text.
 type OrdersChangeAction struct {
 	From   *string `json:"from,omitempty"`
 	Kind   string  `json:"kind"`

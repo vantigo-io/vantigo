@@ -1501,7 +1501,8 @@ func (s *server) ReserveSalesOrder(ctx context.Context, req gen.ReserveSalesOrde
 			}
 			reserved, err := s.reserveOpen(ctx, tx, o, lines, today, invalidOrderTitle)
 			if err != nil || !reserved {
-				return o, nil, err
+				// A kit's child line is refused on its kit's row (M145).
+				return o, nil, atTopLevel(err, lines)
 			}
 			row, err := txq.SetOrderProgress(ctx, store.SetOrderProgressParams{
 				ID: o.ID, DeliveryStatus: o.DeliveryStatus, InvoiceStatus: o.InvoiceStatus, Version: o.Version, Now: s.deps.Clock(),

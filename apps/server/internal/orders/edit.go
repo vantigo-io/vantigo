@@ -169,7 +169,9 @@ func (s *server) saveDraftOrder(ctx context.Context, cur store.OrdersOrder, curL
 		out = orderView(row, lines, warnings, nil)
 		return nil
 	})
-	return out, err
+	// A refused line is named by the request's row, a kit's child by its
+	// kit's (M145).
+	return out, atInputs(err, priced)
 }
 
 // frozenHeader judges a confirmed order's header in body against base: the
@@ -590,7 +592,9 @@ func (s *server) saveConfirmedOrder(ctx context.Context, cur store.OrdersOrder, 
 		return nil
 	})
 	if err != nil {
-		return out, err
+		// A refused line is named by the request's row, a kit's child by
+		// its kit's (M145).
+		return out, atInputs(err, priced)
 	}
 	return out, s.withStockFigures(ctx, &out)
 }

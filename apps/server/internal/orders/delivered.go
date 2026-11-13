@@ -12,6 +12,13 @@ package orders
 // version is not bumped, since the confirmation prints nothing delivered. A
 // marking releases what a line holds reserved beyond what is still open
 // (O45); an undo reserves nothing again — Reserve now does.
+//
+// A kit (manufacturing phase 2 M145): a kit line delivered by delivery
+// documents is delivered as its child lines, never by hand (line_invalid),
+// and its children marked by hand bring it to the whole kits they make; a kit
+// line marked by hand marks its children in step — each child's delivered is
+// the kit's × per kit — and a child of such a kit is not marked on its own
+// (line_invalid).
 
 import (
 	"context"
@@ -47,6 +54,8 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 			for i, l := range lines {
 				index[l.ID] = i
 			}
+			kits := kitsOf(lines)
+			var handKits []int
 			var allocs lineAllocations
 			if undo {
 				rows, err := orderAllocations(ctx, txq, o.ID)
@@ -70,6 +79,19 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 					continue
 				}
 				l := lines[at]
+				if kits[l.ID] && l.DeliveryMethod == methodDelivery {
+					failures = append(failures, lineFailure{index: i, code: codeLineInvalid,
+						detail: fmt.Sprintf("Line %d is a kit delivered by delivery documents: its components are delivered.", l.Position)})
+					continue
+				}
+				if l.ParentLineID != nil && lines[index[*l.ParentLineID]].DeliveryMethod != methodDelivery {
+					failures = append(failures, lineFailure{index: i, code: codeLineInvalid,
+						detail: fmt.Sprintf("Line %d is a component of a kit: register the kit delivered.", l.Position)})
+					continue
+				}
+				if kits[l.ID] {
+					handKits = append(handKits, at)
+				}
 				before := ratOrZero(l.QtyDelivered)
 				after := new(big.Rat)
 				switch {
@@ -111,6 +133,10 @@ func (s *server) markDelivered(ctx context.Context, id int64, body gen.OrdersDel
 			if len(failures) > 0 {
 				return o, nil, refuseLines(invalidDeliveryTitle, failures)
 			}
+			for _, k := range handKits {
+				actions = append(actions, markKitChildren(lines, lines[k], undo)...)
+			}
+			syncKits(lines)
 			for _, l := range lines {
 				if err := txq.SetLineBuckets(ctx, store.SetLineBucketsParams{
 					ID: l.ID, QtyCancelled: l.QtyCancelled, QtyDelivered: l.QtyDelivered, QtyInvoiced: l.QtyInvoiced,
@@ -163,4 +189,38 @@ func (s *server) UndoSalesOrderDelivered(ctx context.Context, req gen.UndoSalesO
 			}))
 	}
 	return gen.UndoSalesOrderDelivered200JSONResponse(out), nil
+}
+
+// markKitChildren brings a kit line marked delivered by hand's children in
+// step with it, in lines (M145): each child's delivered is the kit's × per
+// kit, half-up to three decimals, within 0 and its ordered less cancelled.
+// It answers the children's delivered_marked (delivered_undone) actions.
+func markKitChildren(lines []store.OrdersLine, kit store.OrdersLine, undo bool) []changeAction {
+	kind := actionDeliveredMarked
+	if undo {
+		kind = actionDeliveredUndone
+	}
+	var out []changeAction
+	for i := range lines {
+		c := &lines[i]
+		if c.ParentLineID == nil || *c.ParentLineID != kit.ID {
+			continue
+		}
+		after := new(big.Rat).Mul(ratOrZero(kit.QtyDelivered), ratOrZero(c.PerKit))
+		after.SetString(after.FloatString(quantityPlaces))
+		if most := new(big.Rat).Sub(ratOrZero(c.Quantity), ratOrZero(c.QtyCancelled)); after.Cmp(most) > 0 {
+			after = most
+		}
+		if after.Sign() < 0 {
+			after = new(big.Rat)
+		}
+		before := ratOrZero(c.QtyDelivered)
+		if after.Cmp(before) == 0 {
+			continue
+		}
+		c.QtyDelivered = numeric(after, quantityPlaces)
+		out = append(out, changeAction{Kind: kind, LineID: &c.ID,
+			From: ptr(before.FloatString(quantityPlaces)), To: ptr(after.FloatString(quantityPlaces))})
+	}
+	return out
 }

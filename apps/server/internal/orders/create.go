@@ -50,7 +50,7 @@ func headerInputOfOrderUpdate(b gen.OrdersOrderUpdate) headerInput {
 // 2 M145).
 func (s *server) priceOrderInputs(ctx context.Context, inputs []lineInput, existing []store.OrdersLine, h header, reprice, frozen bool) ([]pricedLine, error) {
 	// A kit's children are written from their kit (kits.go).
-	inputs = withoutKitChildren(inputs, existing)
+	inputs, kept := withoutKitChildren(inputs, existing)
 	if err := judgeKinds(inputs, existing); err != nil {
 		return nil, err
 	}
@@ -75,9 +75,18 @@ func (s *server) priceOrderInputs(ctx context.Context, inputs []lineInput, exist
 		pricesIncludeVat: h.PricesIncludeVat, allowOptional: false, repriceKept: reprice, frozenKept: frozen, allowShipping: true,
 	})
 	if len(failures) > 0 {
+		for i := range failures {
+			if failures[i].index < len(kept) {
+				failures[i].index = kept[failures[i].index]
+			}
+		}
 		return nil, refuseLines(invalidOrderTitle, failures)
 	}
-	return s.withKits(ctx, priced, existing, invalidOrderTitle)
+	for i := range priced {
+		priced[i].input = kept[i]
+	}
+	out, err := s.withKits(ctx, priced, existing, invalidOrderTitle)
+	return out, atInputs(err, priced)
 }
 
 // CreateSalesOrder Create an order
@@ -145,6 +154,7 @@ func (s *server) CreateSalesOrder(ctx context.Context, req gen.CreateSalesOrderR
 		Origin: OrderOrigin{Channel: channelManual, ClientRequestID: &requestID}, Header: h, Lines: priced, CreatedBy: by,
 		SiteID: body.SiteId,
 	})
+	err = atInputs(err, priced)
 	if db.IsUniqueViolation(err, "ux_orders_client_request") {
 		if repeat, err := s.repeatedOrder(ctx, requestID, body.CustomerId); repeat != nil || err != nil {
 			if err != nil {

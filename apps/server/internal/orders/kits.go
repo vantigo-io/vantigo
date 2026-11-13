@@ -18,7 +18,11 @@ package orders
 //     child's id is left out of the save.
 //   - The kit line carries the price and is not reservable; its children are
 //     priced 0, at the kit's VAT code, and not invoiced on their own: what
-//     the kit's invoice covers is copied onto them (syncKits).
+//     the kit's invoice covers is copied onto them (syncKits), and they never
+//     count toward the order's invoice status, its done or what is left to
+//     invoice — the kit line counts for them. A cancel of the remainder that
+//     leaves a child delivered beyond the whole kits kept logs the excess
+//     (beyondKits): it was delivered and is never invoiced.
 //   - A kit line delivered by delivery documents is never picked itself: it
 //     counts as delivered the whole kits its children's deliveries make
 //     (syncKits).
@@ -27,6 +31,7 @@ package orders
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"slices"
@@ -58,18 +63,71 @@ func childrenOf(lines []store.OrdersLine) map[int64][]store.OrdersLine {
 }
 
 // withoutKitChildren is inputs less the lines that name one of existing's
-// child lines by id: a kit's children are written from their kit.
-func withoutKitChildren(inputs []lineInput, existing []store.OrdersLine) []lineInput {
+// child lines by id — a kit's children are written from their kit — and the
+// index in inputs of each line kept.
+func withoutKitChildren(inputs []lineInput, existing []store.OrdersLine) ([]lineInput, []int) {
 	child := map[int64]bool{}
 	for _, l := range existing {
 		if l.ParentLineID != nil {
 			child[l.ID] = true
 		}
 	}
-	if len(child) == 0 {
-		return inputs
+	out, kept := make([]lineInput, 0, len(inputs)), make([]int, 0, len(inputs))
+	for i, l := range inputs {
+		if l.id != nil && child[*l.id] {
+			continue
+		}
+		out, kept = append(out, l), append(kept, i)
 	}
-	return slices.DeleteFunc(slices.Clone(inputs), func(l lineInput) bool { return l.id != nil && child[*l.id] })
+	return out, kept
+}
+
+// atInputs is err with each refused line's index, an index in lines, turned
+// into the index of the request's line it came from (pricedLine.input): a
+// kit's child line is refused on its kit's row, as the editor holds the kit
+// alone (M145). Any other error, or an index beyond lines, is left.
+func atInputs(err error, lines []pricedLine) error {
+	at := make([]int, len(lines))
+	for i, l := range lines {
+		at[i] = l.input
+	}
+	return refusedAt(err, at)
+}
+
+// atTopLevel is err with each refused line's index, an index in an order's
+// stored lines, turned into the index among the lines that are no kit's
+// child, a child's its kit's (M145).
+func atTopLevel(err error, lines []store.OrdersLine) error {
+	top := map[int64]int{}
+	for _, l := range lines {
+		if l.ParentLineID == nil {
+			top[l.ID] = len(top)
+		}
+	}
+	at := make([]int, len(lines))
+	for i, l := range lines {
+		if l.ParentLineID != nil {
+			at[i] = top[*l.ParentLineID]
+		} else {
+			at[i] = top[l.ID]
+		}
+	}
+	return refusedAt(err, at)
+}
+
+// refusedAt rewrites a lines refusal's indexes through at, in place.
+func refusedAt(err error, at []int) error {
+	var r *refusal
+	if !errors.As(err, &r) || r.problem.Lines == nil {
+		return err
+	}
+	for k := range *r.problem.Lines {
+		l := &(*r.problem.Lines)[k]
+		if l.Index >= 0 && int(l.Index) < len(at) {
+			l.Index = int32(at[l.Index])
+		}
+	}
+	return err
 }
 
 // addsKit reports whether a priced line is added to the order as far as its
@@ -157,7 +215,15 @@ func (s *server) withKits(ctx context.Context, priced []pricedLine, existing []s
 				children = append(children, child)
 			}
 		default:
-			for _, c := range kits[*p.variantID] {
+			comps, isKit := kits[*p.variantID]
+			if isKit && len(comps) == 0 {
+				// A kit answered with no component (contracts.KitStructure)
+				// is refused, never sold as an ordinary line.
+				failures = append(failures, lineFailure{index: i, code: codeLineInvalid,
+					detail: "The kit has no components: its bill of materials makes nothing per kit."})
+				break
+			}
+			for _, c := range comps {
 				e, ok := entries[c.VariantID]
 				perKit, valid := new(big.Rat).SetString(c.PerKit)
 				if !ok || !valid {
@@ -185,7 +251,7 @@ func (s *server) withKits(ctx context.Context, priced []pricedLine, existing []s
 			child.unitPrice, child.discount = new(big.Rat), new(big.Rat)
 			child.packagingID, child.packagingQuantity, child.packagingName = nil, nil, nil
 			child.vatCodeID, child.vatCode, child.vatRate, child.vatCategory = p.vatCodeID, p.vatCode, p.vatRate, p.vatCategory
-			child.kit = &at
+			child.kit, child.input = &at, p.input
 			child.computeAmounts()
 			out = append(out, child)
 		}
@@ -262,6 +328,27 @@ func syncKits(lines []store.OrdersLine) []int {
 	}
 	slices.Sort(changed)
 	return slices.Compact(changed)
+}
+
+// beyondKits is a delivered_beyond_kits action for each kit child line of
+// lines delivered beyond the whole kits its kit keeps — the kit's ordered less
+// cancelled × per kit — to the excess: what a cancel of the remainder leaves
+// delivered and never invoiced, the kit line carrying the price (M145).
+func beyondKits(lines []store.OrdersLine) []changeAction {
+	kits := byID(lines)
+	var out []changeAction
+	for _, c := range lines {
+		if c.ParentLineID == nil {
+			continue
+		}
+		kit := kits[*c.ParentLineID]
+		kept := new(big.Rat).Sub(ratOrZero(kit.Quantity), ratOrZero(kit.QtyCancelled))
+		excess := new(big.Rat).Sub(ratOrZero(c.QtyDelivered), new(big.Rat).Mul(kept, ratOrZero(c.PerKit)))
+		if excess.Sign() > 0 {
+			out = append(out, changeAction{Kind: actionDeliveredBeyondKits, LineID: &c.ID, To: ptr(excess.FloatString(quantityPlaces))})
+		}
+	}
+	return out
 }
 
 // floorPlaces is v rounded down to places decimals.
