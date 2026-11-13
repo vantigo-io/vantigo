@@ -295,8 +295,15 @@ type fakeStock struct {
 	// locationsHook, when set, runs after each Locations read: a test's
 	// window between the read a post splits on and its transaction.
 	locationsHook func()
-	// placements are what Placements answers, per site (M106).
-	placements map[int64][]contracts.StockPlacement
+	// placements are what Placements answers, per site (M106);
+	// placementsFail, the sites whose read fails; placementsHook, when set,
+	// runs after each Placements read, with the site.
+	placements     map[int64][]contracts.StockPlacement
+	placementsFail map[int64]bool
+	placementsHook func(site int64)
+	// siteLocationsHook, when set, runs once after the next SiteLocations
+	// read: a test's window between a create's reads and its transaction.
+	siteLocationsHook func()
 	ledgerState
 }
 
@@ -328,8 +335,39 @@ func (s *fakeStock) setPlacements(site int64, ps ...contracts.StockPlacement) {
 func (s *fakeStock) Placements(ctx context.Context, site int64) ([]contracts.StockPlacement, error) {
 	lockedContractCalls.note(ctx, "fake Stock.Placements")
 	s.mu.Lock()
+	out, fail, hook := slices.Clone(s.placements[site]), s.placementsFail[site], s.placementsHook
+	s.mu.Unlock()
+	if hook != nil {
+		hook(site)
+	}
+	if fail {
+		return nil, fmt.Errorf("fake stock: the placements at site %d are unreadable", site)
+	}
+	return out, nil
+}
+
+// failPlacements makes the site's Placements read fail.
+func (s *fakeStock) failPlacements(site int64) {
+	s.mu.Lock()
 	defer s.mu.Unlock()
-	return slices.Clone(s.placements[site]), nil
+	if s.placementsFail == nil {
+		s.placementsFail = map[int64]bool{}
+	}
+	s.placementsFail[site] = true
+}
+
+// onPlacements installs the Placements hook.
+func (s *fakeStock) onPlacements(hook func(site int64)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.placementsHook = hook
+}
+
+// onSiteLocationsOnce installs a hook the next SiteLocations read runs.
+func (s *fakeStock) onSiteLocationsOnce(hook func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.siteLocationsHook = hook
 }
 
 func (s *fakeStock) archiveSite(id int64) {
@@ -417,8 +455,13 @@ func (s *fakeStock) Lots(ctx context.Context, ids []int32, site int64) ([]contra
 func (s *fakeStock) SiteLocations(ctx context.Context, site int64) ([]contracts.StockSiteLocation, error) {
 	lockedContractCalls.note(ctx, "fake Stock.SiteLocations")
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.siteLocations(site), nil
+	out, hook := s.siteLocations(site), s.siteLocationsHook
+	s.siteLocationsHook = nil
+	s.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return out, nil
 }
 
 // The paths the tests call.

@@ -21,9 +21,9 @@ SELECT pg_advisory_xact_lock(@lock_key::bigint);
 
 -- name: RecentManualRun :one
 -- RecentManualRun is the newest run asked for by a person since the instant
--- given.
+-- given, of the same site (every site when site_id is null).
 SELECT * FROM manufacturing.replenishment_runs
-WHERE kind = 'manual' AND requested_at >= @since::timestamptz
+WHERE kind = 'manual' AND requested_at >= @since::timestamptz AND site_id IS NOT DISTINCT FROM sqlc.narg(site_id)::bigint
 ORDER BY requested_at DESC, id DESC
 LIMIT 1;
 
@@ -41,11 +41,20 @@ WHERE r.id = (
     FOR UPDATE SKIP LOCKED)
 RETURNING r.*;
 
--- name: FinishRun :exec
+-- name: RenewRunLease :execrows
+-- RenewRunLease moves a claimed run's lease on, before each site. The claim
+-- is the attempt: no row when another worker has claimed the run since.
+UPDATE manufacturing.replenishment_runs
+SET lease_until = @lease_until::timestamptz
+WHERE id = @id AND status = 'running' AND attempts = @attempts;
+
+-- name: FinishRun :execrows
+-- FinishRun records a run's end, only by the claim that ran it (its
+-- attempt): no row when another worker has claimed the run since.
 UPDATE manufacturing.replenishment_runs
 SET status = @status, finished_at = @now::timestamptz, lease_until = NULL, suggestions = @suggestions,
     orders_created = @orders_created, sales_counted = @sales_counted, error = sqlc.narg(error)
-WHERE id = @id;
+WHERE id = @id AND status = 'running' AND attempts = @attempts;
 
 -- name: PruneRuns :exec
 -- PruneRuns removes the runs finished before the instant given (M109's 90
@@ -74,20 +83,49 @@ ORDER BY variant_id;
 -- name: ComponentDemandAtSite :many
 -- ComponentDemandAtSite is, per component variant, what the site's open
 -- orders still need of it and do not hold reserved (M107): required less
--- consumed, scrapped and reserved, at least 0, per line.
-SELECT c.variant_id, sum(greatest(c.required - c.consumed - c.scrapped - c.reserved, 0))::text AS unreserved
-FROM manufacturing.order_components c
-JOIN manufacturing.orders o ON o.id = c.order_id
-WHERE o.site_id = @site_id AND o.status IN ('confirmed', 'in_progress')
-GROUP BY c.variant_id
-ORDER BY c.variant_id;
+-- consumed, scrapped and reserved, at least 0, per line — and what its
+-- drafts from a suggestion, counted as supply, will need: no component line
+-- is copied before the confirm, so their BoM's lines, scaled to the order's
+-- quantity with the scrap, rounded up to three decimals as the confirm
+-- rounds them (requiredOf).
+SELECT d.variant_id::int AS variant_id, sum(d.unreserved)::text AS unreserved
+FROM (
+    SELECT c.variant_id, greatest(c.required - c.consumed - c.scrapped - c.reserved, 0) AS unreserved
+    FROM manufacturing.order_components c
+    JOIN manufacturing.orders o ON o.id = c.order_id
+    WHERE o.site_id = @site_id AND o.status IN ('confirmed', 'in_progress')
+    UNION ALL
+    SELECT l.variant_id, ceil(l.quantity * o.quantity / b.output_quantity * (1 + l.scrap_percent / 100) * 1000) / 1000
+    FROM manufacturing.orders o
+    JOIN manufacturing.boms b ON b.id = o.bom_id
+    JOIN manufacturing.bom_lines l ON l.bom_id = o.bom_id
+    WHERE o.site_id = @site_id AND o.status = 'draft' AND o.origin_kind = 'reorder'
+) AS d
+GROUP BY d.variant_id
+ORDER BY d.variant_id;
 
--- name: LinesServedByMto :many
--- LinesServedByMto is every sales order line a live make-to-order order
--- serves (M107): its demand is left out, as its output is.
-SELECT DISTINCT origin_line_id::bigint AS line_id
+-- name: MtoRemainingByLine :many
+-- MtoRemainingByLine is, per sales order line a live make-to-order order
+-- serves, what those orders still make for it (M107): quantity less
+-- produced, at least 0. That output is left out of supply, so the line's
+-- demand is counted less it; what they produced already is on hand and
+-- stays the line's demand.
+SELECT origin_line_id::bigint AS line_id, sum(greatest(quantity - produced, 0))::text AS remaining
 FROM manufacturing.orders
-WHERE origin_kind = 'sales_order' AND origin_line_id IS NOT NULL AND status IN ('draft', 'confirmed', 'in_progress');
+WHERE origin_kind = 'sales_order' AND origin_line_id IS NOT NULL AND status IN ('draft', 'confirmed', 'in_progress')
+GROUP BY origin_line_id
+ORDER BY origin_line_id;
+
+-- name: HasOpenReorder :one
+-- HasOpenReorder is whether the variant has an order from a suggestion
+-- still open or a draft at the site, read under LockVariants (M111).
+SELECT EXISTS (
+    SELECT 1 FROM manufacturing.orders
+    WHERE variant_id = @variant_id AND site_id = @site_id AND origin_kind = 'reorder'
+      AND status IN ('draft', 'confirmed', 'in_progress'))::bool;
+
+-- name: MarkSuggestionReorderOpen :exec
+UPDATE manufacturing.suggestions SET reorder_open = true WHERE id = @id;
 
 -- name: OpenReorderVariantsAt :many
 -- OpenReorderVariantsAt is the variants with an order from a suggestion
@@ -105,6 +143,12 @@ SELECT pg_advisory_xact_lock(@site_key::bigint);
 -- name: SupersedeOpenSuggestions :exec
 UPDATE manufacturing.suggestions SET status = 'superseded'
 WHERE site_id = @site_id AND status = 'open';
+
+-- name: SupersedeSuggestionsNotAt :exec
+-- SupersedeSuggestionsNotAt supersedes the open suggestions of every site
+-- but the active ones given: a site archived since its last run (M109).
+UPDATE manufacturing.suggestions SET status = 'superseded'
+WHERE status = 'open' AND NOT (site_id = ANY(@site_ids::bigint[]));
 
 -- name: InsertSuggestion :one
 INSERT INTO manufacturing.suggestions (run_id, site_id, variant_id, sku, product_name, kind, quantity, need_by, reason,
@@ -140,7 +184,10 @@ WHERE id = @id
 RETURNING *;
 
 -- name: CountOpenMakeSuggestions :one
-SELECT count(*)::int FROM manufacturing.suggestions WHERE status = 'open' AND kind = 'make';
+-- CountOpenMakeSuggestions is the open make suggestions of the active sites
+-- given.
+SELECT count(*)::int FROM manufacturing.suggestions
+WHERE status = 'open' AND kind = 'make' AND site_id = ANY(@site_ids::bigint[]);
 
 -- name: RulesAt :many
 SELECT * FROM manufacturing.replenishment_rules WHERE site_id = @site_id AND auto_create ORDER BY variant_id;

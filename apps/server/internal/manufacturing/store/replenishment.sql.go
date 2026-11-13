@@ -58,12 +58,21 @@ func (q *Queries) ClaimRun(ctx context.Context, arg ClaimRunParams) (Manufacturi
 }
 
 const componentDemandAtSite = `-- name: ComponentDemandAtSite :many
-SELECT c.variant_id, sum(greatest(c.required - c.consumed - c.scrapped - c.reserved, 0))::text AS unreserved
-FROM manufacturing.order_components c
-JOIN manufacturing.orders o ON o.id = c.order_id
-WHERE o.site_id = $1 AND o.status IN ('confirmed', 'in_progress')
-GROUP BY c.variant_id
-ORDER BY c.variant_id
+SELECT d.variant_id::int AS variant_id, sum(d.unreserved)::text AS unreserved
+FROM (
+    SELECT c.variant_id, greatest(c.required - c.consumed - c.scrapped - c.reserved, 0) AS unreserved
+    FROM manufacturing.order_components c
+    JOIN manufacturing.orders o ON o.id = c.order_id
+    WHERE o.site_id = $1 AND o.status IN ('confirmed', 'in_progress')
+    UNION ALL
+    SELECT l.variant_id, ceil(l.quantity * o.quantity / b.output_quantity * (1 + l.scrap_percent / 100) * 1000) / 1000
+    FROM manufacturing.orders o
+    JOIN manufacturing.boms b ON b.id = o.bom_id
+    JOIN manufacturing.bom_lines l ON l.bom_id = o.bom_id
+    WHERE o.site_id = $1 AND o.status = 'draft' AND o.origin_kind = 'reorder'
+) AS d
+GROUP BY d.variant_id
+ORDER BY d.variant_id
 `
 
 type ComponentDemandAtSiteRow struct {
@@ -73,7 +82,11 @@ type ComponentDemandAtSiteRow struct {
 
 // ComponentDemandAtSite is, per component variant, what the site's open
 // orders still need of it and do not hold reserved (M107): required less
-// consumed, scrapped and reserved, at least 0, per line.
+// consumed, scrapped and reserved, at least 0, per line — and what its
+// drafts from a suggestion, counted as supply, will need: no component line
+// is copied before the confirm, so their BoM's lines, scaled to the order's
+// quantity with the scrap, rounded up to three decimals as the confirm
+// rounds them (requiredOf).
 func (q *Queries) ComponentDemandAtSite(ctx context.Context, siteID int64) ([]ComponentDemandAtSiteRow, error) {
 	rows, err := q.db.Query(ctx, componentDemandAtSite, siteID)
 	if err != nil {
@@ -95,11 +108,14 @@ func (q *Queries) ComponentDemandAtSite(ctx context.Context, siteID int64) ([]Co
 }
 
 const countOpenMakeSuggestions = `-- name: CountOpenMakeSuggestions :one
-SELECT count(*)::int FROM manufacturing.suggestions WHERE status = 'open' AND kind = 'make'
+SELECT count(*)::int FROM manufacturing.suggestions
+WHERE status = 'open' AND kind = 'make' AND site_id = ANY($1::bigint[])
 `
 
-func (q *Queries) CountOpenMakeSuggestions(ctx context.Context) (int32, error) {
-	row := q.db.QueryRow(ctx, countOpenMakeSuggestions)
+// CountOpenMakeSuggestions is the open make suggestions of the active sites
+// given.
+func (q *Queries) CountOpenMakeSuggestions(ctx context.Context, siteIds []int64) (int32, error) {
+	row := q.db.QueryRow(ctx, countOpenMakeSuggestions, siteIds)
 	var column_1 int32
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -165,11 +181,11 @@ func (q *Queries) DismissSuggestion(ctx context.Context, arg DismissSuggestionPa
 	return i, err
 }
 
-const finishRun = `-- name: FinishRun :exec
+const finishRun = `-- name: FinishRun :execrows
 UPDATE manufacturing.replenishment_runs
 SET status = $1, finished_at = $2::timestamptz, lease_until = NULL, suggestions = $3,
     orders_created = $4, sales_counted = $5, error = $6
-WHERE id = $7
+WHERE id = $7 AND status = 'running' AND attempts = $8
 `
 
 type FinishRunParams struct {
@@ -180,10 +196,13 @@ type FinishRunParams struct {
 	SalesCounted  bool
 	Error         *string
 	ID            int64
+	Attempts      int32
 }
 
-func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) error {
-	_, err := q.db.Exec(ctx, finishRun,
+// FinishRun records a run's end, only by the claim that ran it (its
+// attempt): no row when another worker has claimed the run since.
+func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, finishRun,
 		arg.Status,
 		arg.Now,
 		arg.Suggestions,
@@ -191,8 +210,12 @@ func (q *Queries) FinishRun(ctx context.Context, arg FinishRunParams) error {
 		arg.SalesCounted,
 		arg.Error,
 		arg.ID,
+		arg.Attempts,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getRun = `-- name: GetRun :one
@@ -251,6 +274,27 @@ func (q *Queries) GetSuggestion(ctx context.Context, id int64) (ManufacturingSug
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const hasOpenReorder = `-- name: HasOpenReorder :one
+SELECT EXISTS (
+    SELECT 1 FROM manufacturing.orders
+    WHERE variant_id = $1 AND site_id = $2 AND origin_kind = 'reorder'
+      AND status IN ('draft', 'confirmed', 'in_progress'))::bool
+`
+
+type HasOpenReorderParams struct {
+	VariantID int32
+	SiteID    int64
+}
+
+// HasOpenReorder is whether the variant has an order from a suggestion
+// still open or a draft at the site, read under LockVariants (M111).
+func (q *Queries) HasOpenReorder(ctx context.Context, arg HasOpenReorderParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasOpenReorder, arg.VariantID, arg.SiteID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const insertManualRun = `-- name: InsertManualRun :one
@@ -358,34 +402,6 @@ func (q *Queries) InsertSuggestion(ctx context.Context, arg InsertSuggestionPara
 	var id int64
 	err := row.Scan(&id)
 	return id, err
-}
-
-const linesServedByMto = `-- name: LinesServedByMto :many
-SELECT DISTINCT origin_line_id::bigint AS line_id
-FROM manufacturing.orders
-WHERE origin_kind = 'sales_order' AND origin_line_id IS NOT NULL AND status IN ('draft', 'confirmed', 'in_progress')
-`
-
-// LinesServedByMto is every sales order line a live make-to-order order
-// serves (M107): its demand is left out, as its output is.
-func (q *Queries) LinesServedByMto(ctx context.Context) ([]int64, error) {
-	rows, err := q.db.Query(ctx, linesServedByMto)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []int64
-	for rows.Next() {
-		var line_id int64
-		if err := rows.Scan(&line_id); err != nil {
-			return nil, err
-		}
-		items = append(items, line_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listOpenSuggestions = `-- name: ListOpenSuggestions :many
@@ -554,6 +570,53 @@ func (q *Queries) MarkSuggestionDone(ctx context.Context, arg MarkSuggestionDone
 	return err
 }
 
+const markSuggestionReorderOpen = `-- name: MarkSuggestionReorderOpen :exec
+UPDATE manufacturing.suggestions SET reorder_open = true WHERE id = $1
+`
+
+func (q *Queries) MarkSuggestionReorderOpen(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, markSuggestionReorderOpen, id)
+	return err
+}
+
+const mtoRemainingByLine = `-- name: MtoRemainingByLine :many
+SELECT origin_line_id::bigint AS line_id, sum(greatest(quantity - produced, 0))::text AS remaining
+FROM manufacturing.orders
+WHERE origin_kind = 'sales_order' AND origin_line_id IS NOT NULL AND status IN ('draft', 'confirmed', 'in_progress')
+GROUP BY origin_line_id
+ORDER BY origin_line_id
+`
+
+type MtoRemainingByLineRow struct {
+	LineID    int64
+	Remaining string
+}
+
+// MtoRemainingByLine is, per sales order line a live make-to-order order
+// serves, what those orders still make for it (M107): quantity less
+// produced, at least 0. That output is left out of supply, so the line's
+// demand is counted less it; what they produced already is on hand and
+// stays the line's demand.
+func (q *Queries) MtoRemainingByLine(ctx context.Context) ([]MtoRemainingByLineRow, error) {
+	rows, err := q.db.Query(ctx, mtoRemainingByLine)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MtoRemainingByLineRow
+	for rows.Next() {
+		var i MtoRemainingByLineRow
+		if err := rows.Scan(&i.LineID, &i.Remaining); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const openReorderVariantsAt = `-- name: OpenReorderVariantsAt :many
 SELECT DISTINCT variant_id
 FROM manufacturing.orders
@@ -598,15 +661,20 @@ func (q *Queries) PruneRuns(ctx context.Context, before time.Time) error {
 
 const recentManualRun = `-- name: RecentManualRun :one
 SELECT id, site_id, kind, nightly_for, status, requested_at, requested_by_user_id, requested_by_display, started_at, finished_at, lease_until, attempts, suggestions, orders_created, sales_counted, error FROM manufacturing.replenishment_runs
-WHERE kind = 'manual' AND requested_at >= $1::timestamptz
+WHERE kind = 'manual' AND requested_at >= $1::timestamptz AND site_id IS NOT DISTINCT FROM $2::bigint
 ORDER BY requested_at DESC, id DESC
 LIMIT 1
 `
 
+type RecentManualRunParams struct {
+	Since  time.Time
+	SiteID *int64
+}
+
 // RecentManualRun is the newest run asked for by a person since the instant
-// given.
-func (q *Queries) RecentManualRun(ctx context.Context, since time.Time) (ManufacturingReplenishmentRun, error) {
-	row := q.db.QueryRow(ctx, recentManualRun, since)
+// given, of the same site (every site when site_id is null).
+func (q *Queries) RecentManualRun(ctx context.Context, arg RecentManualRunParams) (ManufacturingReplenishmentRun, error) {
+	row := q.db.QueryRow(ctx, recentManualRun, arg.Since, arg.SiteID)
 	var i ManufacturingReplenishmentRun
 	err := row.Scan(
 		&i.ID,
@@ -627,6 +695,28 @@ func (q *Queries) RecentManualRun(ctx context.Context, since time.Time) (Manufac
 		&i.Error,
 	)
 	return i, err
+}
+
+const renewRunLease = `-- name: RenewRunLease :execrows
+UPDATE manufacturing.replenishment_runs
+SET lease_until = $1::timestamptz
+WHERE id = $2 AND status = 'running' AND attempts = $3
+`
+
+type RenewRunLeaseParams struct {
+	LeaseUntil time.Time
+	ID         int64
+	Attempts   int32
+}
+
+// RenewRunLease moves a claimed run's lease on, before each site. The claim
+// is the attempt: no row when another worker has claimed the run since.
+func (q *Queries) RenewRunLease(ctx context.Context, arg RenewRunLeaseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, renewRunLease, arg.LeaseUntil, arg.ID, arg.Attempts)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const rulesAt = `-- name: RulesAt :many
@@ -700,6 +790,18 @@ WHERE site_id = $1 AND status = 'open'
 
 func (q *Queries) SupersedeOpenSuggestions(ctx context.Context, siteID int64) error {
 	_, err := q.db.Exec(ctx, supersedeOpenSuggestions, siteID)
+	return err
+}
+
+const supersedeSuggestionsNotAt = `-- name: SupersedeSuggestionsNotAt :exec
+UPDATE manufacturing.suggestions SET status = 'superseded'
+WHERE status = 'open' AND NOT (site_id = ANY($1::bigint[]))
+`
+
+// SupersedeSuggestionsNotAt supersedes the open suggestions of every site
+// but the active ones given: a site archived since its last run (M109).
+func (q *Queries) SupersedeSuggestionsNotAt(ctx context.Context, siteIds []int64) error {
+	_, err := q.db.Exec(ctx, supersedeSuggestionsNotAt, siteIds)
 	return err
 }
 
