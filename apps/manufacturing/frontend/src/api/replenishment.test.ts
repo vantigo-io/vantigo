@@ -31,7 +31,7 @@ const buy = (sku: string, projected: string): ManufacturingSuggestion => ({
 describe("the buy suggestions' CSV (M111)", () => {
   it("guards a text cell against formulas, but writes a negative number as a number", async () => {
     const text = await buySuggestionsCsv([{ site: "MAIN", suggestion: buy("=WHEEL", "-14.5") }]).text();
-    const [, row] = text.replace(/^﻿/, "").split("\r\n");
+    const [, row] = text.split("\r\n");
     expect(row).toBe("MAIN;'=WHEEL;Wheel;2,5;pcs;2026-11-13;-14,5;10");
   });
 });
