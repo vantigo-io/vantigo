@@ -235,7 +235,8 @@ skriver bare ut komponentene; pakkseddelen skriver ut settet med komponentene un
 
 **Registrer levert** behandler et sett etter hvordan ordren leveres. På en ordre som leveres
 med leveranser tilbys ikke settets linje — komponentene gjør det, og settet regnes som
-levert med de hele settene de gir. På en ordre som registreres levert for hånd (uten
+levert med de hele settene de gir. Å ta tilbake en komponent avvises når det ville gi færre
+hele sett levert enn det som er fakturert eller ligger i et fakturautkast. På en ordre som registreres levert for hånd (uten
 lagersted, eller når Lager ikke fører beholdning) tilbys settets linje og ikke
 komponentene: å registrere settet registrerer hver komponent med det, settets antall
 ganger hvor mange ett sett holder, og å ta det tilbake tar dem tilbake.

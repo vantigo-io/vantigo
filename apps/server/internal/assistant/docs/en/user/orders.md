@@ -239,7 +239,8 @@ its components under it.
 
 **Register delivered** treats a kit by how the order is delivered. On an order delivered by
 delivery documents the kit's line is not offered — its components are, and the kit counts
-the whole kits they make. On an order marked delivered by hand (no site, or Inventory not
+the whole kits they make. Taking a component back is refused when it would leave fewer
+whole kits delivered than are invoiced or in a draft invoice. On an order marked delivered by hand (no site, or Inventory not
 keeping stock) the kit's line is offered and its components are not: registering the kit
 registers each component with it, the kit's quantity times how many one kit holds, and
 taking it back takes them back.
