@@ -1,13 +1,22 @@
 import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconAlertTriangle, IconLockOpen, IconPlayerPause, IconUser } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconAlertTriangle,
+  IconLockOpen,
+  IconPlayerPause,
+  IconPlayerPlay,
+  IconUser,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, PageSection } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import { NotFoundError } from "../api/request";
 import {
+  type ManufacturingWorkOrder,
+  startWorkOrder,
   unblockWorkCenter,
   useWorkCenterLive,
   useWorkCenterOrdersLive,
@@ -19,7 +28,7 @@ import { BlockDialog } from "../components/block-dialog";
 import { WorkOrderCard } from "../components/work-order-card";
 import { canWorkOnShopFloor } from "../lib/capabilities";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
-import { MY_WORK_ROUTE_PATH, shopFloorWorkCenterLinkOptions } from "../lib/routes";
+import { MY_WORK_ROUTE_PATH, shopFloorWorkCenterLinkOptions, workOrderLinkOptions } from "../lib/routes";
 import { shopFloorBreadcrumbs, TOUCH_CARD_MIN_HEIGHT } from "../lib/shop-floor";
 import { readRememberedWorkCenter, rememberWorkCenter } from "../lib/shop-floor-storage";
 
@@ -138,7 +147,10 @@ export const ShopFloorWorkCenterPage = () => {
   const [unblocking, setUnblocking] = useState(false);
   const work = canWorkOnShopFloor(meta.data);
   const data = queue.data;
-  useWorkCenterOrdersLive(id, data?.items.map((workOrder) => workOrder.orderId) ?? []);
+  useWorkCenterOrdersLive(
+    id,
+    [...(data?.items ?? []), ...(data?.groupWork ?? [])].map((workOrder) => workOrder.orderId),
+  );
 
   // Remembered once it is found: a stale or mistyped address is not offered again.
   const found = data !== undefined;
@@ -243,8 +255,78 @@ export const ShopFloorWorkCenterPage = () => {
               )}
             </Stack>
           </PageSection>
+          {(data.groupWork ?? []).length > 0 && (
+            <PageSection title={t("groupWork")}>
+              <Stack gap="md" data-assist="manufacturing.shop-floor.group-work">
+                <Text size="md" c="dimmed">
+                  {t("groupWorkHint")}
+                </Text>
+                {(data.groupWork ?? []).map((workOrder) => (
+                  <GroupWorkCard
+                    key={workOrder.id}
+                    workOrder={workOrder}
+                    workCenterId={id}
+                    canStart={work && !data.block}
+                  />
+                ))}
+              </Stack>
+            </PageSection>
+          )}
           <BlockDialog workCenter={data.workCenter} opened={blocking} onClose={() => setBlocking(false)} />
         </>
+      )}
+    </Stack>
+  );
+};
+
+/**
+ * A group work order on a member's queue (manufacturing phase 2 M119): its
+ * card, and Start here, which starts it at this work center and opens it. A
+ * list grown stale — another member took it meanwhile — is refused and read
+ * again.
+ */
+const GroupWorkCard = ({
+  workOrder,
+  workCenterId,
+  canStart,
+}: {
+  workOrder: ManufacturingWorkOrder;
+  workCenterId: number;
+  canStart: boolean;
+}) => {
+  const { t } = useManufacturingFormat();
+  const invalidate = useInvalidateManufacturing();
+  const navigate = useNavigate() as (options: unknown) => Promise<void>;
+  const [busy, setBusy] = useState(false);
+  const start = async () => {
+    setBusy(true);
+    try {
+      await startWorkOrder(workOrder.id, false, workCenterId);
+      notifications.show({ color: "teal", title: t("workOrderStarted"), message: workOrder.order.number });
+      await invalidate();
+      void navigate(workOrderLinkOptions(workOrder.id));
+    } catch (error) {
+      notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
+      await invalidate();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Stack gap="xs">
+      <WorkOrderCard workOrder={workOrder} />
+      {canStart && (
+        <Group>
+          <Button
+            size="lg"
+            color="teal"
+            leftSection={<IconPlayerPlay size={20} />}
+            loading={busy}
+            onClick={() => void start()}
+          >
+            {t("startHere")}
+          </Button>
+        </Group>
       )}
     </Stack>
   );

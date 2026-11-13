@@ -72,3 +72,38 @@ export const reactivateWorkCenter = (workCenterId: number, revision: number) =>
     `/api/v1/manufacturing/work-centers/${workCenterId}/reactivate`,
     json("POST", { revision }),
   );
+
+export type ManufacturingWorkCenterGroup = Schemas["ManufacturingWorkCenterGroup"];
+export type ManufacturingWorkCenterGroupInput = Schemas["ManufacturingWorkCenterGroupInput"];
+export type ManufacturingWorkCenterGroupUpdate = Schemas["ManufacturingWorkCenterGroupUpdate"];
+
+/** The work center groups by code (manufacturing phase 2 M117); the active ones unless another status is asked for. */
+export const workCenterGroupsQueryOptions = (filter: Pick<WorkCenterFilter, "status" | "siteId"> = {}) =>
+  queryOptions({
+    queryKey: [MANUFACTURING_QUERY_KEY, "work-center-groups", filter.status ?? "active", filter.siteId ?? null],
+    queryFn: ({ signal }) =>
+      request<Schemas["ManufacturingWorkCenterGroupList"]>(
+        `/api/v1/manufacturing/work-center-groups${queryString({ status: filter.status, siteId: filter.siteId })}`,
+        { signal },
+      ).then((answer) => answer.items),
+  });
+
+export const createWorkCenterGroup = (input: ManufacturingWorkCenterGroupInput) =>
+  send<ManufacturingWorkCenterGroup>("/api/v1/manufacturing/work-center-groups", json("POST", input));
+
+/** Replaces the group's fields and members under the revision it was read at. */
+export const updateWorkCenterGroup = (groupId: number, input: ManufacturingWorkCenterGroupUpdate) =>
+  send<ManufacturingWorkCenterGroup>(`/api/v1/manufacturing/work-center-groups/${groupId}`, json("PUT", input));
+
+/** Archives a group no active BoM targets (`work_center_in_use` otherwise). */
+export const archiveWorkCenterGroup = (groupId: number, revision: number) =>
+  send<ManufacturingWorkCenterGroup>(
+    `/api/v1/manufacturing/work-center-groups/${groupId}/archive`,
+    json("POST", { revision }),
+  );
+
+export const reactivateWorkCenterGroup = (groupId: number, revision: number) =>
+  send<ManufacturingWorkCenterGroup>(
+    `/api/v1/manufacturing/work-center-groups/${groupId}/reactivate`,
+    json("POST", { revision }),
+  );

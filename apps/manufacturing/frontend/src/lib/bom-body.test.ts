@@ -10,6 +10,7 @@ import {
   newCheck,
   newLine,
   newOperation,
+  operationLevels,
   removeOperation,
 } from "./bom-body";
 
@@ -52,6 +53,9 @@ const savedBom = (): ManufacturingBom => ({
       minutesPerCycle: "12.5",
       instructions: "",
       checks: [],
+      workCenterGroupId: null,
+      dependsOn: ["30"],
+      sendAheadQuantity: null,
     },
     {
       id: 30,
@@ -65,6 +69,9 @@ const savedBom = (): ManufacturingBom => ({
       minutesPerCycle: "4",
       instructions: "**Measure twice**",
       checks: [],
+      workCenterGroupId: null,
+      dependsOn: [],
+      sendAheadQuantity: null,
     },
   ],
   lines: [
@@ -91,6 +98,43 @@ const savedBom = (): ManufacturingBom => ({
   ],
 });
 
+describe("the operations' graph (manufacturing phase 2 M112, M116, M118)", () => {
+  const op = (key: string, sequence: number, dependsOn: string[]) => ({
+    ...newOperation([]),
+    key,
+    sequence,
+    name: key,
+    workCenterId: 1,
+    minutesPerCycle: "1",
+    dependsOn,
+  });
+
+  it("sends a group instead of a work center, and the send-ahead quantity", () => {
+    const state = emptyEditor(variant(1, "TABLE"));
+    const body = bomCreateBody({
+      ...state,
+      operations: [{ ...op("a", 10, []), workCenterId: null, workCenterGroupId: 7, sendAheadQuantity: "2,5" }],
+    });
+    expect(body.operations[0]).toMatchObject({ workCenterGroupId: 7, sendAheadQuantity: "2.5", dependsOn: [] });
+    expect(body.operations[0]).not.toHaveProperty("workCenterId");
+  });
+
+  it("lays the graph out in steps, side by side, and finds a circle", () => {
+    const diamond = [op("a", 10, []), op("b", 20, ["a"]), op("c", 30, ["a"]), op("d", 40, ["b", "c"])];
+    expect(operationLevels(diamond)?.map((level) => level.map((one) => one.key))).toEqual([["a"], ["b", "c"], ["d"]]);
+    expect(operationLevels([op("a", 10, ["b"]), op("b", 20, ["a"])])).toBeNull();
+    expect(
+      editorProblems({ ...emptyEditor(variant(1, "T")), operations: [op("a", 10, ["b"]), op("b", 20, ["a"])] }),
+    ).toHaveProperty("operations", "cycle");
+  });
+
+  it("keeps the order when an operation in the middle is removed", () => {
+    const state = { ...emptyEditor(), operations: [op("a", 10, []), op("b", 20, ["a"]), op("c", 30, ["b"])] };
+    const after = removeOperation(state, "b");
+    expect(after.operations.find((one) => one.key === "c")?.dependsOn).toEqual(["a"]);
+  });
+});
+
 describe("the BoM editor's client keys", () => {
   it("keys a new operation with a generated key and sends it without an id", () => {
     const state = emptyEditor(variant(1, "TABLE"));
@@ -112,6 +156,7 @@ describe("the BoM editor's client keys", () => {
         sequence: 10,
         name: "Cut",
         workCenterId: 1,
+        dependsOn: [],
         minutesPerCycle: "4",
         instructions: "",
         checks: [],
@@ -121,6 +166,8 @@ describe("the BoM editor's client keys", () => {
         sequence: 20,
         name: "Paint",
         workCenterId: 2,
+        // A new operation runs after the last one (manufacturing phase 2 M112).
+        dependsOn: [first.key],
         setupMinutes: "10",
         minutesPerCycle: "2.5",
         instructions: "",

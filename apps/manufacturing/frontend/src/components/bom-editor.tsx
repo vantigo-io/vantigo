@@ -4,6 +4,8 @@ import {
   Button,
   Checkbox,
   Group,
+  List,
+  MultiSelect,
   NumberInput,
   Select,
   SimpleGrid,
@@ -23,7 +25,7 @@ import { useState } from "react";
 import { createBom, MAX_BOM_LINES, MAX_BOM_OPERATIONS, type ManufacturingBom, updateBom } from "../api/boms";
 import { manufacturingMetaQueryOptions } from "../api/meta";
 import { isRevisionConflict, refusalCode, refusalCodes, refusedFields, refusedLines } from "../api/request";
-import { workCentersQueryOptions } from "../api/work-centers";
+import { workCenterGroupsQueryOptions, workCentersQueryOptions } from "../api/work-centers";
 import {
   type BomEditorState,
   bomCreateBody,
@@ -35,6 +37,7 @@ import {
   emptyEditor,
   newLine,
   newOperation,
+  operationLevels,
   removeOperation,
 } from "../lib/bom-body";
 import { canManageBoms } from "../lib/capabilities";
@@ -73,6 +76,7 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
   const invalidate = useInvalidateManufacturing();
   const meta = useQuery(manufacturingMetaQueryOptions());
   const centers = useQuery(workCentersQueryOptions({ status: "active" }));
+  const groups = useQuery(workCenterGroupsQueryOptions({ status: "active" }));
   const [state, setState] = useState<BomEditorState>(() => (bom ? editorOf(bom) : emptyEditor()));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lineCodes, setLineCodes] = useState<Record<number, string>>({});
@@ -133,17 +137,33 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
     if (Object.keys(found).length === 0) save.mutate();
   };
 
+  // An operation targets a work center or a group of them (manufacturing phase 2 M118): one select, keyed c:/g:.
   const centerOptions = (centers.data ?? []).map((center) => ({
-    value: String(center.id),
+    value: `c:${center.id}`,
     label: `${center.code} · ${center.name} (${center.siteCode})`,
   }));
+  for (const group of groups.data ?? [])
+    centerOptions.push({ value: `g:${group.id}`, label: t("groupOption", { code: group.code, name: group.name }) });
   // A saved operation keeps naming its work center even once it is archived, so the row says which.
-  for (const operation of bom?.operations ?? [])
-    if (!centerOptions.some((option) => option.value === String(operation.workCenterId)))
-      centerOptions.push({
-        value: String(operation.workCenterId),
-        label: `${operation.workCenterCode} · ${operation.workCenterName}`,
-      });
+  for (const operation of bom?.operations ?? []) {
+    const value =
+      operation.workCenterGroupId === null ? `c:${operation.workCenterId}` : `g:${operation.workCenterGroupId}`;
+    if (!centerOptions.some((option) => option.value === value))
+      centerOptions.push({ value, label: `${operation.workCenterCode} · ${operation.workCenterName}` });
+  }
+  const targetOf = (operation: EditorOperation) =>
+    operation.workCenterGroupId !== null
+      ? `g:${operation.workCenterGroupId}`
+      : operation.workCenterId === null
+        ? null
+        : `c:${operation.workCenterId}`;
+  const targetPatch = (value: string | null): Partial<EditorOperation> =>
+    value === null
+      ? { workCenterId: null, workCenterGroupId: null }
+      : value.startsWith("g:")
+        ? { workCenterId: null, workCenterGroupId: Number(value.slice(2)) }
+        : { workCenterId: Number(value.slice(2)), workCenterGroupId: null };
+  const levels = operationLevels(state.operations);
   const operationOptions = state.operations.map((operation, index) => ({
     value: operation.key,
     label: `${operation.sequence === "" ? (index + 1) * 10 : operation.sequence} · ${operation.name || t("unnamedOperation")}`,
@@ -312,11 +332,9 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
                             searchable
                             disabled={readOnly}
                             data={centerOptions}
-                            value={operation.workCenterId === null ? null : String(operation.workCenterId)}
-                            onChange={(next) =>
-                              setOperation(operation.key, { workCenterId: next === null ? null : Number(next) })
-                            }
-                            error={errors[`${at}.workCenterId`]}
+                            value={targetOf(operation)}
+                            onChange={(next) => setOperation(operation.key, targetPatch(next))}
+                            error={errors[`${at}.workCenterId`] ?? errors[`${at}.workCenterGroupId`]}
                           />
                         </Table.Td>
                         <Table.Td>
@@ -357,6 +375,36 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
                           </Table.Td>
                         )}
                       </Table.Tr>,
+                      <Table.Tr key={`${operation.key}-graph`}>
+                        <Table.Td />
+                        <Table.Td colSpan={2}>
+                          <MultiSelect
+                            aria-label={`${row}: ${t("dependsOn")}`}
+                            label={t("dependsOn")}
+                            placeholder={operation.dependsOn.length === 0 ? t("dependsOnNone") : undefined}
+                            clearable
+                            disabled={readOnly}
+                            data={operationOptions.filter((option) => option.value !== operation.key)}
+                            value={operation.dependsOn}
+                            onChange={(dependsOn) => setOperation(operation.key, { dependsOn })}
+                            error={errors[`${at}.dependsOn`]}
+                          />
+                        </Table.Td>
+                        <Table.Td colSpan={readOnly ? 2 : 3}>
+                          <TextInput
+                            aria-label={`${row}: ${t("sendAheadQuantity")}`}
+                            label={t("sendAheadQuantity")}
+                            description={t("sendAheadHint")}
+                            inputMode="decimal"
+                            disabled={readOnly}
+                            value={operation.sendAheadQuantity}
+                            onChange={(event) =>
+                              setOperation(operation.key, { sendAheadQuantity: event.currentTarget.value })
+                            }
+                            error={errors[`${at}.sendAheadQuantity`]}
+                          />
+                        </Table.Td>
+                      </Table.Tr>,
                       <Table.Tr key={`${operation.key}-instructions`}>
                         <Table.Td />
                         <Table.Td colSpan={readOnly ? 4 : 5}>
@@ -392,6 +440,33 @@ export const BomEditor = ({ bom }: BomEditorProps) => {
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
+          )}
+          {state.operations.length > 1 && (
+            <Stack gap={4} data-assist="manufacturing.bom.graph">
+              <Text size="sm" fw={600}>
+                {t("operationGraph")}
+              </Text>
+              {levels === null ? (
+                <Text size="sm" c="red">
+                  {t("operationGraphCycle")}
+                </Text>
+              ) : (
+                <>
+                  <List size="sm" type="ordered">
+                    {levels.map((level, index) => (
+                      <List.Item key={level.map((operation) => operation.key).join("+")}>
+                        {`${t("operationGraphLevel", { number: index + 1 })}: ${level
+                          .map((operation) => operation.name || t("unnamedOperation"))
+                          .join(" · ")}`}
+                      </List.Item>
+                    ))}
+                  </List>
+                  <Text size="xs" c="dimmed">
+                    {t("operationGraphHint")}
+                  </Text>
+                </>
+              )}
+            </Stack>
           )}
         </Stack>
       </PageSection>

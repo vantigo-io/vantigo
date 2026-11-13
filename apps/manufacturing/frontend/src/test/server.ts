@@ -23,7 +23,7 @@ import type {
 import type { ManufacturingSite } from "../api/sites";
 import type { ManufacturingStats } from "../api/stats";
 import type { ManufacturingVariantSearchItem } from "../api/variants";
-import type { ManufacturingWorkCenter } from "../api/work-centers";
+import type { ManufacturingWorkCenter, ManufacturingWorkCenterGroup } from "../api/work-centers";
 import { defaultPattern } from "../lib/pattern";
 import { jsonResponse } from "./api";
 import { type StubbedFetch, stubFetch } from "./fetch";
@@ -126,6 +126,9 @@ export const bomFixture = (patch: Partial<ManufacturingBom> = {}): Manufacturing
         minutesPerCycle: "4",
         instructions: "",
         checks: [],
+        workCenterGroupId: null,
+        dependsOn: [],
+        sendAheadQuantity: null,
       },
     ],
     lines: [
@@ -461,6 +464,10 @@ export interface ManufacturingServer {
   suggestions?: ManufacturingSuggestionList;
   /** A variant's replenishment rules (M111); none when absent. */
   replenishmentRules?: ManufacturingReplenishmentRule[];
+  /** Each queue's Group work (manufacturing phase 2 M119), by work center id; none when absent. */
+  groupWork?: Record<number, ManufacturingWorkOrder[]>;
+  /** The work center groups (M117); none when absent. */
+  groups?: ManufacturingWorkCenterGroup[];
   /** Answers a write instead of the fake's own; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
@@ -535,7 +542,7 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
       if (method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
       const bom = /^\/boms(?:\/(\d+))?/.exec(path);
       if (bom) return Promise.resolve(jsonResponse(bom[1] ? 200 : 201, { ...bomFixture(), id: Number(bom[1] ?? 99) }));
-      const action = /^\/work-orders\/(\d+)\/(start|pause|finish)$/.exec(path);
+      const action = /^\/work-orders\/(\d+)\/(start|pause|finish|quantity)$/.exec(path);
       if (action) {
         const found = workOrders.find((one) => one.id === Number(action[1])) ?? workOrderFixture();
         return Promise.resolve(jsonResponse(200, { workOrder: viewOf(found), closedLog: null, production: null }));
@@ -673,9 +680,11 @@ export const stubManufacturingApi = (server: ManufacturingServer = {}): Manufact
           items: workOrders.filter(
             (one) => one.workCenter.id === found.id && !["done", "cancelled", "pending"].includes(one.status),
           ),
+          groupWork: server.groupWork?.[found.id] ?? [],
         }),
       );
     }
+    if (path === "/work-center-groups") return Promise.resolve(jsonResponse(200, { items: server.groups ?? [] }));
     const workOrder = /^\/work-orders\/(\d+)$/.exec(path);
     if (workOrder) {
       const found = workOrders.find((one) => one.id === Number(workOrder[1]));

@@ -134,7 +134,27 @@ export const workOrderStart = (
 export const rescheduleBody = (
   bar: Pick<ManufacturingScheduleBar, "workOrderRevision">,
   start: number,
-): ManufacturingRescheduleInput => ({ start: new Date(start).toISOString(), revision: bar.workOrderRevision });
+  workCenterId?: number,
+): ManufacturingRescheduleInput => ({
+  start: new Date(start).toISOString(),
+  revision: bar.workOrderRevision,
+  // A group work order dropped on another member's row (manufacturing phase 2 M119).
+  ...(workCenterId === undefined ? {} : { workCenterId }),
+});
+
+/**
+ * The member row a bar was dropped on (manufacturing phase 2 M119): the work
+ * center of the row under the pointer when it is another member of the bar's
+ * group, else undefined — the bar moves along its own row.
+ */
+export const droppedMember = (
+  bar: Pick<ManufacturingScheduleBar, "memberIds">,
+  ownCenterId: number,
+  rowCenterId: number | undefined,
+): number | undefined =>
+  rowCenterId !== undefined && rowCenterId !== ownCenterId && (bar.memberIds ?? []).includes(rowCenterId)
+    ? rowCenterId
+    : undefined;
 
 /** The start a Move to… dialog's date and time name in the viewer's zone, snapped to the grid. */
 export const movedStart = (date: string, time: string, zone: string = getTimeZones().timeZone): number =>

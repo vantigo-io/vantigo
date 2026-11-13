@@ -44,7 +44,14 @@ export interface EditorOperation {
   id?: number;
   sequence: number | "";
   name: string;
+  /** The work center it runs at, or null when it targets a group (or nothing is chosen yet). */
   workCenterId: number | null;
+  /** The work center group it targets instead of one center (manufacturing phase 2 M118). */
+  workCenterGroupId: number | null;
+  /** The client keys of the operations it runs after (M112); empty to start at once. */
+  dependsOn: string[];
+  /** Good units it passes on before its successors may start (M116); empty for none. */
+  sendAheadQuantity: string;
   /** Empty for the work center's own setup. */
   setupMinutes: string;
   minutesPerCycle: string;
@@ -99,12 +106,31 @@ export const newOperationKey = (operations: readonly Pick<EditorOperation, "key"
 const nextStep = (values: readonly (number | "")[]) =>
   values.reduce<number>((max, value) => (typeof value === "number" && value > max ? value : max), 0) + 10;
 
-/** A new operation, after the others in sequence (steps of 10, as routings number them). */
+/** The operation last in sequence, the one a new operation runs after. */
+const lastOperation = (operations: readonly EditorOperation[]) =>
+  operations.reduce<EditorOperation | undefined>(
+    (last, operation) =>
+      last === undefined || (typeof operation.sequence === "number" && operation.sequence >= Number(last.sequence))
+        ? operation
+        : last,
+    undefined,
+  );
+
+/**
+ * A new operation, after the others in sequence (steps of 10, as routings
+ * number them), depending on the last of them — the line phase 1 ran (M112).
+ */
 export const newOperation = (operations: readonly EditorOperation[]): EditorOperation => ({
   key: newOperationKey(operations),
   sequence: nextStep(operations.map((operation) => operation.sequence)),
   name: "",
   workCenterId: null,
+  workCenterGroupId: null,
+  dependsOn: (() => {
+    const last = lastOperation(operations);
+    return last ? [last.key] : [];
+  })(),
+  sendAheadQuantity: "",
   setupMinutes: "",
   minutesPerCycle: "",
   instructions: "",
@@ -172,6 +198,9 @@ export const editorOf = (bom: ManufacturingBom): BomEditorState => ({
       sequence: operation.sequence,
       name: operation.name,
       workCenterId: operation.workCenterId,
+      workCenterGroupId: operation.workCenterGroupId,
+      dependsOn: [...operation.dependsOn],
+      sendAheadQuantity: operation.sendAheadQuantity ?? "",
       setupMinutes: operation.setupMinutes ?? "",
       minutesPerCycle: operation.minutesPerCycle,
       instructions: operation.instructions,
@@ -208,19 +237,44 @@ export const editorOf = (bom: ManufacturingBom): BomEditorState => ({
     })),
 });
 
-/** The editor without one operation; every line that named it no longer names any (M13). */
+/**
+ * The editor without one operation; every line that named it no longer names
+ * any (M13), and every operation that ran after it runs after what it ran
+ * after instead, so the graph keeps its order (M112).
+ */
 export const removeOperation = (state: BomEditorState, key: string): BomEditorState => ({
   ...state,
-  operations: state.operations.filter((operation) => operation.key !== key),
+  operations: state.operations
+    .filter((operation) => operation.key !== key)
+    .map((operation) => {
+      if (!operation.dependsOn.includes(key)) return operation;
+      const removed = state.operations.find((one) => one.key === key);
+      const inherited = (removed?.dependsOn ?? []).filter((one) => one !== operation.key);
+      return {
+        ...operation,
+        dependsOn: [...new Set([...operation.dependsOn.filter((one) => one !== key), ...inherited])],
+      };
+    }),
   lines: state.lines.map((line) => (line.operationKey === key ? { ...line, operationKey: null } : line)),
 });
 
-const operationBody = (operation: EditorOperation, index: number): ManufacturingBomOperationInput => ({
+const operationBody = (
+  operation: EditorOperation,
+  index: number,
+  operationKeys: ReadonlySet<string>,
+): ManufacturingBomOperationInput => ({
   key: operation.key,
   ...(operation.id === undefined ? {} : { id: operation.id }),
   sequence: operation.sequence === "" ? (index + 1) * 10 : operation.sequence,
   name: operation.name.trim(),
-  workCenterId: operation.workCenterId ?? 0,
+  ...(operation.workCenterGroupId === null
+    ? { workCenterId: operation.workCenterId ?? 0 }
+    : { workCenterGroupId: operation.workCenterGroupId }),
+  // Always sent: the editor shows the graph it saves (M112). A key it no longer has is none.
+  dependsOn: operation.dependsOn.filter((key) => key !== operation.key && operationKeys.has(key)),
+  ...(operation.sendAheadQuantity.trim() === ""
+    ? {}
+    : { sendAheadQuantity: normalizeDecimal(operation.sendAheadQuantity) }),
   ...(operation.setupMinutes.trim() === "" ? {} : { setupMinutes: normalizeDecimal(operation.setupMinutes) }),
   minutesPerCycle: normalizeDecimal(operation.minutesPerCycle),
   instructions: operation.instructions,
@@ -271,7 +325,7 @@ const shared = (state: BomEditorState) => {
     leadTimeDays: state.header.leadTimeDays === "" ? 0 : state.header.leadTimeDays,
     note: state.header.note.trim(),
     lotPattern: state.header.lotPattern.trim() === "" ? "{MO}" : state.header.lotPattern.trim(),
-    operations: state.operations.map(operationBody),
+    operations: state.operations.map((operation, index) => operationBody(operation, index, keys)),
     lines: state.lines.map((line, index) => lineBody(line, index, keys)),
   };
 };
@@ -304,7 +358,13 @@ export const editorProblems = (state: BomEditorState): Record<string, string> =>
   state.operations.forEach((operation, index) => {
     const at = `operations[${index}]`;
     if (operation.name.trim() === "") problems[`${at}.name`] = "required";
-    if (operation.workCenterId === null) problems[`${at}.workCenterId`] = "required";
+    if (operation.workCenterId === null && operation.workCenterGroupId === null)
+      problems[`${at}.workCenterId`] = "required";
+    if (
+      operation.sendAheadQuantity.trim() !== "" &&
+      (!isDecimal(operation.sendAheadQuantity) || !isPositiveDecimal(operation.sendAheadQuantity))
+    )
+      problems[`${at}.sendAheadQuantity`] = "quantity";
     // Minutes are stored with two decimals, as the server judges them.
     if (!isDecimal(operation.minutesPerCycle, 2) || !isPositiveDecimal(operation.minutesPerCycle))
       problems[`${at}.minutesPerCycle`] = "minutes";
@@ -319,6 +379,7 @@ export const editorProblems = (state: BomEditorState): Record<string, string> =>
       if (check.min.trim() === "" && check.max.trim() === "") problems[`${path}.min`] = "limits";
     });
   });
+  if (state.operations.length > 0 && operationLevels(state.operations) === null) problems.operations = "cycle";
   state.lines.forEach((line, index) => {
     const at = `lines[${index}]`;
     if (!line.variant) problems[`${at}.variantId`] = "required";
@@ -330,4 +391,28 @@ export const editorProblems = (state: BomEditorState): Record<string, string> =>
       problems[`${at}.scrapPercent`] = "scrap";
   });
   return problems;
+};
+
+/**
+ * The operations' graph in levels (M112), for the editor's preview: the
+ * first level is what can start at once, each next one what runs after the
+ * levels before it — operations of one level run side by side. Null when
+ * the operations depend on each other in a circle (operation_cycle).
+ */
+export const operationLevels = (operations: readonly EditorOperation[]): EditorOperation[][] | null => {
+  const keys = new Set(operations.map((operation) => operation.key));
+  const placed = new Set<string>();
+  const levels: EditorOperation[][] = [];
+  const bySequence = [...operations].sort((a, b) => Number(a.sequence) - Number(b.sequence));
+  while (placed.size < operations.length) {
+    const level = bySequence.filter(
+      (operation) =>
+        !placed.has(operation.key) &&
+        operation.dependsOn.every((key) => key === operation.key || !keys.has(key) || placed.has(key)),
+    );
+    if (level.length === 0) return null;
+    for (const operation of level) placed.add(operation.key);
+    levels.push(level);
+  }
+  return levels;
 };
