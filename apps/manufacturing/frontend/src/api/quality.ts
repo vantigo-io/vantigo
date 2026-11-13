@@ -3,6 +3,7 @@ import { appUrl, useLiveTopic } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
 import { downloadCsvFrom } from "./reports";
 import {
+  currentStationToken,
   handleUnauthorized,
   json,
   MANUFACTURING_QUERY_KEY,
@@ -10,6 +11,7 @@ import {
   refusalOf,
   request,
   send,
+  stationAnswered,
   stationInit,
 } from "./request";
 
@@ -59,11 +61,13 @@ export const recordCheckResult = (workOrderId: number, checkId: number, input: M
 export const uploadCheckPhoto = async (workOrderId: number, file: File): Promise<ManufacturingCheckPhoto> => {
   const body = new FormData();
   body.append("file", file);
+  const token = currentStationToken();
   const response = await fetch(appUrl(`/api/v1/manufacturing/work-orders/${workOrderId}/photos`), {
     ...stationInit({ method: "POST", body }),
     credentials: "include",
   });
-  if (response.status === 401) await handleUnauthorized(response);
+  if (response.status === 401) await handleUnauthorized(response, token);
+  else stationAnswered(token);
   if (!response.ok) throw await refusalOf(response);
   return (await response.json()) as ManufacturingCheckPhoto;
 };
