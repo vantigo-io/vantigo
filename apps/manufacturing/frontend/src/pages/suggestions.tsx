@@ -16,12 +16,17 @@ import {
   useSuggestionsLive,
 } from "../api/replenishment";
 import { saveCsv } from "../api/reports";
+import { manufacturingSitesQueryOptions } from "../api/sites";
 import { canManageOrders } from "../lib/capabilities";
+import { isDecimal, isPositiveDecimal, normalizeDecimal } from "../lib/decimal";
 import { refusalMessage, useInvalidateManufacturing, useManufacturingFormat } from "../lib/format";
 import { MANUFACTURING_HOME_ROUTE_PATH, ORDERS_ROUTE_PATH, orderLinkOptions } from "../lib/routes";
 
-/** A positive decimal with at most three decimals, as the server reads a quantity. */
-const QUANTITY = /^\d+([.,]\d{1,3})?$/;
+/** A decimal more than 0 with at most three decimals, as the server reads a quantity. */
+const validQuantity = (text: string) => isDecimal(text) && isPositiveDecimal(text);
+
+/** How often the page reads again while the last run is pending or running. */
+const RUN_POLL_MS = 3000;
 
 /** Listens to one site's suggestions topic: a component per site, so the hook count never changes. */
 const SiteLive = ({ siteId }: { siteId: number }) => {
@@ -36,13 +41,22 @@ const SiteLive = ({ siteId }: { siteId: number }) => {
  * an order is made), the need-by date and the reason as a sentence. Select
  * make rows and Create draft MOs or Create and confirm; Dismiss a row until
  * the next run; buy rows are read-only, with Export CSV. Run now asks the
- * nightly job to run at once. Read again on each site's live topic.
+ * nightly job to run at once. Read again on every active site's live topic,
+ * a site with no suggestions yet too, and every few seconds while the last
+ * run is pending or running.
  */
 export const SuggestionsPage = () => {
   const { t, decimal, day, stamp } = useManufacturingFormat();
   const invalidate = useInvalidateManufacturing();
   const meta = useQuery(manufacturingMetaQueryOptions());
-  const list = useQuery(suggestionsQueryOptions());
+  const activeSites = useQuery(manufacturingSitesQueryOptions());
+  const list = useQuery({
+    ...suggestionsQueryOptions(),
+    refetchInterval: (query) => {
+      const status = query.state.data?.lastRun?.status;
+      return status === "pending" || status === "running" ? RUN_POLL_MS : false;
+    },
+  });
   const manage = canManageOrders(meta.data);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [quantities, setQuantities] = useState<Record<number, string>>({});
@@ -64,7 +78,7 @@ export const SuggestionsPage = () => {
       createOrdersFromSuggestions({
         confirm,
         items: [...selected].map((id) => {
-          const quantity = quantities[id]?.trim().replace(",", ".");
+          const quantity = quantities[id] === undefined ? "" : normalizeDecimal(quantities[id]);
           return quantity ? { suggestionId: id, quantity } : { suggestionId: id };
         }),
       }),
@@ -104,7 +118,10 @@ export const SuggestionsPage = () => {
   const buyRows = sites.flatMap((group) =>
     group.suggestions.filter((s) => s.kind === "buy").map((suggestion) => ({ site: group.site.code, suggestion })),
   );
-  const invalidQuantity = [...selected].some((id) => quantities[id] !== undefined && !QUANTITY.test(quantities[id]));
+  const invalidQuantity = [...selected].some((id) => quantities[id] !== undefined && !validQuantity(quantities[id]));
+  const liveSites = [
+    ...new Set([...(activeSites.data ?? []).map((site) => site.id), ...sites.map((group) => group.site.id)]),
+  ];
   const toggle = (id: number, on: boolean) =>
     setSelected((current) => {
       const next = new Set(current);
@@ -150,8 +167,8 @@ export const SuggestionsPage = () => {
           </Group>
         }
       />
-      {sites.map((group) => (
-        <SiteLive key={group.site.id} siteId={group.site.id} />
+      {liveSites.map((siteId) => (
+        <SiteLive key={siteId} siteId={siteId} />
       ))}
       {list.data && (
         <Group gap="md">
@@ -221,7 +238,7 @@ export const SuggestionsPage = () => {
                 <Table.Tbody>
                   {group.suggestions.map((s) => {
                     const make = s.kind === "make";
-                    const value = quantities[s.id] ?? s.quantity;
+                    const value = quantities[s.id] ?? decimal(s.quantity);
                     return (
                       <Table.Tr key={s.id}>
                         <Table.Td>
@@ -263,7 +280,7 @@ export const SuggestionsPage = () => {
                                   {s.variant.unit}
                                 </Text>
                               }
-                              error={QUANTITY.test(value) ? undefined : t("quantityPositive")}
+                              error={validQuantity(value) ? undefined : t("quantityPositive")}
                               onChange={(event) => {
                                 const next = event.currentTarget.value;
                                 setQuantities((current) => ({ ...current, [s.id]: next }));

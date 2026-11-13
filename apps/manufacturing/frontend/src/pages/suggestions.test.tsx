@@ -1,11 +1,21 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import type { ManufacturingSuggestion } from "../api/replenishment";
+import { describe, expect, it, vi } from "vitest";
+import type { ManufacturingSuggestion, ManufacturingSuggestionList } from "../api/replenishment";
 import { jsonResponse } from "../test/api";
 import { sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
 import { stubManufacturingApi } from "../test/server";
+
+const heard = vi.hoisted(() => new Set<string>());
+
+vi.mock("@vantigo/frontend-shell", async (actual) => ({
+  ...(await actual<typeof import("@vantigo/frontend-shell")>()),
+  useLiveTopic: (topic: string) => {
+    heard.add(topic);
+    return true;
+  },
+}));
 
 const reason = {
   projected: "6",
@@ -89,7 +99,9 @@ describe("the replenishment suggestions (manufacturing phase 2 M111)", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: "Select BIKE-1" }));
     const quantity = screen.getByRole("textbox", { name: "Quantity of BIKE-1" });
     await userEvent.clear(quantity);
-    await userEvent.type(quantity, "0,");
+    await userEvent.type(quantity, "0");
+    expect(create).toBeDisabled();
+    await userEvent.type(quantity, ",");
     expect(create).toBeDisabled();
     await userEvent.type(quantity, "5");
     await userEvent.click(create);
@@ -134,6 +146,35 @@ describe("the replenishment suggestions (manufacturing phase 2 M111)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Run now" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/replenishment\/runs$/)).toHaveLength(1));
   });
+
+  it("listens to every active site and reads again until a run started now has finished", async () => {
+    const run = (status: "pending" | "running" | "done") => ({
+      id: 5,
+      siteId: null,
+      kind: "manual" as const,
+      status,
+      requestedAt: "2026-11-13T08:00:00Z",
+      startedAt: null,
+      finishedAt: status === "done" ? "2026-11-13T08:00:05Z" : null,
+      suggestions: 1,
+      ordersCreated: 0,
+      salesCounted: true,
+      error: null,
+    });
+    const answer: ManufacturingSuggestionList = { ...list([suggestion()]), lastRun: run("running") };
+    const server = { suggestions: answer };
+    const fetchMock = stubManufacturingApi(server);
+    renderRoute("/manufacturing/suggestions");
+    expect(await screen.findByText(/\(running\)/)).toBeInTheDocument();
+    // Bergen has no suggestion yet, and is listened to all the same.
+    await waitFor(() => expect(heard).toContain("manufacturing.suggestions:2"));
+    expect(heard).toContain("manufacturing.suggestions:1");
+    const reads = () => sent(fetchMock, "GET", /\/replenishment\/suggestions/).length;
+    const before = reads();
+    server.suggestions = { ...answer, lastRun: run("done") };
+    await waitFor(() => expect(reads()).toBeGreaterThan(before), { timeout: 6000 });
+    expect(await screen.findByText(/\(done\)/)).toBeInTheDocument();
+  }, 10_000);
 
   it("offers no actions without orders-manage", async () => {
     stubManufacturingApi({ suggestions: list([suggestion()]) });
