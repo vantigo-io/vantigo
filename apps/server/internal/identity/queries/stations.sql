@@ -182,11 +182,12 @@ SET ended_at = @now, end_reason = @end_reason, token_hash = NULL
 WHERE station_id = @station_id AND ended_at IS NULL;
 
 -- name: TouchOperatorSession :exec
--- TouchOperatorSession slides the idle window at most once a minute.
+-- TouchOperatorSession slides the idle window once it is every old: a
+-- quarter of the station's idle timeout, at most a minute.
 UPDATE identity.station_operator_sessions
 SET last_activity_at = sqlc.arg(now)::timestamptz
 WHERE id = @id AND ended_at IS NULL
-  AND last_activity_at <= sqlc.arg(now)::timestamptz - interval '1 minute';
+  AND last_activity_at <= sqlc.arg(now)::timestamptz - sqlc.arg(every)::interval;
 
 -- name: ListActiveOperatorSessions :many
 -- ListActiveOperatorSessions is every live operator session, of one station
