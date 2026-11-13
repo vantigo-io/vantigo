@@ -235,7 +235,8 @@ rule 24 of the [module boundaries](/en/contributing/module-boundaries/)):
   - `Produce(ctx, tx, src, StockProduction{Document, SiteID, Consume []ConsumeLine{VariantID,
     LineID, FromLocationID, Quantity, LotID, AutoLot, AllowExpired}, Produce
     []ProduceLine{VariantID, LineID, ToLocationID, Quantity, LotID}, PostedByUserID,
-    PostedByDisplay, Today, ExpiredOverride, Unbuild}) (StockPosted, error)`;
+    PostedByDisplay, Today, ExpiredOverride, Unbuild}) (StockPosted{MovementID, Picks,
+    Quarantined}, error)`;
   - `EnsureLots(ctx, tx, src, today, lots []NewLot{VariantID, Number, SupplierLot,
     ProductionDate, BestBefore, Expiry, MustCreate}) ([]lotID, error)`;
   - `HoldLots(ctx, tx, src, holds []LotHold{LotID, Kind, Cause, Note, By})`;
@@ -1135,8 +1136,9 @@ movement lines that carry a lot, over L1a's indexes.
   every lot on a **produce** line (only a *to*). A by-product's lot (G) gets the same
   parents. No genealogy table is kept: the movement lines are the record (R §4).
 - **An unbuild is a reverse edge** (kind `unbuild`, M123): it is shown on both lots as an
-  end — on the finished lot's usage as *Unbuilt by unbuild …*, on a restored component
-  lot's origin as *Returned by unbuild …* — and is **never expanded**: the usage walk does
+  end — on the finished lot's usage as *Unbuilt*, on a restored component lot's origin as
+  *Returned by an unbuild*, each with a link *Unbuild* to the unbuild's page in
+  Manufacturing, which names it UB-n — and is **never expanded**: the usage walk does
   not follow it into the restored lots, the origin walk not into the finished lot, and a
   [block](#block-with-the-downstream-list) does not cross it.
 - **Ends** are the movements that start or end a lot's path. On the **origin** side: a
@@ -1646,9 +1648,14 @@ consume lines takes — named, or picked by `AutoLot` — holds an active hold, 
 `Produce`, after posting, puts a **quarantine** hold on every lot its produce lines
 restore to: cause the consumed lot's active hold's (a block's first, then the oldest),
 source the unbuild's document (`manufacturing/unbuild/<id>`), note *Restored by an unbuild
-of a held lot*, taken as [`HoldLots`](#lots-of-other-modules) takes its lots. Held
-material taken apart does not come back usable; the hold is released from the lot page
-like any other source's. A produce line of a tracked variant names a lot made by
+of a held lot*, taken as [`HoldLots`](#lots-of-other-modules) takes its lots, and
+answers those lots in `StockPosted.Quarantined` (none for a replay). Held material taken
+apart does not come back usable. The hold is on the whole lot restored to; like any
+other module's, it is not released from the lot page, whose hold row links to the
+unbuild's page in Manufacturing, where a quality manager releases it. An unbuild takes
+the lots its produce lines restore to `FOR NO KEY UPDATE` at the engine's lot lock, as
+its quarantine takes them after the posting, so two unbuilds restoring into one lot wait
+for each other rather than deadlock. A produce line of a tracked variant names a lot made by
 [`EnsureLots`](#lots-of-other-modules); a consume line names one, or is `AutoLot`.
 
 ## Transfers

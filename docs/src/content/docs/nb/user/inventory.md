@@ -392,7 +392,9 @@ blokkering: mens dens egen karantene er aktiv, er **Karantene** nedtonet og side
 *Denne siden har allerede satt partiet i karantene*, og tilsvarende for **Blokker** — frigi
 den sperringen for å sette en ny. En sperring som et dokument i en annen modul har satt —
 et avvik i Produksjon, for eksempel — viser *Satt av Produksjon, frigis der*: den frigis på
-det dokumentet, ikke her, og den hindrer ikke siden i å sette sin egen.
+det dokumentet, ikke her, og den hindrer ikke siden i å sette sin egen. En karantene satt
+av en demontering av et holdt parti viser *En demontering av et holdt parti*, som åpner
+demonteringen i Produksjon, der den oppheves.
 
 ### Kontroller ved mottak
 
@@ -495,8 +497,9 @@ lenker til produksjonsordren. Et parti som nås to ganger — det samme melet i 
 brødet — vises helt én gang; senere står det *Vist ovenfor*, som hopper dit og åpner en
 skjult gren på veien. Pilen ved et
 parti skjuler det som ligger under. Å ta en ferdigvare fra hverandre (en demontering)
-avslutter veien: ferdigpartiet viser *Demontert av demontering …*, delene det ga tilbake
-*Tilbakeført av demontering …*, og sporingen går ikke fra det ene inn i det andre.
+avslutter veien: ferdigpartiet viser *Demontert*, delene det ga tilbake *Tilbakeført av en
+demontering*, hver med lenken **Demontering** til demonteringen i Produksjon, og
+sporingen går ikke fra det ene inn i det andre.
 
 Sporingen følger ti produksjoner dypt; et parti på det tiende nivået sier *Ikke sporet
 videre: dybdegrensen* når mer ble laget av det. Den viser høyst 2 000 partier og 20 000

@@ -607,12 +607,13 @@ Velg **Kanseller ordre** på et utkast, en bekreftet eller en påbegynt ordre s�
 ingenting er produsert, forbrukt eller kassert på den. Reservasjonene frigjøres, og den
 beholder nummeret sitt. Tid som fortsatt løper på arbeidsordrene, avsluttes, og
 arbeidsordrene kanselleres. Når noe er registrert, kan den ikke kanselleres; lukk den i
-stedet. En ferdig eller kansellert ordre er endelig.
+stedet. En ordre som er delt opp, kanselleres ikke mens en av delene fortsatt er åpen:
+kanseller eller fullfør delene først. En ferdig eller kansellert ordre er endelig.
 
 ### Del opp en ordre
 
 Velg **Del opp** på et utkast eller en bekreftet ordre før noe er registrert på den og
-før det er registrert tid på arbeidsordrene.
+før det er registrert tid eller antall på arbeidsordrene.
 
 1. Skriv inn antallet i hver del. Ordren beholder den første; **Legg til del** legger til
    en til, opptil 20. Delene må til sammen bli ordrens antall: dialogen viser summen.
@@ -631,10 +632,13 @@ mot ordre lages for samme salgsordrelinje.
 
 Under **Produksjonsordrer** krysser du av for to eller flere ordrer og velger **Slå
 sammen**. De må lage samme produkt etter samme stykkliste på samme lagersted, alle være
-utkast eller alle være bekreftet, ikke ha noe registrert og ingen registrert tid, og
+utkast eller alle være bekreftet, ikke ha noe registrert og ingen registrert tid eller
+registrert antall, og
 komme fra samme sted — alle laget for hånd, alle fra forslag, eller alle for samme
 salgsordrelinje eller overordnede ordre. Ordrer med ulik opprinnelse slås ikke sammen, så
-ingen av løftene går tapt.
+ingen av løftene går tapt. Ordrene slås sammen slik listen viste dem: er en endret siden,
+avvises sammenslåingen, og du blir bedt om å prøve igjen. Avkrysningene fjernes når du
+endrer filteret eller siden.
 
 Ordren med lavest nummer blir stående, med antallene lagt sammen og den tidligste
 forfallsdatoen; de andre kanselleres med **Slått sammen med** som peker til den. Alle
@@ -650,19 +654,38 @@ feil, et parti som tilbakekalles.
 1. For et produkt som spores i partier eller med serienumre, velger du **Parti** blant dem
    ordrens produksjoner laget; hvert sier hvor mye av det som er igjen å demontere.
 2. Skriv inn **Antall**, høyst det som er igjen, og en **Merknad** om du vil.
-3. Velg **Demonter**.
+3. **Ta fra** er ordrens utgangslokasjon og **Legg komponentene på** komponentlokasjonen;
+   velg andre om varene eller delene er et annet sted.
+4. Velg **Demonter**.
 
-Ferdigvarene tas fra ordrens utgangslokasjon, og komponentene går tilbake til
-komponentlokasjonen — eller lagerstedets hovedlokasjon — hver inn i partiet den ble tatt
-fra. Bare det produksjonene som laget det valgte partiet forbrukte, kommer tilbake, i
-forhold: en demontering legger aldri komponenter inn i partier et annet parti ble laget
-av. Et parti som er holdt tilbake, kan demonteres — slik håndteres en tilbakekalt vare —
-og da får hvert parti det gir tilbake til, en egen **karantene**, så materiale som er
-holdt tilbake ikke kommer tilbake brukbart. Ordren viser hvor mye som er **demontert**;
-kostnaden regnes ikke ut på nytt. Lager registrerer en **Demontering**-bevegelse, som
-[sporingen](/nb/user/inventory/) av et parti viser som en ende og aldri følger.
+Komponentene går tilbake hver inn i partiet den ble tatt fra — eller, uten
+komponentlokasjon, til lagerstedets hovedlokasjon. Bare det produksjonene som laget det
+valgte partiet forbrukte, kommer tilbake, i forhold — det de forbrukte, laget både de gode
+enhetene og de kasserte, så en enhet som demonteres gir tilbake det én enhet brukte: en
+demontering legger aldri komponenter inn i partier et annet parti ble laget av. En del som
+spores med serienummer, kommer tilbake hel: å demontere færre enheter enn det som gir
+tilbake hele serienumre avvises — demonter hele enheter. En ordre der produksjonene laget
+biprodukter, demonteres ikke fra ordren, siden det den brukte ikke laget produktet alene;
+ta slike varer fra hverandre etter stykklisten i stedet. Ordren viser hvor mye som er
+**demontert**; kostnaden regnes ikke ut på nytt. Lager registrerer en
+**Demontering**-bevegelse, som [sporingen](/nb/user/inventory/) av et parti viser som en
+ende og aldri følger, med lenke til demonteringen.
 
-**Demonteringer** i sidemenyen lister hver demontering med det den ga tilbake.
+Et parti som er holdt tilbake, kan demonteres — slik håndteres en tilbakekalt vare — og da
+settes hvert parti det gir tilbake til, i **karantene** av demonteringen, så materiale som
+er holdt tilbake ikke kommer tilbake brukbart. Karantenen gjelder hele partiet det gis
+tilbake til, også det det hadde fra før. Når partiene er kontrollert, åpner noen med
+**Administrere kvalitet** demonteringen og velger **Opphev karantenen**; en sperring som
+noe annet har satt, blir stående.
+
+**Demonteringer** i sidemenyen lister hver demontering med det den ga tilbake, og merker
+en der karantenen ikke er opphevet ennå. Velg nummeret til en demontering for å åpne
+siden: hva den tok fra hverandre, hvorfra og hvortil, og hva den ga tilbake til hvilke
+partier.
+
+En demontering etter en stykkliste, i stedet for fra en ordre, kan ta fra hverandre et
+hvilket som helst parti av produktet — også et som en ordre laget. Den holdes ikke til det
+den ordren har igjen å demontere, og ordren regner den ikke som demontert.
 
 ### Les historikken til en ordre
 
@@ -1075,8 +1098,10 @@ biprodukts **Kostnadsandel** av estimatet og det faktiske, og kostnaden per enhe
 avslutning; **Produktet** bærer resten, og ordrens **Kostnad per enhet** er den resten
 delt på de gode enhetene som ble laget. Et biprodukt som ikke ble produsert, har ingen
 kostnad per enhet — det står **Ikke produsert**, med andelen det ville hatt — og andelen
-blir hos produktet. Rapporten **Produksjonskostnad** lister biproduktene til ordrene som
-ble lukket i perioden.
+blir hos produktet. Hvert biprodukts andel avrundes til øre én gang, og produktet bærer
+resten, så andelene blir til sammen totalen. Rapporten **Produksjonskostnad** lister
+biproduktene til ordrene som ble lukket i perioden; CSV-filen har dem i en egen del under
+ordrene.
 
 Når en komponent manglet standardkost, eller en arbeidsstasjon manglet sats, regnes den
 som 0, og panelet sier at estimatet eller det faktiske er ufullstendig. Beløpene rundes
@@ -1327,7 +1352,7 @@ delegeres.
 | **Produksjonsordrer**, en ordre, tilgjengeligheten, produksjonene og **Historikk** | ✓ | – | – |
 | **Ny produksjonsordre**, **Lagre**, **Bekreft**, **Reserver nå**, **Legg til komponent**, å endre en komponent, **Lukk**, **Kanseller ordre** | ✓ | ✓ | – |
 | **Del opp**, **Slå sammen**, **Demonter** | ✓ | ✓ | – |
-| **Demonteringer** | ✓ | – | – |
+| **Demonteringer**, en demontering | ✓ | – | – |
 | **Registrer produksjon** | ✓ | en av dem | en av dem |
 | **Verksted**, en arbeidsstasjons **Kø**, en arbeidsordre, **Mitt arbeid**, en ordres **Arbeidsordrer** og **Tidsregistreringer** | ✓ | – | – |
 | **Start**, **Start likevel**, **Pause**, **Ferdig**, **Meld svinn**, **Blokker**, **Opphev blokkering** | ✓ | en av dem | en av dem |
@@ -1341,8 +1366,9 @@ delegeres.
 | **Opprett utkast**, **Opprett og bekreft**, **Avvis**, **Kjør nå**, bryterne for automatisk påfylling | ✓ | ✓ | – |
 
 Å registrere en produksjon, og hver handling i verkstedet, krever Bruke Produksjon og en
-av de to andre. Å lukke et avvik og **Opphev sperrene** krever **Administrere kvalitet**
-(`manufacturing:quality-manage`) i tillegg til Bruke Produksjon; å endre kontrollene på en
+av de to andre. Å lukke et avvik, **Opphev sperrene** og en demonterings **Opphev
+karantenen** krever **Administrere kvalitet** (`manufacturing:quality-manage`) i tillegg
+til Bruke Produksjon; å endre kontrollene på en
 operasjon er en del av å endre stykklisten. Assistenten utfører ingen handlinger i verkstedet: en operatør stempler
 inn selv.
 Beholdningstallene i oversikten og på en ordre er Produksjons egne og krever ingen
