@@ -67,7 +67,7 @@ import { noOrdersAccess, type OrdersAccess } from "../lib/access";
 import { refusalMessage } from "../lib/errors";
 import { useOrdersFormat } from "../lib/format";
 import { headerInput } from "../lib/header";
-import { remainingToDeliver, toLineInput } from "../lib/lines";
+import { kitChildrenOf, remainingToDeliver, toLineInput } from "../lib/lines";
 import { invoiceFromOrderLinkOptions, quoteLinkOptions, SALES_ORDERS_ROUTE_PATH } from "../lib/routes";
 import { useDocumentWrite, useEditorState } from "../lib/use-editor";
 
@@ -627,6 +627,7 @@ const OrderEditor = ({ order, access }: { order: Order; access: OrdersAccess }) 
             access={access}
             refused={editor.refused}
             onEstimate={editable ? () => estimateShipping({ orderId: order.id }) : undefined}
+            kitChildren={kitChildrenOf(order.lines)}
           />
           <TotalsCard totals={order.totals} currency={order.currency} stale={editor.stale} />
           {order.origin.prepaidAmount != null && (

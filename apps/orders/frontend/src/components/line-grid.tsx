@@ -71,6 +71,12 @@ export interface LineGridProps {
    * document is not saved, or on a template, and then *Estimate* is not offered.
    */
   onEstimate?: () => Promise<ShippingEstimate>;
+  /**
+   * An order's kit lines' child lines, by the kit line's id (manufacturing
+   * phase 2 M145): shown under their kit, never edited — the server writes
+   * them from the kit, rescaled to its quantity.
+   */
+  kitChildren?: ReadonlyMap<number, readonly Line[]>;
 }
 
 const hasProgress = (line?: Line) =>
@@ -95,6 +101,7 @@ export const LineGrid = ({
   access,
   refused,
   onEstimate,
+  kitChildren,
 }: LineGridProps) => {
   const { t, money, unitPrice, quantity, percent } = useOrdersFormat();
   const [gridOpen, setGridOpen] = useState(false);
@@ -648,6 +655,12 @@ export const LineGrid = ({
                       </Table.Td>
                     )}
                   </Table.Tr>
+                  {line.saved &&
+                    kitChildren
+                      ?.get(line.saved.id)
+                      ?.map((child) => (
+                        <KitChildRow key={child.id} child={child} columns={columns} progress={showProgress} />
+                      ))}
                 </RowPair>
               );
             })}
@@ -731,6 +744,40 @@ export const LineGrid = ({
         />
       )}
     </Stack>
+  );
+};
+
+/**
+ * A kit's child line under its kit (manufacturing phase 2 M145): the
+ * component, how many the kit's quantity takes and how many one kit holds,
+ * what Inventory holds of it and, on a confirmed order, its progress. It
+ * carries no price: the kit does.
+ */
+const KitChildRow = ({ child, columns, progress }: { child: Line; columns: number; progress: boolean }) => {
+  const { t, quantity } = useOrdersFormat();
+  return (
+    <Table.Tr data-testid="kit-child-row">
+      <Table.Td />
+      <Table.Td colSpan={columns - 1}>
+        <Group gap="sm" pl="md" wrap="nowrap" align="flex-start">
+          <Text size="sm" c="dimmed">
+            ↳
+          </Text>
+          <Stack gap={2}>
+            <Text size="sm">{[child.sku, child.name].filter(Boolean).join(" · ")}</Text>
+            <Text size="xs" c="dimmed">
+              {t("kitChildQuantity", {
+                quantity: quantity(child.quantity ?? 0),
+                unit: child.unit,
+                perKit: quantity(child.perKit ?? 0),
+              })}
+            </Text>
+            <LineStock line={child} />
+            {progress && <LineProgress line={child} />}
+          </Stack>
+        </Group>
+      </Table.Td>
+    </Table.Tr>
   );
 };
 
