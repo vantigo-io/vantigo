@@ -204,9 +204,10 @@ Under each operation, **Add check** adds a quality check, up to 20 an operation.
 - **Quarantine on fail**: when the check fails, the deviation it opens puts what the
   order makes on hold — see [Deviations](#deviations).
 
-The checks are saved with the bill of materials. A manufacturing order gets its
-operations' checks when it is confirmed: changing the bill of materials afterwards does
-not change the checks of an order already confirmed.
+The checks are saved with the bill of materials, as the editor shows them: removing a
+check, or every check of an operation, and saving deletes it from the bill of materials.
+A manufacturing order gets its operations' checks when it is confirmed: changing the bill
+of materials afterwards does not change the checks of an order already confirmed.
 
 ### What a bill of materials may not do
 
@@ -517,6 +518,11 @@ Choose **Close** on a confirmed or in-progress order when the work is finished. 
 still reserved for it is released, and the order is **Done**. Any time still running on
 its work orders is ended, and the work orders not done are cancelled.
 
+Once something good has been produced, the order closes only when every
+[quality check](#record-the-checks) of its work orders has a result: *Checks are
+missing* names the ones without, so they can be recorded first. A failed check is a
+result.
+
 When less than the quantity was produced, you are asked whether to **create a backorder**:
 
 - **Yes** creates a new order for the rest — the quantity less what was produced — with
@@ -696,12 +702,14 @@ instructions and, for a measure, its limits. Record each one with its large butt
 
 - an instruction: **Done**;
 - pass or fail: **Pass** or **Fail**;
-- a measure: type the value in **Measured value** — the tablet offers its number pad —
-  and choose **Record**. The result, **Pass** or **Fail**, is Vantigo's, judged against
-  the limits;
-- a photo: **Take photo** opens the camera; the picture is kept with the result. A JPEG
-  or PNG of at most 10 MB; what the camera writes into a photo about where and when it
-  was taken is removed before it is kept.
+- a measure: type the value in **Measured value** — the tablet offers its number pad,
+  and the **±** button beside the field turns the value negative, as the pad has no
+  minus — and choose **Record**. The result, **Pass** or **Fail**, is Vantigo's, judged
+  against the limits;
+- a photo: **Take photo** opens the camera; the picture is kept with the result. A large
+  picture is made smaller on the tablet before it is sent — at most 2560 pixels on its
+  longest side, as a JPEG. A JPEG or PNG of at most 10 MB; what the camera writes into a
+  photo about where and when it was taken is removed before it is kept.
 
 A **Note** is optional on every check. Recording a check again replaces its result; the
 earlier one is kept, with who recorded it and when. Nothing can be recorded on a work
@@ -710,16 +718,20 @@ order that is done or cancelled.
 What the checks stop:
 
 - **Finish** is refused while a check of the work order, of either kind, has no result:
-  *Checks are missing*.
+  *Checks are missing*, with the checks named.
 - **Register production** — on the order page or at the last operation — is refused
   while any check of an earlier operation has no result, or a **first-piece** check of
   the last operation has none. The refusal names the checks. Reporting scrap only is
   not stopped.
+- **Close** on the order page is refused, once something good has been produced, while
+  any check of the order's work orders has no result.
 - Starting is never stopped.
 
 A **Fail** does not stop anything: it opens a deviation at once, named on the check —
 **DEV-12**, say — for a supervisor to decide on. When the check says **Quarantine on
-fail**, the deviation puts the order's output in quarantine.
+fail**, the deviation puts the order's output in quarantine. If the same check fails
+again while that deviation is open, no second deviation is opened: the new reading is
+added to the open one, and the check names it.
 
 The order page's **Work orders** tab lists every check under **Check results**, with its
 result, who recorded it and when, and the deviation a failure opened.
@@ -729,7 +741,9 @@ result, who recorded it and when, and the deviation a failure opened.
 Choose **Report a deviation** on a work order, on the order page, on the **Deviations**
 list or on a lot's page in Inventory. Give its **Title**, a **Description** if you like,
 and tick **Put the output in quarantine** to hold what the order made — see
-[Deviations](#deviations). Reporting needs the same permission as the shop floor.
+[Deviations](#deviations). Reporting needs the same permission as the shop floor; on a
+lot, also Inventory's permissions to see locations and stock. A deviation of an order
+that names a lot must name one the order made or used.
 
 ### Report scrap
 

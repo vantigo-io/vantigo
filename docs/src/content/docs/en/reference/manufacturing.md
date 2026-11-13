@@ -126,7 +126,8 @@ no Products key. `GET /meta` answers the caller's `canManageBoms`, `canSeeCosts`
 `canManageOrders`, `canWorkShopFloor` and `canManageQuality`, and the currency, `NOK`.
 Recording a check's result, uploading its photo and reporting a deviation follow the
 shop floor's rule — `access`, then `shop-floor` or `orders-manage` in the handler — and
-the first two are `x-vantigo-assistant: never`; closing a deviation and releasing its
+the first two are `x-vantigo-assistant: never`, as is reading a photo; a deviation on a
+lot needs Inventory's `locations-view` and `stock-view` too; closing a deviation and releasing its
 holds are checked against `access` **and** `quality-manage`.
 
 ### Cost shaping
@@ -806,8 +807,10 @@ production, which answers 201 having consumed and produced once.
   is not `done` (M23, M29a);
 - sets `done` and `closedAt`.
 
-When `produced` is less than `quantity`, the request must say `backorder`: absent, it is
-**409** `quantity_short`.
+An order with good output is first [gated on its checks](#what-the-checks-gate): every
+check of a work order not cancelled has a result, or it is **409** `checks_incomplete`
+naming them. When `produced` is less than `quantity`, the request must say `backorder`:
+absent, it is **409** `quantity_short`.
 
 - `true` creates a **backorder** for `quantity − produced`: the same BoM, site, locations,
   origin, due date, priority and responsible user, numbered with the root's next suffix
@@ -1600,7 +1603,9 @@ lots in quarantine through Inventory's ledger (manufacturing phase 2 M95–M104)
 
 `manufacturing.bom_operation_checks`: an operation's checks, edited in the BoM's one
 request as `operations[i].checks` — at most 20 an operation, replaced as a whole on every
-save, under `boms-manage`. Each has a `kind`:
+save, under `boms-manage`. An operation sent without `checks` keeps none: a BoM saved
+without them deletes the checks it had (orders already confirmed keep their snapshot).
+Each has a `kind`:
 
 | Kind | Recorded as |
 | --- | --- |
@@ -1631,18 +1636,23 @@ checks without a result first (M101).
 and `photoId`, as the kind asks. A result is refused `check_not_open` (409) on a work
 order that is done or cancelled, and `order_not_open` on an order that is not open.
 Recording again supersedes the result in force: it is kept, its `superseded_by` naming
-its successor; `ux_check_results_current` keeps one result in force per check. A result
-keeps its recorder's user id and display name (rule 19). It answers the work order view.
+its successor; `ux_check_results_current` keeps one result in force per check. A `value`
+is kept only on a measure's result; sent with any other kind it is judged as a decimal
+and then dropped. A result keeps its recorder's user id and display name (rule 19). It
+answers the work order view.
 
 The lock order (M97, §15): `LockVariants` on the order's variants; the order `FOR
 UPDATE`; the work order; **the check `FOR UPDATE`** — two results recorded at once for
 one check serialise, and the second supersedes the first —; the photo `FOR SHARE`; the
-result; the deviation a `fail` opens; the ledger last.
+result; the deviation a `fail` opens, or the open one it adds to; the ledger last.
 
 ### Photos
 
 `POST /work-orders/{id}/photos` (multipart, field `file`): a JPEG or PNG by its own
-bytes (`attachment_type`, 415), at most 10 MB (`attachment_too_large`, 400), its
+bytes (`attachment_type`, 415), at most 10 MB (`attachment_too_large`, 400) — the
+router's body cap for this one operation is 10 MiB and 64 KiB for the framing
+(`RouterOptions.BodyLimits`), every other operation keeping the platform's 1 MiB, and the
+body is not copied for the closed-schema check, which judges only JSON —, its
 metadata stripped with `srv/imagemeta`, kept in the object store's scope
 `manufacturing-quality` under `checks/<uuid>` before its row
 (`manufacturing.check_photos`) is written — a store that cannot write is 503
@@ -1650,14 +1660,19 @@ metadata stripped with `srv/imagemeta`, kept in the object store's scope
 the object again. It answers the `photoId` a result names; refused `check_not_open` on a
 work order done or cancelled. `GET /work-orders/{id}/photos/{photoId}` streams it, never
 cached or sniffed, under `default-src 'none'; sandbox`; a photo of another work order is
-404.
+404. Both are `x-vantigo-assistant: never`: a photo is a file the Assistant does not
+fetch. The shop floor draws a picture whose longest edge is past 2,560 px down to it and
+sends it as a JPEG at quality 0.85 before the upload.
 
 A photo is a quality record: it stays when its result is superseded, and nothing deletes
 one a result names. One no result names 24 hours after its upload is deleted, its object
 queued on `manufacturing.object_deletions` in the same transaction, by the worker
 **`manufacturing.object-deletions`** (every five minutes, built through `module.Workers`):
 it sweeps those photos `FOR UPDATE SKIP LOCKED` — a result being recorded with one holds
-it `FOR SHARE`, so the sweep skips it — then gives each due ledger row one attempt,
+it `FOR SHARE`, so the sweep skips it — and deletes each with `NOT EXISTS` judged again
+by the delete's own statement, queuing the object only when a row went: a result
+committed after the sweep read the photo keeps it. Then it gives each due ledger row one
+attempt,
 claimed by a conditional update with a five-minute window, retried with a backoff from
 two seconds to an hour. No statement holds a connection while the store is asked: it
 runs on a pool of one.
@@ -1674,6 +1689,11 @@ The **output work order** is the last that is not cancelled.
   gated. *Before* is by sequence.
 - **Finish** of a work order is refused `checks_incomplete` while any of its own checks
   has no result.
+- **Close** of an order with good output (`produced` more than 0) is refused
+  `checks_incomplete`, naming them, while any check of a work order that is not
+  cancelled has no result — read before the close cancels the work orders not done. A
+  check is never closed over: record it (a `fail` is a result). An order with no good
+  output closes without the gate.
 - Starting is never gated, and a `fail` does not block: it has opened a deviation.
 
 The gate reads the checks under the order's lock, which every result takes too.
@@ -1689,11 +1709,20 @@ their display names, and a `revision`.
 
 - **A failed check opens one** in the result's transaction, linking the order, the work
   order and the result, its description the measured value against the limits and the
-  note; `quarantine` is the check's `quarantineOnFail`.
+  note; `quarantine` is the check's `quarantineOnFail`. **A fail of the same check while
+  that deviation is open opens no other**: the deviation is taken `FOR UPDATE`, pointed
+  at the latest failed result (`check_result_id`, indexed by `ix_deviations_check_result`),
+  and its description gains the new reading — *Failed again*, when, by whom — within its
+  5,000 characters, under a new revision. Once it is closed, the next fail opens a new
+  one.
 - **A person reports one** with `POST /deviations` (`shop-floor` or `orders-manage`):
   from an order (not a draft), a work order (its order taken), or a lot — read on the pool
   before the transaction through `contracts.Stock.LotRefs`, which answers its variant and
-  number — with `quarantine` as ticked.
+  number — with `quarantine` as ticked. A lot is Inventory's: naming one needs
+  `inventory:locations-view` and `inventory:stock-view` as well, else
+  **`lots_view_required`** (403). Named with an order, the lot must be one the order's
+  productions made (`production_outputs`) or consumed (`production_line_lots`), read
+  under the order's lock, else **`lot_not_of_order`** (400 at `lotId`).
 - **Quarantine.** A quarantining deviation calls `StockLedger.HoldLots` — kind
   `quarantine`, cause `deviation`, source `manufacturing/deviation/<id>` — on the same
   transaction, after its own rows (rule 24), for every lot the order has made so far
@@ -1842,9 +1871,11 @@ bodies are strict: an unknown property is a 400.
 | `insufficient_stock`, `insufficient_available`, `site_archived`, `variant_not_stocked`, `document_reused` | 409 | Inventory's refusal of a production or a reserve, passed through under its own code, `lines` naming the component lines; nothing is posted. A reserve's `insufficient_available` is not answered: it starts the second pass |
 | `check_limits_invalid` | 400 | A measure check with neither `min` nor `max`, a `max` below its `min`, or a `nominal` outside them (M95) |
 | `photo_required` | 400 | A photo check recorded without its `photoId` (M97) |
-| `checks_incomplete` | 409 | A production with good output while a check before the output work order, or a first-piece check of it, has no result; a finish while one of the work order's own has none; `checks` names them (M98) |
+| `checks_incomplete` | 409 | A production with good output while a check before the output work order, or a first-piece check of it, has no result; a finish while one of the work order's own has none; a close of an order with good output while a check of a work order not cancelled has none; `checks` names them (M98) |
 | `check_not_open` | 409 | A result or a photo on a work order that is done or cancelled (M103) |
 | `deviation_closed` | 409 | Closing a closed deviation; releasing the holds of an open one (M103) |
+| `lot_not_of_order` | 400 | A deviation reported on an order and a lot the order neither made nor consumed, at `lotId` (M99) |
+| `lots_view_required` | 403 | A deviation reported on a lot without `inventory:locations-view` and `inventory:stock-view` (M99) |
 | `attachment_too_large` | 400 | A photo over 10 MB |
 | `attachment_type` | 415 | A photo that is not a JPEG or PNG by its own bytes |
 | `storage_not_configured` | 503 | A photo with no object store configured |
@@ -1909,7 +1940,7 @@ every order write may answer 503 `dependency_unavailable`.
 | `GET /orders/{id}/production-draft` (`getManufacturingProductionDraft`) | access | 200 [the prefill](#productions) with the lots proposed and offered and the output's lot ([lots on productions](#lots-on-productions)); 400 `quantity_invalid`; 404; 409 `order_not_open` |
 | `POST /orders/{id}/productions` (`postManufacturingProduction`) | shop-floor or orders-manage; never the Assistant | 201 the production; 200 a replay; 400 fields, `quantity_invalid`, `location_unknown`, `lot_pattern_invalid`, `picks_mismatch`, `serial_quantity`, `lot_not_allowed`, `lot_dates_differ`, `lot_exists`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `checks_incomplete`, `consumption_differs`, `client_request_reused`, `revision_conflict` (two deadlocks, or lots that kept moving), Inventory's refusals |
 | `GET /orders/{id}/lots` (`getManufacturingOrderLots`) | access | 200 [the lots made and consumed](#lots-on-productions); 404 |
-| `POST /orders/{id}/close` (`closeManufacturingOrder`) | orders-manage | 200 `{order, backorder, shortLines}`; 404; 409 `order_not_open`, `quantity_short` |
+| `POST /orders/{id}/close` (`closeManufacturingOrder`) | orders-manage | 200 `{order, backorder, shortLines}`; 404; 409 `order_not_open`, `checks_incomplete`, `quantity_short` |
 | `POST /orders/{id}/cancel` (`cancelManufacturingOrder`) | orders-manage | 200; 404; 409 `order_not_open`, `order_has_production` |
 | `GET /orders/{id}/events` (`listManufacturingOrderEvents`) | access | 200 [the history](#history), oldest first; 404 |
 | `GET /productions/{id}` (`getManufacturingProduction`) | access | 200 one production with its lines; 404 |
@@ -1937,9 +1968,9 @@ every order write may answer 503 `dependency_unavailable`.
 | `GET /reports/time-deviation` (`getManufacturingTimeDeviationReport`) | access | 200 JSON or CSV; 400 the period, `period_too_long` |
 | `POST /work-orders/{id}/checks/{checkId}/result` (`recordManufacturingCheckResult`) | shop-floor or orders-manage; never the Assistant | 200 the work order view; 400 fields, `photo_required`; 403 `shop_floor_required`; 404; 409 `order_not_open`, `check_not_open`, `revision_conflict`, Inventory's refusal of a hold |
 | `POST /work-orders/{id}/photos` (`uploadManufacturingCheckPhoto`) | shop-floor or orders-manage; never the Assistant | 201 the photo; 400 `attachment_too_large`, `file`; 403 `shop_floor_required`; 404; 409 `check_not_open`; 415 `attachment_type`; 503 `storage_not_configured` |
-| `GET /work-orders/{id}/photos/{photoId}` (`getManufacturingCheckPhoto`) | access | 200 the picture; 404; 503 |
+| `GET /work-orders/{id}/photos/{photoId}` (`getManufacturingCheckPhoto`) | access; never the Assistant | 200 the picture; 404; 503 |
 | `GET /deviations` (`listManufacturingDeviations`) | access | 200 JSON or CSV; 400 `from` after `to` |
-| `POST /deviations` (`createManufacturingDeviation`) | shop-floor or orders-manage | 201 the deviation; 400 fields; 403 `shop_floor_required`; 409 `revision_conflict`, Inventory's refusal of a hold |
+| `POST /deviations` (`createManufacturingDeviation`) | shop-floor or orders-manage; with a lot, Inventory's locations-view and stock-view too | 201 the deviation; 400 fields, `lot_not_of_order`; 403 `shop_floor_required`, `lots_view_required`; 409 `revision_conflict`, Inventory's refusal of a hold |
 | `GET /deviations/{id}` (`getManufacturingDeviation`) | access | 200; 404 |
 | `POST /deviations/{id}/close` (`closeManufacturingDeviation`) | quality-manage | 200; 400 fields; 404; 409 `deviation_closed`, `revision_conflict` |
 | `POST /deviations/{id}/release` (`releaseManufacturingDeviationHolds`) | quality-manage | 200; 404; 409 `deviation_closed`, `revision_conflict` |
