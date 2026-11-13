@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vantigo-io/vantigo/server/internal/brreg"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -509,7 +510,7 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, conn *pgxpool.Conn,
 //   - refreshRefreshed: the register answered about the company and the record
 //     on file is now what it said;
 //   - refreshUnknown: the register does not know this organisation number. A
-//     real 200 answer (registry.go's brregEntityUnknown) that stores nothing, so
+//     real 200 answer (registry.go's brreg.Unknown) that stores nothing, so
 //     counting it as refreshed would report records for customers that have
 //     none — and on an installation with a few hand-typed numbers the register
 //     never knew, that is a cycle claiming to have refreshed them every fifteen
@@ -517,7 +518,7 @@ func (w *RegistryFeedWorker) handlePage(ctx context.Context, conn *pgxpool.Conn,
 //   - refreshFailed: the attempt did not complete, and refresh has already
 //     logged it by kind;
 //   - refreshUnavailable: it did not complete because the REGISTRY could not be
-//     reached (errBrregUnavailable). Counted as a failure like any other in the
+//     reached (brreg.ErrUnavailable). Counted as a failure like any other in the
 //     log line, and told apart only for registryOutage below: a run of these is
 //     the one failure that says nothing about the next customer is worth trying.
 //
@@ -649,7 +650,7 @@ func (w *RegistryFeedWorker) refresh(ctx context.Context, on db.TxBeginner, cust
 			w.logger().Warn("customers: registry record refresh failed",
 				"worker", registryFeedWorkerName, "customerId", customerID, "errorKind", kind)
 		}
-		if errors.Is(err, errBrregUnavailable) {
+		if errors.Is(err, brreg.ErrUnavailable) {
 			return refreshUnavailable
 		}
 		return refreshFailed

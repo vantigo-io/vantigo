@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/brreg"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/fileimport"
 )
@@ -47,8 +48,8 @@ const importRegistryConcurrency = 4
 // answered.
 type importRegistryAnswer struct {
 	OrgNr     string
-	Outcome   brregEntityOutcome
-	Record    brregEntityRecord
+	Outcome   brreg.Outcome
+	Record    brreg.Entity
 	FetchedAt time.Time
 	Err       error
 }
@@ -57,13 +58,13 @@ type importRegistryAnswer struct {
 // entity, or a deleted one, whose name it still gives — so its values may be
 // used and its record stored.
 func (a *importRegistryAnswer) answered() bool {
-	return a != nil && a.Err == nil && (a.Outcome == brregEntityFound || a.Outcome == brregEntityDeleted)
+	return a != nil && a.Err == nil && (a.Outcome == brreg.Found || a.Outcome == brreg.Deleted)
 }
 
 // address is the address a row's postal address is filled from: the
 // entity's postal address, falling back to its business address; nil when
 // the registry has neither, or did not answer.
-func (a *importRegistryAnswer) address() *brregAddress {
+func (a *importRegistryAnswer) address() *brreg.Address {
 	if !a.answered() {
 		return nil
 	}
@@ -78,7 +79,7 @@ func (a *importRegistryAnswer) address() *brregAddress {
 // organisation unknown to it (a 404, or removed from open data).
 func (a *importRegistryAnswer) refusal() string {
 	switch {
-	case errors.Is(a.Err, errBrregUnreachable):
+	case errors.Is(a.Err, brreg.ErrUnreachable):
 		return "Brønnøysund could not be reached; the name and postal address were not looked up"
 	case a.Err != nil:
 		return fmt.Sprintf("Brønnøysund's answer about organisation %s could not be read; the name and postal address were not looked up", a.OrgNr)
@@ -90,7 +91,7 @@ func (a *importRegistryAnswer) refusal() string {
 // the customers app's registryAddressValues (registry-address.ts), on the
 // server: the first line is line 1 and the rest are joined into line 2, the
 // country lowercased, Norway when the registry names none.
-func registryAddressParts(a *brregAddress) (line1, line2, postalCode, city, country string) {
+func registryAddressParts(a *brreg.Address) (line1, line2, postalCode, city, country string) {
 	if len(a.Lines) > 0 {
 		line1 = a.Lines[0]
 		line2 = strings.Join(a.Lines[1:], ", ")
@@ -233,7 +234,7 @@ func newImportRegistry(srv *server) *importRegistry {
 // the organisation numbers this run has not asked about yet,
 // importRegistryConcurrency at a time. Only a row with an organisation number
 // it could look up has its target read, so a file without one reads nothing.
-// Once a lookup finds the registry unreachable (errBrregUnreachable), every
+// Once a lookup finds the registry unreachable (brreg.ErrUnreachable), every
 // later answer is that error without asking; an answer refused for this
 // organisation alone is that answer's. Only a cancelled context or a database
 // error is the run's.
@@ -280,7 +281,7 @@ func (reg *importRegistry) lookup(ctx context.Context, q *store.Queries, l impor
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			if errors.Is(answer.Err, errBrregUnreachable) && reg.down == nil && ctx.Err() == nil {
+			if errors.Is(answer.Err, brreg.ErrUnreachable) && reg.down == nil && ctx.Err() == nil {
 				reg.down = answer.Err
 				reg.logger().WarnContext(ctx, "customers: Brønnøysund could not be reached; the import's rows are not looked up",
 					"worker", importWorkerName, "errorKind", registryErrorKind(answer.Err))

@@ -2103,7 +2103,8 @@ with the [registry workers' caveat](#registry-workers) about tenants sharing one
 ## Brreg lookup
 
 `GET /api/v1/customers/lookup/brreg` (`customers:lookup-view`) queries
-Brønnøysundregisteret's open Enhetsregisteret API by `legalId` (exact) or `search`
+Brønnøysundregisteret's open Enhetsregisteret API, through the platform package
+`internal/brreg` that every module may use, by `legalId` (exact) or `search`
 (name, ≥ 2 characters after trimming; `legalId` wins if both are given). It returns,
 for each of up to 10 matches, only **`legalId` and `legalName`** — nothing else Brreg
 exposes (org form, addresses, NACE code, employee count, bankruptcy flags, …) is
@@ -2207,8 +2208,11 @@ made there fetches the new company's record under exactly the same conditions.
 
 ### The four registry outcomes
 
-The registry itself does not answer "found or not" — `brreg_entity.go` gives
-`(*brregClient).entity` four outcomes, and a refresh answers with each of them.
+The registry itself does not answer "found or not" — the Brønnøysund client, the
+platform package
+[`internal/brreg`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/brreg)
+([The Brønnøysund client](/en/contributing/platform-packages/#the-brønnøysund-client)),
+gives `(*brreg.Client).Entity` four outcomes, and a refresh answers with each of them.
 ("Nothing to look up at all" is not one of them: that 409 is decided from the
 customer's own identity, before any fetch is made.)
 
@@ -2220,7 +2224,7 @@ customer's own identity, before any fetch is made.)
 | **unknown** | Plain **404**, empty body (also what a sub-entity's own organisation number answers) | Nothing | Nothing — `status: "unknown"`; the identity is what needs a person's look, not the record |
 
 A registry answer is never treated as a failure. What is, and becomes the refresh's
-**502** (all wrapped as `errBrregUnavailable`, worded as the Brreg lookup's own 502
+**502** (all wrapped as `brreg.ErrUnavailable`, worded as the Brreg lookup's own 502
 above): every non-2xx status that is not a 404 or a 410 — a 429, a 406, a 403, a
 5xx — an unexpected content type, a body past the 1 MiB cap, a body that will not
 decode (including a malformed date), a body answering for a different organisation
