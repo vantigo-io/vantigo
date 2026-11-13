@@ -6,10 +6,11 @@ import { SCHEDULE_SITE_STORAGE_KEY } from "../lib/schedule-storage";
 import { jsonResponse } from "../test/api";
 import { sent } from "../test/helpers";
 import { renderRoute } from "../test/route-tree";
-import { manufacturingProblem, stubManufacturingApi } from "../test/server";
+import { manufacturingProblem, scheduleBarFixture, scheduleFixture, stubManufacturingApi } from "../test/server";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  Reflect.deleteProperty(document, "elementsFromPoint");
   setTimeZones(null);
   try {
     window.localStorage.removeItem(SCHEDULE_SITE_STORAGE_KEY);
@@ -70,6 +71,44 @@ describe("the production schedule", () => {
     });
     // The drag's own click opens no dialog.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("moves a group work order dropped on another member's row there, looking through the dragged bar", async () => {
+    const schedule = scheduleFixture();
+    const [saw] = schedule.workCenters;
+    saw.bars = [scheduleBarFixture({ memberIds: [2] })];
+    schedule.workCenters = [
+      saw,
+      { ...saw, workCenter: { ...saw.workCenter, id: 2, code: "SAW2", name: "Second saw" }, bars: [] },
+    ];
+    const fetchMock = stubManufacturingApi({ meta: { canManageOrders: true }, schedule });
+    renderRoute("/manufacturing/schedule");
+    const bar = await screen.findByRole("button", { name: /^Move MO-12/ });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      width: 700,
+      height: 64,
+      top: 0,
+      left: 0,
+      right: 700,
+      bottom: 64,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    // Under the pointer: the bar, which follows it, then the second saw's row.
+    const target = document.querySelector('[data-schedule-row="2"]');
+    expect(target).not.toBeNull();
+    Object.defineProperty(document, "elementsFromPoint", { configurable: true, value: () => [bar, target] });
+    fireEvent.pointerDown(bar, { button: 0, clientX: 30, clientY: 10, pointerId: 1 });
+    fireEvent.pointerMove(bar, { clientX: 30, clientY: 80, pointerId: 1 });
+    fireEvent.pointerUp(bar, { clientX: 30, clientY: 80, pointerId: 1 });
+    fireEvent.click(bar);
+
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/work-orders\/40\/reschedule$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/work-orders\/40\/reschedule$/)[0].body).toMatchObject({
+      workCenterId: 2,
+      revision: 3,
+    });
   });
 
   it("moves a bar through Move to… with a day and a time in the viewer's own zone", async () => {

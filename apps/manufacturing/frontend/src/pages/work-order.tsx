@@ -406,7 +406,7 @@ export const WorkOrderPage = () => {
             {t("minutesOf", { logged: minutes(workOrder.loggedMinutes), expected: minutes(workOrder.expectedMinutes) })}
           </Fact>
           {workOrder.workCenterGroup && (
-            <Fact label={t("groupMembers")}>{t("groupValue", { code: workOrder.workCenterGroup.code })}</Fact>
+            <Fact label={t("workCenterGroup")}>{t("groupValue", { code: workOrder.workCenterGroup.code })}</Fact>
           )}
           {!workOrder.last && (
             <Fact label={t("quantityDone")}>
