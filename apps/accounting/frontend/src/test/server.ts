@@ -3,8 +3,10 @@ import type {
   AccountingLock,
   AccountingMeta,
   AccountingOpening,
+  AccountingPostingRule,
   AccountingReport,
   AccountingTaxCode,
+  AccountingUnposted,
   AccountingVoucher,
 } from "../api/accounting";
 import { jsonResponse } from "./api";
@@ -32,6 +34,7 @@ export const meta = (change: Partial<AccountingMeta> = {}): AccountingMeta => ({
   attachmentsEnabled: true,
   vouchersThisYear: 12,
   openCustomerItems: 3,
+  unposted: 0,
   ...change,
 });
 
@@ -92,6 +95,7 @@ export const voucher = (change: Partial<AccountingVoucher> = {}): AccountingVouc
   system: false,
   rule: null,
   ruleVersion: null,
+  sourceDocumentId: null,
   reverses: null,
   reversedBy: null,
   reversalReason: null,
@@ -136,6 +140,7 @@ export function posting(
     projectId: null,
     projectName: null,
     description: "",
+    taxSpecification: null,
     ...change,
   };
 }
@@ -174,8 +179,16 @@ export const report = (): AccountingReport => ({
       cells: { account: "1920", name: "Bankinnskudd", closing: "29450.00" },
       voucherId: null,
       accountId: 1002,
+      documentId: null,
     },
-    { style: "total", depth: 0, cells: { name: "Sum", closing: "0.00" }, voucherId: null, accountId: null },
+    {
+      style: "total",
+      depth: 0,
+      cells: { name: "Sum", closing: "0.00" },
+      voucherId: null,
+      accountId: null,
+      documentId: null,
+    },
   ],
 });
 
@@ -187,7 +200,49 @@ export interface ApiState {
   opening: AccountingOpening;
   /** Whether an attachment's upload is refused, as an installation without storage refuses it. */
   attachmentFails?: boolean;
+  rules: AccountingPostingRule[];
+  unposted: AccountingUnposted[];
+  /** The table every report answers; the trial balance's unless set. */
+  report?: AccountingReport;
 }
+
+export const rule = (change: Partial<AccountingPostingRule> = {}): AccountingPostingRule => ({
+  id: 1001,
+  name: "Avgiftspliktig salg, alminnelig sats (kode 3)",
+  scope: "sales",
+  match: "default",
+  lineKind: null,
+  taxCategoryId: null,
+  taxCode: "3",
+  accountId: 1005,
+  accountNumber: "3000",
+  accountName: "Salgsinntekt, avgiftspliktig",
+  version: 1,
+  revision: 1,
+  updatedAt: STAMP,
+  ...change,
+});
+
+export const unposted = (change: Partial<AccountingUnposted> = {}): AccountingUnposted => ({
+  id: 7001,
+  stream: "invoices.documents",
+  position: 101,
+  source: { module: "invoices", kind: "invoice", id: 9001, part: "" },
+  factDate: "2026-11-02",
+  documentId: 9001,
+  documentNumber: "101",
+  customerId: 501,
+  customerName: "Acme AS",
+  amount: "1250.00",
+  reason: "tax_code_unknown",
+  detail: 'The standard tax code "99" is not an active tax code in the books.',
+  attempts: 1,
+  firstSeenAt: STAMP,
+  lastTriedAt: STAMP,
+  postedAt: null,
+  postedVoucher: null,
+  ...change,
+});
 
 /**
  * A fake of the accounting API over the stubbed fetch: the reads answer the
@@ -208,6 +263,11 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
       invoicesAvailable: true,
       openInvoices: [],
     },
+    rules: [
+      rule(),
+      rule({ id: 1002, name: "Timer", match: "line_kind", lineKind: "hours", taxCode: null, version: 2 }),
+    ],
+    unposted: [],
     ...change,
   };
   return stubFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -263,7 +323,50 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
             sha256: "0".repeat(64),
             uploadedAt: STAMP,
           });
-    if (method === "GET" && path.startsWith("/reports/")) return jsonResponse(200, report());
+    if (method === "GET" && path.startsWith("/reports/")) return jsonResponse(200, state.report ?? report());
+    if (method === "GET" && path === "/posting-rules") return jsonResponse(200, { items: state.rules });
+    if (method === "POST" && path === "/posting-rules")
+      return jsonResponse(201, rule({ id: 1003, ...JSON.parse(String(init?.body)) }));
+    const ruleId = /^\/posting-rules\/(\d+)$/.exec(path);
+    if (method === "PUT" && ruleId) return jsonResponse(200, rule({ id: Number(ruleId[1]), version: 2 }));
+    if (method === "DELETE" && ruleId) return new Response(null, { status: 204 });
+    if (method === "GET" && path === "/unposted")
+      return jsonResponse(200, { items: state.unposted, total: state.unposted.length });
+    const retried = /^\/unposted\/(\d+)\/retry$/.exec(path);
+    if (method === "POST" && retried)
+      return jsonResponse(
+        200,
+        unposted({
+          id: Number(retried[1]),
+          postedAt: STAMP,
+          postedVoucher: { id: 5009, display: "2026-000019" },
+          attempts: 2,
+        }),
+      );
+    if (method === "GET" && path === "/catch-up")
+      return jsonResponse(200, {
+        unposted: state.unposted.length,
+        streams: [
+          {
+            stream: "invoices.documents",
+            position: 101,
+            behind: 0,
+            behindMore: false,
+            lastRunAt: STAMP,
+            requestedAt: null,
+            lastError: null,
+          },
+          {
+            stream: "invoices.facts",
+            position: 42,
+            behind: 3,
+            behindMore: false,
+            lastRunAt: STAMP,
+            requestedAt: null,
+            lastError: null,
+          },
+        ],
+      });
     return new Response(null, { status: 404 });
   });
 };

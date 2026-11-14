@@ -113,6 +113,10 @@ export const refusalCodes = [
   "books_start_too_early",
   "account_kind_mismatch",
   "reverse_charge_gross",
+  "posting_rule_name_taken",
+  "posting_rule_match_taken",
+  "posting_rule_default",
+  "unposted_already_posted",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 

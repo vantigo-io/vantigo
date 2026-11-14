@@ -43,6 +43,11 @@ type SalesJournal interface {
 	// Documents is up to limit issued invoices and credit notes numbered
 	// after afterNumber, in number order (0 reads from the first).
 	Documents(ctx context.Context, afterNumber int64, limit int) ([]JournalDocument, error)
+	// Document is the issued invoice or credit note with that id, as
+	// Documents answers it, read by its key: nil, with no error, when there
+	// is none or it is a draft. A ledger reads a written-off invoice's VAT
+	// summaries through it, and a fact it retries.
+	Document(ctx context.Context, id int64) (*JournalDocument, error)
 	// Facts is up to limit facts with a seq after afterSeq, in seq order (0
 	// reads from the first).
 	Facts(ctx context.Context, afterSeq int64, limit int) ([]JournalFact, error)
@@ -136,14 +141,49 @@ type JournalVATSummary struct {
 	BaseNOK, VATNOK             string
 }
 
-// The kinds of JournalFact.Kind. Later kinds (a write-off and its undoing)
-// are added to the end; a reader leaves a kind it does not know unposted.
+// The kinds of JournalFact.Kind. Later kinds are added to the end; a reader
+// leaves a kind it does not know unposted.
 const (
 	FactPayment              = "payment"
 	FactPaymentRemoved       = "payment_removed"
 	FactChargePayment        = "charge_payment"
 	FactChargePaymentRemoved = "charge_payment_removed"
+	// FactWriteOff is an invoice's open amount given up (accounting design
+	// A16, R4), FactWriteOffUndone its undoing; both carry WriteOff.
+	FactWriteOff       = "write_off"
+	FactWriteOffUndone = "write_off_undone"
+	// FactRecoveredPayment is money that arrived after a write-off: not a
+	// payment of the open amount, which the write-off closed, but a
+	// recovery of what was written off. It and its removal carry the
+	// write-off it recovers in WriteOff.
+	FactRecoveredPayment        = "recovered_payment"
+	FactRecoveredPaymentRemoved = "recovered_payment_removed"
 )
+
+// The reasons of JournalWriteOff.Reason.
+const (
+	// WriteOffLoss is a loss that is konstatert; only it may carry the VAT
+	// correction of mval. § 4-7.
+	WriteOffLoss = "loss"
+	// WriteOffRounding is a small difference, which a ledger posts to its
+	// rounding account.
+	WriteOffRounding = "rounding"
+	WriteOffOther    = "other"
+)
+
+// JournalWriteOff is the write-off a fact is about, or the one a recovered
+// payment recovers.
+type JournalWriteOff struct {
+	ID int64
+	// Reason is one of the WriteOff constants.
+	Reason string
+	// VATCorrection is whether the loss takes its VAT back: the write-off's
+	// amount is then shared over the invoice's VAT summaries in proportion
+	// (read them with Document).
+	VATCorrection bool
+	// AmountNOK is the open amount the write-off closed, in NOK.
+	AmountNOK string
+}
 
 // The sources of JournalFact.Source, as Invoices stores them. A bank_feed
 // payment came from a line the bank feed read, matched by the feed with no
@@ -158,7 +198,7 @@ const (
 )
 
 // JournalFact is one registration or removal of a payment of an invoice's
-// principal or of its charges.
+// principal or of its charges, or one write-off made or undone.
 type JournalFact struct {
 	Seq int64
 	// Kind is one of the Fact constants.
@@ -184,6 +224,10 @@ type JournalFact struct {
 	// file or the bank feed named, when the payment came from a bank line
 	// (ocr, camt054 or bank_feed); "" otherwise.
 	BankAccount string
+	// WriteOff is, on a write-off's fact, that write-off, and on a recovered
+	// payment's, the write-off it recovers; nil on every other kind. A
+	// write-off's AmountNOK is its amount, its Source manual.
+	WriteOff *JournalWriteOff
 }
 
 // OpenPage is one page of OpenAt: the invoices open at its day, and the

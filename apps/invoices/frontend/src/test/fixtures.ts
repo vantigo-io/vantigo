@@ -539,6 +539,7 @@ export const partlyPaid = (overrides: Partial<InvoiceDocument> = {}): InvoiceDoc
   payments: [
     {
       id: 1001,
+      kind: "payment",
       paidOn: "2026-09-05",
       amount: 20,
       currency: "NOK",
@@ -553,6 +554,7 @@ export const partlyPaid = (overrides: Partial<InvoiceDocument> = {}): InvoiceDoc
     },
     {
       id: 1002,
+      kind: "payment",
       paidOn: "2026-09-10",
       amount: 50,
       currency: "NOK",

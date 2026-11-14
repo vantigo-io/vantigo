@@ -43,9 +43,24 @@ type AccountingAttachment struct {
 	UploadedByUserID uuid.UUID
 }
 
+type AccountingCatchupRequest struct {
+	Stream      string
+	RequestedAt time.Time
+}
+
 type AccountingCounter struct {
 	CounterName string
 	NextValue   int64
+}
+
+type AccountingCursor struct {
+	Stream     string
+	Position   int64
+	LeaseID    *uuid.UUID
+	LeaseUntil *time.Time
+	LastRunAt  *time.Time
+	LastError  *string
+	UpdatedAt  time.Time
 }
 
 type AccountingLockEvent struct {
@@ -73,22 +88,39 @@ type AccountingOpenItem struct {
 }
 
 type AccountingPosting struct {
-	ID             int64
-	VoucherID      int64
-	LineNo         int32
-	AccountID      int32
-	Amount         pgtype.Numeric
-	Currency       *string
-	CurrencyAmount pgtype.Numeric
-	ExchangeRate   pgtype.Numeric
-	TaxCodeID      *int32
-	TaxRole        *string
-	TaxBase        pgtype.Numeric
-	CustomerID     *int32
-	SupplierID     *int64
-	OpenItemID     *int64
-	ProjectID      *int32
-	Description    string
+	ID               int64
+	VoucherID        int64
+	LineNo           int32
+	AccountID        int32
+	Amount           pgtype.Numeric
+	Currency         *string
+	CurrencyAmount   pgtype.Numeric
+	ExchangeRate     pgtype.Numeric
+	TaxCodeID        *int32
+	TaxRole          *string
+	TaxBase          pgtype.Numeric
+	CustomerID       *int32
+	SupplierID       *int64
+	OpenItemID       *int64
+	ProjectID        *int32
+	Description      string
+	TaxSpecification *string
+}
+
+type AccountingPostingRule struct {
+	ID                int32
+	Name              string
+	Scope             string
+	Match             string
+	LineKind          *string
+	TaxCategoryID     *int32
+	ExpenseCategoryID *int32
+	TaxCode           *string
+	AccountID         int32
+	Version           int32
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	Revision          int32
 }
 
 type AccountingSetting struct {
@@ -128,6 +160,28 @@ type AccountingTaxCodeRate struct {
 	CreatedAt   time.Time
 }
 
+type AccountingUnposted struct {
+	ID              int64
+	Stream          string
+	Position        int64
+	SourceModule    string
+	SourceKind      string
+	SourceID        int64
+	SourcePart      string
+	FactDate        *time.Time
+	DocumentID      *int64
+	DocumentNumber  *string
+	CustomerID      *int32
+	Amount          pgtype.Numeric
+	Reason          string
+	Detail          string
+	Attempts        int32
+	FirstSeenAt     time.Time
+	LastTriedAt     time.Time
+	PostedVoucherID *int64
+	PostedAt        *time.Time
+}
+
 type AccountingVoucher struct {
 	ID                int64
 	FiscalYear        int32
@@ -146,4 +200,5 @@ type AccountingVoucher struct {
 	ReversalReason    *string
 	PostedAt          time.Time
 	PostedByUserID    *uuid.UUID
+	SourceDocumentID  *int64
 }

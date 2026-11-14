@@ -413,7 +413,7 @@ func (s *server) PostInvoicesByIdChargePayments(ctx context.Context, req gen.Pos
 		return nil, err
 	}
 	// The payment's own fields and rules (D2).
-	payment, errs, err := parsePayment(gen.InvoicesPaymentRequest(*req.Body), inv.IssueDate.Time, holidays.DayIn(s.deps.Clock(), loc))
+	payment, errs, err := parsePayment(gen.InvoicesPaymentRequest{Amount: req.Body.Amount, Note: req.Body.Note, PaidOn: req.Body.PaidOn, Reference: req.Body.Reference}, inv.IssueDate.Time, holidays.DayIn(s.deps.Clock(), loc))
 	if err != nil {
 		return nil, err
 	}

@@ -20,8 +20,8 @@ import (
 
 // This file is the module's contracts.SalesJournal (accounting design A12,
 // R1): its issued documents in number order with their lines and VAT
-// summaries, the fact log (invoices.journal_facts, migration 00180) in seq
-// order, and the invoices open at a day.
+// summaries, one by its id, the fact log (invoices.journal_facts, migrations
+// 00180 and 00182) in seq order, and the invoices open at a day.
 //
 // It serves from this module's own tables and nothing else, on the pool, and
 // holds no lock, as salesTax does; OpenAt alone opens a transaction, read-only
@@ -101,6 +101,29 @@ func (j *salesJournal) Documents(ctx context.Context, afterNumber int64, limit i
 	if err != nil {
 		return nil, fmt.Errorf("invoices: read the journal's documents: %w", err)
 	}
+	return j.documents(ctx, rows)
+}
+
+// Document is the issued document with that id, nil when there is none.
+func (j *salesJournal) Document(ctx context.Context, id int64) (*contracts.JournalDocument, error) {
+	rows, err := j.q.JournalDocumentByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the journal's document %d: %w", id, err)
+	}
+	docs := make([]store.JournalDocumentsRow, 0, len(rows))
+	for _, r := range rows {
+		docs = append(docs, store.JournalDocumentsRow(r))
+	}
+	out, err := j.documents(ctx, docs)
+	if err != nil || len(out) == 0 {
+		return nil, err
+	}
+	return &out[0], nil
+}
+
+// documents is rows with their lines and VAT summaries, as the contract
+// answers them.
+func (j *salesJournal) documents(ctx context.Context, rows []store.JournalDocumentsRow) ([]contracts.JournalDocument, error) {
 	if len(rows) == 0 {
 		return []contracts.JournalDocument{}, nil
 	}
@@ -229,6 +252,14 @@ func (j *salesJournal) Facts(ctx context.Context, afterSeq int64, limit int) ([]
 			f.Date = r.BusinessDate.Time
 		case r.RemovedAt != nil:
 			f.Date = holidays.DayIn(*r.RemovedAt, loc)
+		}
+		if r.WriteOffID != nil {
+			written, err := nok(r.WriteOffAmount, r.ExchangeRate)
+			if err != nil {
+				return nil, err
+			}
+			f.WriteOff = &contracts.JournalWriteOff{ID: *r.WriteOffID, Reason: deref(r.WriteOffReason),
+				VATCorrection: r.WriteOffVatCorrection != nil && *r.WriteOffVatCorrection, AmountNOK: written}
 		}
 		facts = append(facts, f)
 	}

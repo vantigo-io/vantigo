@@ -78,7 +78,7 @@ func (q *Queries) GetAttachment(ctx context.Context, arg GetAttachmentParams) (A
 }
 
 const getVoucher = `-- name: GetVoucher :one
-SELECT v.id, v.fiscal_year, v.number, v.voucher_date, v.document_date, v.description, v.kind, v.source_module, v.source_kind, v.source_id, v.source_part, v.rule, v.rule_version, v.reverses_voucher_id, v.reversal_reason, v.posted_at, v.posted_by_user_id, r.id AS reversed_by_id,
+SELECT v.id, v.fiscal_year, v.number, v.voucher_date, v.document_date, v.description, v.kind, v.source_module, v.source_kind, v.source_id, v.source_part, v.rule, v.rule_version, v.reverses_voucher_id, v.reversal_reason, v.posted_at, v.posted_by_user_id, v.source_document_id, r.id AS reversed_by_id,
     coalesce((SELECT sum(p.amount) FILTER (WHERE p.amount > 0) FROM accounting.postings p WHERE p.voucher_id = v.id), 0)::text AS debit
 FROM accounting.vouchers v
 LEFT JOIN accounting.vouchers r ON r.reverses_voucher_id = v.id
@@ -103,6 +103,7 @@ type GetVoucherRow struct {
 	ReversalReason    *string
 	PostedAt          time.Time
 	PostedByUserID    *uuid.UUID
+	SourceDocumentID  *int64
 	ReversedByID      *int64
 	Debit             string
 }
@@ -128,6 +129,7 @@ func (q *Queries) GetVoucher(ctx context.Context, id int64) (GetVoucherRow, erro
 		&i.ReversalReason,
 		&i.PostedAt,
 		&i.PostedByUserID,
+		&i.SourceDocumentID,
 		&i.ReversedByID,
 		&i.Debit,
 	)
