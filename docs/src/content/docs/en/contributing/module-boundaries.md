@@ -1305,7 +1305,12 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     on `manufacturing.order.done` likewise only marks the line in its own schema: the
     reserve stays the person's **Reserve now** (M48a). `manufacturing.mto-cancelled` on
     `orders.sales_order.cancelled` sets a flag on Manufacturing's own orders and nothing
-    else.
+    else. Accounting's three catch-up handlers on Invoices' `invoices.document.issued`,
+    `invoices.payment.received` and `invoices.payment.removed` (accounting design R7)
+    each upsert a wake-up in `accounting.catchup_requests` and nothing else; the worker
+    `accounting.catchup` claims a stream's lease, reads `contracts.SalesJournal` — its
+    `Documents`, `Facts` and `Document` — with no transaction open, and posts each fact
+    in its own transaction.
 24. **Inventory reserves and issues on the caller's transaction.** The thirteenth
     sanctioned cross-module direction, a module → Inventory, made for an order that
     must refuse to promise stock it cannot have (orders design O45):
