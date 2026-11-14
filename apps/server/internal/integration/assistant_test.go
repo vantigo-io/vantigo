@@ -242,6 +242,13 @@ var markedByHand = map[string]string{
 	// The preview only reads: it computes a journal's tax lines and writes
 	// nothing (A6).
 	"previewAccountingVoucher": "auto",
+	// A supplier invoice's file is the invoice as received, a person's to
+	// upload, fetch and remove (A18); a supplier's export answers a person's
+	// access request and carries their data (A17).
+	"uploadAccountingSupplierInvoiceFile": "never",
+	"getAccountingSupplierInvoiceFile":    "never",
+	"deleteAccountingSupplierInvoiceFile": "never",
+	"exportAccountingSupplier":            "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
@@ -353,10 +360,12 @@ func TestOperations_TheRealContract(t *testing.T) {
 	}
 
 	// Accounting's writes of consequence are asked before they are made: a
-	// manual journal, a reversal, the opening and the lock (the last two under
+	// manual journal, a reversal, a settlement, a supplier invoice posted,
+	// reversed and copied, paid or its payment removed, the opening and the lock (the last two under
 	// accounting:close, which no agent level can raise, reference/agents.md).
 	for _, id := range []string{"postAccountingVoucher", "reverseAccountingVoucher", "postAccountingOpening", "putAccountingLock",
-		"settleAccountingOpenItem"} {
+		"settleAccountingOpenItem", "postAccountingSupplierInvoice", "reverseAndCopyAccountingSupplierInvoice",
+		"payAccountingSupplierInvoice", "removeAccountingSupplierPayment"} {
 		if got, _ := ops.Effective(context.Background(), id); got != operations.ModeConfirm {
 			t.Errorf("%s: the default gate's mode %q, want confirm", id, got)
 		}
