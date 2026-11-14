@@ -1,6 +1,8 @@
-// The VAT return oracle's validator: Skatteetaten's skattemeldingformerverdiavgift
-// v1.0 XSD over each file named on the command line, with the JDK's own
-// javax.xml.validation and nothing else. tools/mva/validate.sh runs it as
+// The VAT return oracle's validator, shared with the SAF-T oracle: an XSD —
+// Skatteetaten's skattemeldingformerverdiavgift v1.0, or SAF-T Financial 1.30
+// and 1.40 — over each file named on the command line, with the JDK's own
+// javax.xml.validation and nothing else. tools/mva/validate.sh and
+// tools/saft/validate.sh run it as
 //
 //   java Validate.java --xsd <the XSD> <xml>...
 //
