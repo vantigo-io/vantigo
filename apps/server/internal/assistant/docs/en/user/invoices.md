@@ -1215,7 +1215,8 @@ only counted, never kept.
 
 - **Fetch now**, beside **Import** on **Payments** (and on the Bank page, for someone with
   `invoices:payments`), asks for every account at once; the payments arrive within a
-  minute. Under the buttons each account the feed reads shows its status and when it was
+  minute. An account read in the last two minutes is not asked again, and one the bank
+  asked to wait is asked when the bank allows. Under the buttons each account the feed reads shows its status and when it was
   last read.
 - Each fetch that brought new payments is listed among the files as **Bank feed · Folio**,
   with its counts, and opens like a file. A payment the bank shows again on a later fetch is
@@ -1225,15 +1226,23 @@ only counted, never kept.
   queue is registered by you.
 - A payment without a KID waits in the queue as **No KID**, with the suggestions, for one
   click to apply it.
-- **The bank sending a payment back** is a payment out, which the feed does not keep: the
-  payment stays registered until someone removes it with a reason.
+- **The bank sending a payment back**: the bank marks no reversals, so money returned
+  arrives as a payment out, which the feed does not keep. The payment stays registered
+  until someone removes it with a reason.
+- A payment that cannot be matched at all — its KID names an invoice in another currency,
+  say — waits in its batch; the rest are still matched, and the account's row on the Bank
+  page says which payment it is.
 
 When the bank refuses the key, cannot be reached three times in a row, or answers a fetch
 Vantigo cannot take, the account's status says so on the Bank page, and the dashboard's
 **Needs attention** list tells everyone with `invoices:manage` — *The bank refused its API
 key*, *The bank feed cannot read the account ending …* or *The bank feed refused a batch
 for the account ending …* — leading to the Bank page. Nothing is registered from a refused
-fetch.
+fetch, and **a refused account reads nothing meanwhile**: the same answer is refused at
+every read. The way out, for someone with `invoices:manage` on the Bank page, is to switch
+the account off and then either switch it on again with a **Start day** after the
+transaction the page names — register that payment by hand if it was one — or go back to
+importing the account's bank files (**Change the format** under **Payments**).
 
 **A genuine second payment that looks like a repeat.** A payment is held back as **A
 possible duplicate**, and not registered, when a payment from **another file** to the
@@ -1418,8 +1427,10 @@ invoices whose fee or interest is still owed. More than 5 000 overdue invoices m
 narrowed by customer or due date.
 
 Above the list stands the bank data's freshness: *Bank data booked up to …*, or **The
-bank data is old** when the latest booking imported is older than the reminder settings'
-stale limit — and always when no bank file was ever imported. Letters judged on old bank
+bank data is old** when the latest booking imported — or the last day the bank feed read
+an account through — is older than the reminder settings' stale limit, always when there
+is neither, and whenever an account the bank feed reads is **Refused**, **Failing** or
+**Key refused**, since its payments may be missing. Letters judged on old bank
 data may claim charges on invoices already paid. When an account is imported as OCR giro,
 a note says payments without a KID never reach such a file: **register the payments
 without a KID by hand first, then make the run**.
