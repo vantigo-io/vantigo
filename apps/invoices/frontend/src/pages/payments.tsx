@@ -42,7 +42,7 @@ import { invoicesMetaQueryOptions } from "../api/meta";
 import { ApiValidationError, INVOICES_QUERY_KEY } from "../api/request";
 import { BankFileLink, BankTransactionTable } from "../components/bank-transaction-table";
 import "../i18n";
-import { accountNumber, useWhoOrFeed } from "../lib/bank";
+import { accountNumber, feedFormatLabel, formatLabel, useWhoOrFeed } from "../lib/bank";
 import { fieldRefusals, refusalCode, refusalMessage, refusalProblem } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { PaymentsTabs } from "./vipps-payments";
@@ -420,20 +420,6 @@ export const ImportResultCard = ({
     </PageSection>
   );
 };
-
-/** A line format in words: the two of files, and feed — the bank feed's, which only its switch sets. */
-const formatLabel = (t: (key: string) => string, format: string): string =>
-  [...BANK_FORMATS, "feed"].includes(format) ? t(`bank.format.${format}`) : format;
-
-/** A file's format in words, a feed batch with its bank: "Bank feed · Folio" (F9). */
-export const feedFormatLabel = (
-  t: (key: string, options?: Record<string, unknown>) => string,
-  format: string,
-  provider: string | undefined,
-): string =>
-  format === "feed" && provider
-    ? t("bank.format.feedProvider", { provider: t(`bankFeed.provider.${provider}`) })
-    : formatLabel(t, format);
 
 const AccountsCard = ({ canManage }: { canManage: boolean }) => {
   const { t, date, dateTime } = useInvoiceFormat();

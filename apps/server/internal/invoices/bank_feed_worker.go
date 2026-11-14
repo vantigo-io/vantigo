@@ -164,8 +164,7 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 	case errors.Is(syncErr, bankfeed.ErrUnauthorized):
 		w.logger().WarnContext(ctx, "invoices: the bank refused the stored API key; the bank feed stops until a new key is stored",
 			"worker", bankFeedWorkerName, "account", account)
-		n, err = q.ReleaseBankFeedClaim(ctx, store.ReleaseBankFeedClaimParams{Now: c.now, Account: account, LeaseID: c.lease})
-		if err != nil {
+		if _, err := q.ReleaseBankFeedClaim(ctx, store.ReleaseBankFeedClaimParams{Now: c.now, Account: account, LeaseID: c.lease}); err != nil {
 			return fmt.Errorf("invoices: end the bank feed claim on %s: %w", account, err)
 		}
 		return nil

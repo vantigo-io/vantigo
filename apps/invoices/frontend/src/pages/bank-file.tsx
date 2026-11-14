@@ -7,11 +7,11 @@ import { bankFileQueryOptions } from "../api/bank";
 import { invoicesMetaQueryOptions } from "../api/meta";
 import { BankTransactionTable } from "../components/bank-transaction-table";
 import "../i18n";
-import { accountNumber, useWho } from "../lib/bank";
+import { accountNumber, feedFormatLabel, useWho } from "../lib/bank";
 import { refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
 import { PAYMENTS_ROUTE_PATH } from "../lib/routes";
-import { feedFormatLabel, ImportResultCard } from "./payments";
+import { ImportResultCard } from "./payments";
 
 export interface BankFilePageProps {
   bankFileId: number;
