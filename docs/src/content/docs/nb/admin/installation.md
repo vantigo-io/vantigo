@@ -293,8 +293,9 @@ kundemodulens importjobb `customers-import`, energimodulens importjobb `energy-i
 `INVOICES_EHF_ENABLED` er på, fakturamodulens purrejobb `invoices-reminders`, alltid,
 fakturamodulens faktureringsjobb `invoices-billing`, alltid, fakturamodulens avstemming av
 ordreallokeringer `invoices.allocation_reconcile`, alltid,
-fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på, og
-kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
+fakturamodulens betalingsjobb `invoices-payments` når `INVOICES_VIPPS_ENABLED` er på,
+fakturamodulens bankintegrasjonsjobb `invoices-bank-feed` med mindre
+`INVOICES_BANK_FEED_ENABLED=0`, og kalendermodulens avlysningsjobb `calendar-cancellations` med mindre
 `CALENDAR_CANCELLATIONS_ENABLED=0`, kalendermodulens abonnementsjobb
 `calendar-subscriptions` med mindre `CALENDAR_SUBSCRIPTIONS_ENABLED=0`, og kalendermodulens
 postbokssynkronisering `calendar-mailbox-sync` med mindre `CALENDAR_MAILBOX_SYNC_ENABLED=0`,
@@ -334,7 +335,7 @@ Replikaer som verken skal migrere eller kjøre bakgrunnsjobber kan kjøre komman
 Uansett topologi tar oppbevaringsoppryddingen, registerjobbene, EHF-hendelsesjobben,
 kalenderens avlysningsjobb, `entra-outlook-sweep` og `assistant-retention` en rådgivende lås (advisory lock) i PostgreSQL, så hver av dem kjører på nøyaktig én
 instans per syklus; utboksen, `invoices-ehf`-jobben, `invoices-reminders`-jobben,
-`invoices-billing`-jobben, `invoices-payments`-jobben, `communications-mailbox-sync`,
+`invoices-billing`-jobben, `invoices-payments`-jobben, `invoices-bank-feed`-jobben, `communications-mailbox-sync`,
 `communications-messenger-sync`, kalenderens abonnements- og postboksjobb og `events.dispatch` tar i stedet én rad om gangen under en tidsbegrenset lås, så
 et hvilket som helst antall instanser deler arbeidet uten å sende noe to ganger.
 `meta-split` tar de lagrede hendelsene under en lease og `meta-retention` sletter i grupper,
@@ -740,9 +741,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   Peppol-oppslagets; å sette opp sending som EHF — Storecove-kontoen, påloggingsdataene
   og KID-avtalen — er en egen prosedyre ([E-faktura](/nb/admin/e-invoicing/)).
 - `vantigo.env.example` dokumenterer også, kommentert ut, innstillingene for
-  bankintegrasjonen, `INVOICES_BANK_FEED_ENABLED` (standard av så lenge integrasjonen ikke leser betalinger) og `INVOICES_FOLIO_BASE_URL`
-  (standard `https://api.folio.no/v2`, bare https). Når et arbeidsområde har lagret en
-  Folio-nøkkel, kaller serveren den verten over utgående HTTPS — slipp den gjennom et
+  bankintegrasjonen, `INVOICES_BANK_FEED_ENABLED` (standard på), `INVOICES_FOLIO_BASE_URL`
+  (standard `https://api.folio.no/v2`, bare https) og `INVOICES_BANK_FEED_INTERVAL`
+  (standard `30m`, `5m` til `24h`). Når et arbeidsområde har lagret en Folio-nøkkel, kaller
+  serveren — `invoices-bank-feed`-jobben hvert intervall, og Bank-siden — den verten over
+  utgående HTTPS — slipp den gjennom et
   eventuelt utgående filter; den trenger ingen offentlig vert, fordi Folio ikke sender noe
   inn ([Bankintegrasjonen](/nb/admin/payments/#bankintegrasjonen)).
 - `vantigo.env.example` dokumenterer også, kommentert ut, innstillingene for betaling av

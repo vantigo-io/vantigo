@@ -1624,6 +1624,20 @@ gjennomfakturering, strømstøtte and Norgespris, eFaktura and AvtaleGiro.
 
 *Unblocks:* the energy business's core revenue.
 
+**The bank feed is done.** An account's incoming payments are read from the bank's API
+instead of a file — Folio first, behind the platform's `bankfeed` port: the connection and
+its API key under Workspace admin › Integrations › Bank, the accounts switched on from a
+start day with the cutover from files, the `invoices-bank-feed` worker reading each one
+every 30 minutes (Fetch now at once), the batch refused whole or stored as its incoming
+credit transfers, matched on the KID and registered by no user, and the accounts that need
+a manager on the dashboard. See
+[`docs/src/content/docs/en/reference/invoices.md`](docs/src/content/docs/en/reference/invoices.md#the-bank-feeds-sync),
+the [design](docs/superpowers/specs/2026-11-13-bank-feed-folio-design.md) and the
+[plan](docs/superpowers/plans/2026-11-14-bank-feed-folio-plan.md). Left for later (design,
+*Later*): a second adapter — an aggregator such as Aritma rather than another bank —
+company cards and reimbursements paid from the bank in Expenses, and supplier invoices
+paid with KID in Purchasing.
+
 ### Later
 
 Recurring invoices and retainers (a subscription may be invoiced up to a year ahead) ·
@@ -1633,14 +1647,14 @@ knows no such fact yet, and the issue still accepts a complete address instead) 
 utlegg outside the VAT base (merverdiavgiftsloven § 4-1 (2) a; phase 3 bills every
 re-billed cost as a sale) · several EHF attachments — a separate timesheet file,
 forwarded receipts · construction's § 8-1-2a progress invoicing and retention money ·
-eFaktura and AvtaleGiro for consumers · a customer portal · a bank API for payments ·
+eFaktura and AvtaleGiro for consumers · a customer portal ·
 several legal entities per tenant, each with its own series · a posting export in
 SAF-T-friendly form to Tripletex, Fiken or PowerOffice.
 
 Left out of phase 4 on purpose (design D20): customer credit balances, refunds as a flow
 (and the payments port's `Refund` used by Invoices), setting an overpayment off against
 the next invoice, rounding off small differences · an export of payments or charges for
-the accountant · bank APIs and direct file delivery · camt.053 and the reconciliation of
+the accountant · direct file delivery · camt.053 and the reconciliation of
 movements that are not customers' payments · the Vipps Report API and settlement
 reconciliation · MobilePay markets, other providers, cards, push messages, long-living
 payments · the creditor's own betalingsoppfordring (inkassoloven § 10) · the § 19

@@ -143,7 +143,7 @@ registration in the day's CSV — it is told in the business time zone too.
 | `invoices.line_releases` | A credit note's release of an original line's source: the credit note, its line and the source, a source released once. Frozen with the credit note at its issue. |
 | `invoices.timesheet_rows` | The timesheet as printed, a snapshot: the position, the time entry, the person's label, the date, the hours, the work type and the description — never the entry's note. Written whole while the document's `timesheet` flag is on, pruned by every save to the hours the draft still holds ([The timesheet](#the-timesheet)); frozen with its document at issue, deleted with a deleted draft. |
 | `invoices.vat_summaries` | An issued document's VAT per (category, rate) with its SAF-T code and reason. |
-| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), `source` (`manual`, `ocr`, `camt054` or `vipps`) and the bank line of one a match took from a bank file, or the payment attempt (`payment_attempt_id`) of a Vipps capture (`ck_payments_origin`: a line exactly when the source is not `manual`, and a registering user either way), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
+| `invoices.payments` | Money received against an issued invoice: the day it arrived, the amount and the currency (the invoice's, copied), `source` (`manual`, `ocr`, `camt054`, `vipps` or `bank_feed`) and the bank line of one a match took from a bank file or a bank feed batch, or the payment attempt (`payment_attempt_id`) of a Vipps capture (`ck_payments_origin`: a line exactly when the source is not `manual`, and a registering user either way), the bank's or the payer's reference, a note (`''` once the customer is anonymised, and on every registration made after), who registered it and when, and — once removed — when, by whom and why. Never deleted; never changed but by the removal, once, and that blanking. |
 | `invoices.bank_import_accounts` | One row per receiving account a bank file was imported for: the `format` its files come in (`ocr` or `camt054`), set by its first import, and — once a manager changed it — the `previous_format` with `cutover_through`, the latest booking day of the account's own lines in it; who set it and when. Never deleted; an update changes only those columns ([Bank files](#bank-files-and-the-exception-queue)). |
 | `invoices.bank_files` | One imported bank file: its format, the SHA-256 of its bytes and its own identity (each unique), the object key it is stored under, its size, the accounts it names, the first and last booking day of its lines, how many transactions it brought, how many of them were `duplicates` (set once by the import, from `NULL`), how many lines were `ignored` and `ignored_kinds` by kind, who uploaded it and when. Never deleted or changed but by that one write. |
 | `invoices.bank_transactions` | One line of a bank file as the bank wrote it — the line reference, the format, the receiving account, the direction, `negative`, the booking, value and ordering days, the amount (above 0, NOK), the KID, the remittance text, the debtor's name and account, the archive reference, the bank's code — its `fingerprint` and `ordinal`, `duplicate_of_id` when it repeats a live line, and its state: `status` (`pending`, `matched`, `exception`, `resolved` or `duplicate`), the `reason` it was queued for, the suggested invoice and the resolution. One live line per account and fingerprint (`ux_bank_transactions_fingerprint`). Never deleted; only the state columns change, never back to `pending`, and a reason once set stays. |
@@ -3245,18 +3245,18 @@ unless matching stopped early. `GET /meta` answers `capabilities.canImportBankFi
 
 The bank feed reads an account's incoming payments from the bank's API instead of a file
 ([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-13-bank-feed-folio-design.md),
-F3, F4, F8, F10; [plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-14-bank-feed-folio-plan.md)).
+F3–F10; [plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-14-bank-feed-folio-plan.md)).
 Folio is the one bank, behind the platform's port ([the bank feed
 port](/en/contributing/platform-packages/#the-bank-feed-port)). This part is the
-connection and the accounts; the sync that reads them is not built yet, so no feed batch,
-no feed line and no `bank_feed` payment exists yet.
+connection and the accounts; [the sync](#the-bank-feeds-sync) reads them.
 
-**The instance switch.** `INVOICES_BANK_FEED_ENABLED` (default off while the sync is not
-built, since a switched-on account takes no more files and nothing reads it) and
-`INVOICES_FOLIO_BASE_URL` (default `https://api.folio.no/v2`, `https` only — refused at
-load otherwise) are the operator's. With the switch off no Folio client is made and
-nothing is sent to the bank: a connection PUT, the accounts list and a switch on answer
-409 **`bank_feed_disabled`**; the GET says `enabledOnInstance: false` and what is stored
+**The instance switch.** `INVOICES_BANK_FEED_ENABLED` (default on), `INVOICES_FOLIO_BASE_URL`
+(default `https://api.folio.no/v2`, `https` only — refused at load otherwise) and
+`INVOICES_BANK_FEED_INTERVAL` (default 30 minutes, 5 minutes to 24 hours both included —
+refused at load otherwise) are the operator's. With the switch off no Folio client is made,
+the `invoices-bank-feed` worker is not handed to the runner, and nothing is sent to the
+bank: a connection PUT, the accounts list, a switch on and Fetch now answer 409
+**`bank_feed_disabled`**; the GET says `enabledOnInstance: false` and what is stored
 stays.
 
 **The connection** is one row, `invoices.bank_feed_connections` (`id = 1`), the
@@ -3288,8 +3288,9 @@ but its last four is ever answered, logged or put in an error.
   also when nothing is stored.
 
 A call to the bank that answers 401 or 403 marks the connection `unauthorized`, with
-`rejected_at`, against the version the key was opened from (its `updated_at`): a refusal
-of a key a later PUT replaced flags nothing. A stored key the secrets box cannot open is
+`rejected_at` (the first refusal's), and every enabled account `unauthorized` with no next
+sync and no lease, in one statement, against the version the key was opened from (its
+`updated_at`): a refusal of a key a later PUT replaced flags nothing. A stored key the secrets box cannot open is
 503 `bank_feed_unavailable`, logged at error. Every call is reported as
 `BankFeed.Verify`, `BankFeed.Accounts` or `BankFeed.Transactions` to the module's
 contract-call seam, and none is made while a transaction holds locks.
@@ -3333,8 +3334,9 @@ startDay?}`; `account` must be 11 digits with a valid check digit (400 on `accou
 **The rate limits.** Per client, under policies of their own: the connection PUT 10 per 10
 minutes (`invoices-bank-feed-key`), since each tries a key against the bank; the accounts
 list 60 per 10 minutes (`invoices-bank-feed-accounts`) and the switch 60 per 10 minutes
-(`invoices-bank-feed-switch`), each a call to the bank. Past one, 429 with
-`Retry-After`.
+(`invoices-bank-feed-switch`), each a call to the bank; Fetch now 30 per 10 minutes
+(`invoices-bank-feed-sync`), since each makes the worker read every account it names.
+Past one, 429 with `Retry-After`.
 
 200 answers the account `{account, enabled, startDay, status, reason?, detail?,
 lastSyncedAt?, lastBankFileId?, nextSyncAt?}`. While an account's format is `feed`, a
@@ -3342,8 +3344,9 @@ file uploaded for it is refused 409 `bank_import_format_mismatch`, the import's 
 
 **The lock order.** A switch takes the account's import row, then the connection; a
 format PUT the account's import row alone, reading the feed row under it; a connection
-PUT and the DELETE the connection, then the accounts. No path takes them the other way
-round.
+PUT and the DELETE the connection, then the accounts; a sync's import the account's import
+row `FOR SHARE`, then its feed row `FOR SHARE` under the claim's lease, then the file's
+rows. No path takes them the other way round.
 
 **The schema.** `invoices.bank_feed_accounts`: `account` (11 digits, the key), `enabled`,
 `start_day`, `status` (`ok`, `failing`, `refused`, `unauthorized`), `reason`, `detail`
@@ -3366,6 +3369,117 @@ feed batch, exists.
 `GET /meta` answers `capabilities.canManageBankFeed`, `invoices:manage`; the page is
 Workspace admin › Integrations › Bank in the host, `/workspace/bank`, for `invoices:access`
 and `invoices:manage` both.
+
+### The bank feed's sync
+
+A sync is an import without an upload (design F5, F6, F7; plan C2–C5). The
+**`invoices-bank-feed`** worker, handed to the runner while `INVOICES_BANK_FEED_ENABLED` is
+on, ticks once a minute and claims the accounts due one after another until none is:
+`ClaimBankFeedAccount`, one statement — `FOR NO KEY UPDATE SKIP LOCKED` over the enabled
+accounts whose `next_sync_at` has come and whose lease, if any, has run out, only while the
+connection's status is `ok` — sets a five-minute lease. The claim holds no connection while
+it works: the claim, the bank, the object store, the import's transaction and each line's
+match take and release one each, so a cycle runs on a pool of one connection. Every write
+that ends the claim names its lease and clears it; one that finds the lease gone writes
+nothing (the claim was lost — the account switched off, the key refused, or the lease ran
+out and another claim took it).
+
+**One cycle**, with the claim's one clock read, the bank called outside any transaction:
+
+1. **The account's format** is read first: anything but `feed` — a person moved it back to
+   files — refuses the batch `format_mismatch` without asking the bank.
+2. **The days.** `from` is the later of the start day and the account's latest feed booking
+   day less 10 days; `to` is today, the business day. The overlap is read again every time.
+3. **Refuse the whole batch**, storing nothing, on the first transaction that has an empty
+   id, an id over 60 characters or an amount over `numeric(14,2)`
+   (`transaction_unreadable`), an id the answer already carried (`duplicate_transaction`),
+   a booking day after today (`booked_in_future`), a currency other than `NOK`
+   (`currency_not_nok`) or a direction the adapter could not place (`direction_unknown` —
+   never read as a payment, nor passed over as one going out). `detail` names the bank's id
+   of the transaction, never a name or a text.
+4. **Keep** the transfers that are credits above zero, booked on or after the start day.
+   The rest are counted on the batch's `ignored_kinds` — `internal_transfer` (a transfer
+   between the customer's own accounts, whatever its direction), `card_information` (a card
+   transaction, or a kind the port does not name), `debit`, `zero_amount` — and stored
+   nowhere; one booked before the start day is left out uncounted.
+5. **Drop what is stored**: a kept transaction whose fingerprint a live line of the account
+   has, or whose id a feed line of the account has as its `line_ref` (the same transaction
+   booked on another day since), is the same record read again and gets no row. Nothing
+   left: no batch.
+6. **The document**: the kept transactions' bytes as the bank sent them, in its order, as
+   one JSON array; its SHA-256; stored under `bank-files/<sha256>.json` by `Exists`, then
+   `Put`, as an upload's file. Without an object store, or with one that fails, the cycle
+   fails.
+7. **The import's transaction**: the account's `bank_import_accounts` row read `FOR SHARE`
+   — never inserted: the switch on, a person, makes it (plan finding 10) — missing or in
+   another format is `format_mismatch`; its `bank_feed_accounts` row read `FOR SHARE` still
+   enabled under the claim's lease, else the claim is lost and the transaction rolls back;
+   then the file row — format `feed`, provider `folio`, no uploader, identity
+   `folio|<account>|<claim time, RFC 3339 UTC>` — the lines, their duplicate rows and the
+   duplicates count, the upload's own code.
+8. **Matching** after the commit, by no user, over every feed batch of the account with a
+   line still pending — this cycle's and any an earlier cycle stored and did not get to
+   match — so a process that stopped between the commit and the match registers nothing
+   twice and leaves nothing pending for good. Matching stopping early is not a failure.
+
+**A feed line** has `line_ref` the bank's transaction id; `archive_ref` the same id without
+its hyphens (32 hex digits: `archive_ref` is `varchar(35)`, plan finding 1); the account;
+the booking day; no value or ordering day; the amount; the KID trimmed — absent when it
+was longer than 25 characters, the camt.054 rule, so the line is queued `no_kid`; the
+remittance text cut to 1 000 characters and the debtor's name to 140, on character
+boundaries, every control character a space; the debtor's account, empty when longer than
+34; no bank code. The fingerprint is the files' own, unchanged; since it covers the archive
+reference it is unique per transaction, the ordinal is always 1, and two genuine payments
+of one day, amount and KID are two lines.
+
+**Matching by no user.** A payment or charge payment from a feed line has source
+**`bank_feed`** (`paymentSourceOf`: a line of format `feed` registers `bank_feed`, a file's
+line its format), its `bank_transaction_id` and no attempt. The sync registers it by **no
+user**, as it writes the line's `matched` and `queued` events and a `deadline_met` waiver;
+a person who applies a feed line from the exception queue, or calls
+`POST /bank-files/{id}/match` on a feed batch, registers it as themselves (plan finding 3).
+Classification, the cutover, the soft key, the lock order and the allocation are
+unchanged: a line of a feed account booked on or before its cutover from files, or with
+the day, amount and KID of a payment registered from another batch, is held back as
+`possible_duplicate`.
+
+**The outcome** ends the claim (F7):
+
+| What happened | The account | Next read |
+| --- | --- | --- |
+| success | `ok`, no reason, no detail, no failures, `last_synced_at` the claim's time, `last_bank_file_id` the batch when one was stored | after the interval |
+| the batch refused (steps 1 and 3) | `refused`, its `reason` and `detail`, no failures | after the interval |
+| 429 (`bankfeed.ErrRateLimited`) | status and failures as they were, the wait in `detail` | after `max(Retry-After, interval)` |
+| 401 or 403 (`bankfeed.ErrUnauthorized`) | the connection and every enabled account `unauthorized`, no next sync, no lease (see above) | none until a PUT stores a key, which makes them `ok` and due now; a refusal of a key replaced meanwhile only releases the claim, due now |
+| any other error — a transport error, a timeout, an answer that does not decode, the object store, the database | one more failure in a row, `failing` from the third, `detail` a sentence on what failed (never the bank's answer) | after the interval doubled once per failure (`interval << failures`), at most 6 hours |
+
+`updated_at` moves only when the status (or a refusal's reason) changes, and dates the
+attention item. A failure is logged at warn with the account and the adapter's error,
+which names the status and never the key; a refusal at warn with its reason.
+
+**Fetch now.** `POST /invoices/bank-feed/sync` (`invoices:access+invoices:payments`; the
+Assistant confirms it, the default for a write) takes `{account?}`: 400 on an `account`
+that is not 11 digits with a valid check digit; 409 `bank_feed_disabled` or
+`bank_feed_not_connected`; 404 for an account the feed is not switched on for. One
+statement makes the account, or every enabled one, due now where it was due later — never
+an `unauthorized` one, never the lease: a cycle in flight finishes, and is the fetch.
+202 answers `{accounts}`, the enabled accounts named as they now stand. It calls nothing
+itself; the worker reads within a minute.
+
+**Attention** (`GET /stats/attention`): for a caller holding `invoices:manage`, one item per
+enabled account whose status is `unauthorized`, `failing` or `refused` —
+**`bankFeedUnauthorized`**, **`bankFeedFailing`**, **`bankFeedRefused`** — id
+`<type>/<account>`, `entityId` the account, title its last four digits, `occurredAt` its
+`updated_at`. The host leads each to `/workspace/bank`.
+
+**On the wire** (`openapi/invoices.yaml`): `InvoicesBankFile` and a line's
+`InvoicesBankTransactionFile` carry `provider` for a feed batch, and `uploadedBy` is absent
+on one — as on the 409 `bank_file_duplicate` that names one; `InvoicesBankTransactionEvent.by`,
+`InvoicesChargePayment.registeredByUserId` and `InvoicesChargeWaiver.waivedBy` are absent
+where no person did it, as `InvoicesPayment.registeredByUserId` already was;
+`bank_feed` is in both `source` enums; `InvoicesBankIgnored` gains `internalTransfer`, 0 on
+a file and on a batch stored before it existed. The personal-data export carries a
+`bank_feed` payment with its source and its bank line, as any imported one.
 
 ### Matching
 
@@ -5307,7 +5421,7 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
   timesheet, issued or draft, carries `timesheet` — its rows as printed, each with its
   position, person label, date, hours, work type and description — since the customer
   received it, or would; never a time entry's note. Each payment carries its `source` —
-  `manual`, `ocr`, `camt054` or `vipps` — a Vipps payment its `paymentAttemptId`, the
+  `manual`, `ocr`, `camt054`, `vipps` or `bank_feed` — a Vipps payment its `paymentAttemptId`, the
   attempt it was captured by, and an imported one its `bankLine`: the booking day,
   the debtor's name and account and the remittance text, as the bank wrote them. An
   issued document carries its receivables (design D19): `chargePayments` (each with
