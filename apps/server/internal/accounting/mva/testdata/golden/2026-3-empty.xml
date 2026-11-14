@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mvaMeldingDto xmlns="no:skatteetaten:fastsetting:avgift:mva:skattemeldingformerverdiavgift:v1.0">
+    <innsending>
+        <regnskapssystemsreferanse>vantigo-2026-3-1</regnskapssystemsreferanse>
+        <regnskapssystem>
+            <systemnavn>Vantigo</systemnavn>
+            <systemversjon>dev</systemversjon>
+        </regnskapssystem>
+    </innsending>
+    <skattegrunnlagOgBeregnetSkatt>
+        <skattleggingsperiode>
+            <periode>
+                <skattleggingsperiodeToMaaneder>mai-juni</skattleggingsperiodeToMaaneder>
+            </periode>
+            <aar>2026</aar>
+        </skattleggingsperiode>
+        <fastsattMerverdiavgift>0</fastsattMerverdiavgift>
+    </skattegrunnlagOgBeregnetSkatt>
+    <betalingsinformasjon></betalingsinformasjon>
+    <skattepliktig>
+        <organisasjonsnummer>923609016</organisasjonsnummer>
+    </skattepliktig>
+    <meldingskategori>alminnelig</meldingskategori>
+</mvaMeldingDto>

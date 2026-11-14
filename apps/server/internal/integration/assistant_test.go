@@ -249,6 +249,9 @@ var markedByHand = map[string]string{
 	"getAccountingSupplierInvoiceFile":    "never",
 	"deleteAccountingSupplierInvoiceFile": "never",
 	"exportAccountingSupplier":            "never",
+	// A VAT term's return as XML is a file a person downloads and files at
+	// Skatteetaten by hand in this phase (accounting design A23).
+	"downloadAccountingVatReturn": "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
@@ -362,10 +365,13 @@ func TestOperations_TheRealContract(t *testing.T) {
 	// Accounting's writes of consequence are asked before they are made: a
 	// manual journal, a reversal, a settlement, a supplier invoice posted,
 	// reversed and copied, paid or its payment removed, a person supplier anonymised, the opening and the
-	// lock (the last two under accounting:close, which no agent level can raise, reference/agents.md).
+	// lock (the last two under accounting:close, which no agent level can raise, reference/agents.md),
+	// and a VAT term closed, reopened, marked as filed or unmarked (the close, the reopening and the
+	// unmarking under accounting:close).
 	for _, id := range []string{"postAccountingVoucher", "reverseAccountingVoucher", "postAccountingOpening", "putAccountingLock",
 		"settleAccountingOpenItem", "postAccountingSupplierInvoice", "reverseAndCopyAccountingSupplierInvoice",
-		"payAccountingSupplierInvoice", "removeAccountingSupplierPayment", "anonymiseAccountingSupplier"} {
+		"payAccountingSupplierInvoice", "removeAccountingSupplierPayment", "anonymiseAccountingSupplier",
+		"closeAccountingVatTerm", "reopenAccountingVatTerm", "fileAccountingVatTerm", "unfileAccountingVatTerm"} {
 		if got, _ := ops.Effective(context.Background(), id); got != operations.ModeConfirm {
 			t.Errorf("%s: the default gate's mode %q, want confirm", id, got)
 		}

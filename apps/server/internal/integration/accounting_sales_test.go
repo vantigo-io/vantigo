@@ -4,7 +4,12 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/accounting"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -122,5 +127,51 @@ func TestAccounting_IssuedInvoicesPostAndTheLedgerAgreesWithInvoices(t *testing.
 	}
 	if want := invoicesOpen.FloatString(2); ledger != want {
 		t.Errorf("receivables in the ledger = %s, Invoices' open total = %s", ledger, want)
+	}
+
+	// The VAT term the invoices fall in closes once it has ended (accounting
+	// design A22, A23): the terms before it first, in order; the VAT accounts
+	// reconcile with what Invoices issued, the loss's VAT is taken back as
+	// tapPåKrav, and the return's XML names the seller Invoices keeps and
+	// validates against Skatteetaten's schema.
+	h.Advance(60 * 24 * time.Hour)
+	c = h.SignIn(t, "accounting:read", "accounting:post", "accounting:close")
+	var closed struct {
+		Return struct {
+			Total string `json:"total"`
+			Lines []struct {
+				Code          string  `json:"code"`
+				Specification *string `json:"specification"`
+				Vat           string  `json:"vat"`
+			} `json:"lines"`
+		} `json:"return"`
+	}
+	for n := 1; n <= 5; n++ {
+		okJSON(t, c, http.MethodPost, fmt.Sprintf("%s/vat/terms/2026/%d/close", accountingBase, n), nil, &closed)
+	}
+	codes := map[string]string{}
+	for _, l := range closed.Return.Lines {
+		key := l.Code
+		if l.Specification != nil {
+			key += "/" + *l.Specification
+		}
+		codes[key] = l.Vat
+	}
+	if codes["3"] != "7500" || codes["1/tapPåKrav"] != "-2500" || closed.Return.Total != "5000" {
+		t.Errorf("term 2026-5's return = %+v", closed.Return)
+	}
+	res := c.Do(http.MethodGet, accountingBase+"/vat/terms/2026/5/xml", nil)
+	if res.Status != http.StatusOK || !strings.Contains(string(res.Body), "<organisasjonsnummer>974760673</organisasjonsnummer>") {
+		t.Fatalf("the return's XML = %d %s", res.Status, res.Body)
+	}
+	file := filepath.Join(t.TempDir(), "2026-5.xml")
+	if err := os.WriteFile(file, res.Body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec.LookPath("xmllint"); err != nil {
+		t.Log("xmllint is not on the PATH: the return's schema is checked by tools/mva/validate.sh on the goldens")
+	} else if out, err := exec.Command("xmllint", "--noout", "--schema", filepath.Join("..", "accounting", "mva", "testdata", "xsd",
+		"no.skatteetaten.fastsetting.avgift.mva.skattemeldingformerverdiavgift.v1.0.xsd"), file).CombinedOutput(); err != nil {
+		t.Errorf("the return does not validate: %v\n%s", err, out)
 	}
 }
