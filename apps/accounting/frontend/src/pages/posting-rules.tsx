@@ -1,4 +1,18 @@
-import { Alert, Badge, Button, Group, Modal, NumberInput, Select, Stack, Table, Text, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Group,
+  Modal,
+  NumberInput,
+  SegmentedControl,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconArchive, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +29,7 @@ import {
   taxCodesQueryOptions,
   updatePostingRule,
 } from "../api/accounting";
+import { expenseCategoriesQueryOptions } from "../api/lookups";
 import { ACCOUNTING_QUERY_KEY } from "../api/request";
 import { BooksGate } from "../components/books-gate";
 import { AccountSelect } from "../components/pickers";
@@ -23,9 +38,11 @@ import { refusalMessage, useAccountingFormat } from "../lib/format";
 /**
  * The posting rules (A14): which account a sales line's net goes to, matched
  * on its line kind, its product's tax category or its tax code, in that
- * order, then the default rule of its tax code. Each shows its version: a
- * voucher names the rule and version that made it, and a change affects
- * future vouchers only. Changing them needs accounting:close.
+ * order, then the default rule of its tax code; and which expense account an
+ * expense category's cost goes to, with whether its VAT may be deducted (R2).
+ * Each shows its version: a voucher names the rule and version that made it,
+ * and a change affects future vouchers only. Changing them needs
+ * accounting:close. The expense categories are read from Expenses' own API.
  */
 export const PostingRulesPage = () => {
   const { t } = useAccountingFormat();
@@ -44,12 +61,18 @@ export const PostingRulesPage = () => {
 /** What a rule matches, in words. */
 const useMatchWords = () => {
   const { t } = useAccountingFormat();
+  const categories = useQuery(expenseCategoriesQueryOptions());
   return (r: AccountingPostingRule) => {
     switch (r.match) {
       case "line_kind":
         return t(`lineKind_${r.lineKind ?? ""}`);
       case "tax_category":
         return t("taxCategoryNumber", { id: r.taxCategoryId ?? "" });
+      case "expense_category": {
+        const name = categories.data?.find((c) => c.id === r.expenseCategoryId)?.name;
+        const what = name ?? t("expenseCategoryNumber", { id: r.expenseCategoryId ?? "" });
+        return `${what} · ${r.vatDeductible ? t("vatDeductible") : t("vatNotDeductible")}`;
+      }
       default:
         return t("taxCodeNumber", { code: r.taxCode ?? "" });
     }
@@ -153,8 +176,9 @@ const RulesTable = ({ canClose }: { canClose: boolean }) => {
 
 const matches: AccountingRuleMatch[] = ["line_kind", "tax_category", "tax_code"];
 
-/** A sales rule credits an income account (R15): the picker offers no other. */
+/** A sales rule credits an income account (R15), an expense rule debits an expense account. */
 const isIncome = (a: AccountingAccount) => a.kind === "income";
+const isExpense = (a: AccountingAccount) => a.kind === "expense";
 
 /** A new rule: its name, what it matches and the account its lines go to. */
 const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
@@ -167,17 +191,30 @@ const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
   const [taxCategory, setTaxCategory] = useState<number | string>("");
   const [taxCode, setTaxCode] = useState<string | null>(null);
   const [account, setAccount] = useState<string | null>(null);
+  const [scope, setScope] = useState<"sales" | "expense">("sales");
+  const [category, setCategory] = useState<string | null>(null);
+  const [deductible, setDeductible] = useState(true);
+  const categories = useQuery({ ...expenseCategoriesQueryOptions(), enabled: scope === "expense" });
   const save = useMutation({
     mutationFn: () =>
-      createPostingRule({
-        name: name.trim(),
-        scope: "sales",
-        match,
-        ...(match === "line_kind" && lineKind ? { lineKind } : {}),
-        ...(match === "tax_category" && taxCategory !== "" ? { taxCategoryId: Number(taxCategory) } : {}),
-        ...(match === "tax_code" && taxCode ? { taxCode } : {}),
-        accountId: Number(account),
-      }),
+      scope === "expense"
+        ? createPostingRule({
+            name: name.trim(),
+            scope,
+            match: "expense_category",
+            expenseCategoryId: Number(category),
+            vatDeductible: deductible,
+            accountId: Number(account),
+          })
+        : createPostingRule({
+            name: name.trim(),
+            scope,
+            match,
+            ...(match === "line_kind" && lineKind ? { lineKind } : {}),
+            ...(match === "tax_category" && taxCategory !== "" ? { taxCategoryId: Number(taxCategory) } : {}),
+            ...(match === "tax_code" && taxCode ? { taxCode } : {}),
+            accountId: Number(account),
+          }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY, "posting-rules"] });
       notifications.show({ color: "green", message: t("saved") });
@@ -195,14 +232,45 @@ const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
-        <Select
-          label={t("ruleMatch")}
-          allowDeselect={false}
-          data={matches.map((m) => ({ value: m, label: t(`ruleMatch_${m}`) }))}
-          value={match}
-          onChange={(v) => v && setMatch(v as AccountingRuleMatch)}
+        <SegmentedControl
+          data={[
+            { value: "sales", label: t("ruleScope_sales") },
+            { value: "expense", label: t("ruleScope_expense") },
+          ]}
+          value={scope}
+          onChange={(v) => {
+            setScope(v as "sales" | "expense");
+            setAccount(null);
+          }}
         />
-        {match === "line_kind" && (
+        {scope === "expense" && (
+          <>
+            <Select
+              label={t("ruleMatch_expense_category")}
+              description={categories.error ? t("expenseCategoriesUnavailable") : undefined}
+              searchable
+              data={(categories.data ?? []).map((c) => ({ value: String(c.id), label: c.name }))}
+              value={category}
+              onChange={setCategory}
+            />
+            <Checkbox
+              label={t("vatDeductible")}
+              description={t("vatDeductibleHint")}
+              checked={deductible}
+              onChange={(e) => setDeductible(e.currentTarget.checked)}
+            />
+          </>
+        )}
+        {scope === "sales" && (
+          <Select
+            label={t("ruleMatch")}
+            allowDeselect={false}
+            data={matches.map((m) => ({ value: m, label: t(`ruleMatch_${m}`) }))}
+            value={match}
+            onChange={(v) => v && setMatch(v as AccountingRuleMatch)}
+          />
+        )}
+        {scope === "sales" && match === "line_kind" && (
           <Select
             label={t("ruleMatches")}
             allowDeselect={false}
@@ -211,7 +279,7 @@ const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
             onChange={setLineKind}
           />
         )}
-        {match === "tax_category" && (
+        {scope === "sales" && match === "tax_category" && (
           <NumberInput
             label={t("taxCategoryId")}
             description={t("taxCategoryIdHint")}
@@ -221,7 +289,7 @@ const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
             onChange={setTaxCategory}
           />
         )}
-        {match === "tax_code" && (
+        {scope === "sales" && match === "tax_code" && (
           <Select
             label={t("taxCode")}
             searchable
@@ -234,9 +302,9 @@ const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
         )}
         <AccountSelect
           label={t("account")}
-          description={t("ruleIncomeHint")}
+          description={scope === "expense" ? t("ruleExpenseHint") : t("ruleIncomeHint")}
           required
-          accountFilter={isIncome}
+          accountFilter={scope === "expense" ? isExpense : isIncome}
           value={account}
           onChange={setAccount}
         />
@@ -244,7 +312,11 @@ const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
           <Button variant="default" onClick={onClose}>
             {t("cancel")}
           </Button>
-          <Button loading={save.isPending} disabled={!name.trim() || !account} onClick={() => save.mutate()}>
+          <Button
+            loading={save.isPending}
+            disabled={!name.trim() || !account || (scope === "expense" && !category)}
+            onClick={() => save.mutate()}
+          >
             {t("save")}
           </Button>
         </Group>
@@ -259,9 +331,16 @@ const EditRuleModal = ({ rule, onClose }: { rule: AccountingPostingRule; onClose
   const queryClient = useQueryClient();
   const [name, setName] = useState(rule.name);
   const [account, setAccount] = useState<string | null>(String(rule.accountId));
+  const [deductible, setDeductible] = useState(rule.vatDeductible ?? true);
+  const expense = rule.scope === "expense";
   const save = useMutation({
     mutationFn: () =>
-      updatePostingRule(rule.id, { name: name.trim(), accountId: Number(account), revision: rule.revision }),
+      updatePostingRule(rule.id, {
+        name: name.trim(),
+        accountId: Number(account),
+        revision: rule.revision,
+        ...(expense ? { vatDeductible: deductible } : {}),
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY, "posting-rules"] });
       notifications.show({ color: "green", message: t("saved") });
@@ -284,12 +363,20 @@ const EditRuleModal = ({ rule, onClose }: { rule: AccountingPostingRule; onClose
         />
         <AccountSelect
           label={t("account")}
-          description={t("ruleIncomeHint")}
+          description={expense ? t("ruleExpenseHint") : t("ruleIncomeHint")}
           required
-          accountFilter={isIncome}
+          accountFilter={expense ? isExpense : isIncome}
           value={account}
           onChange={setAccount}
         />
+        {expense && (
+          <Checkbox
+            label={t("vatDeductible")}
+            description={t("vatDeductibleHint")}
+            checked={deductible}
+            onChange={(e) => setDeductible(e.currentTarget.checked)}
+          />
+        )}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             {t("cancel")}

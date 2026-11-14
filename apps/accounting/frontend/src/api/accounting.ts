@@ -32,6 +32,19 @@ export type AccountingRuleMatch = Schemas["AccountingRuleMatch"];
 export type AccountingUnposted = Schemas["AccountingUnposted"];
 export type AccountingUnpostedList = Schemas["AccountingUnpostedList"];
 export type AccountingCatchUp = Schemas["AccountingCatchUp"];
+export type AccountingSupplier = Schemas["AccountingSupplier"];
+export type AccountingSupplierInput = Schemas["AccountingSupplierInput"];
+export type AccountingSupplierList = Schemas["AccountingSupplierList"];
+export type AccountingBrregEntity = Schemas["AccountingBrregEntity"];
+export type AccountingSupplierExport = Schemas["AccountingSupplierExport"];
+export type AccountingSupplierInvoice = Schemas["AccountingSupplierInvoice"];
+export type AccountingSupplierInvoiceInput = Schemas["AccountingSupplierInvoiceInput"];
+export type AccountingSupplierInvoiceLine = Schemas["AccountingSupplierInvoiceLine"];
+export type AccountingSupplierInvoiceLineInput = Schemas["AccountingSupplierInvoiceLineInput"];
+export type AccountingSupplierInvoiceList = Schemas["AccountingSupplierInvoiceList"];
+export type AccountingSupplierInvoiceState = Schemas["AccountingSupplierInvoiceState"];
+export type AccountingSupplierPayment = Schemas["AccountingSupplierPayment"];
+export type AccountingEntryMode = Schemas["AccountingEntryMode"];
 
 const BASE = "/api/v1/accounting";
 
@@ -294,16 +307,20 @@ export const postingRulesQueryOptions = () =>
 
 export const createPostingRule = (body: {
   name: string;
-  scope: "sales";
+  scope: "sales" | "expense";
   match: AccountingRuleMatch;
   lineKind?: string;
   taxCategoryId?: number;
   taxCode?: string;
+  expenseCategoryId?: number;
+  vatDeductible?: boolean;
   accountId: number;
 }) => send<AccountingPostingRule>(`${BASE}/posting-rules`, json("POST", body));
 
-export const updatePostingRule = (id: number, body: { name: string; accountId: number; revision: number }) =>
-  send<AccountingPostingRule>(`${BASE}/posting-rules/${id}`, json("PUT", body));
+export const updatePostingRule = (
+  id: number,
+  body: { name: string; accountId: number; revision: number; vatDeductible?: boolean },
+) => send<AccountingPostingRule>(`${BASE}/posting-rules/${id}`, json("PUT", body));
 
 export const deletePostingRule = (id: number) => send<void>(`${BASE}/posting-rules/${id}`, { method: "DELETE" });
 
@@ -315,6 +332,18 @@ export const unpostedQueryOptions = (filters: { open?: boolean; offset?: number;
       request<AccountingUnpostedList>(`${BASE}/unposted${queryString({ ...filters })}`, { signal }),
   });
 
+/** Enters the NOK amounts of an expense in another currency and posts it (R2). */
+export const enterNokAmounts = (id: number, amounts: { entryId: number; amountNok: string }[]) =>
+  send<AccountingUnposted>(`${BASE}/unposted/${id}/nok-amounts`, json("POST", { amounts }));
+
+/** Makes a draft supplier invoice from an expense of the supplier_invoice kind (R2). */
+export const makeSupplierInvoiceFromUnposted = (id: number) =>
+  send<AccountingSupplierInvoice>(`${BASE}/unposted/${id}/supplier-invoice`, { method: "POST" });
+
+/** Acknowledges an informational row (vat_not_deducted). */
+export const acknowledgeUnposted = (id: number) =>
+  send<AccountingUnposted>(`${BASE}/unposted/${id}/acknowledge`, { method: "POST" });
+
 /** Reads a fact again through Invoices and posts it. */
 export const retryUnposted = (id: number) =>
   send<AccountingUnposted>(`${BASE}/unposted/${id}/retry`, { method: "POST" });
@@ -325,3 +354,105 @@ export const catchUpQueryOptions = () =>
     queryKey: [ACCOUNTING_QUERY_KEY, "catch-up"],
     queryFn: ({ signal }) => request<AccountingCatchUp>(`${BASE}/catch-up`, { signal }),
   });
+
+/** The suppliers (A17), by number. */
+export const suppliersQueryOptions = (
+  filters: { q?: string; active?: boolean; offset?: number; limit?: number } = {},
+) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "suppliers", filters],
+    queryFn: ({ signal }) =>
+      request<AccountingSupplierList>(`${BASE}/suppliers${queryString({ ...filters })}`, { signal }),
+  });
+
+export const supplierQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "supplier", id],
+    queryFn: ({ signal }) => request<AccountingSupplier>(`${BASE}/suppliers/${id}`, { signal }),
+  });
+
+export const createSupplier = (body: AccountingSupplierInput) =>
+  send<AccountingSupplier>(`${BASE}/suppliers`, json("POST", body));
+
+export const updateSupplier = (id: number, body: AccountingSupplierInput) =>
+  send<AccountingSupplier>(`${BASE}/suppliers/${id}`, json("PUT", body));
+
+export const deleteSupplier = (id: number) => send<void>(`${BASE}/suppliers/${id}`, { method: "DELETE" });
+
+/** What the books hold about a supplier, for a person's access request. */
+export const exportSupplier = (id: number) => request<AccountingSupplierExport>(`${BASE}/suppliers/${id}/export`);
+
+/** Looks a supplier up in Brønnøysundregisteret: by organisation number, or by name. */
+export const lookupBrreg = (params: { organisationNumber?: string; q?: string }, signal?: AbortSignal) =>
+  request<{ items: AccountingBrregEntity[] }>(`${BASE}/suppliers/lookup/brreg${queryString({ ...params })}`, {
+    signal,
+  });
+
+export interface SupplierInvoiceFilters {
+  state?: AccountingSupplierInvoiceState;
+  supplierId?: number;
+  supplierNumber?: string;
+  dueFrom?: string;
+  dueTo?: string;
+  overdue?: boolean;
+  offset?: number;
+  limit?: number;
+}
+
+/** The supplier invoices (A18), newest first. */
+export const supplierInvoicesQueryOptions = (filters: SupplierInvoiceFilters) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "supplier-invoices", filters],
+    queryFn: ({ signal }) =>
+      request<AccountingSupplierInvoiceList>(`${BASE}/supplier-invoices${queryString({ ...filters })}`, { signal }),
+  });
+
+export const supplierInvoiceQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "supplier-invoice", id],
+    queryFn: ({ signal }) => request<AccountingSupplierInvoice>(`${BASE}/supplier-invoices/${id}`, { signal }),
+  });
+
+export const createSupplierInvoice = (body: AccountingSupplierInvoiceInput) =>
+  send<AccountingSupplierInvoice>(`${BASE}/supplier-invoices`, json("POST", body));
+
+export const updateSupplierInvoice = (id: number, body: AccountingSupplierInvoiceInput) =>
+  send<AccountingSupplierInvoice>(`${BASE}/supplier-invoices/${id}`, json("PUT", body));
+
+export const deleteSupplierInvoice = (id: number) =>
+  send<void>(`${BASE}/supplier-invoices/${id}`, { method: "DELETE" });
+
+export const postSupplierInvoice = (id: number) =>
+  send<AccountingSupplierInvoice>(`${BASE}/supplier-invoices/${id}/post`, { method: "POST" });
+
+export const reverseAndCopySupplierInvoice = (id: number, body: { date: string; reason: string }) =>
+  send<AccountingSupplierInvoice>(`${BASE}/supplier-invoices/${id}/reverse-and-copy`, json("POST", body));
+
+export const paySupplierInvoice = (
+  id: number,
+  body: { date: string; amountNok: string; amountCurrency?: string | null; bankAccountId?: number | null },
+) => send<AccountingSupplierInvoice>(`${BASE}/supplier-invoices/${id}/payments`, json("POST", body));
+
+export const removeSupplierPayment = (id: number, paymentId: number) =>
+  send<AccountingSupplierInvoice>(`${BASE}/supplier-invoices/${id}/payments/${paymentId}`, { method: "DELETE" });
+
+/** Attaches a file to a draft supplier invoice: multipart, the field `file`. */
+export const uploadSupplierInvoiceFile = async (id: number, file: File): Promise<AccountingAttachment> => {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(appUrl(`${BASE}/supplier-invoices/${id}/files`), {
+    method: "POST",
+    body: form,
+    credentials: "include",
+  });
+  if (response.status === 401) await handleUnauthorized();
+  if (response.ok) return (await response.json()) as AccountingAttachment;
+  throw await refusalOf(response);
+};
+
+export const deleteSupplierInvoiceFile = (id: number, fileId: number) =>
+  send<void>(`${BASE}/supplier-invoices/${id}/files/${fileId}`, { method: "DELETE" });
+
+/** The address a supplier invoice's file downloads from. */
+export const supplierInvoiceFileUrl = (id: number, fileId: number) =>
+  appUrl(`${BASE}/supplier-invoices/${id}/files/${fileId}`);

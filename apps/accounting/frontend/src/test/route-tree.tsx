@@ -16,12 +16,17 @@ import {
   ACCOUNTS_ROUTE_PATH,
   JOURNAL_ROUTE_PATH,
   NEEDS_ATTENTION_ROUTE_PATH,
+  NEW_SUPPLIER_INVOICE_ROUTE_PATH,
   OPEN_ITEMS_ROUTE_PATH,
   OPENING_ROUTE_PATH,
   POSTING_RULES_ROUTE_PATH,
   REPORTS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETUP_ROUTE_PATH,
+  SUPPLIER_INVOICE_ROUTE_PATH,
+  SUPPLIER_INVOICES_ROUTE_PATH,
+  SUPPLIER_ROUTE_PATH,
+  SUPPLIERS_ROUTE_PATH,
   TAX_CODES_ROUTE_PATH,
   VOUCHER_ROUTE_PATH,
   VOUCHERS_ROUTE_PATH,
@@ -37,6 +42,8 @@ import { PostingRulesPage } from "../pages/posting-rules";
 import { ReportsPage } from "../pages/reports";
 import { SettingsPage } from "../pages/settings";
 import { SetupPage } from "../pages/setup";
+import { NewSupplierInvoicePage, SupplierInvoicePage, SupplierInvoicesPage } from "../pages/supplier-invoices";
+import { SupplierPage, SuppliersPage } from "../pages/suppliers";
 import { TaxCodesPage } from "../pages/tax-codes";
 import { VoucherPage } from "../pages/voucher";
 import { VouchersPage } from "../pages/vouchers";
@@ -67,6 +74,11 @@ export const makeRouteTree = () => {
     route(SETTINGS_ROUTE_PATH, SettingsPage),
     route(POSTING_RULES_ROUTE_PATH, PostingRulesPage),
     route(NEEDS_ATTENTION_ROUTE_PATH, NeedsAttentionPage),
+    route(SUPPLIERS_ROUTE_PATH, SuppliersPage),
+    route(SUPPLIER_ROUTE_PATH, SupplierPage),
+    route(SUPPLIER_INVOICES_ROUTE_PATH, SupplierInvoicesPage),
+    route(NEW_SUPPLIER_INVOICE_ROUTE_PATH, NewSupplierInvoicePage),
+    route(SUPPLIER_INVOICE_ROUTE_PATH, SupplierInvoicePage),
   ]);
 };
 
