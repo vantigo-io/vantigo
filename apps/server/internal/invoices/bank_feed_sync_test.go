@@ -251,6 +251,7 @@ func TestBankFeedSync_JudgesTheBatch(t *testing.T) {
 		"no id":              {[]bankfeed.Transaction{ok, credit("", oct(5), "")}, "transaction_unreadable"},
 		"an id too long":     {[]bankfeed.Transaction{credit(strings.Repeat("x", 61), oct(5), "")}, "transaction_unreadable"},
 		"an amount too high": {[]bankfeed.Transaction{with(ok, func(tx *bankfeed.Transaction) { tx.AmountMinor = 100_000_000_000_000 })}, "transaction_unreadable"},
+		"a credit of a kind the port does not name": {[]bankfeed.Transaction{ok, with(credit("b", oct(6), ""), func(tx *bankfeed.Transaction) { tx.Kind = "mystery" })}, "transaction_unreadable"},
 	} {
 		if kept, _, reason := invoices.JudgeFeedBatch(c.txs, sellerAccount, today, start); reason != c.reason || kept != nil {
 			t.Errorf("%s: kept %v, reason %q, want the batch refused %s", name, kept, reason, c.reason)
@@ -269,6 +270,25 @@ func TestBankFeedSync_JudgesTheBatch(t *testing.T) {
 	}
 	if want := map[string]int{"zero_amount": 1, "debit": 1, "card_information": 1, "internal_transfer": 1}; !mapsEqual(ignored, want) {
 		t.Errorf("ignored %v, want %v", ignored, want)
+	}
+
+	// An odd transaction that is no incoming credit — money out in EUR,
+	// booked tomorrow, without an id, a card refund of an unknown kind — is
+	// counted, never a refusal (plan C review, item 6).
+	debit := func(tx *bankfeed.Transaction) { tx.Direction = bankfeed.DirectionDebit }
+	kept, ignored, reason = invoices.JudgeFeedBatch([]bankfeed.Transaction{
+		ok,
+		with(credit("eur", oct(6), ""), func(tx *bankfeed.Transaction) { debit(tx); tx.Currency = "EUR" }),
+		with(credit("later", oct(9), ""), debit),
+		with(credit("", oct(6), ""), debit),
+		with(credit("odd", oct(6), ""), func(tx *bankfeed.Transaction) { debit(tx); tx.Kind = "mystery" }),
+		with(credit("cardx", oct(6), ""), func(tx *bankfeed.Transaction) { tx.Kind = bankfeed.KindCard; tx.Currency = "SEK"; tx.ID = "" }),
+	}, sellerAccount, today, start)
+	if reason != "" || !slices.Equal(kept, []string{"a kid=0010017"}) {
+		t.Errorf("odd outgoing transactions: kept %v, reason %q; want the payment kept and no refusal", kept, reason)
+	}
+	if want := map[string]int{"debit": 4, "card_information": 1}; !mapsEqual(ignored, want) {
+		t.Errorf("odd outgoing transactions: ignored %v, want %v", ignored, want)
 	}
 }
 
@@ -649,5 +669,68 @@ func TestBankFeedSync_FreshnessKnowsTheFeed(t *testing.T) {
 	h.Exec(t, `UPDATE invoices.bank_feed_accounts SET status = 'ok', enabled = false`)
 	if got := overdueOf(t, c, ""); !got.Freshness.Stale || got.Freshness.LastBookedOn != nil {
 		t.Errorf("the feed switched off and no file = %+v, want stale with no booking: a switched-off account counts for nothing", got.Freshness)
+	}
+}
+
+// The same transaction id with another amount or KID than the line stored
+// for it is not the same record read again: the batch is refused
+// duplicate_transaction, naming the id, rather than dropped in silence (plan
+// C review, item 6). The same id agreeing is dropped as before.
+func TestBankFeedSync_AStoredIdThatDisagreesIsRefused(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	inv := kidInvoice(t, h)
+	feedReady(t, h)
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-06", "1000.00", *inv.Kid))
+	syncNow(t, h)
+	h.folio.SetTransactions(sellerAccount, incoming(txID(1), "2026-10-05", "1000.00", *inv.Kid))
+	h.Advance(30 * time.Minute)
+	syncNow(t, h)
+	if s := feedStateOf(t, h, sellerAccount); s.status != "ok" {
+		t.Fatalf("the same id, amount and KID on another day: %+v, want ok and dropped", s)
+	}
+	h.folio.SetTransactions(sellerAccount, incoming(txID(1), "2026-10-06", "900.00", *inv.Kid))
+	h.Advance(30 * time.Minute)
+	syncNow(t, h)
+	s := feedStateOf(t, h, sellerAccount)
+	if s.status != "refused" || s.reason != "duplicate_transaction" || !strings.Contains(s.detail, txID(1)) {
+		t.Errorf("the same id with another amount: %+v, want refused duplicate_transaction naming it", s)
+	}
+	if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("payments = %v, want the first alone", got)
+	}
+}
+
+// The way out of a refusal (plan C review, item 6): a refused account reads
+// nothing meanwhile; switched off and on again with a start day after the
+// transaction it refused, the rest is read and registered.
+func TestBankFeedSync_RecoveringFromARefusal(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	inv := kidInvoice(t, h)
+	feedReady(t, h)
+	euro := incoming(txID(1), "2026-10-03", "10.00", "")
+	euro.TransactionAmount.Currency = "EUR"
+	h.folio.AddTransaction(sellerAccount, euro)
+	h.folio.AddTransaction(sellerAccount, incoming(txID(2), "2026-10-06", "1000.00", *inv.Kid))
+	syncNow(t, h)
+	if s := feedStateOf(t, h, sellerAccount); s.status != "refused" || s.reason != "currency_not_nok" {
+		t.Fatalf("the account = %+v, want refused currency_not_nok", s)
+	}
+	h.Advance(30 * time.Minute)
+	syncNow(t, h)
+	if n := h.Count(t, `SELECT count(*) FROM invoices.bank_transactions`); n != 0 {
+		t.Errorf("a refused account stored %d lines meanwhile, want none", n)
+	}
+	if res := switchFeed(feedManager(t, h), sellerAccount, false, ""); res.Status != http.StatusOK {
+		t.Fatalf("switch off = %d %s", res.Status, res.Body)
+	}
+	switchedOn(t, h, sellerAccount, "2026-10-04")
+	syncNow(t, h)
+	if s := feedStateOf(t, h, sellerAccount); s.status != "ok" || s.reason != "" {
+		t.Errorf("after a start day past the refused transaction: %+v, want ok", s)
+	}
+	if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("payments = %v, want the payment after the refused one registered", got)
 	}
 }

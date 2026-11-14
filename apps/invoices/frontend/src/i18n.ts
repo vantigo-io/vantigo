@@ -1999,7 +1999,7 @@ export const invoicesCatalog = {
     "bankFeed.reason.direction_unknown":
       "The bank answered a transaction it could not tell was money in or out. Nothing of the batch was stored.",
     "bankFeed.reason.duplicate_transaction":
-      "The bank answered the same transaction twice. Nothing of the batch was stored.",
+      "The bank answered the same transaction twice, or again with another amount or KID than before. Nothing of the batch was stored.",
     "bankFeed.reason.transaction_unreadable":
       "The bank answered a transaction that could not be read. Nothing of the batch was stored.",
     "bankFeed.reason.format_mismatch":
@@ -4272,7 +4272,7 @@ export const invoicesCatalog = {
     "bankFeed.reason.direction_unknown":
       "Banken svarte en transaksjon som ikke kunne leses som penger inn eller ut. Ingenting av bunken ble lagret.",
     "bankFeed.reason.duplicate_transaction":
-      "Banken svarte den samme transaksjonen to ganger. Ingenting av bunken ble lagret.",
+      "Banken svarte den samme transaksjonen to ganger, eller på nytt med et annet beløp eller en annen KID enn før. Ingenting av bunken ble lagret.",
     "bankFeed.reason.transaction_unreadable":
       "Banken svarte en transaksjon som ikke kunne leses. Ingenting av bunken ble lagret.",
     "bankFeed.reason.format_mismatch":

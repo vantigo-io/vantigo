@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -210,9 +211,13 @@ windows:
 			return out, nil
 		}
 		// 4. Drop what an earlier cycle stored.
-		kept, raws, err = dropStoredFeedLines(ctx, q, account, kept, raws)
+		kept, raws, refusal, err = dropStoredFeedLines(ctx, q, account, kept, raws)
 		if err != nil {
 			return syncOutcome{}, err
+		}
+		if refusal != nil {
+			out.refused = refusal
+			return out, nil
 		}
 		if len(kept) > 0 {
 			id, err := s.storeFeedBatch(ctx, c, from, to, kept, raws, ignored)
@@ -283,10 +288,14 @@ func feedAnswerTooLarge(txs []bankfeed.Transaction) bool {
 
 // judgeFeedBatch is F5 steps 2 and 3 over everything the bank answered, in
 // the order it answered: the batch refused whole on the first transaction
-// that breaks a rule, else the incoming credit transfers above zero built as
-// lines (findings 1 and 12) with the bytes the bank sent for each, and the
-// rest counted by kind. A transaction booked before the start day is left
-// out uncounted: a person chose to read nothing before it.
+// that breaks a rule — one id twice, a direction the adapter cannot place,
+// or an incoming credit of a kind the port does not name, unreadable, booked
+// after today or not in NOK — else the incoming credit transfers above zero
+// built as lines (findings 1 and 12) with the bytes the bank sent for each,
+// and the rest counted by kind, however odd: money out, a card, a transfer
+// between the customer's own accounts is never a refusal. A transaction
+// booked before the start day is left out unjudged and uncounted: a person
+// chose to read nothing before it.
 func judgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay time.Time, readThrough *time.Time) ([]bankfile.Transaction, []json.RawMessage, map[bankfile.IgnoredKind]int, *feedRefusal) {
 	ignored := map[bankfile.IgnoredKind]int{}
 	// count is a transaction not kept, counted on the batch unless an
@@ -300,27 +309,29 @@ func judgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay 
 	var kept []bankfile.Transaction
 	var raws []json.RawMessage
 	for _, tx := range txs {
-		archive := strings.ReplaceAll(tx.ID, "-", "")
-		switch {
-		case tx.ID == "" || utf8.RuneCountInString(tx.ID) > feedLineRefSize || utf8.RuneCountInString(archive) > feedArchiveRefSize ||
-			tx.AmountMinor < 0 || tx.AmountMinor > maxFeedAmountMinor:
-			return nil, nil, nil, &feedRefusal{reason: refusedTransactionUnreadable, detail: feedDetail(tx.ID)}
-		case seen[tx.ID]:
-			return nil, nil, nil, &feedRefusal{reason: refusedDuplicateTransaction, detail: feedDetail(tx.ID)}
-		case utcDay(tx.BookedOn).After(today):
-			return nil, nil, nil, &feedRefusal{reason: refusedBookedInFuture, detail: feedDetail(tx.ID)}
-		case tx.Currency != "NOK":
-			return nil, nil, nil, &feedRefusal{reason: refusedCurrencyNotNOK, detail: feedDetail(tx.ID)}
-		case tx.Direction != bankfeed.DirectionCredit && tx.Direction != bankfeed.DirectionDebit:
-			// Fail closed: a transaction the adapter cannot place is never
-			// read as a payment, nor passed over as one going out.
-			return nil, nil, nil, &feedRefusal{reason: refusedDirectionUnknown, detail: feedDetail(tx.ID)}
-		}
-		seen[tx.ID] = true
 		booked := utcDay(tx.BookedOn)
 		if booked.Before(startDay) {
+			// A person chose to read nothing before the start day: not
+			// judged, not counted.
 			continue
 		}
+		refuse := func(reason string) ([]bankfile.Transaction, []json.RawMessage, map[bankfile.IgnoredKind]int, *feedRefusal) {
+			return nil, nil, nil, &feedRefusal{reason: reason, detail: feedDetail(tx.ID)}
+		}
+		if tx.ID != "" {
+			if seen[tx.ID] {
+				return refuse(refusedDuplicateTransaction)
+			}
+			seen[tx.ID] = true
+		}
+		if tx.Direction != bankfeed.DirectionCredit && tx.Direction != bankfeed.DirectionDebit {
+			// Fail closed: a transaction the adapter cannot place is never
+			// read as a payment, nor passed over as one going out.
+			return refuse(refusedDirectionUnknown)
+		}
+		// Not an incoming customer payment — money out, a card, a transfer
+		// between the customer's own accounts: counted, whatever else is odd
+		// about it, never kept and never a refusal (plan C review, item 6).
 		switch {
 		case tx.Kind == bankfeed.KindInternal:
 			count(bankfile.IgnoredInternalTransfer, booked)
@@ -328,14 +339,21 @@ func judgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay 
 		case tx.Kind == bankfeed.KindCard:
 			count(bankfile.IgnoredCardInformation, booked)
 			continue
-		case tx.Kind != bankfeed.KindTransfer:
-			// A kind the port does not name is no transfer: counted with the
-			// card transactions, never kept.
-			count(bankfile.IgnoredCardInformation, booked)
-			continue
 		case tx.Direction == bankfeed.DirectionDebit:
 			count(bankfile.IgnoredDebit, booked)
 			continue
+		}
+		// An incoming credit: every rule holds, or the batch is refused.
+		archive := strings.ReplaceAll(tx.ID, "-", "")
+		switch {
+		case tx.Kind != bankfeed.KindTransfer,
+			tx.ID == "" || utf8.RuneCountInString(tx.ID) > feedLineRefSize || utf8.RuneCountInString(archive) > feedArchiveRefSize,
+			tx.AmountMinor < 0 || tx.AmountMinor > maxFeedAmountMinor:
+			return refuse(refusedTransactionUnreadable)
+		case booked.After(today):
+			return refuse(refusedBookedInFuture)
+		case tx.Currency != "NOK":
+			return refuse(refusedCurrencyNotNOK)
 		case tx.AmountMinor == 0:
 			count(bankfile.IgnoredZeroAmount, booked)
 			continue
@@ -394,9 +412,9 @@ func cutRunes(s string, n int) string {
 // dropStoredFeedLines is F5 step 4: every kept line whose fingerprint a live
 // line of the account has, or whose bank id a feed line of the account has,
 // is the same record read again, not a duplicate, and gets no row.
-func dropStoredFeedLines(ctx context.Context, q *store.Queries, account string, kept []bankfile.Transaction, raws []json.RawMessage) ([]bankfile.Transaction, []json.RawMessage, error) {
+func dropStoredFeedLines(ctx context.Context, q *store.Queries, account string, kept []bankfile.Transaction, raws []json.RawMessage) ([]bankfile.Transaction, []json.RawMessage, *feedRefusal, error) {
 	if len(kept) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	probe := append([]bankfile.Transaction(nil), kept...)
 	bankfile.Fingerprints(probe)
@@ -406,11 +424,26 @@ func dropStoredFeedLines(ctx context.Context, q *store.Queries, account string, 
 	}
 	stored, err := q.StoredFeedLines(ctx, store.StoredFeedLinesParams{Account: account, Fingerprints: fps, LineRefs: refs})
 	if err != nil {
-		return nil, nil, fmt.Errorf("invoices: read what account %s's feed stored: %w", account, err)
+		return nil, nil, nil, fmt.Errorf("invoices: read what account %s's feed stored: %w", account, err)
+	}
+	byRef := make(map[string]bankfile.Transaction, len(probe))
+	for _, tx := range probe {
+		byRef[tx.LineRef] = tx
 	}
 	seenFP, seenRef := make(map[string]bool, len(stored)), make(map[string]bool, len(stored))
 	for _, r := range stored {
 		seenFP[r.Fingerprint], seenRef[r.LineRef] = true, true
+		// The same id with another amount or KID is not the same record:
+		// refused, never dropped in silence (plan C review, item 6).
+		if tx, ok := byRef[r.LineRef]; ok && r.Fingerprint != tx.Fingerprint {
+			amount, err := ratFromNumeric(r.Amount)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if amount.Cmp(big.NewRat(tx.AmountMinor, 100)) != 0 || r.Kid != tx.KID {
+				return nil, nil, &feedRefusal{reason: refusedDuplicateTransaction, detail: feedDetail(tx.LineRef)}, nil
+			}
+		}
 	}
 	var outTx []bankfile.Transaction
 	var outRaw []json.RawMessage
@@ -421,7 +454,7 @@ func dropStoredFeedLines(ctx context.Context, q *store.Queries, account string, 
 		outTx = append(outTx, kept[i])
 		outRaw = append(outRaw, raws[i])
 	}
-	return outTx, outRaw, nil
+	return outTx, outRaw, nil, nil
 }
 
 // storeFeedBatch is F5 steps 5 and 6 for the lines left: their bytes as one
