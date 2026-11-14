@@ -17,7 +17,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconArrowBackUp, IconCopy, IconPaperclip } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
+import { appUrl, ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type AccountingMeta,
@@ -30,7 +30,7 @@ import {
 import { ACCOUNTING_QUERY_KEY } from "../api/request";
 import { BooksGate } from "../components/books-gate";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
-import { JOURNAL_ROUTE_PATH, VOUCHERS_ROUTE_PATH, voucherPath } from "../lib/routes";
+import { invoicePath, JOURNAL_ROUTE_PATH, VOUCHERS_ROUTE_PATH, voucherPath } from "../lib/routes";
 
 /** One voucher (A4, A7): its postings, its links, its attachments, and Reverse and Copy. */
 export const VoucherPage = () => {
@@ -104,6 +104,14 @@ const VoucherView = ({ id, meta }: { id: number; meta: AccountingMeta }) => {
         <Alert color="blue" title={t("systemVoucher")}>
           {t("systemVoucherHint", { source: `${v.source.module} ${v.source.kind} ${v.source.id}` })}
           {v.rule && ` ${t("postedByRule", { rule: v.rule, version: v.ruleVersion ?? 1 })}`}
+          {v.sourceDocumentId !== null && (
+            <>
+              {" "}
+              <Anchor href={appUrl(invoicePath(v.sourceDocumentId))} data-testid="source-document">
+                {t("openSourceDocument")}
+              </Anchor>
+            </>
+          )}
         </Alert>
       )}
       {v.reverses && (
@@ -147,6 +155,11 @@ const VoucherView = ({ id, meta }: { id: number; meta: AccountingMeta }) => {
                 {p.taxRole === "tax" && (
                   <Badge ml="xs" variant="light">
                     {t("taxLineShort")}
+                  </Badge>
+                )}
+                {p.taxSpecification && (
+                  <Badge ml="xs" color="orange" variant="light">
+                    {p.taxSpecification}
                   </Badge>
                 )}
               </Table.Td>
