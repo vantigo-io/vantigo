@@ -3401,8 +3401,11 @@ back: `AdvanceBankFeedRead` writes `greatest(read_through, @read_through)`.
    files — refuses the batch `format_mismatch` without asking the bank.
 2. **The days.** Forward first: from the day after `read_through` — the cursor, not the
    last payment kept, so an account with few incoming payments reads a short span too —
-   or from the start day, to today, the business day; then the overlap again, the 10 days
-   before the cursor the cycle started with (not before the start day). Both are read in
+   or from the start day, to today, the business day, oldest first; then the overlap
+   again, the 10 days before the cursor the cycle started with (not before the start day),
+   **newest first**, its windows ending at the span's end and stepping back, at the size
+   the forward span ended with — so a payment booked later on a day already read is read
+   by the next cycle however small the windows are. Both are read in
    **windows of at most 31 days**, each its own batch, the cycle budgeted by eight calls to
    the bank so it never outlives its lease. An answer past the adapter's bound
    (`bankfeed.ErrTooLarge`) or past a bank file's 5 000 transactions or 10 MiB halves the
@@ -3412,7 +3415,8 @@ back: `AdvanceBankFeedRead` writes `greatest(read_through, @read_through)`.
    to its end, never back, under the claim's lease. Calls spent with days left: the
    account is due again at once (`next_sync_at` the claim's time) when the cycle moved the
    cursor past where it started, and fails as `answer_too_large` (`errFeedNoProgress`),
-   backing off, when it did not; overlap left unread waits for the next cycle.
+   backing off, when it did not; the overlap's oldest days left unread wait for the next
+   cycle.
 3. **Refuse the whole batch**, storing nothing, on the first transaction booked on or after
    the start day that carries an id the answer already carried with an incoming credit
    among the two (`duplicate_transaction`; two payments out or card lines sharing an id are
@@ -3448,17 +3452,19 @@ back: `AdvanceBankFeedRead` writes `greatest(read_through, @read_through)`.
    `folio|<account>|<from>..<to>|<lease id>`, unique per window and claim — the lines,
    their duplicate rows and the duplicates count, the upload's own code. A unique violation
    — the same batch committed meanwhile — releases the claim, due now, logged at info.
-8. **Matching** after the windows — also after a refused or failed read, never after a
-   claim lost or a key refused — by no user, over every feed batch of the account with a
+8. **Matching** after the windows — also after a refused or failed read, a refused key
+   among them since matching needs no bank, never after a claim lost — by no user, over every feed batch of the account with a
    line still pending — this cycle's and any an earlier cycle stored and did not get to
    match — so a process that stopped between the commit and the match registers nothing
    twice and leaves nothing pending for good. A line whose match fails for anything but
    the context's end is logged at warn, left pending and passed over, and matching goes on
    with the next line and the next batch; the account stays `ok` with reason
    `line_unmatched` and the line's transaction id in `detail`. Three lines failing in a
-   row, or one failing as the database's connection does (SQLSTATE classes 08, 53, 57P, a
-   connect error or a timeout), stop matching as a failure of the cycle
-   (`errFeedMatchingStopped`), not `line_unmatched`.
+   row stop that batch's matching, and the next batch is matched; one failing as the
+   database's connection does (SQLSTATE classes 08, 53, 57P, a connect error or a timeout)
+   stops all matching of the cycle. Either is a failure of the cycle
+   (`errFeedMatchingStopped`), not `line_unmatched`, which keeps the last batch the cycle
+   stored; a read of the pending batches that fails is one too, in words of its own.
 
 **Reversals.** Folio marks none: money the bank sends back arrives as an ordinary
 outgoing transaction, which is counted as `debit` and stored nowhere. The payment it
