@@ -215,7 +215,7 @@ describe("the Payments area", () => {
           file: bankFile({
             pending: 1,
             ignored: 2,
-            ignoredKinds: { debit: 0, notBooked: 0, cardInformation: 2, zeroAmount: 0 },
+            ignoredKinds: { debit: 0, notBooked: 0, cardInformation: 2, zeroAmount: 0, internalTransfer: 0 },
           }),
           transactions: [],
         }),

@@ -32,7 +32,7 @@ func TestBankFileOCR_Parse(t *testing.T) {
 			Identity: "00008080:0000123:00012345",
 			Accounts: []string{accountA},
 			Ignored: map[bankfile.IgnoredKind]int{bankfile.IgnoredDebit: 0, bankfile.IgnoredNotBooked: 0,
-				bankfile.IgnoredCardInformation: 0, bankfile.IgnoredZeroAmount: 0},
+				bankfile.IgnoredCardInformation: 0, bankfile.IgnoredZeroAmount: 0, bankfile.IgnoredInternalTransfer: 0},
 			FirstBookedOn: day(6), LastBookedOn: day(6),
 			Transactions: []bankfile.Transaction{{
 				LineRef: "1/1", Account: accountA, BookedOn: day(6), OrderedOn: ptr(day(5)),

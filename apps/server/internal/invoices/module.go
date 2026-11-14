@@ -113,13 +113,16 @@ var permissions = []contracts.Permission{
 // under a policy of its own (EHF and KID design D8). The bank feed's calls to
 // the bank follow (bank feed review): a connection PUT tries a key against
 // the bank, 10 per 10 minutes; reading the bank's accounts and switching one
-// on call it too, 60 per 10 minutes each. The pay page's operations follow.
+// on call it too, 60 per 10 minutes each; Fetch now calls nothing itself but
+// makes the worker read every account it names, 30 per 10 minutes. The pay
+// page's operations follow.
 var limits = map[string]ratelimit.Policy{
 	"postInvoicesByIdSend":                 {Name: "invoices-send", Limit: 60, Window: 10 * time.Minute},
 	"postInvoicesByIdSendEhf":              {Name: "invoices-send-ehf", Limit: 60, Window: 10 * time.Minute},
 	"putInvoicesBankFeed":                  {Name: "invoices-bank-feed-key", Limit: 10, Window: 10 * time.Minute},
 	"getInvoicesBankFeedAccounts":          {Name: "invoices-bank-feed-accounts", Limit: 60, Window: 10 * time.Minute},
 	"putInvoicesBankFeedAccountsByAccount": {Name: "invoices-bank-feed-switch", Limit: 60, Window: 10 * time.Minute},
+	"postInvoicesBankFeedSync":             {Name: "invoices-bank-feed-sync", Limit: 30, Window: 10 * time.Minute},
 	// The pay page's three anonymous operations (invoices payments and
 	// reminders design D15, I2), each a bucket of its own: the read 60, the
 	// attempt's create 10 — each makes a Vipps payment — and the status read

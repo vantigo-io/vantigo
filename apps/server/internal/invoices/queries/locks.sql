@@ -175,3 +175,12 @@ SELECT * FROM invoices.payment_provider_credentials WHERE id = 1 FOR SHARE;
 -- LockPaymentSettings takes the payment settings row FOR UPDATE: a payment
 -- settings PUT's only lock (D14).
 SELECT * FROM invoices.payment_settings WHERE id = 1 FOR UPDATE;
+
+-- name: ShareBankFeedLease :one
+-- ShareBankFeedLease reads a sync's account FOR SHARE inside its import's
+-- transaction, after the account's bank import row: still switched on and
+-- still the claim's lease, so a DELETE or a key refusal meanwhile waits for
+-- the import or is seen by it. No row is the claim lost.
+SELECT * FROM invoices.bank_feed_accounts
+WHERE account = @account AND enabled AND lease_id = @lease_id::text
+FOR SHARE;

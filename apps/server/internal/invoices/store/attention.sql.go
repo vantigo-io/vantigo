@@ -12,6 +12,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const attentionBankFeedAccounts = `-- name: AttentionBankFeedAccounts :many
+SELECT account, status, updated_at FROM invoices.bank_feed_accounts
+WHERE enabled AND status IN ('unauthorized', 'failing', 'refused')
+ORDER BY account
+`
+
+type AttentionBankFeedAccountsRow struct {
+	Account   string
+	Status    string
+	UpdatedAt time.Time
+}
+
+// AttentionBankFeedAccounts is every account the bank feed is switched on
+// for whose last sync needs a manager (invoices bank feed design F7):
+// unauthorized, failing or refused, with when its status last changed, in
+// account order.
+func (q *Queries) AttentionBankFeedAccounts(ctx context.Context) ([]AttentionBankFeedAccountsRow, error) {
+	rows, err := q.db.Query(ctx, attentionBankFeedAccounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AttentionBankFeedAccountsRow
+	for rows.Next() {
+		var i AttentionBankFeedAccountsRow
+		if err := rows.Scan(&i.Account, &i.Status, &i.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const attentionBankFiles = `-- name: AttentionBankFiles :many
 SELECT f.id, f.first_booked_on, f.last_booked_on, f.uploaded_at, count(*)::int AS open_lines
 FROM invoices.bank_files f

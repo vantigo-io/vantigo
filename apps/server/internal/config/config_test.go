@@ -2100,6 +2100,24 @@ func TestConfig_InvoicesBankFeed(t *testing.T) {
 	}
 }
 
+// The bank feed worker's interval (F5): 30 minutes by default, 5 minutes to
+// 24 hours, both bounds included.
+func TestConfig_InvoicesBankFeedInterval(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.InvoicesBankFeedInterval != 30*time.Minute {
+		t.Errorf("INVOICES_BANK_FEED_INTERVAL unset = %v, want 30m", cfg.InvoicesBankFeedInterval)
+	}
+	for v, want := range map[string]time.Duration{"5m": 5 * time.Minute, "2h": 2 * time.Hour, "24h": 24 * time.Hour} {
+		if cfg := mustLoad(t, with(validEnv(), "INVOICES_BANK_FEED_INTERVAL", v)); cfg.InvoicesBankFeedInterval != want {
+			t.Errorf("INVOICES_BANK_FEED_INTERVAL=%s = %v, want %v", v, cfg.InvoicesBankFeedInterval, want)
+		}
+	}
+	for _, bad := range []string{"4m59s", "24h1s", "0", "-30m", "thirty", "30"} {
+		if msg := loadError(t, with(validEnv(), "INVOICES_BANK_FEED_INTERVAL", bad)); !strings.Contains(msg, "INVOICES_BANK_FEED_INTERVAL: must be a duration from 5m to 24h") {
+			t.Errorf("%q: error = %q", bad, msg)
+		}
+	}
+}
+
 // TestLoad_AIContextTokens pins AI_CONTEXT_TOKENS (the Assistant design S7):
 // 16000 unless set (150000 for anthropic), from 2000 to 1000000.
 func TestLoad_AIContextTokens(t *testing.T) {

@@ -378,6 +378,12 @@ type Config struct {
 	// The operator's, never the workspace's, and https only — the adapter
 	// sends the API key on every request and refuses anything else.
 	InvoicesFolioBaseURL string
+	// InvoicesBankFeedInterval is how often the invoices-bank-feed worker
+	// reads each account the feed is switched on for
+	// (INVOICES_BANK_FEED_INTERVAL, invoices bank feed design F5): 30
+	// minutes by default, at least 5 minutes — every read is a call to the
+	// bank — and at most 24 hours. Fetch now makes an account due at once.
+	InvoicesBankFeedInterval time.Duration
 
 	// ShippingCarriers are the carrier adapters this installation allows
 	// (SHIPPING_CARRIERS, orders design O51), a comma-separated list of known
@@ -1194,7 +1200,23 @@ const defaultFolioBaseURL = "https://api.folio.no/v2"
 func invoicesBankFeed(p *problems, env map[string]string, c *Config) {
 	c.InvoicesBankFeedEnabled = boolean(p, env, "INVOICES_BANK_FEED_ENABLED", false)
 	c.InvoicesFolioBaseURL = httpsBaseURL(p, env, "INVOICES_FOLIO_BASE_URL", defaultFolioBaseURL)
+	c.InvoicesBankFeedInterval = defaultBankFeedInterval
+	if v := env["INVOICES_BANK_FEED_INTERVAL"]; v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < minBankFeedInterval || d > maxBankFeedInterval {
+			p.add("INVOICES_BANK_FEED_INTERVAL", "must be a duration from 5m to 24h, such as 30m")
+			return
+		}
+		c.InvoicesBankFeedInterval = d
+	}
 }
+
+// The bank feed worker's interval (F5): its default and its bounds.
+const (
+	defaultBankFeedInterval = 30 * time.Minute
+	minBankFeedInterval     = 5 * time.Minute
+	maxBankFeedInterval     = 24 * time.Hour
+)
 
 // httpsBaseURL is httpBaseURL for a client that sends a secret on every
 // request: unset is the default; set, it must be an absolute https URL. No

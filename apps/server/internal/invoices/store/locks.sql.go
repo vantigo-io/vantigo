@@ -573,6 +573,43 @@ func (q *Queries) ShareBankFeedConnection(ctx context.Context) (InvoicesBankFeed
 	return i, err
 }
 
+const shareBankFeedLease = `-- name: ShareBankFeedLease :one
+SELECT account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at FROM invoices.bank_feed_accounts
+WHERE account = $1 AND enabled AND lease_id = $2::text
+FOR SHARE
+`
+
+type ShareBankFeedLeaseParams struct {
+	Account string
+	LeaseID string
+}
+
+// ShareBankFeedLease reads a sync's account FOR SHARE inside its import's
+// transaction, after the account's bank import row: still switched on and
+// still the claim's lease, so a DELETE or a key refusal meanwhile waits for
+// the import or is seen by it. No row is the claim lost.
+func (q *Queries) ShareBankFeedLease(ctx context.Context, arg ShareBankFeedLeaseParams) (InvoicesBankFeedAccount, error) {
+	row := q.db.QueryRow(ctx, shareBankFeedLease, arg.Account, arg.LeaseID)
+	var i InvoicesBankFeedAccount
+	err := row.Scan(
+		&i.Account,
+		&i.Enabled,
+		&i.StartDay,
+		&i.Status,
+		&i.Reason,
+		&i.Detail,
+		&i.Failures,
+		&i.LastSyncedAt,
+		&i.LastBankFileID,
+		&i.NextSyncAt,
+		&i.LeaseID,
+		&i.LeaseUntil,
+		&i.EnabledByUserID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const shareCollectionRatesInForce = `-- name: ShareCollectionRatesInForce :many
 SELECT r.id FROM invoices.collection_rates r
 WHERE r.valid_from <= $1::date

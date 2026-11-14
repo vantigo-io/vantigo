@@ -168,3 +168,12 @@ JOIN invoices.invoices i ON i.id = a.invoice_id
 WHERE a.state = 'captured' AND a.refunded_amount > 0
   AND EXISTS (SELECT 1 FROM invoices.payments p WHERE p.payment_attempt_id = a.id AND p.removed_at IS NULL)
 ORDER BY a.id;
+
+-- name: AttentionBankFeedAccounts :many
+-- AttentionBankFeedAccounts is every account the bank feed is switched on
+-- for whose last sync needs a manager (invoices bank feed design F7):
+-- unauthorized, failing or refused, with when its status last changed, in
+-- account order.
+SELECT account, status, updated_at FROM invoices.bank_feed_accounts
+WHERE enabled AND status IN ('unauthorized', 'failing', 'refused')
+ORDER BY account;

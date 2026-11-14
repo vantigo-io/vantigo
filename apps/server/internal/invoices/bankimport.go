@@ -519,25 +519,17 @@ func importResultResponse(r importResult) (gen.InvoicesBankImportResult, error) 
 	}, nil
 }
 
-// ignoredResponse is the four kinds as the wire names them.
+// ignoredResponse is the five kinds as the wire names them; a kind a row's
+// ignored_kinds lacks — internal_transfer, on a file imported before the bank
+// feed — reads as 0.
 func ignoredResponse(kinds map[bankfile.IgnoredKind]int) gen.InvoicesBankIgnored {
 	return gen.InvoicesBankIgnored{
-		Debit:           int32(kinds[bankfile.IgnoredDebit]),           //nolint:gosec // a count of lines in a 10 MiB file
-		NotBooked:       int32(kinds[bankfile.IgnoredNotBooked]),       //nolint:gosec // a count of lines in a 10 MiB file
-		CardInformation: int32(kinds[bankfile.IgnoredCardInformation]), //nolint:gosec // a count of lines in a 10 MiB file
-		ZeroAmount:      int32(kinds[bankfile.IgnoredZeroAmount]),      //nolint:gosec // a count of lines in a 10 MiB file
+		InternalTransfer: int32(kinds[bankfile.IgnoredInternalTransfer]), //nolint:gosec // a count of lines in a batch
+		Debit:            int32(kinds[bankfile.IgnoredDebit]),            //nolint:gosec // a count of lines in a 10 MiB file
+		NotBooked:        int32(kinds[bankfile.IgnoredNotBooked]),        //nolint:gosec // a count of lines in a 10 MiB file
+		CardInformation:  int32(kinds[bankfile.IgnoredCardInformation]),  //nolint:gosec // a count of lines in a 10 MiB file
+		ZeroAmount:       int32(kinds[bankfile.IgnoredZeroAmount]),       //nolint:gosec // a count of lines in a 10 MiB file
 	}
-}
-
-// requiredUser is the user a row of what names, which every row written
-// before the bank feed's sync has: the wire still requires it, and a row
-// without one is refused rather than answered as no one (bank feed plan B3;
-// delivery C makes the field optional).
-func requiredUser(by *uuid.UUID, what string, id int64) (uuid.UUID, error) {
-	if by == nil {
-		return uuid.Nil, fmt.Errorf("invoices: %s %d has no user", what, id)
-	}
-	return *by, nil
 }
 
 // bankFileResponse is one file on the wire, with its lines counted by
@@ -551,15 +543,13 @@ func bankFileResponse(f store.InvoicesBankFile, pending, exceptions, matched int
 	if f.Duplicates != nil {
 		duplicates = *f.Duplicates
 	}
-	uploadedBy, err := requiredUser(f.UploadedByUserID, "bank file", f.ID)
-	if err != nil {
-		return gen.InvoicesBankFile{}, err
-	}
+	// A feed batch has a provider and no uploader (ck_bank_files_origin):
+	// both are absent on the wire when the row has none.
 	return gen.InvoicesBankFile{
-		Id: f.ID, Format: f.Format, Sha256: f.Sha256, Accounts: f.Accounts,
+		Id: f.ID, Format: f.Format, Provider: f.Provider, Sha256: f.Sha256, Accounts: f.Accounts,
 		FirstBookedOn: wireDateOf(f.FirstBookedOn), LastBookedOn: wireDateOf(f.LastBookedOn),
 		Transactions: f.Transactions, Duplicates: duplicates, Ignored: f.Ignored, IgnoredKinds: ignoredResponse(kinds),
-		UploadedBy: uploadedBy, UploadedAt: f.UploadedAt,
+		UploadedBy: f.UploadedByUserID, UploadedAt: f.UploadedAt,
 		Pending: int32(pending), Exceptions: int32(exceptions), Matched: int32(matched), //nolint:gosec // counts of one file's lines
 	}, nil
 }

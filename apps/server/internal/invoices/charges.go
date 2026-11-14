@@ -320,14 +320,10 @@ func withCharges(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 		if err != nil {
 			return err
 		}
-		registeredBy, err := requiredUser(p.RegisteredByUserID, "charge payment", p.ID)
-		if err != nil {
-			return err
-		}
 		payments = append(payments, gen.InvoicesChargePayment{
 			Id: p.ID, PaidOn: wireDate(p.PaidOn.Time), Amount: floatFromRat(amount, 2), Currency: p.Currency,
 			Source: gen.InvoicesChargePaymentSource(p.Source), BankTransactionId: p.BankTransactionID,
-			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: registeredBy,
+			Reference: p.Reference, Note: p.Note, RegisteredAt: p.RegisteredAt, RegisteredByUserId: p.RegisteredByUserID,
 			RemovedAt: p.RemovedAt, RemovedByUserId: p.RemovedByUserID, RemovalReason: p.RemovalReason,
 		})
 	}
@@ -338,14 +334,10 @@ func withCharges(ctx context.Context, q *store.Queries, inv store.InvoicesInvoic
 		if err != nil {
 			return err
 		}
-		waivedBy, err := requiredUser(w.WaivedByUserID, "charge waiver", w.ID)
-		if err != nil {
-			return err
-		}
 		waivers = append(waivers, gen.InvoicesChargeWaiver{
 			Id: w.ID, ReminderId: w.ReminderID, Kind: gen.InvoicesChargeWaiverKind(w.Kind), Amount: floatFromRat(amount, 2),
 			InterestThrough: wireDateOf(w.InterestThrough), Reason: gen.InvoicesChargeWaiverReason(w.Reason), Note: w.Note,
-			WaivedBy: waivedBy, WaivedAt: w.WaivedAt,
+			WaivedBy: w.WaivedByUserID, WaivedAt: w.WaivedAt,
 		})
 	}
 	resp.Waivers = &waivers
