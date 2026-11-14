@@ -326,7 +326,7 @@ func bankTransactionsResponse(ctx context.Context, q *store.Queries, lines []sto
 	}
 	fileByID := make(map[int64]gen.InvoicesBankTransactionFile, len(files))
 	for _, f := range files {
-		fileByID[f.ID] = gen.InvoicesBankTransactionFile{Id: f.ID, Format: f.Format, UploadedAt: f.UploadedAt}
+		fileByID[f.ID] = gen.InvoicesBankTransactionFile{Id: f.ID, Format: f.Format, Provider: f.Provider, UploadedAt: f.UploadedAt}
 	}
 	twins := map[int64]store.TwinsOfRow{}
 	appliedIDs := slices.Clone(ids)
@@ -354,13 +354,11 @@ func bankTransactionsResponse(ctx context.Context, q *store.Queries, lines []sto
 	}
 	events := map[int64][]gen.InvoicesBankTransactionEvent{}
 	for _, e := range eventRows {
-		by, err := requiredUser(e.ByUserID, "bank transaction event", e.ID)
-		if err != nil {
-			return nil, err
-		}
+		// by is absent on a matched or queued event the bank feed's sync
+		// wrote (ck_bank_transaction_events_by).
 		events[e.BankTransactionID] = append(events[e.BankTransactionID], gen.InvoicesBankTransactionEvent{
 			Id: e.ID, Event: gen.InvoicesBankTransactionEventEvent(e.Event), Reason: reasonWire(e.Reason),
-			Note: e.Note, By: by, At: e.At,
+			Note: e.Note, By: e.ByUserID, At: e.At,
 		})
 	}
 	appliedWires := func(id int64) ([]gen.InvoicesBankTransactionApplied, error) {

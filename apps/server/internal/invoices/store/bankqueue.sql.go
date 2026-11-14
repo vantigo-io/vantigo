@@ -87,16 +87,18 @@ func (q *Queries) AppliedToTransactions(ctx context.Context, ids []int64) ([]App
 }
 
 const bankFileRefs = `-- name: BankFileRefs :many
-SELECT id, format, uploaded_at FROM invoices.bank_files WHERE id = ANY($1::bigint[])
+SELECT id, format, provider, uploaded_at FROM invoices.bank_files WHERE id = ANY($1::bigint[])
 `
 
 type BankFileRefsRow struct {
 	ID         int64
 	Format     string
+	Provider   *string
 	UploadedAt time.Time
 }
 
-// BankFileRefs is the files the lines came in: id, format, upload time.
+// BankFileRefs is the files the lines came in: id, format, the bank a feed
+// batch came from, upload time.
 func (q *Queries) BankFileRefs(ctx context.Context, ids []int64) ([]BankFileRefsRow, error) {
 	rows, err := q.db.Query(ctx, bankFileRefs, ids)
 	if err != nil {
@@ -106,7 +108,12 @@ func (q *Queries) BankFileRefs(ctx context.Context, ids []int64) ([]BankFileRefs
 	var items []BankFileRefsRow
 	for rows.Next() {
 		var i BankFileRefsRow
-		if err := rows.Scan(&i.ID, &i.Format, &i.UploadedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Format,
+			&i.Provider,
+			&i.UploadedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

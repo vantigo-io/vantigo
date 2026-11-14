@@ -1038,7 +1038,7 @@ export const bankFile = (overrides: Partial<BankFile> = {}): BankFile => ({
   transactions: 4,
   duplicates: 0,
   ignored: 0,
-  ignoredKinds: { debit: 0, notBooked: 0, cardInformation: 0, zeroAmount: 0 },
+  ignoredKinds: { debit: 0, notBooked: 0, cardInformation: 0, zeroAmount: 0, internalTransfer: 0 },
   pending: 0,
   exceptions: 1,
   matched: 3,
@@ -1056,7 +1056,7 @@ export const bankImportResult = (overrides: Partial<BankImportResult> = {}): Ban
   exceptions: 1,
   exceptionsAmount: 1250,
   duplicates: 0,
-  ignored: { debit: 0, notBooked: 0, cardInformation: 0, zeroAmount: 0 },
+  ignored: { debit: 0, notBooked: 0, cardInformation: 0, zeroAmount: 0, internalTransfer: 0 },
   pending: 0,
   ...overrides,
 });

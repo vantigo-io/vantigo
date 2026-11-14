@@ -13,6 +13,192 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bankFeedFailed = `-- name: BankFeedFailed :execrows
+UPDATE invoices.bank_feed_accounts SET
+    failures = failures + 1,
+    status = CASE WHEN failures + 1 >= $1::integer THEN 'failing' ELSE status END,
+    detail = $2, next_sync_at = $3::timestamptz, lease_id = NULL, lease_until = NULL,
+    updated_at = CASE WHEN failures + 1 >= $1::integer AND status <> 'failing'
+        THEN $4::timestamptz ELSE updated_at END
+WHERE account = $5 AND lease_id = $6::text
+`
+
+type BankFeedFailedParams struct {
+	FailingAfter int32
+	Detail       string
+	NextSyncAt   time.Time
+	Now          time.Time
+	Account      string
+	LeaseID      string
+}
+
+// BankFeedFailed ends a claim whose read failed (F7): one more failure in a
+// row, failing from the third, what failed in detail, read again at
+// @next_sync_at — the backoff the caller worked out from the count.
+func (q *Queries) BankFeedFailed(ctx context.Context, arg BankFeedFailedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bankFeedFailed,
+		arg.FailingAfter,
+		arg.Detail,
+		arg.NextSyncAt,
+		arg.Now,
+		arg.Account,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const bankFeedRateLimited = `-- name: BankFeedRateLimited :execrows
+UPDATE invoices.bank_feed_accounts SET
+    detail = $1, next_sync_at = $2::timestamptz, lease_id = NULL, lease_until = NULL
+WHERE account = $3 AND lease_id = $4::text
+`
+
+type BankFeedRateLimitedParams struct {
+	Detail     string
+	NextSyncAt time.Time
+	Account    string
+	LeaseID    string
+}
+
+// BankFeedRateLimited ends a claim the bank asked to wait (a 429; F7): the
+// status and the failures as they were, the wait in detail, read again at
+// @next_sync_at.
+func (q *Queries) BankFeedRateLimited(ctx context.Context, arg BankFeedRateLimitedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bankFeedRateLimited,
+		arg.Detail,
+		arg.NextSyncAt,
+		arg.Account,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const bankFeedRefused = `-- name: BankFeedRefused :execrows
+UPDATE invoices.bank_feed_accounts SET
+    status = 'refused', reason = $1, detail = $2, failures = 0,
+    next_sync_at = $3::timestamptz, lease_id = NULL, lease_until = NULL,
+    updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM $1 THEN $4::timestamptz ELSE updated_at END
+WHERE account = $5 AND lease_id = $6::text
+`
+
+type BankFeedRefusedParams struct {
+	Reason     *string
+	Detail     string
+	NextSyncAt time.Time
+	Now        time.Time
+	Account    string
+	LeaseID    string
+}
+
+// BankFeedRefused ends a claim whose batch broke a rule (F5 step 2, F7):
+// refused, the rule in reason and the transaction's id in detail, no
+// failures, read again at @next_sync_at. Nothing of the batch was stored.
+func (q *Queries) BankFeedRefused(ctx context.Context, arg BankFeedRefusedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bankFeedRefused,
+		arg.Reason,
+		arg.Detail,
+		arg.NextSyncAt,
+		arg.Now,
+		arg.Account,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const bankFeedSynced = `-- name: BankFeedSynced :execrows
+UPDATE invoices.bank_feed_accounts SET
+    status = 'ok', reason = NULL, detail = '', failures = 0, last_synced_at = $1::timestamptz,
+    last_bank_file_id = coalesce($2::bigint, last_bank_file_id),
+    next_sync_at = $3::timestamptz, lease_id = NULL, lease_until = NULL,
+    updated_at = CASE WHEN status <> 'ok' THEN $1::timestamptz ELSE updated_at END
+WHERE account = $4 AND lease_id = $5::text
+`
+
+type BankFeedSyncedParams struct {
+	Now            time.Time
+	LastBankFileID *int64
+	NextSyncAt     time.Time
+	Account        string
+	LeaseID        string
+}
+
+// BankFeedSynced ends a claim whose read succeeded (F7): ok, no failures,
+// the reason and detail cleared, last_synced_at the claim's time, the batch
+// it stored when it stored one, read again at @next_sync_at. Only under the
+// claim's lease, which it clears; no row is a claim lost. updated_at moves
+// only with the status, so attention dates an item by its change.
+func (q *Queries) BankFeedSynced(ctx context.Context, arg BankFeedSyncedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, bankFeedSynced,
+		arg.Now,
+		arg.LastBankFileID,
+		arg.NextSyncAt,
+		arg.Account,
+		arg.LeaseID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const claimBankFeedAccount = `-- name: ClaimBankFeedAccount :one
+UPDATE invoices.bank_feed_accounts
+SET lease_id = $1::text, lease_until = $2::timestamptz
+WHERE account = (
+    SELECT a.account FROM invoices.bank_feed_accounts a
+    WHERE a.enabled AND a.next_sync_at <= $3::timestamptz
+      AND (a.lease_until IS NULL OR a.lease_until <= $3::timestamptz)
+      AND EXISTS (SELECT 1 FROM invoices.bank_feed_connections c WHERE c.id = 1 AND c.status = 'ok')
+    ORDER BY a.next_sync_at, a.account
+    LIMIT 1
+    FOR NO KEY UPDATE SKIP LOCKED
+)
+RETURNING account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at
+`
+
+type ClaimBankFeedAccountParams struct {
+	LeaseID    string
+	LeaseUntil time.Time
+	Now        time.Time
+}
+
+// ClaimBankFeedAccount leases the next account due by @now whose lease, if
+// any, has run out (F5, F7): switched on, due, and only while the stored key
+// is ok — the payment worker's claim (ClaimPaymentAttempt). One statement:
+// the row lock FOR NO KEY UPDATE SKIP LOCKED is held for it alone, so two
+// workers never take one account, and the claim holds no connection while it
+// works. No row is pgx.ErrNoRows.
+func (q *Queries) ClaimBankFeedAccount(ctx context.Context, arg ClaimBankFeedAccountParams) (InvoicesBankFeedAccount, error) {
+	row := q.db.QueryRow(ctx, claimBankFeedAccount, arg.LeaseID, arg.LeaseUntil, arg.Now)
+	var i InvoicesBankFeedAccount
+	err := row.Scan(
+		&i.Account,
+		&i.Enabled,
+		&i.StartDay,
+		&i.Status,
+		&i.Reason,
+		&i.Detail,
+		&i.Failures,
+		&i.LastSyncedAt,
+		&i.LastBankFileID,
+		&i.NextSyncAt,
+		&i.LeaseID,
+		&i.LeaseUntil,
+		&i.EnabledByUserID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const deleteBankFeedConnection = `-- name: DeleteBankFeedConnection :execrows
 DELETE FROM invoices.bank_feed_connections WHERE id = 1
 `
@@ -231,9 +417,40 @@ func (q *Queries) ListBankFeedAccounts(ctx context.Context) ([]InvoicesBankFeedA
 	return items, nil
 }
 
+const makeBankFeedAccountsDue = `-- name: MakeBankFeedAccountsDue :exec
+UPDATE invoices.bank_feed_accounts SET next_sync_at = $1::timestamptz
+WHERE enabled AND status <> 'unauthorized'
+  AND ($2::text IS NULL OR account = $2::text)
+  AND (next_sync_at IS NULL OR next_sync_at > $1::timestamptz)
+`
+
+type MakeBankFeedAccountsDueParams struct {
+	Now     time.Time
+	Account *string
+}
+
+// MakeBankFeedAccountsDue is Fetch now (POST /invoices/bank-feed/sync, F5):
+// the account named, or every one when @account is NULL, that the feed is
+// switched on for and the bank did not refuse the key for, due now where it
+// was due later. The lease is left: a cycle in flight finishes and the next
+// claim takes the account. A refused account is made due too — its next read
+// is its own — and an unauthorized one waits for a new key.
+func (q *Queries) MakeBankFeedAccountsDue(ctx context.Context, arg MakeBankFeedAccountsDueParams) error {
+	_, err := q.db.Exec(ctx, makeBankFeedAccountsDue, arg.Now, arg.Account)
+	return err
+}
+
 const markBankFeedUnauthorized = `-- name: MarkBankFeedUnauthorized :exec
-UPDATE invoices.bank_feed_connections SET status = 'unauthorized', rejected_at = $1::timestamptz
-WHERE id = 1 AND status = 'ok' AND updated_at = $2::timestamptz
+WITH conn AS (
+    UPDATE invoices.bank_feed_connections
+    SET status = 'unauthorized', rejected_at = coalesce(rejected_at, $1::timestamptz)
+    WHERE id = 1 AND updated_at = $2::timestamptz
+    RETURNING id
+)
+UPDATE invoices.bank_feed_accounts SET
+    status = 'unauthorized', reason = NULL, detail = '', next_sync_at = NULL, lease_id = NULL, lease_until = NULL,
+    updated_at = CASE WHEN status <> 'unauthorized' THEN $1::timestamptz ELSE updated_at END
+WHERE enabled AND EXISTS (SELECT 1 FROM conn)
 `
 
 type MarkBankFeedUnauthorizedParams struct {
@@ -242,12 +459,45 @@ type MarkBankFeedUnauthorizedParams struct {
 }
 
 // MarkBankFeedUnauthorized records that the bank refused the key (a 401 or
-// 403), keeping the first moment — only while the row is still the version
-// (@version, its updated_at) the caller opened the key from: a refusal of an
-// old key never flags a newer one.
+// 403; F7), keeping the first moment — only while the row is still the
+// version (@version, its updated_at) the caller opened the key from: a
+// refusal of an old key never flags a newer one. Every account the feed is
+// switched on for stops with it: unauthorized, no next sync and no lease, so
+// a cycle in flight on another account finds its claim gone and stores
+// nothing, until a PUT stores a key again (ReviveUnauthorizedBankFeedAccounts).
 func (q *Queries) MarkBankFeedUnauthorized(ctx context.Context, arg MarkBankFeedUnauthorizedParams) error {
 	_, err := q.db.Exec(ctx, markBankFeedUnauthorized, arg.Now, arg.Version)
 	return err
+}
+
+const pendingFeedFilesOfAccount = `-- name: PendingFeedFilesOfAccount :many
+SELECT DISTINCT bank_file_id FROM invoices.bank_transactions
+WHERE account = $1 AND format = 'feed' AND status = 'pending'
+ORDER BY bank_file_id
+`
+
+// PendingFeedFilesOfAccount is every feed batch with a line of @account
+// still pending, oldest first: what an earlier cycle stored and did not get
+// to match — it stopped, or the process ended between the commit and the
+// match — which every cycle matches again.
+func (q *Queries) PendingFeedFilesOfAccount(ctx context.Context, account string) ([]int64, error) {
+	rows, err := q.db.Query(ctx, pendingFeedFilesOfAccount, account)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var bank_file_id int64
+		if err := rows.Scan(&bank_file_id); err != nil {
+			return nil, err
+		}
+		items = append(items, bank_file_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const reviveUnauthorizedBankFeedAccounts = `-- name: ReviveUnauthorizedBankFeedAccounts :exec
@@ -264,6 +514,49 @@ WHERE status = 'unauthorized'
 func (q *Queries) ReviveUnauthorizedBankFeedAccounts(ctx context.Context, now time.Time) error {
 	_, err := q.db.Exec(ctx, reviveUnauthorizedBankFeedAccounts, now)
 	return err
+}
+
+const storedFeedLines = `-- name: StoredFeedLines :many
+SELECT fingerprint, line_ref FROM invoices.bank_transactions
+WHERE account = $1
+  AND ((duplicate_of_id IS NULL AND fingerprint = ANY ($2::text[]))
+       OR (format = 'feed' AND line_ref = ANY ($3::text[])))
+`
+
+type StoredFeedLinesParams struct {
+	Account      string
+	Fingerprints []string
+	LineRefs     []string
+}
+
+type StoredFeedLinesRow struct {
+	Fingerprint string
+	LineRef     string
+}
+
+// StoredFeedLines is what a sync already stored of the transactions it read
+// (F5 step 4): every live line of @account with one of @fingerprints, and
+// every feed line of it with one of @line_refs — the bank's own id, which
+// stays the same when the bank books the transaction on another day than it
+// first did. A transaction either names is the same record read again.
+func (q *Queries) StoredFeedLines(ctx context.Context, arg StoredFeedLinesParams) ([]StoredFeedLinesRow, error) {
+	rows, err := q.db.Query(ctx, storedFeedLines, arg.Account, arg.Fingerprints, arg.LineRefs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StoredFeedLinesRow
+	for rows.Next() {
+		var i StoredFeedLinesRow
+		if err := rows.Scan(&i.Fingerprint, &i.LineRef); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertBankFeedConnection = `-- name: UpsertBankFeedConnection :one

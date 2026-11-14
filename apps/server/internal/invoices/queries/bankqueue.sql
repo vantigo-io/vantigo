@@ -72,8 +72,9 @@ LIMIT sqlc.arg(page_size)::integer OFFSET sqlc.arg(page_offset)::integer;
 SELECT * FROM invoices.bank_transactions WHERE id = @id;
 
 -- name: BankFileRefs :many
--- BankFileRefs is the files the lines came in: id, format, upload time.
-SELECT id, format, uploaded_at FROM invoices.bank_files WHERE id = ANY(sqlc.arg(ids)::bigint[]);
+-- BankFileRefs is the files the lines came in: id, format, the bank a feed
+-- batch came from, upload time.
+SELECT id, format, provider, uploaded_at FROM invoices.bank_files WHERE id = ANY(sqlc.arg(ids)::bigint[]);
 
 -- name: AppliedToTransactions :many
 -- AppliedToTransactions is every payment and charge payment that refers to

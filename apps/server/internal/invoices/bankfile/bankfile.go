@@ -30,12 +30,13 @@ const (
 // import counts them (invoices.bank_files.ignored_kinds).
 type IgnoredKind string
 
-// The four kinds a file's ignored lines are counted under.
+// The five kinds a file's ignored lines are counted under.
 const (
-	IgnoredDebit           IgnoredKind = "debit"            // camt: a DBIT entry that is not a reversal
-	IgnoredNotBooked       IgnoredKind = "not_booked"       // camt: an entry not BOOKed
-	IgnoredCardInformation IgnoredKind = "card_information" // OCR: types 18–21, checked and summed
-	IgnoredZeroAmount      IgnoredKind = "zero_amount"      // a transaction of 0.00
+	IgnoredDebit            IgnoredKind = "debit"             // camt: a DBIT entry that is not a reversal; feed: money out
+	IgnoredNotBooked        IgnoredKind = "not_booked"        // camt: an entry not BOOKed
+	IgnoredCardInformation  IgnoredKind = "card_information"  // OCR: types 18–21, checked and summed; feed: a card transaction
+	IgnoredZeroAmount       IgnoredKind = "zero_amount"       // a transaction of 0.00
+	IgnoredInternalTransfer IgnoredKind = "internal_transfer" // feed: a transfer between the seller's own accounts
 )
 
 // The limits on a file: its size (the upload's BodyLimits) and the
@@ -105,11 +106,31 @@ func Parse(b []byte, today time.Time) (*File, error) {
 }
 
 // newFile is a file of format with every ignored kind counted at zero, so
-// the import stores all four.
+// the import stores all five. A file imported before internal_transfer
+// existed lacks it, which the module reads as 0.
 func newFile(format Format) *File {
 	return &File{Format: format, Ignored: map[IgnoredKind]int{
-		IgnoredDebit: 0, IgnoredNotBooked: 0, IgnoredCardInformation: 0, IgnoredZeroAmount: 0,
+		IgnoredDebit: 0, IgnoredNotBooked: 0, IgnoredCardInformation: 0, IgnoredZeroAmount: 0, IgnoredInternalTransfer: 0,
 	}}
+}
+
+// FeedFile is a bank feed's batch as a file (invoices bank feed design F5):
+// format feed, identity as the module makes it, the one account read, the
+// transactions the module kept — each already a credit transfer above zero —
+// and ignored, what it counted and did not keep, over every kind at zero.
+// It finishes as a parsed file does: the booking days' bounds and the
+// fingerprints, which are the files' own for good. Nothing here reads a
+// bank's answer: the module builds each Transaction from the port's.
+func FeedFile(identity, account string, txs []Transaction, ignored map[IgnoredKind]int) *File {
+	f := newFile(FormatFeed)
+	f.Identity = identity
+	f.Accounts = []string{account}
+	f.Transactions = txs
+	for k, n := range ignored {
+		f.Ignored[k] += n
+	}
+	f.finish()
+	return f
 }
 
 // finish is what every format's parser does last: the accounts distinct and

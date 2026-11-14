@@ -738,20 +738,20 @@ func TestBankFile_IgnoredByKind(t *testing.T) {
 		bankfiletest.CamtEntry{Status: "PDNG", Txs: []bankfiletest.CamtTx{{AmountMinor: 700, KID: "0010033"}}},
 	)
 	r := imported(t, c, camt)
-	want := map[string]int{"debit": 2, "notBooked": 1, "cardInformation": 0, "zeroAmount": 1}
+	want := map[string]int{"debit": 2, "notBooked": 1, "cardInformation": 0, "zeroAmount": 1, "internalTransfer": 0}
 	if r.Transactions != 1 || !mapsEqual(r.Ignored, want) || r.File.Ignored != 4 || !mapsEqual(r.File.IgnoredKinds, want) {
 		t.Errorf("the camt.054 = %d transactions, ignored %v (file %d, %v), want 1 and %v", r.Transactions, r.Ignored, r.File.Ignored, r.File.IgnoredKinds, want)
 	}
 	if got := bankDetail(t, h, r.File.ID).File.IgnoredKinds; !mapsEqual(got, want) {
 		t.Errorf("the stored file's ignoredKinds = %v, want %v", got, want)
 	}
-	if got := modtest.One[string](t, h.Harness, `SELECT ignored_kinds::text FROM invoices.bank_files WHERE id = $1`, r.File.ID); got != `{"debit": 2, "not_booked": 1, "zero_amount": 1, "card_information": 0}` {
-		t.Errorf("ignored_kinds = %s, want the four kinds by their stored names", got)
+	if got := modtest.One[string](t, h.Harness, `SELECT ignored_kinds::text FROM invoices.bank_files WHERE id = $1`, r.File.ID); got != `{"debit": 2, "not_booked": 1, "zero_amount": 1, "card_information": 0, "internal_transfer": 0}` {
+		t.Errorf("ignored_kinds = %s, want the five kinds by their stored names", got)
 	}
 
 	card := bankfiletest.OCRPayment{Type: 18, Account: olderAccount, Settled: oct(6), AmountMinor: 2500, ArchiveRef: "7"}
 	r = imported(t, c, bankfiletest.OCR("3", giro(olderAccount, 6, 49950, "0010041", "1"), card, card))
-	want = map[string]int{"debit": 0, "notBooked": 0, "cardInformation": 2, "zeroAmount": 0}
+	want = map[string]int{"debit": 0, "notBooked": 0, "cardInformation": 2, "zeroAmount": 0, "internalTransfer": 0}
 	if r.Transactions != 1 || !mapsEqual(r.Ignored, want) || !mapsEqual(r.File.IgnoredKinds, want) {
 		t.Errorf("the OCR file = %d transactions, ignored %v, want 1 and %v", r.Transactions, r.Ignored, want)
 	}

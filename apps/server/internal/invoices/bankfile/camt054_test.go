@@ -64,7 +64,7 @@ func noFingerprints(t *testing.T, f *bankfile.File) {
 
 func ignored(debit, notBooked, zero int) map[bankfile.IgnoredKind]int {
 	return map[bankfile.IgnoredKind]int{bankfile.IgnoredDebit: debit, bankfile.IgnoredNotBooked: notBooked,
-		bankfile.IgnoredCardInformation: 0, bankfile.IgnoredZeroAmount: zero}
+		bankfile.IgnoredCardInformation: 0, bankfile.IgnoredZeroAmount: zero, bankfile.IgnoredInternalTransfer: 0}
 }
 
 // The committed fixtures to the field, both versions; then one refusal per

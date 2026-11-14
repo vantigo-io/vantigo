@@ -27,7 +27,8 @@ import (
 // purpose and is never answered, logged or sent anywhere but to the bank;
 // only its last four characters are kept in clear. Every call to the bank is
 // made outside any transaction, through bankFeed or bankFeedWith
-// (contractscalls.go). The sync that reads the accounts is delivery C's.
+// (contractscalls.go). The sync that reads the accounts is
+// bank_feed_sync.go's, its worker bank_feed_worker.go's.
 
 const (
 	// bankFeedCredentialPurpose is the secrets box purpose the API key is
@@ -552,6 +553,51 @@ func (s *server) switchBankFeedOn(ctx context.Context, account string, startDay 
 		return nil, err
 	}
 	return gen.PutInvoicesBankFeedAccountsByAccount200JSONResponse(bankFeedAccountResponse(row)), nil
+}
+
+// PostInvoicesBankFeedSync Fetch the bank feed's accounts now
+// (POST /api/v1/invoices/bank-feed/sync)
+//
+// Fetch now (F5): the account named, or every account the feed is switched
+// on for, made due now — one statement on the pool, no lock taken and no call
+// to the bank. The worker's claim then reads it, so a fetch and the worker
+// never read one account together; a cycle in flight keeps its lease and
+// finishes first. 202 with the accounts made due as they now stand.
+func (s *server) PostInvoicesBankFeedSync(ctx context.Context, req gen.PostInvoicesBankFeedSyncRequestObject) (gen.PostInvoicesBankFeedSyncResponseObject, error) {
+	if s.deps.Config == nil || !s.deps.Config.InvoicesBankFeedEnabled {
+		return gen.PostInvoicesBankFeedSync409ApplicationProblemPlusJSONResponse(s.bankFeedRefusal(ctx, errBankFeedSwitchedOff)), nil
+	}
+	var account *string
+	if req.Body != nil && req.Body.Account != nil {
+		if n, ok := bankfile.NormaliseAccount(*req.Body.Account); !ok || n != *req.Body.Account {
+			return gen.PostInvoicesBankFeedSync400ApplicationProblemPlusJSONResponse(invalid(invalidBankFeedTitle,
+				fieldError("account", "The account is its 11 digits, a valid Norwegian account number."))), nil
+		}
+		account = req.Body.Account
+	}
+	q := store.New(s.deps.Pool)
+	if _, err := q.GetBankFeedConnection(ctx); errors.Is(err, pgx.ErrNoRows) {
+		return gen.PostInvoicesBankFeedSync409ApplicationProblemPlusJSONResponse(s.bankFeedRefusal(ctx, errBankFeedNotConnected)), nil
+	} else if err != nil {
+		return nil, fmt.Errorf("invoices: read the bank connection: %w", err)
+	}
+	if err := q.MakeBankFeedAccountsDue(ctx, store.MakeBankFeedAccountsDueParams{Now: s.deps.Clock(), Account: account}); err != nil {
+		return nil, fmt.Errorf("invoices: make the bank feed's accounts due: %w", err)
+	}
+	rows, err := q.ListBankFeedAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the bank feed's accounts: %w", err)
+	}
+	out := gen.InvoicesBankFeedSyncResponse{Accounts: []gen.InvoicesBankFeedAccount{}}
+	for _, r := range rows {
+		if r.Enabled && (account == nil || r.Account == *account) {
+			out.Accounts = append(out.Accounts, bankFeedAccountResponse(r))
+		}
+	}
+	if account != nil && len(out.Accounts) == 0 {
+		return gen.PostInvoicesBankFeedSync404Response{}, nil
+	}
+	return gen.PostInvoicesBankFeedSync202JSONResponse(out), nil
 }
 
 // bankFeedEnabledOn reports whether the feed is switched on for account, read

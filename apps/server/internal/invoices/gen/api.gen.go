@@ -221,14 +221,17 @@ func (e InvoicesBillingRunRequestSource) Valid() bool {
 
 // Defines values for InvoicesChargePaymentSource.
 const (
-	InvoicesChargePaymentSourceCamt054 InvoicesChargePaymentSource = "camt054"
-	InvoicesChargePaymentSourceManual  InvoicesChargePaymentSource = "manual"
-	InvoicesChargePaymentSourceOcr     InvoicesChargePaymentSource = "ocr"
+	InvoicesChargePaymentSourceBankFeed InvoicesChargePaymentSource = "bank_feed"
+	InvoicesChargePaymentSourceCamt054  InvoicesChargePaymentSource = "camt054"
+	InvoicesChargePaymentSourceManual   InvoicesChargePaymentSource = "manual"
+	InvoicesChargePaymentSourceOcr      InvoicesChargePaymentSource = "ocr"
 )
 
 // Valid indicates whether the value is a known member of the InvoicesChargePaymentSource enum.
 func (e InvoicesChargePaymentSource) Valid() bool {
 	switch e {
+	case InvoicesChargePaymentSourceBankFeed:
+		return true
 	case InvoicesChargePaymentSourceCamt054:
 		return true
 	case InvoicesChargePaymentSourceManual:
@@ -863,15 +866,18 @@ func (e InvoicesPayReason) Valid() bool {
 
 // Defines values for InvoicesPaymentSource.
 const (
-	InvoicesPaymentSourceCamt054 InvoicesPaymentSource = "camt054"
-	InvoicesPaymentSourceManual  InvoicesPaymentSource = "manual"
-	InvoicesPaymentSourceOcr     InvoicesPaymentSource = "ocr"
-	InvoicesPaymentSourceVipps   InvoicesPaymentSource = "vipps"
+	InvoicesPaymentSourceBankFeed InvoicesPaymentSource = "bank_feed"
+	InvoicesPaymentSourceCamt054  InvoicesPaymentSource = "camt054"
+	InvoicesPaymentSourceManual   InvoicesPaymentSource = "manual"
+	InvoicesPaymentSourceOcr      InvoicesPaymentSource = "ocr"
+	InvoicesPaymentSourceVipps    InvoicesPaymentSource = "vipps"
 )
 
 // Valid indicates whether the value is a known member of the InvoicesPaymentSource enum.
 func (e InvoicesPaymentSource) Valid() bool {
 	switch e {
+	case InvoicesPaymentSourceBankFeed:
+		return true
 	case InvoicesPaymentSourceCamt054:
 		return true
 	case InvoicesPaymentSourceManual:
@@ -1445,6 +1451,9 @@ func (e InvoicesSettingsResponseTimesheetPersonLabel) Valid() bool {
 
 // Defines values for InvoicesStatsAttentionItemType.
 const (
+	BankFeedFailing            InvoicesStatsAttentionItemType = "bankFeedFailing"
+	BankFeedRefused            InvoicesStatsAttentionItemType = "bankFeedRefused"
+	BankFeedUnauthorized       InvoicesStatsAttentionItemType = "bankFeedUnauthorized"
 	BankTransactionsOpen       InvoicesStatsAttentionItemType = "bankTransactionsOpen"
 	InvoiceOverdue             InvoicesStatsAttentionItemType = "invoiceOverdue"
 	InvoiceRefundDue           InvoicesStatsAttentionItemType = "invoiceRefundDue"
@@ -1460,6 +1469,12 @@ const (
 // Valid indicates whether the value is a known member of the InvoicesStatsAttentionItemType enum.
 func (e InvoicesStatsAttentionItemType) Valid() bool {
 	switch e {
+	case BankFeedFailing:
+		return true
+	case BankFeedRefused:
+		return true
+	case BankFeedUnauthorized:
+		return true
 	case BankTransactionsOpen:
 		return true
 	case InvoiceOverdue:
@@ -1741,7 +1756,7 @@ type InvoicesBankFeed struct {
 	Status            *string                   `json:"status,omitempty"`
 }
 
-// InvoicesBankFeedAccount One account the feed reads, or read (F4, F7). account is its 11 digits; enabled whether the feed is switched on for it; startDay the first booking day read. status is ok, failing (three reads in a row failed), refused (a batch broke a rule and nothing of it was stored; reason names the rule, detail the transaction) or unauthorized (the bank refused the key). lastSyncedAt is the last read that succeeded, lastBankFileId the last batch it stored and nextSyncAt when it is read next — each absent while there is none.
+// InvoicesBankFeedAccount One account the feed reads, or read (F4, F7). account is its 11 digits; enabled whether the feed is switched on for it; startDay the first booking day read. status is ok, failing (three reads in a row failed; detail says what failed, without the bank's answer), refused (a batch broke a rule and nothing of it was stored; reason names the rule — booked_in_future, currency_not_nok, direction_unknown, duplicate_transaction (the bank answered one transaction id twice), transaction_unreadable (an id that is empty or longer than 60 characters, or an amount above 999 999 999 999.99) or format_mismatch (the account's format is no longer feed) — and detail the bank's id of the transaction, never a name or a text) or unauthorized (the bank refused the key). An ok account the bank asked to wait carries the wait in detail. lastSyncedAt is the last read that succeeded, lastBankFileId the last batch it stored and nextSyncAt when it is read next — each absent while there is none.
 type InvoicesBankFeedAccount struct {
 	Account        string             `json:"account"`
 	Detail         *string            `json:"detail,omitempty"`
@@ -1780,7 +1795,17 @@ type InvoicesBankFeedRequest struct {
 	Provider string `json:"provider"`
 }
 
-// InvoicesBankFile One imported bank file (D3): its format (ocr or camt054), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it and when, and its lines counted by status — pending (not yet matched), exceptions and matched.
+// InvoicesBankFeedSyncRequest POST /invoices/bank-feed/sync's body (F5). account, its 11 digits, names the one account to fetch; absent, every account the feed is switched on for.
+type InvoicesBankFeedSyncRequest struct {
+	Account *string `json:"account,omitempty"`
+}
+
+// InvoicesBankFeedSyncResponse POST /invoices/bank-feed/sync's answer — the accounts made due, in account order, each as it now stands.
+type InvoicesBankFeedSyncResponse struct {
+	Accounts []InvoicesBankFeedAccount `json:"accounts"`
+}
+
+// InvoicesBankFile One imported bank file (D3): its format (ocr or camt054 for a file a person uploaded, feed for a batch the bank feed fetched — invoices bank feed design F5), the bank it came from (provider, folio, for a feed batch only), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it (absent for a feed batch, which no person uploaded) and when — for a feed batch, when it was fetched — and its lines counted by status — pending (not yet matched), exceptions and matched.
 type InvoicesBankFile struct {
 	Accounts      []string            `json:"accounts"`
 	Duplicates    int32               `json:"duplicates"`
@@ -1790,20 +1815,25 @@ type InvoicesBankFile struct {
 	Id            int64               `json:"id"`
 	Ignored       int32               `json:"ignored"`
 
-	// IgnoredKinds A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21) and zeroAmount (a transaction of 0.00).
+	// IgnoredKinds A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal, or money out of an account the bank feed reads), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21, or a card transaction the bank feed read), zeroAmount (a transaction of 0.00) and internalTransfer (a transfer between two of the seller's own accounts the bank feed read; invoices bank feed design F5 — 0 for a file, and for a file imported before the feed existed).
 	IgnoredKinds InvoicesBankIgnored `json:"ignoredKinds"`
 	LastBookedOn *openapi_types.Date `json:"lastBookedOn,omitempty"`
 	Matched      int32               `json:"matched"`
 	Pending      int32               `json:"pending"`
-	Sha256       string              `json:"sha256"`
-	Transactions int32               `json:"transactions"`
-	UploadedAt   time.Time           `json:"uploadedAt"`
-	UploadedBy   openapi_types.UUID  `json:"uploadedBy"`
+
+	// Provider The bank a feed batch came from (folio); absent for an uploaded file.
+	Provider     *string   `json:"provider,omitempty"`
+	Sha256       string    `json:"sha256"`
+	Transactions int32     `json:"transactions"`
+	UploadedAt   time.Time `json:"uploadedAt"`
+
+	// UploadedBy The user who uploaded the file; absent for a feed batch.
+	UploadedBy *openapi_types.UUID `json:"uploadedBy,omitempty"`
 }
 
 // InvoicesBankFileDetail GET /invoices/bank-files/{id} — the file and every line it brought, duplicates included, in the order they were stored.
 type InvoicesBankFileDetail struct {
-	// File One imported bank file (D3): its format (ocr or camt054), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it and when, and its lines counted by status — pending (not yet matched), exceptions and matched.
+	// File One imported bank file (D3): its format (ocr or camt054 for a file a person uploaded, feed for a batch the bank feed fetched — invoices bank feed design F5), the bank it came from (provider, folio, for a feed batch only), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it (absent for a feed batch, which no person uploaded) and when — for a feed batch, when it was fetched — and its lines counted by status — pending (not yet matched), exceptions and matched.
 	File         InvoicesBankFile          `json:"file"`
 	Transactions []InvoicesBankTransaction `json:"transactions"`
 }
@@ -1816,12 +1846,13 @@ type InvoicesBankFreshness struct {
 	StaleImportDays int32               `json:"staleImportDays"`
 }
 
-// InvoicesBankIgnored A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21) and zeroAmount (a transaction of 0.00).
+// InvoicesBankIgnored A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal, or money out of an account the bank feed reads), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21, or a card transaction the bank feed read), zeroAmount (a transaction of 0.00) and internalTransfer (a transfer between two of the seller's own accounts the bank feed read; invoices bank feed design F5 — 0 for a file, and for a file imported before the feed existed).
 type InvoicesBankIgnored struct {
-	CardInformation int32 `json:"cardInformation"`
-	Debit           int32 `json:"debit"`
-	NotBooked       int32 `json:"notBooked"`
-	ZeroAmount      int32 `json:"zeroAmount"`
+	CardInformation  int32 `json:"cardInformation"`
+	Debit            int32 `json:"debit"`
+	InternalTransfer int32 `json:"internalTransfer"`
+	NotBooked        int32 `json:"notBooked"`
+	ZeroAmount       int32 `json:"zeroAmount"`
 }
 
 // InvoicesBankImportResult POST /invoices/bank-files' 201 (D3 step 9): the file row; transactions, the lines it brought; matched and matchedAmount, the lines registered as payments; exceptions and exceptionsAmount, the lines queued; duplicates, the lines an earlier or overlapping file had already brought; ignored, by kind; pending, the lines not yet matched — 0 unless matching stopped early (an error, or the request ended), when POST /invoices/bank-files/{id}/match finishes them. On POST /invoices/bank-files/{id}/match, matched and exceptions count what that request matched and queued, and pending what is still left.
@@ -1830,10 +1861,10 @@ type InvoicesBankImportResult struct {
 	Exceptions       int32   `json:"exceptions"`
 	ExceptionsAmount float64 `json:"exceptionsAmount"`
 
-	// File One imported bank file (D3): its format (ocr or camt054), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it and when, and its lines counted by status — pending (not yet matched), exceptions and matched.
+	// File One imported bank file (D3): its format (ocr or camt054 for a file a person uploaded, feed for a batch the bank feed fetched — invoices bank feed design F5), the bank it came from (provider, folio, for a feed batch only), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it (absent for a feed batch, which no person uploaded) and when — for a feed batch, when it was fetched — and its lines counted by status — pending (not yet matched), exceptions and matched.
 	File InvoicesBankFile `json:"file"`
 
-	// Ignored A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21) and zeroAmount (a transaction of 0.00).
+	// Ignored A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal, or money out of an account the bank feed reads), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21, or a card transaction the bank feed read), zeroAmount (a transaction of 0.00) and internalTransfer (a transfer between two of the seller's own accounts the bank feed read; invoices bank feed design F5 — 0 for a file, and for a file imported before the feed existed).
 	Ignored       InvoicesBankIgnored `json:"ignored"`
 	Matched       int32               `json:"matched"`
 	MatchedAmount float64             `json:"matchedAmount"`
@@ -1848,7 +1879,7 @@ type InvoicesBankTransaction struct {
 	Applied    []InvoicesBankTransactionApplied `json:"applied"`
 	ArchiveRef string                           `json:"archiveRef"`
 
-	// BankFile The bank file a line came in — its id, format (ocr or camt054) and when it was uploaded.
+	// BankFile The bank file a line came in — its id, format (ocr, camt054, or feed for a bank feed batch), the bank a feed batch came from (provider) and when it was uploaded or fetched.
 	BankFile      InvoicesBankTransactionFile    `json:"bankFile"`
 	BookedOn      openapi_types.Date             `json:"bookedOn"`
 	DebtorAccount string                         `json:"debtorAccount"`
@@ -1913,10 +1944,12 @@ type InvoicesBankTransactionDismissRequest struct {
 	Note string `json:"note"`
 }
 
-// InvoicesBankTransactionEvent What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed, treated_as_distinct or reversed (a reversal took back a payment of this line; the note names the reversal); the reason the line had or was given (absent on a match); the note given with it; who and when. Events are never changed; they keep a resolution a reopen cleared from the line.
+// InvoicesBankTransactionEvent What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed, treated_as_distinct or reversed (a reversal took back a payment of this line; the note names the reversal); the reason the line had or was given (absent on a match); the note given with it; who and when — by is absent on a matched or queued event the bank feed's sync wrote, which no person made (invoices bank feed design F6). Events are never changed; they keep a resolution a reopen cleared from the line.
 type InvoicesBankTransactionEvent struct {
-	At    time.Time                         `json:"at"`
-	By    openapi_types.UUID                `json:"by"`
+	At time.Time `json:"at"`
+
+	// By The user who made the event; absent when the bank feed's sync matched or queued the line.
+	By    *openapi_types.UUID               `json:"by,omitempty"`
 	Event InvoicesBankTransactionEventEvent `json:"event"`
 	Id    int64                             `json:"id"`
 	Note  string                            `json:"note"`
@@ -1928,10 +1961,13 @@ type InvoicesBankTransactionEvent struct {
 // InvoicesBankTransactionEventEvent defines model for InvoicesBankTransactionEvent.Event.
 type InvoicesBankTransactionEventEvent string
 
-// InvoicesBankTransactionFile The bank file a line came in — its id, format (ocr or camt054) and when it was uploaded.
+// InvoicesBankTransactionFile The bank file a line came in — its id, format (ocr, camt054, or feed for a bank feed batch), the bank a feed batch came from (provider) and when it was uploaded or fetched.
 type InvoicesBankTransactionFile struct {
-	Format     string    `json:"format"`
-	Id         int64     `json:"id"`
+	Format string `json:"format"`
+	Id     int64  `json:"id"`
+
+	// Provider The bank a feed batch came from (folio); absent for an uploaded file.
+	Provider   *string   `json:"provider,omitempty"`
 	UploadedAt time.Time `json:"uploadedAt"`
 }
 
@@ -2084,28 +2120,30 @@ type InvoicesBuyer struct {
 	Type string `json:"type"`
 }
 
-// InvoicesChargePayment One payment of an issued invoice's charges — the fees, the compensation and the interest its reminders claimed — never of its principal (invoices payments and reminders design D9). source is manual for one registered by hand, ocr or camt054 for one taken from a bank line, which bankTransactionId then names. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
+// InvoicesChargePayment One payment of an issued invoice's charges — the fees, the compensation and the interest its reminders claimed — never of its principal (invoices payments and reminders design D9). source is manual for one registered by hand, ocr, camt054 or bank_feed for one taken from a bank line, which bankTransactionId then names. registeredByUserId is the person who registered it, absent when the bank feed's sync matched the line (invoices bank feed design F6). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
 type InvoicesChargePayment struct {
 	Amount float64 `json:"amount"`
 
 	// BankTransactionId The bank line the payment was taken from; absent for one registered by hand.
-	BankTransactionId  *int64              `json:"bankTransactionId,omitempty"`
-	Currency           string              `json:"currency"`
-	Id                 int64               `json:"id"`
-	Note               string              `json:"note"`
-	PaidOn             openapi_types.Date  `json:"paidOn"`
-	Reference          string              `json:"reference"`
-	RegisteredAt       time.Time           `json:"registeredAt"`
-	RegisteredByUserId openapi_types.UUID  `json:"registeredByUserId"`
+	BankTransactionId *int64             `json:"bankTransactionId,omitempty"`
+	Currency          string             `json:"currency"`
+	Id                int64              `json:"id"`
+	Note              string             `json:"note"`
+	PaidOn            openapi_types.Date `json:"paidOn"`
+	Reference         string             `json:"reference"`
+	RegisteredAt      time.Time          `json:"registeredAt"`
+
+	// RegisteredByUserId The user who registered it; absent when the bank feed's sync matched the line.
+	RegisteredByUserId *openapi_types.UUID `json:"registeredByUserId,omitempty"`
 	RemovalReason      *string             `json:"removalReason,omitempty"`
 	RemovedAt          *time.Time          `json:"removedAt,omitempty"`
 	RemovedByUserId    *openapi_types.UUID `json:"removedByUserId,omitempty"`
 
-	// Source manual, ocr or camt054.
+	// Source manual, ocr, camt054 or bank_feed.
 	Source InvoicesChargePaymentSource `json:"source"`
 }
 
-// InvoicesChargePaymentSource manual, ocr or camt054.
+// InvoicesChargePaymentSource manual, ocr, camt054 or bank_feed.
 type InvoicesChargePaymentSource string
 
 // InvoicesChargePaymentRequest POST /invoices/{id}/charge-payments' body (D9), a payment's fields and rules (D2): paidOn on or after the invoice's issue date and not after today in the business time zone; amount greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its charges outstanding (409 charge_payment_exceeds_outstanding); reference at most 100 characters and note at most 500, both trimmed; absent is empty.
@@ -2132,7 +2170,7 @@ type InvoicesChargeWaiveRequestReason string
 // InvoicesChargeWaiveRequestWaiversKind defines model for InvoicesChargeWaiveRequest.Waivers.Kind.
 type InvoicesChargeWaiveRequestWaiversKind string
 
-// InvoicesChargeWaiver One charge released (D9): a sent letter's fee or compensation whole, or an amount of the interest the latest sent letter claimed — interestThrough is then that letter's sent day. A waiver is never removed or changed. reason is objection_upheld, claimed_in_error, goodwill or deadline_met (the bank match's, when the payments ordered by a missed deadline in fact met it).
+// InvoicesChargeWaiver One charge released (D9): a sent letter's fee or compensation whole, or an amount of the interest the latest sent letter claimed — interestThrough is then that letter's sent day. A waiver is never removed or changed. reason is objection_upheld, claimed_in_error, goodwill or deadline_met (the bank match's, when the payments ordered by a missed deadline in fact met it). waivedBy is the person who waived it — absent on a deadline_met waiver the bank feed's sync wrote (invoices bank feed design F6).
 type InvoicesChargeWaiver struct {
 	Amount          float64                    `json:"amount"`
 	Id              int64                      `json:"id"`
@@ -2142,7 +2180,9 @@ type InvoicesChargeWaiver struct {
 	Reason          InvoicesChargeWaiverReason `json:"reason"`
 	ReminderId      int64                      `json:"reminderId"`
 	WaivedAt        time.Time                  `json:"waivedAt"`
-	WaivedBy        openapi_types.UUID         `json:"waivedBy"`
+
+	// WaivedBy The user who waived it; absent on a deadline_met waiver the bank feed's sync wrote.
+	WaivedBy *openapi_types.UUID `json:"waivedBy,omitempty"`
 }
 
 // InvoicesChargeWaiverKind defines model for InvoicesChargeWaiver.Kind.
@@ -2286,7 +2326,7 @@ type InvoicesConflictProblem struct {
 	// UploadedAt On bank_file_duplicate, when the earlier import was uploaded. Absent otherwise.
 	UploadedAt *time.Time `json:"uploadedAt,omitempty"`
 
-	// UploadedBy On bank_file_duplicate, the user who uploaded the earlier import. Absent otherwise.
+	// UploadedBy On bank_file_duplicate, the user who uploaded the earlier import — absent too when the earlier one is a bank feed batch, which no person uploaded. Absent otherwise.
 	UploadedBy *openapi_types.UUID `json:"uploadedBy,omitempty"`
 }
 
@@ -3354,7 +3394,7 @@ type InvoicesPaySeller struct {
 	OrganisationNumber string `json:"organisationNumber"`
 }
 
-// InvoicesPayment One payment registered against an issued invoice (D2; invoices payments and reminders design D2, D4). source is manual for one registered by hand, ocr or camt054 for one a bank line was matched to, which bankTransactionId then names — registered by the person who uploaded the file or asked for the rest to be matched, paid on the line's booking day, its reference the KID. registeredByUserId is the person who registered it; it is optional on the wire, for a later source with no person. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
+// InvoicesPayment One payment registered against an issued invoice (D2; invoices payments and reminders design D2, D4). source is manual for one registered by hand, ocr or camt054 for one a bank line was matched to, which bankTransactionId then names — registered by the person who uploaded the file or asked for the rest to be matched, paid on the line's booking day, its reference the KID — and bank_feed for one from a line the bank feed fetched (invoices bank feed design F6), registered by no person when the sync matched it and by the person who applied it from the exception queue or asked for the rest to be matched otherwise. registeredByUserId is the person who registered it; it is absent for a Vipps capture and for a bank feed line the sync matched. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing.
 type InvoicesPayment struct {
 	Amount float64 `json:"amount"`
 
@@ -3374,11 +3414,11 @@ type InvoicesPayment struct {
 	RemovedAt          *time.Time          `json:"removedAt,omitempty"`
 	RemovedByUserId    *openapi_types.UUID `json:"removedByUserId,omitempty"`
 
-	// Source manual, ocr, camt054 or vipps (a Vipps capture, which paymentAttemptId names).
+	// Source manual, ocr, camt054, vipps (a Vipps capture, which paymentAttemptId names) or bank_feed (a line the bank feed fetched, which bankTransactionId names).
 	Source InvoicesPaymentSource `json:"source"`
 }
 
-// InvoicesPaymentSource manual, ocr, camt054 or vipps (a Vipps capture, which paymentAttemptId names).
+// InvoicesPaymentSource manual, ocr, camt054, vipps (a Vipps capture, which paymentAttemptId names) or bank_feed (a line the bank feed fetched, which bankTransactionId names).
 type InvoicesPaymentSource string
 
 // InvoicesPaymentAttempt One Vipps payment attempt of an invoice (invoices payments and reminders design D16): its reference at Vipps, flow (pay_link, made from the pay page, or on_site), state as the payments worker knows it, amount (the open amount when it was made), the amounts Vipps reported — authorized, captured, cancelled and refunded — the reservation while a capture is decided and not yet registered (reservedAmount), whether the uncaptured rest is still to be released (releasePending), and when it was made, by whom (absent for the pay page's), when it expires, was authorized, captured and finished, and — abandoned — who abandoned it, when and why. The address the payer is sent to is never answered.
@@ -3999,6 +4039,14 @@ type InvoicesSourcesBlock struct {
 // `paymentReservationStranded`: one per attempt the payments worker cannot carry — a capture in progress or of unknown outcome while INVOICES_VIPPS_ENABLED=0 or made under a sales unit that is no longer the stored one, and an attempt parked for a person: a create given up after ten tries, or a release of the uncaptured rest Vipps refuses for good; occurredAt its authorization, or its creation. It clears when the switch or the sales unit is back, when the attempt is abandoned, or — a release — once the rest is released in the Vipps portal and an abandon hands the attempt back to the worker, which reads it again.
 //
 // `vippsRefundSeen`: one per captured attempt Vipps shows refunded in part or whole (a refund made in the Vipps portal, seen by the 30-day refund watch) whose payment is still live; occurredAt its capture. It clears when the payment is removed (and the part kept registered again).
+//
+// The bank feed's three (invoices bank feed design F7), answered to a caller holding invoices:manage — with or without invoices:payments — each one per account the feed is switched on for, id '<type>/<account>', entityId the account's 11 digits, title its last four digits, occurredAt when the account's status last changed:
+//
+// `bankFeedUnauthorized`: the bank refused the stored API key, and the feed reads no account until a manager stores a new key.
+//
+// `bankFeedFailing`: three syncs in a row or more failed — the bank could not be reached or answered as it should not; it clears at the next sync that succeeds.
+//
+// `bankFeedRefused`: the bank answered a batch the sync refused whole — a booking day after today, an amount not in NOK, a transaction it cannot tell the direction of, the same transaction twice, a transaction it cannot read, or an account whose format is no longer feed; nothing of it was stored. It clears when a later sync stores the account's batch.
 type InvoicesStatsAttentionItem struct {
 	// Count How many things the item stands for, when it stands for more than one — a file's open lines, the letters waiting on one cause, a batch's printed letters. Absent on an item about a single invoice or letter. It is here because a count inside a server-written title could never be translated.
 	Count      *int32                         `json:"count,omitempty"`
@@ -4621,6 +4669,9 @@ type PutInvoicesBankFeedJSONRequestBody = InvoicesBankFeedRequest
 // PutInvoicesBankFeedAccountsByAccountJSONRequestBody defines body for PutInvoicesBankFeedAccountsByAccount for application/json ContentType.
 type PutInvoicesBankFeedAccountsByAccountJSONRequestBody = InvoicesBankFeedAccountRequest
 
+// PostInvoicesBankFeedSyncJSONRequestBody defines body for PostInvoicesBankFeedSync for application/json ContentType.
+type PostInvoicesBankFeedSyncJSONRequestBody = InvoicesBankFeedSyncRequest
+
 // PostInvoicesBankFilesMultipartRequestBody defines body for PostInvoicesBankFiles for multipart/form-data ContentType.
 type PostInvoicesBankFilesMultipartRequestBody PostInvoicesBankFilesMultipartBody
 
@@ -4785,6 +4836,9 @@ type ServerInterface interface {
 	// PutInvoicesBankFeedAccountsByAccount Switch the bank feed on or off for an account
 	// (PUT /api/v1/invoices/bank-feed/accounts/{account})
 	PutInvoicesBankFeedAccountsByAccount(w http.ResponseWriter, r *http.Request, account string)
+	// PostInvoicesBankFeedSync Fetch the bank feed's accounts now
+	// (POST /api/v1/invoices/bank-feed/sync)
+	PostInvoicesBankFeedSync(w http.ResponseWriter, r *http.Request)
 	// GetInvoicesBankFiles List the imported bank files
 	// (GET /api/v1/invoices/bank-files)
 	GetInvoicesBankFiles(w http.ResponseWriter, r *http.Request, params GetInvoicesBankFilesParams)
@@ -5388,6 +5442,20 @@ func (siw *ServerInterfaceWrapper) PutInvoicesBankFeedAccountsByAccount(w http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutInvoicesBankFeedAccountsByAccount(w, r, account)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoicesBankFeedSync operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoicesBankFeedSync(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoicesBankFeedSync(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8741,6 +8809,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/bank-feed", wrapper.PutInvoicesBankFeed)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/bank-feed/accounts", wrapper.GetInvoicesBankFeedAccounts)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/invoices/bank-feed/accounts/{account}", wrapper.PutInvoicesBankFeedAccountsByAccount)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/invoices/bank-feed/sync", wrapper.PostInvoicesBankFeedSync)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/journal", wrapper.GetInvoicesJournal)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/export.csv", wrapper.GetInvoicesExportCsv)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/invoices/collection-export.csv", wrapper.GetInvoicesCollectionExportCsv)
@@ -9509,6 +9578,116 @@ func (response PutInvoicesBankFeedAccountsByAccount503ApplicationProblemPlusJSON
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFeedSyncRequestObject struct {
+	Body *PostInvoicesBankFeedSyncJSONRequestBody
+}
+
+type PostInvoicesBankFeedSyncResponseObject interface {
+	VisitPostInvoicesBankFeedSyncResponse(w http.ResponseWriter) error
+}
+
+type PostInvoicesBankFeedSync202JSONResponse InvoicesBankFeedSyncResponse
+
+func (response PostInvoicesBankFeedSync202JSONResponse) VisitPostInvoicesBankFeedSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFeedSync400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostInvoicesBankFeedSync400ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankFeedSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFeedSync401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankFeedSync401JSONResponse) VisitPostInvoicesBankFeedSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFeedSync403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostInvoicesBankFeedSync403JSONResponse) VisitPostInvoicesBankFeedSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFeedSync404Response struct {
+}
+
+func (response PostInvoicesBankFeedSync404Response) VisitPostInvoicesBankFeedSyncResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostInvoicesBankFeedSync409ApplicationProblemPlusJSONResponse InvoicesConflictProblem
+
+func (response PostInvoicesBankFeedSync409ApplicationProblemPlusJSONResponse) VisitPostInvoicesBankFeedSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoicesBankFeedSync429ResponseHeaders struct {
+	RetryAfter *string
+}
+
+type PostInvoicesBankFeedSync429JSONResponse struct {
+	Body    externalRef0.AuthErrorResponse
+	Headers PostInvoicesBankFeedSync429ResponseHeaders
+}
+
+func (response PostInvoicesBankFeedSync429JSONResponse) VisitPostInvoicesBankFeedSyncResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17568,6 +17747,9 @@ type StrictServerInterface interface {
 	// PutInvoicesBankFeedAccountsByAccount Switch the bank feed on or off for an account
 	// (PUT /api/v1/invoices/bank-feed/accounts/{account})
 	PutInvoicesBankFeedAccountsByAccount(ctx context.Context, request PutInvoicesBankFeedAccountsByAccountRequestObject) (PutInvoicesBankFeedAccountsByAccountResponseObject, error)
+	// PostInvoicesBankFeedSync Fetch the bank feed's accounts now
+	// (POST /api/v1/invoices/bank-feed/sync)
+	PostInvoicesBankFeedSync(ctx context.Context, request PostInvoicesBankFeedSyncRequestObject) (PostInvoicesBankFeedSyncResponseObject, error)
 	// GetInvoicesBankFiles List the imported bank files
 	// (GET /api/v1/invoices/bank-files)
 	GetInvoicesBankFiles(ctx context.Context, request GetInvoicesBankFilesRequestObject) (GetInvoicesBankFilesResponseObject, error)
@@ -18167,6 +18349,37 @@ func (sh *strictHandler) PutInvoicesBankFeedAccountsByAccount(w http.ResponseWri
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutInvoicesBankFeedAccountsByAccountResponseObject); ok {
 		if err := validResponse.VisitPutInvoicesBankFeedAccountsByAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostInvoicesBankFeedSync operation middleware
+func (sh *strictHandler) PostInvoicesBankFeedSync(w http.ResponseWriter, r *http.Request) {
+	var request PostInvoicesBankFeedSyncRequestObject
+
+	var body PostInvoicesBankFeedSyncJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoicesBankFeedSync(ctx, request.(PostInvoicesBankFeedSyncRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoicesBankFeedSync")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvoicesBankFeedSyncResponseObject); ok {
+		if err := validResponse.VisitPostInvoicesBankFeedSyncResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

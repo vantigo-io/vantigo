@@ -1698,6 +1698,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices/bank-feed/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch the bank feed's accounts now
+         * @description Fetch now (invoices bank feed design F5, F8): makes the account named, or every account the feed is switched on for, due now — its next sync moved to now where it was later — and answers 202 with the accounts made due, as they now stand. The bank is not called here: the invoices-bank-feed worker claims a due account within a minute, through the same claim as its own schedule, so a fetch and the worker never read one account together, and a sync in flight finishes before the next claim takes the account. It clears neither refused nor unauthorized: an account the bank refused the key for waits for a new key (PUT /invoices/bank-feed). Refused with 409 bank_feed_disabled when INVOICES_BANK_FEED_ENABLED is off and bank_feed_not_connected without a key.
+         */
+        post: operations["postInvoicesBankFeedSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoices/journal": {
         parameters: {
             query?: never;
@@ -1767,7 +1787,7 @@ export interface paths {
         };
         /**
          * Get the invoices dashboard attention items
-         * @description The dashboard's invoices attention items (invoices payments and reminders design D12) — the overdue invoices and the refunds due for every caller, and for a caller holding invoices:payments the bank files with open lines, the failed and the held letters and the unposted print batches. A caller without invoices:payments is answered the first two, never a 403.
+         * @description The dashboard's invoices attention items (invoices payments and reminders design D12) — the overdue invoices and the refunds due for every caller, for a caller holding invoices:payments the bank files with open lines, the failed and the held letters, the unposted print batches and the Vipps payments needing a person, and for a caller holding invoices:manage the bank feed's accounts that are unauthorized, failing or refused (invoices bank feed design F7). A caller without either is answered the first two, never a 403.
          */
         get: operations["getInvoicesStatsAttention"];
         put?: never;
@@ -2151,7 +2171,7 @@ export interface components {
             uploadedAt?: string;
             /**
              * Format: uuid
-             * @description On bank_file_duplicate, the user who uploaded the earlier import. Absent otherwise.
+             * @description On bank_file_duplicate, the user who uploaded the earlier import — absent too when the earlier one is a bank feed batch, which no person uploaded. Absent otherwise.
              */
             uploadedBy?: string;
         };
@@ -3091,7 +3111,7 @@ export interface components {
             rejectedAt?: string;
             status?: string;
         };
-        /** @description One account the feed reads, or read (F4, F7). account is its 11 digits; enabled whether the feed is switched on for it; startDay the first booking day read. status is ok, failing (three reads in a row failed), refused (a batch broke a rule and nothing of it was stored; reason names the rule, detail the transaction) or unauthorized (the bank refused the key). lastSyncedAt is the last read that succeeded, lastBankFileId the last batch it stored and nextSyncAt when it is read next — each absent while there is none. */
+        /** @description One account the feed reads, or read (F4, F7). account is its 11 digits; enabled whether the feed is switched on for it; startDay the first booking day read. status is ok, failing (three reads in a row failed; detail says what failed, without the bank's answer), refused (a batch broke a rule and nothing of it was stored; reason names the rule — booked_in_future, currency_not_nok, direction_unknown, duplicate_transaction (the bank answered one transaction id twice), transaction_unreadable (an id that is empty or longer than 60 characters, or an amount above 999 999 999 999.99) or format_mismatch (the account's format is no longer feed) — and detail the bank's id of the transaction, never a name or a text) or unauthorized (the bank refused the key). An ok account the bank asked to wait carries the wait in detail. lastSyncedAt is the last read that succeeded, lastBankFileId the last batch it stored and nextSyncAt when it is read next — each absent while there is none. */
         InvoicesBankFeedAccount: {
             account: string;
             detail?: string;
@@ -3130,7 +3150,15 @@ export interface components {
             apiKey: string;
             provider: string;
         };
-        /** @description One imported bank file (D3): its format (ocr or camt054), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it and when, and its lines counted by status — pending (not yet matched), exceptions and matched. */
+        /** @description POST /invoices/bank-feed/sync's body (F5). account, its 11 digits, names the one account to fetch; absent, every account the feed is switched on for. */
+        InvoicesBankFeedSyncRequest: {
+            account?: string;
+        };
+        /** @description POST /invoices/bank-feed/sync's answer — the accounts made due, in account order, each as it now stands. */
+        InvoicesBankFeedSyncResponse: {
+            accounts: components["schemas"]["InvoicesBankFeedAccount"][];
+        };
+        /** @description One imported bank file (D3): its format (ocr or camt054 for a file a person uploaded, feed for a batch the bank feed fetched — invoices bank feed design F5), the bank it came from (provider, folio, for a feed batch only), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it (absent for a feed batch, which no person uploaded) and when — for a feed batch, when it was fetched — and its lines counted by status — pending (not yet matched), exceptions and matched. */
         InvoicesBankFile: {
             accounts: string[];
             /** Format: int32 */
@@ -3151,25 +3179,32 @@ export interface components {
             matched: number;
             /** Format: int32 */
             pending: number;
+            /** @description The bank a feed batch came from (folio); absent for an uploaded file. */
+            provider?: string;
             sha256: string;
             /** Format: int32 */
             transactions: number;
             /** Format: date-time */
             uploadedAt: string;
-            /** Format: uuid */
-            uploadedBy: string;
+            /**
+             * Format: uuid
+             * @description The user who uploaded the file; absent for a feed batch.
+             */
+            uploadedBy?: string;
         };
         /** @description GET /invoices/bank-files/{id} — the file and every line it brought, duplicates included, in the order they were stored. */
         InvoicesBankFileDetail: {
             file: components["schemas"]["InvoicesBankFile"];
             transactions: components["schemas"]["InvoicesBankTransaction"][];
         };
-        /** @description A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21) and zeroAmount (a transaction of 0.00). */
+        /** @description A bank file's ignored lines by kind (D3): debit (a camt.054 debit entry that is not a reversal, or money out of an account the bank feed reads), notBooked (a camt.054 entry not booked), cardInformation (OCR card information, types 18-21, or a card transaction the bank feed read), zeroAmount (a transaction of 0.00) and internalTransfer (a transfer between two of the seller's own accounts the bank feed read; invoices bank feed design F5 — 0 for a file, and for a file imported before the feed existed). */
         InvoicesBankIgnored: {
             /** Format: int32 */
             cardInformation: number;
             /** Format: int32 */
             debit: number;
+            /** Format: int32 */
+            internalTransfer: number;
             /** Format: int32 */
             notBooked: number;
             /** Format: int32 */
@@ -3264,12 +3299,15 @@ export interface components {
         InvoicesBankTransactionDismissRequest: {
             note: string;
         };
-        /** @description What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed, treated_as_distinct or reversed (a reversal took back a payment of this line; the note names the reversal); the reason the line had or was given (absent on a match); the note given with it; who and when. Events are never changed; they keep a resolution a reopen cleared from the line. */
+        /** @description What happened to a bank line (D5): event matched, queued, applied, dismissed, reversal_handled, reopened, duplicate_confirmed, treated_as_distinct or reversed (a reversal took back a payment of this line; the note names the reversal); the reason the line had or was given (absent on a match); the note given with it; who and when — by is absent on a matched or queued event the bank feed's sync wrote, which no person made (invoices bank feed design F6). Events are never changed; they keep a resolution a reopen cleared from the line. */
         InvoicesBankTransactionEvent: {
             /** Format: date-time */
             at: string;
-            /** Format: uuid */
-            by: string;
+            /**
+             * Format: uuid
+             * @description The user who made the event; absent when the bank feed's sync matched or queued the line.
+             */
+            by?: string;
             /** @enum {string} */
             event: "matched" | "queued" | "applied" | "dismissed" | "reversal_handled" | "reopened" | "duplicate_confirmed" | "treated_as_distinct" | "reversed";
             /** Format: int64 */
@@ -3277,11 +3315,13 @@ export interface components {
             note: string;
             reason?: components["schemas"]["InvoicesBankTransactionReason"];
         };
-        /** @description The bank file a line came in — its id, format (ocr or camt054) and when it was uploaded. */
+        /** @description The bank file a line came in — its id, format (ocr, camt054, or feed for a bank feed batch), the bank a feed batch came from (provider) and when it was uploaded or fetched. */
         InvoicesBankTransactionFile: {
             format: string;
             /** Format: int64 */
             id: number;
+            /** @description The bank a feed batch came from (folio); absent for an uploaded file. */
+            provider?: string;
             /** Format: date-time */
             uploadedAt: string;
         };
@@ -3755,7 +3795,7 @@ export interface components {
             /** @description Only on a credit-note draft (D8): the work its issue would release — the invoiced sources of every original line the draft returns in full, its last return at the line's own price and discount; [] when it returns no line in full. A line credited in part or at a lower price releases nothing. */
             wouldRelease?: components["schemas"]["InvoicesSourceRef"][];
         };
-        /** @description One payment registered against an issued invoice (D2; invoices payments and reminders design D2, D4). source is manual for one registered by hand, ocr or camt054 for one a bank line was matched to, which bankTransactionId then names — registered by the person who uploaded the file or asked for the rest to be matched, paid on the line's booking day, its reference the KID. registeredByUserId is the person who registered it; it is optional on the wire, for a later source with no person. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
+        /** @description One payment registered against an issued invoice (D2; invoices payments and reminders design D2, D4). source is manual for one registered by hand, ocr or camt054 for one a bank line was matched to, which bankTransactionId then names — registered by the person who uploaded the file or asked for the rest to be matched, paid on the line's booking day, its reference the KID — and bank_feed for one from a line the bank feed fetched (invoices bank feed design F6), registered by no person when the sync matched it and by the person who applied it from the exception queue or asked for the rest to be matched otherwise. registeredByUserId is the person who registered it; it is absent for a Vipps capture and for a bank feed line the sync matched. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
         InvoicesPayment: {
             /** Format: double */
             amount: number;
@@ -3786,10 +3826,10 @@ export interface components {
             /** Format: uuid */
             removedByUserId?: string;
             /**
-             * @description manual, ocr, camt054 or vipps (a Vipps capture, which paymentAttemptId names).
+             * @description manual, ocr, camt054, vipps (a Vipps capture, which paymentAttemptId names) or bank_feed (a line the bank feed fetched, which bankTransactionId names).
              * @enum {string}
              */
-            source: "manual" | "ocr" | "camt054" | "vipps";
+            source: "manual" | "ocr" | "camt054" | "vipps" | "bank_feed";
         };
         /** @description POST /invoices/{id}/payments/{paymentId}/remove's body (D2). reason is why the registration is removed: 1-200 characters once trimmed. A removal is never undone; a mistake is registered again. The same body removes a charge payment and a manual delivery (invoices payments and reminders design D8, D9). */
         InvoicesPaymentRemovalRequest: {
@@ -3804,7 +3844,7 @@ export interface components {
             paidOn: string;
             reference?: string;
         };
-        /** @description One payment of an issued invoice's charges — the fees, the compensation and the interest its reminders claimed — never of its principal (invoices payments and reminders design D9). source is manual for one registered by hand, ocr or camt054 for one taken from a bank line, which bankTransactionId then names. A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
+        /** @description One payment of an issued invoice's charges — the fees, the compensation and the interest its reminders claimed — never of its principal (invoices payments and reminders design D9). source is manual for one registered by hand, ocr, camt054 or bank_feed for one taken from a bank line, which bankTransactionId then names. registeredByUserId is the person who registered it, absent when the bank feed's sync matched the line (invoices bank feed design F6). A removed one keeps its row and carries removedAt, removedByUserId and removalReason; it counts for nothing. */
         InvoicesChargePayment: {
             /** Format: double */
             amount: number;
@@ -3822,18 +3862,21 @@ export interface components {
             reference: string;
             /** Format: date-time */
             registeredAt: string;
-            /** Format: uuid */
-            registeredByUserId: string;
+            /**
+             * Format: uuid
+             * @description The user who registered it; absent when the bank feed's sync matched the line.
+             */
+            registeredByUserId?: string;
             removalReason?: string;
             /** Format: date-time */
             removedAt?: string;
             /** Format: uuid */
             removedByUserId?: string;
             /**
-             * @description manual, ocr or camt054.
+             * @description manual, ocr, camt054 or bank_feed.
              * @enum {string}
              */
-            source: "manual" | "ocr" | "camt054";
+            source: "manual" | "ocr" | "camt054" | "bank_feed";
         };
         /** @description POST /invoices/{id}/charge-payments' body (D9), a payment's fields and rules (D2): paidOn on or after the invoice's issue date and not after today in the business time zone; amount greater than 0 with at most 2 decimals, at most 99999999999.99, in the invoice's currency, and at most its charges outstanding (409 charge_payment_exceeds_outstanding); reference at most 100 characters and note at most 500, both trimmed; absent is empty. */
         InvoicesChargePaymentRequest: {
@@ -3856,7 +3899,7 @@ export interface components {
                 reminderId: number;
             }[];
         };
-        /** @description One charge released (D9): a sent letter's fee or compensation whole, or an amount of the interest the latest sent letter claimed — interestThrough is then that letter's sent day. A waiver is never removed or changed. reason is objection_upheld, claimed_in_error, goodwill or deadline_met (the bank match's, when the payments ordered by a missed deadline in fact met it). */
+        /** @description One charge released (D9): a sent letter's fee or compensation whole, or an amount of the interest the latest sent letter claimed — interestThrough is then that letter's sent day. A waiver is never removed or changed. reason is objection_upheld, claimed_in_error, goodwill or deadline_met (the bank match's, when the payments ordered by a missed deadline in fact met it). waivedBy is the person who waived it — absent on a deadline_met waiver the bank feed's sync wrote (invoices bank feed design F6). */
         InvoicesChargeWaiver: {
             /** Format: double */
             amount: number;
@@ -3873,8 +3916,11 @@ export interface components {
             reminderId: number;
             /** Format: date-time */
             waivedAt: string;
-            /** Format: uuid */
-            waivedBy: string;
+            /**
+             * Format: uuid
+             * @description The user who waived it; absent on a deadline_met waiver the bank feed's sync wrote.
+             */
+            waivedBy?: string;
         };
         /** @description An issued invoice's charges (D9), apart from its principal: claimed is the fees and compensation its sent letters claimed plus the latest sent letter's cumulative interest; waived what its waivers released; paid what its live charge payments paid; outstanding what is left, never below zero. refundDue is present only when the charge payments exceed every charge less its waivers — a charge paid, then waived — and is what is owed back, outside Vantigo. */
         InvoicesCharges: {
@@ -4486,6 +4532,14 @@ export interface components {
          *     `paymentReservationStranded`: one per attempt the payments worker cannot carry — a capture in progress or of unknown outcome while INVOICES_VIPPS_ENABLED=0 or made under a sales unit that is no longer the stored one, and an attempt parked for a person: a create given up after ten tries, or a release of the uncaptured rest Vipps refuses for good; occurredAt its authorization, or its creation. It clears when the switch or the sales unit is back, when the attempt is abandoned, or — a release — once the rest is released in the Vipps portal and an abandon hands the attempt back to the worker, which reads it again.
          *
          *     `vippsRefundSeen`: one per captured attempt Vipps shows refunded in part or whole (a refund made in the Vipps portal, seen by the 30-day refund watch) whose payment is still live; occurredAt its capture. It clears when the payment is removed (and the part kept registered again).
+         *
+         *     The bank feed's three (invoices bank feed design F7), answered to a caller holding invoices:manage — with or without invoices:payments — each one per account the feed is switched on for, id '<type>/<account>', entityId the account's 11 digits, title its last four digits, occurredAt when the account's status last changed:
+         *
+         *     `bankFeedUnauthorized`: the bank refused the stored API key, and the feed reads no account until a manager stores a new key.
+         *
+         *     `bankFeedFailing`: three syncs in a row or more failed — the bank could not be reached or answered as it should not; it clears at the next sync that succeeds.
+         *
+         *     `bankFeedRefused`: the bank answered a batch the sync refused whole — a booking day after today, an amount not in NOK, a transaction it cannot tell the direction of, the same transaction twice, a transaction it cannot read, or an account whose format is no longer feed; nothing of it was stored. It clears when a later sync stores the account's batch.
          */
         InvoicesStatsAttentionItem: {
             /**
@@ -4499,7 +4553,7 @@ export interface components {
             occurredAt: string;
             title: string;
             /** @enum {string} */
-            type: "invoiceOverdue" | "invoiceRefundDue" | "bankTransactionsOpen" | "reminderFailed" | "remindersHeld" | "reminderBatchUnposted" | "paymentCaptureFailed" | "paymentCaptureUnknown" | "paymentReservationStranded" | "vippsRefundSeen";
+            type: "invoiceOverdue" | "invoiceRefundDue" | "bankTransactionsOpen" | "reminderFailed" | "remindersHeld" | "reminderBatchUnposted" | "paymentCaptureFailed" | "paymentCaptureUnknown" | "paymentReservationStranded" | "vippsRefundSeen" | "bankFeedUnauthorized" | "bankFeedFailing" | "bankFeedRefused";
         };
         /** @description The dashboard's invoices card over one period, in the envelope every module's /stats/summary shares (payments and delivery design D7). outstanding and overdue are now — the issued invoices with something open, at their open amounts, credit notes excluded, and of those the ones past their due date on today's business day. issued, credited and paid are in the period: the invoices and the credit notes whose issue date, and the live payments whose paid date, falls on a business day from the day of from up to and including the day of the last instant before to. issuedGrossTotalDelta is issuedGrossTotal less the previous period's, the period of the same length just before. All NOK. */
         InvoicesStatsSummaryResponse: {
@@ -10878,6 +10932,83 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    postInvoicesBankFeedSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesBankFeedSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted — the accounts made due; the worker reads them. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankFeedSyncResponse"];
+                };
+            };
+            /** @description Bad Request — account is not 11 digits with a valid check digit; or a body that did not decode. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the feed is not switched on for the account named. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — bank_feed_disabled (the bank feed is switched off on this installation) or bank_feed_not_connected (no key is stored). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Too Many Requests — invoices-bank-feed-sync, 30 per client per 10 minutes. */
+            429: {
+                headers: {
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
         };
