@@ -48,6 +48,9 @@ export const useInvoiceAccess = () => {
     canReadTaxCategories:
       enabledModuleKeys().includes("products") &&
       hasPermissions(authorization.data?.permissions, ["products:tax-categories-view"]),
+    // An invoice links to its vouchers for a caller who may read the books
+    // (accounting design A13).
+    canReadAccounting: hasPermissions(authorization.data?.permissions, ["accounting:read"]),
     userDisplayName: session.data?.user.displayName,
     userId: session.data?.user.id,
   };

@@ -46,8 +46,10 @@ import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AccountingIndexRouteImport } from './routes/accounting/index'
 import { Route as AccountingAccountsRouteImport } from './routes/accounting/accounts'
 import { Route as AccountingJournalRouteImport } from './routes/accounting/journal'
+import { Route as AccountingNeedsAttentionRouteImport } from './routes/accounting/needs-attention'
 import { Route as AccountingOpenItemsRouteImport } from './routes/accounting/open-items'
 import { Route as AccountingOpeningRouteImport } from './routes/accounting/opening'
+import { Route as AccountingPostingRulesRouteImport } from './routes/accounting/posting-rules'
 import { Route as AccountingReportsRouteImport } from './routes/accounting/reports'
 import { Route as AccountingSettingsRouteImport } from './routes/accounting/settings'
 import { Route as AccountingSetupRouteImport } from './routes/accounting/setup'
@@ -424,6 +426,12 @@ const AccountingJournalRoute = AccountingJournalRouteImport.update({
   path: '/journal',
   getParentRoute: () => AccountingRoute,
 } as any)
+const AccountingNeedsAttentionRoute =
+  AccountingNeedsAttentionRouteImport.update({
+    id: '/needs-attention',
+    path: '/needs-attention',
+    getParentRoute: () => AccountingRoute,
+  } as any)
 const AccountingOpenItemsRoute = AccountingOpenItemsRouteImport.update({
   id: '/open-items',
   path: '/open-items',
@@ -432,6 +440,11 @@ const AccountingOpenItemsRoute = AccountingOpenItemsRouteImport.update({
 const AccountingOpeningRoute = AccountingOpeningRouteImport.update({
   id: '/opening',
   path: '/opening',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingPostingRulesRoute = AccountingPostingRulesRouteImport.update({
+  id: '/posting-rules',
+  path: '/posting-rules',
   getParentRoute: () => AccountingRoute,
 } as any)
 const AccountingReportsRoute = AccountingReportsRouteImport.update({
@@ -1476,8 +1489,10 @@ export interface FileRoutesByFullPath {
   '/workspace': typeof WorkspaceRouteWithChildren
   '/accounting/accounts': typeof AccountingAccountsRoute
   '/accounting/journal': typeof AccountingJournalRoute
+  '/accounting/needs-attention': typeof AccountingNeedsAttentionRoute
   '/accounting/open-items': typeof AccountingOpenItemsRoute
   '/accounting/opening': typeof AccountingOpeningRoute
+  '/accounting/posting-rules': typeof AccountingPostingRulesRoute
   '/accounting/reports': typeof AccountingReportsRoute
   '/accounting/settings': typeof AccountingSettingsRoute
   '/accounting/setup': typeof AccountingSetupRoute
@@ -1685,8 +1700,10 @@ export interface FileRoutesByTo {
   '/station': typeof StationRoute
   '/accounting/accounts': typeof AccountingAccountsRoute
   '/accounting/journal': typeof AccountingJournalRoute
+  '/accounting/needs-attention': typeof AccountingNeedsAttentionRoute
   '/accounting/open-items': typeof AccountingOpenItemsRoute
   '/accounting/opening': typeof AccountingOpeningRoute
+  '/accounting/posting-rules': typeof AccountingPostingRulesRoute
   '/accounting/reports': typeof AccountingReportsRoute
   '/accounting/settings': typeof AccountingSettingsRoute
   '/accounting/setup': typeof AccountingSetupRoute
@@ -1913,8 +1930,10 @@ export interface FileRoutesById {
   '/workspace': typeof WorkspaceRouteWithChildren
   '/accounting/accounts': typeof AccountingAccountsRoute
   '/accounting/journal': typeof AccountingJournalRoute
+  '/accounting/needs-attention': typeof AccountingNeedsAttentionRoute
   '/accounting/open-items': typeof AccountingOpenItemsRoute
   '/accounting/opening': typeof AccountingOpeningRoute
+  '/accounting/posting-rules': typeof AccountingPostingRulesRoute
   '/accounting/reports': typeof AccountingReportsRoute
   '/accounting/settings': typeof AccountingSettingsRoute
   '/accounting/setup': typeof AccountingSetupRoute
@@ -2146,8 +2165,10 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/accounting/accounts'
     | '/accounting/journal'
+    | '/accounting/needs-attention'
     | '/accounting/open-items'
     | '/accounting/opening'
+    | '/accounting/posting-rules'
     | '/accounting/reports'
     | '/accounting/settings'
     | '/accounting/setup'
@@ -2355,8 +2376,10 @@ export interface FileRouteTypes {
     | '/station'
     | '/accounting/accounts'
     | '/accounting/journal'
+    | '/accounting/needs-attention'
     | '/accounting/open-items'
     | '/accounting/opening'
+    | '/accounting/posting-rules'
     | '/accounting/reports'
     | '/accounting/settings'
     | '/accounting/setup'
@@ -2582,8 +2605,10 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/accounting/accounts'
     | '/accounting/journal'
+    | '/accounting/needs-attention'
     | '/accounting/open-items'
     | '/accounting/opening'
+    | '/accounting/posting-rules'
     | '/accounting/reports'
     | '/accounting/settings'
     | '/accounting/setup'
@@ -3076,6 +3101,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountingJournalRouteImport
       parentRoute: typeof AccountingRoute
     }
+    '/accounting/needs-attention': {
+      id: '/accounting/needs-attention'
+      path: '/needs-attention'
+      fullPath: '/accounting/needs-attention'
+      preLoaderRoute: typeof AccountingNeedsAttentionRouteImport
+      parentRoute: typeof AccountingRoute
+    }
     '/accounting/open-items': {
       id: '/accounting/open-items'
       path: '/open-items'
@@ -3088,6 +3120,13 @@ declare module '@tanstack/react-router' {
       path: '/opening'
       fullPath: '/accounting/opening'
       preLoaderRoute: typeof AccountingOpeningRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/posting-rules': {
+      id: '/accounting/posting-rules'
+      path: '/posting-rules'
+      fullPath: '/accounting/posting-rules'
+      preLoaderRoute: typeof AccountingPostingRulesRouteImport
       parentRoute: typeof AccountingRoute
     }
     '/accounting/reports': {
@@ -4426,8 +4465,10 @@ declare module '@tanstack/react-router' {
 interface AccountingRouteChildren {
   AccountingAccountsRoute: typeof AccountingAccountsRoute
   AccountingJournalRoute: typeof AccountingJournalRoute
+  AccountingNeedsAttentionRoute: typeof AccountingNeedsAttentionRoute
   AccountingOpenItemsRoute: typeof AccountingOpenItemsRoute
   AccountingOpeningRoute: typeof AccountingOpeningRoute
+  AccountingPostingRulesRoute: typeof AccountingPostingRulesRoute
   AccountingReportsRoute: typeof AccountingReportsRoute
   AccountingSettingsRoute: typeof AccountingSettingsRoute
   AccountingSetupRoute: typeof AccountingSetupRoute
@@ -4440,8 +4481,10 @@ interface AccountingRouteChildren {
 const AccountingRouteChildren: AccountingRouteChildren = {
   AccountingAccountsRoute: AccountingAccountsRoute,
   AccountingJournalRoute: AccountingJournalRoute,
+  AccountingNeedsAttentionRoute: AccountingNeedsAttentionRoute,
   AccountingOpenItemsRoute: AccountingOpenItemsRoute,
   AccountingOpeningRoute: AccountingOpeningRoute,
+  AccountingPostingRulesRoute: AccountingPostingRulesRoute,
   AccountingReportsRoute: AccountingReportsRoute,
   AccountingSettingsRoute: AccountingSettingsRoute,
   AccountingSetupRoute: AccountingSetupRoute,

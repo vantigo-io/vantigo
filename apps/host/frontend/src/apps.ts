@@ -1,6 +1,7 @@
 import {
   IconAddressBook,
   IconAdjustments,
+  IconAlertTriangle,
   IconBarcode,
   IconBolt,
   IconBook,
@@ -60,6 +61,7 @@ import {
   IconReportAnalytics,
   IconReportMoney,
   IconRobot,
+  IconRoute,
   IconSettings,
   IconShieldCheck,
   IconShieldLock,
@@ -297,10 +299,12 @@ const accountingNavPresentation: Record<AccountingNavItem["key"], Pick<NavItem, 
   overview: { label: "navigation.accountingOverview", icon: IconCalculator },
   journal: { label: "navigation.accountingJournal", icon: IconFilePlus },
   vouchers: { label: "navigation.accountingVouchers", icon: IconReceipt2 },
+  needsAttention: { label: "navigation.accountingNeedsAttention", icon: IconAlertTriangle },
   openItems: { label: "navigation.accountingOpenItems", icon: IconCash },
   reports: { label: "navigation.accountingReports", icon: IconReportAnalytics },
   accounts: { label: "navigation.accountingAccounts", icon: IconListNumbers },
   taxCodes: { label: "navigation.accountingTaxCodes", icon: IconPercentage },
+  postingRules: { label: "navigation.accountingPostingRules", icon: IconRoute },
   settings: { label: "navigation.accountingSettings", icon: IconSettings },
 };
 
