@@ -290,6 +290,20 @@ func TestBankFeedSync_JudgesTheBatch(t *testing.T) {
 	if want := map[string]int{"debit": 4, "card_information": 1}; !mapsEqual(ignored, want) {
 		t.Errorf("odd outgoing transactions: ignored %v, want %v", ignored, want)
 	}
+
+	// One id twice: counted when both are payments out or card lines,
+	// refused when an incoming credit is one of them (second review, low).
+	kept, ignored, reason = invoices.JudgeFeedBatch([]bankfeed.Transaction{
+		ok,
+		with(credit("same", oct(6), ""), debit),
+		with(credit("same", oct(6), ""), func(tx *bankfeed.Transaction) { tx.Kind = bankfeed.KindCard }),
+	}, sellerAccount, today, start)
+	if reason != "" || !slices.Equal(kept, []string{"a kid=0010017"}) || ignored["debit"] != 1 || ignored["card_information"] != 1 {
+		t.Errorf("a payment out and a card line sharing an id: kept %v, ignored %v, reason %q; want both counted", kept, ignored, reason)
+	}
+	if _, _, reason = invoices.JudgeFeedBatch([]bankfeed.Transaction{with(credit("same", oct(6), ""), debit), credit("same", oct(6), "")}, sellerAccount, today, start); reason != "duplicate_transaction" {
+		t.Errorf("a payment out and an incoming credit sharing an id: reason %q, want duplicate_transaction", reason)
+	}
 }
 
 // A batch the bank answers in a way the sync refuses stores nothing (F5 step
