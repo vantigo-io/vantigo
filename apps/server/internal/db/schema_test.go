@@ -2471,11 +2471,11 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// line_sources and timesheet_rows 00040's, and the bank, rate, reminder,
 	// charge, hold and hand-off tables 00041's, and the payment credentials,
 	// settings, pay links, attempts and day reconciliations 00046's, and the
-	// billing runs and their items 00079's, and tax_category_vat_codes 00118's; applyUpDownUp ends with every migration applied, so they stand here
+	// billing runs and their items 00079's, and tax_category_vat_codes 00118's, and journal_facts 00178's; applyUpDownUp ends with every migration applied, so they stand here
 	// beside the seven this one creates.
 	if want := []string{"access_point_credentials", "bank_files", "bank_import_accounts", "bank_transaction_events",
 		"bank_transactions", "billing_run_items", "billing_runs", "charge_payments", "charge_waivers", "collection_handoffs", "collection_rates", "counters",
-		"customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "line_releases",
+		"customer_reminder_policies", "deliveries", "erased_customers", "invoice_holds", "invoices", "journal_facts", "line_releases",
 		"line_sources", "lines", "manual_deliveries", "order_allocations_taken", "overdue_announced", "pay_links", "payment_attempts", "payment_provider_credentials",
 		"payment_settings", "payments", "quick_requests", "reminder_print_batches", "reminder_runs",
 		"reminder_settings", "reminders", "settings", "tax_category_vat_codes", "timesheet_rows", "transmissions", "vat_code_rates", "vat_codes",
@@ -2592,24 +2592,28 @@ func TestInvoicesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	// The four on deliveries and payments are 00035's, the two on
 	// transmissions 00036's, the three on line_releases, line_sources and
 	// timesheet_rows 00040's, the twenty on the receivables' tables 00041's,
-	// and the seven on the payments port's tables 00046's, as above.
+	// and the seven on the payments port's tables 00046's, as above;
+	// tr_payments_received is 00150's, and the journal's five and
+	// tr_payments_removed 00178's.
 	if want := []string{
 		"bank_files:tr_bank_files_immutable", "bank_import_accounts:tr_bank_import_accounts_immutable",
 		"bank_transaction_events:tr_bank_transaction_events_immutable", "bank_transactions:tr_bank_transactions_immutable",
-		"charge_payments:tr_charge_payments_immutable", "charge_payments:tr_charge_payments_parent",
+		"charge_payments:tr_charge_payments_immutable", "charge_payments:tr_charge_payments_journal_registered",
+		"charge_payments:tr_charge_payments_journal_removed", "charge_payments:tr_charge_payments_parent",
 		"charge_waivers:tr_charge_waivers_immutable", "charge_waivers:tr_charge_waivers_parent",
 		"collection_handoffs:tr_collection_handoffs_immutable", "collection_handoffs:tr_collection_handoffs_parent",
 		"collection_rates:tr_collection_rates_append_only",
 		"deliveries:tr_deliveries_immutable", "deliveries:tr_deliveries_parent",
 		"invoice_holds:tr_invoice_holds_immutable", "invoice_holds:tr_invoice_holds_parent",
-		"invoices:tr_invoices_immutable",
+		"invoices:tr_invoices_immutable", "journal_facts:tr_journal_facts_immutable",
 		"line_releases:tr_line_releases_immutable", "line_sources:tr_line_sources_immutable",
 		"lines:tr_lines_immutable",
 		"manual_deliveries:tr_manual_deliveries_immutable", "manual_deliveries:tr_manual_deliveries_parent",
 		"pay_links:tr_pay_links_immutable", "pay_links:tr_pay_links_parent",
 		"payment_attempts:tr_payment_attempts_immutable", "payment_attempts:tr_payment_attempts_parent",
 		"payment_attempts:tr_payment_attempts_reference", "payment_settings:tr_payment_settings_kept",
-		"payments:tr_payments_immutable", "payments:tr_payments_parent", "payments:tr_payments_received", "quick_requests:tr_quick_requests_immutable",
+		"payments:tr_payments_immutable", "payments:tr_payments_journal_registered", "payments:tr_payments_journal_removed",
+		"payments:tr_payments_parent", "payments:tr_payments_received", "payments:tr_payments_removed", "quick_requests:tr_quick_requests_immutable",
 		"reminder_print_batches:tr_reminder_print_batches_immutable", "reminder_runs:tr_reminder_runs_immutable",
 		"reminder_settings:tr_reminder_settings_kept",
 		"reminders:tr_reminders_immutable", "reminders:tr_reminders_parent",
@@ -2650,6 +2654,8 @@ func invoicesPhase1BObjects(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 		JOIN pg_proc p ON p.oid = t.tgfoid
 		WHERE n.nspname = 'invoices' AND NOT t.tgisinternal AND c.relname IN ('payments', 'deliveries')
 		  AND t.tgname <> 'tr_payments_received' -- 00150's, not this migration's
+		  AND t.tgname NOT IN ('tr_payments_journal_registered', 'tr_payments_journal_removed',
+		      'tr_payments_removed') -- 00178's, pinned by its own test
 		ORDER BY 1`)
 	checks = collect("checks", `
 		SELECT conname FROM pg_constraint

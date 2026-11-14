@@ -123,7 +123,7 @@ const insertLineSources = `-- name: InsertLineSources :exec
 INSERT INTO invoices.line_sources (
     line_id, invoice_id, source_kind, source_id, source_revision, source_subkind,
     project_id, quantity, amount, currency, source_date, line_count,
-    point_gsrn, point_address, price_area, contract_name, period_from, estimated
+    point_gsrn, point_address, price_area, contract_name, period_from, estimated, tax_category_id
 )
 SELECT u.line_id, $1::bigint, u.kind, u.id, u.revision, NULLIF(u.subkind, ''),
     NULLIF(u.project_id, 0), u.quantity, u.amount, u.currency, u.source_date, u.line_count,
@@ -132,7 +132,8 @@ SELECT u.line_id, $1::bigint, u.kind, u.id, u.revision, NULLIF(u.subkind, ''),
     CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.price_area END,
     CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.contract_name END,
     CASE WHEN u.project_id = 0 OR u.kind = 'orders.allocation' THEN u.period_from END,
-    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.estimated END
+    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.estimated END,
+    CASE WHEN u.kind = 'orders.allocation' THEN NULLIF(u.tax_category_id, 0) END
 FROM (
     SELECT unnest($2::bigint[]) AS line_id, unnest($3::text[]) AS kind,
         unnest($4::bigint[]) AS id, unnest($5::int[]) AS revision,
@@ -142,7 +143,7 @@ FROM (
         unnest($12::int[]) AS line_count, unnest($13::text[]) AS point_gsrn,
         unnest($14::text[]) AS point_address, unnest($15::text[]) AS price_area,
         unnest($16::text[]) AS contract_name, unnest($17::date[]) AS period_from,
-        unnest($18::bool[]) AS estimated
+        unnest($18::bool[]) AS estimated, unnest($19::int[]) AS tax_category_id
 ) AS u
 ORDER BY u.kind, u.id
 `
@@ -166,6 +167,7 @@ type InsertLineSourcesParams struct {
 	ContractNames  []string
 	PeriodFroms    []pgtype.Date
 	Estimateds     []bool
+	TaxCategoryIds []int32
 }
 
 // InsertLineSources writes a document's sources held, in ONE statement
@@ -179,7 +181,8 @@ type InsertLineSourcesParams struct {
 // without one that is not an allocation keeps the snapshot of its metering
 // point; a work source's is NULL whatever the arrays carry. An allocation
 // keeps period_from alone: a subscription period's first day, NULL as the
-// array gives it for an order line's part.
+// array gives it for an order line's part — and its product's tax category
+// (accounting design R6), 0 for none, which no other kind keeps.
 func (q *Queries) InsertLineSources(ctx context.Context, arg InsertLineSourcesParams) error {
 	_, err := q.db.Exec(ctx, insertLineSources,
 		arg.InvoiceID,
@@ -200,6 +203,7 @@ func (q *Queries) InsertLineSources(ctx context.Context, arg InsertLineSourcesPa
 		arg.ContractNames,
 		arg.PeriodFroms,
 		arg.Estimateds,
+		arg.TaxCategoryIds,
 	)
 	return err
 }
@@ -248,7 +252,7 @@ func (q *Queries) InsertTimesheetRows(ctx context.Context, arg InsertTimesheetRo
 }
 
 const invoicedSourcesOfLines = `-- name: InvoicedSourcesOfLines :many
-SELECT id, line_id, invoice_id, source_kind, source_id, source_revision, source_subkind, project_id, quantity, amount, currency, state, source_date, line_count, point_gsrn, point_address, price_area, contract_name, period_from, estimated FROM invoices.line_sources
+SELECT id, line_id, invoice_id, source_kind, source_id, source_revision, source_subkind, project_id, quantity, amount, currency, state, source_date, line_count, point_gsrn, point_address, price_area, contract_name, period_from, estimated, tax_category_id FROM invoices.line_sources
 WHERE line_id = ANY($1::bigint[]) AND state = 'invoiced'
 ORDER BY source_kind, source_id
 `
@@ -285,6 +289,7 @@ func (q *Queries) InvoicedSourcesOfLines(ctx context.Context, lineIds []int64) (
 			&i.ContractName,
 			&i.PeriodFrom,
 			&i.Estimated,
+			&i.TaxCategoryID,
 		); err != nil {
 			return nil, err
 		}
@@ -298,7 +303,7 @@ func (q *Queries) InvoicedSourcesOfLines(ctx context.Context, lineIds []int64) (
 
 const lineSourcesOf = `-- name: LineSourcesOf :many
 
-SELECT s.id, s.line_id, s.invoice_id, s.source_kind, s.source_id, s.source_revision, s.source_subkind, s.project_id, s.quantity, s.amount, s.currency, s.state, s.source_date, s.line_count, s.point_gsrn, s.point_address, s.price_area, s.contract_name, s.period_from, s.estimated, l.position AS line_position
+SELECT s.id, s.line_id, s.invoice_id, s.source_kind, s.source_id, s.source_revision, s.source_subkind, s.project_id, s.quantity, s.amount, s.currency, s.state, s.source_date, s.line_count, s.point_gsrn, s.point_address, s.price_area, s.contract_name, s.period_from, s.estimated, s.tax_category_id, l.position AS line_position
 FROM invoices.line_sources s
 JOIN invoices.lines l ON l.id = s.line_id
 WHERE s.invoice_id = $1
@@ -326,6 +331,7 @@ type LineSourcesOfRow struct {
 	ContractName   *string
 	PeriodFrom     pgtype.Date
 	Estimated      *bool
+	TaxCategoryID  *int32
 	LinePosition   int32
 }
 
@@ -367,6 +373,7 @@ func (q *Queries) LineSourcesOf(ctx context.Context, invoiceID int64) ([]LineSou
 			&i.ContractName,
 			&i.PeriodFrom,
 			&i.Estimated,
+			&i.TaxCategoryID,
 			&i.LinePosition,
 		); err != nil {
 			return nil, err
@@ -531,7 +538,7 @@ func (q *Queries) PruneTimesheetRows(ctx context.Context, arg PruneTimesheetRows
 const releaseSources = `-- name: ReleaseSources :many
 UPDATE invoices.line_sources SET state = 'released'
 WHERE id = ANY($1::bigint[]) AND state = 'invoiced'
-RETURNING id, line_id, invoice_id, source_kind, source_id, source_revision, source_subkind, project_id, quantity, amount, currency, state, source_date, line_count, point_gsrn, point_address, price_area, contract_name, period_from, estimated
+RETURNING id, line_id, invoice_id, source_kind, source_id, source_revision, source_subkind, project_id, quantity, amount, currency, state, source_date, line_count, point_gsrn, point_address, price_area, contract_name, period_from, estimated, tax_category_id
 `
 
 // ReleaseSources moves the given invoiced rows to released — the one change
@@ -566,6 +573,7 @@ func (q *Queries) ReleaseSources(ctx context.Context, ids []int64) ([]InvoicesLi
 			&i.ContractName,
 			&i.PeriodFrom,
 			&i.Estimated,
+			&i.TaxCategoryID,
 		); err != nil {
 			return nil, err
 		}

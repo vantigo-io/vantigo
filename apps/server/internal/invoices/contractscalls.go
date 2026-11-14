@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -230,6 +231,37 @@ func (s *server) releaseAllocations(ctx context.Context, ids []int64) error {
 	}
 	noteContractCall(ctx, "BillableOrders.ReleaseAllocations")
 	return s.deps.BillableOrders.ReleaseAllocations(ctx, ids)
+}
+
+// variantTaxCategories is the tax category in Products of each variant the
+// allocations bill (accounting design R6), read through the product catalog
+// on the pool, before any lock: the From orders wizard keeps it on the held
+// row, and the issue snapshots it onto the line. Empty when no allocation
+// names a variant or Products is switched off; a variant gone from the
+// catalog is absent, as the catalog answers it.
+func (s *server) variantTaxCategories(ctx context.Context, allocations []contracts.OrderAllocation) (map[int32]int32, error) {
+	out := map[int32]int32{}
+	var ids []int32
+	for _, a := range allocations {
+		if a.VariantID != nil && !slices.Contains(ids, *a.VariantID) {
+			ids = append(ids, *a.VariantID)
+		}
+	}
+	if len(ids) == 0 || s.deps.Products == nil {
+		return out, nil
+	}
+	slices.Sort(ids)
+	noteContractCall(ctx, "Products.Variants")
+	variants, err := s.deps.Products.Variants(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the order lines' products: %w", err)
+	}
+	for _, v := range variants {
+		if v.TaxCategoryID != 0 {
+			out[v.ID] = v.TaxCategoryID
+		}
+	}
+	return out, nil
 }
 
 func (s *server) billableExpenses(ctx context.Context, req contracts.BillableRequest) (contracts.BillableExpensesPage, error) {
