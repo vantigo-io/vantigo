@@ -94,9 +94,10 @@ type Transaction struct {
 	Currency    string
 	Direction   Direction
 	Kind        Kind
-	// KID is the payment's KID as the bank wrote it, empty when it carried
-	// none; Text the remittance text; DebtorName and DebtorAccount the payer,
-	// as written. The adapter cuts none of them: lengths are the consumer's.
+	// KID is the payment's KID with surrounding white space trimmed, empty
+	// when it carried none; Text the remittance text; DebtorName and
+	// DebtorAccount the payer, as written. The adapter cuts none of them:
+	// lengths are the consumer's.
 	KID, Text, DebtorName, DebtorAccount string
 	// Raw is the bytes the bank sent for this transaction, as sent.
 	Raw json.RawMessage

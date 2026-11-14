@@ -155,7 +155,10 @@ func TestFolio_AccountsThatDoNotDecode(t *testing.T) {
 // Every field of R3 the port carries, read from the hand-written fixture:
 // each direction and kind, a KID and none, a BBAN and an IBAN creditor
 // written with spaces, and a creditor without an account — unknown, which
-// the consumer refuses. Raw is each transaction's bytes as Folio sent them.
+// the consumer refuses; a paymentId on a would-be credit — unknown; a
+// creditor event beside a card authorization — internal; a null card
+// authorization and accounts written with dots — a transfer, a credit; and
+// a null creditor. Raw is each transaction's bytes as Folio sent them.
 func TestFolio_Transactions(t *testing.T) {
 	t.Parallel()
 	ft := foliotest.New(t)
@@ -185,6 +188,10 @@ func TestFolio_Transactions(t *testing.T) {
 		{"0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a06", "2026-11-12", 30000, bankfeed.DirectionCredit, bankfeed.KindInternal, "", "Fra skattetrekk", "Skattetrekk", "36065555555"},
 		{"0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a07", "2026-11-12", 1, bankfeed.DirectionCredit, bankfeed.KindTransfer, "1000020018", "Betaling med KID", "Per Hansen", "15031234567"},
 		{"0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a08", "2026-11-13", 75000, bankfeed.DirectionUnknown, bankfeed.KindTransfer, "", "Innbetaling", "Lise Berg", "12340056789"},
+		{"0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a09", "2026-11-13", 10000, bankfeed.DirectionUnknown, bankfeed.KindTransfer, "", "Betaling", "Ukjent", "12345678903"},
+		{"0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a10", "2026-11-13", 20000, bankfeed.DirectionDebit, bankfeed.KindInternal, "", "Kortkonto påfyll", "Driftskonto", "36061234567"},
+		{"0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a11", "2026-11-13", 6000, bankfeed.DirectionCredit, bankfeed.KindTransfer, "", "Betaling", "Nils Dahl", "1234.56.78903"},
+		{"0b6f3a52-6c1e-4c8e-9a43-1d2f8e7c5a12", "2026-11-13", 2500, bankfeed.DirectionDebit, bankfeed.KindTransfer, "", "Gebyr", "Eksempel AS", "36061234567"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("%d transactions, want %d", len(got), len(want))
@@ -234,15 +241,15 @@ func TestFolio_TransactionsThroughTheFake(t *testing.T) {
 	in := func(id, booked, kid string) foliotest.Transaction {
 		return foliotest.Transaction{
 			ID: id, EventID: id, Description: "Betaling", BookingDate: booked, KID: kid,
-			Creditor:          foliotest.Party{Name: "Eksempel AS", AccountNumber: operational},
-			Debtor:            foliotest.Party{Name: "Kari Nordmann", AccountNumber: "12345678903"},
+			Creditor:          &foliotest.Party{Name: "Eksempel AS", AccountNumber: operational},
+			Debtor:            &foliotest.Party{Name: "Kari Nordmann", AccountNumber: "12345678903"},
 			TransactionAmount: foliotest.Amount{Amount: "100.00", Currency: "NOK"},
 		}
 	}
 	ft.AddTransaction(operational, in("before", "2026-10-31", ""))
 	ft.AddTransaction(operational, in("first", "2026-11-01", " 1000010010 "))
 	both := in("both", "2026-11-05", "")
-	both.Debtor.AccountNumber = "3606 1234 567"
+	both.Debtor = &foliotest.Party{Name: "Eksempel AS", AccountNumber: "3606 1234 567"}
 	ft.AddTransaction(operational, both)
 	ft.AddTransaction(operational, in("last", "2026-11-13", ""))
 	ft.AddTransaction(operational, in("after", "2026-11-14", ""))
@@ -383,6 +390,10 @@ func TestFolio_ErrorMapping(t *testing.T) {
 			e, ok := errors.AsType[*bankfeed.ErrRateLimited](err)
 			return ok && e.RetryAfter == 0
 		}},
+		{"429 a date beyond a day", foliotest.Failure{Status: 429, RetryAfter: start.Add(25 * time.Hour).Format(http.TimeFormat)}, func(err error) bool {
+			e, ok := errors.AsType[*bankfeed.ErrRateLimited](err)
+			return ok && e.RetryAfter == 24*time.Hour
+		}},
 		{"429 seconds that overflow", foliotest.Failure{Status: 429, RetryAfter: "9223372036854775807"}, func(err error) bool {
 			e, ok := errors.AsType[*bankfeed.ErrRateLimited](err)
 			return ok && e.RetryAfter == 24*time.Hour
@@ -448,20 +459,29 @@ func TestFolio_FailIsPerOperation(t *testing.T) {
 	}
 }
 
-// An answer is read up to 10 MiB and refused past it.
+// An answer is read up to 10 MiB and refused past it. The oversized answer
+// is valid JSON, so only the bound refuses it.
 func TestFolio_SizeBound(t *testing.T) {
 	t.Parallel()
 	ft := foliotest.New(t)
 	c := adapter(t, ft, foliotest.APIKey)
+	ctx := context.Background()
 	whole := []byte(`{"accounts":[]}`)
 	padded := append(whole, bytes.Repeat([]byte(" "), foliotest.MaxAnswerBytes-len(whole))...)
 	ft.Fail(foliotest.OpAccounts, foliotest.Failure{Body: padded, Times: 1})
-	if got, err := c.Accounts(context.Background()); err != nil || len(got) != 0 {
+	if got, err := c.Accounts(ctx); err != nil || len(got) != 0 {
 		t.Errorf("an answer of exactly 10 MiB = %v, %v; want it read", got, err)
 	}
 	ft.Fail(foliotest.OpAccounts, foliotest.Failure{Oversized: true})
-	if _, err := c.Accounts(context.Background()); !isPlain(err) {
-		t.Errorf("an answer of 10 MiB + 1 = %v, want a plain error", err)
+	if _, err := c.Accounts(ctx); !isPlain(err) {
+		t.Errorf("Accounts of 10 MiB + 1 = %v, want a plain error", err)
+	}
+	if err := c.Verify(ctx); !isPlain(err) {
+		t.Errorf("Verify of 10 MiB + 1 = %v, want a plain error", err)
+	}
+	ft.Fail(foliotest.OpTransactions, foliotest.Failure{Oversized: true})
+	if got, err := c.Transactions(ctx, operational, day("2026-11-01"), day("2026-11-13")); !isPlain(err) {
+		t.Errorf("Transactions of 10 MiB + 1 = %d transactions, %v; want a plain error", len(got), err)
 	}
 }
 
@@ -502,10 +522,9 @@ func TestFolio_NewRefusesIncompleteOptions(t *testing.T) {
 	if _, err := folio.New(good); err != nil {
 		t.Fatalf("New(good): %v", err)
 	}
-	if _, err := folio.New(folio.Options{BaseURL: "http://127.0.0.1:8080/v2", APIKey: "k"}); err != nil {
-		t.Errorf("New(http): %v", err)
-	}
 	for name, mutate := range map[string]func(*folio.Options){
+		"http":           func(o *folio.Options) { o.BaseURL = "http://api.folio.no/v2" },
+		"http locally":   func(o *folio.Options) { o.BaseURL = "http://127.0.0.1:8080/v2" },
 		"no base":        func(o *folio.Options) { o.BaseURL = "" },
 		"relative":       func(o *folio.Options) { o.BaseURL = "/v2" },
 		"another scheme": func(o *folio.Options) { o.BaseURL = "ftp://api.folio.no/v2" },
@@ -529,5 +548,118 @@ func TestFolio_NewRefusesIncompleteOptions(t *testing.T) {
 	}
 	if n := len(ft.Requests()); n != 0 {
 		t.Errorf("%d requests sent, want none", n)
+	}
+}
+
+// Direction from the parties, through the fake: dots are read away on
+// either side; a party account that reads as neither digits nor an IBAN is
+// unknown, never "not the account"; a 15-character NO… that is not digits is
+// not cut to a BBAN; a paymentId turns a credit, and only a credit, into
+// unknown; a party null or absent is no account.
+func TestFolio_DirectionFromTheParties(t *testing.T) {
+	t.Parallel()
+	ours, theirs := &foliotest.Party{AccountNumber: operational}, &foliotest.Party{AccountNumber: "12345678903"}
+	for _, c := range []struct {
+		name string
+		tx   foliotest.Transaction
+		want bankfeed.Direction
+	}{
+		{"dots on the creditor", foliotest.Transaction{Creditor: &foliotest.Party{AccountNumber: "3606.12.34567"}, Debtor: theirs}, bankfeed.DirectionCredit},
+		{"dots on the debtor", foliotest.Transaction{Creditor: theirs, Debtor: &foliotest.Party{AccountNumber: "3606.12.34567"}}, bankfeed.DirectionDebit},
+		{"dots on both", foliotest.Transaction{Creditor: ours, Debtor: &foliotest.Party{AccountNumber: "3606.12.34567"}}, bankfeed.DirectionUnknown},
+		{"an unreadable debtor", foliotest.Transaction{Creditor: ours, Debtor: &foliotest.Party{AccountNumber: "3606-12-34567"}}, bankfeed.DirectionUnknown},
+		{"an unreadable creditor", foliotest.Transaction{Creditor: &foliotest.Party{AccountNumber: "konto 3606"}, Debtor: ours}, bankfeed.DirectionUnknown},
+		{"a foreign IBAN debtor", foliotest.Transaction{Creditor: ours, Debtor: &foliotest.Party{AccountNumber: "SE45 5000 0000 0583 9825 7466"}}, bankfeed.DirectionCredit},
+		{"a NO form that is not digits", foliotest.Transaction{Creditor: ours, Debtor: &foliotest.Party{AccountNumber: "NO14ABCDEFGHIJK"}}, bankfeed.DirectionCredit},
+		{"a lower-case IBAN creditor", foliotest.Transaction{Creditor: &foliotest.Party{AccountNumber: "no1436061234567"}, Debtor: theirs}, bankfeed.DirectionCredit},
+		{"a paymentId on a credit", foliotest.Transaction{PaymentID: "p", Creditor: ours, Debtor: theirs}, bankfeed.DirectionUnknown},
+		{"a paymentId on a debit", foliotest.Transaction{PaymentID: "p", Creditor: theirs, Debtor: ours}, bankfeed.DirectionDebit},
+		{"a null creditor", foliotest.Transaction{NullCreditor: true, Debtor: ours}, bankfeed.DirectionDebit},
+		{"an absent creditor", foliotest.Transaction{Debtor: ours}, bankfeed.DirectionDebit},
+		{"a null debtor", foliotest.Transaction{Creditor: ours, NullDebtor: true}, bankfeed.DirectionCredit},
+		{"no parties", foliotest.Transaction{}, bankfeed.DirectionUnknown},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			ft := foliotest.New(t)
+			tx := c.tx
+			tx.ID, tx.EventID, tx.BookingDate = "tx", "ev", "2026-11-10"
+			tx.TransactionAmount = foliotest.Amount{Amount: "10.00", Currency: "NOK"}
+			ft.AddTransaction(operational, tx)
+			got, err := adapter(t, ft, foliotest.APIKey).Transactions(context.Background(), operational, day("2026-11-01"), day("2026-11-13"))
+			if err != nil || len(got) != 1 {
+				t.Fatalf("Transactions = %+v, %v", got, err)
+			}
+			if got[0].Direction != c.want {
+				t.Errorf("direction = %s, want %s", got[0].Direction, c.want)
+			}
+		})
+	}
+}
+
+// What is sent: the account normalised in the path, and the days as
+// written — two instants of one day, the later first, are one day's range,
+// not a range that ends before it starts.
+func TestFolio_TransactionsRequest(t *testing.T) {
+	t.Parallel()
+	ft := foliotest.New(t)
+	ft.SetAccounts(foliotest.Account{AccountNumber: operational, Name: "Drift", Type: "Operational"})
+	c := adapter(t, ft, foliotest.APIKey)
+	from := time.Date(2026, time.November, 13, 18, 0, 0, 0, time.UTC)
+	to := time.Date(2026, time.November, 13, 0, 0, 0, 0, time.UTC)
+	if _, err := c.Transactions(context.Background(), "3606.12.34567", from, to); err != nil {
+		t.Fatalf("Transactions: %v", err)
+	}
+	reqs := requestsTo(ft, "/accounts/")
+	if want := "/accounts/36061234567/transactions?endDate=2026-11-13&startDate=2026-11-13"; len(reqs) != 1 || reqs[0].Path != want {
+		t.Errorf("requests = %+v, want one to %s", reqs, want)
+	}
+}
+
+// Verify reads the accounts: a 200 whose body is not Folio's fails it.
+func TestFolio_VerifyReadsTheAccounts(t *testing.T) {
+	t.Parallel()
+	ft := foliotest.New(t)
+	c := adapter(t, ft, foliotest.APIKey)
+	if err := c.Verify(context.Background()); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	for _, body := range []string{`{}`, `<html>ok</html>`} {
+		ft.Fail(foliotest.OpAccounts, foliotest.Failure{Body: []byte(body), Times: 1})
+		if err := c.Verify(context.Background()); !isPlain(err) {
+			t.Errorf("Verify of %s = %v, want a plain error", body, err)
+		}
+	}
+}
+
+// An error quotes at most 32 bytes of what Folio sent.
+func TestFolio_ErrorsQuoteLittle(t *testing.T) {
+	t.Parallel()
+	ft := foliotest.New(t)
+	long := strings.Repeat("9", 5000) + ".000"
+	ft.AddTransaction(operational, foliotest.Transaction{
+		ID: "tx", EventID: "ev", BookingDate: "2026-11-10",
+		TransactionAmount: foliotest.Amount{Amount: long, Currency: "NOK"},
+	})
+	_, err := adapter(t, ft, foliotest.APIKey).Transactions(context.Background(), operational, day("2026-11-01"), day("2026-11-13"))
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if strings.Contains(err.Error(), strings.Repeat("9", 33)) || len(err.Error()) > 200 {
+		t.Errorf("the error quotes too much (%d bytes): %.300s", len(err.Error()), err)
+	}
+}
+
+// A booking date the fake cannot read reaches the adapter, which refuses
+// the whole read.
+func TestFolio_AnUnreadableBookingDateThroughTheFake(t *testing.T) {
+	t.Parallel()
+	ft := foliotest.New(t)
+	ft.AddTransaction(operational, foliotest.Transaction{
+		ID: "tx", EventID: "ev", BookingDate: "13.11.2026",
+		TransactionAmount: foliotest.Amount{Amount: "10.00", Currency: "NOK"},
+	})
+	if got, err := adapter(t, ft, foliotest.APIKey).Transactions(context.Background(), operational, day("2026-11-01"), day("2026-11-13")); err == nil {
+		t.Errorf("Transactions = %+v, want an error", got)
 	}
 }
