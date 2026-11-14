@@ -50,6 +50,12 @@ applikasjonen.
 - **Produksjon.** [Produksjon](/nb/admin/manufacturing/) er på når `manufacturing` står i
   `MODULES` ved siden av `products` og `inventory`, som den krever; de fem rettighetene,
   der **Se produksjonskostnader** er sensitiv og ikke kan delegeres.
+- **Regnskap.** Regnskap er på når `accounting` står i `MODULES` ved siden av `invoices`,
+  som den krever. Den gjør ingenting før en med **Forvalte regnskapet**
+  (`accounting:close`) har satt opp regnskapet; de fire tillatelsene, der **Forvalte
+  regnskapet** ikke kan delegeres og **Eksportere regnskapet** er sensitiv. Hvor regnskapet
+  kan lagres og den årlige kontrollen av sikkerhetskopien står under
+  [Installasjon](/nb/admin/installation/#regnskapet). Se [Regnskap](/nb/user/accounting/).
 - **Kunnskap.** Kunnskap er på når `knowledge` står i `MODULES` (eller `MODULES` ikke er satt);
   den krever ingen annen modul. Ingen har tilgang før du gir en rolle **Bruke Kunnskap**
   (`knowledge:articles`); **Administrere Kunnskap** (`knowledge:manage`) gir tilgang til

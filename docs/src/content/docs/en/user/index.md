@@ -16,7 +16,7 @@ shown.
 ## Apps and the switcher
 
 Each module is an **app** with its own sidebar: Customers, Projects, Time, Calendar,
-Expenses, Staff, Planning, Invoices, Orders, Knowledge, Communications, Products, Inventory, Manufacturing, Energy and Virtual employees — and Microsoft Entra ID
+Expenses, Staff, Planning, Invoices, Orders, Knowledge, Communications, Products, Inventory, Manufacturing, Accounting, Energy and Virtual employees — and Microsoft Entra ID
 and Google Workspace, where an administrator connects the company's tenant or organisation. The [Assistant](/en/user/assistant/) is an app
 too, and also a panel that opens beside any screen with the button in the top bar or Cmd/Ctrl+J, and it can [show you where to click](/en/user/assistant/#show-me-how) in the main create flows. The app switcher in the top bar lists
 the apps you can open; **Home** is the dashboard, which opens with Calendar's **Today and
@@ -86,6 +86,7 @@ shorter than yours:
 | [Inventory](/en/user/inventory/) | Overview, Lots, Expiring, Transfers, Movements, Receipts, Counts, Low stock, Import opening balances (and placements) |
 | [Orders](/en/user/orders/) | Quotes, Sales orders, Deliveries, Subscriptions, Quote templates, Sales analysis, Orders settings |
 | [Manufacturing](/en/user/manufacturing/) | Overview, Manufacturing orders, Suggestions, Unbuilds, Shop floor, Production schedule, Deviations, Bills of materials, Work centers |
+| [Accounting](/en/user/accounting/) | Overview, New journal entry, Vouchers, Open items, Reports, Chart of accounts, Tax codes, Settings |
 | [Knowledge](/en/user/knowledge/) | Articles, Trash |
 | [Energy](/en/user/energy/) | Metering points |
 | [Microsoft Entra ID](/en/user/entra/) | Microsoft Entra ID (the connection's status and its six setup steps), for `entra:manage` |
