@@ -1284,6 +1284,15 @@ the account off and then either switch it on again with a **Start day** after th
 transaction the page names — register that payment by hand if it was one — or go back to
 importing the account's bank files (**Change the format** under **Payments**).
 
+**The books read the same connection.** With Accounting on, a bank account in the books can
+take its whole statement from this connection — debits, card purchases and transfers
+between your own accounts too, which Invoices does not keep — without a second key
+([Accounting › The bank feed as the source](/en/user/accounting/#the-bank-feed-as-the-source)).
+The payments Invoices registers from the feed or from a bank file are then matched to the
+books' statement lines by the bank's own reference. A customer payment is always registered
+here, in Invoices, never coded in Accounting
+([why](/en/user/accounting/#why-customer-payments-are-registered-in-invoices)).
+
 **A genuine second payment that looks like a repeat.** A payment is held back as **A
 possible duplicate**, and not registered, when a payment from **another file** to the
 same account, booked on the same day, of the same amount and with the same KID is
