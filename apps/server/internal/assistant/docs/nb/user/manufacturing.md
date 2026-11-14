@@ -815,9 +815,9 @@ bare på nytt.
 
 Siden for arbeidsstasjonen viser **Kø**: arbeidsordrene som er klare, pågår eller er
 pauset, i ordrer som fortsatt er åpne — først etter planlagt start, så de hastende
-ordrene, så etter forfallsdato. Hver viser ordrens nummer, produktet, de godkjente enhetene
-operasjonen har registrert av ordrens antall — *4 av 10 stk* — og, så lenge den er åpen, hvor
-mange som gjenstår, forfallsdatoen, om komponentene er reservert, og hvem som kjører den. Køen
+ordrene, så etter forfallsdato. Hver viser ordrens nummer, produktet, ordrens antall og, så lenge den er
+åpen, hvor mange som gjenstår — regnet fra operasjonens egne godkjente enheter når den har
+registrert noen, som *4 av 10 stk* — forfallsdatoen, om komponentene er reservert, og hvem som kjører den. Køen
 oppdaterer seg selv når andre starter og fullfører arbeid. **Mitt arbeid** står øverst på
 hver side i verkstedet.
 
