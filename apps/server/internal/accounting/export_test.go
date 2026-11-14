@@ -25,3 +25,11 @@ func SetSaftLease(d time.Duration) (restore func()) {
 	saftLease = d
 	return func() { saftLease = was }
 }
+
+// SetBankFeedLease sets the lease a bank feed claim takes for a test and
+// gives back the function that restores it.
+func SetBankFeedLease(d time.Duration) (restore func()) {
+	was := bankFeedLease
+	bankFeedLease = d
+	return func() { bankFeedLease = was }
+}

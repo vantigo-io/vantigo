@@ -97,8 +97,8 @@ func (b *books) supplier(t *testing.T, name, org string) int64 {
 // a sales invoice, its credit note, a payment, a charge, a write-off with its
 // VAT taken back (tapPåKrav), a supplier invoice in euro with input VAT, a
 // supplier credit note, a supplier payment, an expense and its
-// reimbursement, reverse charge and VAT not deductible, a reversal and a
-// closed VAT term's settlement.
+// reimbursement, reverse charge and VAT not deductible, a reversal, a
+// closed VAT term's settlement and the bank's vouchers.
 func (b *books) ledger(t *testing.T) {
 	t.Helper()
 	if res := b.c.Do(http.MethodPost, base+"/opening", map[string]any{"lines": []map[string]any{
@@ -166,6 +166,15 @@ func (b *books) ledger(t *testing.T) {
 	mustPost(t, b.c, "2026-03-05", "Leie mars",
 		line{"accountId": b.acc("6300"), "amount": "8000.00", "taxCodeId": b.code("1")},
 		line{"accountId": b.acc("1920"), "amount": "-10000.00"})
+	// The bank's vouchers (delivery F): a card purchase coded with its VAT,
+	// and a Vipps payout with Vipps' fees.
+	b.sys(t, "bank", "2026-03-12", accounting.Source{Module: "accounting", Kind: "bank_match", ID: 1, Part: "a"},
+		accounting.Line{Role: "bank", Amount: rat("-125")},
+		accounting.Line{AccountID: b.acc("6300"), Amount: rat("100"), TaxCodeID: &c1, TaxRole: "base"},
+		accounting.Line{AccountID: b.acc("2710"), Amount: rat("25"), TaxCodeID: &c1, TaxRole: "tax", TaxBase: rat("100")})
+	b.sys(t, "bank", "2026-03-13", accounting.Source{Module: "accounting", Kind: "bank_match", ID: 2, Part: "b"},
+		accounting.Line{Role: "bank", Amount: rat("970")}, accounting.Line{Role: "payment_fees", Amount: rat("30")},
+		accounting.Line{Role: "clearing_vipps", Amount: rat("-1000")})
 }
 
 // saftWorker is the SAF-T worker as worker mode builds it.
@@ -498,7 +507,7 @@ func TestSaftExport_TheLedgerGolden(t *testing.T) {
 	for _, j := range f.Entries.Journals {
 		journals[j.JournalID] = len(j.Transactions)
 	}
-	if journals["SALES"] != 6 || journals["PURCHASES"] != 3 || journals["BANK"] != 3 || journals["GENERAL"] != 8 {
+	if journals["SALES"] != 6 || journals["PURCHASES"] != 3 || journals["BANK"] != 5 || journals["GENERAL"] != 8 {
 		t.Errorf("journals = %v", journals)
 	}
 	// TaxInformation as Skatteetaten's example file has it: on the base line,

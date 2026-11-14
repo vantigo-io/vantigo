@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A synthetic camt.053.001.08 statement in the shape SpareBank 1 sends:
+     the status as a code, booking days as date-times, parties under Pty,
+     the account as its IBAN. It follows on from the DNB-shaped file's
+     operating account: a Vipps payout, a VAT payment to Skatteetaten, a
+     card purchase, a customer's KID payment and two identical fees on one
+     day. Every figure is made up. -->
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>SB1-20260914-77</MsgId>
+      <CreDtTm>2026-09-15T04:30:00+02:00</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>SB1-15030012345-37</Id>
+      <ElctrncSeqNb>37</ElctrncSeqNb>
+      <CreDtTm>2026-09-15T04:30:00+02:00</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-09-08T00:00:00+02:00</FrDtTm>
+        <ToDtTm>2026-09-14T23:59:59+02:00</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id>
+          <IBAN>NO4615030012345</IBAN>
+        </Id>
+        <Ccy>NOK</Ccy>
+        <Svcr>
+          <FinInstnId>
+            <BICFI>SPRONO22XXX</BICFI>
+          </FinInstnId>
+        </Svcr>
+      </Acct>
+      <Bal>
+        <Tp>
+          <CdOrPrtry>
+            <Cd>PRCD</Cd>
+          </CdOrPrtry>
+        </Tp>
+        <Amt Ccy="NOK">88655.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt>
+          <Dt>2026-09-07</Dt>
+        </Dt>
+      </Bal>
+      <Bal>
+        <Tp>
+          <CdOrPrtry>
+            <Cd>CLBD</Cd>
+          </CdOrPrtry>
+        </Tp>
+        <Amt Ccy="NOK">73544.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt>
+          <Dt>2026-09-14</Dt>
+        </Dt>
+      </Bal>
+      <Ntry>
+        <NtryRef>SB1-0915-1</NtryRef>
+        <Amt Ccy="NOK">4850.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>
+          <Cd>BOOK</Cd>
+        </Sts>
+        <BookgDt>
+          <DtTm>2026-09-08T09:15:00+02:00</DtTm>
+        </BookgDt>
+        <ValDt>
+          <Dt>2026-09-08</Dt>
+        </ValDt>
+        <AcctSvcrRef>SB1-20260908-000123</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly>
+              <Cd>RCDT</Cd>
+              <SubFmlyCd>DMCT</SubFmlyCd>
+            </Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs>
+              <EndToEndId>VIPPS-PAYOUT-2026-09-07</EndToEndId>
+            </Refs>
+            <Amt Ccy="NOK">4850.00</Amt>
+            <CdtDbtInd>CRDT</CdtDbtInd>
+            <RltdPties>
+              <Dbtr>
+                <Pty>
+                  <Nm>Vipps MobilePay AS</Nm>
+                </Pty>
+              </Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Ustrd>Utbetaling Vipps 2026-09-07</Ustrd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <Ntry>
+        <NtryRef>SB1-0915-2</NtryRef>
+        <Amt Ccy="NOK">21512.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>
+          <Cd>BOOK</Cd>
+        </Sts>
+        <BookgDt>
+          <DtTm>2026-09-10T08:00:00+02:00</DtTm>
+        </BookgDt>
+        <AcctSvcrRef>SB1-20260910-000456</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly>
+              <Cd>ICDT</Cd>
+              <SubFmlyCd>DMCT</SubFmlyCd>
+            </Fmly>
+          </Domn>
+        </BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Amt Ccy="NOK">21512.00</Amt>
+            <CdtDbtInd>DBIT</CdtDbtInd>
+            <RltdPties>
+              <Cdtr>
+                <Pty>
+                  <Nm>SKATTEETATEN</Nm>
+                </Pty>
+              </Cdtr>
+              <CdtrAcct>
+                <Id>
+                  <Othr>
+                    <Id>63450618876</Id>
+                  </Othr>
+                </Id>
+              </CdtrAcct>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Ref>9236090162604</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <Ntry>
+        <NtryRef>SB1-0915-3</NtryRef>
+        <Amt Ccy="NOK">349.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>
+          <Cd>BOOK</Cd>
+        </Sts>
+        <BookgDt>
+          <DtTm>2026-09-11T14:02:00+02:00</DtTm>
+        </BookgDt>
+        <AcctSvcrRef>SB1-20260911-000789</AcctSvcrRef>
+        <BkTxCd>
+          <Domn>
+            <Cd>PMNT</Cd>
+            <Fmly>
+              <Cd>CCRD</Cd>
+              <SubFmlyCd>POSD</SubFmlyCd>
+            </Fmly>
+          </Domn>
+        </BkTxCd>
+        <AddtlNtryInf>VISA 4321 ADOBE SYSTEMS</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <NtryRef>SB1-0915-4</NtryRef>
+        <Amt Ccy="NOK">2000.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>
+          <Cd>BOOK</Cd>
+        </Sts>
+        <BookgDt>
+          <DtTm>2026-09-12T10:00:00+02:00</DtTm>
+        </BookgDt>
+        <AcctSvcrRef>SB1-20260912-000901</AcctSvcrRef>
+        <NtryDtls>
+          <TxDtls>
+            <Amt Ccy="NOK">2000.00</Amt>
+            <CdtDbtInd>CRDT</CdtDbtInd>
+            <RltdPties>
+              <Dbtr>
+                <Pty>
+                  <Nm>Ola Nordmann</Nm>
+                </Pty>
+              </Dbtr>
+            </RltdPties>
+            <RmtInf>
+              <Strd>
+                <CdtrRefInf>
+                  <Ref>0000104016</Ref>
+                </CdtrRefInf>
+              </Strd>
+            </RmtInf>
+          </TxDtls>
+        </NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="NOK">50.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>
+          <Cd>BOOK</Cd>
+        </Sts>
+        <BookgDt>
+          <Dt>2026-09-12</Dt>
+        </BookgDt>
+        <AddtlNtryInf>Gebyr utenlandsbetaling</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="NOK">50.00</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>
+          <Cd>BOOK</Cd>
+        </Sts>
+        <BookgDt>
+          <Dt>2026-09-12</Dt>
+        </BookgDt>
+        <AddtlNtryInf>Gebyr utenlandsbetaling</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>
