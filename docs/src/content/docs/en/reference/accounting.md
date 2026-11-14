@@ -1,6 +1,6 @@
 ---
 title: "Accounting module"
-description: "The company's books: VAT — the specification by tax code with its parts, drill-down and reconciliation against the VAT accounts, the terms derived from the settings with their due dates, close with its refusals, every closing kept, the settlement voucher and the lock, reopen, filing and unfiling, the lock held behind no closed term, the VAT accounts kept out of the opening and fixed on a used tax code, the return laid out as Skatteetaten's with each code's lines, the øre cut, kreditnota and tapPåKrav, and the skattemeldingformerverdiavgift XML; purchases — suppliers with the Brønnøysund lookup and a person's retention, supplier invoices from draft to voucher with every tax code's direction, foreign currency, credit notes, Reverse and copy, payments with the currency difference — and expenses that post themselves from Expenses' journal with the VAT inference, the amount in NOK and the supplier_invoice kind; sales that post themselves — the catch-up worker, its event handlers, streams, cursors and leases, what each document and fact posts as with every system rule and its version, the books' start and the opening's seqs, the posting rules, Needs attention and retry; the module and the module it requires; the four permissions; Set up the books and the gate before it; the settings; the default chart with Skatteetaten's grouping codes, the system roles and the standard tax codes with their rates from 2022; accounts and their rules; groupings per year; tax codes and rate periods; vouchers and postings and the rules the database keeps — balance, a voucher has postings, immutability, postings only on the voucher just inserted, the books' start and the lock read under a share lock; the posting engine — numbering, dating, the lock rule, zero lines, open items and idempotence on the source key; manual journals and their VAT lines; reversal; attachments; the lock and its history; the opening balances and Invoices' open invoices; open items and settlements; the reports and their CSV; the refusals and the endpoints."
+description: "The company's books: SAF-T Financial — the export by fiscal year and periods, its worker, lease and streaming, the split by period, the element mapping, the journals, the TaxInformation mapping, the file name and the checks; the import as the other way to set up the books — the stream reader and what it refuses, the preview, the chart and its fixes, the roles, the tax codes, the suppliers, the customers matched in Customers, the opening voucher with the VAT owed on the settlement account, and the refusals; VAT — the specification by tax code with its parts, drill-down and reconciliation against the VAT accounts, the terms derived from the settings with their due dates, close with its refusals, every closing kept, the settlement voucher and the lock, reopen, filing and unfiling, the lock held behind no closed term, the VAT accounts kept out of the opening and fixed on a used tax code, the return laid out as Skatteetaten's with each code's lines, the øre cut, kreditnota and tapPåKrav, and the skattemeldingformerverdiavgift XML; purchases — suppliers with the Brønnøysund lookup and a person's retention, supplier invoices from draft to voucher with every tax code's direction, foreign currency, credit notes, Reverse and copy, payments with the currency difference — and expenses that post themselves from Expenses' journal with the VAT inference, the amount in NOK and the supplier_invoice kind; sales that post themselves — the catch-up worker, its event handlers, streams, cursors and leases, what each document and fact posts as with every system rule and its version, the books' start and the opening's seqs, the posting rules, Needs attention and retry; the module and the module it requires; the four permissions; Set up the books and the gate before it; the settings; the default chart with Skatteetaten's grouping codes, the system roles and the standard tax codes with their rates from 2022; accounts and their rules; groupings per year; tax codes and rate periods; vouchers and postings and the rules the database keeps — balance, a voucher has postings, immutability, postings only on the voucher just inserted, the books' start and the lock read under a share lock; the posting engine — numbering, dating, the lock rule, zero lines, open items and idempotence on the source key; manual journals and their VAT lines; reversal; attachments; the lock and its history; the opening balances and Invoices' open invoices; open items and settlements; the reports and their CSV; the refusals and the endpoints."
 sources:
   - apps/server/internal/accounting
   - openapi/accounting.yaml
@@ -9,6 +9,7 @@ sources:
   - apps/server/internal/db/migrations/00183_accounting_sales.sql
   - apps/server/internal/db/migrations/00185_accounting_purchases.sql
   - apps/server/internal/db/migrations/00186_accounting_vat.sql
+  - apps/server/internal/db/migrations/00187_accounting_saft.sql
 ---
 
 Accounting keeps the company's books as bokføringsloven asks for them. Its package is
@@ -18,8 +19,8 @@ its schema `accounting` (migration `00181_accounting_baseline.sql`), its contrac
 mounted at `/api/v1/accounting`. The design is
 `docs/superpowers/specs/2026-11-14-accounting-design.md`; this page is what deliveries A
 (the ledger), B (sales post themselves, migration `00183_accounting_sales.sql`), C
-(purchases and expenses, migration `00185_accounting_purchases.sql`) and D (VAT, migration
-`00186_accounting_vat.sql`) built. The user guide is [Accounting](/en/user/accounting/).
+(purchases and expenses, migration `00185_accounting_purchases.sql`), D (VAT, migration
+`00186_accounting_vat.sql`) and E (SAF-T, migration `00187_accounting_saft.sql`) built. The user guide is [Accounting](/en/user/accounting/).
 
 ## The module
 
@@ -37,11 +38,16 @@ mounted at `/api/v1/accounting`. The design is
 - It reads the seller's organisation number and VAT registration through
   `contracts.SalesTax.Seller()` for the VAT return and the meta, nil-safe: without Invoices'
   seller the return goes without the number.
-- It publishes no event. It starts one worker, `accounting.catchup`, and declares four
+- For SAF-T it reads Customers' `BillingProfile` (a customer's number, name, organisation
+  number and invoice address) and `CustomersByLegalID` (the import's matching), the
+  projects' names, and the names of who asked for an export
+  ([SAF-T Financial](#saft-financial)).
+- It publishes no event. It starts two workers, `accounting.catchup` and `accounting.saft`, and declares four
   event handlers ([Sales post themselves](#sales-post-themselves)); before the books are
   set up both return at once, and the handlers do nothing with the module off in
   `MODULES`.
-- Attachments live in the object store under the scope `accounting`.
+- Attachments, SAF-T exports (`saft-exports/<id>/<uuid>.xml`) and uploaded SAF-T files
+  (`saft-imports/<uuid>.xml`) live in the object store under the scope `accounting`.
 
 ## Permissions
 
@@ -49,8 +55,8 @@ mounted at `/api/v1/accounting`. The design is
 | --- | --- | --- | --- | --- |
 | `accounting:read` | Use Accounting | yes | no | every operation |
 | `accounting:post` | Post vouchers | yes | no | manual journals, their preview, reversal, attachments, settlements, suppliers and the Brønnøysund lookup, supplier invoices, their files, Post, Reverse and copy and payments, a retry and the actions under Needs attention, marking a VAT term as filed |
-| `accounting:close` | Manage the books | **no** | no | setup, the chart, the roles, the tax codes, the posting rules, the opening balances, the lock, closing and reopening a VAT term and removing its filing mark |
-| `accounting:export` | Export the books | yes | **yes** | the reports' CSV, a supplier's export |
+| `accounting:close` | Manage the books | **no** | no | setup, a SAF-T import (upload, preview, list, apply), the chart, the roles, the tax codes, the posting rules, the opening balances, the lock, closing and reopening a VAT term and removing its filing mark |
+| `accounting:export` | Export the books | yes | **yes** | the reports' CSV, a supplier's export, the SAF-T exports (check, ask for, list, read, download) and an imported SAF-T file's download |
 
 A write asks for `accounting:read` and its own key (`permission:accounting:post+accounting:read`
 and so on). `accounting:close` is in the agents' never list: no virtual employee may hold
@@ -59,13 +65,16 @@ it. The Assistant never uploads or downloads an attachment or a CSV
 other write — a manual journal, a reversal, a settlement, the opening balances and the
 lock — is called only after the person confirmed it (`confirm`, S4's default for a write;
 `internal/integration`'s contract test pins those five), and the opening and the lock
-need the person's own `accounting:close`.
+need the person's own `accounting:close`. A SAF-T export asked for and the books set up from
+a SAF-T file are confirmed the same way; the SAF-T files — an export's, an upload, an
+imported file's download — are never the Assistant's.
 
 ## Set up the books
 
 Every known module is on by default, so an upgrade switches Accounting on. **Before the
-settings row exists, every operation but `GET /meta` and `POST /setup` answers 409
-`books_not_set_up`**, from a strict middleware that runs before any handler.
+settings row exists, every operation but `GET /meta`, `POST /setup` and the SAF-T import's
+(`GET`/`POST /saft-imports`, `GET /saft-imports/{id}`, `POST /saft-imports/{id}/apply`,
+`GET /saft-imports/{id}/file`) answers 409 `books_not_set_up`**, from a strict middleware that runs before any handler.
 
 `POST /setup` (`accounting:close`) takes `booksStart` (2022-01-01 or later, else 400
 `books_start_too_early`: the seeded rates are known to hold from then), `fiscalYearStartMonth` (1–12,
@@ -154,6 +163,9 @@ The setup's choices never change afterwards; nothing changes `books_start`.
 | `supplier_invoices` | `supplier_id`, `kind` (`invoice`, `credit_note`), `supplier_number` (the supplier's own), `invoice_date`, `due_date`, `currency`, `exchange_rate` (NOK per unit, 1 for NOK; null on a draft in another currency whose rate is not set, never on a posted one), `total` (in the currency), `total_nok` (null exactly when the rate is), `kid`, `reference`, `description`, `state` (`draft`, `posted`, `reversed`; paid is derived), `credits_invoice_id`, `voucher_id`, `open_item_id`, `reversal_voucher_id`, `copied_from_id`, `source_expense_entry_id`, `revision`, who and when. Unique: the supplier, kind and number (case and spaces aside) among those not reversed (`ux_supplier_invoices_number`); one not reversed per expense (`ux_supplier_invoices_expense`). |
 | `supplier_invoice_lines` | `supplier_invoice_id`, `position`, `account_id`, `tax_code_id`, `amount` (as entered, in the currency), `entry` (`net`, `gross`), `project_id`, `text`. |
 | `supplier_invoice_files` | A draft's files: the object key, name, type, size and SHA-256. At posting each becomes an `attachments` row of the voucher, the same object. |
+| `saft_exports` | Every SAF-T export asked for: `fiscal_year`, `from_period`/`to_period` with `period_start`/`period_end`, `state` (`queued`, `running`, `done`, `failed` with `error`), `attempts`, `lease_id`/`lease_until`, `unmapped_accounts` (accounts with no grouping code when asked for), `total_bytes`, `requested_at`, `requested_by_user_id`, `started_at`, `finished_at`. Never deleted (`refuse_change()` before delete): the record of what was handed over. |
+| `saft_export_files` | One row per file an export wrote: `part`/`parts`, `file_name`, `object_key`, `size_bytes`, `sha256`, its periods and days. Never changed. |
+| `saft_imports` | A SAF-T file uploaded to set up the books: `file_name`, `object_key`, `size_bytes`, `sha256`, `audit_file_version`, `selection_start`/`selection_end`, `preview` (the master data read from it, jsonb), who uploaded it and when, and once applied `applied_at`, `applied_by_user_id`, `opening_voucher_id`. At most one is applied (`ux_saft_imports_applied`). |
 | `supplier_payments` | `supplier_invoice_id`, `paid_on`, `amount_nok`, `amount_currency`, `bank_account_id`, `voucher_id`, and once removed `removed_at`, `removed_by_user_id`, `removal_voucher_id`. |
 
 Migration 00183 also adds `vouchers.source_document_id` (the Invoices document a system
@@ -1057,6 +1069,208 @@ open — `vatTermsToClose`, `vatTermsToFile`, and
 `vatRegistrationMismatch`: whether `vat_term` (`none` or not) disagrees with the seller's
 `VATRegistered` in Invoices (R10). The host's dashboard names, after the facts under Needs
 attention, the terms to file and then the terms to close.
+
+## SAF-T Financial
+
+Delivery E (design A24, A25), migration `00187_accounting_saft.sql`. The file's writing and
+reading are the subpackage
+[`internal/accounting/saft`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/accounting/saft),
+which knows nothing of the ledger. Skatteetaten's material it follows — the SAF-T Financial
+1.30 and 1.40 XSDs and an example file of each — is copied under its `testdata` with the
+commit it was taken from. The rules the XSD does not express are from Skatteetaten's
+*Norwegian SAF-T Financial data — Technical description* v1.7 (31 August 2026): amounts
+carry no sign, debit and credit being separate elements; a mandatory string with no value is
+`NA`; a file holds one fiscal year at most; every account and every tax code is in
+MasterFiles, the customers and suppliers may be limited to those with transactions or a
+balance; a deviating fiscal year's period and year are its own.
+
+### The export
+
+`GET /saft-exports/check?fiscalYear&fromPeriod&toPeriod` (`accounting:export`) answers what
+an export would meet and writes nothing: the selection's days, the accounts with no grouping
+code for the year (`unmappedAccounts` — they export `NA`), `sellerMissing` and the vouchers
+dated in it. `POST /saft-exports` takes `fiscalYear` (from the one `books_start` falls in to
+today's, else 400 `period_invalid`), `fromPeriod` and `toPeriod` (1–12, in order, default 1
+and 12; period 1 is the fiscal year's first month), refuses 409 `saft_seller_missing` when
+Invoices has no seller with a name and a nine-digit organisation number (`SalesTax.Seller()`,
+nil-safe), 503 `storage_not_configured` without an object store, writes the `saft_exports`
+row queued with the count of unmapped accounts, logs who asked and for what, and answers 202
+with the export and the unmapped accounts. `GET /saft-exports` lists the latest 100 newest
+first, each with its files and the name of who asked (`Users`); `GET /saft-exports/{id}` one;
+`GET /saft-exports/{id}/files/{part}` streams a file under its name, never cached, and logs
+the download with the file's SHA-256.
+
+**The worker** `accounting.saft` polls every 10 seconds, as `module.Workers` builds it:
+
+1. **Claim**, in one short transaction: the oldest export `queued`, or `running` whose lease
+   has run out — a worker that stopped — under a new lease of ten minutes (`FOR UPDATE SKIP
+   LOCKED`; `attempts` + 1). A live lease is never taken.
+2. **Write**, with no transaction open and no connection held: the seller, the customers'
+   billing profiles and the projects' names are read through their contracts; every read of
+   the books is one query on the pool, the vouchers a page of 500 at a time, each bounded by
+   the highest voucher id committed when the run began. The document is streamed through a
+   pipe into the object store's `Put`, counted and hashed as it passes, so memory stays
+   constant whatever the size. The lease is renewed at every page; a lost lease stops the
+   run and leaves the export to the one that holds it.
+3. **Check** what was streamed against the totals written first: a voucher committed while
+   the run was writing, with a lower id than the bound, makes them differ, and the export
+   fails with *the books changed while the file was written; export again*.
+4. **Split**: a file that would pass `ACCOUNTING_SAFT_SPLIT_BYTES` (2 000 000 000 by
+   default) is thrown away and its periods written again as two halves, and so on; each part
+   is a whole file — header, master files with the part's own opening and closing balances,
+   the part's vouchers — valid alone. One period alone over the threshold fails the export.
+5. **Record**, in one transaction under the lease: a `saft_export_files` row per part with
+   its name, key, size and SHA-256, and the export `done` with its total size; or `failed`
+   with the error, the objects written removed. Both are logged with who asked.
+
+The file is named as Skatteetaten recommends: `SAF-T Financial_<organisation number>_<yyyymmddhhmmss>_<part>_<parts>.xml`,
+the time the run recorded it in Norwegian time.
+
+### What the file holds
+
+| Element | From |
+| --- | --- |
+| `Header/AuditFileVersion`, `AuditFileCountry` | `1.40`, `NO` |
+| `AuditFileDateCreated` | the day of the run |
+| `SoftwareCompanyName`, `SoftwareID`, `SoftwareVersion` | `Vantigo`, `Vantigo`, the build's version |
+| `Company` | the seller: `RegistrationNumber` the organisation number, `Name` the legal name, `Address` the address (`StreetAddress`), `Contact` with `ContactPerson` `NA` `NA` (no contact person is kept: the technical description's empty value) and the seller's phone and e-mail, `TaxRegistration` `<number>MVA` with `TaxAuthority` Skatteetaten when VAT-registered, `BankAccount` the seller's account |
+| `DefaultCurrencyCode` | `NOK` |
+| `SelectionCriteria` | `PeriodStart`/`PeriodStartYear`/`PeriodEnd`/`PeriodEndYear`: the periods of the fiscal year, the year it begins in |
+| `HeaderComment` | the selection's days |
+| `TaxAccountingBasis` | `A`, the only value |
+| `GeneralLedgerAccounts/Account` | **every account**: `AccountID` the number, `AccountDescription` the name, `GroupingCategory`/`GroupingCode` the grouping in force for the fiscal year (`account_groupings`, the greatest `from_year` not after it) or `NA`/`NA`, `AccountType` `GL`, `AccountCreationDate`, the opening balance before the selection's first day and the closing balance at its last as the trial balance counts them — a balance-sheet account everything before, an income or expense account from the fiscal year's start — `Opening`/`ClosingDebitBalance` for zero or a debit, `…CreditBalance` for a credit. The earlier years' result the books have not closed (the trial balance's own line) is added to the `year_result` account's opening and closing, so the file's balances sum to zero as a closed year's would. |
+| `Customers/Customer` | every customer with a posting on `receivables` in the selection or a balance there at either end: `CustomerID` its customer number in Customers (its id when Customers does not answer it), `Name` the legal name, `RegistrationNumber` the organisation number of a business (none for a person), `Address` the invoice address, `Contact` the invoice e-mail, one `BalanceAccount` per control account with its opening and closing balances, `PartyInfo` with the payment terms, `Type` `Company` or `Private` and `Status` |
+| `Suppliers/Supplier` | the same from `suppliers` on `payables`: `SupplierID` the supplier's number, the organisation number, the address, the bank account (`BankAccountNumber`, else `IBANNumber`) and BIC; a supplier id from before the table is named by its id |
+| `TaxTable/TaxTableEntry` | `TaxType` `MVA`, `Description` `Merverdiavgift`, and **every tax code**: `TaxCode` and `StandardTaxCode` the code itself (the books keep Skatteetaten's standard list), `EffectiveDate` the rate period's start, `Description` the name, `TaxPercentage` the rate in force at the selection's end (none for a code without a rate), `Country` `NO`, `BaseRate` 100 — or 0 for an input code whose VAT is a cost (82, 84, 85, 87, 89, 92) |
+| `AnalysisTypeTable` | the projects a posting of the selection names: `AnalysisType` `P`, `AnalysisID` the project's id, `AnalysisIDDescription` its code and name from Projects |
+| `GeneralLedgerEntries` | `NumberOfEntries`, `TotalDebit`, `TotalCredit` of the vouchers dated in the selection, then the journals below |
+| `Transaction` | a voucher: `TransactionID` its number as shown (`2026-000123`), `Period`/`PeriodYear` its period of the fiscal year, `TransactionDate` the voucher date, `VoucherType` the voucher kind and `VoucherDescription` its words, `Description`, `SystemEntryDate` and `GLPostingDate` the day it was posted (Norwegian time), `SystemID` the voucher's id |
+| `Line` | a posting: `RecordID` its line number, `AccountID`, `Analysis` `P` with the project and the amount, `SourceDocumentID` the open item's document number or the source (`invoices:document:123`), `CustomerID` or `SupplierID` on a line on `receivables` or `payables` only, `Description` (the posting's text, else the voucher's), `DebitAmount` or `CreditAmount` with `Amount` and, for a purchase in another currency, `CurrencyCode`, `CurrencyAmount` and `ExchangeRate`, `TaxInformation` (below), `ReferenceNumber` and `DueDate` the open item's |
+
+**The journals**, a fixed mapping by voucher kind, in this order; an empty journal is left out:
+
+| `JournalID` | `Type` | Voucher kinds |
+| --- | --- | --- |
+| `SALES` | `AR` | `sales_invoice`, `sales_credit_note`, `charge`, `write_off` |
+| `PURCHASES` | `AP` | `supplier_invoice`, `supplier_credit_note`, `expense` |
+| `BANK` | `GL` | `customer_payment`, `supplier_payment`, `reimbursement`, `bank` |
+| `GENERAL` | `GL` | `manual`, `opening`, `vat_settlement`, `import` |
+
+**TaxInformation** follows each posting as stored. The technical description defines it as
+*tax information for the accounting line*, and says that when the books keep no tax amount on
+a line it is filled with 0.00 on that line with its tax code — and that nothing is to be
+computed solely for the export. The books keep a base posting and its VAT postings apart (a
+sales invoice's VAT is per VAT summary, not per line), so the base's share of a VAT posting
+is not in them; Skatteetaten's example file, which puts the VAT on the base line, comes from
+a system that keeps it there.
+
+| Posting | `TaxInformation` |
+| --- | --- |
+| `tax_role` `base` | `TaxType` `MVA`, `TaxCode`, `TaxPercentage` the rate on the voucher date, `Country` `NO`, `TaxBase` the posting's amount, and `DebitTaxAmount` or `CreditTaxAmount` 0.00 on the posting's own side |
+| `tax` (output VAT, deductible input VAT, a reverse charge's deducted side, VAT not deductible on a cost account) | the code and rate, `TaxBase` the posting's `tax_base`, and the posting's amount as `DebitTaxAmount` (a debit) or `CreditTaxAmount` (a credit), with its currency amount in another currency |
+| `tax_reverse` (a reverse charge's or an import's calculated VAT, on 2705) | the same: its base and its amount, a credit |
+| `tax_specification` `tapPåKrav` | as its role says: the VAT taken back is a `tax` posting debited on the output VAT account with the output code; SAF-T has no element for the specification, which the VAT return carries |
+| no tax code | none |
+
+So a reverse charge with 86 shows three lines with code 86: the cost with its base and 0.00,
+the deductible VAT debited on 2715 and the calculated VAT credited on 2705, each with the
+base. Summing `TaxBase` over the base lines gives the base per code; summing the tax amounts
+gives the VAT, each side apart.
+
+**The tests hold a file to the books beyond the XSD**: the totals to the sums of the lines,
+debit to credit; every account's closing balance to the trial balance (the earlier years'
+result on `year_result`); each customer's balance to the customers report and the suppliers'
+to the suppliers report; every `AccountID`, `CustomerID`, `SupplierID`, `TaxCode` and
+analysis a line names to the master files. The golden of a fixed ledger with every voucher
+kind is validated against the 1.40 XSD with `xmllint` when it is on the PATH, and by the
+[SAF-T oracle](/en/contributing/saft-validation/) in CI.
+
+### The import
+
+The way in from another system (A25), and the other way to Set up the books: its operations
+answer before the books are set up, and need `accounting:close`.
+
+`POST /saft-imports` takes the multipart field `file`, at most `ACCOUNTING_SAFT_IMPORT_MAX_BYTES`
+(512 MiB by default; 400 `saft_file_too_large`, the router's body limit set to match;
+rate-limited with the other uploads), only while the ledger has no voucher (409
+`saft_import_ledger_has_vouchers`) and the books are not set up (409 `books_already_set_up`).
+The file is spooled to a temporary file and hashed, then **read as a stream** by
+`saft.Read`: strict XML, UTF-8 only, the root `AuditFile` in the SAF-T namespace, **any
+DOCTYPE refused** — and with it every entity declaration and external reference, so nothing
+is ever expanded or fetched (XXE, the billion laughs) — and an entity beyond XML's five
+refused (400 `saft_file_invalid`). The header's `AuditFileVersion` must be 1.30 or 1.40 (400
+`saft_version_unsupported` for 1.20 or older, or one it cannot name: export again). The
+master files are decoded one account, customer and supplier at a time; the transactions are
+counted and skipped. The selection is the header's dates, or its periods read as calendar
+months. The file is then kept in the object store with its SHA-256 and the master data as
+`preview`, and the preview is answered (201). `GET /saft-imports/{id}` answers it again, the
+customers matched again; `GET /saft-imports` lists the imports; `GET /saft-imports/{id}/file`
+(`accounting:export`) streams the file as uploaded.
+
+**The preview** — what Apply would write, with what stands in its way (`blockers`, and
+`canApply`):
+
+- **The books start** the day after the selection ends (`booksStart`; not before 2022-01-01,
+  else `books_start_too_early`); the fiscal year's first month is proposed from the
+  selection's.
+- **The chart** replaces the default: each account's number, name (200 characters) and kind
+  from its number's class (layer A's rule). A number that does not fit — not 4 to 6 digits
+  beginning with 1 to 8 — is taken with its non-digits removed when that fits, left out when
+  it has no balance, and otherwise *needs a number* (a blocker); a number already taken
+  needs one too. An income or expense account may be left out with a balance — it is part of
+  the result — a balance-sheet account may not. The apply's `accounts` (file id → number,
+  `""` to leave out) overrides. A grouping (1.30/1.40 `GroupingCategory` and `GroupingCode`)
+  is kept from the books' first year when it is on that year's list, and dropped with a
+  problem otherwise; `NA` is none; an account with only the old `StandardAccountID` gets no
+  grouping, and the preview says how many.
+- **The balances** of the file's accounts must sum to zero.
+- **The control accounts** are the ones the customers' and the suppliers' `BalanceAccount`s
+  name; the parties' balances on more than one account each are a blocker (these books keep
+  one control account per side).
+- **The roles** are proposed: `receivables` and `payables` on the parties' control
+  accounts, every other role on the default chart's number; a role whose account the file
+  has not adds the default chart's account (`addedAccounts`, with the reason), as do the
+  standard tax codes' VAT and counter accounts the file lacks. The apply's `roles` (role →
+  number) overrides; every role must end on an account the chart will have (400
+  `account_unknown`), of the role's kind (400 `account_kind_mismatch`), one role an account.
+- **The tax codes**: the file's tax table mapped to the standard codes by `StandardTaxCode`;
+  the books seed Skatteetaten's whole standard list as Set up does, and the unmapped are
+  counted in the notes.
+- **The suppliers** are made, numbered from the counter: the name, a Norwegian organisation
+  number that passes mod 11 (a second supplier with the same number keeps none), the
+  country, the address, an e-mail with an @, a bank account of eleven digits passing mod 11,
+  the IBAN and BIC; what is dropped is said per supplier.
+- **The customers** are matched to Customers by organisation number through
+  `CustomersByLegalID` (a merged-away holder answers its survivor): one holder is
+  `matched`, several `ambiguous`, none `unmatched`; a customer with no balance is
+  `not_needed`. The apply's `customerLinks` (file customer id → a customer of Customers that
+  `Customers` answers) makes it `linked`. **Accounting writes no customer**: a customer with
+  a balance that is not matched or linked is a blocker (409 `saft_import_unmatched_customers`),
+  rather than a balance on a holding account or party — which would be books that say a
+  balance is no customer's.
+- **The opening voucher**, dated `booksStart`: every balance-sheet account's closing
+  balance but the control accounts' and the VAT accounts'; per customer and per supplier
+  with a balance one line on the control account opening **one item** (document number
+  *Opening balance* with the file's id, dated the selection's end); the **VAT accounts'**
+  closing balances — the standard tax codes' VAT and counter accounts — summed onto the
+  `vat_settlement` account (`opening.vatMoved`, a note *VAT owed at the start*), since the
+  opening voucher posts nothing on a VAT account; and the result — what the lines leave —
+  on the `opening` account in equity. The customers' and the suppliers' balances must equal
+  their control account's closing balance (`receivablesDifference`, `payablesDifference`;
+  409 `saft_import_parties_mismatch` with the difference).
+
+`POST /saft-imports/{id}/apply` takes `vatTerm`, `language`, `fiscalYearStartMonth`, an
+optional `booksStart` (400 `saft_import_books_start_mismatch` unless the day after the
+selection), `accounts`, `roles` and `customerLinks`. It builds the plan again, matching the
+customers with no transaction open, refuses while a blocker stands — 409
+`saft_import_unresolved`, `saft_import_unmatched_customers` or `saft_import_parties_mismatch`
+with every blocker in the detail — and then, **in one transaction**, takes the import FOR
+UPDATE (409 `saft_import_applied` a second time), checks again that the ledger has no
+voucher, writes the settings (409 `books_already_set_up` if a setup came first: the one
+settings row makes the two ways mutually exclusive), the chart through the same `seedChart`
+and `seedTaxCodes` Set up the books uses, the default posting rules, the suppliers, the
+opening voucher through `Post` as the person's, and marks the import applied with its
+voucher. History is not imported as vouchers: the uploaded file is the record of those years.
 
 ## The reports
 
