@@ -258,3 +258,13 @@ WHERE account = @account AND lease_id = @lease_id::text;
 -- is the claim lost.
 UPDATE invoices.bank_feed_accounts SET read_through = greatest(read_through, @read_through::date)
 WHERE account = @account AND lease_id = @lease_id::text;
+
+-- name: BankFeedRateLimitedUntil :one
+-- BankFeedRateLimitedUntil is the latest moment the bank, answering this
+-- module's sync 429, said it may be asked again, among the accounts whose
+-- wait still holds at @now: no row when none does. The bank limits the key,
+-- so contracts.BankFeed's reads wait for it too.
+SELECT rate_limited_until FROM invoices.bank_feed_accounts
+WHERE rate_limited_until > @now::timestamptz
+ORDER BY rate_limited_until DESC
+LIMIT 1;

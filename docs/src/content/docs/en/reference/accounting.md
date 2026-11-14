@@ -1470,7 +1470,8 @@ the feed's state cleared and its lines kept. With the feed not composed — Invo
 reached or limiting, 503 `bank_feed_unreachable`.
 
 Worker **`accounting.bankfeed`** polls every minute and reads each feed account that is due
-— at most 50 a run — on the feed's interval (`BankFeedStatus.Interval`, 30 minutes):
+— at most 50 a run — on the feed's interval (`BankFeedStatus.Interval`: Invoices'
+`INVOICES_BANK_FEED_INTERVAL`, 30 minutes by default):
 
 1. it claims the account's lease (five minutes) in one short statement, `FOR UPDATE SKIP
    LOCKED`;
@@ -1483,7 +1484,9 @@ Worker **`accounting.bankfeed`** polls every minute and reads each feed account 
    today is left out and counted in the detail;
 4. it releases the claim with what the bank said: `ok` and the next read an interval on;
    `unauthorized` when the bank refused the key (Invoices records the refusal too);
-   `rate_limited`, the next read after the bank's `Retry-After`, at least the interval;
+   `rate_limited`, the next read after the bank's `Retry-After`, at least the interval —
+   also while the bank's 429 to Invoices' own sync still holds, when the contract calls
+   nothing and answers the wait that is left, so the two readers of one key back off together;
    `off` with no key; `failing` for any other error.
 
 The meta's `bankFeedProblems` counts the feed accounts in `unauthorized`, `failing`

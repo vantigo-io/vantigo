@@ -5819,8 +5819,9 @@ operator switched off.
 
 - **`Status(ctx) (BankFeedStatus, error)`** — the connection as this module holds it, from
   its own table, no call to the bank: `Connected` (a key is stored), `Refused` (the bank
-  refused it: status `unauthorized`), `Provider` and `Interval`, the cadence the feed is
-  read on (30 minutes), which a reader of its own keeps.
+  refused it: status `unauthorized`), `Provider` and `Interval`, the cadence this module's
+  own sync reads on (`INVOICES_BANK_FEED_INTERVAL`, 30 minutes by default), which a reader
+  of its own keeps.
 - **`Accounts(ctx) ([]bankfeed.Account, error)`** — every account the key reads, as the
   port answers it, cards and tax accounts included.
 - **`Transactions(ctx, account, from, to) ([]bankfeed.Transaction, error)`** — an
@@ -5833,7 +5834,11 @@ module's own (`bankFeed`): reported as `BankFeed.<Method>` contract calls, made 
 transaction open, never retried, and a 401 or 403 records the key as refused. They answer
 the port's errors as they are — `bankfeed.ErrUnauthorized`, a `*bankfeed.ErrRateLimited`
 with the bank's wait, any other error for a read that failed — and
-`contracts.ErrBankFeedNotConnected` when no key is stored or it cannot be opened. The
+`contracts.ErrBankFeedNotConnected` when no key is stored or it cannot be opened. The bank
+limits the key, not a reader: while the bank's 429 to this module's own sync still holds
+(`rate_limited_until` on any feed account, `BankFeedRateLimitedUntil`), `Accounts` and
+`Transactions` call nothing and answer a `*bankfeed.ErrRateLimited` with the wait that is
+left, so a reader backs off with the sync; the sync alone writes the wait. The
 contract stores nothing and changes nothing of what this module's own feed stores or
 registers.
 

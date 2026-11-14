@@ -23,10 +23,6 @@ import (
 // and a 401 or 403 records the key as refused, as for this module's own
 // calls; it opens no transaction and stores nothing.
 
-// bankFeedInterval is how often the feed is read: the cadence a reader of
-// its own aligns with (F5's default).
-const bankFeedInterval = 30 * time.Minute
-
 // bankFeedProvider is this module's contracts.BankFeed.
 type bankFeedProvider struct {
 	s *server
@@ -46,7 +42,9 @@ func newBankFeed(d module.Deps) contracts.BankFeed {
 
 // Status is the connection as this module holds it, read on the pool.
 func (p *bankFeedProvider) Status(ctx context.Context) (contracts.BankFeedStatus, error) {
-	out := contracts.BankFeedStatus{Interval: bankFeedInterval}
+	// The cadence this module's own sync reads on (INVOICES_BANK_FEED_INTERVAL,
+	// F5), which a reader of its own keeps.
+	out := contracts.BankFeedStatus{Interval: p.s.deps.Config.InvoicesBankFeedInterval}
 	row, err := store.New(p.s.deps.Pool).GetBankFeedConnection(ctx)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -58,8 +56,19 @@ func (p *bankFeedProvider) Status(ctx context.Context) (contracts.BankFeedStatus
 	return out, nil
 }
 
-// feed is the stored connection's feed, its errors the contract's.
+// feed is the stored connection's feed, its errors the contract's. The
+// bank limits the key, not a reader: while the bank's last 429 to this
+// module's own sync still holds (rate_limited_until, 00179) no call is made,
+// and the wait that is left is answered as the bank's, so a reader backs off
+// with the sync rather than spend the requests the bank refused it.
 func (p *bankFeedProvider) feed(ctx context.Context) (bankfeed.Feed, error) {
+	now := p.s.deps.Clock()
+	switch until, err := store.New(p.s.deps.Pool).BankFeedRateLimitedUntil(ctx, now); {
+	case err == nil && until != nil:
+		return nil, &bankfeed.ErrRateLimited{RetryAfter: until.Sub(now)}
+	case err != nil && !errors.Is(err, pgx.ErrNoRows):
+		return nil, fmt.Errorf("invoices: read the bank's wait: %w", err)
+	}
 	feed, err := p.s.bankFeed(ctx)
 	switch {
 	case errors.Is(err, errBankFeedNotConnected), errors.Is(err, errBankFeedKeyUnreadable), errors.Is(err, errBankFeedSwitchedOff):
