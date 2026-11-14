@@ -40,23 +40,25 @@ func (q *Queries) AdvanceBankFeedRead(ctx context.Context, arg AdvanceBankFeedRe
 const bankFeedFailed = `-- name: BankFeedFailed :execrows
 UPDATE invoices.bank_feed_accounts SET
     failures = failures + 1,
-    reason = coalesce($1::text, CASE WHEN status = 'refused' AND failures + 1 < $2::integer THEN reason END),
-    status = CASE WHEN failures + 1 >= $2::integer THEN 'failing' ELSE status END,
-    detail = $3, next_sync_at = CASE WHEN next_sync_at > $4::timestamptz THEN next_sync_at ELSE $5::timestamptz END,
+    last_bank_file_id = coalesce($1::bigint, last_bank_file_id),
+    reason = coalesce($2::text, CASE WHEN status = 'refused' AND failures + 1 < $3::integer THEN reason END),
+    status = CASE WHEN failures + 1 >= $3::integer THEN 'failing' ELSE status END,
+    detail = $4, next_sync_at = CASE WHEN next_sync_at > $5::timestamptz THEN next_sync_at ELSE $6::timestamptz END,
     rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
-    updated_at = CASE WHEN failures + 1 >= $2::integer AND status <> 'failing'
-        THEN $4::timestamptz ELSE updated_at END
-WHERE account = $6 AND lease_id = $7::text
+    updated_at = CASE WHEN failures + 1 >= $3::integer AND status <> 'failing'
+        THEN $5::timestamptz ELSE updated_at END
+WHERE account = $7 AND lease_id = $8::text
 `
 
 type BankFeedFailedParams struct {
-	Reason       *string
-	FailingAfter int32
-	Detail       string
-	Now          time.Time
-	NextSyncAt   time.Time
-	Account      string
-	LeaseID      string
+	LastBankFileID *int64
+	Reason         *string
+	FailingAfter   int32
+	Detail         string
+	Now            time.Time
+	NextSyncAt     time.Time
+	Account        string
+	LeaseID        string
 }
 
 // BankFeedFailed ends a claim whose read failed (F7): one more failure in a
@@ -65,6 +67,7 @@ type BankFeedFailedParams struct {
 // backoff the caller worked out from the count.
 func (q *Queries) BankFeedFailed(ctx context.Context, arg BankFeedFailedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, bankFeedFailed,
+		arg.LastBankFileID,
 		arg.Reason,
 		arg.FailingAfter,
 		arg.Detail,
@@ -84,6 +87,7 @@ UPDATE invoices.bank_feed_accounts SET
     detail = $1, next_sync_at = $2::timestamptz, rate_limited_until = $3::timestamptz,
     failures = failures + 1,
     status = CASE WHEN failures + 1 >= $4::integer THEN 'failing' ELSE status END,
+    reason = CASE WHEN failures + 1 >= $4::integer AND status <> 'failing' THEN NULL ELSE reason END,
     updated_at = CASE WHEN failures + 1 >= $4::integer AND status <> 'failing'
         THEN $5::timestamptz ELSE updated_at END,
     lease_id = NULL, lease_until = NULL

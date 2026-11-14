@@ -205,6 +205,7 @@ UPDATE invoices.bank_feed_accounts SET
     detail = @detail, next_sync_at = @next_sync_at::timestamptz, rate_limited_until = @rate_limited_until::timestamptz,
     failures = failures + 1,
     status = CASE WHEN failures + 1 >= @failing_after::integer THEN 'failing' ELSE status END,
+    reason = CASE WHEN failures + 1 >= @failing_after::integer AND status <> 'failing' THEN NULL ELSE reason END,
     updated_at = CASE WHEN failures + 1 >= @failing_after::integer AND status <> 'failing'
         THEN @now::timestamptz ELSE updated_at END,
     lease_id = NULL, lease_until = NULL
@@ -217,6 +218,7 @@ WHERE account = @account AND lease_id = @lease_id::text;
 -- backoff the caller worked out from the count.
 UPDATE invoices.bank_feed_accounts SET
     failures = failures + 1,
+    last_bank_file_id = coalesce(sqlc.narg(last_bank_file_id)::bigint, last_bank_file_id),
     reason = coalesce(sqlc.narg(reason)::text, CASE WHEN status = 'refused' AND failures + 1 < @failing_after::integer THEN reason END),
     status = CASE WHEN failures + 1 >= @failing_after::integer THEN 'failing' ELSE status END,
     detail = @detail, next_sync_at = CASE WHEN next_sync_at > @now::timestamptz THEN next_sync_at ELSE @next_sync_at::timestamptz END,

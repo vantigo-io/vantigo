@@ -206,12 +206,15 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 			reason = ptr(failedAnswerTooLarge)
 			w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; the bank's answer for one day is too large",
 				"worker", bankFeedWorkerName, "account", account, "failures", failures)
+		case errors.Is(syncErr, errFeedMatchingStopped), errors.Is(syncErr, errFeedPendingUnread):
+			w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; matching the payments stored stopped",
+				"worker", bankFeedWorkerName, "account", account, "failures", failures, "error", syncErr.Error())
 		default:
 			w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; the bank could not be reached or did not answer as it should",
 				"worker", bankFeedWorkerName, "account", account, "failures", failures, "error", syncErr.Error())
 		}
 		n, err = q.BankFeedFailed(ctx, store.BankFeedFailedParams{
-			FailingAfter: bankFeedFailingAfter, Detail: feedFailureDetail(syncErr), Reason: reason,
+			FailingAfter: bankFeedFailingAfter, Detail: feedFailureDetail(syncErr), Reason: reason, LastBankFileID: outcome.bankFileID,
 			NextSyncAt: c.now.Add(bankFeedBackoff(interval, failures)), Now: c.now, Account: account, LeaseID: c.lease,
 		})
 	case outcome.refused != nil:
@@ -258,6 +261,8 @@ func feedFailureDetail(err error) string {
 		return "The stored bank API key cannot be read on this server. Store the key again."
 	case errors.Is(err, errFeedAnswerTooLarge):
 		return "The bank's answer for one day is too large to read."
+	case errors.Is(err, errFeedPendingUnread):
+		return "The payments stored could not be read for matching; they are matched at the next read."
 	case errors.Is(err, errFeedMatchingStopped):
 		return "Matching the payments read stopped: several failed in a row, or the database could not be reached."
 	case errors.Is(err, errFeedNoProgress):

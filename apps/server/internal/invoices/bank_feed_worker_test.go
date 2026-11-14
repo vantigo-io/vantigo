@@ -550,3 +550,35 @@ func TestBankFeedWorker_RateLimitedInARowIsFailing(t *testing.T) {
 		t.Errorf("the account was read %d times before the bank's wait was over, want none", n)
 	}
 }
+
+// A 429 that tips the account to failing clears an older reason, and a
+// refused key still lets the batches stored before be matched (third
+// review, lows). Not parallel: it installs the package's after-store hook.
+func TestBankFeedWorker_RateLimitedTipsCleanAndUnauthorizedStillMatches(t *testing.T) {
+	h, _ := syncHarness(t)
+	inv := kidInvoice(t, h)
+	feedReady(t, h)
+	h.Exec(t, `UPDATE invoices.bank_feed_accounts SET reason = 'line_unmatched', detail = 'Transaction x.', failures = 2`)
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Status: http.StatusTooManyRequests, RetryAfter: "60", Times: 1})
+	syncNow(t, h)
+	if s := feedStateOf(t, h, sellerAccount); s.status != "failing" || s.reason != "" {
+		t.Errorf("a 429 tipping the account to failing: %+v, want failing with no reason", s)
+	}
+
+	// A batch stored and left pending, then the key refused: matched anyway.
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-06", "1000.00", *inv.Kid))
+	stopped, stop := context.WithCancel(context.Background())
+	restore := invoices.SetBankFeedSyncAfterStore(func(context.Context, int64) error { stop(); return errors.New("stopped") })
+	h.Advance(time.Hour)
+	_ = feedWorker(t, h.Deps()).RunCycle(stopped)
+	restore()
+	if got := livePaymentsOf(t, h, inv.ID); len(got) != 0 {
+		t.Fatalf("payments after the stop = %v, want the line pending", got)
+	}
+	h.Exec(t, `UPDATE invoices.bank_feed_accounts SET lease_id = NULL, lease_until = NULL, next_sync_at = $1, rate_limited_until = NULL`, h.Now())
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Status: http.StatusUnauthorized})
+	syncNow(t, h)
+	if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("payments after a refused key = %v, want the stored line matched", got)
+	}
+}

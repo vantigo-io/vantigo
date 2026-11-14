@@ -132,7 +132,13 @@ func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID
 		s.deps.Logger.WarnContext(ctx, "invoices: matching stopped early; the rest of the file stays pending",
 			"bankFileId", fileID, "bankTransactionId", lineID, "error", err.Error())
 		if pastFailures && ctx.Err() == nil {
-			err = fmt.Errorf("%w: %w", errFeedMatchingStopped, err)
+			// The database's connection failing stops all matching of the
+			// cycle; lines failing in a row stop this batch's alone.
+			stop := errFeedBatchStopped
+			if connectionClass(err) {
+				stop = errFeedMatchingStopped
+			}
+			err = fmt.Errorf("%w: %w", stop, err)
 		}
 		return counts, failedRef, err
 	}
@@ -231,10 +237,14 @@ func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID
 // feed's matching stops rather than passes over the next.
 const maxLineFailuresInARow = 3
 
-// errFeedMatchingStopped is the bank feed's matching stopped: lines failing
-// in a row, or the database's connection failing — a failure of the cycle,
-// never a line that cannot be matched.
-var errFeedMatchingStopped = errors.New("invoices: matching the bank feed's lines stopped")
+// errFeedMatchingStopped is the bank feed's matching stopped — lines failing
+// in a row in a batch, or the database's connection failing: a failure of
+// the cycle, never a line that cannot be matched. errFeedBatchStopped is the
+// first, which stops that batch's matching alone; the next batch is matched.
+var (
+	errFeedMatchingStopped = errors.New("invoices: matching the bank feed's lines stopped")
+	errFeedBatchStopped    = errors.New("invoices: matching a bank feed batch's lines stopped")
+)
 
 // connectionClass reports whether err is the database's connection or pool
 // failing rather than one line's: a connection that could not be made or
