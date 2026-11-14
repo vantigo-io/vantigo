@@ -105,14 +105,20 @@ type feedClaim struct {
 }
 
 // The windows a cycle reads (plan C review, item 1): at most 31 days each,
-// each its own batch, at most bankFeedWindowsPerCycle of them and
-// bankFeedCallsPerCycle calls to the bank in all — a window too large for
-// one answer halved and asked again — so a cycle never outlives its lease.
-const (
-	bankFeedWindowDays      = 31
-	bankFeedWindowsPerCycle = 4
-	bankFeedCallsPerCycle   = 8
-)
+// each its own batch, budgeted by calls to the bank alone —
+// bankFeedCallsPerCycle in all, a window too large for one answer halved and
+// asked again, the smaller size kept for the rest of the cycle — so a cycle
+// never outlives its lease.
+const bankFeedWindowDays = 31
+
+// bankFeedCallsPerCycle is the calls a cycle makes at most; a test lowers
+// it (export_test.go).
+var bankFeedCallsPerCycle = 8
+
+// errFeedNoProgress is a cycle that spent its calls and read nothing past
+// the cursor it started with: the bank's answers are too large to move
+// forward. It fails as answer_too_large, backing off instead of spinning.
+var errFeedNoProgress = errors.New("invoices: the bank feed read nothing past its cursor this cycle")
 
 // errFeedAnswerTooLarge is a window of a single day whose answer is still too
 // large to read or to store as one batch: the account fails with its own
@@ -148,22 +154,42 @@ func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, err
 		return syncOutcome{refused: &feedRefusal{reason: refusedFormatMismatch, detail: "The account's format is " + acct.Format + "."}}, nil
 	}
 
-	// 1. The days to read: from the start day, or ten days before the last
-	// day read to the end, whichever is later — the read cursor, not the
-	// last payment kept, so an account with few payments reads a short
-	// window too.
+	// 1. The days to read. Forward first: from the day after the last day
+	// read to the end (the read cursor), or from the start day, to today —
+	// so every cycle moves the cursor on, however small the bank's answers
+	// make its windows. Then the overlap again: the ten days before the
+	// cursor this cycle started with, since a bank may book a payment on an
+	// earlier day than it first showed it.
 	startDay := utcDay(c.row.StartDay.Time)
-	from := startDay
 	var readThrough *time.Time
 	if c.row.ReadThrough.Valid {
 		rt := utcDay(c.row.ReadThrough.Time)
 		readThrough = &rt
-		if back := rt.Add(-bankFeedOverlap); back.After(from) {
-			from = back
-		}
 	}
-	if from.After(today) {
-		from = today
+	// The cursor this cycle started with: a cycle that ends with more to
+	// read and nothing past it made no progress.
+	started := readThrough
+	type span struct{ from, to time.Time }
+	var spans []span
+	forward := startDay
+	if started != nil && started.AddDate(0, 0, 1).After(forward) {
+		forward = started.AddDate(0, 0, 1)
+	}
+	if !forward.After(today) {
+		spans = append(spans, span{forward, today})
+	}
+	if started != nil {
+		back := started.Add(-bankFeedOverlap)
+		if back.Before(startDay) {
+			back = startDay
+		}
+		end := *started
+		if end.After(today) {
+			end = today
+		}
+		if !back.After(end) {
+			spans = append(spans, span{back, end})
+		}
 	}
 
 	feed, err := s.bankFeed(ctx)
@@ -174,86 +200,97 @@ func (s *server) syncAccount(ctx context.Context, c feedClaim) (syncOutcome, err
 	if noted, ok := feed.(notedFeed); ok {
 		out.keyVersion = noted.version
 	}
+	windowDays := bankFeedWindowDays
 	calls := 0
-windows:
-	for window := 0; ; window++ {
-		if window == bankFeedWindowsPerCycle {
-			out.more = true
-			break
-		}
-		to := from.AddDate(0, 0, bankFeedWindowDays-1)
-		if to.After(today) {
-			to = today
-		}
-		var txs []bankfeed.Transaction
-		for {
+spans:
+	for i, sp := range spans {
+		inForward := i == 0 && sp.from.Equal(forward)
+		from := sp.from
+		for !from.After(sp.to) {
 			if calls == bankFeedCallsPerCycle {
-				// The calls of this cycle are spent: the rest is the next
-				// cycle's, due at once.
+				if !inForward {
+					// Only the overlap is left unread: the next cycle reads
+					// it again.
+					break spans
+				}
+				// The calls of this cycle are spent with days left to read:
+				// due again at once — unless the cycle read nothing past
+				// the cursor it started with, which would only spin.
+				if readThrough == nil || (started != nil && !readThrough.After(*started)) {
+					return out, errFeedNoProgress
+				}
 				out.more = true
-				break windows
+				break spans
+			}
+			to := from.AddDate(0, 0, windowDays-1)
+			if to.After(sp.to) {
+				to = sp.to
 			}
 			calls++
-			txs, err = feed.Transactions(ctx, account, from, to)
-			if err == nil && !feedAnswerTooLarge(txs) {
-				break
+			txs, err := feed.Transactions(ctx, account, from, to)
+			tooLarge := errors.Is(err, bankfeed.ErrTooLarge) || (err == nil && feedAnswerTooLarge(txs))
+			if err != nil && !tooLarge {
+				return out, err
 			}
-			if err != nil && !errors.Is(err, bankfeed.ErrTooLarge) {
-				return syncOutcome{keyVersion: out.keyVersion}, err
+			if tooLarge {
+				days := int(to.Sub(from).Hours()/24) + 1
+				if days == 1 {
+					return out, errFeedAnswerTooLarge
+				}
+				// Too large for one answer or one batch: half the days,
+				// rounded up, and keep the smaller window for the rest of
+				// the cycle.
+				windowDays = (days + 1) / 2
+				continue
 			}
-			if !to.After(from) {
-				return syncOutcome{}, errFeedAnswerTooLarge
-			}
-			// Too large for one answer or one batch: half the days.
-			to = from.AddDate(0, 0, int(to.Sub(from).Hours()/24)/2)
-		}
 
-		// 2 and 3. Refuse the whole batch, or keep the incoming credit
-		// transfers; what is not kept is counted only when booked after the
-		// last day read, so the overlap is not counted in every batch.
-		kept, raws, ignored, refusal := judgeFeedBatch(txs, account, today, startDay, readThrough)
-		if refusal != nil {
-			out.refused = refusal
-			return out, nil
-		}
-		// 4. Drop what an earlier cycle stored.
-		kept, raws, refusal, err = dropStoredFeedLines(ctx, q, account, kept, raws)
-		if err != nil {
-			return syncOutcome{}, err
-		}
-		if refusal != nil {
-			out.refused = refusal
-			return out, nil
-		}
-		if len(kept) > 0 {
-			id, err := s.storeFeedBatch(ctx, c, from, to, kept, raws, ignored)
-			if err != nil {
-				return syncOutcome{}, err
-			}
-			if id == nil {
-				out.refused = &feedRefusal{reason: refusedFormatMismatch, detail: "The account's format is no longer feed."}
+			// 2 and 3. Refuse the whole batch, or keep the incoming credit
+			// transfers; what is not kept is counted only when booked after
+			// the last day read, so the overlap is not counted again.
+			kept, raws, ignored, refusal := judgeFeedBatch(txs, account, today, startDay, readThrough)
+			if refusal != nil {
+				out.refused = refusal
 				return out, nil
 			}
-			out.bankFileID = id
-			if hook := bankFeedSyncAfterStore; hook != nil {
-				if err := hook(ctx, *id); err != nil {
-					return syncOutcome{}, err
+			// 4. Drop what an earlier cycle stored.
+			kept, raws, refusal, err = dropStoredFeedLines(ctx, q, account, kept, raws)
+			if err != nil {
+				return out, err
+			}
+			if refusal != nil {
+				out.refused = refusal
+				return out, nil
+			}
+			if len(kept) > 0 {
+				id, err := s.storeFeedBatch(ctx, c, from, to, kept, raws, ignored)
+				if err != nil {
+					return out, err
+				}
+				if id == nil {
+					out.refused = &feedRefusal{reason: refusedFormatMismatch, detail: "The account's format is no longer feed."}
+					return out, nil
+				}
+				out.bankFileID = id
+				if hook := bankFeedSyncAfterStore; hook != nil {
+					if err := hook(ctx, *id); err != nil {
+						return out, err
+					}
 				}
 			}
+			// The window is read and judged to its end: the cursor moves —
+			// never back, an overlap's window ending before it.
+			n, err := q.AdvanceBankFeedRead(ctx, store.AdvanceBankFeedReadParams{ReadThrough: pgDate(to), Account: account, LeaseID: c.lease})
+			if err != nil {
+				return out, fmt.Errorf("invoices: move account %s's read cursor: %w", account, err)
+			}
+			if n == 0 {
+				return out, errFeedClaimLost
+			}
+			if readThrough == nil || to.After(*readThrough) {
+				readThrough = &to
+			}
+			from = to.AddDate(0, 0, 1)
 		}
-		// The window is read and judged to its end: the cursor moves.
-		n, err := q.AdvanceBankFeedRead(ctx, store.AdvanceBankFeedReadParams{ReadThrough: pgDate(to), Account: account, LeaseID: c.lease})
-		if err != nil {
-			return syncOutcome{}, fmt.Errorf("invoices: move account %s's read cursor: %w", account, err)
-		}
-		if n == 0 {
-			return syncOutcome{}, errFeedClaimLost
-		}
-		readThrough = &to
-		if !to.Before(today) {
-			break
-		}
-		from = to.AddDate(0, 0, 1)
 	}
 
 	// 7. Matching, by no user, of every feed batch of the account with a

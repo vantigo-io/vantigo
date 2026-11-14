@@ -68,6 +68,10 @@ type Failure struct {
 	Oversized bool
 	// Times is how many requests it answers; 0 is every one until Clear.
 	Times int
+	// OverDays, when set, limits a transactions failure to a read whose
+	// startDate..endDate spans more than OverDays days: a shorter one is
+	// answered as usual, and counts nothing against Times.
+	OverDays int
 }
 
 // Request is one request the server received, in order.
@@ -261,7 +265,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		return
 	}
-	if s.failed(w, op) {
+	if s.failed(w, r, op) {
 		return
 	}
 	switch op {
@@ -296,9 +300,12 @@ func route(r *http.Request) (Op, string, bool) {
 	return OpTransactions, account, true
 }
 
-func (s *Server) failed(w http.ResponseWriter, op Op) bool {
+func (s *Server) failed(w http.ResponseWriter, r *http.Request, op Op) bool {
 	s.mu.Lock()
 	f, ok := s.failures[op]
+	if ok && f.OverDays > 0 && !spansOver(r, f.OverDays) {
+		ok = false
+	}
 	var copied Failure
 	if ok {
 		copied = *f
@@ -429,4 +436,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(body)
+}
+
+// spansOver reports whether a transactions read's startDate..endDate spans
+// more than days days, both ends counted; a read without both is not.
+func spansOver(r *http.Request, days int) bool {
+	q := r.URL.Query()
+	from, err1 := time.Parse(time.DateOnly, q.Get("startDate"))
+	to, err2 := time.Parse(time.DateOnly, q.Get("endDate"))
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return int(to.Sub(from).Hours()/24)+1 > days
 }
