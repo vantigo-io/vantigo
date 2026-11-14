@@ -56,8 +56,11 @@ type Line struct {
 	// CounterpartyName and CounterpartyAccount are the payer of money in, the
 	// payee of money out.
 	CounterpartyName, CounterpartyAccount string
-	// BankID is the bank's own id of the entry, "" when it gives none.
+	// BankID is the bank's own id of the entry (its AcctSvcrRef, or its one
+	// transaction's), "" when it gives none.
 	BankID string
+	// TxReference is a single transaction's own AcctSvcrRef, "" when none.
+	TxReference string
 	// Kind is transfer, card, internal or other.
 	Kind string
 	// Reversal is an entry the bank marks as the reversal of an earlier one.

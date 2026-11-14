@@ -21,7 +21,8 @@
 -- a fingerprint of its fields. A line already imported is skipped by its
 -- bank id, or without one by its fingerprint and its ordinal among the
 -- file's lines of that fingerprint — so two genuine identical lines of one
--- day both survive. A line is open until a match stands on it.
+-- day both survive. A line that looks like one of another source is kept
+-- flagged until a person says. A line is open until a match stands on it.
 --
 -- statement_matches link a line to the postings it is (statement_match_
 -- postings): a posting is matched to at most one line, while the match
@@ -115,13 +116,24 @@ CREATE TABLE accounting.statement_lines (
     kind                 varchar(10)   NOT NULL DEFAULT 'transfer',
     reversal             boolean       NOT NULL DEFAULT false,
     batch                jsonb,
-    state                varchar(7)    NOT NULL DEFAULT 'open',
+    -- tx_reference is the one transaction's own account servicer's reference,
+    -- when the entry has one transaction: what Invoices' camt.054 line names.
+    tx_reference         varchar(140)  NOT NULL DEFAULT '',
+    -- possible_duplicate_of is an existing line of another source the line
+    -- looks like (the same day, amount and KID, counterparty account or text):
+    -- set at import, the line kept out of suggestions until a person says
+    -- whether it is the same movement (state duplicate) or not (cleared).
+    possible_duplicate_of bigint       REFERENCES accounting.statement_lines (id) ON DELETE RESTRICT,
+    -- note is why a match was taken back by itself: the payment removed, the
+    -- voucher reversed.
+    note                 varchar(500)  NOT NULL DEFAULT '',
+    state                varchar(9)    NOT NULL DEFAULT 'open',
     created_at           timestamptz   NOT NULL,
     CONSTRAINT ck_statement_lines_amount CHECK (amount <> 0),
     CONSTRAINT ck_statement_lines_currency CHECK (currency = 'NOK'),
     CONSTRAINT ck_statement_lines_ordinal CHECK (ordinal >= 1),
     CONSTRAINT ck_statement_lines_kind CHECK (kind IN ('transfer', 'card', 'internal', 'other')),
-    CONSTRAINT ck_statement_lines_state CHECK (state IN ('open', 'matched'))
+    CONSTRAINT ck_statement_lines_state CHECK (state IN ('open', 'matched', 'duplicate'))
 );
 -- The duplicate guard: by the bank's id when it gave one, else by the
 -- fingerprint and its ordinal.
@@ -162,14 +174,20 @@ CREATE TABLE accounting.statement_matches (
     supplier_payment_id bigint      REFERENCES accounting.supplier_payments (id) ON DELETE RESTRICT,
     bank_rule_id       bigint       REFERENCES accounting.bank_rules (id) ON DELETE RESTRICT,
     bank_rule_version  integer,
+    -- vat_closing_id is the VAT term's closing a VAT match paid; vipps_through
+    -- the last settlement day a Vipps payout's fee was read through.
+    vat_closing_id     bigint       REFERENCES accounting.vat_term_closings (id) ON DELETE RESTRICT,
+    vipps_through      date,
     matched_at         timestamptz  NOT NULL,
     matched_by_user_id uuid         NOT NULL,
+    -- undone_by_user_id is null when the system took the match back: the
+    -- voucher it held was turned back by a removal in Invoices or a worker.
     undone_at          timestamptz,
     undone_by_user_id  uuid,
     undo_voucher_id    bigint       REFERENCES accounting.vouchers (id) ON DELETE RESTRICT,
     CONSTRAINT ck_statement_matches_kind CHECK (kind IN (
         'posting', 'feed_payment', 'batch', 'supplier_invoice', 'vipps_payout', 'vat', 'transfer', 'rule', 'coded')),
-    CONSTRAINT ck_statement_matches_undone CHECK ((undone_at IS NULL) = (undone_by_user_id IS NULL)),
+    CONSTRAINT ck_statement_matches_undone CHECK (undone_by_user_id IS NULL OR undone_at IS NOT NULL),
     CONSTRAINT ck_statement_matches_rule CHECK ((bank_rule_id IS NULL) = (bank_rule_version IS NULL))
 );
 -- One standing match a line.

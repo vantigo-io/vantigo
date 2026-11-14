@@ -381,6 +381,9 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 			v.Rule = salesRulePaymentRemoved
 			v.Description = b.text("Payment of invoice %d removed", "Innbetaling på faktura %d fjernet", f.InvoiceNumber)
 			turn(v.Lines)
+			if in.original != nil {
+				v.TurnsBack = &in.original.id
+			}
 		}
 	case contracts.FactChargePayment, contracts.FactChargePaymentRemoved:
 		tc, err := b.taxCode(chargeTaxCode)
@@ -394,6 +397,9 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 			v.Rule = salesRuleChargeRemoved
 			v.Description = b.text("Reminder charges payment removed, invoice %d", "Betaling av purrekostnader fjernet, faktura %d", f.InvoiceNumber)
 			turn(v.Lines)
+			if in.original != nil {
+				v.TurnsBack = &in.original.id
+			}
 		}
 	case contracts.FactWriteOff, contracts.FactWriteOffUndone:
 		if f.WriteOff == nil {
@@ -484,7 +490,8 @@ func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher
 // account whose number is the receiving account the bank line named; else
 // the bank role's.
 func (b salesBooks) bankLine(f contracts.JournalFact, original *storedVoucher) Line {
-	removal := f.Kind == contracts.FactPaymentRemoved || f.Kind == contracts.FactChargePaymentRemoved
+	removal := f.Kind == contracts.FactPaymentRemoved || f.Kind == contracts.FactChargePaymentRemoved ||
+		f.Kind == contracts.FactRecoveredPaymentRemoved
 	switch {
 	case f.Source == contracts.PaymentSourceVipps:
 		return Line{Role: roleClearingVipps}

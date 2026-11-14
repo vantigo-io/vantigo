@@ -8,8 +8,12 @@ package accounting
 // account already has is skipped by the bank's id, or without one by its
 // fingerprint and its ordinal among the file's lines of that fingerprint, so
 // a file imported twice adds nothing and two genuine identical lines of one
-// day both stay. A gap or an overlap against the previous statement's
-// balances is flagged, never refused.
+// day both stay. A line that looks like one of another origin — the same
+// day, amount and KID, counterparty account or text — is written flagged
+// as a possible duplicate, kept out of matching until a person says. A file
+// imported into an account the feed reads brings only the days before the
+// feed's start: the feed brings the rest. A gap or an overlap against the
+// previous statement's balances is flagged, never refused.
 
 import (
 	"bytes"
@@ -22,7 +26,9 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -50,6 +56,8 @@ type statementFile struct {
 type storedStatement struct {
 	id                 int64
 	imported, skipped  int
+	coveredByFeed      int
+	possibleDuplicates int
 	continuity, detail string
 	repeated           bool
 }
@@ -61,7 +69,9 @@ type storedStatement struct {
 func (s *server) writeStatement(ctx context.Context, bankAccountID int64, account string, st bankstmt.Statement, source string,
 	file *statementFile, ordinals map[string]int, by, lease *uuid.UUID) (storedStatement, error) {
 	var out storedStatement
+	read := st
 	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
+		out, st = storedStatement{}, read
 		if lease != nil {
 			// The feed's write lands only while its claim holds.
 			if _, err := q.HoldsFeedLease(ctx, store.HoldsFeedLeaseParams{ID: bankAccountID, LeaseID: lease}); noRows(err) {
@@ -69,8 +79,28 @@ func (s *server) writeStatement(ctx context.Context, bankAccountID int64, accoun
 			} else if err != nil {
 				return err
 			}
-		} else if _, err := q.LockBankAccount(ctx, bankAccountID); err != nil {
+		} else if acc, err := q.LockBankAccount(ctx, bankAccountID); err != nil {
 			return err
+		} else if acc.Source == "feed" && acc.FeedStartDay != nil {
+			// The feed brings its days; a file brings only those before.
+			kept := st.Lines[:0:0]
+			for _, l := range st.Lines {
+				if l.BookedOn.Before(*acc.FeedStartDay) {
+					kept = append(kept, l)
+				} else {
+					out.coveredByFeed++
+				}
+			}
+			st.Lines = kept
+			if !st.To.Before(*acc.FeedStartDay) {
+				// The statement runs into the feed's days: its balances are
+				// not the kept lines' alone, and its period ends before them.
+				st.Opening, st.Closing = nil, nil
+				st.To = acc.FeedStartDay.AddDate(0, 0, -1)
+				if st.To.Before(st.From) {
+					st.To = st.From
+				}
+			}
 		}
 		if file != nil {
 			prior, err := q.StatementOfFile(ctx, store.StatementOfFileParams{BankAccountID: bankAccountID, FileSha256: &file.sha,
@@ -125,7 +155,7 @@ func (s *server) writeStatement(ctx context.Context, bankAccountID int64, accoun
 			lp := store.InsertStatementLineParams{StatementID: id, BankAccountID: bankAccountID, BookedOn: l.BookedOn,
 				ValueOn: l.ValueOn, Amount: money(l.Amount), Text: l.Text, Reference: l.Reference,
 				CounterpartyName: l.CounterpartyName, CounterpartyAccount: l.CounterpartyAccount, Fingerprint: fp,
-				Ordinal: int16(min(ordinals[fp], 32767)), Kind: l.Kind, Reversal: l.Reversal, Now: s.now()}
+				Ordinal: int16(min(ordinals[fp], 32767)), Kind: l.Kind, Reversal: l.Reversal, TxReference: l.TxReference, Now: s.now()}
 			if lp.Kind == "" {
 				lp.Kind = bankstmt.KindTransfer
 			}
@@ -142,19 +172,34 @@ func (s *server) writeStatement(ctx context.Context, bankAccountID int64, accoun
 					if b.KID != "" {
 						item.Kid = ptr(b.KID)
 					}
+					if b.BankID != "" {
+						item.BankId = ptr(b.BankID)
+					}
 					items = append(items, item)
 				}
 				if lp.Batch, err = json.Marshal(items); err != nil {
 					return err
 				}
 			}
+			dup, err := q.ProbableDuplicate(ctx, store.ProbableDuplicateParams{BankAccountID: bankAccountID, BookedOn: l.BookedOn,
+				Amount: lp.Amount, Source: source, Kid: l.KID, CounterpartyAccount: l.CounterpartyAccount, TextKey: textKey(l.Text)})
+			switch {
+			case err == nil:
+				lp.PossibleDuplicateOf = &dup
+			case !noRows(err):
+				return err
+			}
 			lineID, err := q.InsertStatementLine(ctx, lp)
 			if err != nil {
 				return err
 			}
-			if lineID == 0 {
+			switch {
+			case lineID == 0:
 				out.skipped++
-			} else {
+			case lp.PossibleDuplicateOf != nil:
+				out.imported++
+				out.possibleDuplicates++
+			default:
 				out.imported++
 			}
 		}
@@ -162,6 +207,19 @@ func (s *server) writeStatement(ctx context.Context, bankAccountID int64, accoun
 			LinesSkipped: int32(out.skipped)})
 	})
 	return out, err
+}
+
+// textKey is a line's text as the cross-origin duplicate check compares it:
+// lower case, letters and digits only — as ProbableDuplicate reads the
+// stored line's.
+func textKey(text string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // keepStatementFile writes the file to the object store under its hash, once.
@@ -309,7 +367,8 @@ func (s *server) importStatement(ctx context.Context, up statementUpload, bankAc
 		out.Statements = append(out.Statements, gen.AccountingBankImportStatement{BankAccountId: acc.ID, BankAccountName: acc.Name,
 			StatementId: stored.id, Source: source, PeriodFrom: apiDate(st.From), PeriodTo: apiDate(st.To),
 			Imported: int32(stored.imported), Skipped: int32(stored.skipped), Continuity: stored.continuity,
-			ContinuityDetail: stored.detail, Repeated: stored.repeated})
+			ContinuityDetail: stored.detail, Repeated: stored.repeated, CoveredByFeed: int32(stored.coveredByFeed),
+			PossibleDuplicates: int32(stored.possibleDuplicates)})
 	}
 	s.logger().InfoContext(ctx, "accounting: a bank statement was imported", "user_id", by, "source", source, "sha256", sha,
 		"statements", len(out.Statements), "unknown_accounts", len(out.UnknownAccounts))

@@ -770,7 +770,12 @@ type AccountingAttachment struct {
 
 // AccountingBankAcceptInput defines model for AccountingBankAcceptInput.
 type AccountingBankAcceptInput struct {
-	Key string `json:"key"`
+	// AmountCurrency For a foreign-currency supplier invoice: the amount in its currency the payment settles; required when the suggestion needs it, at most what is left.
+	AmountCurrency *string `json:"amountCurrency,omitempty"`
+
+	// Fee For a Vipps payout: the fee, from Vipps' settlement report; default the suggestion's; at most 5 % of the line.
+	Fee *string `json:"fee,omitempty"`
+	Key string  `json:"key"`
 }
 
 // AccountingBankAccount defines model for AccountingBankAccount.
@@ -853,7 +858,10 @@ type AccountingBankAccountSuggestion struct {
 // AccountingBankBatchItem One transaction of a batch entry, as camt.053 details it.
 type AccountingBankBatchItem struct {
 	// Amount Exact decimal text with two decimals.
-	Amount    string  `json:"amount"`
+	Amount string `json:"amount"`
+
+	// BankId The transaction's own reference from the bank (AcctSvcrRef), when it has one.
+	BankId    *string `json:"bankId"`
 	Kid       *string `json:"kid"`
 	Name      string  `json:"name"`
 	Reference string  `json:"reference"`
@@ -982,6 +990,12 @@ type AccountingBankCsvPreviewRow struct {
 	Text string `json:"text"`
 }
 
+// AccountingBankDuplicateInput defines model for AccountingBankDuplicateInput.
+type AccountingBankDuplicateInput struct {
+	// Duplicate true: the line repeats the other and is set aside, counting in no balance; false: it is a movement of its own and is offered for matching.
+	Duplicate bool `json:"duplicate"`
+}
+
 // AccountingBankFeedAccount defines model for AccountingBankFeedAccount.
 type AccountingBankFeedAccount struct {
 	// BankAccountId The bank account here with that number, if any.
@@ -1039,7 +1053,7 @@ type AccountingBankFoot struct {
 	// StatementBalance The statement's balance at the period's end: the last closing balance given, and the lines booked after it; null when no statement gave a balance.
 	StatementBalance *string `json:"statementBalance"`
 
-	// UnmatchedPostings The ledger account's postings in the period no line is matched to, at most 200.
+	// UnmatchedPostings The ledger account's postings in the period no line is matched to, the first 200.
 	UnmatchedPostings      []AccountingBankMatchedPosting `json:"unmatchedPostings"`
 	UnmatchedPostingsTotal int32                          `json:"unmatchedPostingsTotal"`
 }
@@ -1060,11 +1074,17 @@ type AccountingBankImportStatement struct {
 	BankAccountName string `json:"bankAccountName"`
 
 	// Continuity One of: ok, gap, overlap, mismatch, unknown.
-	Continuity       string             `json:"continuity"`
-	ContinuityDetail string             `json:"continuityDetail"`
-	Imported         int32              `json:"imported"`
-	PeriodFrom       openapi_types.Date `json:"periodFrom"`
-	PeriodTo         openapi_types.Date `json:"periodTo"`
+	Continuity       string `json:"continuity"`
+	ContinuityDetail string `json:"continuityDetail"`
+
+	// CoveredByFeed Lines booked on or after the day the bank feed reads the account from, left out: the feed brings them.
+	CoveredByFeed int32              `json:"coveredByFeed"`
+	Imported      int32              `json:"imported"`
+	PeriodFrom    openapi_types.Date `json:"periodFrom"`
+	PeriodTo      openapi_types.Date `json:"periodTo"`
+
+	// PossibleDuplicates Lines written flagged as possible duplicates of a line of another origin: the same day, amount and KID, counterparty account or text. They wait for a person to confirm or dismiss them.
+	PossibleDuplicates int32 `json:"possibleDuplicates"`
 
 	// Repeated Whether the same statement of the same file was imported before: nothing new was written.
 	Repeated bool `json:"repeated"`
@@ -1101,21 +1121,30 @@ type AccountingBankLine struct {
 	Kind string `json:"kind"`
 
 	// Match The standing match; null while open.
-	Match     *AccountingBankMatch `json:"match"`
-	Reference string               `json:"reference"`
-	Reversal  bool                 `json:"reversal"`
+	Match *AccountingBankMatch `json:"match"`
+
+	// Note Why the line was reopened, when a removal elsewhere undid its match.
+	Note string `json:"note"`
+
+	// PossibleDuplicateOf The line of another origin this one may repeat: it gets no suggestion and no bulk accept until a person confirms or dismisses it.
+	PossibleDuplicateOf *int64 `json:"possibleDuplicateOf"`
+	Reference           string `json:"reference"`
+	Reversal            bool   `json:"reversal"`
 
 	// Source One of: camt053, csv, feed.
 	Source string `json:"source"`
 
-	// State One of: open, matched.
+	// State duplicate: a possible duplicate a person dismissed; it counts in no balance. One of: open, matched, duplicate.
 	State       string `json:"state"`
 	StatementId int64  `json:"statementId"`
 
 	// Suggestions Most certain first; for an open line only.
 	Suggestions []AccountingBankSuggestion `json:"suggestions"`
 	Text        string                     `json:"text"`
-	ValueOn     *openapi_types.Date        `json:"valueOn"`
+
+	// TxReference A single transaction's own reference from the bank, beside the entry's.
+	TxReference string              `json:"txReference"`
+	ValueOn     *openapi_types.Date `json:"valueOn"`
 }
 
 // AccountingBankMatch defines model for AccountingBankMatch.
@@ -1162,8 +1191,13 @@ type AccountingBankReconciliation struct {
 	BankAccount AccountingBankAccount `json:"bankAccount"`
 	Foot        AccountingBankFoot    `json:"foot"`
 	From        openapi_types.Date    `json:"from"`
-	Lines       []AccountingBankLine  `json:"lines"`
-	To          openapi_types.Date    `json:"to"`
+
+	// Lines The page of lines asked for.
+	Lines []AccountingBankLine `json:"lines"`
+	To    openapi_types.Date   `json:"to"`
+
+	// Total The lines in the period, the state filter applied: what the pages hold together.
+	Total int32 `json:"total"`
 }
 
 // AccountingBankRule defines model for AccountingBankRule.
@@ -1217,7 +1251,7 @@ type AccountingBankSourceInput struct {
 	// Source One of: file, feed.
 	Source string `json:"source"`
 
-	// StartDay For feed: the first booking day read; default today. Nothing booked before it is read.
+	// StartDay For feed: the first booking day read; default the day after the latest line or statement imported, and not earlier than it. Nothing booked before it is read.
 	StartDay *openapi_types.Date `json:"startDay,omitempty"`
 }
 
@@ -1286,13 +1320,24 @@ type AccountingBankStatusAccount struct {
 
 // AccountingBankSuggestion defines model for AccountingBankSuggestion.
 type AccountingBankSuggestion struct {
-	BankRuleId *int64 `json:"bankRuleId"`
+	// AmountCurrency For a foreign-currency supplier invoice: the amount in its currency the payment settles — all that is left when the rate the payment implies for it is within 5 % of the invoice's, else the NOK paid at the invoice's rate, capped at what is left, which accept must then be given (needsAmountCurrency).
+	AmountCurrency *string `json:"amountCurrency"`
+	BankRuleId     *int64  `json:"bankRuleId"`
 
 	// Certainty One of: exact, likely, possible.
 	Certainty string `json:"certainty"`
 
+	// Currency A foreign-currency supplier invoice's currency.
+	Currency *string `json:"currency"`
+
 	// Exact Whether bulk accept takes it: one posting of the same amount and the same day or the same bank reference.
 	Exact bool `json:"exact"`
+
+	// Fee A Vipps payout's proposed fee: what the settlement days' sales come to over the payout; 0.00 when none can be told and the fee is coded from Vipps' settlement report.
+	Fee *string `json:"fee"`
+
+	// FeeMax The largest fee accept takes for a Vipps payout: 5 % of the line.
+	FeeMax *string `json:"feeMax"`
 
 	// Key What accept names: the suggestion as it was computed.
 	Key string `json:"key"`
@@ -1302,6 +1347,9 @@ type AccountingBankSuggestion struct {
 
 	// Lines The voucher it would post, when it posts one.
 	Lines []AccountingBankProposedLine `json:"lines"`
+
+	// NeedsAmountCurrency Whether accept needs amountCurrency: the payment's implied rate is not within 5 % of the invoice's for the whole remainder.
+	NeedsAmountCurrency bool `json:"needsAmountCurrency"`
 
 	// OtherLineId A transfer's line on the other bank account's statement.
 	OtherLineId *int64 `json:"otherLineId"`
@@ -1772,7 +1820,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention), bank_account_number_invalid (400: an account number that is not eleven digits passing mod 11, nor a Norwegian IBAN), bank_account_currency (400: a bank account not in NOK, the only currency in this phase), bank_account_number_taken (409: another bank account has that number), bank_account_ledger_taken (409: another bank account has that ledger account), bank_account_has_statements (409: a delete of a bank account with statements; make it inactive), bank_feed_off (409: the bank feed is not composed — Invoices off or INVOICES_BANK_FEED_ENABLED off), bank_feed_not_connected (409: no bank is connected in Invoices' Bank integration), bank_feed_refused (409: the bank refused Invoices' key; store it again there), bank_feed_account_not_offered (409: the bank feed does not read that account number), bank_feed_unreachable (503: the bank could not be reached, or limited the request), bank_statement_invalid (400: not a readable camt.053 or CSV file, a DOCTYPE or an entity, a currency other than NOK), bank_statement_too_large (400: over 20 MB, or more lines than a statement holds), bank_statement_account_unknown (400: none of the file's accounts is a bank account here; the detail names them), bank_statement_account_required (400: a CSV file without bankAccountId), bank_csv_mapping_required (409: a CSV file for a bank account with no mapping saved), bank_csv_mapping_invalid (400: a mapping with no amount, or both an amount and debit and credit columns, or a column twice), bank_line_matched (409: a match stands on the line already, made by another request), bank_line_not_matched (409: an undo of a line with no match), bank_suggestion_stale (409: the suggestion accepted no longer holds; read the line again), bank_posting_matched (409: a posting the suggestion names is matched to another line meanwhile), bank_line_customer_payment (409: a customer payment — money in with a KID, a batch, or a credit to a sales income account — coded here; register it in Invoices, R11), bank_rule_in_use (409: a delete of a bank rule a match was made with; make it inactive), bank_unreconciled (409: the lock moved forward over bank lines not matched or a statement balance that differs from the ledger's, without confirmUnreconciled; the detail names the accounts). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention), bank_account_number_invalid (400: an account number that is not eleven digits passing mod 11, nor a Norwegian IBAN), bank_account_currency (400: a bank account not in NOK, the only currency in this phase), bank_account_number_taken (409: another bank account has that number), bank_account_ledger_taken (409: another bank account has that ledger account), bank_account_has_statements (409: a delete of a bank account with statements; make it inactive), bank_feed_off (409: the bank feed is not composed — Invoices off or INVOICES_BANK_FEED_ENABLED off), bank_feed_not_connected (409: no bank is connected in Invoices' Bank integration), bank_feed_refused (409: the bank refused Invoices' key; store it again there), bank_feed_account_not_offered (409: the bank feed does not read that account number), bank_feed_unreachable (503: the bank could not be reached, or limited the request), bank_statement_invalid (400: not a readable camt.053 or CSV file, a DOCTYPE or an entity, a currency other than NOK), bank_statement_too_large (400: over 20 MB, or more lines than a statement holds), bank_statement_account_unknown (400: none of the file's accounts is a bank account here; the detail names them), bank_statement_account_required (400: a CSV file without bankAccountId), bank_csv_mapping_required (409: a CSV file for a bank account with no mapping saved), bank_csv_mapping_invalid (400: a mapping with no amount, or both an amount and debit and credit columns, or a column twice), bank_line_matched (409: a match stands on the line already, made by another request), bank_line_not_matched (409: an undo of a line with no match), bank_suggestion_stale (409: the suggestion accepted no longer holds; read the line again), bank_posting_matched (409: a posting the suggestion names is matched to another line meanwhile), bank_line_customer_payment (409: a customer payment — money in with a KID, a batch, or a credit to a sales income account — coded here; register it in Invoices, R11), bank_rule_in_use (409: a delete of a bank rule a match was made with; make it inactive), bank_unreconciled (409: the lock moved forward over bank lines not matched or a statement balance that differs from the ledger's, without confirmUnreconciled; the detail names the accounts), bank_account_in_use (409: a change of the number or the ledger account of a bank account with statement lines or postings chosen through it), bank_feed_start_too_early (400: a feed start day on or before a day already imported from a file), bank_rule_customer_payment (400: a bank rule that could code money in to an income or receivables account; customer payments are registered in Invoices), bank_amount_currency_required (400: a foreign-currency supplier payment whose amount in the invoice's currency cannot be derived; give amountCurrency), bank_fee_too_large (400: a Vipps fee over 5 % of the line, or negative), bank_open_item_required (400: a bank line coded to receivables or payables without the open item it settles), bank_line_possible_duplicate (409: the line is flagged as a possible duplicate; confirm or dismiss it first), bank_line_not_duplicate (409: the line is not flagged as a possible duplicate, or is matched). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -3138,8 +3186,14 @@ type GetAccountingBankReconciliationParams struct {
 	From openapi_types.Date `form:"from" json:"from"`
 	To   openapi_types.Date `form:"to" json:"to"`
 
-	// State open or matched; both when left out.
+	// State open, matched or duplicate; every line when left out.
 	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Offset Lines to skip; default 0.
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit Lines on the page; default 200.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ImportAccountingBankStatementMultipartBody defines parameters for ImportAccountingBankStatement.
@@ -3398,6 +3452,9 @@ type AcceptAccountingBankSuggestionJSONRequestBody = AccountingBankAcceptInput
 // CodeAccountingBankLineJSONRequestBody defines body for CodeAccountingBankLine for application/json ContentType.
 type CodeAccountingBankLineJSONRequestBody = AccountingBankCodeInput
 
+// ResolveAccountingBankDuplicateJSONRequestBody defines body for ResolveAccountingBankDuplicate for application/json ContentType.
+type ResolveAccountingBankDuplicateJSONRequestBody = AccountingBankDuplicateInput
+
 // CreateAccountingBankRuleJSONRequestBody defines body for CreateAccountingBankRule for application/json ContentType.
 type CreateAccountingBankRuleJSONRequestBody = AccountingBankRuleInput
 
@@ -3556,6 +3613,9 @@ type ServerInterface interface {
 	// CodeAccountingBankLine Code a bank line
 	// (POST /api/v1/accounting/bank/lines/{id}/code)
 	CodeAccountingBankLine(w http.ResponseWriter, r *http.Request, id int64)
+	// ResolveAccountingBankDuplicate Confirm or dismiss a possible duplicate
+	// (POST /api/v1/accounting/bank/lines/{id}/duplicate)
+	ResolveAccountingBankDuplicate(w http.ResponseWriter, r *http.Request, id int64)
 	// UndoAccountingBankMatch Undo a bank line's match
 	// (POST /api/v1/accounting/bank/lines/{id}/undo)
 	UndoAccountingBankMatch(w http.ResponseWriter, r *http.Request, id int64)
@@ -4201,6 +4261,32 @@ func (siw *ServerInterfaceWrapper) GetAccountingBankReconciliation(w http.Respon
 		return
 	}
 
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAccountingBankReconciliation(w, r, id, params)
 	}))
@@ -4342,6 +4428,32 @@ func (siw *ServerInterfaceWrapper) CodeAccountingBankLine(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CodeAccountingBankLine(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResolveAccountingBankDuplicate operation middleware
+func (siw *ServerInterfaceWrapper) ResolveAccountingBankDuplicate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveAccountingBankDuplicate(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7443,6 +7555,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/accept-exact", wrapper.AcceptAccountingBankExact)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/{id}/accept", wrapper.AcceptAccountingBankSuggestion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/{id}/code", wrapper.CodeAccountingBankLine)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/{id}/duplicate", wrapper.ResolveAccountingBankDuplicate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/{id}/undo", wrapper.UndoAccountingBankMatch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/rules", wrapper.ListAccountingBankRules)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/rules", wrapper.CreateAccountingBankRule)
@@ -9133,6 +9246,93 @@ func (response CodeAccountingBankLine404Response) VisitCodeAccountingBankLineRes
 type CodeAccountingBankLine409ApplicationProblemPlusJSONResponse AccountingProblem
 
 func (response CodeAccountingBankLine409ApplicationProblemPlusJSONResponse) VisitCodeAccountingBankLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccountingBankDuplicateRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ResolveAccountingBankDuplicateJSONRequestBody
+}
+
+type ResolveAccountingBankDuplicateResponseObject interface {
+	VisitResolveAccountingBankDuplicateResponse(w http.ResponseWriter) error
+}
+
+type ResolveAccountingBankDuplicate200JSONResponse AccountingBankLine
+
+func (response ResolveAccountingBankDuplicate200JSONResponse) VisitResolveAccountingBankDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccountingBankDuplicate400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ResolveAccountingBankDuplicate400ApplicationProblemPlusJSONResponse) VisitResolveAccountingBankDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccountingBankDuplicate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ResolveAccountingBankDuplicate401JSONResponse) VisitResolveAccountingBankDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccountingBankDuplicate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ResolveAccountingBankDuplicate403JSONResponse) VisitResolveAccountingBankDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveAccountingBankDuplicate404Response struct {
+}
+
+func (response ResolveAccountingBankDuplicate404Response) VisitResolveAccountingBankDuplicateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ResolveAccountingBankDuplicate409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ResolveAccountingBankDuplicate409ApplicationProblemPlusJSONResponse) VisitResolveAccountingBankDuplicateResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -15699,6 +15899,9 @@ type StrictServerInterface interface {
 	// CodeAccountingBankLine Code a bank line
 	// (POST /api/v1/accounting/bank/lines/{id}/code)
 	CodeAccountingBankLine(ctx context.Context, request CodeAccountingBankLineRequestObject) (CodeAccountingBankLineResponseObject, error)
+	// ResolveAccountingBankDuplicate Confirm or dismiss a possible duplicate
+	// (POST /api/v1/accounting/bank/lines/{id}/duplicate)
+	ResolveAccountingBankDuplicate(ctx context.Context, request ResolveAccountingBankDuplicateRequestObject) (ResolveAccountingBankDuplicateResponseObject, error)
 	// UndoAccountingBankMatch Undo a bank line's match
 	// (POST /api/v1/accounting/bank/lines/{id}/undo)
 	UndoAccountingBankMatch(ctx context.Context, request UndoAccountingBankMatchRequestObject) (UndoAccountingBankMatchResponseObject, error)
@@ -16583,6 +16786,39 @@ func (sh *strictHandler) CodeAccountingBankLine(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CodeAccountingBankLineResponseObject); ok {
 		if err := validResponse.VisitCodeAccountingBankLineResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResolveAccountingBankDuplicate operation middleware
+func (sh *strictHandler) ResolveAccountingBankDuplicate(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ResolveAccountingBankDuplicateRequestObject
+
+	request.Id = id
+
+	var body ResolveAccountingBankDuplicateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveAccountingBankDuplicate(ctx, request.(ResolveAccountingBankDuplicateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveAccountingBankDuplicate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveAccountingBankDuplicateResponseObject); ok {
+		if err := validResponse.VisitResolveAccountingBankDuplicateResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

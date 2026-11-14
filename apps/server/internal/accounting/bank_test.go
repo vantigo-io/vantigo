@@ -517,9 +517,9 @@ func vatPaid(t *testing.T) (*books, gen.AccountingBankAccount, gen.AccountingBan
 // and each undone by its reversal.
 func TestReconcile_TheBanksVouchers(t *testing.T) {
 	b, op, sp := vatPaid(t)
-	// The clearing account holds 5 000 from Vipps through the day before.
-	mustPost(t, b.c, "2026-09-07", "Vipps-salg", line{"accountId": b.acc("1580"), "amount": "5000.00"},
-		line{"accountId": b.acc("2900"), "amount": "-5000.00"})
+	// The clearing account holds 4 990 from Vipps' sales of the day before.
+	mustPost(t, b.c, "2026-09-07", "Vipps-salg", line{"accountId": b.acc("1580"), "amount": "4990.00"},
+		line{"accountId": b.acc("2900"), "amount": "-4990.00"})
 	res := b.c.Do(http.MethodPost, base+"/bank/rules", map[string]any{"name": "Bankgebyr", "textContains": "gebyr nettbank",
 		"direction": "out", "accountId": b.acc("7770")})
 	if res.Status != http.StatusCreated {
@@ -531,12 +531,12 @@ func TestReconcile_TheBanksVouchers(t *testing.T) {
 	r := reconcile(t, b, op.Id)
 	vipps := lineOf(t, r, "2026-09-08", "4850.00")
 	sg := first(t, vipps, "vipps_payout")
-	if !strings.Contains(sg.Reason, "150.00") || len(sg.Lines) != 3 {
+	if !strings.Contains(sg.Reason, "140.00") || len(sg.Lines) != 3 || deref(sg.Fee) != "140.00" || deref(sg.FeeMax) != "242.50" {
 		t.Fatalf("vipps suggestion = %+v", sg)
 	}
 	l := accepted(t, b, vipps.Id, sg.Key)
 	v := matchedVoucher(t, b, l)
-	expectPostings(t, "vipps payout", v, "1920 4850.00", "7770 150.00", "1580 -5000.00")
+	expectPostings(t, "vipps payout", v, "1920 4850.00", "7770 140.00", "1580 -4990.00")
 	if v.Kind != "bank" || deref(v.Rule) != "bank.vipps_payout" || deref(v.RuleVersion) != 1 {
 		t.Fatalf("vipps voucher = %+v", v)
 	}

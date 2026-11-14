@@ -7,7 +7,8 @@ package accounting
 // holds is refused as stale. The kinds, in the order they are tried:
 //
 //  1. feed_payment — a payment Invoices registered from the same bank line:
-//     the voucher's bank reference is the line's bank id or reference.
+//     the voucher's bank reference is the line's bank id, its transaction's
+//     own reference, or its reference.
 //  2. posting — an unmatched posting on the ledger account of the same
 //     amount, dated within ten days, the nearest first.
 //  3. batch — several of Invoices' payments on the account whose sum is the
@@ -15,18 +16,26 @@ package accounting
 //     else by the payments of one day and one source, the booking day first.
 //     Never a search over subsets: each group is a sum read once.
 //  4. supplier_invoice — a posted supplier invoice owed, by its KID or its
-//     number in the text, or its amount with the supplier's bank account.
-//  5. vipps_payout — money in from Vipps: the line from clearing_vipps, what
-//     the clearing holds beyond it to payment_fees.
+//     number in the text, or its amount with the supplier's bank account; in
+//     a foreign currency the amount settled in it is the NOK paid at the
+//     invoice's rate, and when that rate is more than 5 % off for what is
+//     left the person gives it.
+//  5. vipps_payout — money in from Vipps: the line from clearing_vipps with
+//     the fee, when the sales of a run of settlement days not yet paid out
+//     come to the line or up to 3 % more; else the line alone, its fee coded
+//     from Vipps' settlement report.
 //  6. vat — money to or from Skatteetaten that is the VAT settlement
-//     account's balance or a closed term's settlement.
+//     account's balance or an unpaid closed term's settlement it covers.
 //  7. transfer — the opposite line on another bank account's statement, or
-//     money to or from another bank account's number.
+//     money to or from another bank account's number when no transfer is
+//     posted for it already.
 //  8. rule — a bank rule whose words the text or counterparty holds.
 //
 // A line that looks like a customer payment — money in with a KID, or a
 // batch — that none of the first three explains is never coded here: its
-// suggestion is Invoices' bank import (R11).
+// suggestion is Invoices' bank import (R11); nor does money in with a KID or
+// of a customer's open item get a rule's. A line flagged as a possible
+// duplicate gets nothing until a person settles it.
 
 import (
 	"context"
@@ -43,6 +52,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/accounting/gen"
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
+	"github.com/vantigo-io/vantigo/server/internal/docmath"
 )
 
 // The system's bank rules and their versions: what each voucher a match
@@ -83,7 +93,21 @@ const (
 	postingWindowDays  = 10
 	batchWindowDays    = 3
 	transferWindowDays = 3
+	vippsLookbackDays  = 62
 	maxSuggestions     = 8
+)
+
+// The tolerances of the suggestions that settle what the bank does not say.
+var (
+	// foreignRateTolerance is how far the rate a foreign-currency payment
+	// implies for all that is left may be from the invoice's for the payment
+	// to be taken as settling it.
+	foreignRateTolerance = big.NewRat(5, 100)
+	// vippsFeeTolerance is how much the sales a payout covers may come to
+	// over it: Vipps' fees.
+	vippsFeeTolerance = big.NewRat(3, 100)
+	// vippsFeeMax is the largest fee accept takes, of the line.
+	vippsFeeMax = big.NewRat(5, 100)
 )
 
 // The roles the bank's vouchers post to besides the bank account's own.
@@ -101,6 +125,8 @@ type stmtLine struct {
 	text, reference, kid           string
 	cpName, cpAccount, bankID      string
 	kind, state, source            string
+	txRef, note                    string
+	possibleDuplicateOf            *int64
 	reversal                       bool
 	batch                          []gen.AccountingBankBatchItem
 }
@@ -109,7 +135,7 @@ func lineFromRow(r store.GetStatementLineRow) stmtLine {
 	l := stmtLine{id: r.ID, statementID: r.StatementID, bankAccountID: r.BankAccountID, booked: r.BookedOn, value: r.ValueOn,
 		amount: mustRat(r.Amount), text: r.Text, reference: r.Reference, kid: deref(r.Kid), cpName: r.CounterpartyName,
 		cpAccount: r.CounterpartyAccount, bankID: deref(r.BankID), kind: r.Kind, state: r.State, source: r.StatementSource,
-		reversal: r.Reversal}
+		reversal: r.Reversal, txRef: r.TxReference, note: r.Note, possibleDuplicateOf: r.PossibleDuplicateOf}
 	l.batch = batchOf(r.Batch)
 	return l
 }
@@ -167,6 +193,18 @@ type suggestion struct {
 	otherLedger     int32
 	ruleID          *int64
 	ruleVersion     int32
+	// A foreign-currency supplier invoice's: its currency, the amount in it
+	// the payment settles, and whether the person must give that amount.
+	currency            string
+	amountCurrency      *big.Rat
+	needsAmountCurrency bool
+	// A Vipps payout's: the fee, its largest, the clearing account and the
+	// last settlement day read.
+	fee, feeMax  *big.Rat
+	clearing     int32
+	vippsThrough *time.Time
+	// vatClosing is the VAT term's closing a VAT payment pays.
+	vatClosing *int64
 }
 
 // certaintyRank orders the suggestions: exact, likely, possible.
@@ -180,34 +218,30 @@ func certaintyRank(c string) int {
 	return 2
 }
 
-// suggester is what suggesting reads for one bank account, once: the
-// account's unmatched postings around the lines, the open supplier invoices,
-// the active rules, the roles and the accounts.
+// suggester is what suggesting reads for one bank account, once: the open
+// supplier invoices, the active rules, the roles and the accounts; and per
+// day a line is booked on, the account's unmatched postings around it.
 type suggester struct {
-	q          *store.Queries
-	account    bankAccountOf
-	language   string
-	candidates []candidate
-	invoices   []store.OpenSupplierInvoicesRow
-	rules      []store.ListBankRulesRow
-	roles      map[string]int32
-	others     []store.ListBankAccountsRow
-	balances   map[string]*big.Rat
-	terms      []store.ClosedTermSettlementsRow
-	termsRead  bool
+	q        *store.Queries
+	account  bankAccountOf
+	language string
+	// byDay is the candidates within the posting window of a day, read once
+	// per day a line is booked on.
+	byDay     map[time.Time][]candidate
+	invoices  []store.OpenSupplierInvoicesRow
+	rules     []store.ListBankRulesRow
+	roles     map[string]int32
+	others    []store.ListBankAccountsRow
+	balances  map[string]*big.Rat
+	terms     []store.ClosedTermSettlementsRow
+	termsRead bool
 }
 
-// newSuggester reads what the suggestions of lines booked from..to need.
-func newSuggester(ctx context.Context, q *store.Queries, account bankAccountOf, from, to time.Time) (*suggester, error) {
-	s := &suggester{q: q, account: account, roles: map[string]int32{}, balances: map[string]*big.Rat{}}
-	rows, err := q.UnmatchedPostings(ctx, store.UnmatchedPostingsParams{AccountID: account.ledger,
-		FromDay: from.AddDate(0, 0, -postingWindowDays), ToDay: to.AddDate(0, 0, postingWindowDays)})
-	if err != nil {
-		return nil, err
-	}
-	for _, r := range rows {
-		s.candidates = append(s.candidates, candidate{UnmatchedPostingsRow: r, amount: mustRat(r.Amount)})
-	}
+// newSuggester reads what the suggestions of an account's lines need.
+func newSuggester(ctx context.Context, q *store.Queries, account bankAccountOf) (*suggester, error) {
+	var err error
+	s := &suggester{q: q, account: account, roles: map[string]int32{}, balances: map[string]*big.Rat{},
+		byDay: map[time.Time][]candidate{}}
 	if s.invoices, err = q.OpenSupplierInvoices(ctx); err != nil {
 		return nil, err
 	}
@@ -230,6 +264,25 @@ func newSuggester(ctx context.Context, q *store.Queries, account bankAccountOf, 
 	}
 	s.language = settings.ChartLanguage
 	return s, nil
+}
+
+// candidatesFor is the account's unmatched postings within the posting
+// window of the line's day, read in SQL by the day's window.
+func (s *suggester) candidatesFor(ctx context.Context, l stmtLine) ([]candidate, error) {
+	if c, ok := s.byDay[l.booked]; ok {
+		return c, nil
+	}
+	rows, err := s.q.UnmatchedPostings(ctx, store.UnmatchedPostingsParams{AccountID: s.account.ledger,
+		FromDay: l.booked.AddDate(0, 0, -postingWindowDays), ToDay: l.booked.AddDate(0, 0, postingWindowDays)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]candidate, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, candidate{UnmatchedPostingsRow: r, amount: mustRat(r.Amount)})
+	}
+	s.byDay[l.booked] = out
+	return out, nil
 }
 
 // text is the description in the chart's language.
@@ -258,13 +311,21 @@ func (s *suggester) balance(ctx context.Context, role string, through time.Time)
 
 // suggest is the line's suggestions, most certain first.
 func (s *suggester) suggest(ctx context.Context, l stmtLine) ([]suggestion, error) {
+	if l.possibleDuplicateOf != nil || l.state == "duplicate" {
+		// A possible duplicate waits for a person to say what it is.
+		return nil, nil
+	}
+	cands, err := s.candidatesFor(ctx, l)
+	if err != nil {
+		return nil, err
+	}
 	var out []suggestion
 	used := map[int64]bool{}
-	sameAmount := s.sameAmount(l)
+	sameAmount := sameAmountOf(cands, l)
 	// 1. The payment Invoices registered from the same bank line.
 	for _, c := range sameAmount {
 		ref := deref(c.BankReference)
-		if ref == "" || (ref != l.bankID && ref != l.reference) {
+		if ref == "" || (ref != l.bankID && ref != l.txRef && ref != l.reference) {
 			continue
 		}
 		used[c.ID] = true
@@ -311,7 +372,7 @@ func (s *suggester) suggest(ctx context.Context, l stmtLine) ([]suggestion, erro
 			exact: d == 0 && sameDay == 1, reason: reason, postings: []candidate{c}})
 	}
 	// 3. A batch of Invoices' payments.
-	if b := s.batch(l, used); b != nil {
+	if b := s.batch(l, cands, used); b != nil {
 		out = append(out, *b)
 	}
 	explained := len(out) > 0
@@ -340,7 +401,7 @@ func (s *suggester) suggest(ctx context.Context, l stmtLine) ([]suggestion, erro
 			out = append(out, *vat)
 		}
 		// 7. A transfer.
-		tr, err := s.transfers(ctx, l)
+		tr, err := s.transfers(ctx, l, sameAmount)
 		if err != nil {
 			return nil, err
 		}
@@ -365,10 +426,10 @@ func (s *suggester) suggest(ctx context.Context, l stmtLine) ([]suggestion, erro
 	return out, nil
 }
 
-// sameAmount is the candidates of the line's amount within the window.
-func (s *suggester) sameAmount(l stmtLine) []candidate {
+// sameAmountOf is the candidates of the line's amount within the window.
+func sameAmountOf(cands []candidate, l stmtLine) []candidate {
 	var out []candidate
-	for _, c := range s.candidates {
+	for _, c := range cands {
 		if c.amount.Cmp(l.amount) == 0 && daysApart(c.VoucherDate, l.booked) <= postingWindowDays {
 			out = append(out, c)
 		}
@@ -394,12 +455,12 @@ func isInvoicesPayment(c candidate) bool {
 // batch is a group of Invoices' payments whose sum is the line, bounded: the
 // batch's own transactions one by one, else the payments of one day — and of
 // one source, then of any — from the booking day back three days.
-func (s *suggester) batch(l stmtLine, used map[int64]bool) *suggestion {
+func (s *suggester) batch(l stmtLine, cands []candidate, used map[int64]bool) *suggestion {
 	if l.amount.Sign() <= 0 {
 		return nil
 	}
 	var pool []candidate
-	for _, c := range s.candidates {
+	for _, c := range cands {
 		if !used[c.ID] && isInvoicesPayment(c) && daysApart(c.VoucherDate, l.booked) <= postingWindowDays {
 			pool = append(pool, c)
 		}
@@ -423,8 +484,9 @@ func (s *suggester) batch(l stmtLine, used map[int64]bool) *suggestion {
 		return &suggestion{key: "batch:" + strings.Join(ids, ","), kind: matchBatch, certainty: certainty, reason: reason, postings: cs}
 	}
 	if len(l.batch) > 1 {
-		// Each of the batch's transactions to one payment of its amount, the
-		// nearest day first: a matching, not a search.
+		// Each of the batch's transactions to one payment of its amount —
+		// the one Invoices registered from that very transaction first, then
+		// the nearest day: a matching, not a search.
 		taken := map[int64]bool{}
 		var picked []candidate
 		for _, item := range l.batch {
@@ -436,6 +498,10 @@ func (s *suggester) batch(l stmtLine, used map[int64]bool) *suggestion {
 			for i, c := range pool {
 				if taken[c.ID] || c.amount.Cmp(want) != 0 {
 					continue
+				}
+				if item.BankId != nil && *item.BankId != "" && deref(c.BankReference) == *item.BankId {
+					best = i
+					break
 				}
 				if best < 0 || daysApart(c.VoucherDate, l.booked) < daysApart(pool[best].VoucherDate, l.booked) {
 					best = i
@@ -487,7 +553,11 @@ func (s *suggester) batch(l stmtLine, used map[int64]bool) *suggestion {
 
 // supplierInvoices is the supplier invoices an outgoing line may pay: by KID,
 // by the invoice's number or reference in the text, or by the amount and the
-// supplier's bank account.
+// supplier's bank account. For an invoice in another currency the amount it
+// settles is what is left when the rate the payment implies for all of it is
+// within 5 % of the invoice's — the difference a currency gain or loss —
+// and else the NOK paid at the invoice's rate, which the person confirms or
+// corrects: a part payment never closes the invoice.
 func (s *suggester) supplierInvoices(ctx context.Context, l stmtLine) []suggestion {
 	if l.amount.Sign() >= 0 {
 		return nil
@@ -498,15 +568,38 @@ func (s *suggester) supplierInvoices(ctx context.Context, l stmtLine) []suggesti
 	for _, inv := range s.invoices {
 		owed := neg(mustRat(inv.Balance))
 		foreign := inv.Currency != currency
+		var left, settled *big.Rat
+		within := false
+		if foreign {
+			rate, ok := parseRate(inv.ExchangeRate)
+			if !ok {
+				continue
+			}
+			left = abs(owedInCurrency(ctx, s.q, inv))
+			if left.Sign() <= 0 {
+				continue
+			}
+			implied := new(big.Rat).Quo(paid, left)
+			off := abs(sub(implied, rate))
+			within = off.Cmp(new(big.Rat).Mul(rate, foreignRateTolerance)) <= 0
+			settled = left
+			if !within {
+				settled = docmath.Round2(new(big.Rat).Quo(paid, rate))
+				if settled.Cmp(left) > 0 {
+					settled = left
+				}
+			}
+		}
+		settles := (!foreign && owed.Cmp(paid) == 0) || (foreign && within)
 		certainty, why := "", ""
 		switch {
 		case l.kid != "" && deref(inv.Kid) == l.kid:
 			certainty = "likely"
-			if !foreign && owed.Cmp(paid) == 0 {
+			if settles {
 				certainty = "exact"
 			}
 			why = s.text("Its KID %s", "KID-en %s", l.kid)
-		case !foreign && owed.Cmp(paid) == 0 && inv.SupplierBankAccount != nil && *inv.SupplierBankAccount == l.cpAccount && l.cpAccount != "":
+		case settles && inv.SupplierBankAccount != nil && *inv.SupplierBankAccount == l.cpAccount && l.cpAccount != "":
 			certainty, why = "likely", s.text("The amount, to the supplier's account %s", "Beløpet, til leverandørens konto %s", l.cpAccount)
 		case foreign && inv.SupplierBankAccount != nil && *inv.SupplierBankAccount == l.cpAccount && l.cpAccount != "":
 			certainty, why = "possible", s.text("To the supplier's account %s", "Til leverandørens konto %s", l.cpAccount)
@@ -523,18 +616,35 @@ func (s *suggester) supplierInvoices(ctx context.Context, l stmtLine) []suggesti
 			continue
 		}
 		id := inv.ID
-		sg := suggestion{key: fmt.Sprintf("supplier:%d", inv.ID), kind: matchSupplier, certainty: certainty,
-			reason: s.text("%s: supplier invoice %s from %s, %s %s owed — registered as its payment.",
-				"%s: leverandørfaktura %s fra %s, %s %s skyldes — registreres som betaling av den.", why, inv.SupplierNumber,
-				inv.SupplierName, money(abs(owedInCurrency(ctx, s.q, inv))), inv.Currency),
+		reason := s.text("%s: supplier invoice %s from %s, %s %s owed — registered as its payment.",
+			"%s: leverandørfaktura %s fra %s, %s %s skyldes — registreres som betaling av den.", why, inv.SupplierNumber,
+			inv.SupplierName, money(abs(owedInCurrency(ctx, s.q, inv))), inv.Currency)
+		sg := suggestion{key: fmt.Sprintf("supplier:%d", inv.ID), kind: matchSupplier, certainty: certainty, reason: reason,
 			supplierInvoice: &id, paid: paid}
-		sg.voucher = s.supplierVoucherShown(ctx, inv, paid)
+		if foreign {
+			sg.currency, sg.amountCurrency, sg.needsAmountCurrency = inv.Currency, settled, !within
+			if !within {
+				sg.reason = s.text("%s: supplier invoice %s from %s, %s %s owed — needs the amount in %s the payment settles; at the invoice's rate it is %s.",
+					"%s: leverandørfaktura %s fra %s, %s %s skyldes — trenger beløpet i %s betalingen gjør opp; etter fakturaens kurs er det %s.",
+					why, inv.SupplierNumber, inv.SupplierName, money(left), inv.Currency, inv.Currency, money(settled))
+			}
+		}
+		sg.voucher = s.supplierVoucherShown(ctx, inv, paid, settled)
 		out = append(out, sg)
 		if len(out) >= 3 {
 			break
 		}
 	}
 	return out
+}
+
+// parseRate reads an exchange rate as stored, NOK per unit.
+func parseRate(text string) (*big.Rat, bool) {
+	r, ok := new(big.Rat).SetString(strings.TrimSpace(text))
+	if !ok || r.Sign() <= 0 {
+		return nil, false
+	}
+	return r, true
 }
 
 // owedInCurrency is what is left on a supplier invoice in its own currency.
@@ -551,81 +661,127 @@ func owedInCurrency(ctx context.Context, q *store.Queries, inv store.OpenSupplie
 
 // supplierVoucherShown is the voucher a supplier payment would post, for the
 // screen: payables by what it settles, the bank by what it took, the
-// currency difference to its role — as paymentLines builds it, settling
-// all that is left.
-func (s *suggester) supplierVoucherShown(ctx context.Context, inv store.OpenSupplierInvoicesRow, paid *big.Rat) *Voucher {
-	settled := paid
-	if inv.Currency != currency {
-		settled = neg(mustRat(inv.Balance))
+// currency difference to its role — as paymentLines builds it. settled is
+// the share in a foreign invoice's currency, nil for NOK.
+func (s *suggester) supplierVoucherShown(ctx context.Context, inv store.OpenSupplierInvoicesRow, paid, settled *big.Rat) *Voucher {
+	settledNOK := paid
+	if settled != nil {
+		rate, _ := parseRate(inv.ExchangeRate)
+		settledNOK = docmath.Round2(new(big.Rat).Mul(settled, rate))
+		if settled.Cmp(abs(owedInCurrency(ctx, s.q, inv))) == 0 {
+			settledNOK = neg(mustRat(inv.Balance))
+		}
 	}
-	lines := paymentLines(true, settled, paid, owedInCurrency(ctx, s.q, inv), false, "", nil, inv.SupplierID,
+	lines := paymentLines(true, settledNOK, paid, settledNOK, false, "", nil, inv.SupplierID,
 		deref(inv.OpenItemID), Line{AccountID: s.account.ledger}, "")
 	return &Voucher{Kind: "supplier_payment", Lines: lines}
 }
 
 // vipps is a Vipps payout (R11): money in whose text names Vipps, taken
-// from the clearing account; what the clearing holds through the day before
-// beyond it — or through the day itself, when the day before holds less — is
-// Vipps' fees.
+// from the clearing account. Vipps pays each settlement day's sales out
+// less its fees, so the fee is proposed only when the sales of a run of
+// days after the last payout read — the earliest run first — come to the
+// line or up to 3 % more; the clearing is credited the line and that fee,
+// never all it holds. Without such a run the line alone moves from the
+// clearing to the bank, and the fee is coded from Vipps' settlement report.
 func (s *suggester) vipps(ctx context.Context, l stmtLine) (*suggestion, error) {
 	if l.amount.Sign() <= 0 || !strings.Contains(l.words(), "vipps") {
 		return nil, nil
 	}
-	clearing, id, err := s.balance(ctx, roleClearingVipps, l.booked.AddDate(0, 0, -1))
-	if err != nil || clearing == nil {
-		return nil, err
-	}
-	through := l.booked.AddDate(0, 0, -1)
-	if clearing.Cmp(l.amount) < 0 {
-		if clearing, _, err = s.balance(ctx, roleClearingVipps, l.booked); err != nil {
-			return nil, err
-		}
-		through = l.booked
-	}
-	if clearing.Cmp(l.amount) < 0 {
+	id, ok := s.roles[roleClearingVipps]
+	if !ok {
 		return nil, nil
 	}
-	fees := sub(clearing, l.amount)
-	lines := []Line{{AccountID: s.account.ledger, Amount: new(big.Rat).Set(l.amount)}}
-	if fees.Sign() > 0 {
-		lines = append(lines, Line{Role: rolePaymentFees, Amount: fees})
+	after := l.booked.AddDate(0, 0, -vippsLookbackDays)
+	read, err := s.q.VippsSettledThrough(ctx)
+	if err != nil {
+		return nil, err
 	}
-	lines = append(lines, Line{AccountID: id, Amount: neg(clearing)})
-	certainty := "likely"
-	if fees.Sign() == 0 {
-		certainty = "exact"
+	if read != "" {
+		if d, err := time.Parse(time.DateOnly, read); err == nil && d.After(after) {
+			after = d
+		}
 	}
-	return &suggestion{key: "vipps:" + money(clearing) + "@" + through.Format(time.DateOnly), kind: matchVipps, certainty: certainty,
-		reason: s.text("A Vipps payout: the clearing account holds %s through %s, so %s are Vipps' fees.",
-			"En utbetaling fra Vipps: oppgjørskontoen har %s til og med %s, så %s er Vipps' gebyrer.", money(clearing),
-			through.Format(time.DateOnly), money(fees)),
-		voucher: &Voucher{Kind: "bank", Rule: bankRuleVipps, Description: s.text("Vipps payout", "Utbetaling fra Vipps"), Lines: lines}}, nil
+	days, err := s.q.ClearingDays(ctx, store.ClearingDaysParams{AccountID: id, After: after, Before: l.booked})
+	if err != nil {
+		return nil, err
+	}
+	most := add(l.amount, new(big.Rat).Mul(l.amount, vippsFeeTolerance))
+	var from, through time.Time
+	var fee *big.Rat
+run:
+	for i := range days {
+		sum := new(big.Rat)
+		for j := i; j < len(days); j++ {
+			sum.Add(sum, mustRat(days[j].Amount))
+			if sum.Cmp(most) > 0 {
+				break
+			}
+			if sum.Cmp(l.amount) >= 0 {
+				from, through, fee = days[i].Day, days[j].Day, sub(sum, l.amount)
+				break run
+			}
+		}
+	}
+	feeMax := docmath.Round2(new(big.Rat).Mul(l.amount, vippsFeeMax))
+	sg := &suggestion{kind: matchVipps, clearing: id, feeMax: feeMax}
+	if fee == nil {
+		sg.key, sg.certainty, sg.fee = "vipps:nofee", "possible", new(big.Rat)
+		sg.reason = s.text("A Vipps payout: no run of settlement days' sales comes to it, so no fee is guessed — the line moves from the clearing account to the bank, and the fee is coded when Vipps' settlement report is at hand.",
+			"En utbetaling fra Vipps: ingen rekke oppgjørsdager har salg som stemmer med den, så gebyret gjettes ikke — linjen flyttes fra oppgjørskontoen til banken, og gebyret føres når oppgjørsrapporten fra Vipps foreligger.")
+	} else {
+		sg.key = "vipps:" + from.Format(time.DateOnly) + ".." + through.Format(time.DateOnly)
+		sg.certainty, sg.fee, sg.vippsThrough = "likely", fee, &through
+		if fee.Sign() == 0 {
+			sg.certainty = "exact"
+		}
+		sg.reason = s.text("A Vipps payout of the sales of %s to %s, %s, so %s are Vipps' fees.",
+			"En utbetaling fra Vipps av salget %s til %s, %s, så %s er Vipps' gebyrer.", from.Format(time.DateOnly),
+			through.Format(time.DateOnly), money(add(l.amount, fee)), money(fee))
+	}
+	sg.voucher = s.vippsVoucher(l, id, sg.fee)
+	return sg, nil
 }
 
-// vat is a VAT payment or refund: the line is the VAT settlement account's
-// balance through its day, or a closed term's settlement (A22), and moves it
-// to the bank.
+// vippsVoucher is a Vipps payout's voucher: the bank by the line, the fee
+// to payment_fees, the clearing credited both.
+func (s *suggester) vippsVoucher(l stmtLine, clearing int32, fee *big.Rat) *Voucher {
+	lines := []Line{{AccountID: s.account.ledger, Amount: new(big.Rat).Set(l.amount)}}
+	if fee.Sign() > 0 {
+		lines = append(lines, Line{Role: rolePaymentFees, Amount: new(big.Rat).Set(fee)})
+	}
+	lines = append(lines, Line{AccountID: clearing, Amount: neg(add(l.amount, fee))})
+	return &Voucher{Kind: "bank", Rule: bankRuleVipps, Description: s.text("Vipps payout", "Utbetaling fra Vipps"), Lines: lines}
+}
+
+// vat is a VAT payment or refund: the line is a closed term's settlement
+// (A22) that no bank match has paid and that the VAT settlement account's
+// balance through its day still holds, or that balance itself; it moves it
+// to the bank, and the match names the term's closing it paid.
 func (s *suggester) vat(ctx context.Context, l stmtLine) (*suggestion, error) {
 	balance, id, err := s.balance(ctx, roleVATSettlement, l.booked)
 	if err != nil || balance == nil {
 		return nil, err
 	}
+	if !s.termsRead {
+		if s.terms, err = s.q.ClosedTermSettlements(ctx, id); err != nil {
+			return nil, err
+		}
+		s.termsRead = true
+	}
 	why := ""
-	if balance.Sign() != 0 && balance.Cmp(l.amount) == 0 {
+	var closing *int64
+	for _, t := range s.terms {
+		// The term's settlement posting is what paying it clears: the
+		// balance must still hold it, on the same side.
+		if a := mustRat(t.Amount); a.Cmp(l.amount) == 0 && balance.Sign() == a.Sign() && abs(balance).Cmp(abs(a)) >= 0 {
+			why = s.text("the settlement of VAT term %d %d", "oppgjøret av mva-termin %d %d", t.Term, t.Year)
+			closing = ptr(t.ClosingID)
+			break
+		}
+	}
+	if why == "" && balance.Sign() != 0 && balance.Cmp(l.amount) == 0 {
 		why = s.text("the VAT settlement account's balance %s", "saldoen %s på oppgjørskontoen for merverdiavgift", money(balance))
-	} else {
-		if !s.termsRead {
-			if s.terms, err = s.q.ClosedTermSettlements(ctx, id); err != nil {
-				return nil, err
-			}
-			s.termsRead = true
-		}
-		for _, t := range s.terms {
-			if mustRat(t.Amount).Cmp(l.amount) == 0 {
-				why = s.text("the settlement of VAT term %d %d", "oppgjøret av mva-termin %d %d", t.Term, t.Year)
-				break
-			}
-		}
 	}
 	if why == "" {
 		return nil, nil
@@ -638,7 +794,7 @@ func (s *suggester) vat(ctx context.Context, l stmtLine) (*suggestion, error) {
 	if l.amount.Sign() > 0 {
 		description = s.text("VAT refunded by Skatteetaten", "Merverdiavgift tilbakebetalt fra Skatteetaten")
 	}
-	return &suggestion{key: "vat:" + money(l.amount), kind: matchVAT, certainty: certainty,
+	return &suggestion{key: "vat:" + money(l.amount), kind: matchVAT, certainty: certainty, vatClosing: closing,
 		reason: s.text("A VAT payment or refund: the amount is %s.", "En betaling eller tilbakebetaling av merverdiavgift: beløpet er %s.", why),
 		voucher: &Voucher{Kind: "bank", Rule: bankRuleVAT, Description: description, Lines: []Line{
 			{AccountID: s.account.ledger, Amount: new(big.Rat).Set(l.amount)},
@@ -648,8 +804,9 @@ func (s *suggester) vat(ctx context.Context, l stmtLine) (*suggestion, error) {
 
 // transfers is a transfer between two of the company's bank accounts: the
 // opposite line on another's statement within three days, or money to or
-// from another's number.
-func (s *suggester) transfers(ctx context.Context, l stmtLine) ([]suggestion, error) {
+// from another's number — unless a transfer is posted for it already, whose
+// posting the line then matches.
+func (s *suggester) transfers(ctx context.Context, l stmtLine, sameAmount []candidate) ([]suggestion, error) {
 	rows, err := s.q.OpenLinesNear(ctx, store.OpenLinesNearParams{BankAccountID: s.account.id, Amount: money(neg(l.amount)),
 		FromDay: l.booked.AddDate(0, 0, -transferWindowDays), ToDay: l.booked.AddDate(0, 0, transferWindowDays), Near: l.booked})
 	if err != nil {
@@ -670,7 +827,13 @@ func (s *suggester) transfers(ctx context.Context, l stmtLine) ([]suggestion, er
 			return out, nil
 		}
 	}
-	if len(out) == 0 && l.cpAccount != "" {
+	posted := false
+	for _, c := range sameAmount {
+		if deref(c.Rule) == bankRuleTransfer {
+			posted = true
+		}
+	}
+	if len(out) == 0 && l.cpAccount != "" && !posted {
 		for _, o := range s.others {
 			if o.ID == s.account.id || !o.Active || o.AccountNumber != l.cpAccount {
 				continue
@@ -694,6 +857,17 @@ func (s *suggester) transferVoucher(l stmtLine, other int32) *Voucher {
 // tax code, through the manual journal's tax computation.
 func (s *suggester) ruleSuggestions(ctx context.Context, l stmtLine) ([]suggestion, error) {
 	var out []suggestion
+	if l.amount.Sign() > 0 {
+		// Money in with a KID, or of a customer's open item, is a customer's
+		// payment: never a rule's (R11).
+		if l.kid != "" {
+			return nil, nil
+		}
+		owed, err := s.q.CustomerItemOfAmount(ctx, money(l.amount))
+		if err != nil || owed {
+			return nil, err
+		}
+	}
 	text, party := strings.ToLower(l.text+" "+l.reference), strings.ToLower(l.cpName)
 	for _, r := range s.rules {
 		switch {
@@ -717,6 +891,17 @@ func (s *suggester) ruleSuggestions(ctx context.Context, l stmtLine) ([]suggesti
 				{AccountId: s.account.ledger, Amount: money(l.amount)},
 				{AccountId: r.AccountID, Amount: money(neg(l.amount)), TaxCodeId: r.TaxCodeID, ProjectId: r.ProjectID, Text: ptr(r.Name)},
 			}}
+		if l.amount.Sign() > 0 {
+			accounts, err := s.q.AccountsForPosting(ctx, []int32{r.AccountID})
+			if err != nil {
+				return nil, err
+			}
+			if len(accounts) != 1 || customerPaymentAccount(accounts[0]) {
+				// A rule made before income and receivables were refused it
+				// proposes nothing for money in.
+				continue
+			}
+		}
 		postings, err := expandJournal(ctx, s.q, input)
 		if err != nil {
 			// A rule whose account or code no longer holds proposes nothing.
@@ -742,7 +927,19 @@ func (s *suggester) ruleSuggestions(ctx context.Context, l stmtLine) ([]suggesti
 func suggestionView(sg suggestion, names map[int32]store.AccountsForPostingRow, codes map[int32]string, roles map[string]int32) gen.AccountingBankSuggestion {
 	out := gen.AccountingBankSuggestion{Key: sg.key, Kind: sg.kind, Certainty: sg.certainty, Exact: sg.exact, Reason: sg.reason,
 		Postings: []gen.AccountingBankMatchedPosting{}, Lines: []gen.AccountingBankProposedLine{}, SupplierInvoiceId: sg.supplierInvoice,
-		OtherLineId: sg.otherLine, BankRuleId: sg.ruleID}
+		OtherLineId: sg.otherLine, BankRuleId: sg.ruleID, NeedsAmountCurrency: sg.needsAmountCurrency}
+	if sg.currency != "" {
+		out.Currency = ptr(sg.currency)
+	}
+	if sg.amountCurrency != nil {
+		out.AmountCurrency = ptr(money(sg.amountCurrency))
+	}
+	if sg.fee != nil {
+		out.Fee = ptr(money(sg.fee))
+	}
+	if sg.feeMax != nil {
+		out.FeeMax = ptr(money(sg.feeMax))
+	}
 	for _, c := range sg.postings {
 		out.Postings = append(out.Postings, candidateView(c))
 	}

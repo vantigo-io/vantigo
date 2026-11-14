@@ -105,6 +105,25 @@ func (q *Queries) BankAccountHasStatements(ctx context.Context, id int64) (bool,
 	return used, err
 }
 
+const bankAccountInUse = `-- name: BankAccountInUse :one
+SELECT (EXISTS (SELECT 1 FROM accounting.statement_lines WHERE bank_account_id = $1::bigint)
+    OR EXISTS (SELECT 1 FROM accounting.voucher_bank_refs WHERE bank_account = $2::text))::boolean AS used
+`
+
+type BankAccountInUseParams struct {
+	ID            int64
+	AccountNumber string
+}
+
+// BankAccountInUse is whether the account has statement lines, or a payment
+// was posted through its number.
+func (q *Queries) BankAccountInUse(ctx context.Context, arg BankAccountInUseParams) (bool, error) {
+	row := q.db.QueryRow(ctx, bankAccountInUse, arg.ID, arg.AccountNumber)
+	var used bool
+	err := row.Scan(&used)
+	return used, err
+}
+
 const bankLedgers = `-- name: BankLedgers :many
 SELECT account_number, ledger_account_id FROM accounting.bank_accounts WHERE active
 `
@@ -192,12 +211,57 @@ func (q *Queries) ClaimFeedAccount(ctx context.Context, arg ClaimFeedAccountPara
 	return i, err
 }
 
+const clearingDays = `-- name: ClearingDays :many
+SELECT v.voucher_date AS day, sum(p.amount)::text AS amount
+FROM accounting.postings p JOIN accounting.vouchers v ON v.id = p.voucher_id
+WHERE p.account_id = $1 AND p.amount > 0
+  AND v.voucher_date > $2::date AND v.voucher_date < $3::date
+  AND v.reverses_voucher_id IS NULL
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+GROUP BY v.voucher_date ORDER BY v.voucher_date
+`
+
+type ClearingDaysParams struct {
+	AccountID int32
+	After     time.Time
+	Before    time.Time
+}
+
+type ClearingDaysRow struct {
+	Day    time.Time
+	Amount string
+}
+
+// ClearingDays is the money each day brought onto the clearing account — its
+// debits, reversed vouchers and reversals left out — after one day and before
+// another.
+func (q *Queries) ClearingDays(ctx context.Context, arg ClearingDaysParams) ([]ClearingDaysRow, error) {
+	rows, err := q.db.Query(ctx, clearingDays, arg.AccountID, arg.After, arg.Before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClearingDaysRow
+	for rows.Next() {
+		var i ClearingDaysRow
+		if err := rows.Scan(&i.Day, &i.Amount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const closedTermSettlements = `-- name: ClosedTermSettlements :many
-SELECT t.year, t.term, t.period_end, p.amount::text AS amount
+SELECT t.year, t.term, t.period_end, c.id AS closing_id, p.amount::text AS amount
 FROM accounting.vat_terms t
 JOIN accounting.vat_term_closings c ON c.id = t.current_closing_id
 JOIN accounting.postings p ON p.voucher_id = c.settlement_voucher_id
 WHERE p.account_id = $1
+  AND NOT EXISTS (SELECT 1 FROM accounting.statement_matches m WHERE m.vat_closing_id = c.id AND m.undone_at IS NULL)
 ORDER BY t.period_end DESC
 LIMIT 12
 `
@@ -206,11 +270,13 @@ type ClosedTermSettlementsRow struct {
 	Year      int32
 	Term      int32
 	PeriodEnd time.Time
+	ClosingID int64
 	Amount    string
 }
 
 // ClosedTermSettlements is each standing closing's settlement voucher's
-// posting on the VAT settlement account: what a term's payment or refund is.
+// posting on the VAT settlement account — what a term's payment or refund
+// is — that no standing bank match has paid.
 func (q *Queries) ClosedTermSettlements(ctx context.Context, accountID int32) ([]ClosedTermSettlementsRow, error) {
 	rows, err := q.db.Query(ctx, closedTermSettlements, accountID)
 	if err != nil {
@@ -224,6 +290,7 @@ func (q *Queries) ClosedTermSettlements(ctx context.Context, accountID int32) ([
 			&i.Year,
 			&i.Term,
 			&i.PeriodEnd,
+			&i.ClosingID,
 			&i.Amount,
 		); err != nil {
 			return nil, err
@@ -255,6 +322,10 @@ WHERE p.account_id = $1 AND v.voucher_date <= $2::date
   AND v.voucher_date >= $3::date
   AND v.reverses_voucher_id IS NULL
   AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE v.source_kind IS NOT NULL AND rv.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND rv.source_kind = v.source_kind || '_removed' AND rv.source_id = v.source_id)
+  AND NOT (v.source_kind LIKE '%\_removed' AND EXISTS (SELECT 1 FROM accounting.vouchers ov WHERE ov.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND ov.source_kind = left(v.source_kind, -8) AND ov.source_id = v.source_id))
   AND NOT EXISTS (SELECT 1 FROM accounting.statement_match_postings mp WHERE mp.posting_id = p.id AND mp.standing)
 `
 
@@ -269,6 +340,21 @@ func (q *Queries) CountUnmatchedPostings(ctx context.Context, arg CountUnmatched
 	var n int32
 	err := row.Scan(&n)
 	return n, err
+}
+
+const customerItemOfAmount = `-- name: CustomerItemOfAmount :one
+SELECT EXISTS (SELECT 1 FROM accounting.open_items o
+    WHERE o.kind = 'customer' AND (SELECT coalesce(sum(p.amount), 0) FROM accounting.postings p WHERE p.open_item_id = o.id)
+        = $1::text::numeric)::boolean AS found
+`
+
+// CustomerItemOfAmount is whether a customer's open item is owed exactly the
+// amount.
+func (q *Queries) CustomerItemOfAmount(ctx context.Context, amount string) (bool, error) {
+	row := q.db.QueryRow(ctx, customerItemOfAmount, amount)
+	var found bool
+	err := row.Scan(&found)
+	return found, err
 }
 
 const deleteBankAccount = `-- name: DeleteBankAccount :execrows
@@ -434,7 +520,7 @@ func (q *Queries) GetBankRule(ctx context.Context, id int64) (AccountingBankRule
 }
 
 const getMatch = `-- name: GetMatch :one
-SELECT id, statement_line_id, kind, request_key, reason, voucher_id, supplier_payment_id, bank_rule_id, bank_rule_version, matched_at, matched_by_user_id, undone_at, undone_by_user_id, undo_voucher_id FROM accounting.statement_matches WHERE id = $1
+SELECT id, statement_line_id, kind, request_key, reason, voucher_id, supplier_payment_id, bank_rule_id, bank_rule_version, vat_closing_id, vipps_through, matched_at, matched_by_user_id, undone_at, undone_by_user_id, undo_voucher_id FROM accounting.statement_matches WHERE id = $1
 `
 
 func (q *Queries) GetMatch(ctx context.Context, id int64) (AccountingStatementMatch, error) {
@@ -450,6 +536,8 @@ func (q *Queries) GetMatch(ctx context.Context, id int64) (AccountingStatementMa
 		&i.SupplierPaymentID,
 		&i.BankRuleID,
 		&i.BankRuleVersion,
+		&i.VatClosingID,
+		&i.VippsThrough,
 		&i.MatchedAt,
 		&i.MatchedByUserID,
 		&i.UndoneAt,
@@ -491,7 +579,7 @@ func (q *Queries) GetStatement(ctx context.Context, id int64) (AccountingStateme
 const getStatementLine = `-- name: GetStatementLine :one
 SELECT l.id, l.statement_id, l.bank_account_id, l.booked_on, l.value_on, l.amount::text AS amount, l.text, l.reference,
     l.kid, l.counterparty_name, l.counterparty_account, l.bank_id, l.kind, l.reversal, l.batch, l.state,
-    s.source AS statement_source
+    l.tx_reference, l.possible_duplicate_of, l.note, s.source AS statement_source
 FROM accounting.statement_lines l
 JOIN accounting.statements s ON s.id = l.statement_id
 WHERE l.id = $1
@@ -514,6 +602,9 @@ type GetStatementLineRow struct {
 	Reversal            bool
 	Batch               []byte
 	State               string
+	TxReference         string
+	PossibleDuplicateOf *int64
+	Note                string
 	StatementSource     string
 }
 
@@ -537,6 +628,9 @@ func (q *Queries) GetStatementLine(ctx context.Context, id int64) (GetStatementL
 		&i.Reversal,
 		&i.Batch,
 		&i.State,
+		&i.TxReference,
+		&i.PossibleDuplicateOf,
+		&i.Note,
 		&i.StatementSource,
 	)
 	return i, err
@@ -637,9 +731,10 @@ func (q *Queries) InsertBankRule(ctx context.Context, arg InsertBankRuleParams) 
 
 const insertMatch = `-- name: InsertMatch :one
 INSERT INTO accounting.statement_matches (statement_line_id, kind, request_key, reason, voucher_id, supplier_payment_id,
-    bank_rule_id, bank_rule_version, matched_at, matched_by_user_id)
+    bank_rule_id, bank_rule_version, vat_closing_id, vipps_through, matched_at, matched_by_user_id)
 VALUES ($1, $2, $3, $4, $5,
-    $6, $7, $8, $9, $10)
+    $6, $7, $8, $9,
+    $10, $11, $12)
 RETURNING id
 `
 
@@ -652,6 +747,8 @@ type InsertMatchParams struct {
 	SupplierPaymentID *int64
 	BankRuleID        *int64
 	BankRuleVersion   *int32
+	VatClosingID      *int64
+	VippsThrough      *time.Time
 	Now               time.Time
 	UserID            uuid.UUID
 }
@@ -666,6 +763,8 @@ func (q *Queries) InsertMatch(ctx context.Context, arg InsertMatchParams) (int64
 		arg.SupplierPaymentID,
 		arg.BankRuleID,
 		arg.BankRuleVersion,
+		arg.VatClosingID,
+		arg.VippsThrough,
 		arg.Now,
 		arg.UserID,
 	)
@@ -740,11 +839,12 @@ func (q *Queries) InsertStatement(ctx context.Context, arg InsertStatementParams
 const insertStatementLine = `-- name: InsertStatementLine :one
 WITH ins AS (
     INSERT INTO accounting.statement_lines (statement_id, bank_account_id, booked_on, value_on, amount, text, reference,
-        kid, counterparty_name, counterparty_account, bank_id, fingerprint, ordinal, kind, reversal, batch, created_at)
+        kid, counterparty_name, counterparty_account, bank_id, fingerprint, ordinal, kind, reversal, batch, tx_reference,
+        possible_duplicate_of, created_at)
     VALUES ($1, $2, $3, $4,
         $5::text::numeric, $6, $7, $8, $9,
         $10, $11, $12, $13, $14,
-        $15, $16, $17)
+        $15, $16, $17, $18, $19)
     ON CONFLICT DO NOTHING
     RETURNING id
 )
@@ -768,6 +868,8 @@ type InsertStatementLineParams struct {
 	Kind                string
 	Reversal            bool
 	Batch               []byte
+	TxReference         string
+	PossibleDuplicateOf *int64
 	Now                 time.Time
 }
 
@@ -792,6 +894,8 @@ func (q *Queries) InsertStatementLine(ctx context.Context, arg InsertStatementLi
 		arg.Kind,
 		arg.Reversal,
 		arg.Batch,
+		arg.TxReference,
+		arg.PossibleDuplicateOf,
 		arg.Now,
 	)
 	var id int64
@@ -819,6 +923,21 @@ func (q *Queries) InsertVoucherBankRef(ctx context.Context, arg InsertVoucherBan
 		arg.Source,
 	)
 	return err
+}
+
+const latestCovered = `-- name: LatestCovered :one
+SELECT coalesce(greatest(
+    (SELECT max(booked_on) FROM accounting.statement_lines WHERE bank_account_id = $1::bigint),
+    (SELECT max(period_to) FROM accounting.statements WHERE bank_account_id = $1::bigint))::text, '')::text AS day
+`
+
+// LatestCovered is the last day the account's statements cover: its latest
+// line's day or statement's end, ” with none.
+func (q *Queries) LatestCovered(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, latestCovered, id)
+	var day string
+	err := row.Scan(&day)
+	return day, err
 }
 
 const latestFeedLineDay = `-- name: LatestFeedLineDay :one
@@ -992,9 +1111,9 @@ func (q *Queries) ListBankRules(ctx context.Context) ([]ListBankRulesRow, error)
 const listStatementLines = `-- name: ListStatementLines :many
 SELECT l.id, l.statement_id, l.bank_account_id, l.booked_on, l.value_on, l.amount::text AS amount, l.text, l.reference,
     l.kid, l.counterparty_name, l.counterparty_account, l.bank_id, l.kind, l.reversal, l.batch, l.state,
-    s.source AS statement_source,
+    l.tx_reference, l.possible_duplicate_of, l.note, s.source AS statement_source,
     m.id AS match_id, m.kind AS match_kind, m.reason AS match_reason, m.voucher_id AS match_voucher_id,
-    m.matched_at AS matched_at, m.matched_by_user_id AS matched_by_user_id
+    m.matched_at AS matched_at, m.matched_by_user_id AS matched_by_user_id, count(*) OVER () AS total
 FROM accounting.statement_lines l
 JOIN accounting.statements s ON s.id = l.statement_id
 LEFT JOIN accounting.statement_matches m ON m.statement_line_id = l.id AND m.undone_at IS NULL
@@ -1002,6 +1121,7 @@ WHERE l.bank_account_id = $1
   AND l.booked_on BETWEEN $2::date AND $3::date
   AND ($4::text IS NULL OR l.state = $4::text)
 ORDER BY l.booked_on, l.id
+LIMIT $6 OFFSET $5
 `
 
 type ListStatementLinesParams struct {
@@ -1009,6 +1129,8 @@ type ListStatementLinesParams struct {
 	FromDay       time.Time
 	ToDay         time.Time
 	State         *string
+	RowOffset     int32
+	RowLimit      int32
 }
 
 type ListStatementLinesRow struct {
@@ -1028,6 +1150,9 @@ type ListStatementLinesRow struct {
 	Reversal            bool
 	Batch               []byte
 	State               string
+	TxReference         string
+	PossibleDuplicateOf *int64
+	Note                string
 	StatementSource     string
 	MatchID             *int64
 	MatchKind           *string
@@ -1035,6 +1160,7 @@ type ListStatementLinesRow struct {
 	MatchVoucherID      *int64
 	MatchedAt           *time.Time
 	MatchedByUserID     *uuid.UUID
+	Total               int64
 }
 
 // ListStatementLines is an account's lines booked in the period, by day, with
@@ -1045,6 +1171,8 @@ func (q *Queries) ListStatementLines(ctx context.Context, arg ListStatementLines
 		arg.FromDay,
 		arg.ToDay,
 		arg.State,
+		arg.RowOffset,
+		arg.RowLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -1070,6 +1198,9 @@ func (q *Queries) ListStatementLines(ctx context.Context, arg ListStatementLines
 			&i.Reversal,
 			&i.Batch,
 			&i.State,
+			&i.TxReference,
+			&i.PossibleDuplicateOf,
+			&i.Note,
 			&i.StatementSource,
 			&i.MatchID,
 			&i.MatchKind,
@@ -1077,6 +1208,7 @@ func (q *Queries) ListStatementLines(ctx context.Context, arg ListStatementLines
 			&i.MatchVoucherID,
 			&i.MatchedAt,
 			&i.MatchedByUserID,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
@@ -1242,6 +1374,33 @@ func (q *Queries) LockStatementLine(ctx context.Context, id int64) (int64, error
 	return id_2, err
 }
 
+const lockVouchers = `-- name: LockVouchers :many
+SELECT id FROM accounting.vouchers WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+`
+
+// LockVouchers takes the vouchers FOR UPDATE, in id order: what an accept of
+// their postings and a reversal of one of them both take, so the two are
+// ordered.
+func (q *Queries) LockVouchers(ctx context.Context, ids []int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, lockVouchers, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const matchPostings = `-- name: MatchPostings :many
 SELECT mp.match_id, p.id AS posting_id, p.amount::text AS amount, v.id AS voucher_id, v.fiscal_year, v.number,
     v.voucher_date, v.description, v.kind
@@ -1313,7 +1472,7 @@ const openLinesNear = `-- name: OpenLinesNear :many
 SELECT l.id, l.bank_account_id, l.booked_on, l.amount::text AS amount, b.ledger_account_id, b.name AS bank_account_name
 FROM accounting.statement_lines l
 JOIN accounting.bank_accounts b ON b.id = l.bank_account_id
-WHERE l.bank_account_id <> $1 AND l.state = 'open'
+WHERE l.bank_account_id <> $1 AND l.state = 'open' AND l.possible_duplicate_of IS NULL
   AND l.amount = $2::text::numeric
   AND l.booked_on BETWEEN $3::date AND $4::date
 ORDER BY abs(l.booked_on - $5::date), l.id
@@ -1390,7 +1549,8 @@ func (q *Queries) OpenLinesThrough(ctx context.Context, arg OpenLinesThroughPara
 }
 
 const openSupplierInvoices = `-- name: OpenSupplierInvoices :many
-SELECT si.id, si.supplier_id, si.supplier_number, si.kid, si.reference, si.currency, si.due_date, si.open_item_id,
+SELECT si.id, si.supplier_id, si.supplier_number, si.kid, si.reference, si.currency, si.exchange_rate::text AS exchange_rate,
+    si.due_date, si.open_item_id,
     s.name AS supplier_name, s.bank_account AS supplier_bank_account, b.balance::text AS balance
 FROM accounting.supplier_invoices si
 JOIN accounting.suppliers s ON s.id = si.supplier_id
@@ -1408,6 +1568,7 @@ type OpenSupplierInvoicesRow struct {
 	Kid                 *string
 	Reference           *string
 	Currency            string
+	ExchangeRate        string
 	DueDate             *time.Time
 	OpenItemID          *int64
 	SupplierName        string
@@ -1433,6 +1594,7 @@ func (q *Queries) OpenSupplierInvoices(ctx context.Context) ([]OpenSupplierInvoi
 			&i.Kid,
 			&i.Reference,
 			&i.Currency,
+			&i.ExchangeRate,
 			&i.DueDate,
 			&i.OpenItemID,
 			&i.SupplierName,
@@ -1520,6 +1682,45 @@ func (q *Queries) PreviousBalancedStatement(ctx context.Context, arg PreviousBal
 	return i, err
 }
 
+const probableDuplicate = `-- name: ProbableDuplicate :one
+SELECT l.id FROM accounting.statement_lines l
+JOIN accounting.statements s ON s.id = l.statement_id
+WHERE l.bank_account_id = $1 AND l.booked_on = $2
+  AND l.amount = $3::text::numeric AND s.source <> $4::text AND l.state <> 'duplicate'
+  AND (($5::text <> '' AND l.kid = $5::text)
+    OR ($6::text <> '' AND l.counterparty_account = $6::text)
+    OR ($7::text <> '' AND lower(regexp_replace(l.text, '[^[:alnum:]]+', '', 'g')) = $7::text))
+ORDER BY l.id LIMIT 1
+`
+
+type ProbableDuplicateParams struct {
+	BankAccountID       int64
+	BookedOn            time.Time
+	Amount              string
+	Source              string
+	Kid                 string
+	CounterpartyAccount string
+	TextKey             string
+}
+
+// ProbableDuplicate is an existing line of the account from another source
+// on the same day of the same amount with the same KID, counterparty account
+// or text: the same movement read twice, perhaps.
+func (q *Queries) ProbableDuplicate(ctx context.Context, arg ProbableDuplicateParams) (int64, error) {
+	row := q.db.QueryRow(ctx, probableDuplicate,
+		arg.BankAccountID,
+		arg.BookedOn,
+		arg.Amount,
+		arg.Source,
+		arg.Kid,
+		arg.CounterpartyAccount,
+		arg.TextKey,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const releaseFeedAccount = `-- name: ReleaseFeedAccount :exec
 UPDATE accounting.bank_accounts
 SET feed_lease_id = NULL, feed_lease_until = NULL, feed_status = $1, feed_detail = $2,
@@ -1550,6 +1751,25 @@ func (q *Queries) ReleaseFeedAccount(ctx context.Context, arg ReleaseFeedAccount
 		arg.ID,
 		arg.LeaseID,
 	)
+	return err
+}
+
+const resolveDuplicate = `-- name: ResolveDuplicate :exec
+UPDATE accounting.statement_lines
+SET state = CASE WHEN $1::boolean THEN 'duplicate' ELSE state END,
+    possible_duplicate_of = CASE WHEN $1::boolean THEN possible_duplicate_of ELSE NULL END
+WHERE id = $2
+`
+
+type ResolveDuplicateParams struct {
+	Duplicate bool
+	ID        int64
+}
+
+// ResolveDuplicate settles a possible duplicate: the same movement (state
+// duplicate) or another (the flag cleared).
+func (q *Queries) ResolveDuplicate(ctx context.Context, arg ResolveDuplicateParams) error {
+	_, err := q.db.Exec(ctx, resolveDuplicate, arg.Duplicate, arg.ID)
 	return err
 }
 
@@ -1600,6 +1820,20 @@ func (q *Queries) SetBankAccountSource(ctx context.Context, arg SetBankAccountSo
 	return err
 }
 
+const setMatchUndoVoucher = `-- name: SetMatchUndoVoucher :exec
+UPDATE accounting.statement_matches SET undo_voucher_id = $1::bigint WHERE id = ANY($2::bigint[])
+`
+
+type SetMatchUndoVoucherParams struct {
+	UndoVoucherID int64
+	Ids           []int64
+}
+
+func (q *Queries) SetMatchUndoVoucher(ctx context.Context, arg SetMatchUndoVoucherParams) error {
+	_, err := q.db.Exec(ctx, setMatchUndoVoucher, arg.UndoVoucherID, arg.Ids)
+	return err
+}
+
 const setStatementCounts = `-- name: SetStatementCounts :exec
 UPDATE accounting.statements SET lines_imported = $1, lines_skipped = $2
 WHERE id = $3
@@ -1613,6 +1847,20 @@ type SetStatementCountsParams struct {
 
 func (q *Queries) SetStatementCounts(ctx context.Context, arg SetStatementCountsParams) error {
 	_, err := q.db.Exec(ctx, setStatementCounts, arg.LinesImported, arg.LinesSkipped, arg.ID)
+	return err
+}
+
+const setStatementLineNote = `-- name: SetStatementLineNote :exec
+UPDATE accounting.statement_lines SET note = $1 WHERE id = $2
+`
+
+type SetStatementLineNoteParams struct {
+	Note string
+	ID   int64
+}
+
+func (q *Queries) SetStatementLineNote(ctx context.Context, arg SetStatementLineNoteParams) error {
+	_, err := q.db.Exec(ctx, setStatementLineNote, arg.Note, arg.ID)
 	return err
 }
 
@@ -1631,7 +1879,7 @@ func (q *Queries) SetStatementLineState(ctx context.Context, arg SetStatementLin
 }
 
 const standingMatchOfLine = `-- name: StandingMatchOfLine :one
-SELECT id, statement_line_id, kind, request_key, reason, voucher_id, supplier_payment_id, bank_rule_id, bank_rule_version, matched_at, matched_by_user_id, undone_at, undone_by_user_id, undo_voucher_id FROM accounting.statement_matches WHERE statement_line_id = $1 AND undone_at IS NULL
+SELECT id, statement_line_id, kind, request_key, reason, voucher_id, supplier_payment_id, bank_rule_id, bank_rule_version, vat_closing_id, vipps_through, matched_at, matched_by_user_id, undone_at, undone_by_user_id, undo_voucher_id FROM accounting.statement_matches WHERE statement_line_id = $1 AND undone_at IS NULL
 `
 
 func (q *Queries) StandingMatchOfLine(ctx context.Context, statementLineID int64) (AccountingStatementMatch, error) {
@@ -1647,6 +1895,8 @@ func (q *Queries) StandingMatchOfLine(ctx context.Context, statementLineID int64
 		&i.SupplierPaymentID,
 		&i.BankRuleID,
 		&i.BankRuleVersion,
+		&i.VatClosingID,
+		&i.VippsThrough,
 		&i.MatchedAt,
 		&i.MatchedByUserID,
 		&i.UndoneAt,
@@ -1657,7 +1907,7 @@ func (q *Queries) StandingMatchOfLine(ctx context.Context, statementLineID int64
 }
 
 const standingMatchesOfVoucher = `-- name: StandingMatchesOfVoucher :many
-SELECT id, statement_line_id, kind, request_key, reason, voucher_id, supplier_payment_id, bank_rule_id, bank_rule_version, matched_at, matched_by_user_id, undone_at, undone_by_user_id, undo_voucher_id FROM accounting.statement_matches WHERE voucher_id = $1::bigint AND undone_at IS NULL ORDER BY id
+SELECT id, statement_line_id, kind, request_key, reason, voucher_id, supplier_payment_id, bank_rule_id, bank_rule_version, vat_closing_id, vipps_through, matched_at, matched_by_user_id, undone_at, undone_by_user_id, undo_voucher_id FROM accounting.statement_matches WHERE voucher_id = $1::bigint AND undone_at IS NULL ORDER BY id
 `
 
 func (q *Queries) StandingMatchesOfVoucher(ctx context.Context, voucherID int64) ([]AccountingStatementMatch, error) {
@@ -1679,6 +1929,55 @@ func (q *Queries) StandingMatchesOfVoucher(ctx context.Context, voucherID int64)
 			&i.SupplierPaymentID,
 			&i.BankRuleID,
 			&i.BankRuleVersion,
+			&i.VatClosingID,
+			&i.VippsThrough,
+			&i.MatchedAt,
+			&i.MatchedByUserID,
+			&i.UndoneAt,
+			&i.UndoneByUserID,
+			&i.UndoVoucherID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const standingMatchesOnVoucher = `-- name: StandingMatchesOnVoucher :many
+SELECT DISTINCT m.id, m.statement_line_id, m.kind, m.request_key, m.reason, m.voucher_id, m.supplier_payment_id, m.bank_rule_id, m.bank_rule_version, m.vat_closing_id, m.vipps_through, m.matched_at, m.matched_by_user_id, m.undone_at, m.undone_by_user_id, m.undo_voucher_id FROM accounting.statement_matches m
+WHERE m.undone_at IS NULL AND (m.voucher_id = $1::bigint OR EXISTS (
+    SELECT 1 FROM accounting.statement_match_postings mp JOIN accounting.postings p ON p.id = mp.posting_id
+    WHERE mp.match_id = m.id AND mp.standing AND p.voucher_id = $1::bigint))
+ORDER BY m.statement_line_id
+`
+
+// StandingMatchesOnVoucher is every standing match that holds a posting of
+// the voucher, or that posted it.
+func (q *Queries) StandingMatchesOnVoucher(ctx context.Context, voucherID int64) ([]AccountingStatementMatch, error) {
+	rows, err := q.db.Query(ctx, standingMatchesOnVoucher, voucherID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AccountingStatementMatch
+	for rows.Next() {
+		var i AccountingStatementMatch
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatementLineID,
+			&i.Kind,
+			&i.RequestKey,
+			&i.Reason,
+			&i.VoucherID,
+			&i.SupplierPaymentID,
+			&i.BankRuleID,
+			&i.BankRuleVersion,
+			&i.VatClosingID,
+			&i.VippsThrough,
 			&i.MatchedAt,
 			&i.MatchedByUserID,
 			&i.UndoneAt,
@@ -1704,7 +2003,7 @@ WITH base AS (
 )
 SELECT EXISTS (SELECT 1 FROM base)::boolean AS has_balance,
     (coalesce((SELECT closing_balance FROM base), 0) + coalesce((SELECT sum(l.amount) FROM accounting.statement_lines l
-        WHERE l.bank_account_id = $1 AND l.booked_on <= $2::date
+        WHERE l.bank_account_id = $1 AND l.booked_on <= $2::date AND l.state <> 'duplicate'
           AND l.booked_on > coalesce((SELECT period_to FROM base), '-infinity'::date)), 0))::text AS balance
 `
 
@@ -1787,7 +2086,7 @@ func (q *Queries) UndoMatch(ctx context.Context, arg UndoMatchParams) error {
 
 const unmatchedPostings = `-- name: UnmatchedPostings :many
 SELECT p.id, p.amount::text AS amount, p.description AS posting_text, v.id AS voucher_id, v.fiscal_year, v.number,
-    v.voucher_date, v.description, v.kind, v.source_module, v.source_kind, v.source_id,
+    v.voucher_date, v.description, v.kind, v.rule, v.source_module, v.source_kind, v.source_id,
     r.reference AS bank_reference, r.source AS bank_source, r.bank_account AS bank_account
 FROM accounting.postings p
 JOIN accounting.vouchers v ON v.id = p.voucher_id
@@ -1796,6 +2095,10 @@ WHERE p.account_id = $1
   AND v.voucher_date BETWEEN $2::date AND $3::date
   AND v.reverses_voucher_id IS NULL
   AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE v.source_kind IS NOT NULL AND rv.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND rv.source_kind = v.source_kind || '_removed' AND rv.source_id = v.source_id)
+  AND NOT (v.source_kind LIKE '%\_removed' AND EXISTS (SELECT 1 FROM accounting.vouchers ov WHERE ov.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND ov.source_kind = left(v.source_kind, -8) AND ov.source_id = v.source_id))
   AND NOT EXISTS (SELECT 1 FROM accounting.statement_match_postings mp WHERE mp.posting_id = p.id AND mp.standing)
 ORDER BY v.voucher_date, p.id
 LIMIT 2000
@@ -1817,6 +2120,7 @@ type UnmatchedPostingsRow struct {
 	VoucherDate   time.Time
 	Description   string
 	Kind          string
+	Rule          *string
 	SourceModule  *string
 	SourceKind    *string
 	SourceID      *int64
@@ -1828,7 +2132,8 @@ type UnmatchedPostingsRow struct {
 // UnmatchedPostings is the postings on a ledger account dated in the window
 // that no standing match holds, with their vouchers and the bank reference
 // of a payment from Invoices. A reversed voucher's postings and a reversal's
-// are left out: they cancel each other.
+// are left out: they cancel each other; so are a payment removed in Invoices
+// and its removal.
 func (q *Queries) UnmatchedPostings(ctx context.Context, arg UnmatchedPostingsParams) ([]UnmatchedPostingsRow, error) {
 	rows, err := q.db.Query(ctx, unmatchedPostings, arg.AccountID, arg.FromDay, arg.ToDay)
 	if err != nil {
@@ -1848,12 +2153,87 @@ func (q *Queries) UnmatchedPostings(ctx context.Context, arg UnmatchedPostingsPa
 			&i.VoucherDate,
 			&i.Description,
 			&i.Kind,
+			&i.Rule,
 			&i.SourceModule,
 			&i.SourceKind,
 			&i.SourceID,
 			&i.BankReference,
 			&i.BankSource,
 			&i.BankAccount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const unmatchedPostingsPage = `-- name: UnmatchedPostingsPage :many
+SELECT p.id, p.amount::text AS amount, p.description AS posting_text, v.id AS voucher_id, v.fiscal_year, v.number,
+    v.voucher_date, v.description, v.kind
+FROM accounting.postings p
+JOIN accounting.vouchers v ON v.id = p.voucher_id
+WHERE p.account_id = $1
+  AND v.voucher_date BETWEEN $2::date AND $3::date
+  AND v.reverses_voucher_id IS NULL
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE v.source_kind IS NOT NULL AND rv.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND rv.source_kind = v.source_kind || '_removed' AND rv.source_id = v.source_id)
+  AND NOT (v.source_kind LIKE '%\_removed' AND EXISTS (SELECT 1 FROM accounting.vouchers ov WHERE ov.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND ov.source_kind = left(v.source_kind, -8) AND ov.source_id = v.source_id))
+  AND NOT EXISTS (SELECT 1 FROM accounting.statement_match_postings mp WHERE mp.posting_id = p.id AND mp.standing)
+ORDER BY v.voucher_date, p.id
+LIMIT $4
+`
+
+type UnmatchedPostingsPageParams struct {
+	AccountID int32
+	FromDay   time.Time
+	ToDay     time.Time
+	RowLimit  int32
+}
+
+type UnmatchedPostingsPageRow struct {
+	ID          int64
+	Amount      string
+	PostingText string
+	VoucherID   int64
+	FiscalYear  int32
+	Number      int32
+	VoucherDate time.Time
+	Description string
+	Kind        string
+}
+
+// UnmatchedPostingsPage is the first of the ledger account's postings dated
+// in the period that no standing match holds.
+func (q *Queries) UnmatchedPostingsPage(ctx context.Context, arg UnmatchedPostingsPageParams) ([]UnmatchedPostingsPageRow, error) {
+	rows, err := q.db.Query(ctx, unmatchedPostingsPage,
+		arg.AccountID,
+		arg.FromDay,
+		arg.ToDay,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UnmatchedPostingsPageRow
+	for rows.Next() {
+		var i UnmatchedPostingsPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Amount,
+			&i.PostingText,
+			&i.VoucherID,
+			&i.FiscalYear,
+			&i.Number,
+			&i.VoucherDate,
+			&i.Description,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}
@@ -1955,4 +2335,35 @@ func (q *Queries) UpdateBankRule(ctx context.Context, arg UpdateBankRuleParams) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const vippsSettledThrough = `-- name: VippsSettledThrough :one
+SELECT coalesce(max(vipps_through)::text, '')::text AS day FROM accounting.statement_matches
+WHERE kind = 'vipps_payout' AND undone_at IS NULL
+`
+
+// VippsSettledThrough is the last settlement day a standing Vipps payout was
+// read through, ” with none.
+func (q *Queries) VippsSettledThrough(ctx context.Context) (string, error) {
+	row := q.db.QueryRow(ctx, vippsSettledThrough)
+	var day string
+	err := row.Scan(&day)
+	return day, err
+}
+
+const vouchersTurnedBack = `-- name: VouchersTurnedBack :one
+SELECT count(*)::int AS n FROM accounting.vouchers v
+WHERE v.id = ANY($1::bigint[]) AND (
+    EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+    OR EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE v.source_kind IS NOT NULL AND rv.source_module = 'invoices' AND v.source_module = 'invoices'
+        AND rv.source_kind = v.source_kind || '_removed' AND rv.source_id = v.source_id))
+`
+
+// VouchersTurnedBack counts the vouchers named that a voucher reverses, or
+// that a removal in Invoices turns back.
+func (q *Queries) VouchersTurnedBack(ctx context.Context, ids []int64) (int32, error) {
+	row := q.db.QueryRow(ctx, vouchersTurnedBack, ids)
+	var n int32
+	err := row.Scan(&n)
+	return n, err
 }

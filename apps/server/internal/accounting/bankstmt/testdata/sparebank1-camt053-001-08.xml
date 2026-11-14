@@ -200,6 +200,7 @@
         </NtryDtls>
       </Ntry>
       <Ntry>
+        <NtryRef>SB1-0915-5</NtryRef>
         <Amt Ccy="NOK">50.00</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
         <Sts>
@@ -211,6 +212,7 @@
         <AddtlNtryInf>Gebyr utenlandsbetaling</AddtlNtryInf>
       </Ntry>
       <Ntry>
+        <NtryRef>SB1-0915-6</NtryRef>
         <Amt Ccy="NOK">50.00</Amt>
         <CdtDbtInd>DBIT</CdtDbtInd>
         <Sts>

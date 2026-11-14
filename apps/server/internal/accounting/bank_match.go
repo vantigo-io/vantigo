@@ -7,9 +7,11 @@ package accounting
 // day is locked — and a posting is matched to one line at most (a unique
 // index). Every accept, code and undo runs in one transaction that takes the
 // line FOR UPDATE first; the same request key again answers the match it
-// made, so a double click posts once, and a second person's accept of the
-// same line is refused. An undo, while the line's day is open, reverses what
-// the match posted, or unlinks.
+// made — whoever sends it — so a double click posts once, and another key on
+// a matched line is refused. An undo, while the days of the lines it touches
+// are open, reverses what the match posted, or unlinks; a voucher reversed
+// or turned back elsewhere takes the matches standing on it back with it
+// (undoBankMatchesOn).
 
 import (
 	"context"
@@ -28,8 +30,12 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
 )
 
-// maxReconcileDays bounds a reconciliation's period.
-const maxReconcileDays = 366
+// maxReconcileDays bounds a reconciliation's period; reconcilePage is a
+// page's lines by default.
+const (
+	maxReconcileDays = 366
+	reconcilePage    = 200
+)
 
 // accountOf reads the bank account a line is on.
 func accountOf(ctx context.Context, q *store.Queries, id int64) (bankAccountOf, error) {
@@ -96,7 +102,8 @@ func lineView(l stmtLine) gen.AccountingBankLine {
 	out := gen.AccountingBankLine{Id: l.id, StatementId: l.statementID, BankAccountId: l.bankAccountID, BookedOn: apiDate(l.booked),
 		ValueOn: apiDatePtr(l.value), Amount: money(l.amount), Text: l.text, Reference: l.reference, CounterpartyName: l.cpName,
 		CounterpartyAccount: l.cpAccount, Kind: l.kind, Reversal: l.reversal, Source: l.source, State: l.state,
-		Batch: []gen.AccountingBankBatchItem{}, Suggestions: []gen.AccountingBankSuggestion{}, CustomerPayment: l.customerPayment()}
+		Batch: []gen.AccountingBankBatchItem{}, Suggestions: []gen.AccountingBankSuggestion{}, CustomerPayment: l.customerPayment(),
+		PossibleDuplicateOf: l.possibleDuplicateOf, Note: l.note, TxReference: l.txRef}
 	if l.kid != "" {
 		out.Kid = ptr(l.kid)
 	}
@@ -165,7 +172,7 @@ func (s *server) lineOne(ctx context.Context, id int64) (gen.AccountingBankLine,
 	if err != nil {
 		return out, err
 	}
-	sg, err := newSuggester(ctx, q, account, l.booked, l.booked)
+	sg, err := newSuggester(ctx, q, account)
 	if err != nil {
 		return out, err
 	}
@@ -192,10 +199,23 @@ func (s *server) GetAccountingBankReconciliation(ctx context.Context, req gen.Ge
 	}
 	var state *string
 	if req.Params.State != nil {
-		if *req.Params.State != "open" && *req.Params.State != "matched" {
-			return nil, invalidField("The period cannot be read", "state", "", "open or matched.")
+		if !slices.Contains([]string{"open", "matched", "duplicate"}, *req.Params.State) {
+			return nil, invalidField("The period cannot be read", "state", "", "open, matched or duplicate.")
 		}
 		state = req.Params.State
+	}
+	limit, offset := int32(reconcilePage), int32(0)
+	if req.Params.Limit != nil {
+		if *req.Params.Limit < 1 || *req.Params.Limit > 500 {
+			return nil, invalidField("The period cannot be read", "limit", "", "From 1 to 500 lines.")
+		}
+		limit = *req.Params.Limit
+	}
+	if req.Params.Offset != nil {
+		if *req.Params.Offset < 0 {
+			return nil, invalidField("The period cannot be read", "offset", "", "0 or more.")
+		}
+		offset = *req.Params.Offset
 	}
 	q := store.New(s.deps.Pool)
 	row, err := q.GetBankAccount(ctx, req.Id)
@@ -206,16 +226,30 @@ func (s *server) GetAccountingBankReconciliation(ctx context.Context, req gen.Ge
 		return nil, err
 	}
 	account := bankAccountOf{id: row.ID, name: row.Name, number: row.AccountNumber, ledger: row.LedgerAccountID}
-	rows, err := q.ListStatementLines(ctx, store.ListStatementLinesParams{BankAccountID: req.Id, FromDay: from, ToDay: to, State: state})
+	rows, err := q.ListStatementLines(ctx, store.ListStatementLinesParams{BankAccountID: req.Id, FromDay: from, ToDay: to, State: state,
+		RowLimit: limit, RowOffset: offset})
 	if err != nil {
 		return nil, err
 	}
-	sg, err := newSuggester(ctx, q, account, from, to)
+	sg, err := newSuggester(ctx, q, account)
 	if err != nil {
 		return nil, err
 	}
 	out := gen.GetAccountingBankReconciliation200JSONResponse{BankAccount: bankAccountView(row), From: apiDate(from), To: apiDate(to),
 		Lines: []gen.AccountingBankLine{}}
+	if len(rows) > 0 {
+		out.Total = int32(rows[0].Total)
+	} else if offset > 0 {
+		// A page past the end: the count without the page.
+		all, err := q.ListStatementLines(ctx, store.ListStatementLinesParams{BankAccountID: req.Id, FromDay: from, ToDay: to,
+			State: state, RowLimit: 1, RowOffset: 0})
+		if err != nil {
+			return nil, err
+		}
+		if len(all) > 0 {
+			out.Total = int32(all[0].Total)
+		}
+	}
 	var matches []store.AccountingStatementMatch
 	var lists [][]suggestion
 	lines := make([]stmtLine, 0, len(rows))
@@ -223,7 +257,8 @@ func (s *server) GetAccountingBankReconciliation(ctx context.Context, req gen.Ge
 		l := stmtLine{id: r.ID, statementID: r.StatementID, bankAccountID: r.BankAccountID, booked: r.BookedOn, value: r.ValueOn,
 			amount: mustRat(r.Amount), text: r.Text, reference: r.Reference, kid: deref(r.Kid), cpName: r.CounterpartyName,
 			cpAccount: r.CounterpartyAccount, bankID: deref(r.BankID), kind: r.Kind, state: r.State, source: r.StatementSource,
-			reversal: r.Reversal, batch: batchOf(r.Batch)}
+			reversal: r.Reversal, batch: batchOf(r.Batch), txRef: r.TxReference, note: r.Note,
+			possibleDuplicateOf: r.PossibleDuplicateOf}
 		lines = append(lines, l)
 		if r.MatchID != nil {
 			matches = append(matches, store.AccountingStatementMatch{ID: *r.MatchID, Kind: deref(r.MatchKind), Reason: deref(r.MatchReason),
@@ -263,14 +298,19 @@ func (s *server) GetAccountingBankReconciliation(ctx context.Context, req gen.Ge
 		return nil, err
 	}
 	foot.UnmatchedPostings = []gen.AccountingBankMatchedPosting{}
-	for _, c := range sg.candidates {
-		if c.VoucherDate.Before(from) || c.VoucherDate.After(to) {
-			continue
-		}
-		foot.UnmatchedPostingsTotal++
-		if len(foot.UnmatchedPostings) < 200 {
-			foot.UnmatchedPostings = append(foot.UnmatchedPostings, candidateView(c))
-		}
+	if foot.UnmatchedPostingsTotal, err = q.CountUnmatchedPostings(ctx, store.CountUnmatchedPostingsParams{AccountID: account.ledger,
+		Since: from, Through: to}); err != nil {
+		return nil, err
+	}
+	page, err := q.UnmatchedPostingsPage(ctx, store.UnmatchedPostingsPageParams{AccountID: account.ledger, FromDay: from, ToDay: to,
+		RowLimit: 200})
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range page {
+		foot.UnmatchedPostings = append(foot.UnmatchedPostings, gen.AccountingBankMatchedPosting{PostingId: r.ID, VoucherId: r.VoucherID,
+			VoucherDisplay: display(r.FiscalYear, r.Number), VoucherDate: apiDate(r.VoucherDate), VoucherKind: r.Kind,
+			Description: firstNonEmpty(r.PostingText, r.Description), Amount: money(mustRat(r.Amount))})
 	}
 	out.Foot = foot
 	return out, nil
@@ -297,7 +337,8 @@ func (s *server) foot(ctx context.Context, q *store.Queries, account bankAccount
 }
 
 // bankStatus is every active bank account's reconciliation at the end of a
-// day: what locking a month or closing a VAT term warns about.
+// day, and an inactive one's that still has open lines: what locking a month
+// or closing a VAT term warns about.
 func (s *server) bankStatus(ctx context.Context, through time.Time) (gen.AccountingBankStatus, error) {
 	q := store.New(s.deps.Pool)
 	rows, err := q.ListBankAccounts(ctx)
@@ -306,15 +347,15 @@ func (s *server) bankStatus(ctx context.Context, through time.Time) (gen.Account
 	}
 	out := gen.AccountingBankStatus{Through: apiDate(through), Reconciled: true, Accounts: []gen.AccountingBankStatusAccount{}}
 	for _, r := range rows {
-		if !r.Active {
+		open, err := q.OpenLinesThrough(ctx, store.OpenLinesThroughParams{BankAccountID: r.ID, Through: through})
+		if err != nil {
+			return out, err
+		}
+		if !r.Active && open == 0 {
 			continue
 		}
 		account := bankAccountOf{id: r.ID, name: r.Name, number: r.AccountNumber, ledger: r.LedgerAccountID}
 		foot, err := s.foot(ctx, q, account, through)
-		if err != nil {
-			return out, err
-		}
-		open, err := q.OpenLinesThrough(ctx, store.OpenLinesThroughParams{BankAccountID: r.ID, Through: through})
 		if err != nil {
 			return out, err
 		}
@@ -381,8 +422,9 @@ func lineLock(ctx context.Context, q *store.Queries, id int64) (stmtLine, *store
 	return lineFromRow(row), &m, nil
 }
 
-// alreadyMatched answers a line that has a standing match: the same key's
-// is the request answered again, another's a conflict.
+// alreadyMatched answers a line that has a standing match: the same key's —
+// whoever sends it — is the request answered again, a success that posts
+// nothing; another key's a conflict.
 func alreadyMatched(m *store.AccountingStatementMatch, key string) (bool, error) {
 	if m == nil {
 		return false, nil
@@ -400,6 +442,8 @@ type matchRecord struct {
 	supplierPayment   *int64
 	rule              *int64
 	ruleVersion       *int32
+	vatClosing        *int64
+	vippsThrough      *time.Time
 	postings          []int64
 }
 
@@ -409,7 +453,7 @@ func recordMatch(ctx context.Context, tx pgx.Tx, lineID int64, m matchRecord, by
 	q := store.New(tx)
 	id, err := q.InsertMatch(ctx, store.InsertMatchParams{StatementLineID: lineID, Kind: m.kind, RequestKey: truncate(m.key, 200),
 		Reason: truncate(m.reason, 500), VoucherID: m.voucher, SupplierPaymentID: m.supplierPayment, BankRuleID: m.rule,
-		BankRuleVersion: m.ruleVersion, Now: at, UserID: by})
+		BankRuleVersion: m.ruleVersion, VatClosingID: m.vatClosing, VippsThrough: m.vippsThrough, Now: at, UserID: by})
 	if err != nil {
 		return err
 	}
@@ -464,14 +508,24 @@ func (s *server) postBankVoucher(ctx context.Context, tx pgx.Tx, q *store.Querie
 	return posted, refuseMoved(ctx, q, posted, l.booked)
 }
 
+// acceptOptions is what a person adds to a suggestion: a foreign-currency
+// supplier payment's amount in the invoice's currency, a Vipps payout's fee.
+type acceptOptions struct {
+	amountCurrency, fee *string
+}
+
 // accept accepts a line's suggestion by its key on tx (A28): computed again
 // under the line's lock, refused stale when it no longer holds.
-func (s *server) accept(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID int64, key string, by uuid.UUID) error {
+func (s *server) accept(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID int64, key string, opts acceptOptions, by uuid.UUID) error {
+	const title = "The suggestion cannot be accepted"
 	l, standing, err := lineLock(ctx, q, lineID)
 	if err != nil {
 		return err
 	}
 	if done, err := alreadyMatched(standing, key); done || err != nil {
+		return err
+	}
+	if err := possibleDuplicateRefusal(l); err != nil {
 		return err
 	}
 	if key == suggestInvoices {
@@ -481,7 +535,7 @@ func (s *server) accept(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID
 	if err != nil {
 		return err
 	}
-	sg, err := newSuggester(ctx, q, account, l.booked, l.booked)
+	sg, err := newSuggester(ctx, q, account)
 	if err != nil {
 		return err
 	}
@@ -509,13 +563,42 @@ func (s *server) accept(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID
 			ids = append(ids, c.ID)
 		}
 		slices.Sort(ids)
+		// The postings' vouchers FOR UPDATE, as a reversal or a removal of one
+		// takes it (undoBankMatchesOn): the two are ordered, and a voucher
+		// turned back meanwhile is no longer what the line is.
+		vouchers := make([]int64, 0, len(chosen.postings))
+		for _, c := range chosen.postings {
+			vouchers = append(vouchers, c.VoucherID)
+		}
+		slices.Sort(vouchers)
+		vouchers = slices.Compact(vouchers)
+		if _, err := q.LockVouchers(ctx, vouchers); err != nil {
+			return err
+		}
+		if n, err := q.VouchersTurnedBack(ctx, vouchers); err != nil {
+			return err
+		} else if n > 0 {
+			return conflict(codeBankSuggestionStale, "The suggestion no longer holds", "A voucher it names was reversed or removed meanwhile. Read the line again.")
+		}
 		if _, err := q.LockPostings(ctx, ids); err != nil {
 			return err
 		}
 		rec.postings = ids
 	case matchSupplier:
-		posted, paymentID, err := s.paySupplierInvoice(ctx, tx, q, *chosen.supplierInvoice, supplierPayment{date: l.booked,
-			paidNOK: chosen.paid, bankAccountID: &account.ledger, by: by, at: s.now()})
+		pay := supplierPayment{date: l.booked, paidNOK: chosen.paid, bankAccountID: &account.ledger, by: by, at: s.now()}
+		if chosen.currency != "" {
+			given := strings.TrimSpace(deref(opts.amountCurrency))
+			switch {
+			case given != "":
+				pay.amountCurrency = given
+			case chosen.needsAmountCurrency:
+				return invalidField(title, "amountCurrency", codeBankAmountCurrencyReq,
+					"Give the amount in "+chosen.currency+" the payment settles: the rate it implies for all that is left is not the invoice's.")
+			default:
+				pay.amountCurrency = money(chosen.amountCurrency)
+			}
+		}
+		posted, paymentID, err := s.paySupplierInvoice(ctx, tx, q, *chosen.supplierInvoice, pay)
 		if err != nil {
 			return err
 		}
@@ -524,6 +607,29 @@ func (s *server) accept(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID
 			return err
 		}
 	default:
+		if chosen.kind == matchRule && l.amount.Sign() > 0 {
+			// Money in is a customer's payment unless the rule's account is
+			// neither income nor receivables (R11), checked again here.
+			if err := ruleForMoneyIn(ctx, q, chosen.voucher); err != nil {
+				return err
+			}
+		}
+		if chosen.kind == matchVipps {
+			fee := chosen.fee
+			if opts.fee != nil && strings.TrimSpace(*opts.fee) != "" {
+				f, ok := parseAmount(*opts.fee)
+				if !ok {
+					return invalidField(title, "fee", codeAmountInvalid, "An amount with at most two decimals.")
+				}
+				if f.Sign() < 0 || f.Cmp(chosen.feeMax) > 0 {
+					return invalidField(title, "fee", codeBankFeeTooLarge, "From 0 to "+money(chosen.feeMax)+", 5 % of the line.")
+				}
+				fee = f
+			}
+			chosen.voucher = sg.vippsVoucher(l, chosen.clearing, fee)
+			rec.vippsThrough = chosen.vippsThrough
+		}
+		rec.vatClosing = chosen.vatClosing
 		if chosen.kind == matchTransfer && chosen.otherLine != nil {
 			// Both lines are taken, in id order, before anything is posted.
 			if _, err := q.LockStatementLine(ctx, *chosen.otherLine); err != nil {
@@ -560,6 +666,43 @@ func (s *server) accept(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID
 	return recordMatch(ctx, tx, l.id, rec, by, s.now())
 }
 
+// ruleForMoneyIn refuses a rule's voucher for money in that posts to income
+// or receivables.
+func ruleForMoneyIn(ctx context.Context, q *store.Queries, v *Voucher) error {
+	var ids []int32
+	for _, l := range v.Lines {
+		if l.AccountID != 0 {
+			ids = append(ids, l.AccountID)
+		}
+	}
+	accounts, err := q.AccountsForPosting(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for _, a := range accounts {
+		if customerPaymentAccount(a) {
+			return customerPaymentRefusal()
+		}
+	}
+	return nil
+}
+
+// customerPaymentAccount is whether money in to the account would book a
+// customer's payment: a sales income account (class 3) or receivables.
+func customerPaymentAccount(a store.AccountsForPostingRow) bool {
+	return (a.Kind == "income" && strings.HasPrefix(a.Number, "3")) || deref(a.SystemRole) == roleReceivables
+}
+
+// possibleDuplicateRefusal refuses to match a line flagged as a possible
+// duplicate, or set aside as one.
+func possibleDuplicateRefusal(l stmtLine) error {
+	if l.possibleDuplicateOf == nil && l.state != "duplicate" {
+		return nil
+	}
+	return conflict(codeBankLinePossibleDup, "The line may be a duplicate",
+		"It looks like a line of another origin: confirm or dismiss it as a duplicate first.")
+}
+
 // customerPaymentRefusal is R11's refusal.
 func customerPaymentRefusal() error {
 	return conflict(codeBankCustomerPayment, "A customer payment is registered in Invoices",
@@ -573,7 +716,7 @@ func (s *server) AcceptAccountingBankSuggestion(ctx context.Context, req gen.Acc
 	}
 	by := callerID(ctx)
 	err := s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
-		return s.accept(ctx, tx, q, req.Id, req.Body.Key, by)
+		return s.accept(ctx, tx, q, req.Id, req.Body.Key, acceptOptions{amountCurrency: req.Body.AmountCurrency, fee: req.Body.Fee}, by)
 	})
 	if deadlocked(err) {
 		// Two people matched the two sides of one transfer at once.
@@ -607,7 +750,7 @@ func (s *server) AcceptAccountingBankExact(ctx context.Context, req gen.AcceptAc
 			out.Skipped = append(out.Skipped, id)
 			continue
 		}
-		err = s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error { return s.accept(ctx, tx, q, id, key, by) })
+		err = s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error { return s.accept(ctx, tx, q, id, key, acceptOptions{}, by) })
 		var refused *refusal
 		switch {
 		case errors.As(err, &refused), deadlocked(err):
@@ -627,7 +770,7 @@ func (s *server) exactKey(ctx context.Context, q *store.Queries, id int64) (stri
 	if noRows(err) {
 		return "", nil
 	}
-	if err != nil || row.State != "open" {
+	if err != nil || row.State != "open" || row.PossibleDuplicateOf != nil {
 		return "", err
 	}
 	l := lineFromRow(row)
@@ -635,7 +778,7 @@ func (s *server) exactKey(ctx context.Context, q *store.Queries, id int64) (stri
 	if err != nil {
 		return "", err
 	}
-	sg, err := newSuggester(ctx, q, account, l.booked, l.booked)
+	sg, err := newSuggester(ctx, q, account)
 	if err != nil {
 		return "", err
 	}
@@ -666,6 +809,9 @@ func (s *server) CodeAccountingBankLine(ctx context.Context, req gen.CodeAccount
 		if done, err := alreadyMatched(standing, "code:"+b.Key); done || err != nil {
 			return err
 		}
+		if err := possibleDuplicateRefusal(l); err != nil {
+			return err
+		}
 		if l.customerPayment() {
 			return customerPaymentRefusal()
 		}
@@ -693,17 +839,26 @@ func (s *server) CodeAccountingBankLine(ctx context.Context, req gen.CodeAccount
 			accountIDs = append(accountIDs, cl.AccountId)
 			input.Lines = append(input.Lines, gen.AccountingJournalLineInput(cl))
 		}
-		if l.amount.Sign() > 0 {
-			// Money in coded to a sales income account is a customer payment
-			// that belongs in Invoices (R11).
-			accounts, err := q.AccountsForPosting(ctx, accountIDs)
-			if err != nil {
-				return err
+		accounts, err := q.AccountsForPosting(ctx, accountIDs)
+		if err != nil {
+			return err
+		}
+		byID := map[int32]store.AccountsForPostingRow{}
+		for _, a := range accounts {
+			byID[a.ID] = a
+		}
+		for i, cl := range b.Lines {
+			// A line to receivables or payables settles the open item it
+			// names (R5): never one made up for the party here.
+			a := byID[cl.AccountId]
+			if role := deref(a.SystemRole); (role == roleReceivables || role == rolePayables) && cl.OpenItemId == nil {
+				return invalidField(title, fmt.Sprintf("lines[%d].openItemId", i), codeBankOpenItemRequired,
+					"A line to receivables or payables names the open item it settles.")
 			}
-			for _, a := range accounts {
-				if a.Kind == "income" && strings.HasPrefix(a.Number, "3") {
-					return customerPaymentRefusal()
-				}
+			if l.amount.Sign() > 0 && a.Kind == "income" && strings.HasPrefix(a.Number, "3") {
+				// Money in coded to a sales income account is a customer
+				// payment that belongs in Invoices (R11).
+				return customerPaymentRefusal()
 			}
 		}
 		postings, err := expandJournal(ctx, q, input)
@@ -803,10 +958,14 @@ func (s *server) UndoAccountingBankMatch(ctx context.Context, req gen.UndoAccoun
 }
 
 // undo undoes a line's match on tx: a supplier payment removed through its
-// own path, another voucher reversed and every match standing on it undone
-// (a transfer's other line too), or the links let go.
+// own path (only unlinked when it was removed already), another voucher
+// reversed — and every match standing on any posting of that voucher undone
+// with it, a transfer's other line too — or the links let go. Every line it
+// touches is taken FOR UPDATE, in id order, and must be in an open period.
+// The matches are undone before the voucher is turned back, so the turning
+// back finds none standing (undoBankMatchesOn) and the line carries no note.
 func (s *server) undo(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID int64, by uuid.UUID) error {
-	l, m, err := lineLock(ctx, q, lineID)
+	_, m, err := lineLock(ctx, q, lineID)
 	if err != nil {
 		return err
 	}
@@ -817,11 +976,41 @@ func (s *server) undo(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID i
 	if err != nil {
 		return err
 	}
-	if settings.LockedThrough != nil && !l.booked.After(*settings.LockedThrough) {
-		return conflict(codePeriodLocked, "The period is locked",
-			"The books are locked through "+settings.LockedThrough.Format(time.DateOnly)+"; a match in it stands.")
-	}
 	matches := []store.AccountingStatementMatch{*m}
+	if m.VoucherID != nil {
+		others, err := q.StandingMatchesOnVoucher(ctx, *m.VoucherID)
+		if err != nil {
+			return err
+		}
+		for _, o := range others {
+			if o.ID != m.ID {
+				matches = append(matches, o)
+			}
+		}
+	}
+	slices.SortFunc(matches, func(a, b store.AccountingStatementMatch) int { return cmpInt64(a.StatementLineID, b.StatementLineID) })
+	for _, x := range matches {
+		if x.StatementLineID != lineID {
+			if _, err := q.LockStatementLine(ctx, x.StatementLineID); err != nil {
+				return err
+			}
+		}
+		row, err := q.GetStatementLine(ctx, x.StatementLineID)
+		if err != nil {
+			return err
+		}
+		if settings.LockedThrough != nil && !row.BookedOn.After(*settings.LockedThrough) {
+			return conflict(codePeriodLocked, "The period is locked",
+				"The books are locked through "+settings.LockedThrough.Format(time.DateOnly)+"; a match in it stands.")
+		}
+	}
+	ids := make([]int64, 0, len(matches))
+	for _, x := range matches {
+		ids = append(ids, x.ID)
+		if err := takeBack(ctx, q, x, nil, &by, s.now(), ""); err != nil {
+			return err
+		}
+	}
 	var undoVoucher *int64
 	switch {
 	case m.SupplierPaymentID != nil:
@@ -830,24 +1019,16 @@ func (s *server) undo(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID i
 			return err
 		}
 		posted, err := s.removeSupplierPayment(ctx, tx, q, invoice, *m.SupplierPaymentID, by)
-		if err != nil {
+		var refused *refusal
+		switch {
+		case errors.As(err, &refused) && deref(refused.problem.Code) == codePaymentRemoved:
+			// Removed on the invoice's page already: the links only.
+		case err != nil:
 			return err
+		default:
+			undoVoucher = &posted.ID
 		}
-		undoVoucher = &posted.ID
 	case m.VoucherID != nil:
-		others, err := q.StandingMatchesOfVoucher(ctx, *m.VoucherID)
-		if err != nil {
-			return err
-		}
-		for _, o := range others {
-			if o.ID == m.ID {
-				continue
-			}
-			if _, err := q.LockStatementLine(ctx, o.StatementLineID); err != nil {
-				return err
-			}
-			matches = append(matches, o)
-		}
 		v, err := q.GetVoucher(ctx, *m.VoucherID)
 		if err != nil {
 			return err
@@ -867,16 +1048,107 @@ func (s *server) undo(ctx context.Context, tx pgx.Tx, q *store.Queries, lineID i
 		}
 		undoVoucher = &posted.ID
 	}
-	for _, x := range matches {
-		if err := q.UndoMatch(ctx, store.UndoMatchParams{ID: x.ID, Now: ptr(s.now()), UserID: &by, UndoVoucherID: undoVoucher}); err != nil {
+	if undoVoucher == nil {
+		return nil
+	}
+	return q.SetMatchUndoVoucher(ctx, store.SetMatchUndoVoucherParams{UndoVoucherID: *undoVoucher, Ids: ids})
+}
+
+// takeBack undoes one standing match on tx: the match marked undone, its
+// postings let go, its line open again with the note, if any.
+func takeBack(ctx context.Context, q *store.Queries, m store.AccountingStatementMatch, undoVoucher *int64, by *uuid.UUID, at time.Time, note string) error {
+	if err := q.UndoMatch(ctx, store.UndoMatchParams{ID: m.ID, Now: &at, UserID: by, UndoVoucherID: undoVoucher}); err != nil {
+		return err
+	}
+	if err := q.UnstandMatchPostings(ctx, m.ID); err != nil {
+		return err
+	}
+	if err := q.SetStatementLineState(ctx, store.SetStatementLineStateParams{ID: m.StatementLineID, State: "open"}); err != nil {
+		return err
+	}
+	return q.SetStatementLineNote(ctx, store.SetStatementLineNoteParams{ID: m.StatementLineID, Note: truncate(note, 500)})
+}
+
+// undoBankMatchesOn takes back, on tx, every bank match standing on a
+// voucher being reversed or turned back — a payment removed in Invoices, a
+// supplier payment removed on its page, any reversal — so no line stays
+// matched to a voucher that no longer counts; each line reopens with a note
+// saying why. It takes the voucher FOR UPDATE first, as an accept of its
+// postings does, so the two are ordered. Post calls it for every voucher
+// that reverses or turns back another.
+func undoBankMatchesOn(ctx context.Context, tx pgx.Tx, target, undoVoucher int64, by *uuid.UUID, at time.Time) error {
+	q := store.New(tx)
+	if _, err := q.LockVouchers(ctx, []int64{target}); err != nil {
+		return err
+	}
+	matches, err := q.StandingMatchesOnVoucher(ctx, target)
+	if err != nil || len(matches) == 0 {
+		return err
+	}
+	settings, err := q.GetSettings(ctx)
+	if err != nil {
+		return err
+	}
+	v, err := q.GetVoucher(ctx, target)
+	if err != nil {
+		return err
+	}
+	books := salesBooks{language: settings.ChartLanguage}
+	note := books.text("Opened again: voucher %s, which the match held, was reversed or removed.",
+		"Åpnet igjen: bilag %s, som avstemmingen holdt, ble tilbakeført eller fjernet.", display(v.FiscalYear, v.Number))
+	for _, m := range matches {
+		if _, err := q.LockStatementLine(ctx, m.StatementLineID); err != nil {
 			return err
 		}
-		if err := q.UnstandMatchPostings(ctx, x.ID); err != nil {
-			return err
-		}
-		if err := q.SetStatementLineState(ctx, store.SetStatementLineStateParams{ID: x.StatementLineID, State: "open"}); err != nil {
+		if err := takeBack(ctx, q, m, &undoVoucher, by, at, note); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// cmpInt64 orders two ids.
+func cmpInt64(a, b int64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
+}
+
+// ResolveAccountingBankDuplicate settles a line flagged as a possible
+// duplicate: set aside as the same movement, or kept as its own.
+func (s *server) ResolveAccountingBankDuplicate(ctx context.Context, req gen.ResolveAccountingBankDuplicateRequestObject) (gen.ResolveAccountingBankDuplicateResponseObject, error) {
+	if req.Body == nil {
+		return nil, invalidField("The line cannot be settled", "body", "", "A body is required.")
+	}
+	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
+		l, m, err := lineLock(ctx, q, req.Id)
+		if err != nil {
+			return err
+		}
+		if m != nil || l.possibleDuplicateOf == nil || l.state != "open" {
+			return conflict(codeBankLineNotDuplicate, "The line is not a possible duplicate",
+				"Only a line flagged as one, and not matched, is confirmed or dismissed.")
+		}
+		settings, err := q.GetSettings(ctx)
+		if err != nil {
+			return err
+		}
+		if settings.LockedThrough != nil && !l.booked.After(*settings.LockedThrough) {
+			return conflict(codePeriodLocked, "The period is locked",
+				"The books are locked through "+settings.LockedThrough.Format(time.DateOnly)+".")
+		}
+		return q.ResolveDuplicate(ctx, store.ResolveDuplicateParams{ID: req.Id, Duplicate: req.Body.Duplicate})
+	})
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.lineOne(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	return gen.ResolveAccountingBankDuplicate200JSONResponse(out), nil
 }

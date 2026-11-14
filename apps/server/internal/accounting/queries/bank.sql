@@ -120,11 +120,12 @@ SELECT * FROM accounting.statements WHERE id = sqlc.arg(id);
 -- when it was skipped.
 WITH ins AS (
     INSERT INTO accounting.statement_lines (statement_id, bank_account_id, booked_on, value_on, amount, text, reference,
-        kid, counterparty_name, counterparty_account, bank_id, fingerprint, ordinal, kind, reversal, batch, created_at)
+        kid, counterparty_name, counterparty_account, bank_id, fingerprint, ordinal, kind, reversal, batch, tx_reference,
+        possible_duplicate_of, created_at)
     VALUES (sqlc.arg(statement_id), sqlc.arg(bank_account_id), sqlc.arg(booked_on), sqlc.narg(value_on),
         sqlc.arg(amount)::text::numeric, sqlc.arg(text), sqlc.arg(reference), sqlc.narg(kid), sqlc.arg(counterparty_name),
         sqlc.arg(counterparty_account), sqlc.narg(bank_id), sqlc.arg(fingerprint), sqlc.arg(ordinal), sqlc.arg(kind),
-        sqlc.arg(reversal), sqlc.narg(batch), sqlc.arg(now))
+        sqlc.arg(reversal), sqlc.narg(batch), sqlc.arg(tx_reference), sqlc.narg(possible_duplicate_of), sqlc.arg(now))
     ON CONFLICT DO NOTHING
     RETURNING id
 )
@@ -142,21 +143,22 @@ WHERE l.bank_account_id = sqlc.arg(bank_account_id) AND s.source = 'feed';
 -- the standing match of each.
 SELECT l.id, l.statement_id, l.bank_account_id, l.booked_on, l.value_on, l.amount::text AS amount, l.text, l.reference,
     l.kid, l.counterparty_name, l.counterparty_account, l.bank_id, l.kind, l.reversal, l.batch, l.state,
-    s.source AS statement_source,
+    l.tx_reference, l.possible_duplicate_of, l.note, s.source AS statement_source,
     m.id AS match_id, m.kind AS match_kind, m.reason AS match_reason, m.voucher_id AS match_voucher_id,
-    m.matched_at AS matched_at, m.matched_by_user_id AS matched_by_user_id
+    m.matched_at AS matched_at, m.matched_by_user_id AS matched_by_user_id, count(*) OVER () AS total
 FROM accounting.statement_lines l
 JOIN accounting.statements s ON s.id = l.statement_id
 LEFT JOIN accounting.statement_matches m ON m.statement_line_id = l.id AND m.undone_at IS NULL
 WHERE l.bank_account_id = sqlc.arg(bank_account_id)
   AND l.booked_on BETWEEN sqlc.arg(from_day)::date AND sqlc.arg(to_day)::date
   AND (sqlc.narg(state)::text IS NULL OR l.state = sqlc.narg(state)::text)
-ORDER BY l.booked_on, l.id;
+ORDER BY l.booked_on, l.id
+LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 
 -- name: GetStatementLine :one
 SELECT l.id, l.statement_id, l.bank_account_id, l.booked_on, l.value_on, l.amount::text AS amount, l.text, l.reference,
     l.kid, l.counterparty_name, l.counterparty_account, l.bank_id, l.kind, l.reversal, l.batch, l.state,
-    s.source AS statement_source
+    l.tx_reference, l.possible_duplicate_of, l.note, s.source AS statement_source
 FROM accounting.statement_lines l
 JOIN accounting.statements s ON s.id = l.statement_id
 WHERE l.id = sqlc.arg(id);
@@ -173,7 +175,7 @@ UPDATE accounting.statement_lines SET state = sqlc.arg(state) WHERE id = sqlc.ar
 SELECT l.id, l.bank_account_id, l.booked_on, l.amount::text AS amount, b.ledger_account_id, b.name AS bank_account_name
 FROM accounting.statement_lines l
 JOIN accounting.bank_accounts b ON b.id = l.bank_account_id
-WHERE l.bank_account_id <> sqlc.arg(bank_account_id) AND l.state = 'open'
+WHERE l.bank_account_id <> sqlc.arg(bank_account_id) AND l.state = 'open' AND l.possible_duplicate_of IS NULL
   AND l.amount = sqlc.arg(amount)::text::numeric
   AND l.booked_on BETWEEN sqlc.arg(from_day)::date AND sqlc.arg(to_day)::date
 ORDER BY abs(l.booked_on - sqlc.arg(near)::date), l.id
@@ -190,9 +192,10 @@ SELECT * FROM accounting.statement_matches WHERE voucher_id = sqlc.arg(voucher_i
 
 -- name: InsertMatch :one
 INSERT INTO accounting.statement_matches (statement_line_id, kind, request_key, reason, voucher_id, supplier_payment_id,
-    bank_rule_id, bank_rule_version, matched_at, matched_by_user_id)
+    bank_rule_id, bank_rule_version, vat_closing_id, vipps_through, matched_at, matched_by_user_id)
 VALUES (sqlc.arg(statement_line_id), sqlc.arg(kind), sqlc.arg(request_key), sqlc.arg(reason), sqlc.narg(voucher_id),
-    sqlc.narg(supplier_payment_id), sqlc.narg(bank_rule_id), sqlc.narg(bank_rule_version), sqlc.arg(now), sqlc.arg(user_id))
+    sqlc.narg(supplier_payment_id), sqlc.narg(bank_rule_id), sqlc.narg(bank_rule_version), sqlc.narg(vat_closing_id),
+    sqlc.narg(vipps_through), sqlc.arg(now), sqlc.arg(user_id))
 RETURNING id;
 
 -- name: InsertMatchPosting :exec
@@ -221,9 +224,10 @@ ORDER BY mp.match_id, v.voucher_date, p.id;
 -- UnmatchedPostings is the postings on a ledger account dated in the window
 -- that no standing match holds, with their vouchers and the bank reference
 -- of a payment from Invoices. A reversed voucher's postings and a reversal's
--- are left out: they cancel each other.
+-- are left out: they cancel each other; so are a payment removed in Invoices
+-- and its removal.
 SELECT p.id, p.amount::text AS amount, p.description AS posting_text, v.id AS voucher_id, v.fiscal_year, v.number,
-    v.voucher_date, v.description, v.kind, v.source_module, v.source_kind, v.source_id,
+    v.voucher_date, v.description, v.kind, v.rule, v.source_module, v.source_kind, v.source_id,
     r.reference AS bank_reference, r.source AS bank_source, r.bank_account AS bank_account
 FROM accounting.postings p
 JOIN accounting.vouchers v ON v.id = p.voucher_id
@@ -232,6 +236,10 @@ WHERE p.account_id = sqlc.arg(account_id)
   AND v.voucher_date BETWEEN sqlc.arg(from_day)::date AND sqlc.arg(to_day)::date
   AND v.reverses_voucher_id IS NULL
   AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE v.source_kind IS NOT NULL AND rv.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND rv.source_kind = v.source_kind || '_removed' AND rv.source_id = v.source_id)
+  AND NOT (v.source_kind LIKE '%\_removed' AND EXISTS (SELECT 1 FROM accounting.vouchers ov WHERE ov.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND ov.source_kind = left(v.source_kind, -8) AND ov.source_id = v.source_id))
   AND NOT EXISTS (SELECT 1 FROM accounting.statement_match_postings mp WHERE mp.posting_id = p.id AND mp.standing)
 ORDER BY v.voucher_date, p.id
 LIMIT 2000;
@@ -244,6 +252,10 @@ WHERE p.account_id = sqlc.arg(account_id) AND v.voucher_date <= sqlc.arg(through
   AND v.voucher_date >= sqlc.arg(since)::date
   AND v.reverses_voucher_id IS NULL
   AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE v.source_kind IS NOT NULL AND rv.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND rv.source_kind = v.source_kind || '_removed' AND rv.source_id = v.source_id)
+  AND NOT (v.source_kind LIKE '%\_removed' AND EXISTS (SELECT 1 FROM accounting.vouchers ov WHERE ov.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND ov.source_kind = left(v.source_kind, -8) AND ov.source_id = v.source_id))
   AND NOT EXISTS (SELECT 1 FROM accounting.statement_match_postings mp WHERE mp.posting_id = p.id AND mp.standing);
 
 -- name: PostingsOnAccount :many
@@ -275,7 +287,7 @@ WITH base AS (
 )
 SELECT EXISTS (SELECT 1 FROM base)::boolean AS has_balance,
     (coalesce((SELECT closing_balance FROM base), 0) + coalesce((SELECT sum(l.amount) FROM accounting.statement_lines l
-        WHERE l.bank_account_id = sqlc.arg(bank_account_id) AND l.booked_on <= sqlc.arg(through)::date
+        WHERE l.bank_account_id = sqlc.arg(bank_account_id) AND l.booked_on <= sqlc.arg(through)::date AND l.state <> 'duplicate'
           AND l.booked_on > coalesce((SELECT period_to FROM base), '-infinity'::date)), 0))::text AS balance;
 
 -- name: OpenLinesThrough :one
@@ -285,7 +297,8 @@ WHERE bank_account_id = sqlc.arg(bank_account_id) AND state = 'open' AND booked_
 -- name: OpenSupplierInvoices :many
 -- OpenSupplierInvoices is the posted supplier invoices with money left owed,
 -- with the supplier's bank account: what an outgoing line may pay.
-SELECT si.id, si.supplier_id, si.supplier_number, si.kid, si.reference, si.currency, si.due_date, si.open_item_id,
+SELECT si.id, si.supplier_id, si.supplier_number, si.kid, si.reference, si.currency, si.exchange_rate::text AS exchange_rate,
+    si.due_date, si.open_item_id,
     s.name AS supplier_name, s.bank_account AS supplier_bank_account, b.balance::text AS balance
 FROM accounting.supplier_invoices si
 JOIN accounting.suppliers s ON s.id = si.supplier_id
@@ -297,12 +310,14 @@ LIMIT 500;
 
 -- name: ClosedTermSettlements :many
 -- ClosedTermSettlements is each standing closing's settlement voucher's
--- posting on the VAT settlement account: what a term's payment or refund is.
-SELECT t.year, t.term, t.period_end, p.amount::text AS amount
+-- posting on the VAT settlement account — what a term's payment or refund
+-- is — that no standing bank match has paid.
+SELECT t.year, t.term, t.period_end, c.id AS closing_id, p.amount::text AS amount
 FROM accounting.vat_terms t
 JOIN accounting.vat_term_closings c ON c.id = t.current_closing_id
 JOIN accounting.postings p ON p.voucher_id = c.settlement_voucher_id
 WHERE p.account_id = sqlc.arg(account_id)
+  AND NOT EXISTS (SELECT 1 FROM accounting.statement_matches m WHERE m.vat_closing_id = c.id AND m.undone_at IS NULL)
 ORDER BY t.period_end DESC
 LIMIT 12;
 
@@ -391,3 +406,111 @@ SELECT supplier_invoice_id FROM accounting.supplier_payments WHERE id = sqlc.arg
 -- ExistingBankIDs is which of the bank's ids the account has a line of.
 SELECT bank_id::text AS bank_id FROM accounting.statement_lines
 WHERE bank_account_id = sqlc.arg(bank_account_id) AND bank_id = ANY(sqlc.arg(ids)::text[]);
+
+-- name: StandingMatchesOnVoucher :many
+-- StandingMatchesOnVoucher is every standing match that holds a posting of
+-- the voucher, or that posted it.
+SELECT DISTINCT m.* FROM accounting.statement_matches m
+WHERE m.undone_at IS NULL AND (m.voucher_id = sqlc.arg(voucher_id)::bigint OR EXISTS (
+    SELECT 1 FROM accounting.statement_match_postings mp JOIN accounting.postings p ON p.id = mp.posting_id
+    WHERE mp.match_id = m.id AND mp.standing AND p.voucher_id = sqlc.arg(voucher_id)::bigint))
+ORDER BY m.statement_line_id;
+
+-- name: LockVouchers :many
+-- LockVouchers takes the vouchers FOR UPDATE, in id order: what an accept of
+-- their postings and a reversal of one of them both take, so the two are
+-- ordered.
+SELECT id FROM accounting.vouchers WHERE id = ANY(sqlc.arg(ids)::bigint[]) ORDER BY id FOR UPDATE;
+
+-- name: VouchersTurnedBack :one
+-- VouchersTurnedBack counts the vouchers named that a voucher reverses, or
+-- that a removal in Invoices turns back.
+SELECT count(*)::int AS n FROM accounting.vouchers v
+WHERE v.id = ANY(sqlc.arg(ids)::bigint[]) AND (
+    EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+    OR EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE v.source_kind IS NOT NULL AND rv.source_module = 'invoices' AND v.source_module = 'invoices'
+        AND rv.source_kind = v.source_kind || '_removed' AND rv.source_id = v.source_id));
+
+-- name: SetMatchUndoVoucher :exec
+UPDATE accounting.statement_matches SET undo_voucher_id = sqlc.arg(undo_voucher_id)::bigint WHERE id = ANY(sqlc.arg(ids)::bigint[]);
+
+-- name: SetStatementLineNote :exec
+UPDATE accounting.statement_lines SET note = sqlc.arg(note) WHERE id = sqlc.arg(id);
+
+-- name: BankAccountInUse :one
+-- BankAccountInUse is whether the account has statement lines, or a payment
+-- was posted through its number.
+SELECT (EXISTS (SELECT 1 FROM accounting.statement_lines WHERE bank_account_id = sqlc.arg(id)::bigint)
+    OR EXISTS (SELECT 1 FROM accounting.voucher_bank_refs WHERE bank_account = sqlc.arg(account_number)::text))::boolean AS used;
+
+-- name: LatestCovered :one
+-- LatestCovered is the last day the account's statements cover: its latest
+-- line's day or statement's end, '' with none.
+SELECT coalesce(greatest(
+    (SELECT max(booked_on) FROM accounting.statement_lines WHERE bank_account_id = sqlc.arg(id)::bigint),
+    (SELECT max(period_to) FROM accounting.statements WHERE bank_account_id = sqlc.arg(id)::bigint))::text, '')::text AS day;
+
+-- name: ProbableDuplicate :one
+-- ProbableDuplicate is an existing line of the account from another source
+-- on the same day of the same amount with the same KID, counterparty account
+-- or text: the same movement read twice, perhaps.
+SELECT l.id FROM accounting.statement_lines l
+JOIN accounting.statements s ON s.id = l.statement_id
+WHERE l.bank_account_id = sqlc.arg(bank_account_id) AND l.booked_on = sqlc.arg(booked_on)
+  AND l.amount = sqlc.arg(amount)::text::numeric AND s.source <> sqlc.arg(source)::text AND l.state <> 'duplicate'
+  AND ((sqlc.arg(kid)::text <> '' AND l.kid = sqlc.arg(kid)::text)
+    OR (sqlc.arg(counterparty_account)::text <> '' AND l.counterparty_account = sqlc.arg(counterparty_account)::text)
+    OR (sqlc.arg(text_key)::text <> '' AND lower(regexp_replace(l.text, '[^[:alnum:]]+', '', 'g')) = sqlc.arg(text_key)::text))
+ORDER BY l.id LIMIT 1;
+
+-- name: ResolveDuplicate :exec
+-- ResolveDuplicate settles a possible duplicate: the same movement (state
+-- duplicate) or another (the flag cleared).
+UPDATE accounting.statement_lines
+SET state = CASE WHEN sqlc.arg(duplicate)::boolean THEN 'duplicate' ELSE state END,
+    possible_duplicate_of = CASE WHEN sqlc.arg(duplicate)::boolean THEN possible_duplicate_of ELSE NULL END
+WHERE id = sqlc.arg(id);
+
+-- name: VippsSettledThrough :one
+-- VippsSettledThrough is the last settlement day a standing Vipps payout was
+-- read through, '' with none.
+SELECT coalesce(max(vipps_through)::text, '')::text AS day FROM accounting.statement_matches
+WHERE kind = 'vipps_payout' AND undone_at IS NULL;
+
+-- name: ClearingDays :many
+-- ClearingDays is the money each day brought onto the clearing account — its
+-- debits, reversed vouchers and reversals left out — after one day and before
+-- another.
+SELECT v.voucher_date AS day, sum(p.amount)::text AS amount
+FROM accounting.postings p JOIN accounting.vouchers v ON v.id = p.voucher_id
+WHERE p.account_id = sqlc.arg(account_id) AND p.amount > 0
+  AND v.voucher_date > sqlc.arg(after)::date AND v.voucher_date < sqlc.arg(before)::date
+  AND v.reverses_voucher_id IS NULL
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+GROUP BY v.voucher_date ORDER BY v.voucher_date;
+
+-- name: CustomerItemOfAmount :one
+-- CustomerItemOfAmount is whether a customer's open item is owed exactly the
+-- amount.
+SELECT EXISTS (SELECT 1 FROM accounting.open_items o
+    WHERE o.kind = 'customer' AND (SELECT coalesce(sum(p.amount), 0) FROM accounting.postings p WHERE p.open_item_id = o.id)
+        = sqlc.arg(amount)::text::numeric)::boolean AS found;
+
+-- name: UnmatchedPostingsPage :many
+-- UnmatchedPostingsPage is the first of the ledger account's postings dated
+-- in the period that no standing match holds.
+SELECT p.id, p.amount::text AS amount, p.description AS posting_text, v.id AS voucher_id, v.fiscal_year, v.number,
+    v.voucher_date, v.description, v.kind
+FROM accounting.postings p
+JOIN accounting.vouchers v ON v.id = p.voucher_id
+WHERE p.account_id = sqlc.arg(account_id)
+  AND v.voucher_date BETWEEN sqlc.arg(from_day)::date AND sqlc.arg(to_day)::date
+  AND v.reverses_voucher_id IS NULL
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE rv.reverses_voucher_id = v.id)
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers rv WHERE v.source_kind IS NOT NULL AND rv.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND rv.source_kind = v.source_kind || '_removed' AND rv.source_id = v.source_id)
+  AND NOT (v.source_kind LIKE '%\_removed' AND EXISTS (SELECT 1 FROM accounting.vouchers ov WHERE ov.source_module = 'invoices' AND v.source_module = 'invoices'
+      AND ov.source_kind = left(v.source_kind, -8) AND ov.source_id = v.source_id))
+  AND NOT EXISTS (SELECT 1 FROM accounting.statement_match_postings mp WHERE mp.posting_id = p.id AND mp.standing)
+ORDER BY v.voucher_date, p.id
+LIMIT sqlc.arg(row_limit);
