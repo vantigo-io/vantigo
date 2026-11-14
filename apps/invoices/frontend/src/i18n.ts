@@ -484,6 +484,7 @@ export const invoicesCatalog = {
     "refusal.write_off_recovered":
       "Money was recovered after the write-off. Remove those payments first, undo the write-off, and register them as payments.",
     "refusal.recovery_exceeds_written_off": "Only {{openAmount}} of the write-off is left to recover.",
+    "refusal.invoice_written_off": "This invoice is written off. Undo the write-off first, then credit it.",
     "refusal.customer_anonymised": "The customer has been anonymised and is not contacted again.",
     "refusal.no_invoice_email": "The customer has no invoice e-mail. Enter an address to send to.",
     "refusal.mail_unavailable": "Sending is disabled in Invoice settings, or the chosen channel cannot send.",
@@ -1302,6 +1303,7 @@ export const invoicesCatalog = {
     "bank.reason.account_mismatch": "Paid into another account",
     "bank.reason.possible_duplicate": "A possible duplicate",
     "bank.reason.payment_removed": "Its payment was removed",
+    "bank.reason.invoice_written_off": "The invoice is written off: register it as recovered",
     "bank.resolution.applied": "Applied to invoices",
     "bank.resolution.not_customer_payment": "Not a customer payment",
     "bank.resolution.reversal_handled": "Reversal handled",
@@ -2774,6 +2776,7 @@ export const invoicesCatalog = {
     "refusal.write_off_recovered":
       "Det er innbetalt penger etter avskrivningen. Fjern de innbetalingene først, angre avskrivningen og registrer dem som vanlige betalinger.",
     "refusal.recovery_exceeds_written_off": "Det gjenstår bare {{openAmount}} av avskrivningen å kreve inn.",
+    "refusal.invoice_written_off": "Denne fakturaen er avskrevet. Angre avskrivningen først, og krediter den så.",
     "refusal.customer_anonymised": "Kunden er anonymisert, og det sendes ikke mer til den.",
     "refusal.no_invoice_email": "Kunden har ingen faktura-e-post. Skriv inn en adresse å sende til.",
     "refusal.mail_unavailable":
@@ -3607,6 +3610,7 @@ export const invoicesCatalog = {
     "bank.reason.account_mismatch": "Betalt til en annen konto",
     "bank.reason.possible_duplicate": "Et mulig duplikat",
     "bank.reason.payment_removed": "Betalingen ble fjernet",
+    "bank.reason.invoice_written_off": "Fakturaen er avskrevet: registrer den som innbetalt etter avskrivning",
     "bank.resolution.applied": "Ført mot fakturaer",
     "bank.resolution.not_customer_payment": "Ikke en kundebetaling",
     "bank.resolution.reversal_handled": "Tilbakeføringen er behandlet",
