@@ -62,6 +62,7 @@ export const accounts = (): AccountingAccount[] => [
   account(1002, "1920", "Bankinnskudd", { kind: "asset", systemRole: "bank" }),
   account(1003, "6300", "Leie av lokaler", { defaultTaxCodeId: 2001 }),
   account(1004, "2710", "Inngående merverdiavgift, alminnelig sats", { kind: "liability" }),
+  account(1005, "3000", "Salgsinntekt, avgiftspliktig", { kind: "income" }),
 ];
 
 export const taxCodes = (): AccountingTaxCode[] => [
@@ -141,6 +142,9 @@ export function posting(
     projectName: null,
     description: "",
     taxSpecification: null,
+    postingRuleId: null,
+    postingRuleName: null,
+    postingRuleVersion: null,
     ...change,
   };
 }
@@ -241,6 +245,8 @@ export const unposted = (change: Partial<AccountingUnposted> = {}): AccountingUn
   lastTriedAt: STAMP,
   postedAt: null,
   postedVoucher: null,
+  invoiceId: 9001,
+  waitingOn: null,
   ...change,
 });
 
@@ -278,8 +284,10 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
     if (method === "GET" && path === "/accounts") return jsonResponse(200, { items: state.accounts });
     if (method === "GET" && path === "/tax-codes") return jsonResponse(200, { items: state.taxCodes });
     if (method === "GET" && path === "/grouping-codes") return jsonResponse(200, { year: 2026, items: [] });
-    if (method === "GET" && path === "/vouchers")
-      return jsonResponse(200, { items: state.vouchers, total: state.vouchers.length });
+    if (method === "GET" && path === "/vouchers") {
+      const limit = Number(url.searchParams.get("limit") ?? state.vouchers.length);
+      return jsonResponse(200, { items: state.vouchers.slice(0, limit), total: state.vouchers.length });
+    }
     const one = /^\/vouchers\/(\d+)$/.exec(path);
     if (method === "GET" && one) {
       const found = state.vouchers.find((v) => v.id === Number(one[1]));

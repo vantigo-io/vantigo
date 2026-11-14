@@ -195,7 +195,7 @@ export interface paths {
         };
         /**
          * List the posting rules
-         * @description Seeds the default rules first when the books were set up before they existed.
+         * @description The rules in force, in precedence order. It writes nothing; the default rules are seeded by Set up the books, and for books set up before they existed by the catch-up worker.
          */
         get: operations["listAccountingPostingRules"];
         put?: never;
@@ -218,7 +218,10 @@ export interface paths {
         /** Change a posting rule's name or account */
         put: operations["updateAccountingPostingRule"];
         post?: never;
-        /** Delete a posting rule */
+        /**
+         * Archive a posting rule
+         * @description Archives a rule that is not a default one (R15). It matches nothing from now on and is no longer listed; its versions are kept, and every posting it placed still names it. A second archive is a 404.
+         */
         delete: operations["deleteAccountingPostingRule"];
         options?: never;
         head?: never;
@@ -848,6 +851,18 @@ export interface components {
             openItemId: number | null;
             /** Format: int32 */
             projectId: number | null;
+            /**
+             * Format: int32
+             * @description On a revenue line, the posting rule that placed it (A14, R15); null on every other line.
+             */
+            postingRuleId: number | null;
+            /** @description The rule's name in the version that placed the line, whatever it is called now or whether it is archived. */
+            postingRuleName: string | null;
+            /**
+             * Format: int32
+             * @description The version of the rule that placed the line.
+             */
+            postingRuleVersion: number | null;
             projectName: string | null;
             /** Format: int64 */
             supplierId: number | null;
@@ -860,7 +875,7 @@ export interface components {
             /** @description The VAT return's specification line the posting belongs to — tapPåKrav for the VAT a konstatert loss takes back (R4); null for an ordinary posting. */
             taxSpecification: string | null;
         };
-        /** @description A posting rule (A14): the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its account; a voucher names the rule and version that made each revenue line, and a change affects future vouchers only. */
+        /** @description A posting rule (A14): the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its name or account (R15), each kept; a sales rule credits an income account; a revenue line's posting names the rule and the version that placed it, and a change affects future vouchers only. A rule is archived, never deleted: an archived one matches nothing and is not listed, and what it placed still names it. */
         AccountingPostingRule: {
             /** Format: int32 */
             accountId: number;
@@ -1120,7 +1135,7 @@ export interface components {
         };
         /** @enum {string} */
         AccountingTaxRole: "base" | "tax";
-        /** @description A source fact that could not be posted (A15), under Needs attention: the stream and position it was read at, its source key, what it is about, why — tax_code_unknown (the document's standard tax code is not in the books, or inactive), account_inactive or account_unknown (a rule's or a role's account), unknown_kind (a fact of a kind this version does not post), document_unknown (the invoice a fact is about is not in the journal), or an engine refusal's code — and, once a retry posted it, the voucher. */
+        /** @description A source fact that could not be posted (A15), under Needs attention: the stream and position it was read at, its source key, what it is about, why — tax_code_unknown (the document's standard tax code is not in the books, or inactive), account_inactive or account_unknown (a rule's or a role's account), account_kind_mismatch (a rule's account is not an income account), waiting_on (another row of the same invoice is under Needs attention and was met first: this one waits behind it, waitingOn names it, and a retry that posts that row retries this one after it — R15), unknown_kind (a fact of a kind this version does not post), document_unknown (the invoice a fact is about is not in the journal), or an engine refusal's code — and, once a retry posted it, the voucher. */
         AccountingUnposted: {
             amount: string | null;
             /** Format: int32 */
@@ -1137,6 +1152,11 @@ export interface components {
             documentNumber: string | null;
             /** Format: date */
             factDate: string | null;
+            /**
+             * Format: int64
+             * @description The invoice in Invoices the fact is about — a credit note's, the invoice it credits.
+             */
+            invoiceId: number | null;
             /** Format: date-time */
             firstSeenAt: string;
             /** Format: int64 */
@@ -1151,6 +1171,11 @@ export interface components {
             reason: string;
             source: components["schemas"]["AccountingSource"];
             stream: string;
+            /**
+             * Format: int64
+             * @description With reason waiting_on, the row under Needs attention this one waits behind.
+             */
+            waitingOn: number | null;
         };
         AccountingUnpostedList: {
             items: components["schemas"]["AccountingUnposted"][];
@@ -2164,7 +2189,7 @@ export interface operations {
                     "application/json": components["schemas"]["AccountingPostingRule"];
                 };
             };
-            /** @description Bad Request — field errors; account_unknown, account_inactive. */
+            /** @description Bad Request — field errors; account_unknown, account_inactive, account_kind_mismatch (a sales rule's account is not an income account). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2226,7 +2251,7 @@ export interface operations {
                     "application/json": components["schemas"]["AccountingPostingRule"];
                 };
             };
-            /** @description Bad Request — field errors; account_unknown, account_inactive. */
+            /** @description Bad Request — field errors; account_unknown, account_inactive, account_kind_mismatch (a sales rule's account is not an income account). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2899,7 +2924,7 @@ export interface operations {
                 accountId?: number;
                 customerId?: number;
                 supplierId?: number;
-                /** @description The system vouchers of a document in Invoices (an invoice, its credit notes, payments and write-offs). */
+                /** @description The system vouchers of a document in Invoices — an invoice's own, its credit notes', payments' and write-offs'; a credit note's own voucher, which belongs to the invoice it credits, too. */
                 sourceDocumentId?: number;
                 /** @description Matched against the description, a posting's text and the number (2027-000123). */
                 q?: string;

@@ -1,10 +1,11 @@
 import { Alert, Badge, Button, Group, Modal, NumberInput, Select, Stack, Table, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconArchive, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
+  type AccountingAccount,
   type AccountingPostingRule,
   type AccountingRuleMatch,
   createPostingRule,
@@ -62,11 +63,12 @@ const RulesTable = ({ canClose }: { canClose: boolean }) => {
   const [editing, setEditing] = useState<AccountingPostingRule | null>(null);
   const [adding, setAdding] = useState(false);
   const queryClient = useQueryClient();
+  // A rule is archived, never deleted (R15): what it placed keeps naming it.
   const remove = useMutation({
     mutationFn: (id: number) => deletePostingRule(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY, "posting-rules"] });
-      notifications.show({ color: "green", message: t("deleted") });
+      notifications.show({ color: "green", message: t("archived") });
     },
     onError: (error) => notifications.show({ color: "red", message: refusalMessage(t, error) }),
   });
@@ -129,12 +131,12 @@ const RulesTable = ({ canClose }: { canClose: boolean }) => {
                       size="compact-sm"
                       variant="subtle"
                       color="red"
-                      aria-label={t("deleteRule", { name: r.name })}
-                      leftSection={<IconTrash size={14} />}
+                      aria-label={t("archiveRule", { name: r.name })}
+                      leftSection={<IconArchive size={14} />}
                       loading={remove.isPending && remove.variables === r.id}
                       onClick={() => remove.mutate(r.id)}
                     >
-                      {t("delete")}
+                      {t("archive")}
                     </Button>
                   )}
                 </Table.Td>
@@ -150,6 +152,9 @@ const RulesTable = ({ canClose }: { canClose: boolean }) => {
 };
 
 const matches: AccountingRuleMatch[] = ["line_kind", "tax_category", "tax_code"];
+
+/** A sales rule credits an income account (R15): the picker offers no other. */
+const isIncome = (a: AccountingAccount) => a.kind === "income";
 
 /** A new rule: its name, what it matches and the account its lines go to. */
 const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
@@ -227,7 +232,14 @@ const AddRuleModal = ({ onClose }: { onClose: () => void }) => {
             onChange={setTaxCode}
           />
         )}
-        <AccountSelect label={t("account")} required value={account} onChange={setAccount} />
+        <AccountSelect
+          label={t("account")}
+          description={t("ruleIncomeHint")}
+          required
+          accountFilter={isIncome}
+          value={account}
+          onChange={setAccount}
+        />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             {t("cancel")}
@@ -270,7 +282,14 @@ const EditRuleModal = ({ rule, onClose }: { rule: AccountingPostingRule; onClose
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
-        <AccountSelect label={t("account")} required value={account} onChange={setAccount} />
+        <AccountSelect
+          label={t("account")}
+          description={t("ruleIncomeHint")}
+          required
+          accountFilter={isIncome}
+          value={account}
+          onChange={setAccount}
+        />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             {t("cancel")}
