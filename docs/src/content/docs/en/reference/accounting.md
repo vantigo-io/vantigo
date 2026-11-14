@@ -65,9 +65,11 @@ it. The Assistant never uploads or downloads an attachment or a CSV
 other write — a manual journal, a reversal, a settlement, the opening balances and the
 lock — is called only after the person confirmed it (`confirm`, S4's default for a write;
 `internal/integration`'s contract test pins those five), and the opening and the lock
-need the person's own `accounting:close`. A SAF-T export asked for and the books set up from
-a SAF-T file are confirmed the same way; the SAF-T files — an export's, an upload, an
-imported file's download — are never the Assistant's.
+need the person's own `accounting:close`. The books set up from a SAF-T file are confirmed
+the same way. A SAF-T export asked for is a confirmed write by the contract, and since it
+names the sensitive `accounting:export` the default gate closes it, as it closes every
+sensitive operation; the SAF-T files — an export's, an upload, an imported file's download
+— are never the Assistant's.
 
 ## Set up the books
 
