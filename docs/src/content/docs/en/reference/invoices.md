@@ -1917,7 +1917,8 @@ line), `reverse_charge_needs_org_number`, `vat_codes_ambiguous` and, under a KID
 a final settlement `deduction_exceeds_invoice` (with `linePosition`) and
 `invoice_total_not_positive` (also for an invoice whose energy correction lines take it to zero or below) — a deduction line is exempt from the two VAT code checks,
 taxed at its a-konto's snapshot; for a credit note
-`credit_exceeds_line` (with `linePosition`), `credit_exceeds_invoice`,
+`invoice_written_off` (a write-off of its original stands, read right after the original's
+lock), `credit_exceeds_line` (with `linePosition`), `credit_exceeds_invoice`,
 `credit_total_negative` (its gross below zero) and `invoice_deducted` (an a-konto credited
 past what a settlement left of it); last, for an
 invoice that bills work, `invoice_changed` (its work changed since the reads before the
@@ -2120,7 +2121,12 @@ note skips every customer gate, the VAT active and validity checks and the regis
 rules — it reverses the original's treatment at the original's rates — and keeps the
 issue-date rule, `seller_incomplete`, `no_lines`, `delivery_date_missing` and both
 caps. It has no due date and no payment block. Refusals: `invoice_draft`,
-`credit_note_not_creditable`, `invoice_fully_credited`. The cap is common practice, not
+`credit_note_not_creditable`, `invoice_fully_credited`, and **`invoice_written_off`
+while a write-off of the invoice stands** (accounting design R15): the draft's creation,
+each save of a credit-note draft and its issue are refused, each judged under the
+original's lock — the save takes it after the draft's, as the issue does — since the
+customer would otherwise be shown a refund of money never paid and a ledger would take the
+VAT back twice. Undo the write-off first, then credit. The cap is common practice, not
 law. A credit note adds no work, and one that returns a line of work in full releases
 that line's work in its issue ([Release on credit](#release-on-credit)).
 
@@ -2348,9 +2354,11 @@ less the live recoveries, with `openAmount` the room left. A recovery is not par
 open amount — the write-off closed that — so the invoice stays `written_off`; it is
 removed like any payment. A recovery is always a person's: a bank line paying a
 written-off invoice — an `ocr` or `camt054` file's, or a `feed` line the bank feed read,
-judged by the same matching — finds nothing open and is queued `invoice_settled` (or pays
-the invoice's outstanding charges, as on any settled invoice), never registered as
-recovered; a person registers the money with `kind: recovered`.
+judged by the same matching — is queued **`invoice_written_off`** (R15) and registers
+nothing, neither a payment nor a charge payment of the charges a letter claimed; a person
+registers the money with `kind: recovered` and dismisses the line. **No credit note while
+it stands**: a credit note of a written-off invoice is refused `invoice_written_off`
+([Credit notes](#credit-notes)).
 
 **The database keeps it.** `invoices.write_offs` (migration 00182) is immutable but for
 the undo (`tr_write_offs_immutable`), belongs to an issued invoice
@@ -3653,6 +3661,7 @@ decides:
 | Judged | Result |
 | --- | --- |
 | credited > 0 and credited ≥ gross | queued `invoice_credited` |
+| a write-off of the invoice stands | queued `invoice_written_off` |
 | booked before the invoice's issue day | queued `paid_before_issue` |
 | open > 0 and amount ≤ open | a payment of the amount |
 | open > 0 and amount ≤ open + charges | a payment of the open amount and a charge payment of the rest |
@@ -3719,6 +3728,7 @@ D5): an `exception` with its reason, or a `duplicate` row. Every queue operation
 | `account_mismatch` | paid into another account than the invoice printed | apply after checking, or dismiss |
 | `possible_duplicate` | the account's cutover, or the soft key — the same payment from another file | confirm it a duplicate, or apply it as a distinct payment |
 | `payment_removed` | a matched line whose payments were all removed, reopened | apply again, or dismiss |
+| `invoice_written_off` | a write-off stands on the KID's invoice (accounting design R15) | register the money on the invoice as a recovered payment, then dismiss the line with a note |
 | (status `duplicate`) | the fingerprint's twin, kept as a row | confirm it, or treat it as distinct |
 
 **The list.** `GET /invoices/bank-transactions` pages every line — `status`, `reason`,
@@ -5759,13 +5769,20 @@ after them again until a page comes back short; a page is at most 500
 - **`Document(ctx, id)`** — the issued invoice or credit note with that id, as `Documents`
   answers one, read by its key; nil when there is none or it is a draft. A ledger reads a
   written-off invoice's VAT summaries through it, and a fact it retries.
+- **`CreditNotesOf(ctx, invoiceID)`** — the issued credit notes of that invoice, as
+  `Documents` answers them, in number order; none when it has none. A ledger shares a
+  write-off's VAT correction over what the invoice's summaries less its credit notes'
+  leave (accounting design R15).
 - **`Facts(ctx, afterSeq, limit)`** — [the fact log](#the-fact-log) after `afterSeq`, in
   seq order, each joined to what it is about: kind, seq, the payment's, charge
   payment's or write-off's id, the business day, the invoice's id, number and customer,
   the amount in NOK, the source (`manual`, `ocr`, `camt054`, `vipps`, `bank_feed`), the
   receiving account number when it came from a bank line — a file's or the bank feed's
   (`""` otherwise), and on a write-off's fact and a recovered payment's the write-off
-  (`WriteOff`: its id, reason, VAT-correction flag and amount in NOK). A `bank_feed`
+  (`WriteOff`: its id, reason, VAT-correction flag and amount in NOK, and on a recovered
+  payment's fact `RecoveredBeforeNOK` — the amounts of the write-off's recovered payments
+  registered at a lower seq and not removed at a lower seq, "0.00" on every other fact —
+  so a ledger scales each recovery cumulatively). A `bank_feed`
   payment the feed matched has no registering user and makes its facts like any other.
   A charge payment's fact, and its
   removal's, carries its amount and nothing more: it has no parts. A charge payment pays
@@ -6008,10 +6025,10 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /` | | 400 paging, status, kind, state, `from` after `to` (`projectId` filters on the document's project) |
 | `POST /` | `invoices:create` | 400 on the field (`sources` and `refreshSources` included; a deduction line's `quantity`, `unitPrice`, `discountPercent`, `deductsInvoiceId`, `vatCodeId`, `sources`); 409 the customer gates, `deduction_duplicated` (with `linePosition`) |
 | `GET /{id}` | | 404 (an invoice draft's work is judged fresh — `source_changed`, `source_not_invoiceable` — only for a caller holding `invoices:create`) |
-| `PUT /{id}` | `invoices:create` | The body's phase 3 fields: each line's `sources` (`[{kind, id}]`, required on a draft that holds work) and `deductsInvoiceId`, `refreshSources` and `timesheet`. 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft; a settlement's lines not consecutive (`lines[i].sources`), a discount on a correction line, a unit price past its decimals (eight on a line billing a settlement or an order allocation, four otherwise; a credit line's past its original's), more than 500 lines after a refresh rebuilt them (`lines`)); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`), `line_holds_order_allocation` (with `linePosition`, `sourceKind`, `sourceId`) |
+| `PUT /{id}` | `invoices:create` | The body's phase 3 fields: each line's `sources` (`[{kind, id}]`, required on a draft that holds work) and `deductsInvoiceId`, `refreshSources` and `timesheet`. 404; 400 (a line's `sources` against the work the draft holds, at most 5 000; a deduction line's fields as on `POST /`; on a credit note a line's `deductsInvoiceId`, or a quantity of the other sign than the line it credits; `timesheet: true` on a credit-note draft; a settlement's lines not consecutive (`lines[i].sources`), a discount on a correction line, a unit price past its decimals (eight on a line billing a settlement or an order allocation, four otherwise; a credit line's past its original's), more than 500 lines after a refresh rebuilt them (`lines`)); 409 `invoice_issued`, the customer gates, a stale revision, `invoice_changed` (`refreshSources`), `deduction_duplicated` (with `linePosition`), `line_holds_order_allocation` (with `linePosition`, `sourceKind`, `sourceId`), on a credit-note draft `invoice_written_off` (under the original's lock) |
 | `DELETE /{id}` | `invoices:create` | 404; 409 `invoice_issued` |
 | `POST /{id}/issue` | `invoices:issue` | 400 a body that does not decode (none, or an `issueDate` that is no calendar day); 404; 409 every code under [Issuing](#issuing); 503 `storage_unavailable` |
-| `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited` |
+| `POST /{id}/credit` | `invoices:issue` | 404; 409 `invoice_draft`, `credit_note_not_creditable`, `invoice_fully_credited`, `invoice_written_off` (under the original's lock) |
 | `GET /{id}/pdf` | | 404; 409 `invoice_draft`; 500 a missing or altered stored object, or a render that fails; 503 `storage_unavailable` |
 | `GET /{id}/preview.pdf` | `invoices:create` | 404; 409 `invoice_issued` |
 | `GET /{id}/deductible` | `invoices:create` | 404; 409 `invoice_issued`, `credit_note_deducts_nothing` |
