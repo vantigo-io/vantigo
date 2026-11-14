@@ -149,6 +149,7 @@ func Module() module.Module {
 		LiveTopics:           liveTopics,
 		Receivables:          newCustomerReceivables,
 		SalesTax:             newSalesTax,
+		SalesJournal:         newSalesJournal,
 		CustomerReferences:   newCustomerReferenceHolder,
 		CustomerPersonalData: newCustomerPersonalData,
 	}

@@ -51,7 +51,7 @@ func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
-// Deps.Products, Deps.SalesTax, Deps.Workforce, Deps.Stock, Deps.StockLedger,
+// Deps.Products, Deps.SalesTax, Deps.SalesJournal, Deps.Workforce, Deps.Stock, Deps.StockLedger,
 // Deps.SalesOrderLines, Deps.Production, Deps.DeliveryTrace, Deps.KitStructure, Deps.CalendarSources,
 // Deps.IdentityProvisioners, Deps.MailboxCalendars, Deps.ChannelMailboxes and
 // Deps.PersonalMailboxes, which it resolves from the enabled modules the way
@@ -118,6 +118,12 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	// Sales tax, resolved as Compose resolves it: Orders' mail worker prints
 	// the seller block it reads into every confirmation and shipping notice.
 	if deps, err = withSalesTax(deps, enabled); err != nil {
+		panic(err.Error())
+	}
+	// The sales journal, resolved as Compose resolves it, right after sales
+	// tax: the ledger's catch-up worker reads it, and worker mode never
+	// composes.
+	if deps, err = withSalesJournal(deps, enabled); err != nil {
 		panic(err.Error())
 	}
 	// The stock read and the stock ledger, resolved as Compose resolves
@@ -247,6 +253,22 @@ func withSalesTax(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.SalesTax = provider.SalesTax(deps)
+	}
+	return deps, nil
+}
+
+// withSalesJournal resolves contracts.SalesJournal from the enabled modules —
+// at most one may declare it — keeping a preset value when none does (the seam
+// modtest.WithSalesJournal fills). Compose and Workers both call it right
+// after withSalesTax: a worker reads the journal as a request does, and worker
+// mode never composes.
+func withSalesJournal(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "a sales journal", func(m Module) bool { return m.SalesJournal != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.SalesJournal = provider.SalesJournal(deps)
 	}
 	return deps, nil
 }
