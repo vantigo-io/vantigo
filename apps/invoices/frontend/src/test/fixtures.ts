@@ -40,6 +40,7 @@ export const meta = (overrides: Partial<InvoicesMeta> = {}): InvoicesMeta => ({
     canImportBankFiles: true,
     canIssue: true,
     canManage: false,
+    canManageBankFeed: false,
     canQuickInvoice: false,
     canRegisterPayments: true,
     canRunReminders: true,

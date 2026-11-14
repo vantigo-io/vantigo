@@ -1620,9 +1620,77 @@ export interface paths {
         get?: never;
         /**
          * Change an account's bank file format
-         * @description Changes the format an account's bank files come in (D3): the account's row locked; the same format answers the account unchanged; another keeps the old one as previousFormat with cutoverThrough, the latest booking day of the account's own lines in the old format (absent when it has none), and sets the new one — matching then holds back a line of the new format booked on or before the cutover, which the old format may already have registered (D4). A change of bank is a new account, with its own row.
+         * @description Changes the format an account's bank files come in (D3): the account's row locked; the same format answers the account unchanged; another keeps the old one as previousFormat with cutoverThrough, the latest booking day of the account's own lines in the old format (absent when it has none), and sets the new one — matching then holds back a line of the new format booked on or before the cutover, which the old format may already have registered (D4). A change of bank is a new account, with its own row. A change away from feed is refused with 409 bank_feed_enabled while the bank feed is switched on for the account, and made as any other once it is off.
          */
         put: operations["putInvoicesBankAccountsByAccountFormat"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/bank-feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the bank connection
+         * @description The bank connection (invoices bank feed design F3, F8) — the bank, the API key's last four characters, its status (ok, or unauthorized once the bank refused it), when it was refused and who connected it when — never the key; enabledOnInstance, whether INVOICES_BANK_FEED_ENABLED is on; and every account the feed was ever switched on for, in account order. With nothing connected the answer is 200 with connected false and whatever accounts are kept, each switched off. It answers no secret, so invoices:access reads it (plan finding 8); capabilities.canManageBankFeed decides what a screen offers.
+         */
+        get: operations["getInvoicesBankFeed"];
+        /**
+         * Connect the bank
+         * @description Connects the bank with an API key (F3, F8): the provider (folio, the only one) and the key, at most 1 000 characters. The key is verified first — one read of the bank's accounts, outside any transaction — and stored only when the bank accepts it: sealed by the secrets box under invoices/bank-feed-credential, with its last four characters kept in clear, the status ok and a refusal on record cleared, every account the bank had refused made due again. The answer never carries the key, and the Assistant never calls this operation: a key is not typed into a conversation. Refused with 409 bank_feed_disabled when INVOICES_BANK_FEED_ENABLED is off — nothing is sent to the bank.
+         */
+        put: operations["putInvoicesBankFeed"];
+        post?: never;
+        /**
+         * Disconnect the bank
+         * @description Disconnects the bank (F8) in one transaction — the stored key removed and every account switched off, its lease and next sync cleared. Bank files, their lines, the payments registered from them and each account's format stay; an account switched back to files has its format changed by PUT /invoices/bank-accounts/{account}/format. Removing what is not there is a 204 too.
+         */
+        delete: operations["deleteInvoicesBankFeed"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/bank-feed/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the bank's accounts
+         * @description The accounts the stored key can read, as the bank answers them now (F4), each with its 11 digits when it is a Norwegian account number, its name and kind, and whether the feed can be switched on for it — not a card account (whyNot card), and the seller's bank account or one an issued invoice printed, the rule a bank file's accounts are held to (whyNot not_sellers_account). One call to the bank, outside any transaction. A key the bank refuses is recorded on the connection as unauthorized.
+         */
+        get: operations["getInvoicesBankFeedAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/bank-feed/accounts/{account}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch the bank feed on or off for an account
+         * @description Switches the feed on or off for one account (F4), by its 11 digits. On: the account must be one the bank answers now and not a card (409 bank_feed_account_not_offered), and the seller's bank account or one an issued invoice printed (409 bank_account_unknown); startDay, nothing booked before it is read, defaults to today in the business time zone and may not be after it. The bank is read before the transaction. Then one transaction: the account's bank import row locked, or made with format feed; an account in another format changed to feed as PUT /invoices/bank-accounts/{account}/format changes one — the old format kept as previousFormat with its cutoverThrough, so matching holds back what the files may already have registered; then the account enabled from startDay, its status ok and due now. Off: the account switched off, its lease and next sync cleared; its format is left as it is.
+         */
+        put: operations["putInvoicesBankFeedAccountsByAccount"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1904,6 +1972,8 @@ export interface components {
             canCreate: boolean;
             /** @description invoices:payments — import OCR giro and camt.054 bank files, and read the imported files and their accounts. */
             canImportBankFiles: boolean;
+            /** @description invoices:manage — connect the bank feed, switch it on or off for an account and disconnect it (invoices bank feed design F8). */
+            canManageBankFeed: boolean;
             /** @description invoices:issue — issue a draft, and create a credit-note draft. */
             canIssue: boolean;
             /** @description invoices:manage — the seller record, the series start and the VAT codes. */
@@ -1992,7 +2062,7 @@ export interface components {
             ratePercent: number;
             safTCode: string;
         };
-        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_supported (the customer's orders due are in another currency than the settings'); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
+        /** @description ProblemDetails plus this module's refusal code (invoices foundation design D2-D8). code names the rule that refused — series_locked, vat_code_in_use, rate_change_in_past, rate_period_not_latest, rate_period_last, rate_period_in_use, invoice_issued, invoice_draft, customer_merged, customer_archived, customer_blocked, customer_missing, invoice_changed, seller_incomplete, no_lines, delivery_date_missing, issue_date_not_allowed, buyer_incomplete, vat_code_inactive, vat_code_not_valid, vat_not_registered, category_o_not_allowed, reverse_charge_needs_org_number, vat_codes_ambiguous, credit_exceeds_line, credit_exceeds_invoice, credit_note_not_creditable, invoice_fully_credited, credit_note_no_payments, invoice_settled, payment_exceeds_open, payment_removed, customer_anonymised, no_invoice_email (invoices payments and delivery design D2, D4), kid_length_exceeded (EHF and KID design D3: the next number no longer fits the KID agreement, which was shortened), transmissions_active (EHF and KID design D7: the access-point credentials still serve a transmission in flight), ehf_unavailable (D7: no access-point credentials to verify — a 409 — or a stored key that cannot be opened — a 503; D8: an installation that cannot send as EHF — a 503), the send as EHF's no_peppol_id, buyer_reference_missing, ehf_already_sent, peppol_not_receivable (with peppolRegistered and peppolCanReceive) and ehf_invalid (with rules) (EHF and KID design D8), transmission_not_cancellable and transmission_not_resolvable (D9), source_held_elsewhere (invoices work design D2: a source a save or the wizard would hold is held by another live draft or invoiced by an unreleased issued line; heldBy, sourceKind and sourceId name the document and the source), the wizard's refusals (invoices work design D3, D4, D11; POST /invoices/from-work) — work_unavailable (no billable read is composed), too_many_sources (more than 5 000 sources on one document, an append target's held ones counted), source_not_for_customer (a source's project bills another customer or is gone), mixed_currency (the selection spans currencies), currency_not_nok (the selection is in another currency than NOK) and too_many_lines (the grouping would make more than 500 lines, with suggestedGrouping, the next coarser grouping that fits) — the issue's refusals about the work it bills (invoices work design D1, each with linePosition, sourceKind and sourceId) — source_not_invoiceable, source_changed and source_already_invoiced (a source's own module would not stamp it: no longer approved, ready or billable; changed since the draft took it; already invoiced), source_customer_changed (a source's project no longer bills the draft's customer, or is gone; judged before a number exists) and source_not_selectable (hours of a project now fixed-price or non-billable, or any work of a project now non-billable) — and projects_unavailable (the draft bills work and the projects module is switched off); a final settlement's (invoices work design D7) deduction_exceeds_invoice (with linePosition: a deduction line takes more than its a-konto has left at its VAT code, or deducts a document that is no longer an issued invoice of this customer, or deducted at a code where it deducts itself), deduction_duplicated (with linePosition: a second deduction line for one deducted invoice and VAT code) and invoice_total_not_positive (a settlement's, or an invoice with energy correction lines', gross is zero or less); a credit note's credit_total_negative (its gross is below zero) and invoice_deducted (it credits more of an a-konto at a VAT code than no issued settlement deducted there; the detail names the settlements); credit_note_deducts_nothing (GET /invoices/{id}/deductible on a credit-note draft), and invoice_changed also when the draft's work changed between the issue's reads and its lock; the bank import's (invoices payments and reminders design D3) bank_account_unknown (an account the file names is neither the seller's nor one an issued invoice printed; the detail names its last four digits), bank_file_duplicate (the same bytes or the same file identity imported before, with bankFileId, uploadedAt and uploadedBy of that import) and bank_import_format_mismatch (the account's files come in the other format; the detail names the account and its format); the collection rates' (invoices payments and reminders design D6) collection_rate_exists (a rate of that kind already takes effect on that day) and collection_rate_in_force (the rate came with a release, is in force or past, or a printed or sent letter relied on it, so it is not deleted); the charges' (invoices payments and reminders design D9) no_charges_outstanding (nothing is outstanding: no letter claimed a charge, or every charge is waived or paid), charge_payment_exceeds_outstanding (with chargesOutstanding), charge_not_claimed (the letter was not sent, claimed no such charge, it is waived already, or no interest is left unpaid) and credit_note_no_reminders (a credit note is never reminded of), and the manual deliveries' (D8) delivery_removed and delivery_relied_on (a letter's charge stands on the record and no other delivery on or before the due date would remain); the reminder runs' and the overdue list's (invoices payments and reminders design D10, D12) reminders_disabled (reminders are switched off in the reminder settings), collection_rates_outdated (a letter of the run needs a rate with no row for a half-year, with kind and halfYear), collection_regime_unreviewed (a letter of the run would carry a fee or be a collection notice past the regime review under the 1988 regime), bank_import_stale (the bank data is stale and a letter of the run would carry a charge, with lastBookedOn; acknowledgeStaleImport confirms it) and too_many_overdue (more than 5 000 overdue invoices to judge; narrow by customer or due date); the holds' and the hand-off's (invoices payments and reminders design D11) invoice_on_hold (a hold is live already), invoice_not_on_hold (no hold is live to lift), invoice_handed_off (a hand-off is live already), invoice_not_handed_off (no hand-off is live to withdraw) and invoice_not_delivered (no delivery on or before the due date; acknowledgeNotDelivered confirms the hand-off); the reminder letters' (invoices payments and reminders design D10) reminder_not_withdrawable (the letter is sent, withdrawn already, or being sent: queued with its facts written under a live lease), reminder_not_failed (only a failed letter is retried) and reminder_not_sent (the letter is neither printed nor sent, so it has no PDF); the paper letters' (D10, reading 39) reminder_not_awaiting_print (a letter named for a print batch is not awaiting print), reminder_posted_early and reminder_posted_late (a batch confirmed posted on another day than the one it was printed for, so it must be reprinted) and print_batch_closed (the batch was posted or reprinted already); the exception queue's (invoices payments and reminders design D5) bank_transaction_not_open (the line is not in the state the action takes — not an exception, for most), bank_transaction_not_applicable (the action is not for this line: an apply of a reversal or a negative line, a dismissal of a reversal, a reversal handled on a line that is none, a duplicate confirmed or kept that is none, a reopen of a line that is open), bank_transaction_applied (a live payment or charge payment still refers to the line), bank_transaction_reversed (a reversal took back a payment of the line, so it is never reopened, or of the line it was kept as a duplicate of, so it is never treated as distinct nor applied), reversal_payment_required (a reversal handled with no payment named and no note saying why), allocation_not_an_invoice (an allocation names no issued invoice), allocation_exceeds_transaction (the allocations add up to more than the line has left) and paid_before_issue (the line was booked before an allocation's invoice was issued), besides payment_exceeds_open with invoiceId and charge_payment_exceeds_outstanding on an allocation; the payments port's (invoices payments and reminders design D14–D17) payments_unavailable (no Vipps credentials are stored — a 409 — or Vipps is switched off on this installation or the stored credentials cannot be opened — a 503), payment_attempts_active (a change of the sales unit, or removing the keys, while a Vipps payment is in flight), attempt_not_abandonable (the payment is neither of unknown outcome nor stranded by the switch or another sales unit), public_url_missing (pay links or a webhook without PUBLIC_BASE_URL), pay_links_unavailable (pay links are off or not set up), pay_link_exists (the invoice has a live pay link already), too_many_attempts (five Vipps payments of the invoice are in flight already), amount_out_of_range (the open amount is below 1.00 or above what Vipps takes), payment_in_progress (Vipps payments being completed leave less than 1.00 open), on_site_payments_unavailable (on-site payment is not turned on), buyer_identity_missing (the buyer is not identified as a kontantfaktura requires), payment_request_active (an on-site payment request of the invoice is live already), day_already_reconciled (the day was reconciled before) and day_not_over (the day is not over yet), and provider_failed, which a 502 carries when Vipps refused or failed the call; the bank feed's (invoices bank feed design F3, F4, F8) bank_feed_disabled (the bank feed is switched off on this installation), bank_feed_not_connected (no bank key is stored), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account), bank_feed_enabled (a format change away from feed while the feed is switched on for the account), bank_account_unknown as the bank import's, and bank_feed_credential_rejected, which a 422 carries when the bank refused the key, and bank_feed_unavailable, which a 503 carries when the bank could not be reached or the stored key cannot be opened; the quick invoice's (D17) request_id_reused (its requestId came before with another body, with invoiceId, the invoice it issued); the consumption wizard's (energy consumption billing design D7; GET /invoices/consumption, GET /invoices/consumption/settlements, POST /invoices/from-consumption) consumption_unavailable (the energy module is switched off), settlement_blocked (with sourceKind and sourceId: a named settlement Energy cannot bill; the detail names its blocker), cadence_not_allowed (with sourceKind and sourceId: a settlement of a yearly supply for a person, who is billed at least quarterly) and no_consumption_due (nothing is left to invoice through the date); the billing runs' (energy consumption billing design D10; POST /invoices/billing-runs and its cancel) billing_run_active (with runId: a run is queued or running already), billing_run_finished (the run is done or cancelled already) and too_many_customers (more than 5 000 supplies are due; name the customers); the From orders wizard's (orders design O39; GET /invoices/from-orders/due, POST /invoices/from-orders) orders_unavailable (the orders module is switched off), order_blocked (with orderLineId: an order is a draft or on hold), allocation_exceeds_open (with orderLineId: a quantity above what the line has left to invoice) and line_not_invoiceable (with orderLineId: a line Orders will not invoice, or one not of the order named), a save's line_holds_order_allocation (with linePosition, sourceKind and sourceId: a line holding an order allocation keeps its quantity, unit price, discount and VAT code), and the billing run's no_orders_due (no customer has order lines due through the date), and its items' orders_held_by_drafts (drafts of the customer hold what its orders have left) and currency_not_supported (the customer's orders due are in another currency than the settings'); and storage_unavailable and mail_unavailable, which a 503 carries in the same shape, and mail_failed and peppol_lookup_failed, which a 502 carries. A revision conflict carries no code; its detail names both revisions. */
         InvoicesConflictProblem: {
             /** @description On issue_date_not_allowed, the dates this document may be issued with today, the earliest first. Absent otherwise. */
             allowedIssueDates?: string[];
@@ -2979,7 +3049,7 @@ export interface components {
             /** Format: int64 */
             invoiceId: number;
         };
-        /** @description One receiving account a bank file was imported for (invoices payments and reminders design D3). format is the format its files come in — ocr or camt054 — set by its first import and changed only by PUT /invoices/bank-accounts/{account}/format; previousFormat and cutoverThrough are what the last change kept: the old format and the latest booking day of the account's own lines in it, absent when the account has none (matching then holds back what the old format may already have registered, D4). lastFileId and lastUploadedAt are the latest file naming the account; lastBookedOn the latest booking day of any of its lines. */
+        /** @description One receiving account a bank file was imported for (invoices payments and reminders design D3). format is the format its lines come in — ocr or camt054 for bank files, set by its first import and changed by PUT /invoices/bank-accounts/{account}/format, or feed while the bank feed reads it, set by switching the feed on (PUT /invoices/bank-feed/accounts/{account}, invoices bank feed design F4); previousFormat and cutoverThrough are what the last change kept: the old format and the latest booking day of the account's own lines in it, absent when the account has none (matching then holds back what the old format may already have registered, D4). lastFileId and lastUploadedAt are the latest file naming the account; lastBookedOn the latest booking day of any of its lines. */
         InvoicesBankAccount: {
             /** @description The account's 11 digits. */
             account: string;
@@ -2998,13 +3068,67 @@ export interface components {
             /** Format: uuid */
             setBy: string;
         };
-        /** @description PUT /invoices/bank-accounts/{account}/format's body (D3). format is ocr or camt054. */
+        /** @description PUT /invoices/bank-accounts/{account}/format's body (D3). format is ocr or camt054; feed is set only by switching the bank feed on (PUT /invoices/bank-feed/accounts/{account}), never here. */
         InvoicesBankAccountFormatRequest: {
             format: string;
         };
         /** @description GET /invoices/bank-accounts — every account a bank file was imported for, in account order. */
         InvoicesBankAccountsResponse: {
             data: components["schemas"]["InvoicesBankAccount"][];
+        };
+        /** @description The bank connection (invoices bank feed design F3, F8) — never the key. connected is whether a key is stored; provider (folio), keyLastFour (the key's last four characters), status (ok, or unauthorized once the bank refused the key, until a new one is stored), rejectedAt (when the bank refused it), connectedBy and connectedAt (who stored the key, and when) are absent while it is not. enabledOnInstance is INVOICES_BANK_FEED_ENABLED: while it is off nothing is sent to the bank. accounts is every account the feed was ever switched on for, in account order. */
+        InvoicesBankFeed: {
+            accounts: components["schemas"]["InvoicesBankFeedAccount"][];
+            connected: boolean;
+            /** Format: date-time */
+            connectedAt?: string;
+            /** Format: uuid */
+            connectedBy?: string;
+            enabledOnInstance: boolean;
+            keyLastFour?: string;
+            provider?: string;
+            /** Format: date-time */
+            rejectedAt?: string;
+            status?: string;
+        };
+        /** @description One account the feed reads, or read (F4, F7). account is its 11 digits; enabled whether the feed is switched on for it; startDay the first booking day read. status is ok, failing (three reads in a row failed), refused (a batch broke a rule and nothing of it was stored; reason names the rule, detail the transaction) or unauthorized (the bank refused the key). lastSyncedAt is the last read that succeeded, lastBankFileId the last batch it stored and nextSyncAt when it is read next — each absent while there is none. */
+        InvoicesBankFeedAccount: {
+            account: string;
+            detail?: string;
+            enabled: boolean;
+            /** Format: int64 */
+            lastBankFileId?: number;
+            /** Format: date-time */
+            lastSyncedAt?: string;
+            /** Format: date-time */
+            nextSyncAt?: string;
+            reason?: string;
+            /** Format: date */
+            startDay: string;
+            status: string;
+        };
+        /** @description PUT /invoices/bank-feed/accounts/{account}'s body (F4). enabled switches the feed on or off; startDay, when switching on, is the first booking day read — today in the business time zone when absent, never after it. It is ignored when switching off. */
+        InvoicesBankFeedAccountRequest: {
+            enabled: boolean;
+            /** Format: date */
+            startDay?: string;
+        };
+        /** @description One account the stored key can read, as the bank answers it now (F4). account is its 11 digits when the bank's number reads as a Norwegian account number, else the number as the bank writes it; name is the bank's name for it; kind is operational, tax, savings, earmarks, card or other. canEnable is whether the feed can be switched on for it; whyNot, when it cannot, is card (a card account is never offered) or not_sellers_account (it is neither the seller's bank account nor one an issued invoice printed). */
+        InvoicesBankFeedBankAccount: {
+            account: string;
+            canEnable: boolean;
+            kind: string;
+            name: string;
+            whyNot?: string;
+        };
+        /** @description GET /invoices/bank-feed/accounts — the accounts the stored key can read, in the bank's order. */
+        InvoicesBankFeedBankAccountsResponse: {
+            data: components["schemas"]["InvoicesBankFeedBankAccount"][];
+        };
+        /** @description PUT /invoices/bank-feed's body (F3). provider is the bank, folio the only one; apiKey is the API key the bank issued, at most 1 000 characters, verified with the bank before it is stored and never answered again. */
+        InvoicesBankFeedRequest: {
+            apiKey: string;
+            provider: string;
         };
         /** @description One imported bank file (D3): its format (ocr or camt054), the SHA-256 of its bytes, the accounts it names, the first and last booking days of its transactions (absent without any), how many transactions it brought (duplicates among them: the lines an earlier or overlapping file had already brought, kept as duplicate rows), how many of its lines were ignored and why (ignoredKinds), who uploaded it and when, and its lines counted by status — pending (not yet matched), exceptions and matched. */
         InvoicesBankFile: {
@@ -10412,6 +10536,319 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Conflict — bank_feed_enabled, the account's format is feed and the bank feed is switched on for it; switch the feed off first (invoices bank feed plan finding 9). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    getInvoicesBankFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankFeed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    putInvoicesBankFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesBankFeedRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the connection as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankFeed"];
+                };
+            };
+            /** @description Bad Request — provider is not folio, or apiKey is empty, blank or longer than 1 000 characters; the errors name the field. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — bank_feed_disabled, the bank feed is switched off on this installation. Nothing is stored. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Unprocessable Entity — bank_feed_credential_rejected, the bank refused the key (a 401 or 403). Nothing is stored. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — bank_feed_unavailable, the bank could not be reached or did not answer as it should. Nothing is stored; try again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    deleteInvoicesBankFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the key is gone and every account is switched off. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvoicesBankFeedAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankFeedBankAccountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — bank_feed_disabled (the bank feed is switched off on this installation) or bank_feed_not_connected (no key is stored). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Unprocessable Entity — bank_feed_credential_rejected, the bank refused the stored key; the connection is now unauthorized. Store a new key. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — bank_feed_unavailable, the bank could not be reached or did not answer as it should, or the stored key cannot be opened on this server (APP_SECRET changed); try again, or store the key again. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+        };
+    };
+    putInvoicesBankFeedAccountsByAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvoicesBankFeedAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the account as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicesBankFeedAccount"];
+                };
+            };
+            /** @description Bad Request — account is not 11 digits, or startDay is after today; or a body that did not decode. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — switching off an account the feed was never switched on for. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — bank_feed_not_connected (no key is stored), bank_feed_disabled (switching on while the bank feed is switched off on this installation), bank_feed_account_not_offered (the bank does not answer the account now, or it is a card account) or bank_account_unknown (the account is neither the seller's bank account nor one an issued invoice printed; the detail names its last four digits). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Unprocessable Entity — bank_feed_credential_rejected, the bank refused the stored key while switching on; the connection is now unauthorized. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
+            };
+            /** @description Service Unavailable — bank_feed_unavailable, the bank could not be reached while switching on, or the stored key cannot be opened on this server. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["InvoicesConflictProblem"];
+                };
             };
         };
     };
