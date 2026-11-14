@@ -45,8 +45,10 @@ const maxUnit = 20
 // and revision, its kind as the subkind, its order's project when it has
 // one, its quantity and exact amount, and as its date a subscription
 // period's last day, else date — the order's delivery date, or the day the
-// draft was made. A period's first day is kept as periodFrom.
-func allocationSource(a contracts.OrderAllocation, date time.Time) (heldSource, error) {
+// draft was made. A period's first day is kept as periodFrom, and the tax
+// category of its variant's product, from categories (variant → category),
+// as taxCategoryID (accounting design R6).
+func allocationSource(a contracts.OrderAllocation, date time.Time, categories map[int32]int32) (heldSource, error) {
 	quantity, err := billableAmount(a.Quantity)
 	if err != nil {
 		return heldSource{}, err
@@ -66,9 +68,14 @@ func allocationSource(a contracts.OrderAllocation, date time.Time) (heldSource, 
 	if a.ProjectID != nil {
 		project = *a.ProjectID
 	}
+	category := int32(0)
+	if a.VariantID != nil {
+		category = categories[*a.VariantID]
+	}
 	return heldSource{
 		kind: contracts.WorkSourceOrderAllocation, id: a.ID, revision: a.Revision, subkind: &kind, projectID: project,
 		quantity: quantity, amount: amount, currency: a.Currency, date: utcDay(date), periodFrom: from,
+		taxCategoryID: category,
 	}, nil
 }
 
@@ -383,7 +390,7 @@ func sameDeliveryAddress(a, b gen.InvoicesDeliveryAddress) bool {
 // line's position; dates each document's held rows' date. held[i] is the source line i holds, if any,
 // with the line's position from 1.
 func orderDraftLines(language string, g orderGroup, byOrder map[docKey][]contracts.OrderAllocation, positions map[int64]int32,
-	dates map[docKey]time.Time,
+	dates map[docKey]time.Time, categories map[int32]int32,
 ) ([]draftLine, []heldSource, error) {
 	var lines []draftLine
 	var rows []heldSource
@@ -404,7 +411,7 @@ func orderDraftLines(language string, g orderGroup, byOrder map[docKey][]contrac
 			if err != nil {
 				return nil, nil, err
 			}
-			src, err := allocationSource(a, dates[key])
+			src, err := allocationSource(a, dates[key], categories)
 			if err != nil {
 				return nil, nil, err
 			}

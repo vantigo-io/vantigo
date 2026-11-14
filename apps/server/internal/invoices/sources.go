@@ -102,6 +102,10 @@ type heldSource struct {
 	// periodFrom is an order allocation's subscription period's first day
 	// (orders design O39), date its last; nil for anything else.
 	periodFrom *time.Time
+	// taxCategoryID is an order allocation's product's tax category in
+	// Products, 0 for none and for every other kind (accounting design R6):
+	// the issue snapshots it onto the line.
+	taxCategoryID int32
 }
 
 // settlementPoint is what a settlement's row keeps of its metering point and
@@ -155,8 +159,9 @@ func heldSources(rows []store.LineSourcesOfRow) ([]heldSource, error) {
 			kind: contracts.WorkSourceKind(r.SourceKind), id: r.SourceID, revision: r.SourceRevision, subkind: r.SourceSubkind,
 			projectID: derefInt32(r.ProjectID), quantity: quantity, amount: amount, currency: r.Currency, date: r.SourceDate.Time,
 			state: r.State, linePosition: r.LinePosition, lineCount: r.LineCount,
-			point:      pointOf(r.PointGsrn, r.PointAddress, r.PriceArea, r.ContractName, r.PeriodFrom, r.Estimated),
-			periodFrom: allocationPeriodFrom(contracts.WorkSourceKind(r.SourceKind), r.PeriodFrom),
+			point:         pointOf(r.PointGsrn, r.PointAddress, r.PriceArea, r.ContractName, r.PeriodFrom, r.Estimated),
+			periodFrom:    allocationPeriodFrom(contracts.WorkSourceKind(r.SourceKind), r.PeriodFrom),
+			taxCategoryID: derefInt32(r.TaxCategoryID),
 		})
 	}
 	return out, nil
@@ -362,6 +367,7 @@ func insertSources(ctx context.Context, txq *store.Queries, invoiceID int64, lin
 		p.PointGsrns, p.PointAddresses = append(p.PointGsrns, point.gsrn), append(p.PointAddresses, point.address)
 		p.PriceAreas, p.ContractNames = append(p.PriceAreas, point.priceArea), append(p.ContractNames, point.contractName)
 		p.PeriodFroms, p.Estimateds = append(p.PeriodFroms, periodFrom), append(p.Estimateds, point.estimated)
+		p.TaxCategoryIds = append(p.TaxCategoryIds, r.taxCategoryID)
 	}
 	err := txq.InsertLineSources(ctx, p)
 	var pgErr *pgconn.PgError
@@ -741,11 +747,11 @@ func (s *server) billableNow(ctx context.Context, held []heldSource, loc *time.L
 			if !ok || a.State != contracts.AllocationDraft {
 				continue
 			}
-			n, err := allocationSource(a, h.date)
+			n, err := allocationSource(a, h.date, nil)
 			if err != nil {
 				return nil, nil, nil, nil, err
 			}
-			n.linePosition = h.linePosition
+			n.linePosition, n.taxCategoryID = h.linePosition, h.taxCategoryID
 			now[n.ref()] = n
 		}
 		read[contracts.WorkSourceOrderAllocation] = true
