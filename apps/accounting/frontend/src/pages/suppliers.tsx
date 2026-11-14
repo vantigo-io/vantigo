@@ -25,6 +25,7 @@ import {
   type AccountingBrregEntity,
   type AccountingSupplier,
   type AccountingSupplierInput,
+  anonymiseSupplier,
   createSupplier,
   deleteSupplier,
   exportSupplier,
@@ -154,6 +155,16 @@ const SupplierView = ({ id, canPost, canExport }: { id: number; canPost: boolean
     },
     onError: (error) => notifications.show({ color: "red", message: refusalMessage(t, error) }),
   });
+  const [anonymising, setAnonymising] = useState(false);
+  const anonymise = useMutation({
+    mutationFn: () => anonymiseSupplier(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY, "suppliers"] });
+      setAnonymising(false);
+      notifications.show({ color: "green", message: t("supplierAnonymisedDone") });
+    },
+    onError: (error) => notifications.show({ color: "red", message: refusalMessage(t, error) }),
+  });
   const download = useMutation({
     mutationFn: () => exportSupplier(id),
     onSuccess: (data) => {
@@ -175,6 +186,10 @@ const SupplierView = ({ id, canPost, canExport }: { id: number; canPost: boolean
     );
   if (supplier.isPending) return <ContentSkeleton rows={6} />;
   const s = supplier.data;
+  // The retention has run out the day after retainedUntil; a person with no
+  // voucher has none.
+  const today = new Date().toISOString().slice(0, 10);
+  const retentionOver = s.retainedUntil === null || s.retainedUntil < today;
   return (
     <Stack gap="lg">
       <PageHeader
@@ -184,7 +199,7 @@ const SupplierView = ({ id, canPost, canExport }: { id: number; canPost: boolean
           .join(" · ")}
       />
       <Group>
-        {canPost && <Button onClick={() => setEditing(true)}>{t("changeSupplier")}</Button>}
+        {canPost && !s.anonymisedAt && <Button onClick={() => setEditing(true)}>{t("changeSupplier")}</Button>}
         {canExport && (
           <Button
             variant="default"
@@ -212,10 +227,44 @@ const SupplierView = ({ id, canPost, canExport }: { id: number; canPost: boolean
           {t("paymentTerms")}: {t("paymentTermsDays", { days: s.paymentTermsDays })}
         </Text>
       </SimpleGrid>
-      {s.isPerson && (
-        <Alert color="blue" title={t("supplierIsPerson")}>
-          {s.retainedUntil ? t("supplierRetainedUntil", { date: day(s.retainedUntil) }) : t("supplierRetainedHint")}
+      {s.anonymisedAt ? (
+        <Alert color="gray" title={t("supplierAnonymised")}>
+          {t("supplierAnonymisedHint", { date: day(s.anonymisedAt.slice(0, 10)) })}
         </Alert>
+      ) : (
+        s.isPerson && (
+          <Alert color="blue" title={t("supplierIsPerson")}>
+            <Stack gap="xs">
+              <Text size="sm">
+                {s.retainedUntil
+                  ? t("supplierRetainedUntil", { date: day(s.retainedUntil) })
+                  : t("supplierRetainedHint")}
+              </Text>
+              {canPost && retentionOver && (
+                <Group>
+                  <Button size="xs" variant="light" color="red" onClick={() => setAnonymising(true)}>
+                    {t("anonymiseSupplier")}
+                  </Button>
+                </Group>
+              )}
+            </Stack>
+          </Alert>
+        )
+      )}
+      {anonymising && (
+        <Modal opened onClose={() => setAnonymising(false)} title={t("anonymiseSupplier")}>
+          <Stack>
+            <Text size="sm">{t("anonymiseSupplierHint", { number: s.number })}</Text>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setAnonymising(false)}>
+                {t("cancel")}
+              </Button>
+              <Button color="red" loading={anonymise.isPending} onClick={() => anonymise.mutate()}>
+                {t("anonymiseSupplier")}
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
       )}
       <Text fw={600}>{t("navSupplierInvoices")}</Text>
       {invoices.data && invoices.data.items.length > 0 ? (

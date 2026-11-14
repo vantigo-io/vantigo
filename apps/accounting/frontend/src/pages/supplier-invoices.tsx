@@ -285,8 +285,8 @@ const InvoiceForm = ({ meta, invoice }: { meta: AccountingMeta; invoice?: Accoun
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? "");
   const [currency, setCurrency] = useState(invoice?.currency ?? "NOK");
   const [byRate, setByRate] = useState(true);
-  const [rate, setRate] = useState(invoice && invoice.currency !== "NOK" ? invoice.exchangeRate : "");
-  const [totalNok, setTotalNok] = useState(invoice && invoice.currency !== "NOK" ? invoice.totalNok : "");
+  const [rate, setRate] = useState(invoice && invoice.currency !== "NOK" ? (invoice.exchangeRate ?? "") : "");
+  const [totalNok, setTotalNok] = useState(invoice && invoice.currency !== "NOK" ? (invoice.totalNok ?? "") : "");
   const [total, setTotal] = useState(invoice?.total ?? "");
   const [kid, setKid] = useState(invoice?.kid ?? "");
   const [description, setDescription] = useState(invoice?.description ?? "");
@@ -734,7 +734,7 @@ const PostedInvoice = ({ meta, invoice }: { meta: AccountingMeta; invoice: Accou
         </Text>
         {invoice.currency !== "NOK" && (
           <Text size="sm">
-            {t("exchangeRate", { currency: invoice.currency })}: {invoice.exchangeRate}
+            {t("exchangeRate", { currency: invoice.currency })}: {invoice.exchangeRate ?? "—"}
           </Text>
         )}
         <Text size="sm">

@@ -118,11 +118,12 @@ export const typedDifference = (lines: readonly FormLine[]): bigint =>
 
 /**
  * A posted voucher's lines for the form, for Copy from a voucher (R13): every
- * posting but its tax lines, which the form computes again, entered net.
+ * posting but its tax lines (a reverse charge's calculated side too), which
+ * the form computes again, entered net.
  */
 export const linesFromVoucher = (voucher: AccountingVoucher): FormLine[] =>
   voucher.postings
-    .filter((posting) => posting.taxRole !== "tax")
+    .filter((posting) => posting.taxRole !== "tax" && posting.taxRole !== "tax_reverse")
     .map((posting) => {
       const ore = toOre(posting.amount.replace("-", "")) ?? 0n;
       const credit = posting.amount.startsWith("-");

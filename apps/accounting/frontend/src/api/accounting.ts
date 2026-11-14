@@ -337,8 +337,8 @@ export const enterNokAmounts = (id: number, amounts: { entryId: number; amountNo
   send<AccountingUnposted>(`${BASE}/unposted/${id}/nok-amounts`, json("POST", { amounts }));
 
 /** Makes a draft supplier invoice from an expense of the supplier_invoice kind (R2). */
-export const makeSupplierInvoiceFromUnposted = (id: number) =>
-  send<AccountingSupplierInvoice>(`${BASE}/unposted/${id}/supplier-invoice`, { method: "POST" });
+export const makeSupplierInvoiceFromUnposted = (id: number, supplierIsPerson: boolean) =>
+  send<AccountingSupplierInvoice>(`${BASE}/unposted/${id}/supplier-invoice`, json("POST", { supplierIsPerson }));
 
 /** Acknowledges an informational row (vat_not_deducted). */
 export const acknowledgeUnposted = (id: number) =>
@@ -378,6 +378,10 @@ export const updateSupplier = (id: number, body: AccountingSupplierInput) =>
   send<AccountingSupplier>(`${BASE}/suppliers/${id}`, json("PUT", body));
 
 export const deleteSupplier = (id: number) => send<void>(`${BASE}/suppliers/${id}`, { method: "DELETE" });
+
+/** Anonymises a person supplier once the bookkeeping no longer keeps it (A17). */
+export const anonymiseSupplier = (id: number) =>
+  send<AccountingSupplier>(`${BASE}/suppliers/${id}/anonymise`, { method: "POST" });
 
 /** What the books hold about a supplier, for a person's access request. */
 export const exportSupplier = (id: number) => request<AccountingSupplierExport>(`${BASE}/suppliers/${id}/export`);

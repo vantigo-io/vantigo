@@ -135,6 +135,15 @@ export const refusalCodes = [
   "unposted_wrong_reason",
   "brreg_unavailable",
   "supplier_invoice_has_payments",
+  "tax_code_not_for_supplier_invoice",
+  "exchange_rate_mismatch",
+  "credit_note_invoice_not_posted",
+  "credit_note_currency_mismatch",
+  "credit_note_exceeds_balance",
+  "supplier_invoice_item_in_use",
+  "supplier_retained",
+  "supplier_anonymised",
+  "expense_already_invoiced",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 
