@@ -258,6 +258,9 @@ organisasjonsnummer og adresse fylles inn. Resten oppgir du selv: e-post, konton
 konto, betalingsfristen i dager, valutaen fakturaene kommer i, og kontoen og mva-koden en ny
 fakturalinje foreslår.
 
+Et organisasjonsnummer hører til én leverandør per land: samme nummer to ganger i Norge
+avvises, mens en utenlandsk enhet kan dele det.
+
 En leverandør regnskapet nevner — med et bilag eller en faktura — slettes aldri: fjern haken
 for **Aktiv** i stedet, så tilbys den ikke lenger for nye fakturaer. En som ennå ikke er i
 regnskapet, har **Slett**.
@@ -268,6 +271,13 @@ regnskapsåret for det siste bilaget, og leverandørens side sier til når. **Ek
 leverandørens opplysninger** laster ned alt regnskapet har om vedkommende — opplysningene,
 fakturaene med linjer og betalinger, og hver postering som nevner dem — for å svare på en
 persons innsynsbegjæring. Det krever **Eksportere regnskapet**.
+
+Når den datoen er passert, tilbyr personens side **Anonymiser**: navnet blir *Anonymised
+supplier* og nummeret, organisasjonsnummer, adresse, e-post og bankopplysninger slettes, og
+leverandøren gjøres inaktiv. Bilagene står som de er og nevner fortsatt leverandøren med
+nummeret. Det kan ikke angres, og en anonymisert leverandør endres ikke mer. Før datoen
+avvises det: bokføringen trenger fortsatt opplysningene. Et selskap anonymiseres ikke —
+opplysningene om det er ikke personopplysninger.
 
 Å føre leverandørene krever **Bokføre bilag**.
 
@@ -306,11 +316,13 @@ Mva-koden på en linje bestemmer mva-en:
 | Kode | På fakturaen | Bilaget |
 | --- | --- | --- |
 | 1, 11, 12, 13 | Norsk mva med 25, 15, 11,11 eller 12 % | mva-en på kodens konto for inngående mva (2710–2713) |
-| 14, 15 | innførselsmva dere har betalt (en speditørs eller tollvesenets faktura) | mva-en på 2714 |
-| 0, 20, 21, 22 | ingen mva | netto alene, med koden |
-| 81–89, 91, 92 | ingen mva: omvendt avgiftsplikt | mva-en dere beregner selv, begge sider (se under) |
+| 0 | ingen mva | netto alene, med koden |
+| 86–89, 91, 92 | ingen mva: omvendt avgiftsplikt | mva-en dere beregner selv, begge sider (se under) |
 
-En kode for utgående mva (3, 31, …) hører til salg og avvises på et innkjøp.
+En kode for utgående mva (3, 31, …) hører til salg og avvises på et innkjøp. Innførselskodene
+— 14, 15, 20, 21, 22 og 81–85 — avvises også på en leverandørfaktura: mva ved innførsel
+beregnes fra tolldeklarasjonen, ikke fra en faktura, og føres som en postering
+([Innførsel av varer](#innførsel-av-varer)).
 
 ### Omvendt avgiftsplikt — tjenester kjøpt fra utlandet
 
@@ -332,16 +344,19 @@ utlandet, med fradrag). Bilaget:
 
 Med kode **87** (tjenester fra utlandet *uten* fradrag — for en kostnad der mva-en ikke kan
 trekkes fra) debiteres 250,00 på 6700 selv i stedet for 2715: mva-en blir en del av
-kostnaden. Kode 88 og 89 er det samme med lav sats, 91 og 92 klimakvoter og gull. 85 er
-innførsel uten mva å beregne.
+kostnaden. Kode 88 og 89 er det samme med lav sats, 91 og 92 klimakvoter og gull.
+
+På bilaget er den beregnede siden — 2705-linjen — merket **Beregnet mva (omvendt
+avgiftsplikt)**, atskilt fra mva-en dere trekker fra, så mva-meldingen teller grunnlaget én
+gang.
 
 ### Innførsel av varer
 
 Når dere innfører varer, er grunnlaget for mva-en tolldeklarasjonens, ikke leverandørens
 faktura: tollverdien, med frakt og toll. Derfor føres de to hver for seg:
 
-1. Leverandørens faktura, som leverandørfaktura, med varelinjen kodet **21** (22 med middels
-   sats): kostnaden for innførte varer, uten egen mva.
+1. Leverandørens faktura, som leverandørfaktura, med varelinjen på varekontoen og uten
+   mva-kode (eller kode **0**): kostnaden for innførte varer, uten egen mva.
 2. Innførselsmva-en, som en [postering](#å-bokføre-en-postering) fra tolldeklarasjonen: en
    linje på varekontoen med kode **81** (83 med middels sats; 82 og 84 når mva-en ikke er
    fradragsberettiget) og deklarasjonens grunnlag, ført **Netto**, og samme beløp kreditert
@@ -357,13 +372,18 @@ faktura: tollverdien, med frakt og toll. Derfor føres de to hver for seg:
 | 2705 Beregnet merverdiavgift, omvendt avgiftsplikt og innførsel (kode 81) | | 2 500,00 |
 
 De to grunnlagslinjene opphever hverandre: varene står allerede på leverandørens faktura, og
-posteringen legger bare til mva-en, skyldig og trukket fra.
+posteringen legger bare til mva-en, skyldig og trukket fra. Innførselsmva en speditør eller
+tollvesenet fakturerer dere for (kode 14 og 15), føres på samme måte, som en postering fra
+deklarasjonen.
 
 ### Annen valuta
 
 Velg fakturaens **Valuta** (leverandørens foreslås). Regnskapet føres i NOK, så oppgi enten
 kursen — **Etter kurs**, NOK per enhet — eller **Etter sum i NOK**, summen i kroner; skjemaet
-viser den andre ved siden av, og ingenting foreslås: ta den fra banken eller tollen. Hver
+viser den andre ved siden av, og ingenting foreslås: ta den fra banken eller tollen. Gjennom
+API-et kan begge oppgis, og de må stemme: summen etter kursen, avrundet til øre, innenfor en
+øre per linje av summen i NOK — ellers avvises fakturaen som feilskrevet. Et utkast laget fra
+en utgift i annen valuta har ingen kurs ennå: **Bokfør** ber om den. Hver
 postering er linjens beløp etter kursen, avrundet til øre, med beløpet i valuta og kursen
 lagret ved siden av; en øre avrundingen etterlater, havner på den største linjen, så bilaget
 beholder fakturaens egen sum. Mva ved omvendt avgiftsplikt beregnes av kronebeløpet.
@@ -393,12 +413,20 @@ kostnaden og mva-en kreditert, leverandørgjeld debitert — på den åpne poste
 krediterer, som da skylder resten. En kreditnota som ikke gjelder en bestemt faktura, står på
 sin egen post; et beløp leverandøren betaler tilbake, registreres på den som en betaling.
 
+**Bokfør** holder en kreditnota opp mot fakturaen slik den står da: fakturaen må fortsatt
+være bokført, kreditnotaen må være i fakturaens valuta, og den kan ikke kreditere mer enn det
+som gjenstår på fakturaen — i NOK, og i valutaen for en faktura i annen valuta. En kreditnota
+og en betaling som bokføres i samme øyeblikk på samme faktura, venter på hverandre, så den
+andre ser det den første lot stå igjen.
+
 ### Å rette en bokført faktura: Tilbakefør og kopier
 
 Et bokført bilag endres aldri. **Tilbakefør og kopier** spør om dato og årsak, bokfører
 fakturaens bilag tilbakeført, linje for linje, merker fakturaen **Tilbakeført**, og åpner et
 nytt utkast med samme leverandør, nummer, linjer og filer, som du retter og bokfører. En
-faktura med en betaling stående tilbakeføres ikke: fjern betalingen først.
+faktura med en betaling stående tilbakeføres ikke: fjern betalingen først. Det gjør heller
+ikke en med en kreditnota, eller en betaling gjort gjennom en kreditnota, stående på seg:
+tilbakefør kreditnotaen først (Tilbakefør og kopier på kreditnotaen), deretter fakturaen.
 
 Å føre, bokføre og betale leverandørfakturaer krever **Bokføre bilag**.
 
@@ -428,7 +456,9 @@ fradrag, men mva-en ikke passet noen sats, sier Trenger oppmerksomhet *Mva ikke 
 — til orientering: den er bokført. Kjøring og diett har ikke mva.
 
 **I annen valuta.** Utgifter lagrer ingen kurs, så en utgift i annen valuta venter under
-Trenger oppmerksomhet på beløpet i NOK.
+Trenger oppmerksomhet på beløpet i NOK. Bilaget som bokføres med beløpet du fører inn, er
+ditt, slik en postering ville vært, og linjen sier hva som ble ført inn: *NOK 921.50 ført inn
+for EUR 80.00*.
 
 **Leverandørfakturaer fra Utgifter.** En godkjent utgift av typen leverandørfaktura bokføres
 ikke av seg selv — den har ingen leverandør i regnskapet og ingen betaling. Den venter under
@@ -485,16 +515,27 @@ To årsaker har sin egen handling:
 - **I annen valuta: beløpet i NOK trengs.** Klikk **Før inn beløpet i NOK**, oppgi hva hver
   utgift kostet i kroner — vanligvis fra bank- eller kortutskriften — og **Før inn og
   bokfør**. Det som ventet bak, refusjonen for eksempel, bokføres etter.
-- **En leverandørfaktura fra Utgifter.** Klikk **Lag leverandørfaktura**: et utkast åpnes med
-  utgiftens beløp, mva-kode, dato, nummer, forfallsdato, prosjekt og kvitteringer, og
-  leverandøren — leverandøren med det navnet, eller en ny. Kontroller det, og bokfør det som
-  en hvilken som helst leverandørfaktura. Sletter du utkastet, kommer utgiften tilbake på
-  listen. Blir utgiften ikke lenger godkjent i Utgifter før det, forsvinner linjen av seg
-  selv.
+- **En leverandørfaktura fra Utgifter.** Klikk **Lag leverandørfaktura**. Dialogen spør om en
+  ny leverandør er en person (et enkeltpersonforetak) — huk av om den er det: opplysningene om
+  en person oppbevares og anonymiseres senere slik [Leverandører](#leverandører) sier. Et
+  utkast åpnes så med utgiftens beløp, mva-kode, dato, nummer, forfallsdato, prosjekt og
+  kvitteringer, og leverandøren — leverandøren med det navnet, eller en ny. Kontroller det,
+  og bokfør det som en hvilken som helst leverandørfaktura. Sletter du utkastet — eller
+  kopien en Tilbakefør og kopier av det laget — kommer utgiften tilbake på listen. Blir
+  utgiften ikke lenger godkjent i Utgifter før det, forsvinner linjen av seg selv. En utgift
+  gjøres om til én leverandørfaktura: en til avvises.
+
+Blir en utgift ikke lenger godkjent i Utgifter *etter* at den ble gjort om til en
+leverandørfaktura, snur regnskapet ingenting — fakturaen er deres — og Trenger oppmerksomhet
+sier det på en linje som nevner fakturaen: *Utgiften bak en leverandørfaktura ble ikke lenger
+godkjent*. Mens fakturaen er et utkast, venter linjen: slett utkastet, eller bokfør det om
+fakturaen likevel skyldes, og klikk **Prøv igjen**. Når fakturaen er bokført, er linjen til
+orientering; tilbakefør fakturaen om den ikke skyldes.
 
 En linje merket **Til orientering** — *Mva ikke trukket fra* — er bokført; den telles ikke med
-det som venter. **Kvitter ut** tar den av listen. Skulle mva-en vært trukket fra, tilbakefører
-du utgiftens bilag med en postering og fører den på nytt med riktig kode.
+det som venter. **Kvitter ut** tar den av listen, og den forsvinner av seg selv når utgiften
+ikke lenger er godkjent i Utgifter og bilaget er snudd. Skulle mva-en vært trukket fra,
+tilbakefører du utgiftens bilag med en postering og fører den på nytt med riktig kode.
 
 Å prøve igjen og handlingene krever **Bokføre bilag**.
 

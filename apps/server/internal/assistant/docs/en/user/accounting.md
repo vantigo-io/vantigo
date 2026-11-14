@@ -257,6 +257,9 @@ account (eleven digits — checked, so a mistyped one is refused), or an IBAN an
 foreign one, the payment terms in days, the currency its invoices come in, and the account
 and tax code a new invoice line proposes.
 
+An organisation number belongs to one supplier per country: the same number twice in
+Norway is refused, while a foreign entity may share it.
+
 A supplier the books name — with a voucher or an invoice — is never deleted: clear
 **Active** instead, and it is no longer offered for new invoices. One that is not yet in the
 books has **Delete**.
@@ -267,6 +270,13 @@ of their last voucher, and the supplier's page says until when. **Export the sup
 data** downloads everything the books hold about them — the record, their invoices with
 lines and payments, and every posting naming them — to answer a person's request for their
 data. It needs **Export the books**.
+
+Once that date has passed, the person's page offers **Anonymise**: the name becomes
+*Anonymised supplier* and its number, the organisation number, address, e-mail and bank
+details are cleared, and the supplier is made inactive. The vouchers stay as they are and
+still name the supplier by its number. It cannot be undone, and an anonymised supplier is
+not changed again. Before the date it is refused: the bookkeeping still needs the record.
+A company is not anonymised — its record is not personal data.
 
 Keeping the suppliers needs **Post vouchers**.
 
@@ -306,11 +316,13 @@ A line's tax code decides its VAT:
 | Code | On the invoice | The voucher |
 | --- | --- | --- |
 | 1, 11, 12, 13 | Norwegian VAT at 25, 15, 11.11 or 12 % | the VAT on the code's input VAT account (2710–2713) |
-| 14, 15 | import VAT you paid (a forwarder's or the customs' invoice) | the VAT on 2714 |
-| 0, 20, 21, 22 | no VAT | the net alone, with the code |
-| 81–89, 91, 92 | no VAT: reverse charge | the VAT calculated by you, both sides (below) |
+| 0 | no VAT | the net alone, with the code |
+| 86–89, 91, 92 | no VAT: reverse charge | the VAT calculated by you, both sides (below) |
 
-An output code (3, 31, …) is a sale's and is refused on a purchase.
+An output code (3, 31, …) is a sale's and is refused on a purchase. The import codes — 14,
+15, 20, 21, 22 and 81–85 — are refused on a supplier invoice too: an import's VAT is
+reckoned from the customs declaration, not from an invoice, and is entered as a journal
+entry ([Import of goods](#import-of-goods)).
 
 ### Reverse charge — services bought from abroad
 
@@ -332,7 +344,9 @@ voucher:
 With code **87** (services from abroad, *not* deductible — for a cost whose VAT you may not
 deduct) the 250.00 is debited to 6700 itself instead of 2715: the VAT becomes part of the
 cost. Codes 88 and 89 are the same at the low rate, 91 and 92 emissions allowances and gold.
-85 is an import with no VAT to calculate.
+
+On the voucher the calculated side — the 2705 line — is marked **VAT owed (reverse
+charge)**, apart from the VAT you deduct, so the VAT return counts the base once.
 
 ### Import of goods
 
@@ -340,8 +354,8 @@ When you import goods, the VAT base is the customs declaration's (tolldeklarasjo
 the supplier's invoice: the customs value, with freight and duty. So the two are entered
 apart:
 
-1. The supplier's invoice, as a supplier invoice, with its goods line coded **21** (22 at
-   the middle rate): the cost of imported goods, with no VAT of its own.
+1. The supplier's invoice, as a supplier invoice, with its goods line on the goods account
+   and no tax code (or code **0**): the cost of imported goods, with no VAT of its own.
 2. The import VAT, as a [journal entry](#posting-a-journal-entry) from the customs
    declaration: a line on the goods account with code **81** (83 at the middle rate; 82 and
    84 when the VAT is not deductible) and the declaration's base, entered **Net**, and the
@@ -358,14 +372,18 @@ apart:
 | 2705 Calculated VAT, reverse charge and import (code 81) | | 2 500.00 |
 
 The two base lines cancel each other: the goods are already on the supplier's invoice, and
-the entry adds only the VAT, owed and deducted.
+the entry adds only the VAT, owed and deducted. Import VAT a forwarder or the customs bills
+you for (codes 14 and 15) is entered the same way, as a journal entry from the declaration.
 
 ### Another currency
 
 Choose the invoice's **Currency** (the supplier's proposes it). The books are kept in NOK,
 so give either the rate — **By rate**, NOK per unit — or **By NOK total**, the total in NOK;
 the form shows the other beside it, and nothing is proposed: take it from the bank or the
-customs. Each posting is the line's amount at the rate, rounded to øre, with the amount in
+customs. Through the API both may be given, and they must agree: the total at the rate,
+rounded to øre, within an øre per line of the NOK total — otherwise the invoice is refused
+as mistyped. A draft made from an expense in another currency has no rate yet: **Post**
+asks for it. Each posting is the line's amount at the rate, rounded to øre, with the amount in
 the currency and the rate kept beside it; an øre the rounding leaves goes on the largest
 line, so the voucher keeps the invoice's own total. A reverse-charge VAT is calculated on
 the NOK amount.
@@ -396,12 +414,20 @@ VAT credited, accounts payable debited — on the open item of the invoice it cr
 is then owed the rest. A credit note for no particular invoice stands on its own item; a
 refund the supplier pays back is registered on it as a payment.
 
+**Post** holds a credit note to its invoice as it stands then: the invoice must still be
+posted, the credit note must be in the invoice's currency, and it may not credit more than
+is left on the invoice — in NOK, and in the currency for an invoice in another one. A
+credit note and a payment posted at the same moment on the same invoice wait for each
+other, so the second sees what the first left.
+
 ### Correcting a posted invoice: Reverse and copy
 
 A posted voucher is never changed. **Reverse and copy** asks for a date and a reason, posts
 the invoice's voucher reversed, line for line, marks the invoice **Reversed**, and opens a
 new draft with the same supplier, number, lines and files for you to correct and post. An
-invoice with a payment standing is not reversed: remove the payment first.
+invoice with a payment standing is not reversed: remove the payment first. Nor is one with a
+credit note, or a payment made through a credit note, standing on it: reverse the credit note
+first (Reverse and copy on the credit note), then the invoice.
 
 Entering, posting and paying supplier invoices needs **Post vouchers**.
 
@@ -431,7 +457,9 @@ deduction but the VAT matched no rate, Needs attention says *VAT not deducted* �
 information: it is posted. Mileage and per diem carry no VAT.
 
 **In another currency.** Expenses keeps no exchange rate, so an expense in another currency
-waits under Needs attention for its amount in NOK.
+waits under Needs attention for its amount in NOK. The voucher posted with the amount you
+enter is yours, as a journal entry would be, and its line names what was entered: *NOK
+921.50 entered for EUR 80.00*.
 
 **Expenses' supplier invoices.** An approved expense of the supplier invoice kind is not
 posted by itself — it has no supplier of the books and no payment. It waits under Needs
@@ -489,14 +517,26 @@ Two reasons have their own action:
 - **In another currency: the amount in NOK is needed.** Click **Enter the amount in NOK**,
   give what each expense cost in NOK — normally from the bank or card statement — and
   **Enter and post**. What waited behind it, its reimbursement say, posts after it.
-- **A supplier invoice from Expenses.** Click **Make a supplier invoice**: a draft opens
-  with the expense's amount, VAT code, date, number, due date, project and receipts, and
-  its supplier — the supplier of that name, or a new one. Check it, and post it as any
-  supplier invoice. Deleting the draft puts the expense back on the list. If the expense
-  is unapproved in Expenses before then, its line goes away by itself.
+- **A supplier invoice from Expenses.** Click **Make a supplier invoice**. The dialog asks
+  whether a new supplier is a person (a sole proprietor) — tick it if so: a person's record
+  is kept and later anonymised as [Suppliers](#suppliers) says. A draft then opens with the
+  expense's amount, VAT code, date, number, due date, project and receipts, and its
+  supplier — the supplier of that name, or a new one. Check it, and post it as any
+  supplier invoice. Deleting the draft — or the copy a Reverse and copy of it made — puts
+  the expense back on the list. If the expense is unapproved in Expenses before then, its
+  line goes away by itself. An expense is made into one supplier invoice: a second is
+  refused.
+
+If an expense is unapproved in Expenses *after* it was made into a supplier invoice, the
+books turn nothing back — the invoice is yours — and Needs attention says so on a line
+naming the invoice: *The expense behind a supplier invoice was unapproved*. While the
+invoice is a draft the line waits: delete the draft, or post it if the invoice is owed all
+the same, and click **Retry**. Once the invoice is posted the line is for your information;
+reverse the invoice if it is not owed.
 
 A line marked **For your information** — *VAT not deducted* — has posted; it is not counted
-with what waits. **Acknowledge** takes it off the list. If the VAT should have been
+with what waits. **Acknowledge** takes it off the list, and it goes by itself when the
+expense is unapproved in Expenses and its voucher turned back. If the VAT should have been
 deducted, reverse the expense's voucher with a journal entry and enter it again with the
 right code.
 

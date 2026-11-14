@@ -256,7 +256,9 @@ the books by itself, within minutes; nobody types it again:
 The VAT on a receipt is deducted only for a category whose posting rule allows it and when
 the VAT is one of the Norwegian rates on the amount. An expense in another currency waits in
 Accounting for its amount in NOK, which an accountant enters from the bank statement. A
-supplier invoice is entered in Accounting (above). Nothing here changes how you record,
+supplier invoice is entered in Accounting (above); unapproving one that has already been
+made into a supplier invoice there changes nothing in the books — Accounting shows it under
+Needs attention, for the accountant to delete or reverse the invoice. Nothing here changes how you record,
 submit, approve or pay back; the period lock here is Expenses' own, and Accounting books a
 change in a month it has locked on its first open day. See
 [How expenses arrive](/en/user/accounting/#how-expenses-arrive-from-expenses).
