@@ -295,6 +295,38 @@ type AccountingUnposted struct {
 	NokAmounts        []byte
 }
 
+type AccountingVatTerm struct {
+	ID                  int64
+	Year                int32
+	Term                int32
+	TermKind            string
+	PeriodStart         time.Time
+	PeriodEnd           time.Time
+	State               string
+	Closings            int32
+	Figures             []byte
+	ReturnXml           *string
+	SettlementVoucherID *int64
+	ClosedAt            *time.Time
+	ClosedByUserID      *uuid.UUID
+	FiledAt             *time.Time
+	FiledReference      *string
+	FiledByUserID       *uuid.UUID
+	UpdatedAt           time.Time
+}
+
+type AccountingVatTermEvent struct {
+	ID             int64
+	VatTermID      int64
+	Kind           string
+	VoucherID      *int64
+	Reason         *string
+	FiledAt        *time.Time
+	FiledReference *string
+	At             time.Time
+	ByUserID       uuid.UUID
+}
+
 type AccountingVoucher struct {
 	ID                int64
 	FiscalYear        int32
