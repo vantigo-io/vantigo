@@ -1008,7 +1008,10 @@ fakturaen, blir tilstanden **Kreditert**. En kreditnota etter en betaling er til
 fakturaen viser da **Til tilbakebetaling**, det som skyldes tilbake. Utkastet advarer, og
 utstedelsen avviser, en kreditnota som er større enn det fakturaen eller en linje har
 igjen; en kreditnota kan ikke selv krediteres
-([kreditnotaer](/en/reference/invoices/#credit-notes)).
+([kreditnotaer](/en/reference/invoices/#credit-notes)). **En avskrevet faktura krediteres
+ikke**: mens avskrivningen står, avvises **Krediter**, og det samme gjør lagring og utstedelse
+av et kreditnotautkast til den — *Denne fakturaen er avskrevet. Angre avskrivningen først, og
+krediter den så.* Angre avskrivningen, og krediter så fakturaen.
 
 **Å kreditere en faktura laget av arbeid** gir arbeidet tilbake — timene, utleggene og
 milepælene en linje fakturerte, blir ufakturert igjen og klare for en ny faktura — bare
@@ -1155,13 +1158,17 @@ innbetaling etter avskrivning** på avskrivningen. Beløpet er forhåndsutfylt m
 gjenstår å kreve inn, og høyst det. Fakturaen forblir avskrevet; betalingen vises som
 **Innbetalt etter avskrivning**, og avskrivningen viser hvor mye som er innbetalt. En
 bankinnbetaling til en avskrevet faktura — fra en bankfil eller fra bankintegrasjonen — blir
-aldri registrert av seg selv: den venter i [avvikskøen](#avvikskøen) som **Ingenting er igjen
-å betale**, og du registrerer den her som innbetaling etter avskrivning.
+aldri registrert av seg selv, heller ikke mot purrekravene: den venter i
+[avvikskøen](#avvikskøen) som **Fakturaen er avskrevet: registrer den som innbetalt etter
+avskrivning**. Registrer den her som innbetaling etter avskrivning, og avvis så linjen som
+**Ikke en kundebetaling** med en merknad. En avskrevet faktura kan ikke krediteres før
+avskrivningen er angret.
 
 Å avskrive, å angre og å registrere en innbetaling etter avskrivning krever
 `invoices:payments`. Med [Regnskap](/nb/user/accounting/#slik-kommer-salget-inn-fra-fakturaer)
 slått på bokføres hver av dem av seg selv, og siden til en utstedt faktura viser
-**I regnskapet:** med en lenke til hvert av bilagene.
+**I regnskapet:** med en lenke til hvert av bilagene — siden til en kreditnota sitt eget —
+de første tjue, og en knapp som **3 til** for resten.
 
 ## Importere innbetalinger fra banken
 
@@ -1342,6 +1349,7 @@ Hver årsak med vanlige ord, og hva du gjør:
 | **Betalt til en annen konto** | ikke til kontoen fakturaen viste | **Fordel** den etter å ha sjekket, eller avvis den |
 | **Et mulig duplikat** | kontoens skjæringsdag, eller samme betaling allerede registrert fra en annen fil | **Bekreft duplikat**, eller **Fordel** den som en egen betaling |
 | **Betalingen ble fjernet** | en avstemt betaling der alle registreringene ble fjernet, gjenåpnet | **Fordel** den på nytt, eller avvis den |
+| **Fakturaen er avskrevet: registrer den som innbetalt etter avskrivning** | KID-ens faktura er [avskrevet](#å-avskrive-en-faktura) | **Registrer innbetaling etter avskrivning** på fakturaen, og så **Ikke en kundebetaling** med en merknad |
 | status **Duplikat** | en tidligere eller overlappende fil brakte samme linje | **Bekreft duplikat**, eller **Behold som egen betaling** |
 
 **Fordel.** Dialogen **Fordel linje …** åpner med fakturaene betalingen kan betale — den KID-en

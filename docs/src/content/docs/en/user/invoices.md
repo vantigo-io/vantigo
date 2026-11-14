@@ -996,7 +996,10 @@ invoice's **Open** amount falls by the credit note's total; when credit notes co
 whole invoice its state becomes **Credited**. A credit note after a payment is allowed:
 the invoice then shows **Refund due**, what is owed back. The draft warns, and the issue
 refuses, a credit note larger than what the invoice or a line has left; a credit note
-cannot itself be credited ([credit notes](/en/reference/invoices/#credit-notes)).
+cannot itself be credited ([credit notes](/en/reference/invoices/#credit-notes)). **A
+written-off invoice is not credited**: while its write-off stands, **Credit** is refused,
+and so is saving or issuing a credit-note draft of it — *This invoice is written off. Undo
+the write-off first, then credit it.* Undo the write-off, then credit the invoice.
 
 **Crediting an invoice made from work** gives the work back — the hours, expenses and
 milestones a line billed become uninvoiced again, ready for a new invoice — only when the
@@ -1138,12 +1141,16 @@ recovered payment** on the write-off. The amount is prefilled with what is left 
 recover, and at most that. The invoice stays written off; the payment is listed as
 **Recovered after write-off**, and the write-off shows what has been recovered. A bank
 payment of a written-off invoice — from a bank file or from the bank feed — is never
-registered on its own: it waits in [the exception queue](#the-exception-queue) as
-**Nothing is left to pay**, and you register it here as recovered.
+registered on its own, not even towards its reminder charges: it waits in [the exception
+queue](#the-exception-queue) as **The invoice is written off: register it as recovered**.
+Register it here as recovered, then dismiss the line as **Not a customer payment** with a
+note. A written-off invoice cannot be credited until the write-off is undone.
 
 Writing off, undoing and registering a recovered payment need `invoices:payments`. With
 [Accounting](/en/user/accounting/#how-sales-arrive-from-invoices) on, each posts itself,
-and an issued invoice's page shows **In the books:** with a link to each of its vouchers.
+and an issued invoice's page shows **In the books:** with a link to each of its vouchers —
+a credit note's page its own — the first twenty, and a button such as **3 more** for the
+rest.
 
 ## Importing payments from the bank
 
@@ -1322,6 +1329,7 @@ Each reason in plain words, and what to do:
 | **Paid into another account** | not into the account the invoice printed | **Apply** it after checking, or dismiss it |
 | **A possible duplicate** | the account's cutover, or the same payment already registered from another file | **Confirm duplicate**, or **Apply** it as a payment of its own |
 | **Its payment was removed** | a matched payment whose registrations were all removed, reopened | **Apply** it again, or dismiss it |
+| **The invoice is written off: register it as recovered** | the KID's invoice is [written off](#writing-an-invoice-off) | **Register recovered payment** on the invoice, then **Not a customer payment** with a note |
 | status **Duplicate** | an earlier or overlapping file brought the same line | **Confirm duplicate**, or **Treat as distinct** |
 
 **Apply.** The dialog **Apply line …** opens with the invoices the payment may pay — the
