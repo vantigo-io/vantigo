@@ -262,6 +262,12 @@ func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config) int {
 		logger.Error("development workshop seed failed", "error", err)
 		return 1
 	}
+	// The books last: the catch-up posts whatever the seeds before made in
+	// Invoices and Expenses, the workshop's among them.
+	if err := seedDemoAccounting(ctx, pool, logger, cfg, seedClock().UTC().Truncate(time.Second)); err != nil {
+		logger.Error("development accounting seed failed", "error", err)
+		return 1
+	}
 	return 0
 }
 
@@ -353,10 +359,6 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 	if skipped {
 		logger.Info("development seed already applied; skipping")
 		return nil
-	}
-
-	if err := seedDemoAccounting(ctx, pool, logger, cfg, now); err != nil {
-		return fmt.Errorf("seed accounting: %w", err)
 	}
 
 	attrs := []any{
