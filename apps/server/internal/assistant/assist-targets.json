@@ -95,6 +95,21 @@
     "description": "The standard tax codes with direction, rate and VAT account; a row opens the code."
   },
   {
+    "key": "accounting.vat.close",
+    "route": "/accounting/vat",
+    "description": "The button on a VAT term's page that opens the close's confirmation: what closing does, and what stops it now."
+  },
+  {
+    "key": "accounting.vat.terms",
+    "route": "/accounting/vat",
+    "description": "The list of VAT terms on the VAT page: each term's period, state, due date and the return's total."
+  },
+  {
+    "key": "accounting.vat.xml",
+    "route": "/accounting/vat",
+    "description": "The button on a closed VAT term's page that downloads the return as Skatteetaten's XML, to file at Skatteetaten by hand."
+  },
+  {
     "key": "accounting.voucher.copy",
     "route": "/accounting/vouchers/{voucherId}",
     "description": "The button that opens a new journal entry with this voucher's lines."
