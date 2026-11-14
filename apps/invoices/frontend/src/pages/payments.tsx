@@ -359,8 +359,9 @@ export const ImportResultCard = ({
   );
 };
 
+/** A line format in words: the two of files, and feed — the bank feed's, which only its switch sets. */
 const formatLabel = (t: (key: string) => string, format: string): string =>
-  (BANK_FORMATS as readonly string[]).includes(format) ? t(`bank.format.${format}`) : format;
+  [...BANK_FORMATS, "feed"].includes(format) ? t(`bank.format.${format}`) : format;
 
 const AccountsCard = ({ canManage }: { canManage: boolean }) => {
   const { t, date, dateTime } = useInvoiceFormat();

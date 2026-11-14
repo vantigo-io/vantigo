@@ -16,6 +16,7 @@ const manager = {
   canImportBankFiles: false,
   canIssue: true,
   canManage: true,
+  canManageBankFeed: false,
   canQuickInvoice: false,
   canRegisterPayments: false,
   canRunReminders: false,

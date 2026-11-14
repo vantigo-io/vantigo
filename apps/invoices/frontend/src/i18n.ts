@@ -495,6 +495,15 @@ export const invoicesCatalog = {
       "This bank file was imported before, as file {{bankFileId}} uploaded {{uploadedAt}}. Nothing was imported again.",
     "refusal.bank_import_format_mismatch":
       "This account's bank files are imported in the other format. Nothing was imported; a manager can change the account's format.",
+    "refusal.bank_feed_disabled": "This installation allows no bank feed. Nothing was sent to the bank.",
+    "refusal.bank_feed_not_connected": "No bank is connected. Connect the bank first.",
+    "refusal.bank_feed_credential_rejected": "The bank refused the API key. Create a new key in the bank and save it.",
+    "refusal.bank_feed_unavailable":
+      "The bank could not be reached, or the saved key cannot be read on this server. Nothing was changed; try again, or save the key again.",
+    "refusal.bank_feed_account_not_offered":
+      "The bank does not offer this account for the key, or it is a card account. Nothing was changed.",
+    "refusal.bank_feed_enabled":
+      "The bank feed reads this account. Switch it off under Workspace admin → Integrations → Bank before you change the format.",
     "refusal.no_charges_outstanding":
       "No reminder charge is outstanding on this invoice: none was claimed, or every charge is waived or paid.",
     "refusal.charge_payment_exceeds_outstanding":
@@ -1184,6 +1193,7 @@ export const invoicesCatalog = {
     "bank.format": "Format",
     "bank.format.ocr": "OCR giro",
     "bank.format.camt054": "camt.054",
+    "bank.format.feed": "Bank feed",
     "bank.lastFile": "Latest file",
     "bank.lastBookedOn": "Latest booking day",
     "bank.cutover":
@@ -1909,6 +1919,70 @@ export const invoicesCatalog = {
     "fieldInvalid.vipps.clientSecret": "Enter the client secret: at most 1 000 characters, required the first time.",
     "fieldInvalid.vipps.subscriptionKey":
       "Enter the subscription key: at most 1 000 characters, required the first time.",
+
+    "bankFeed.title": "Bank",
+    "bankFeed.description":
+      "Connect the company's bank, so the incoming payments on its accounts are read from the bank instead of imported as files.",
+    "bankFeed.failedToLoad": "Could not load the bank connection",
+    "bankFeed.offOnInstanceTitle": "The bank feed is switched off",
+    "bankFeed.offOnInstance":
+      "This installation allows no bank feed (INVOICES_BANK_FEED_ENABLED), and nothing is sent to any bank. What is saved is kept. Ask the operator to switch it on.",
+    "bankFeed.connection": "Connection",
+    "bankFeed.status.ok": "Connected",
+    "bankFeed.status.unauthorized": "Key refused",
+    "bankFeed.keyReadsTitle": "What the key can do",
+    "bankFeed.keyReads":
+      "An API key reads every account and transaction in the company's bank: keep it as you keep a password. It cannot move money: a payment made with it is a draft until a person signs it with BankID.",
+    "bankFeed.connectedWith": "Connected to {{bank}} with the key ending {{lastFour}}, on {{at}}.",
+    "bankFeed.rejectedTitle": "The bank refused the key",
+    "bankFeed.rejected": "Create a new API key in the bank and save it here.",
+    "bankFeed.rejectedOn": "The bank refused the key on {{at}}. Create a new API key in the bank and save it here.",
+    "bankFeed.bank": "Bank",
+    "bankFeed.provider.folio": "Folio",
+    "bankFeed.apiKey": "API key",
+    "bankFeed.apiKeyHint":
+      "Create the key in the bank. It is checked with the bank before it is saved, and never shown again.",
+    "bankFeed.apiKeyReplaceHint": "A key is saved. Enter a new one to replace it; it is checked with the bank first.",
+    "bankFeed.connect": "Connect",
+    "bankFeed.replaceKey": "Replace the key",
+    "bankFeed.saved": "The bank is connected",
+    "bankFeed.couldNotSave": "The key was not saved",
+    "bankFeed.disconnect": "Disconnect",
+    "bankFeed.disconnectTitle": "Disconnect the bank?",
+    "bankFeed.disconnectConfirm":
+      "The key is removed and every account is switched off. Bank files, the payments registered from them and each account's format stay.",
+    "bankFeed.disconnected": "The bank is disconnected",
+    "bankFeed.couldNotDisconnect": "The bank was not disconnected",
+    "bankFeed.accounts": "Accounts",
+    "bankFeed.accountsDescription":
+      "Switch the feed on for an account to read its incoming payments from the start day on. Nothing booked before the start day is read, so payments already registered are not registered again. The account's format becomes Bank feed, and files are no longer imported for it.",
+    "bankFeed.couldNotReadAccounts": "Could not read the bank's accounts",
+    "bankFeed.noAccounts": "The bank answers no account for this key.",
+    "bankFeed.kind": "Kind",
+    "bankFeed.kind.operational": "Operational",
+    "bankFeed.kind.tax": "Tax withholding",
+    "bankFeed.kind.savings": "Savings",
+    "bankFeed.kind.earmarks": "Earmarked",
+    "bankFeed.kind.card": "Card",
+    "bankFeed.kind.other": "Other",
+    "bankFeed.startDay": "Start day",
+    "bankFeed.startDayOf": "Start day for {{account}}",
+    "bankFeed.state": "Status",
+    "bankFeed.switchOf": "Bank feed for {{account}}",
+    "bankFeed.switchedOn": "The bank feed reads the account",
+    "bankFeed.switchedOff": "The bank feed is switched off for the account",
+    "bankFeed.couldNotSwitch": "Could not switch the bank feed",
+    "bankFeed.lastSynced": "Last read {{at}}",
+    "bankFeed.whyNot.card": "A card account is never read.",
+    "bankFeed.whyNot.not_sellers_account": "Neither the seller's bank account nor one an issued invoice printed.",
+    "bankFeed.accountStatus.ok": "OK",
+    "bankFeed.accountStatus.failing": "Failing",
+    "bankFeed.accountStatus.refused": "Refused",
+    "bankFeed.accountStatus.unauthorized": "Key refused",
+    "fieldInvalid.bankFeed.provider": "Choose the bank.",
+    "fieldInvalid.bankFeed.apiKey": "Enter the API key: 12 to 1 000 letters, digits or punctuation, without spaces.",
+    "fieldInvalid.bankFeed.startDay": "The start day may not be after today.",
+    "fieldInvalid.bankFeed.account": "The account is not a valid Norwegian account number.",
 
     "paymentSettings.title": "Pay links and payment on site",
     "paymentSettings.failedToLoad": "Could not load the payment settings",
@@ -2652,6 +2726,16 @@ export const invoicesCatalog = {
       "Denne bankfilen er importert før, som fil {{bankFileId}} lastet opp {{uploadedAt}}. Ingenting ble importert på nytt.",
     "refusal.bank_import_format_mismatch":
       "Bankfilene til denne kontoen importeres i det andre formatet. Ingenting ble importert; en administrator kan endre kontoens format.",
+    "refusal.bank_feed_disabled":
+      "Denne installasjonen tillater ingen bankintegrasjon. Ingenting ble sendt til banken.",
+    "refusal.bank_feed_not_connected": "Ingen bank er koblet til. Koble til banken først.",
+    "refusal.bank_feed_credential_rejected": "Banken avviste API-nøkkelen. Lag en ny nøkkel i banken og lagre den.",
+    "refusal.bank_feed_unavailable":
+      "Banken svarte ikke, eller den lagrede nøkkelen kan ikke leses på denne serveren. Ingenting ble endret; prøv igjen, eller lagre nøkkelen på nytt.",
+    "refusal.bank_feed_account_not_offered":
+      "Banken tilbyr ikke denne kontoen for nøkkelen, eller den er en kortkonto. Ingenting ble endret.",
+    "refusal.bank_feed_enabled":
+      "Bankintegrasjonen leser denne kontoen. Slå den av under Administrer arbeidsområde → Integrasjoner → Bank før du endrer formatet.",
     "refusal.no_charges_outstanding":
       "Ingen purrekrav står ute på denne fakturaen: ingen er krevd, eller alle er ettergitt eller betalt.",
     "refusal.charge_payment_exceeds_outstanding":
@@ -3351,6 +3435,7 @@ export const invoicesCatalog = {
     "bank.format": "Format",
     "bank.format.ocr": "OCR giro",
     "bank.format.camt054": "camt.054",
+    "bank.format.feed": "Bankintegrasjon",
     "bank.lastFile": "Siste fil",
     "bank.lastBookedOn": "Siste bokføringsdag",
     "bank.cutover":
@@ -4078,6 +4163,70 @@ export const invoicesCatalog = {
     "fieldInvalid.vipps.clientId": "Legg inn klient-id-en: høyst 1 000 tegn, påkrevd første gang.",
     "fieldInvalid.vipps.clientSecret": "Legg inn klienthemmeligheten: høyst 1 000 tegn, påkrevd første gang.",
     "fieldInvalid.vipps.subscriptionKey": "Legg inn abonnementsnøkkelen: høyst 1 000 tegn, påkrevd første gang.",
+
+    "bankFeed.title": "Bank",
+    "bankFeed.description":
+      "Koble til selskapets bank, slik at innbetalingene på kontoene leses fra banken i stedet for å importeres som filer.",
+    "bankFeed.failedToLoad": "Kunne ikke laste banktilkoblingen",
+    "bankFeed.offOnInstanceTitle": "Bankintegrasjonen er slått av",
+    "bankFeed.offOnInstance":
+      "Denne installasjonen tillater ingen bankintegrasjon (INVOICES_BANK_FEED_ENABLED), og ingenting sendes til noen bank. Det som er lagret, beholdes. Be driftsansvarlig slå den på.",
+    "bankFeed.connection": "Tilkobling",
+    "bankFeed.status.ok": "Tilkoblet",
+    "bankFeed.status.unauthorized": "Nøkkel avvist",
+    "bankFeed.keyReadsTitle": "Hva nøkkelen kan gjøre",
+    "bankFeed.keyReads":
+      "En API-nøkkel leser alle kontoer og transaksjoner i selskapets bank: ta vare på den slik du tar vare på et passord. Den kan ikke flytte penger: en betaling laget med den er et utkast til en person signerer den med BankID.",
+    "bankFeed.connectedWith": "Koblet til {{bank}} med nøkkelen som slutter på {{lastFour}}, {{at}}.",
+    "bankFeed.rejectedTitle": "Banken avviste nøkkelen",
+    "bankFeed.rejected": "Lag en ny API-nøkkel i banken og lagre den her.",
+    "bankFeed.rejectedOn": "Banken avviste nøkkelen {{at}}. Lag en ny API-nøkkel i banken og lagre den her.",
+    "bankFeed.bank": "Bank",
+    "bankFeed.provider.folio": "Folio",
+    "bankFeed.apiKey": "API-nøkkel",
+    "bankFeed.apiKeyHint": "Lag nøkkelen i banken. Den kontrolleres hos banken før den lagres, og vises aldri igjen.",
+    "bankFeed.apiKeyReplaceHint":
+      "En nøkkel er lagret. Skriv inn en ny for å erstatte den; den kontrolleres hos banken først.",
+    "bankFeed.connect": "Koble til",
+    "bankFeed.replaceKey": "Bytt nøkkel",
+    "bankFeed.saved": "Banken er koblet til",
+    "bankFeed.couldNotSave": "Nøkkelen ble ikke lagret",
+    "bankFeed.disconnect": "Koble fra",
+    "bankFeed.disconnectTitle": "Koble fra banken?",
+    "bankFeed.disconnectConfirm":
+      "Nøkkelen fjernes, og alle kontoer slås av. Bankfilene, betalingene som er registrert fra dem, og formatet til hver konto blir stående.",
+    "bankFeed.disconnected": "Banken er koblet fra",
+    "bankFeed.couldNotDisconnect": "Banken ble ikke koblet fra",
+    "bankFeed.accounts": "Kontoer",
+    "bankFeed.accountsDescription":
+      "Slå på integrasjonen for en konto for å lese innbetalingene fra startdagen av. Ingenting som er bokført før startdagen, leses, så betalinger som allerede er registrert, registreres ikke på nytt. Kontoens format blir Bankintegrasjon, og det importeres ikke lenger filer for den.",
+    "bankFeed.couldNotReadAccounts": "Kunne ikke lese bankens kontoer",
+    "bankFeed.noAccounts": "Banken svarer ingen kontoer for denne nøkkelen.",
+    "bankFeed.kind": "Type",
+    "bankFeed.kind.operational": "Drift",
+    "bankFeed.kind.tax": "Skattetrekk",
+    "bankFeed.kind.savings": "Sparing",
+    "bankFeed.kind.earmarks": "Øremerket",
+    "bankFeed.kind.card": "Kort",
+    "bankFeed.kind.other": "Annen",
+    "bankFeed.startDay": "Startdag",
+    "bankFeed.startDayOf": "Startdag for {{account}}",
+    "bankFeed.state": "Status",
+    "bankFeed.switchOf": "Bankintegrasjon for {{account}}",
+    "bankFeed.switchedOn": "Bankintegrasjonen leser kontoen",
+    "bankFeed.switchedOff": "Bankintegrasjonen er slått av for kontoen",
+    "bankFeed.couldNotSwitch": "Kunne ikke slå bankintegrasjonen av eller på",
+    "bankFeed.lastSynced": "Sist lest {{at}}",
+    "bankFeed.whyNot.card": "En kortkonto leses aldri.",
+    "bankFeed.whyNot.not_sellers_account": "Verken selgerens bankkonto eller en som en utstedt faktura har skrevet ut.",
+    "bankFeed.accountStatus.ok": "OK",
+    "bankFeed.accountStatus.failing": "Feiler",
+    "bankFeed.accountStatus.refused": "Avvist",
+    "bankFeed.accountStatus.unauthorized": "Nøkkel avvist",
+    "fieldInvalid.bankFeed.provider": "Velg banken.",
+    "fieldInvalid.bankFeed.apiKey": "Skriv inn API-nøkkelen: 12 til 1 000 bokstaver, sifre eller tegn, uten mellomrom.",
+    "fieldInvalid.bankFeed.startDay": "Startdagen kan ikke være etter i dag.",
+    "fieldInvalid.bankFeed.account": "Kontoen er ikke et gyldig norsk kontonummer.",
 
     "paymentSettings.title": "Betalingslenker og betaling på stedet",
     "paymentSettings.failedToLoad": "Kunne ikke laste betalingsinnstillingene",
