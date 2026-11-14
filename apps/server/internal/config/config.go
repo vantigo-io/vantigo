@@ -211,6 +211,18 @@ type Config struct {
 	// (BRREG_TIMEOUT); .NET's total-request timeout.
 	BrregTimeout time.Duration
 
+	// AccountingSaftImportMaxBytes is the largest SAF-T file Accounting's
+	// import takes (ACCOUNTING_SAFT_IMPORT_MAX_BYTES, default 512 MiB, from 1
+	// MiB to 4 GiB): the file a company brings from another system to set
+	// up its books (accounting design A25).
+	AccountingSaftImportMaxBytes int64
+	// AccountingSaftSplitBytes is the size past which a SAF-T export is
+	// split by period into parts, each a valid file alone
+	// (ACCOUNTING_SAFT_SPLIT_BYTES, default 2 000 000 000 — Skatteetaten
+	// takes files of up to 2 GB — at least 1024, so a test can force a
+	// split; accounting design A24).
+	AccountingSaftSplitBytes int64
+
 	// PeppolLookupEnabled is the on/off switch for the customers module's
 	// Peppol lookup (PEPPOL_LOOKUP_ENABLED, can-this-customer-receive-EHF
 	// design D3, D5), default on. false answers the operation 503 without
@@ -719,6 +731,7 @@ func Load(env map[string]string) (*Config, error) {
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
+	accountingSaft(&p, env, c)
 	communicationsRetention(&p, env, c)
 	aiConfig(&p, env, c)
 	c.AIContextTokens = integer(&p, env, "AI_CONTEXT_TOKENS", defaultAIContextTokens(c.AIProvider), 2000, 1000000)
@@ -1324,6 +1337,13 @@ func objectStorage(p *problems, env map[string]string, c *Config) {
 	if c.StorageFSAllowInsecureRoot && !c.IsDevelopment() {
 		p.add("STORAGE_FS_ALLOW_INSECURE_ROOT", "must not be 1 outside development")
 	}
+}
+
+// accountingSaft loads Accounting's SAF-T limits: the largest file the
+// import takes and the size past which an export is split by period.
+func accountingSaft(p *problems, env map[string]string, c *Config) {
+	c.AccountingSaftImportMaxBytes = int64(integer(p, env, "ACCOUNTING_SAFT_IMPORT_MAX_BYTES", 512<<20, 1<<20, 4<<30))
+	c.AccountingSaftSplitBytes = int64(integer(p, env, "ACCOUNTING_SAFT_SPLIT_BYTES", 2_000_000_000, 1024, 2_000_000_000))
 }
 
 // communicationsAttachments loads the two settings communications' attachment

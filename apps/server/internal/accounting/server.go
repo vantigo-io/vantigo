@@ -111,7 +111,11 @@ func (s *server) withReadTx(ctx context.Context, fn func(q *store.Queries) error
 }
 
 // ungated are the operations that answer before the books are set up (R12).
-var ungated = map[string]bool{"GetAccountingMeta": true, "SetUpAccountingBooks": true}
+// A SAF-T import is the other way to set the books up (A25), so its
+// operations answer before the books are set up too.
+var ungated = map[string]bool{"GetAccountingMeta": true, "SetUpAccountingBooks": true,
+	"ListAccountingSaftImports": true, "UploadAccountingSaftImport": true, "GetAccountingSaftImport": true,
+	"ApplyAccountingSaftImport": true, "DownloadAccountingSaftImportFile": true}
 
 // setupGate answers 409 books_not_set_up for every other operation until Set
 // up the books has run, so nothing else runs before it (R12).

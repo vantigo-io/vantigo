@@ -2287,3 +2287,22 @@ func TestLoad_AgentsConcurrency(t *testing.T) {
 		}
 	}
 }
+
+// TestLoad_AccountingSaft pins Accounting's SAF-T limits: the import's file
+// size and the export's split threshold, each with its default and bounds.
+func TestLoad_AccountingSaft(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.AccountingSaftImportMaxBytes != 512<<20 || cfg.AccountingSaftSplitBytes != 2_000_000_000 {
+		t.Errorf("defaults = %d, %d", cfg.AccountingSaftImportMaxBytes, cfg.AccountingSaftSplitBytes)
+	}
+	cfg = mustLoad(t, with(with(validEnv(), "ACCOUNTING_SAFT_IMPORT_MAX_BYTES", "2097152"), "ACCOUNTING_SAFT_SPLIT_BYTES", "4096"))
+	if cfg.AccountingSaftImportMaxBytes != 2<<20 || cfg.AccountingSaftSplitBytes != 4096 {
+		t.Errorf("set = %d, %d", cfg.AccountingSaftImportMaxBytes, cfg.AccountingSaftSplitBytes)
+	}
+	if msg := loadError(t, with(validEnv(), "ACCOUNTING_SAFT_SPLIT_BYTES", "10")); !strings.Contains(msg, "ACCOUNTING_SAFT_SPLIT_BYTES: must be an integer from 1024 to 2000000000") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "ACCOUNTING_SAFT_IMPORT_MAX_BYTES", "1")); !strings.Contains(msg, "ACCOUNTING_SAFT_IMPORT_MAX_BYTES") {
+		t.Errorf("error = %q", msg)
+	}
+}

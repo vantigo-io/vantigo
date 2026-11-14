@@ -136,6 +136,58 @@ type AccountingPostingRuleVersion struct {
 	VatDeductible *bool
 }
 
+type AccountingSaftExport struct {
+	ID                int64
+	FiscalYear        int32
+	FromPeriod        int16
+	ToPeriod          int16
+	PeriodStart       time.Time
+	PeriodEnd         time.Time
+	State             string
+	Error             *string
+	Attempts          int32
+	LeaseID           *uuid.UUID
+	LeaseUntil        *time.Time
+	UnmappedAccounts  int32
+	TotalBytes        *int64
+	RequestedAt       time.Time
+	RequestedByUserID uuid.UUID
+	StartedAt         *time.Time
+	FinishedAt        *time.Time
+}
+
+type AccountingSaftExportFile struct {
+	ExportID    int64
+	Part        int32
+	Parts       int32
+	FileName    string
+	ObjectKey   string
+	SizeBytes   int64
+	Sha256      string
+	FromPeriod  int16
+	ToPeriod    int16
+	PeriodStart time.Time
+	PeriodEnd   time.Time
+}
+
+type AccountingSaftImport struct {
+	ID               int64
+	State            string
+	FileName         string
+	ObjectKey        string
+	SizeBytes        int64
+	Sha256           string
+	AuditFileVersion string
+	SelectionStart   time.Time
+	SelectionEnd     time.Time
+	Preview          []byte
+	UploadedAt       time.Time
+	UploadedByUserID uuid.UUID
+	AppliedAt        *time.Time
+	AppliedByUserID  *uuid.UUID
+	OpeningVoucherID *int64
+}
+
 type AccountingSetting struct {
 	ID                   int16
 	BooksStart           time.Time
