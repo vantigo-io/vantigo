@@ -651,6 +651,26 @@ does. A removed charge payment posts the reversal.
 - **The fact log's backfill is in event order**: registrations and removals interleaved
   by when they happened.
 
+### R15 — After the review of delivery B (A14, A15, A16, R4, R7)
+
+- **No credit note while a write-off stands.** Invoices refuses it and says to undo the
+  write-off first: otherwise the customer is shown a refund for money never paid, and the
+  VAT is taken back twice.
+- **The VAT correction follows what is left of the invoice.** The split is over the
+  invoice's VAT summaries less its credit notes', per code and rate; payments stay in
+  proportion.
+- **Recoveries are scaled cumulatively** against the write-off, the remainder on
+  `bad_debt`, so several part payments add up to exactly what was written off.
+- **An undo reverses the stored voucher**, line for line, whatever the accounts say now.
+- **What waits, waits in order.** A document or fact whose invoice has a row under *Needs
+  attention* waits behind it, and a successful retry posts its dependants after it.
+- **A sales rule names an income account**, is archived rather than deleted, and keeps its
+  versions; a posting stores the rule and version that placed it.
+- **A backlog asks for itself again**: a run that stops at its lease's margin, or on a
+  full page, leaves a request behind.
+- **A bank line for a written-off invoice is queued**, from a file or the feed; a person
+  registers the recovery.
+
 ### R10 — The lock is read under a lock (A8, A22)
 
 - The posting trigger reads `settings` `FOR SHARE`; moving the lock, closing and
