@@ -34,7 +34,7 @@ var bankFeedChecks = []string{
 }
 
 // bankFeedObjects is what 00178 adds or changes, as found: the new tables'
-// columns and the five it adds or makes nullable on 00041's tables
+// columns (less the two 00179 adds, schema_invoices_bank_feed_cursor_test.go's) and the five it adds or makes nullable on 00041's tables
 // (table.column:type:length:nullable:default), the tables, every constraint
 // of the new tables and the CHECKs it replaces or adds with their
 // definitions, and the new tables' indexes as Postgres prints them. Each list
@@ -60,6 +60,7 @@ func bankFeedObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) map[
 			    || coalesce(character_maximum_length::text, '') || ':' || is_nullable || ':' || coalesce(column_default, '')
 			FROM information_schema.columns
 			WHERE table_schema = 'invoices'
+			  AND NOT (table_name = 'bank_feed_accounts' AND column_name IN ('read_through', 'rate_limited_until'))
 			  AND (table_name = ANY($1)
 			    OR (table_name = 'bank_files' AND column_name IN ('provider', 'uploaded_by_user_id'))
 			    OR (table_name = 'charge_payments' AND column_name = 'registered_by_user_id')

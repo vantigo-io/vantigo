@@ -86,9 +86,10 @@ SELECT * FROM invoices.bank_feed_accounts WHERE account = @account;
 
 -- name: EnableBankFeedAccount :one
 -- EnableBankFeedAccount switches the feed on for one account from start_day
--- (F4): ok, no failures, due now. The caller holds the account's bank import
--- row FOR UPDATE and has set its format to feed. A lease held by a cycle in
--- flight is left to it.
+-- (F4): ok, no failures, due now, read from the start day again — the read
+-- cursor and the bank's wait cleared (00179). The caller holds the account's
+-- bank import row FOR UPDATE and has set its format to feed. A lease held by
+-- a cycle in flight is left to it.
 INSERT INTO invoices.bank_feed_accounts (account, enabled, start_day, status, enabled_by_user_id, next_sync_at, updated_at)
 VALUES (@account, true, @start_day, 'ok', @enabled_by_user_id, @now::timestamptz, @now::timestamptz)
 ON CONFLICT (account) DO UPDATE SET
@@ -98,6 +99,8 @@ ON CONFLICT (account) DO UPDATE SET
     reason = NULL,
     detail = '',
     failures = 0,
+    read_through = NULL,
+    rate_limited_until = NULL,
     enabled_by_user_id = EXCLUDED.enabled_by_user_id,
     next_sync_at = EXCLUDED.next_sync_at,
     updated_at = EXCLUDED.updated_at
@@ -130,7 +133,7 @@ WHERE enabled AND status <> 'unauthorized'
 -- every feed line of it with one of @line_refs — the bank's own id, which
 -- stays the same when the bank books the transaction on another day than it
 -- first did. A transaction either names is the same record read again.
-SELECT fingerprint, line_ref FROM invoices.bank_transactions
+SELECT fingerprint, line_ref, amount, coalesce(kid, '')::text AS kid FROM invoices.bank_transactions
 WHERE account = @account
   AND ((duplicate_of_id IS NULL AND fingerprint = ANY (sqlc.arg(fingerprints)::text[]))
        OR (format = 'feed' AND line_ref = ANY (sqlc.arg(line_refs)::text[])));
@@ -187,10 +190,12 @@ WHERE account = @account AND lease_id = @lease_id::text;
 
 -- name: BankFeedFailed :execrows
 -- BankFeedFailed ends a claim whose read failed (F7): one more failure in a
--- row, failing from the third, what failed in detail, read again at
--- @next_sync_at — the backoff the caller worked out from the count.
+-- row, failing from the third, what failed in detail — and in reason, when it
+-- has one of its own (answer_too_large) — read again at @next_sync_at, the
+-- backoff the caller worked out from the count.
 UPDATE invoices.bank_feed_accounts SET
     failures = failures + 1,
+    reason = coalesce(sqlc.narg(reason)::text, CASE WHEN status = 'refused' AND failures + 1 < @failing_after::integer THEN reason END),
     status = CASE WHEN failures + 1 >= @failing_after::integer THEN 'failing' ELSE status END,
     detail = @detail, next_sync_at = @next_sync_at::timestamptz, lease_id = NULL, lease_until = NULL,
     updated_at = CASE WHEN failures + 1 >= @failing_after::integer AND status <> 'failing'
@@ -214,4 +219,11 @@ WHERE account = @account AND lease_id = @lease_id::text;
 -- the newer key. After MarkBankFeedUnauthorized the lease is gone and it
 -- writes nothing.
 UPDATE invoices.bank_feed_accounts SET next_sync_at = @now::timestamptz, lease_id = NULL, lease_until = NULL
+WHERE account = @account AND lease_id = @lease_id::text;
+
+-- name: AdvanceBankFeedRead :execrows
+-- AdvanceBankFeedRead moves an account's read cursor to the end of a window
+-- the sync read and judged to the end (00179): the next read starts ten days
+-- before it. Only under the claim's lease; no row is the claim lost.
+UPDATE invoices.bank_feed_accounts SET read_through = @read_through
 WHERE account = @account AND lease_id = @lease_id::text;

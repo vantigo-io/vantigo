@@ -574,7 +574,7 @@ func (q *Queries) ShareBankFeedConnection(ctx context.Context) (InvoicesBankFeed
 }
 
 const shareBankFeedLease = `-- name: ShareBankFeedLease :one
-SELECT account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at FROM invoices.bank_feed_accounts
+SELECT account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at, read_through, rate_limited_until FROM invoices.bank_feed_accounts
 WHERE account = $1 AND enabled AND lease_id = $2::text
 FOR SHARE
 `
@@ -606,6 +606,8 @@ func (q *Queries) ShareBankFeedLease(ctx context.Context, arg ShareBankFeedLease
 		&i.LeaseUntil,
 		&i.EnabledByUserID,
 		&i.UpdatedAt,
+		&i.ReadThrough,
+		&i.RateLimitedUntil,
 	)
 	return i, err
 }

@@ -2004,6 +2004,8 @@ export const invoicesCatalog = {
       "The bank answered a transaction that could not be read. Nothing of the batch was stored.",
     "bankFeed.reason.format_mismatch":
       "The account's format is no longer Bank feed. Switch the feed off for it, or back on.",
+    "bankFeed.reason.answer_too_large":
+      "The bank's answer for one day is too large to read. It is tried again; report it if it stays.",
     "fieldInvalid.bankFeed.provider": "Choose the bank.",
     "fieldInvalid.bankFeed.apiKey": "Enter the API key: 12 to 1 000 letters, digits or punctuation, without spaces.",
     "fieldInvalid.bankFeed.startDay": "The start day may be neither after today nor more than 13 months before it.",
@@ -4273,6 +4275,8 @@ export const invoicesCatalog = {
       "Banken svarte en transaksjon som ikke kunne leses. Ingenting av bunken ble lagret.",
     "bankFeed.reason.format_mismatch":
       "Kontoens format er ikke lenger Bankintegrasjon. Slå integrasjonen av for den, eller på igjen.",
+    "bankFeed.reason.answer_too_large":
+      "Bankens svar for én dag er for stort til å leses. Det prøves igjen; meld fra om det vedvarer.",
     "fieldInvalid.bankFeed.provider": "Velg banken.",
     "fieldInvalid.bankFeed.apiKey": "Skriv inn API-nøkkelen: 12 til 1 000 bokstaver, sifre eller tegn, uten mellomrom.",
     "fieldInvalid.bankFeed.startDay": "Startdagen kan verken være etter i dag eller mer enn 13 måneder før.",

@@ -13,17 +13,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const advanceBankFeedRead = `-- name: AdvanceBankFeedRead :execrows
+UPDATE invoices.bank_feed_accounts SET read_through = $1
+WHERE account = $2 AND lease_id = $3::text
+`
+
+type AdvanceBankFeedReadParams struct {
+	ReadThrough pgtype.Date
+	Account     string
+	LeaseID     string
+}
+
+// AdvanceBankFeedRead moves an account's read cursor to the end of a window
+// the sync read and judged to the end (00179): the next read starts ten days
+// before it. Only under the claim's lease; no row is the claim lost.
+func (q *Queries) AdvanceBankFeedRead(ctx context.Context, arg AdvanceBankFeedReadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, advanceBankFeedRead, arg.ReadThrough, arg.Account, arg.LeaseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const bankFeedFailed = `-- name: BankFeedFailed :execrows
 UPDATE invoices.bank_feed_accounts SET
     failures = failures + 1,
-    status = CASE WHEN failures + 1 >= $1::integer THEN 'failing' ELSE status END,
-    detail = $2, next_sync_at = $3::timestamptz, lease_id = NULL, lease_until = NULL,
-    updated_at = CASE WHEN failures + 1 >= $1::integer AND status <> 'failing'
-        THEN $4::timestamptz ELSE updated_at END
-WHERE account = $5 AND lease_id = $6::text
+    reason = coalesce($1::text, CASE WHEN status = 'refused' AND failures + 1 < $2::integer THEN reason END),
+    status = CASE WHEN failures + 1 >= $2::integer THEN 'failing' ELSE status END,
+    detail = $3, next_sync_at = $4::timestamptz, lease_id = NULL, lease_until = NULL,
+    updated_at = CASE WHEN failures + 1 >= $2::integer AND status <> 'failing'
+        THEN $5::timestamptz ELSE updated_at END
+WHERE account = $6 AND lease_id = $7::text
 `
 
 type BankFeedFailedParams struct {
+	Reason       *string
 	FailingAfter int32
 	Detail       string
 	NextSyncAt   time.Time
@@ -33,10 +57,12 @@ type BankFeedFailedParams struct {
 }
 
 // BankFeedFailed ends a claim whose read failed (F7): one more failure in a
-// row, failing from the third, what failed in detail, read again at
-// @next_sync_at — the backoff the caller worked out from the count.
+// row, failing from the third, what failed in detail — and in reason, when it
+// has one of its own (answer_too_large) — read again at @next_sync_at, the
+// backoff the caller worked out from the count.
 func (q *Queries) BankFeedFailed(ctx context.Context, arg BankFeedFailedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, bankFeedFailed,
+		arg.Reason,
 		arg.FailingAfter,
 		arg.Detail,
 		arg.NextSyncAt,
@@ -162,7 +188,7 @@ WHERE account = (
     LIMIT 1
     FOR NO KEY UPDATE SKIP LOCKED
 )
-RETURNING account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at
+RETURNING account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at, read_through, rate_limited_until
 `
 
 type ClaimBankFeedAccountParams struct {
@@ -195,6 +221,8 @@ func (q *Queries) ClaimBankFeedAccount(ctx context.Context, arg ClaimBankFeedAcc
 		&i.LeaseUntil,
 		&i.EnabledByUserID,
 		&i.UpdatedAt,
+		&i.ReadThrough,
+		&i.RateLimitedUntil,
 	)
 	return i, err
 }
@@ -217,7 +245,7 @@ const disableBankFeedAccount = `-- name: DisableBankFeedAccount :one
 UPDATE invoices.bank_feed_accounts SET
     enabled = false, next_sync_at = NULL, lease_id = NULL, lease_until = NULL, updated_at = $1::timestamptz
 WHERE account = $2
-RETURNING account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at
+RETURNING account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at, read_through, rate_limited_until
 `
 
 type DisableBankFeedAccountParams struct {
@@ -246,6 +274,8 @@ func (q *Queries) DisableBankFeedAccount(ctx context.Context, arg DisableBankFee
 		&i.LeaseUntil,
 		&i.EnabledByUserID,
 		&i.UpdatedAt,
+		&i.ReadThrough,
+		&i.RateLimitedUntil,
 	)
 	return i, err
 }
@@ -274,10 +304,12 @@ ON CONFLICT (account) DO UPDATE SET
     reason = NULL,
     detail = '',
     failures = 0,
+    read_through = NULL,
+    rate_limited_until = NULL,
     enabled_by_user_id = EXCLUDED.enabled_by_user_id,
     next_sync_at = EXCLUDED.next_sync_at,
     updated_at = EXCLUDED.updated_at
-RETURNING account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at
+RETURNING account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at, read_through, rate_limited_until
 `
 
 type EnableBankFeedAccountParams struct {
@@ -288,9 +320,10 @@ type EnableBankFeedAccountParams struct {
 }
 
 // EnableBankFeedAccount switches the feed on for one account from start_day
-// (F4): ok, no failures, due now. The caller holds the account's bank import
-// row FOR UPDATE and has set its format to feed. A lease held by a cycle in
-// flight is left to it.
+// (F4): ok, no failures, due now, read from the start day again — the read
+// cursor and the bank's wait cleared (00179). The caller holds the account's
+// bank import row FOR UPDATE and has set its format to feed. A lease held by
+// a cycle in flight is left to it.
 func (q *Queries) EnableBankFeedAccount(ctx context.Context, arg EnableBankFeedAccountParams) (InvoicesBankFeedAccount, error) {
 	row := q.db.QueryRow(ctx, enableBankFeedAccount,
 		arg.Account,
@@ -314,12 +347,14 @@ func (q *Queries) EnableBankFeedAccount(ctx context.Context, arg EnableBankFeedA
 		&i.LeaseUntil,
 		&i.EnabledByUserID,
 		&i.UpdatedAt,
+		&i.ReadThrough,
+		&i.RateLimitedUntil,
 	)
 	return i, err
 }
 
 const getBankFeedAccount = `-- name: GetBankFeedAccount :one
-SELECT account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at FROM invoices.bank_feed_accounts WHERE account = $1
+SELECT account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at, read_through, rate_limited_until FROM invoices.bank_feed_accounts WHERE account = $1
 `
 
 // GetBankFeedAccount is one account's feed row, unlocked: the format PUT
@@ -343,6 +378,8 @@ func (q *Queries) GetBankFeedAccount(ctx context.Context, account string) (Invoi
 		&i.LeaseUntil,
 		&i.EnabledByUserID,
 		&i.UpdatedAt,
+		&i.ReadThrough,
+		&i.RateLimitedUntil,
 	)
 	return i, err
 }
@@ -377,7 +414,7 @@ func (q *Queries) GetBankFeedConnection(ctx context.Context) (InvoicesBankFeedCo
 }
 
 const listBankFeedAccounts = `-- name: ListBankFeedAccounts :many
-SELECT account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at FROM invoices.bank_feed_accounts ORDER BY account
+SELECT account, enabled, start_day, status, reason, detail, failures, last_synced_at, last_bank_file_id, next_sync_at, lease_id, lease_until, enabled_by_user_id, updated_at, read_through, rate_limited_until FROM invoices.bank_feed_accounts ORDER BY account
 `
 
 // ListBankFeedAccounts is every account the feed was ever switched on for, in
@@ -406,6 +443,8 @@ func (q *Queries) ListBankFeedAccounts(ctx context.Context) ([]InvoicesBankFeedA
 			&i.LeaseUntil,
 			&i.EnabledByUserID,
 			&i.UpdatedAt,
+			&i.ReadThrough,
+			&i.RateLimitedUntil,
 		); err != nil {
 			return nil, err
 		}
@@ -541,7 +580,7 @@ func (q *Queries) ReviveUnauthorizedBankFeedAccounts(ctx context.Context, now ti
 }
 
 const storedFeedLines = `-- name: StoredFeedLines :many
-SELECT fingerprint, line_ref FROM invoices.bank_transactions
+SELECT fingerprint, line_ref, amount, coalesce(kid, '')::text AS kid FROM invoices.bank_transactions
 WHERE account = $1
   AND ((duplicate_of_id IS NULL AND fingerprint = ANY ($2::text[]))
        OR (format = 'feed' AND line_ref = ANY ($3::text[])))
@@ -556,6 +595,8 @@ type StoredFeedLinesParams struct {
 type StoredFeedLinesRow struct {
 	Fingerprint string
 	LineRef     string
+	Amount      pgtype.Numeric
+	Kid         string
 }
 
 // StoredFeedLines is what a sync already stored of the transactions it read
@@ -572,7 +613,12 @@ func (q *Queries) StoredFeedLines(ctx context.Context, arg StoredFeedLinesParams
 	var items []StoredFeedLinesRow
 	for rows.Next() {
 		var i StoredFeedLinesRow
-		if err := rows.Scan(&i.Fingerprint, &i.LineRef); err != nil {
+		if err := rows.Scan(
+			&i.Fingerprint,
+			&i.LineRef,
+			&i.Amount,
+			&i.Kid,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

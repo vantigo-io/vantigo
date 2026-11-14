@@ -871,7 +871,7 @@ func BankFeedBackoff(interval time.Duration, failures int32) time.Duration {
 // lines it keeps, the counts of what it does not, and the reason it refuses
 // the batch whole ("" when it does not).
 func JudgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay time.Time) ([]string, map[string]int, string) {
-	kept, _, ignored, refusal := judgeFeedBatch(txs, account, today, startDay)
+	kept, _, ignored, refusal := judgeFeedBatch(txs, account, today, startDay, nil)
 	if refusal != nil {
 		return nil, nil, refusal.reason
 	}
