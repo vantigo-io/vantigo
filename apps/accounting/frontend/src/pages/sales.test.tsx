@@ -84,7 +84,7 @@ describe("the overview", () => {
   it("counts what needs attention and says where the catch-up stands", async () => {
     stubAccountingApi({ meta: meta({ unposted: 2 }) });
     renderRoute("/accounting");
-    expect(await screen.findByRole("link", { name: "2 sales facts wait to be posted." })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "2 facts wait to be posted." })).toHaveAttribute(
       "href",
       "/accounting/needs-attention",
     );
