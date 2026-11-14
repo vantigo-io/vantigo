@@ -73,6 +73,7 @@ LIMIT sqlc.arg(row_limit);
 -- PartyItemsAt is every open item of a kind with its balance at to_date and
 -- its movement in the period, the items with a balance or a movement only.
 SELECT o.id, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
+    o.source_document_id,
     coalesce(sum(p.amount), 0)::text AS balance,
     coalesce(sum(p.amount) FILTER (WHERE v.voucher_date >= sqlc.arg(from_date)::date), 0)::text AS movement
 FROM accounting.open_items o

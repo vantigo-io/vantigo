@@ -34,7 +34,7 @@ func (s *server) ListAccountingVouchers(ctx context.Context, req gen.ListAccount
 		offset = *p.Offset
 	}
 	params := store.ListVouchersParams{FromDate: datePtr(p.From), ToDate: datePtr(p.To), AccountID: p.AccountId,
-		CustomerID: p.CustomerId, SupplierID: p.SupplierId, RowLimit: limit, RowOffset: offset}
+		CustomerID: p.CustomerId, SupplierID: p.SupplierId, SourceDocumentID: p.SourceDocumentId, RowLimit: limit, RowOffset: offset}
 	if p.Kind != nil {
 		params.Kind = ptr(string(*p.Kind))
 	}
@@ -67,7 +67,8 @@ func (s *server) ListAccountingVouchers(ctx context.Context, req gen.ListAccount
 			Display: display(r.FiscalYear, r.Number), VoucherDate: apiDate(r.VoucherDate), DocumentDate: apiDate(r.DocumentDate),
 			Description: r.Description, Kind: gen.AccountingVoucherKind(r.Kind), Amount: money(mustRat(r.Debit)),
 			Source: sourceView(r.SourceModule, r.SourceKind, r.SourceID, r.SourcePart), System: r.SourceModule != nil,
-			Reverses: refOf(refs, r.ReversesVoucherID), ReversedBy: refOf(refs, r.ReversedByID), PostedAt: r.PostedAt})
+			SourceDocumentId: r.SourceDocumentID,
+			Reverses:         refOf(refs, r.ReversesVoucherID), ReversedBy: refOf(refs, r.ReversedByID), PostedAt: r.PostedAt})
 	}
 	return out, nil
 }
@@ -148,7 +149,8 @@ func (s *server) voucher(ctx context.Context, id int64) (gen.AccountingVoucher, 
 		VoucherDate: apiDate(v.VoucherDate), DocumentDate: apiDate(v.DocumentDate), Description: v.Description,
 		Kind: gen.AccountingVoucherKind(v.Kind), Amount: money(mustRat(v.Debit)),
 		Source: sourceView(v.SourceModule, v.SourceKind, v.SourceID, v.SourcePart), System: v.SourceModule != nil,
-		Rule: v.Rule, RuleVersion: v.RuleVersion, Reverses: refOf(refs, v.ReversesVoucherID), ReversedBy: refOf(refs, v.ReversedByID),
+		SourceDocumentId: v.SourceDocumentID,
+		Rule:             v.Rule, RuleVersion: v.RuleVersion, Reverses: refOf(refs, v.ReversesVoucherID), ReversedBy: refOf(refs, v.ReversedByID),
 		ReversalReason: v.ReversalReason, PostedAt: v.PostedAt, Postings: []gen.AccountingPosting{}, Attachments: []gen.AccountingAttachment{}}
 	if v.PostedByUserID != nil {
 		out.PostedByUserId = ptr(openapi_types.UUID(*v.PostedByUserID))
@@ -156,7 +158,8 @@ func (s *server) voucher(ctx context.Context, id int64) (gen.AccountingVoucher, 
 	for _, p := range postings {
 		g := gen.AccountingPosting{LineNo: p.LineNo, AccountId: p.AccountID, AccountNumber: p.AccountNumber, AccountName: p.AccountName,
 			Amount: money(mustRat(p.Amount)), TaxCodeId: p.TaxCodeID, TaxCode: p.TaxCode, TaxBase: numText(p.TaxBase),
-			CustomerId: p.CustomerID, SupplierId: p.SupplierID, OpenItemId: p.OpenItemID, ProjectId: p.ProjectID, Description: p.Description}
+			CustomerId: p.CustomerID, SupplierId: p.SupplierID, OpenItemId: p.OpenItemID, ProjectId: p.ProjectID, Description: p.Description,
+			TaxSpecification: p.TaxSpecification}
 		if p.TaxRole != nil {
 			g.TaxRole = ptr(gen.AccountingTaxRole(*p.TaxRole))
 		}
