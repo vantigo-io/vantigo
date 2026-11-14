@@ -251,7 +251,8 @@ var markedByHand = map[string]string{
 	"exportAccountingSupplier":            "never",
 	// A VAT term's return as XML is a file a person downloads and files at
 	// Skatteetaten by hand in this phase (accounting design A23).
-	"downloadAccountingVatReturn": "never",
+	"downloadAccountingVatReturn":      "never",
+	"downloadAccountingVatTermClosing": "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

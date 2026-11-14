@@ -108,6 +108,14 @@ const (
 	codeVatTermNotLatest    = "vat_term_not_latest"
 	codeVatTermNotFiled     = "vat_term_not_filed"
 	codeLockBehindFiled     = "lock_behind_filed_term"
+	// After the review of delivery D.
+	codeLockBehindClosed    = "lock_behind_closed_term"
+	codeVatTermStale        = "vat_term_stale"
+	codeOpeningVatAccount   = "opening_vat_account"
+	codeTaxCodeInUse        = "tax_code_in_use"
+	codeVatTermInconsistent = "vat_term_inconsistent"
+	codeVatTermPartial      = "vat_term_partial"
+	codeVatTermRateMissing  = "vat_term_rate_missing"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -131,6 +139,8 @@ var refusalCodes = []string{
 	codeSupplierRetained, codeSupplierAnonymised, codeExpenseAlreadyInvoiced, codeVatNotRegistered, codeVatTermClosed,
 	codeVatTermNotEnded, codeVatTermOutOfOrder, codeVatTermAttention, codeVatTermLockAfterEnd, codeVatTermUnreconciled,
 	codeVatTermNotClosed, codeVatTermFiled, codeVatTermNotLatest, codeVatTermNotFiled, codeLockBehindFiled,
+	codeLockBehindClosed, codeVatTermStale, codeOpeningVatAccount, codeTaxCodeInUse, codeVatTermInconsistent,
+	codeVatTermPartial, codeVatTermRateMissing,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a

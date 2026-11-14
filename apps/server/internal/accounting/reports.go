@@ -72,6 +72,7 @@ var words = map[string]map[string]string{
 		"vatCalculated": "Calculated VAT", "vatDeducted": "Deducted", "vatLoss": "Loss on receivables",
 		"vatNotDeducted": "Not deducted", "vatTotal": "VAT", "vatReported": "In the return",
 		"vatNotReported": "Not reported", "vatMovement": "The VAT accounts' movement",
+		"vatExactTotal": "VAT counted, exact", "vatReturnTotal": "The return's total, whole kroner",
 	},
 	"nb": {
 		"journal": "Bokføringsspesifikasjon", "account": "Kontospesifikasjon", "customers": "Kunder", "suppliers": "Leverandører",
@@ -95,6 +96,7 @@ var words = map[string]map[string]string{
 		"vatCalculated": "Beregnet mva", "vatDeducted": "Fradrag", "vatLoss": "Tap på krav",
 		"vatNotDeducted": "Ikke fradragsført", "vatTotal": "Mva", "vatReported": "I mva-meldingen",
 		"vatNotReported": "Rapporteres ikke", "vatMovement": "Bevegelse på mva-kontoene",
+		"vatExactTotal": "Mva talt, eksakt", "vatReturnTotal": "Mva-meldingens sum, hele kroner",
 	},
 }
 

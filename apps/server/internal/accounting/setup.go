@@ -85,17 +85,19 @@ func (s *server) vatMeta(ctx context.Context, q *store.Queries, settings store.A
 	if len(terms) == 0 {
 		return nil
 	}
-	rows, err := q.ListVatTerms(ctx)
+	// States and dates only (L6): the figures are the VAT pages' to compute.
+	rows, err := termRows(ctx, q, settings.VatTerm)
 	if err != nil {
 		return err
 	}
-	byTerm := map[[2]int32]*store.AccountingVatTerm{}
-	for i := range rows {
-		byTerm[[2]int32{rows[i].Year, rows[i].Term}] = &rows[i]
-	}
 	next := -1
 	for i, t := range terms {
-		item := termItem(t, byTerm[[2]int32{t.Year, t.Number}], settings, today, "0", nil)
+		r, ok := rows[[2]int32{t.Year, t.Number}]
+		item := termItem(t, listState(r, ok, nil), settings, today, nil, nil)
+		if ok && r.State == "closed" {
+			item.State = gen.AccountingVatTermStateClosed
+			item.NeedsClosing = false
+		}
 		if item.NeedsClosing {
 			out.VatTermsToClose++
 		}
@@ -110,30 +112,25 @@ func (s *server) vatMeta(ctx context.Context, q *store.Queries, settings store.A
 		next = len(terms) - 1
 	}
 	t := terms[next]
-	row := byTerm[[2]int32{t.Year, t.Number}]
-	var total string
-	if row != nil && row.State == "closed" {
-		r, err := storedReturn(row)
+	r, ok := rows[[2]int32{t.Year, t.Number}]
+	var closing *store.AccountingVatTermClosing
+	var total *string
+	if ok && r.CurrentClosingID != nil {
+		c, err := q.GetVatTermClosing(ctx, *r.CurrentClosingID)
 		if err != nil {
 			return err
 		}
-		total = r.Total
-	} else {
-		spec, err := computeSpecification(ctx, q, t.Start, t.End)
-		if err != nil {
-			return err
-		}
-		total = spec.ret.Total.String()
+		closing, total = &c, &r.ClosedTotal
 	}
 	var ids []int64
-	if row != nil && row.SettlementVoucherID != nil {
-		ids = append(ids, *row.SettlementVoucherID)
+	if closing != nil && closing.SettlementVoucherID != nil {
+		ids = append(ids, *closing.SettlementVoucherID)
 	}
 	refs, err := voucherRefs(ctx, q, ids)
 	if err != nil {
 		return err
 	}
-	item := termItem(t, row, settings, today, total, refs)
+	item := termItem(t, listState(r, ok, closing), settings, today, total, refs)
 	out.VatNextTerm = &item
 	return nil
 }

@@ -217,3 +217,27 @@ func TestAnEmptyReturnValidates(t *testing.T) {
 	}
 	validate(t, file)
 }
+
+// One line per combination of code, specification and mvaKodeRegnskapsystem
+// (Skatteetaten's model, L1): two figures of one input code — a rate that
+// changed within the term — make one deduction line, cut once; a reverse
+// charge's deduction carries a name of its own, and a loss's line its input
+// code's name (L2).
+func TestOneLinePerCombination(t *testing.T) {
+	r := mva.Build([]mva.Figure{
+		{Code: "1", Name: "Input 25 %", Direction: "input", RatePercent: "25.00", Deducted: rat("-10.60")},
+		{Code: "1", Name: "Input 25 %", Direction: "input", RatePercent: "24.00", Deducted: rat("-10.60")},
+		{Code: "86", Name: "Services", DeductionName: "Services (deduction)", Direction: "input", ReverseCharge: true,
+			RatePercent: "25.00", Base: rat("100"), Calculated: rat("25"), Deducted: rat("-25")},
+		{Code: "3", Name: "Output 25 %", LossName: "Input 25 %", Direction: "output", RatePercent: "25.00",
+			Specification: mva.TapPaaKrav, Loss: rat("10.00")},
+	})
+	got := []string{}
+	for _, l := range r.Lines {
+		got = append(got, l.Code+"/"+l.Specification+"/"+l.Name+"/"+l.VAT.String()+"/"+l.Remark)
+	}
+	want := []string{"1//Input 25 %/-21/", "1/tapPåKrav/Input 25 %/10/", "86//Services/25/", "86//Services (deduction)/-25/"}
+	if strings.Join(got, " | ") != strings.Join(want, " | ") {
+		t.Errorf("lines = %v, want %v", got, want)
+	}
+}

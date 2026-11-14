@@ -103,6 +103,19 @@ func (s *server) UpdateAccountingTaxCode(ctx context.Context, req gen.UpdateAcco
 		if !code.ReverseCharge && b.CounterVatAccountId != nil {
 			return invalidField("The tax code cannot be changed", "counterVatAccountId", "", "Only a reverse-charge code has a counter account.")
 		}
+		// A code's VAT and counter accounts are fixed once a posting carries
+		// it (H4): the VAT specification reads what is deducted from where
+		// the code's tax lies, and a moved account would drop it.
+		if !sameAccount(code.VatAccountID, b.VatAccountId) || !sameAccount(code.CounterVatAccountID, b.CounterVatAccountId) {
+			used, err := q.TaxCodeHasPostings(ctx, &req.Id)
+			if err != nil {
+				return err
+			}
+			if used {
+				return conflict(codeTaxCodeInUse, "The tax code is in use",
+					"Postings carry code "+code.Code+": its VAT and counter accounts are fixed. Its name and activity can still change.")
+			}
+		}
 		err = q.UpdateTaxCode(ctx, store.UpdateTaxCodeParams{ID: req.Id, Name: strings.TrimSpace(b.Name), VatAccountID: b.VatAccountId,
 			CounterVatAccountID: b.CounterVatAccountId, Active: b.Active, Now: s.now()})
 		if unknownForeignKey(err) {
@@ -161,4 +174,12 @@ func (s *server) AddAccountingTaxCodeRate(ctx context.Context, req gen.AddAccoun
 		return nil, err
 	}
 	return gen.AddAccountingTaxCodeRate201JSONResponse(out), nil
+}
+
+// sameAccount reports whether two nullable account ids name the same account.
+func sameAccount(a, b *int32) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }

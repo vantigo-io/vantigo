@@ -1,9 +1,12 @@
 package accounting
 
 import (
+	"math/big"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/accounting/mva"
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
 )
 
@@ -76,7 +79,10 @@ func TestVatPart(t *testing.T) {
 		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "base", TaxSpecification: "tapPåKrav"}, partLossBase},
 		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "tax", TaxSpecification: "tapPåKrav"}, partLoss},
 		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "base", TaxDirection: "output"}, partBase},
-		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "tax_reverse", TaxDirection: "input"}, partCalculated},
+		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "tax_reverse", TaxDirection: "input", ReverseCharge: true}, partCalculated},
+		// A calculated side on a code that is not reverse charge is no
+		// figure: it stays unreconciled on its account (M1).
+		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "tax_reverse", TaxDirection: "input"}, partOther},
 		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "tax", TaxDirection: "output"}, partOutput},
 		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "tax", TaxDirection: "input", OnVatAccount: true}, partDeducted},
 		{store.VatPeriodGroupsRow{TaxCodeID: 1, TaxRole: "tax", TaxDirection: "input"}, partNotDeducted},
@@ -85,5 +91,35 @@ func TestVatPart(t *testing.T) {
 		if got := vatPart(tc.row); got != tc.want {
 			t.Errorf("vatPart(%+v) = %s, want %s", tc.row, got, tc.want)
 		}
+	}
+}
+
+// The close's guard against a return that does not add up to the ledger
+// (M1): the VAT counted is the return's exact total turned, and the øre cut
+// are less than a krone a line; and a reported code with an output side but
+// no rate is named (L3).
+func TestSpecificationConsistentAndRates(t *testing.T) {
+	r := func(s string) *big.Rat { v, _ := new(big.Rat).SetString(s); return v }
+	spec := &specification{counted: r("-250.25"), ret: mva.Build([]mva.Figure{{Code: "3", Direction: "output", RatePercent: "25.00",
+		Base: r("1001"), Output: r("250.25")}})}
+	if err := spec.consistent(); err != nil {
+		t.Errorf("a consistent return: %v", err)
+	}
+	spec.counted = r("-250.26")
+	if err := spec.consistent(); err == nil || !strings.Contains(err.Error(), "exact total") {
+		t.Errorf("counted VAT off the return = %v", err)
+	}
+	spec = &specification{counted: r("-2.99"), ret: mva.Return{Total: big.NewInt(1), ExactTotal: r("2.99"), Considered: 1}}
+	if err := spec.consistent(); err == nil || !strings.Contains(err.Error(), "rounding difference") {
+		t.Errorf("a rounding difference of 1.99 on one line = %v", err)
+	}
+	spec = &specification{figures: []*figure{{Figure: mva.Figure{Code: "3", Direction: "output", Base: r("100"), Output: r("0"),
+		Calculated: r("0")}, reported: true}}}
+	if got := spec.rateMissing(); got != "3" {
+		t.Errorf("rateMissing = %q, want 3", got)
+	}
+	spec.figures[0].RatePercent = "25.00"
+	if got := spec.rateMissing(); got != "" {
+		t.Errorf("rateMissing with a rate = %q", got)
 	}
 }

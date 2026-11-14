@@ -1124,7 +1124,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -1701,8 +1701,42 @@ type AccountingVatCloseChecks struct {
 	// LockAfterEnd Whether the lock is on or after the term's last day (vat_term_lock_after_end), so the settlement voucher cannot be posted on it.
 	LockAfterEnd bool `json:"lockAfterEnd"`
 
+	// Partial Whether the term starts before the books do, so its return covers only from books_start; the close asks for confirmPartial (vat_term_partial).
+	Partial bool `json:"partial"`
+
+	// RateMissing Whether a code the return reports has no rate on a posting's date (vat_term_rate_missing).
+	RateMissing bool `json:"rateMissing"`
+
 	// Reconciled Whether the VAT accounts' movement in the term is the return's VAT (vat_term_unreconciled when not).
 	Reconciled bool `json:"reconciled"`
+
+	// StaleTerm A closed term whose figures, computed again, differ from the return it was closed with (vat_term_stale); null when none does.
+	StaleTerm *AccountingVatTermItem `json:"staleTerm"`
+}
+
+// AccountingVatCloseInput defines model for AccountingVatCloseInput.
+type AccountingVatCloseInput struct {
+	// ConfirmPartial Required true for a term that starts before the books do, whose return covers only from books_start.
+	ConfirmPartial *bool `json:"confirmPartial,omitempty"`
+}
+
+// AccountingVatClosing One close of a term (H2), never changed or deleted.
+type AccountingVatClosing struct {
+	ClosedAt       time.Time          `json:"closedAt"`
+	ClosedByUserId openapi_types.UUID `json:"closedByUserId"`
+
+	// Closing 1 for the term's first close, and so on.
+	Closing int32 `json:"closing"`
+
+	// Current Whether it is the closing that stands now.
+	Current bool `json:"current"`
+
+	// Filed Whether it is the closing marked as filed at Skatteetaten.
+	Filed             bool                  `json:"filed"`
+	SettlementVoucher *AccountingVoucherRef `json:"settlementVoucher"`
+
+	// Total Its return's total, whole kroner.
+	Total string `json:"total"`
 }
 
 // AccountingVatCodeFigures One tax code's figures in a period, at one rate and one specification (A21). Every amount is exact, in the return's sign: a base sales or purchases positive, VAT owed positive and VAT deducted negative.
@@ -1790,6 +1824,9 @@ type AccountingVatPosting struct {
 // AccountingVatPostingList defines model for AccountingVatPostingList.
 type AccountingVatPostingList struct {
 	Items []AccountingVatPosting `json:"items"`
+
+	// Sum The sum of every posting that matches, beyond this page too (debit positive).
+	Sum string `json:"sum"`
 
 	// Total The postings that match, beyond this page too.
 	Total int32 `json:"total"`
@@ -1916,6 +1953,9 @@ type AccountingVatTermDetail struct {
 	// Checks What a term's close would refuse now, each check apart, so the confirm dialog can say so before it is asked (A22, R10).
 	Checks AccountingVatCloseChecks `json:"checks"`
 
+	// Closings Every close of the term, newest first, each with its return and XML kept.
+	Closings []AccountingVatClosing `json:"closings"`
+
 	// Events Newest first.
 	Events []AccountingVatTermEvent `json:"events"`
 
@@ -1931,8 +1971,11 @@ type AccountingVatTermDetail struct {
 
 // AccountingVatTermEvent defines model for AccountingVatTermEvent.
 type AccountingVatTermEvent struct {
-	At             time.Time                  `json:"at"`
-	ByUserId       openapi_types.UUID         `json:"byUserId"`
+	At       time.Time          `json:"at"`
+	ByUserId openapi_types.UUID `json:"byUserId"`
+
+	// Closing The closing a close made or a filing names.
+	Closing        *int32                     `json:"closing"`
 	FiledAt        *openapi_types.Date        `json:"filedAt"`
 	FiledReference *string                    `json:"filedReference"`
 	Kind           AccountingVatTermEventKind `json:"kind"`
@@ -1950,11 +1993,20 @@ type AccountingVatTermItem struct {
 	ClosedAt       *time.Time          `json:"closedAt"`
 	ClosedByUserId *openapi_types.UUID `json:"closedByUserId"`
 
+	// Closing The standing closing's number while closed; null while open.
+	Closing *int32 `json:"closing"`
+
+	// CoversFrom The first day the term's return covers — books_start for a term that starts before the books do, else the term's first day.
+	CoversFrom openapi_types.Date `json:"coversFrom"`
+
 	// DueDate The day the return and the payment are due — one month and ten days after the term, the third two-month term on 31 August, a yearly term on 10 March.
-	DueDate        openapi_types.Date  `json:"dueDate"`
-	FiledAt        *openapi_types.Date `json:"filedAt"`
-	FiledByUserId  *openapi_types.UUID `json:"filedByUserId"`
-	FiledReference *string             `json:"filedReference"`
+	DueDate       openapi_types.Date  `json:"dueDate"`
+	FiledAt       *openapi_types.Date `json:"filedAt"`
+	FiledByUserId *openapi_types.UUID `json:"filedByUserId"`
+
+	// FiledClosing The closing marked as filed.
+	FiledClosing   *int32  `json:"filedClosing"`
+	FiledReference *string `json:"filedReference"`
 
 	// LockCovers Whether the lock reaches the term's last day. A closed term the lock was moved back behind may have postings the return does not hold.
 	LockCovers bool `json:"lockCovers"`
@@ -1966,7 +2018,10 @@ type AccountingVatTermItem struct {
 	NeedsFiling bool `json:"needsFiling"`
 
 	// Number The term in its year, 1 to 6 (bimonthly) or 1 (yearly).
-	Number      int32              `json:"number"`
+	Number int32 `json:"number"`
+
+	// Partial Whether the term starts before the books do.
+	Partial     bool               `json:"partial"`
 	PeriodEnd   openapi_types.Date `json:"periodEnd"`
 	PeriodName  string             `json:"periodName"`
 	PeriodStart openapi_types.Date `json:"periodStart"`
@@ -1975,9 +2030,9 @@ type AccountingVatTermItem struct {
 	SettlementVoucher *AccountingVoucherRef  `json:"settlementVoucher"`
 	State             AccountingVatTermState `json:"state"`
 
-	// Total The return's total in whole kroner, to pay (positive) or to receive (negative) — as closed, or as the books stand now.
-	Total string `json:"total"`
-	Year  int32  `json:"year"`
+	// Total The return's total in whole kroner, to pay (positive) or to receive (negative) — as closed, or as the books stand now; null in the meta for an open term, whose figures the VAT pages compute.
+	Total *string `json:"total"`
+	Year  int32   `json:"year"`
 }
 
 // AccountingVatTermList defines model for AccountingVatTermList.
@@ -2308,6 +2363,9 @@ type EnterAccountingUnpostedNokAmountsJSONRequestBody = AccountingNokAmountsInpu
 // MakeAccountingUnpostedSupplierInvoiceJSONRequestBody defines body for MakeAccountingUnpostedSupplierInvoice for application/json ContentType.
 type MakeAccountingUnpostedSupplierInvoiceJSONRequestBody = AccountingMakeSupplierInvoiceInput
 
+// CloseAccountingVatTermJSONRequestBody defines body for CloseAccountingVatTerm for application/json ContentType.
+type CloseAccountingVatTermJSONRequestBody = AccountingVatCloseInput
+
 // FileAccountingVatTermJSONRequestBody defines body for FileAccountingVatTerm for application/json ContentType.
 type FileAccountingVatTermJSONRequestBody = AccountingVatFilingInput
 
@@ -2499,6 +2557,12 @@ type ServerInterface interface {
 	// CloseAccountingVatTerm Close a VAT term
 	// (POST /api/v1/accounting/vat/terms/{year}/{number}/close)
 	CloseAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32)
+	// GetAccountingVatTermClosing Get a VAT term's closing
+	// (GET /api/v1/accounting/vat/terms/{year}/{number}/closings/{closing})
+	GetAccountingVatTermClosing(w http.ResponseWriter, r *http.Request, year int32, number int32, closing int32)
+	// DownloadAccountingVatTermClosing Download a VAT term's closing as XML
+	// (GET /api/v1/accounting/vat/terms/{year}/{number}/closings/{closing}/xml)
+	DownloadAccountingVatTermClosing(w http.ResponseWriter, r *http.Request, year int32, number int32, closing int32)
 	// FileAccountingVatTerm Mark a VAT term as filed
 	// (POST /api/v1/accounting/vat/terms/{year}/{number}/filing)
 	FileAccountingVatTerm(w http.ResponseWriter, r *http.Request, year int32, number int32)
@@ -4504,6 +4568,94 @@ func (siw *ServerInterfaceWrapper) CloseAccountingVatTerm(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// GetAccountingVatTermClosing operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingVatTermClosing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "year" -------------
+	var year int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "year", r.PathValue("year"), &year, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "closing" -------------
+	var closing int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "closing", r.PathValue("closing"), &closing, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "closing", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingVatTermClosing(w, r, year, number, closing)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadAccountingVatTermClosing operation middleware
+func (siw *ServerInterfaceWrapper) DownloadAccountingVatTermClosing(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "year" -------------
+	var year int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "year", r.PathValue("year"), &year, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "year", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "closing" -------------
+	var closing int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "closing", r.PathValue("closing"), &closing, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "closing", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadAccountingVatTermClosing(w, r, year, number, closing)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // FileAccountingVatTerm operation middleware
 func (siw *ServerInterfaceWrapper) FileAccountingVatTerm(w http.ResponseWriter, r *http.Request) {
 
@@ -5111,6 +5263,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/terms", wrapper.ListAccountingVatTerms)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}", wrapper.GetAccountingVatTerm)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/close", wrapper.CloseAccountingVatTerm)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/closings/{closing}", wrapper.GetAccountingVatTermClosing)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/closings/{closing}/xml", wrapper.DownloadAccountingVatTermClosing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/filing", wrapper.FileAccountingVatTerm)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/reopen", wrapper.ReopenAccountingVatTerm)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vat/terms/{year}/{number}/unfile", wrapper.UnfileAccountingVatTerm)
@@ -9305,6 +9459,7 @@ func (response GetAccountingVatTerm409ApplicationProblemPlusJSONResponse) VisitG
 type CloseAccountingVatTermRequestObject struct {
 	Year   int32 `json:"year"`
 	Number int32 `json:"number"`
+	Body   *CloseAccountingVatTermJSONRequestBody
 }
 
 type CloseAccountingVatTermResponseObject interface {
@@ -9364,6 +9519,160 @@ func (response CloseAccountingVatTerm404Response) VisitCloseAccountingVatTermRes
 type CloseAccountingVatTerm409ApplicationProblemPlusJSONResponse AccountingProblem
 
 func (response CloseAccountingVatTerm409ApplicationProblemPlusJSONResponse) VisitCloseAccountingVatTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatTermClosingRequestObject struct {
+	Year    int32 `json:"year"`
+	Number  int32 `json:"number"`
+	Closing int32 `json:"closing"`
+}
+
+type GetAccountingVatTermClosingResponseObject interface {
+	VisitGetAccountingVatTermClosingResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingVatTermClosing200JSONResponse AccountingVatReturn
+
+func (response GetAccountingVatTermClosing200JSONResponse) VisitGetAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatTermClosing401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingVatTermClosing401JSONResponse) VisitGetAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatTermClosing403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingVatTermClosing403JSONResponse) VisitGetAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingVatTermClosing404Response struct {
+}
+
+func (response GetAccountingVatTermClosing404Response) VisitGetAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetAccountingVatTermClosing409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingVatTermClosing409ApplicationProblemPlusJSONResponse) VisitGetAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingVatTermClosingRequestObject struct {
+	Year    int32 `json:"year"`
+	Number  int32 `json:"number"`
+	Closing int32 `json:"closing"`
+}
+
+type DownloadAccountingVatTermClosingResponseObject interface {
+	VisitDownloadAccountingVatTermClosingResponse(w http.ResponseWriter) error
+}
+
+type DownloadAccountingVatTermClosing200ApplicationxmlResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response DownloadAccountingVatTermClosing200ApplicationxmlResponse) VisitDownloadAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/xml")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadAccountingVatTermClosing401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingVatTermClosing401JSONResponse) VisitDownloadAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingVatTermClosing403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingVatTermClosing403JSONResponse) VisitDownloadAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingVatTermClosing404Response struct {
+}
+
+func (response DownloadAccountingVatTermClosing404Response) VisitDownloadAccountingVatTermClosingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DownloadAccountingVatTermClosing409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DownloadAccountingVatTermClosing409ApplicationProblemPlusJSONResponse) VisitDownloadAccountingVatTermClosingResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10462,6 +10771,12 @@ type StrictServerInterface interface {
 	// CloseAccountingVatTerm Close a VAT term
 	// (POST /api/v1/accounting/vat/terms/{year}/{number}/close)
 	CloseAccountingVatTerm(ctx context.Context, request CloseAccountingVatTermRequestObject) (CloseAccountingVatTermResponseObject, error)
+	// GetAccountingVatTermClosing Get a VAT term's closing
+	// (GET /api/v1/accounting/vat/terms/{year}/{number}/closings/{closing})
+	GetAccountingVatTermClosing(ctx context.Context, request GetAccountingVatTermClosingRequestObject) (GetAccountingVatTermClosingResponseObject, error)
+	// DownloadAccountingVatTermClosing Download a VAT term's closing as XML
+	// (GET /api/v1/accounting/vat/terms/{year}/{number}/closings/{closing}/xml)
+	DownloadAccountingVatTermClosing(ctx context.Context, request DownloadAccountingVatTermClosingRequestObject) (DownloadAccountingVatTermClosingResponseObject, error)
 	// FileAccountingVatTerm Mark a VAT term as filed
 	// (POST /api/v1/accounting/vat/terms/{year}/{number}/filing)
 	FileAccountingVatTerm(ctx context.Context, request FileAccountingVatTermRequestObject) (FileAccountingVatTermResponseObject, error)
@@ -12101,6 +12416,16 @@ func (sh *strictHandler) CloseAccountingVatTerm(w http.ResponseWriter, r *http.R
 	request.Year = year
 	request.Number = number
 
+	var body CloseAccountingVatTermJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.CloseAccountingVatTerm(ctx, request.(CloseAccountingVatTermRequestObject))
 	}
@@ -12114,6 +12439,62 @@ func (sh *strictHandler) CloseAccountingVatTerm(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CloseAccountingVatTermResponseObject); ok {
 		if err := validResponse.VisitCloseAccountingVatTermResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingVatTermClosing operation middleware
+func (sh *strictHandler) GetAccountingVatTermClosing(w http.ResponseWriter, r *http.Request, year int32, number int32, closing int32) {
+	var request GetAccountingVatTermClosingRequestObject
+
+	request.Year = year
+	request.Number = number
+	request.Closing = closing
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingVatTermClosing(ctx, request.(GetAccountingVatTermClosingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingVatTermClosing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingVatTermClosingResponseObject); ok {
+		if err := validResponse.VisitGetAccountingVatTermClosingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadAccountingVatTermClosing operation middleware
+func (sh *strictHandler) DownloadAccountingVatTermClosing(w http.ResponseWriter, r *http.Request, year int32, number int32, closing int32) {
+	var request DownloadAccountingVatTermClosingRequestObject
+
+	request.Year = year
+	request.Number = number
+	request.Closing = closing
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadAccountingVatTermClosing(ctx, request.(DownloadAccountingVatTermClosingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadAccountingVatTermClosing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadAccountingVatTermClosingResponseObject); ok {
+		if err := validResponse.VisitDownloadAccountingVatTermClosingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

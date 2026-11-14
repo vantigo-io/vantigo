@@ -12,70 +12,48 @@ import (
 	"github.com/google/uuid"
 )
 
-const closeVatTerm = `-- name: CloseVatTerm :one
-INSERT INTO accounting.vat_terms (year, term, term_kind, period_start, period_end, state, closings, figures,
-    return_xml, settlement_voucher_id, closed_at, closed_by_user_id, updated_at)
-VALUES ($1, $2, $3, $4, $5, 'closed',
-    $6, $7, $8, $9, $10,
-    $11, $10)
-ON CONFLICT (year, term) DO UPDATE
-SET state = 'closed', closings = EXCLUDED.closings, figures = EXCLUDED.figures, return_xml = EXCLUDED.return_xml,
-    settlement_voucher_id = EXCLUDED.settlement_voucher_id, closed_at = EXCLUDED.closed_at,
-    closed_by_user_id = EXCLUDED.closed_by_user_id, updated_at = EXCLUDED.updated_at
-RETURNING id, year, term, term_kind, period_start, period_end, state, closings, figures, return_xml, settlement_voucher_id, closed_at, closed_by_user_id, filed_at, filed_reference, filed_by_user_id, updated_at
+const closedTermsFigures = `-- name: ClosedTermsFigures :many
+SELECT t.year, t.term, t.period_start, t.period_end, c.figures
+FROM accounting.vat_terms t
+JOIN accounting.vat_term_closings c ON c.id = t.current_closing_id
+WHERE t.term_kind = $1
+ORDER BY t.year, t.term
 `
 
-type CloseVatTermParams struct {
-	Year                int32
-	Term                int32
-	TermKind            string
-	PeriodStart         time.Time
-	PeriodEnd           time.Time
-	Closings            int32
-	Figures             []byte
-	ReturnXml           *string
-	SettlementVoucherID *int64
-	Now                 *time.Time
-	UserID              *uuid.UUID
+type ClosedTermsFiguresRow struct {
+	Year        int32
+	Term        int32
+	PeriodStart time.Time
+	PeriodEnd   time.Time
+	Figures     []byte
 }
 
-// CloseVatTerm writes a term's close: made on its first close, its
-// state, figures, XML and settlement voucher replaced on a later one.
-func (q *Queries) CloseVatTerm(ctx context.Context, arg CloseVatTermParams) (AccountingVatTerm, error) {
-	row := q.db.QueryRow(ctx, closeVatTerm,
-		arg.Year,
-		arg.Term,
-		arg.TermKind,
-		arg.PeriodStart,
-		arg.PeriodEnd,
-		arg.Closings,
-		arg.Figures,
-		arg.ReturnXml,
-		arg.SettlementVoucherID,
-		arg.Now,
-		arg.UserID,
-	)
-	var i AccountingVatTerm
-	err := row.Scan(
-		&i.ID,
-		&i.Year,
-		&i.Term,
-		&i.TermKind,
-		&i.PeriodStart,
-		&i.PeriodEnd,
-		&i.State,
-		&i.Closings,
-		&i.Figures,
-		&i.ReturnXml,
-		&i.SettlementVoucherID,
-		&i.ClosedAt,
-		&i.ClosedByUserID,
-		&i.FiledAt,
-		&i.FiledReference,
-		&i.FiledByUserID,
-		&i.UpdatedAt,
-	)
-	return i, err
+// ClosedTermsFigures is every closed term with its standing closing's figures,
+// for the close's check that none has changed since (vat_term_stale).
+func (q *Queries) ClosedTermsFigures(ctx context.Context, termKind string) ([]ClosedTermsFiguresRow, error) {
+	rows, err := q.db.Query(ctx, closedTermsFigures, termKind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClosedTermsFiguresRow
+	for rows.Next() {
+		var i ClosedTermsFiguresRow
+		if err := rows.Scan(
+			&i.Year,
+			&i.Term,
+			&i.PeriodStart,
+			&i.PeriodEnd,
+			&i.Figures,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const countWaitingIn = `-- name: CountWaitingIn :one
@@ -99,17 +77,32 @@ func (q *Queries) CountWaitingIn(ctx context.Context, arg CountWaitingInParams) 
 	return column_1, err
 }
 
-const getVatTerm = `-- name: GetVatTerm :one
-SELECT id, year, term, term_kind, period_start, period_end, state, closings, figures, return_xml, settlement_voucher_id, closed_at, closed_by_user_id, filed_at, filed_reference, filed_by_user_id, updated_at FROM accounting.vat_terms WHERE year = $1 AND term = $2
+const ensureVatTerm = `-- name: EnsureVatTerm :one
+INSERT INTO accounting.vat_terms (year, term, term_kind, period_start, period_end, state, updated_at)
+VALUES ($1, $2, $3, $4, $5, 'open', $6)
+ON CONFLICT (year, term, term_kind) DO UPDATE SET updated_at = accounting.vat_terms.updated_at
+RETURNING id, year, term, term_kind, period_start, period_end, state, closings, current_closing_id, filed_at, filed_reference, filed_by_user_id, filed_closing_id, updated_at
 `
 
-type GetVatTermParams struct {
-	Year int32
-	Term int32
+type EnsureVatTermParams struct {
+	Year        int32
+	Term        int32
+	TermKind    string
+	PeriodStart time.Time
+	PeriodEnd   time.Time
+	Now         time.Time
 }
 
-func (q *Queries) GetVatTerm(ctx context.Context, arg GetVatTermParams) (AccountingVatTerm, error) {
-	row := q.db.QueryRow(ctx, getVatTerm, arg.Year, arg.Term)
+// EnsureVatTerm is a term's row, made open on its first close.
+func (q *Queries) EnsureVatTerm(ctx context.Context, arg EnsureVatTermParams) (AccountingVatTerm, error) {
+	row := q.db.QueryRow(ctx, ensureVatTerm,
+		arg.Year,
+		arg.Term,
+		arg.TermKind,
+		arg.PeriodStart,
+		arg.PeriodEnd,
+		arg.Now,
+	)
 	var i AccountingVatTerm
 	err := row.Scan(
 		&i.ID,
@@ -120,32 +113,109 @@ func (q *Queries) GetVatTerm(ctx context.Context, arg GetVatTermParams) (Account
 		&i.PeriodEnd,
 		&i.State,
 		&i.Closings,
+		&i.CurrentClosingID,
+		&i.FiledAt,
+		&i.FiledReference,
+		&i.FiledByUserID,
+		&i.FiledClosingID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getVatTerm = `-- name: GetVatTerm :one
+SELECT id, year, term, term_kind, period_start, period_end, state, closings, current_closing_id, filed_at, filed_reference, filed_by_user_id, filed_closing_id, updated_at FROM accounting.vat_terms
+WHERE year = $1 AND term = $2 AND term_kind = $3
+`
+
+type GetVatTermParams struct {
+	Year     int32
+	Term     int32
+	TermKind string
+}
+
+func (q *Queries) GetVatTerm(ctx context.Context, arg GetVatTermParams) (AccountingVatTerm, error) {
+	row := q.db.QueryRow(ctx, getVatTerm, arg.Year, arg.Term, arg.TermKind)
+	var i AccountingVatTerm
+	err := row.Scan(
+		&i.ID,
+		&i.Year,
+		&i.Term,
+		&i.TermKind,
+		&i.PeriodStart,
+		&i.PeriodEnd,
+		&i.State,
+		&i.Closings,
+		&i.CurrentClosingID,
+		&i.FiledAt,
+		&i.FiledReference,
+		&i.FiledByUserID,
+		&i.FiledClosingID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getVatTermClosing = `-- name: GetVatTermClosing :one
+SELECT id, vat_term_id, closing, figures, return_xml, settlement_voucher_id, closed_at, closed_by_user_id FROM accounting.vat_term_closings WHERE id = $1
+`
+
+func (q *Queries) GetVatTermClosing(ctx context.Context, id int64) (AccountingVatTermClosing, error) {
+	row := q.db.QueryRow(ctx, getVatTermClosing, id)
+	var i AccountingVatTermClosing
+	err := row.Scan(
+		&i.ID,
+		&i.VatTermID,
+		&i.Closing,
 		&i.Figures,
 		&i.ReturnXml,
 		&i.SettlementVoucherID,
 		&i.ClosedAt,
 		&i.ClosedByUserID,
-		&i.FiledAt,
-		&i.FiledReference,
-		&i.FiledByUserID,
-		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getVatTermClosingByNumber = `-- name: GetVatTermClosingByNumber :one
+SELECT id, vat_term_id, closing, figures, return_xml, settlement_voucher_id, closed_at, closed_by_user_id FROM accounting.vat_term_closings WHERE vat_term_id = $1 AND closing = $2
+`
+
+type GetVatTermClosingByNumberParams struct {
+	VatTermID int64
+	Closing   int32
+}
+
+func (q *Queries) GetVatTermClosingByNumber(ctx context.Context, arg GetVatTermClosingByNumberParams) (AccountingVatTermClosing, error) {
+	row := q.db.QueryRow(ctx, getVatTermClosingByNumber, arg.VatTermID, arg.Closing)
+	var i AccountingVatTermClosing
+	err := row.Scan(
+		&i.ID,
+		&i.VatTermID,
+		&i.Closing,
+		&i.Figures,
+		&i.ReturnXml,
+		&i.SettlementVoucherID,
+		&i.ClosedAt,
+		&i.ClosedByUserID,
 	)
 	return i, err
 }
 
 const getVatTermForUpdate = `-- name: GetVatTermForUpdate :one
-SELECT id, year, term, term_kind, period_start, period_end, state, closings, figures, return_xml, settlement_voucher_id, closed_at, closed_by_user_id, filed_at, filed_reference, filed_by_user_id, updated_at FROM accounting.vat_terms WHERE year = $1 AND term = $2 FOR UPDATE
+SELECT id, year, term, term_kind, period_start, period_end, state, closings, current_closing_id, filed_at, filed_reference, filed_by_user_id, filed_closing_id, updated_at FROM accounting.vat_terms
+WHERE year = $1 AND term = $2 AND term_kind = $3 FOR UPDATE
 `
 
 type GetVatTermForUpdateParams struct {
-	Year int32
-	Term int32
+	Year     int32
+	Term     int32
+	TermKind string
 }
 
 // GetVatTermForUpdate is taken after the settings row (FOR UPDATE), the order
 // every write to a term takes them in.
 func (q *Queries) GetVatTermForUpdate(ctx context.Context, arg GetVatTermForUpdateParams) (AccountingVatTerm, error) {
-	row := q.db.QueryRow(ctx, getVatTermForUpdate, arg.Year, arg.Term)
+	row := q.db.QueryRow(ctx, getVatTermForUpdate, arg.Year, arg.Term, arg.TermKind)
 	var i AccountingVatTerm
 	err := row.Scan(
 		&i.ID,
@@ -156,28 +226,69 @@ func (q *Queries) GetVatTermForUpdate(ctx context.Context, arg GetVatTermForUpda
 		&i.PeriodEnd,
 		&i.State,
 		&i.Closings,
-		&i.Figures,
-		&i.ReturnXml,
-		&i.SettlementVoucherID,
-		&i.ClosedAt,
-		&i.ClosedByUserID,
+		&i.CurrentClosingID,
 		&i.FiledAt,
 		&i.FiledReference,
 		&i.FiledByUserID,
+		&i.FiledClosingID,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const insertVatTermEvent = `-- name: InsertVatTermEvent :exec
-INSERT INTO accounting.vat_term_events (vat_term_id, kind, voucher_id, reason, filed_at, filed_reference, at, by_user_id)
+const insertVatTermClosing = `-- name: InsertVatTermClosing :one
+INSERT INTO accounting.vat_term_closings (vat_term_id, closing, figures, return_xml, settlement_voucher_id, closed_at,
+    closed_by_user_id)
 VALUES ($1, $2, $3, $4, $5,
-    $6, $7, $8)
+    $6, $7)
+RETURNING id, vat_term_id, closing, figures, return_xml, settlement_voucher_id, closed_at, closed_by_user_id
+`
+
+type InsertVatTermClosingParams struct {
+	VatTermID           int64
+	Closing             int32
+	Figures             []byte
+	ReturnXml           string
+	SettlementVoucherID *int64
+	Now                 time.Time
+	UserID              uuid.UUID
+}
+
+func (q *Queries) InsertVatTermClosing(ctx context.Context, arg InsertVatTermClosingParams) (AccountingVatTermClosing, error) {
+	row := q.db.QueryRow(ctx, insertVatTermClosing,
+		arg.VatTermID,
+		arg.Closing,
+		arg.Figures,
+		arg.ReturnXml,
+		arg.SettlementVoucherID,
+		arg.Now,
+		arg.UserID,
+	)
+	var i AccountingVatTermClosing
+	err := row.Scan(
+		&i.ID,
+		&i.VatTermID,
+		&i.Closing,
+		&i.Figures,
+		&i.ReturnXml,
+		&i.SettlementVoucherID,
+		&i.ClosedAt,
+		&i.ClosedByUserID,
+	)
+	return i, err
+}
+
+const insertVatTermEvent = `-- name: InsertVatTermEvent :exec
+INSERT INTO accounting.vat_term_events (vat_term_id, kind, closing_id, voucher_id, reason, filed_at, filed_reference, at,
+    by_user_id)
+VALUES ($1, $2, $3, $4, $5, $6,
+    $7, $8, $9)
 `
 
 type InsertVatTermEventParams struct {
 	VatTermID      int64
 	Kind           string
+	ClosingID      *int64
 	VoucherID      *int64
 	Reason         *string
 	FiledAt        *time.Time
@@ -190,6 +301,7 @@ func (q *Queries) InsertVatTermEvent(ctx context.Context, arg InsertVatTermEvent
 	_, err := q.db.Exec(ctx, insertVatTermEvent,
 		arg.VatTermID,
 		arg.Kind,
+		arg.ClosingID,
 		arg.VoucherID,
 		arg.Reason,
 		arg.FiledAt,
@@ -198,6 +310,19 @@ func (q *Queries) InsertVatTermEvent(ctx context.Context, arg InsertVatTermEvent
 		arg.UserID,
 	)
 	return err
+}
+
+const lastClosedTermEnd = `-- name: LastClosedTermEnd :one
+SELECT period_end FROM accounting.vat_terms WHERE state = 'closed' ORDER BY period_end DESC LIMIT 1
+`
+
+// LastClosedTermEnd is the end of the latest closed term: the lock never
+// moves back behind it (H1). No row when none is.
+func (q *Queries) LastClosedTermEnd(ctx context.Context) (time.Time, error) {
+	row := q.db.QueryRow(ctx, lastClosedTermEnd)
+	var period_end time.Time
+	err := row.Scan(&period_end)
+	return period_end, err
 }
 
 const lastFiledTermEnd = `-- name: LastFiledTermEnd :one
@@ -213,10 +338,54 @@ func (q *Queries) LastFiledTermEnd(ctx context.Context) (time.Time, error) {
 	return period_end, err
 }
 
+const listVatTermClosings = `-- name: ListVatTermClosings :many
+SELECT c.id, c.closing, c.settlement_voucher_id, c.closed_at, c.closed_by_user_id, (c.figures ->> 'total')::text AS total
+FROM accounting.vat_term_closings c
+WHERE c.vat_term_id = $1
+ORDER BY c.closing DESC
+`
+
+type ListVatTermClosingsRow struct {
+	ID                  int64
+	Closing             int32
+	SettlementVoucherID *int64
+	ClosedAt            time.Time
+	ClosedByUserID      uuid.UUID
+	Total               string
+}
+
+func (q *Queries) ListVatTermClosings(ctx context.Context, vatTermID int64) ([]ListVatTermClosingsRow, error) {
+	rows, err := q.db.Query(ctx, listVatTermClosings, vatTermID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListVatTermClosingsRow
+	for rows.Next() {
+		var i ListVatTermClosingsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Closing,
+			&i.SettlementVoucherID,
+			&i.ClosedAt,
+			&i.ClosedByUserID,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVatTermEvents = `-- name: ListVatTermEvents :many
-SELECT e.id, e.vat_term_id, e.kind, e.voucher_id, e.reason, e.filed_at, e.filed_reference, e.at, e.by_user_id, v.fiscal_year AS voucher_fiscal_year, v.number AS voucher_number
+SELECT e.id, e.vat_term_id, e.kind, e.closing_id, e.voucher_id, e.reason, e.filed_at, e.filed_reference, e.at, e.by_user_id, v.fiscal_year AS voucher_fiscal_year, v.number AS voucher_number, c.closing AS closing_number
 FROM accounting.vat_term_events e
 LEFT JOIN accounting.vouchers v ON v.id = e.voucher_id
+LEFT JOIN accounting.vat_term_closings c ON c.id = e.closing_id
 WHERE e.vat_term_id = $1
 ORDER BY e.id DESC
 `
@@ -225,6 +394,7 @@ type ListVatTermEventsRow struct {
 	ID                int64
 	VatTermID         int64
 	Kind              string
+	ClosingID         *int64
 	VoucherID         *int64
 	Reason            *string
 	FiledAt           *time.Time
@@ -233,6 +403,7 @@ type ListVatTermEventsRow struct {
 	ByUserID          uuid.UUID
 	VoucherFiscalYear *int32
 	VoucherNumber     *int32
+	ClosingNumber     *int32
 }
 
 func (q *Queries) ListVatTermEvents(ctx context.Context, vatTermID int64) ([]ListVatTermEventsRow, error) {
@@ -248,6 +419,7 @@ func (q *Queries) ListVatTermEvents(ctx context.Context, vatTermID int64) ([]Lis
 			&i.ID,
 			&i.VatTermID,
 			&i.Kind,
+			&i.ClosingID,
 			&i.VoucherID,
 			&i.Reason,
 			&i.FiledAt,
@@ -256,6 +428,7 @@ func (q *Queries) ListVatTermEvents(ctx context.Context, vatTermID int64) ([]Lis
 			&i.ByUserID,
 			&i.VoucherFiscalYear,
 			&i.VoucherNumber,
+			&i.ClosingNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -268,18 +441,42 @@ func (q *Queries) ListVatTermEvents(ctx context.Context, vatTermID int64) ([]Lis
 }
 
 const listVatTerms = `-- name: ListVatTerms :many
-SELECT id, year, term, term_kind, period_start, period_end, state, closings, figures, return_xml, settlement_voucher_id, closed_at, closed_by_user_id, filed_at, filed_reference, filed_by_user_id, updated_at FROM accounting.vat_terms ORDER BY year, term
+SELECT t.id, t.year, t.term, t.term_kind, t.period_start, t.period_end, t.state, t.closings, t.current_closing_id, t.filed_at, t.filed_reference, t.filed_by_user_id, t.filed_closing_id, t.updated_at, coalesce(c.figures ->> 'total', '')::text AS closed_total
+FROM accounting.vat_terms t
+LEFT JOIN accounting.vat_term_closings c ON c.id = t.current_closing_id
+WHERE t.term_kind = $1
+ORDER BY t.year, t.term
 `
 
-func (q *Queries) ListVatTerms(ctx context.Context) ([]AccountingVatTerm, error) {
-	rows, err := q.db.Query(ctx, listVatTerms)
+type ListVatTermsRow struct {
+	ID               int64
+	Year             int32
+	Term             int32
+	TermKind         string
+	PeriodStart      time.Time
+	PeriodEnd        time.Time
+	State            string
+	Closings         int32
+	CurrentClosingID *int64
+	FiledAt          *time.Time
+	FiledReference   *string
+	FiledByUserID    *uuid.UUID
+	FiledClosingID   *int64
+	UpdatedAt        time.Time
+	ClosedTotal      string
+}
+
+// ListVatTerms is the books' terms of a kind that have been closed once, each
+// with its standing closing's total (NULL while open).
+func (q *Queries) ListVatTerms(ctx context.Context, termKind string) ([]ListVatTermsRow, error) {
+	rows, err := q.db.Query(ctx, listVatTerms, termKind)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []AccountingVatTerm
+	var items []ListVatTermsRow
 	for rows.Next() {
-		var i AccountingVatTerm
+		var i ListVatTermsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Year,
@@ -289,15 +486,13 @@ func (q *Queries) ListVatTerms(ctx context.Context) ([]AccountingVatTerm, error)
 			&i.PeriodEnd,
 			&i.State,
 			&i.Closings,
-			&i.Figures,
-			&i.ReturnXml,
-			&i.SettlementVoucherID,
-			&i.ClosedAt,
-			&i.ClosedByUserID,
+			&i.CurrentClosingID,
 			&i.FiledAt,
 			&i.FiledReference,
 			&i.FiledByUserID,
+			&i.FiledClosingID,
 			&i.UpdatedAt,
+			&i.ClosedTotal,
 		); err != nil {
 			return nil, err
 		}
@@ -310,9 +505,7 @@ func (q *Queries) ListVatTerms(ctx context.Context) ([]AccountingVatTerm, error)
 }
 
 const reopenVatTerm = `-- name: ReopenVatTerm :exec
-UPDATE accounting.vat_terms
-SET state = 'open', figures = NULL, return_xml = NULL, settlement_voucher_id = NULL, closed_at = NULL,
-    closed_by_user_id = NULL, updated_at = $1
+UPDATE accounting.vat_terms SET state = 'open', current_closing_id = NULL, updated_at = $1
 WHERE id = $2
 `
 
@@ -321,24 +514,48 @@ type ReopenVatTermParams struct {
 	ID  int64
 }
 
-// ReopenVatTerm opens a closed term again: what the close made is history
-// now, in vat_term_events and the reversed settlement voucher.
+// ReopenVatTerm opens a closed term again; its closing stays in
+// vat_term_closings.
 func (q *Queries) ReopenVatTerm(ctx context.Context, arg ReopenVatTermParams) error {
 	_, err := q.db.Exec(ctx, reopenVatTerm, arg.Now, arg.ID)
+	return err
+}
+
+const setVatTermClosed = `-- name: SetVatTermClosed :exec
+UPDATE accounting.vat_terms
+SET state = 'closed', closings = $1, current_closing_id = $2, updated_at = $3
+WHERE id = $4
+`
+
+type SetVatTermClosedParams struct {
+	Closings  int32
+	ClosingID *int64
+	Now       time.Time
+	ID        int64
+}
+
+func (q *Queries) SetVatTermClosed(ctx context.Context, arg SetVatTermClosedParams) error {
+	_, err := q.db.Exec(ctx, setVatTermClosed,
+		arg.Closings,
+		arg.ClosingID,
+		arg.Now,
+		arg.ID,
+	)
 	return err
 }
 
 const setVatTermFiled = `-- name: SetVatTermFiled :exec
 UPDATE accounting.vat_terms
 SET filed_at = $1, filed_reference = $2,
-    filed_by_user_id = $3, updated_at = $4
-WHERE id = $5
+    filed_by_user_id = $3, filed_closing_id = $4, updated_at = $5
+WHERE id = $6
 `
 
 type SetVatTermFiledParams struct {
 	FiledAt        *time.Time
 	FiledReference *string
 	FiledByUserID  *uuid.UUID
+	FiledClosingID *int64
 	Now            time.Time
 	ID             int64
 }
@@ -348,10 +565,52 @@ func (q *Queries) SetVatTermFiled(ctx context.Context, arg SetVatTermFiledParams
 		arg.FiledAt,
 		arg.FiledReference,
 		arg.FiledByUserID,
+		arg.FiledClosingID,
 		arg.Now,
 		arg.ID,
 	)
 	return err
+}
+
+const taxCodeHasPostings = `-- name: TaxCodeHasPostings :one
+SELECT EXISTS (SELECT 1 FROM accounting.postings WHERE tax_code_id = $1)::boolean
+`
+
+// TaxCodeHasPostings reports whether any posting carries the code: its VAT
+// and counter accounts are then fixed (H4).
+func (q *Queries) TaxCodeHasPostings(ctx context.Context, taxCodeID *int32) (bool, error) {
+	row := q.db.QueryRow(ctx, taxCodeHasPostings, taxCodeID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const vatAccountIDs = `-- name: VatAccountIDs :many
+SELECT vat_account_id::int AS id FROM accounting.tax_codes WHERE vat_account_id IS NOT NULL
+UNION
+SELECT counter_vat_account_id::int FROM accounting.tax_codes WHERE counter_vat_account_id IS NOT NULL
+`
+
+// VatAccountIDs is every account a tax code names as its VAT or counter
+// account: no opening line may stand on one (H3).
+func (q *Queries) VatAccountIDs(ctx context.Context) ([]int32, error) {
+	rows, err := q.db.Query(ctx, vatAccountIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const vatPeriodGroups = `-- name: VatPeriodGroups :many
@@ -376,7 +635,7 @@ LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
 LEFT JOIN accounting.tax_code_rates r ON r.tax_code_id = p.tax_code_id AND r.valid_from <= v.voucher_date
     AND (r.valid_to IS NULL OR r.valid_to >= v.voucher_date)
 WHERE v.voucher_date BETWEEN $1::date AND $2::date
-  AND v.kind <> 'vat_settlement'
+  AND v.kind NOT IN ('vat_settlement', 'opening')
   AND (p.tax_code_id IS NOT NULL OR p.account_id IN (SELECT id FROM vat_accounts))
 GROUP BY p.account_id, a.number, a.name, p.tax_code_id, t.code, t.name, t.direction, t.reverse_charge, t.reported,
     r.rate_percent, p.tax_role, p.tax_specification
@@ -470,7 +729,8 @@ WITH vat_accounts AS (
             WHEN p.tax_specification = 'tapPåKrav' AND p.tax_role = 'base' THEN 'loss_base'
             WHEN p.tax_specification = 'tapPåKrav' THEN 'loss'
             WHEN p.tax_role = 'base' THEN 'base'
-            WHEN p.tax_role = 'tax_reverse' THEN 'calculated'
+            WHEN p.tax_role = 'tax_reverse' AND t.reverse_charge THEN 'calculated'
+            WHEN p.tax_role = 'tax_reverse' THEN 'other'
             WHEN t.direction = 'output' THEN 'output'
             WHEN t.direction = 'input' AND p.account_id IN (SELECT id FROM vat_accounts) THEN 'deducted'
             WHEN t.direction = 'input' THEN 'not_deducted'
@@ -481,13 +741,13 @@ WITH vat_accounts AS (
     JOIN accounting.accounts a ON a.id = p.account_id
     LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
     WHERE v.voucher_date BETWEEN $6::date AND $7::date
-      AND v.kind <> 'vat_settlement'
+      AND v.kind NOT IN ('vat_settlement', 'opening')
       AND (p.tax_code_id IS NOT NULL OR p.account_id IN (SELECT id FROM vat_accounts))
 )
 SELECT c.id, c.voucher_id, c.line_no, c.account_id, c.account_number, c.account_name, c.amount::text AS amount,
     c.tax_code_id, c.tax_code, c.tax_role, coalesce(c.tax_base::text, '')::text AS tax_base, c.tax_specification, c.description,
     c.fiscal_year, c.number, c.voucher_date, c.voucher_description, c.part::text AS part,
-    count(*) OVER ()::int AS total
+    count(*) OVER ()::int AS total, (sum(c.amount) OVER ())::text AS selection_sum
 FROM classified c
 WHERE ($1::int IS NULL OR c.tax_code_id = $1::int)
   AND ($2::text IS NULL OR c.part = $2::text)
@@ -527,6 +787,7 @@ type VatPostingsRow struct {
 	VoucherDescription string
 	Part               string
 	Total              int32
+	SelectionSum       string
 }
 
 // VatPostings is the drill-down behind a figure: the postings dated in the
@@ -572,6 +833,7 @@ func (q *Queries) VatPostings(ctx context.Context, arg VatPostingsParams) ([]Vat
 			&i.VoucherDescription,
 			&i.Part,
 			&i.Total,
+			&i.SelectionSum,
 		); err != nil {
 			return nil, err
 		}

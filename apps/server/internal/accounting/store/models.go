@@ -296,29 +296,38 @@ type AccountingUnposted struct {
 }
 
 type AccountingVatTerm struct {
+	ID               int64
+	Year             int32
+	Term             int32
+	TermKind         string
+	PeriodStart      time.Time
+	PeriodEnd        time.Time
+	State            string
+	Closings         int32
+	CurrentClosingID *int64
+	FiledAt          *time.Time
+	FiledReference   *string
+	FiledByUserID    *uuid.UUID
+	FiledClosingID   *int64
+	UpdatedAt        time.Time
+}
+
+type AccountingVatTermClosing struct {
 	ID                  int64
-	Year                int32
-	Term                int32
-	TermKind            string
-	PeriodStart         time.Time
-	PeriodEnd           time.Time
-	State               string
-	Closings            int32
+	VatTermID           int64
+	Closing             int32
 	Figures             []byte
-	ReturnXml           *string
+	ReturnXml           string
 	SettlementVoucherID *int64
-	ClosedAt            *time.Time
-	ClosedByUserID      *uuid.UUID
-	FiledAt             *time.Time
-	FiledReference      *string
-	FiledByUserID       *uuid.UUID
-	UpdatedAt           time.Time
+	ClosedAt            time.Time
+	ClosedByUserID      uuid.UUID
 }
 
 type AccountingVatTermEvent struct {
 	ID             int64
 	VatTermID      int64
 	Kind           string
+	ClosingID      *int64
 	VoucherID      *int64
 	Reason         *string
 	FiledAt        *time.Time

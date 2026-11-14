@@ -60,8 +60,12 @@ func vatPart(r store.VatPeriodGroupsRow) string {
 		return partLoss
 	case r.TaxRole == "base":
 		return partBase
-	case r.TaxRole == roleTaxReverse:
+	case r.TaxRole == roleTaxReverse && r.ReverseCharge:
 		return partCalculated
+	case r.TaxRole == roleTaxReverse:
+		// A calculated side on a code that is not reverse charge is no
+		// figure of the return: it stays on its account, unreconciled (M1).
+		return partOther
 	case r.TaxDirection == "output":
 		return partOutput
 	case r.TaxDirection == "input" && r.OnVatAccount:
@@ -218,14 +222,67 @@ func computeSpecification(ctx context.Context, q *store.Queries, from, to time.T
 		}
 		return 0
 	})
+	// The names a return's lines carry (L1, L2): a loss's line is its input
+	// code's, and a reverse charge's deduction line says it is one.
+	settings, err := q.GetSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	codes, err := q.ListTaxCodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]string{}
+	for _, c := range codes {
+		names[c.Code] = c.Name
+	}
 	var reported []mva.Figure
 	for _, f := range spec.figures {
-		if f.reported {
-			reported = append(reported, f.Figure)
+		if !f.reported {
+			continue
 		}
+		g := f.Figure
+		if g.Specification == mva.TapPaaKrav {
+			g.LossName = names[mva.LossCode(g.Code)]
+		}
+		if g.ReverseCharge {
+			g.DeductionName = fmt.Sprintf(vatWord(settings.ChartLanguage, "deduction"), g.Name)
+		}
+		reported = append(reported, g)
 	}
 	spec.ret = mva.Build(reported)
 	return spec, nil
+}
+
+// rateMissing is the code of a reported figure with an output side — an
+// output code or a reverse charge — that has amounts but no rate on its
+// postings' dates (L3); "" when none. Its return line would carry no sats.
+func (s *specification) rateMissing() string {
+	for _, f := range s.figures {
+		if !f.reported || f.RatePercent != "" || f.Specification != "" || (f.Direction != "output" && !f.ReverseCharge) {
+			continue
+		}
+		if f.Base.Sign() != 0 || f.Output.Sign() != 0 || f.Calculated.Sign() != 0 {
+			return f.Code
+		}
+	}
+	return ""
+}
+
+// consistent holds the return to the ledger before a close posts it (M1):
+// the VAT counted is the return's exact total, sign turned, and the øre the
+// return cut are less than a krone a line. Either failing is a fault of the
+// module, never of the books, and refuses the close rather than post an
+// unbounded rounding line.
+func (s *specification) consistent() error {
+	if neg(s.counted).Cmp(s.ret.ExactTotal) != 0 {
+		return fmt.Errorf("the VAT counted, %s, is not the return's exact total, %s", money(neg(s.counted)), money(s.ret.ExactTotal))
+	}
+	diff := abs(s.ret.RoundingDifference())
+	if bound := big.NewRat(int64(s.ret.Considered), 1); (s.ret.Considered == 0 && diff.Sign() != 0) || (s.ret.Considered > 0 && diff.Cmp(bound) >= 0) {
+		return fmt.Errorf("the rounding difference %s is not less than a krone for each of the return's %d lines", money(diff), s.ret.Considered)
+	}
+	return nil
 }
 
 func boolOrder(b bool) int {
@@ -393,10 +450,11 @@ func (s *server) ListAccountingVatPostings(ctx context.Context, req gen.ListAcco
 	if err != nil {
 		return nil, err
 	}
-	out := gen.ListAccountingVatPostings200JSONResponse{Items: []gen.AccountingVatPosting{}}
+	out := gen.ListAccountingVatPostings200JSONResponse{Items: []gen.AccountingVatPosting{}, Sum: "0.00"}
 	for _, r := range rows {
 		out.Items = append(out.Items, vatPostingView(r))
-		out.Total = r.Total
+		// The whole selection's, not this page's (L4).
+		out.Total, out.Sum = r.Total, money(mustRat(r.SelectionSum))
 	}
 	if len(rows) == 0 && offset > 0 {
 		// A page past the end still says how many there are.
@@ -406,7 +464,7 @@ func (s *server) ListAccountingVatPostings(ctx context.Context, req gen.ListAcco
 			return nil, err
 		}
 		if len(all) > 0 {
-			out.Total = all[0].Total
+			out.Total, out.Sum = all[0].Total, money(mustRat(all[0].SelectionSum))
 		}
 	}
 	return out, nil
@@ -453,7 +511,10 @@ func (t *table) vatReport(ctx context.Context, q *store.Queries, in reportInput)
 	}
 	section(true, t.w("vatReported"))
 	section(false, t.w("vatNotReported"))
-	t.row(gen.Total, 0, map[string]string{"code": t.w("total"), "vat": money(neg(spec.counted))})
+	// The exact VAT the return counts, labelled so, beside the return's own
+	// total in whole kroner (L5).
+	t.row(gen.Total, 0, map[string]string{"code": t.w("vatExactTotal"), "vat": money(neg(spec.counted))})
+	t.row(gen.Total, 0, map[string]string{"code": t.w("vatReturnTotal"), "vat": spec.ret.Total.String() + ".00"})
 	t.row(gen.Subtotal, 0, map[string]string{"code": t.w("vatMovement"), "vat": money(neg(spec.movement))})
 	return nil
 }

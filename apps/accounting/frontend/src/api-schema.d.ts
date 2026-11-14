@@ -820,6 +820,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounting/vat/terms/{year}/{number}/closings/{closing}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a VAT term's closing
+         * @description One close of the term as it was made and kept (H2) — its return as figures — whether the term is closed, reopened or filed since.
+         */
+        get: operations["getAccountingVatTermClosing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/vat/terms/{year}/{number}/closings/{closing}/xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a VAT term's closing as XML
+         * @description One close's return as XML, as it was stored, served as an attachment and never cached.
+         */
+        get: operations["downloadAccountingVatTermClosing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounting/vat/terms/{year}/{number}/filing": {
         parameters: {
             query?: never;
@@ -1519,7 +1559,7 @@ export interface components {
             taxCodeId: number | null;
             taxRole: components["schemas"]["AccountingTaxRole"] | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
+        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
         AccountingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -2114,6 +2154,10 @@ export interface components {
             /** Format: int32 */
             total: number;
         };
+        AccountingVatCloseInput: {
+            /** @description Required true for a term that starts before the books do, whose return covers only from books_start. */
+            confirmPartial?: boolean;
+        };
         /** @description What a term's close would refuse now, each check apart, so the confirm dialog can say so before it is asked (A22, R10). */
         AccountingVatCloseChecks: {
             /**
@@ -2127,8 +2171,33 @@ export interface components {
             ended: boolean;
             /** @description Whether the lock is on or after the term's last day (vat_term_lock_after_end), so the settlement voucher cannot be posted on it. */
             lockAfterEnd: boolean;
+            /** @description Whether the term starts before the books do, so its return covers only from books_start; the close asks for confirmPartial (vat_term_partial). */
+            partial: boolean;
+            /** @description Whether a code the return reports has no rate on a posting's date (vat_term_rate_missing). */
+            rateMissing: boolean;
             /** @description Whether the VAT accounts' movement in the term is the return's VAT (vat_term_unreconciled when not). */
             reconciled: boolean;
+            /** @description A closed term whose figures, computed again, differ from the return it was closed with (vat_term_stale); null when none does. */
+            staleTerm: components["schemas"]["AccountingVatTermItem"] | null;
+        };
+        /** @description One close of a term (H2), never changed or deleted. */
+        AccountingVatClosing: {
+            /** Format: date-time */
+            closedAt: string;
+            /** Format: uuid */
+            closedByUserId: string;
+            /**
+             * Format: int32
+             * @description 1 for the term's first close, and so on.
+             */
+            closing: number;
+            /** @description Whether it is the closing that stands now. */
+            current: boolean;
+            /** @description Whether it is the closing marked as filed at Skatteetaten. */
+            filed: boolean;
+            settlementVoucher: components["schemas"]["AccountingVoucherRef"] | null;
+            /** @description Its return's total, whole kroner. */
+            total: string;
         };
         /** @description One tax code's figures in a period, at one rate and one specification (A21). Every amount is exact, in the return's sign: a base sales or purchases positive, VAT owed positive and VAT deducted negative. */
         AccountingVatCodeFigures: {
@@ -2208,6 +2277,8 @@ export interface components {
         };
         AccountingVatPostingList: {
             items: components["schemas"]["AccountingVatPosting"][];
+            /** @description The sum of every posting that matches, beyond this page too (debit positive). */
+            sum: string;
             /**
              * Format: int32
              * @description The postings that match, beyond this page too.
@@ -2311,6 +2382,8 @@ export interface components {
         AccountingVatTerm: "bimonthly" | "yearly" | "none";
         AccountingVatTermDetail: {
             checks: components["schemas"]["AccountingVatCloseChecks"];
+            /** @description Every close of the term, newest first, each with its return and XML kept. */
+            closings: components["schemas"]["AccountingVatClosing"][];
             /** @description Newest first. */
             events: components["schemas"]["AccountingVatTermEvent"][];
             /** @description The return as figures — as closed (the snapshot) for a closed term, as the books stand now for an open one. */
@@ -2323,6 +2396,11 @@ export interface components {
             at: string;
             /** Format: uuid */
             byUserId: string;
+            /**
+             * Format: int32
+             * @description The closing a close made or a filing names.
+             */
+            closing: number | null;
             /** Format: date */
             filedAt: string | null;
             filedReference: string | null;
@@ -2339,6 +2417,16 @@ export interface components {
             /** Format: uuid */
             closedByUserId: string | null;
             /**
+             * Format: int32
+             * @description The standing closing's number while closed; null while open.
+             */
+            closing: number | null;
+            /**
+             * Format: date
+             * @description The first day the term's return covers — books_start for a term that starts before the books do, else the term's first day.
+             */
+            coversFrom: string;
+            /**
              * Format: date
              * @description The day the return and the payment are due — one month and ten days after the term, the third two-month term on 31 August, a yearly term on 10 March.
              */
@@ -2347,6 +2435,11 @@ export interface components {
             filedAt: string | null;
             /** Format: uuid */
             filedByUserId: string | null;
+            /**
+             * Format: int32
+             * @description The closing marked as filed.
+             */
+            filedClosing: number | null;
             filedReference: string | null;
             /** @description Whether the lock reaches the term's last day. A closed term the lock was moved back behind may have postings the return does not hold. */
             lockCovers: boolean;
@@ -2367,8 +2460,10 @@ export interface components {
             /** @description The settlement voucher of a closed term; null when nothing moved, and on an open term. */
             settlementVoucher: components["schemas"]["AccountingVoucherRef"] | null;
             state: components["schemas"]["AccountingVatTermState"];
-            /** @description The return's total in whole kroner, to pay (positive) or to receive (negative) — as closed, or as the books stand now. */
-            total: string;
+            /** @description Whether the term starts before the books do. */
+            partial: boolean;
+            /** @description The return's total in whole kroner, to pay (positive) or to receive (negative) — as closed, or as the books stand now; null in the meta for an open term, whose figures the VAT pages compute. */
+            total: string | null;
             /** Format: int32 */
             year: number;
         };
@@ -3031,7 +3126,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — books_not_set_up; lock_behind_filed_term. */
+            /** @description Conflict — books_not_set_up; lock_behind_filed_term, lock_behind_closed_term. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3274,7 +3369,7 @@ export interface operations {
                     "application/json": components["schemas"]["AccountingVoucher"];
                 };
             };
-            /** @description Bad Request — field errors; account_unknown, account_inactive, party_required, party_not_allowed, amount_invalid, voucher_empty, open_item_unknown (a sourceDocumentId that is not an invoice open at the day before books_start, of the line's customer and amount). */
+            /** @description Bad Request — field errors; account_unknown, account_inactive, party_required, party_not_allowed, amount_invalid, voucher_empty, open_item_unknown (a sourceDocumentId that is not an invoice open at the day before books_start, of the line's customer and amount), opening_vat_account (a line on a tax code's VAT or counter account). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5168,7 +5263,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — books_not_set_up; revision_conflict. */
+            /** @description Conflict — books_not_set_up; revision_conflict, tax_code_in_use. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5792,7 +5887,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AccountingVatCloseInput"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -5828,7 +5927,127 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Conflict — books_not_set_up; vat_not_registered, vat_term_closed, vat_term_not_ended, vat_term_out_of_order, vat_term_attention, vat_term_lock_after_end, vat_term_unreconciled. */
+            /** @description Conflict — books_not_set_up; vat_not_registered, vat_term_closed, vat_term_not_ended, vat_term_out_of_order, vat_term_partial, vat_term_attention, vat_term_lock_after_end, vat_term_stale, vat_term_rate_missing, vat_term_unreconciled, vat_term_inconsistent. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    getAccountingVatTermClosing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                year: number;
+                /** @description The term in its year, 1 to 6 for two-month terms, 1 for a yearly one. */
+                number: number;
+                /** @description The closing's number, 1 for the term's first close. */
+                closing: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingVatReturn"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; vat_not_registered. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    downloadAccountingVatTermClosing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                year: number;
+                /** @description The term in its year, 1 to 6 for two-month terms, 1 for a yearly one. */
+                number: number;
+                /** @description The closing's number, 1 for the term's first close. */
+                closing: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xml": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; vat_not_registered. */
             409: {
                 headers: {
                     [name: string]: unknown;
