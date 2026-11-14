@@ -31,6 +31,11 @@
 -- and its undoing — the entry's date, or a claim's latest line date — and the
 -- reimbursement's own date for a reimbursement and its undoing.
 -- Append-only: refuse_journal_fact_change refuses every UPDATE and DELETE.
+-- No approval or reimbursement may commit between the backfill's read and the
+-- triggers' creation, or it would be in neither: the two tables are held in
+-- SHARE ROW EXCLUSIVE — reads go on, writes wait — to the migration's commit.
+LOCK TABLE expenses.entries, expenses.claims IN SHARE ROW EXCLUSIVE MODE;
+
 CREATE TABLE expenses.counters (
     counter_name varchar(30) PRIMARY KEY,
     next_value   bigint      NOT NULL
