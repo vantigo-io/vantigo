@@ -28,6 +28,12 @@ The pages here cover the rules a change is held to:
 - [VAT return validation](/en/contributing/vat-return-validation/) — the VAT return
   oracle: Skatteetaten's XSD over the accounting module's return goldens and
   Skatteetaten's examples, and how to change the return.
+- [SAF-T validation](/en/contributing/saft-validation/) — the SAF-T oracle: Skatteetaten's
+  SAF-T Financial XSDs over the accounting module's export goldens and Skatteetaten's
+  examples, the checks beyond the XSD, and how to change the export.
+- [SAF-T validation](/en/contributing/saft-validation/) — the SAF-T oracle: Skatteetaten's
+  SAF-T Financial XSDs over the accounting module's export goldens and Skatteetaten's
+  examples, the checks beyond the XSD, and how to change the export.
 - [Bank file validation](/en/contributing/bank-file-validation/) — how the OCR giro and
   camt.054 parsers are held to the formats: the element paths pinned by tests, the
   fixtures and the builders, and why the ISO 20022 XSD oracle is deferred.

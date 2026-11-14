@@ -21,7 +21,8 @@ every pull request, and never runs inside the server.
 ## What it checks
 
 `tools/mva/validate.sh` runs `Validate.java` — one source file, the JDK's own
-`javax.xml.validation`, external entities and schemas refused — with the XSD over:
+`javax.xml.validation`, external entities and schemas refused, and taking any XSD, so the
+[SAF-T oracle](/en/contributing/saft-validation/) runs it too — with the XSD over:
 
 - every golden under `apps/server/internal/accounting/mva/testdata/golden`: a term of
   sales and purchases at mixed rates; one with reverse charge, VAT not deductible, a loss

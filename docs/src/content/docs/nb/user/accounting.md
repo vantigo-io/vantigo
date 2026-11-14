@@ -1,6 +1,6 @@
 ---
 title: Regnskap
-description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — rapportene og CSV-filene deres, og å invitere en regnskapsfører.
+description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — rapportene og CSV-filene deres, SAF-T-filen en kontroll ber om og grupperingskodene den trenger, å komme fra et annet system med SAF-T-filen derfra, og å invitere en regnskapsfører.
 sidebar:
   order: 67
 sources:
@@ -42,6 +42,7 @@ og tillatelsen hver forespørsel sjekkes mot — står i
 | **Åpne poster** | Det kundene skylder og det dere skylder leverandørene, dokument for dokument. |
 | **Mva** | Mva-terminene: hver termins mva-melding, lukkingen, XML-filen og leveringsmerket. Vises ikke når selskapet ikke er mva-registrert. |
 | **Rapporter** | Bokføringsspesifikasjon, kontospesifikasjon, kunder, leverandører, saldobalanse, resultatregnskap, balanse og merverdiavgiftsspesifikasjon. |
+| **SAF-T** | Filen Skatteetaten ber om ved kontroll, og alle eksporter som er laget. Vises for dem som kan eksportere regnskapet. |
 | **Kontoplan** | Kontoene, grupperingskodene deres og systemkontoene. |
 | **Mva-koder** | Standard mva-kodene, kontoene deres og satsene. |
 | **Posteringsregler** | Hvilken inntektskonto hver salgslinje føres på, og hvilken kostnadskonto hver utgiftskategori føres på. |
@@ -66,6 +67,58 @@ ikke satt opp*, og alle andre sider sier det samme. En med **Forvalte regnskapet
 **Sett opp regnskapet** lager standardkontoplanen, Skatteetatens standard mva-koder med
 satsene — 25, 15, 12 og 11,11 %, uendret siden 2022 — og systemkontoene, og åpner **Inngående balanse**. De fire valgene kan
 ikke endres etterpå; **Innstillinger** viser dem.
+
+Et selskap som kommer fra et annet regnskapssystem, setter i stedet opp regnskapet fra
+SAF-T-filen fra det systemet, på samme side: se [Kommer du fra et annet system?](#kommer-du-fra-et-annet-system).
+
+## Kommer du fra et annet system?
+
+Et selskap som har ført regnskapet i Fiken, Tripletex, Visma eller et annet system, tar med
+seg kontoplanen, leverandørene og saldoene med **SAF-T Financial**-filen det systemet
+eksporterer. Gjør det **før** regnskapet er satt opp: det er den andre måten å sette det
+opp på, og det krever **Forvalte regnskapet**.
+
+1. Avslutt den siste perioden du fører i det gamle systemet, og eksporter SAF-T
+   Financial-filen for den — versjon 1.30 eller 1.40, for regnskapsåret eller frem til
+   siste dag i en måned. Regnskapet her starter dagen etter at filens periode slutter.
+2. Åpne **Regnskap**, **Sett opp regnskapet** i Vantigo, velg filen under **Kommer du fra
+   et annet system?** og klikk **Les filen**. Ingenting er skrevet ennå: du ser en
+   forhåndsvisning.
+3. Les forhåndsvisningen:
+   - **Kontoplanen** — hver konto i filen med nummeret den får her, arten, grupperingskoden
+     og utgående saldo. Et nummer som ikke passer kontoplanen her (4 til 6 sifre som
+     begynner med 1 til 8), vises med løsningen: tatt med uten punktum eller bindestrek,
+     utelatt når kontoen ikke har saldo, eller *Trenger et nummer* når den har det.
+   - **Kontoer lagt til fra standard kontoplan** — kontoene regnskapet trenger og filen ikke
+     har, som motkontoen for inngående balanse eller de enkelte mva-kontoene.
+   - **Systemroller** — hvilken konto som er kundefordringer, leverandørgjeld, bank og så
+     videre. Kundenes og leverandørenes konto i filen avgjør de to første.
+   - **Mva-koder** — filens koder og standardkoden hver tilsvarer. Regnskapet her bruker
+     Skatteetatens standardkoder.
+   - **Leverandører** — opprettes fra filen med organisasjonsnummer, adresse og
+     bankkonto. Et nummer som ikke er gyldig, utelates, og det står hvorfor.
+   - **Kunder** — funnet blant kundene i **Kunder** på organisasjonsnummer. Regnskap
+     oppretter ikke kunder: en kunde med saldo som Kunder ikke har, eller har to ganger, må
+     opprettes eller finnes der først; oppgi så kundenummeret i feltet under listen.
+   - **Åpningsbalansen** — bilaget regnskapet starter med: hver balansekontos utgående
+     saldo, én åpen post per kunde og leverandør med saldo, og periodens resultat på
+     motkontoen for inngående balanse. Mva-kontoenes saldoer føres samlet på kontoen for
+     mva-oppgjør (2740) — *Skyldig mva ved start* — fordi det er det som gjenstår å betale
+     eller få tilbake.
+4. Velg **Mva-termin** og språket for navnene, og klikk **Sett opp regnskapet fra filen**.
+   Alt skrives på én gang; det kan ikke angres.
+
+Det avvises mens en konto trenger et nummer, en kunde med saldo ikke finnes i Kunder, eller
+kundenes eller leverandørenes saldoer ikke stemmer med kontoens saldo i filen (differansen
+vises): rett det i det gamle systemet og eksporter på nytt.
+
+**Transaksjonene importeres ikke.** Bilagene fra det gamle systemet blir i filen derfra:
+loven krever at du oppbevarer regnskapet for tidligere år i fem år, og filen er den
+dokumentasjonen. Vantigo oppbevarer den opplastede filen sammen med regnskapet —
+**Innstillinger** viser den under *Satt opp fra en SAF-T-fil*, til nedlasting — men ta også
+vare på din egen kopi fra det gamle systemet. En
+kundes åpne saldo kommer som én post per kunde: når den betales, registrerer du
+innbetalingen under **Åpne poster**, eller deler den opp der.
 
 ## Kontoplanen
 
@@ -723,6 +776,43 @@ til det prosjektets posteringer. En bokføringsspesifikasjon eller en konto med 
 filen et regneark åpner direkte: semikolon og desimalkomma. Å laste ned krever **Eksportere
 regnskapet** (`accounting:export`), fordi filene har kundenes navn.
 
+## Filen en kontroll ber om (SAF-T)
+
+Når Skatteetaten ber om regnskapet ved et bokettersyn, ber den om en **SAF-T
+Financial**-fil: alle bilag i perioden med linjene, kontoplanen med hver kontos saldoer,
+kundene, leverandørene og mva-kodene. Vantigo skriver versjon 1.40, den som kreves for
+perioder fra 2027. Eksport krever **Eksportere regnskapet** (`accounting:export`), siden
+filen navngir kunder og leverandører — personer blant dem.
+
+1. Åpne **Regnskap**, **SAF-T**.
+2. Velg **Regnskapsår**, og for å sende en del av det, **Fra periode** og **Til periode**.
+   Skatteetaten ber som regel om et helt år; en fil inneholder høyst ett regnskapsår.
+3. Les varslene:
+   - *kontoer har ingen grupperingskode* — de eksporteres med koden **NA**. Åpne
+     kontoplanen, gi hver sin **Grupperingskode** for året, og kom tilbake.
+   - *Selskapets opplysninger mangler* — fyll inn selskapets navn og organisasjonsnummer i
+     innstillingene i Fakturering: filen navngir selskapet med nummeret.
+4. Klikk **Eksporter SAF-T**. Filen skrives i bakgrunnen; listen under viser den som *I
+   kø*, *Skrives* og så *Ferdig*, med hvem som bestilte den og når. En eksport som feilet,
+   sier hvorfor.
+5. Klikk filnavnet for å laste den ned: `SAF-T Financial_<organisasjonsnummer>_<dato og
+   tid>_1_1.xml`. Et svært stort år — over 2 GB — kommer som flere filer, delt etter
+   periode, hver fullstendig for seg: `…_1_2.xml`, `…_2_2.xml`.
+
+**Å levere den.** Last opp filen i kontrollsaken på skatteetaten.no, slik saksbehandleren
+ber om; ikke send den på e-post. For å sjekke en fil først tar Skatteetatens
+testinnsending for SAF-T imot den uten å åpne en sak. Hver eksport står i listen med
+filens kontrollsum, som dokumentasjon på hva som ble levert.
+
+### Grupperingskoder
+
+Hver konto i en SAF-T-fil har en **grupperingskode** fra Skatteetatens liste for
+næringsspesifikasjonen — 1920 bankinnskudd, 3000 salgsinntekt og så videre.
+Standardkontoplanen har en på hver konto. En konto du legger til uten, eller en importert
+konto med en kode som ikke står på årets liste, eksporteres som *NA*: åpne den i
+kontoplanen og velg koden i **Grupperingskode**. Koden lagres per år, så årets liste kan
+endre den uten å endre filer for tidligere år.
+
 ## Å invitere en regnskapsfører
 
 En regnskapsfører er en vanlig bruker. Inviter vedkommende under
@@ -733,8 +823,8 @@ tillatelsene som trengs:
 | --- | --- |
 | **Bruke Regnskap** (`accounting:read`) | Alle skjermbilder og rapporter. |
 | **Bokføre bilag** (`accounting:post`) | Posteringer, tilbakeføringer, vedlegg, oppgjør, leverandører, leverandørfakturaer og betalingene av dem, handlingene under Trenger oppmerksomhet, og å merke en mva-termin som levert. |
-| **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet, kontoplanen, mva-kodene, posteringsreglene, inngående balanse, sperren, og å lukke og åpne igjen mva-terminer og fjerne et leveringsmerke. Bare en eier kan gi den. |
-| **Eksportere regnskapet** (`accounting:export`) | Rapportene som CSV, og en leverandørs opplysninger. |
+| **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet (også fra en SAF-T-fil), kontoplanen, mva-kodene, posteringsreglene, inngående balanse, sperren, og å lukke og åpne igjen mva-terminer og fjerne et leveringsmerke. Bare en eier kan gi den. |
+| **Eksportere regnskapet** (`accounting:export`) | Rapportene som CSV, en leverandørs opplysninger, og SAF-T-filen. |
 
 Når oppdraget er over, fjerner du rollen eller deaktiverer brukeren: alt vedkommende har
 bokført, blir stående i regnskapet med navnet sitt.
