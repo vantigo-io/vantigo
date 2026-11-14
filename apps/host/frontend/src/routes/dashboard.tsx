@@ -58,6 +58,7 @@ import {
   type TimeSummary,
 } from "../api/dashboard";
 import {
+  accountingAttentionHint,
   accountingKpi,
   attentionHref,
   attentionTitle,
@@ -711,18 +712,9 @@ const DashboardPage = () => {
                 key={module.module}
                 label={t("dashboard.accountingVouchers")}
                 {...accountingKpi(accountingMeta.data, formatters.formatNumber, t)}
-                {...(accountingMeta.data?.setUp && accountingMeta.data.unposted > 0
-                  ? { hint: tAccounting("needsAttentionCount", { count: accountingMeta.data.unposted }) }
-                  : accountingMeta.data?.setUp &&
-                      accountingMeta.data.payablesOverdue + accountingMeta.data.payablesDueSoon > 0
-                    ? {
-                        // What is owed to suppliers and due (accounting design A19).
-                        hint: tAccounting("payablesCount", {
-                          overdue: accountingMeta.data.payablesOverdue,
-                          soon: accountingMeta.data.payablesDueSoon,
-                        }),
-                      }
-                    : {})}
+                {...(accountingAttentionHint(accountingMeta.data, tAccounting)
+                  ? { hint: accountingAttentionHint(accountingMeta.data, tAccounting) }
+                  : {})}
                 href={href}
                 loading={accountingMeta.isPending}
               />
