@@ -202,7 +202,7 @@ so a change made on another replica takes effect at the next tool call after tha
 No level can be set for these; a request is 409 `level_locked`, and the setup answers them
 as `locked`:
 
-`agents:activity`, `agents:manage`, `agents:review`, `agents:view`,
+`accounting:close`, `agents:activity`, `agents:manage`, `agents:review`, `agents:view`,
 `customers:personal-data`, `entra:manage`, `expenses:approve`, `google:manage`,
 `identity:manage`, `invoices:issue`, `invoices:payments`, `knowledge:manage`,
 `manufacturing:costs-view`, `orders:carriers-manage`, `orders:settings`, `staff:approve`,
