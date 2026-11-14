@@ -68,7 +68,8 @@ func TestCamt053_DNB(t *testing.T) {
 
 // SpareBank 1's shape (.08): the status a code, date-times, Pty names, the
 // previous closing balance as the opening, a card purchase, two identical
-// lines that both stay.
+// lines that both stay — their NtryRef, a number within the statement, is
+// not the bank's id, so they keep to the fingerprint and its ordinal.
 func TestCamt053_SpareBank1(t *testing.T) {
 	st := read(t, "sparebank1-camt053-001-08.xml")
 	if len(st) != 1 {
@@ -163,6 +164,13 @@ func TestCSV(t *testing.T) {
 	rows, err = bankstmt.ReadCSV([]byte("\xef\xbb\xbf2026-09-02,\"1,000.00\",Husleie\n"), utf, bankstmt.DefaultLimits)
 	if err != nil || len(rows) != 1 || rows[0].Err == nil {
 		t.Fatalf("a thousands comma with a point for decimals and no thousands separator reads: %+v %v", rows, err)
+	}
+	// A thousands group of other than three digits is a misread column.
+	for _, figure := range []string{"1 23,45", "12 3456,00", "1 000 00,00"} {
+		rows, err := bankstmt.ReadCSV([]byte("x\nDato;Forklaring;Ut;Inn;KID\n02.09.2026;Feil;"+figure+";;\n"), m, bankstmt.DefaultLimits)
+		if err != nil || len(rows) != 1 || rows[0].Err == nil || !strings.Contains(rows[0].Err.Error(), "three digits") {
+			t.Fatalf("%q reads: %+v %v", figure, rows, err)
+		}
 	}
 	utf.ThousandsSeparator = "."
 	if _, err := bankstmt.ReadCSV(nil, utf, bankstmt.DefaultLimits); err == nil {

@@ -227,6 +227,28 @@ func (m Mapping) row(rec []string) (Line, error) {
 	return l, nil
 }
 
+// groupedByThousands is whether a figure's whole part, split by the
+// thousands separator, is one to three digits and then groups of exactly
+// three: "12 345,00", not "1 23,45" — a misread column, refused.
+func groupedByThousands(text, sep, decimal string) bool {
+	whole := text
+	if i := strings.LastIndex(whole, decimal); i >= 0 {
+		whole = whole[:i]
+	}
+	whole = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(whole), "-−+"))
+	parts := strings.Split(whole, sep)
+	if len(parts) == 1 {
+		return true
+	}
+	for i, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || strings.Trim(p, "0123456789") != "" || len(p) > 3 || (i > 0 && len(p) != 3) {
+			return false
+		}
+	}
+	return true
+}
+
 // amount reads a figure with the mapping's separators: "-1 234,50", "1.234,50",
 // "(12.00)" for a negative one.
 func (m Mapping) amount(s string) (*big.Rat, error) {
@@ -235,9 +257,12 @@ func (m Mapping) amount(s string) (*big.Rat, error) {
 	if strings.HasPrefix(text, "(") && strings.HasSuffix(text, ")") {
 		neg, text = true, strings.TrimSpace(text[1:len(text)-1])
 	}
-	text = strings.NewReplacer(" ", "", "kr", "", "NOK", "").Replace(text)
+	text = strings.NewReplacer("\u00a0", " ", "kr", "", "NOK", "").Replace(text)
 	text = strings.TrimSpace(text)
 	if m.ThousandsSeparator != "" {
+		if !groupedByThousands(text, m.ThousandsSeparator, m.DecimalSeparator) {
+			return nil, fmt.Errorf("the amount %q has a thousands group that is not three digits", s)
+		}
 		text = strings.ReplaceAll(text, m.ThousandsSeparator, "")
 	}
 	text = strings.ReplaceAll(text, " ", "")

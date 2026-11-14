@@ -330,7 +330,7 @@ func (e camtEntry) line(where string) (Line, error) {
 	if !ok {
 		return Line{}, invalid(where + " has no booking day")
 	}
-	l := Line{BookedOn: booked, Amount: amount, BankID: clip(firstOf(e.AcctSvcrRef, e.NtryRef), 140),
+	l := Line{BookedOn: booked, Amount: amount, BankID: clip(strings.TrimSpace(e.AcctSvcrRef), 140),
 		Reversal: strings.EqualFold(strings.TrimSpace(e.RvslInd), "true"), Kind: e.kind()}
 	if v, ok := e.ValDt.day(); ok {
 		l.ValueOn = &v
@@ -348,8 +348,11 @@ func (e camtEntry) line(where string) (Line, error) {
 		l.KID = kid(tx.CdtrRef)
 		l.CounterpartyName, l.CounterpartyAccount = tx.counterparty(credit)
 		l.Text = clip(firstOf(strings.Join(tx.Ustrd, " "), tx.AddtlTxInf, e.AddtlNtryInf), 1000)
+		l.TxReference = clip(strings.TrimSpace(tx.AcctSvcrRef), 140)
 		if l.BankID == "" {
-			l.BankID = clip(firstOf(tx.AcctSvcrRef, tx.TxID), 140)
+			// The transaction's own servicer's reference is the bank's id of
+			// an entry that has none; NtryRef and TxId are not unique.
+			l.BankID = l.TxReference
 		}
 	case len(txs) > 1:
 		l.Text = text

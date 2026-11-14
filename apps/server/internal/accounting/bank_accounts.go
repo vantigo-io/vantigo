@@ -246,7 +246,8 @@ func (s *server) GetAccountingBankAccount(ctx context.Context, req gen.GetAccoun
 	return gen.GetAccountingBankAccount200JSONResponse(out), nil
 }
 
-// UpdateAccountingBankAccount changes a bank account at the revision read.
+// UpdateAccountingBankAccount changes a bank account at the revision read;
+// its number and ledger account are fixed once it is in use.
 func (s *server) UpdateAccountingBankAccount(ctx context.Context, req gen.UpdateAccountingBankAccountRequestObject) (gen.UpdateAccountingBankAccountResponseObject, error) {
 	if req.Body == nil {
 		return nil, invalidField("The bank account cannot be saved", "body", "", "A body is required.")
@@ -256,7 +257,8 @@ func (s *server) UpdateAccountingBankAccount(ctx context.Context, req gen.Update
 	}
 	var out gen.AccountingBankAccount
 	err := s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
-		if _, err := q.LockBankAccount(ctx, req.Id); noRows(err) {
+		current, err := q.LockBankAccount(ctx, req.Id)
+		if noRows(err) {
 			return notFound()
 		} else if err != nil {
 			return err
@@ -264,6 +266,18 @@ func (s *server) UpdateAccountingBankAccount(ctx context.Context, req gen.Update
 		in, err := checkBankAccount(ctx, q, *req.Body)
 		if err != nil {
 			return err
+		}
+		if in.number != current.AccountNumber || in.ledger != current.LedgerAccountID {
+			// Its lines are matched to postings on its ledger account, and
+			// Invoices' payments were posted through its number.
+			used, err := q.BankAccountInUse(ctx, store.BankAccountInUseParams{ID: req.Id, AccountNumber: current.AccountNumber})
+			if err != nil {
+				return err
+			}
+			if used {
+				return conflict(codeBankAccountInUse, "The bank account is in use",
+					"It has statement lines, or payments were posted through its number: its number and ledger account stay. Add a new bank account instead.")
+			}
 		}
 		sp, err := tx.Begin(ctx)
 		if err != nil {
@@ -401,8 +415,10 @@ func (s *server) ListAccountingBankFeedAccounts(ctx context.Context, _ gen.ListA
 }
 
 // SetAccountingBankAccountSource switches the statement's source (A29): to
-// the feed when the bank reads the account's number, from a start day, due
-// at once; back to files, the feed's state cleared and its lines kept.
+// the feed when the bank reads the account's number, from a start day — by
+// default the day after the latest line or statement imported, and never on
+// or before it, so no day is read twice — due at once; back to files, the
+// feed's state cleared and its lines kept.
 func (s *server) SetAccountingBankAccountSource(ctx context.Context, req gen.SetAccountingBankAccountSourceRequestObject) (gen.SetAccountingBankAccountSourceResponseObject, error) {
 	const title = "The source cannot be switched"
 	if req.Body == nil {
@@ -426,12 +442,22 @@ func (s *server) SetAccountingBankAccountSource(ctx context.Context, req gen.Set
 		if err != nil {
 			return nil, err
 		}
-		start = &today
-		if b.StartDay != nil {
-			start = ptr(day(*b.StartDay))
+		earliest, err := feedEarliest(ctx, q, req.Id)
+		if err != nil {
+			return nil, err
 		}
-		if start.After(today) || start.Before(today.AddDate(-1, -1, 0)) {
-			return nil, invalidField(title, "startDay", "", "A day from 13 months ago to today.")
+		start = &today
+		switch {
+		case b.StartDay != nil:
+			start = ptr(day(*b.StartDay))
+		case earliest != nil:
+			start = earliest
+		}
+		if err := feedStartRefusal(*start, earliest); err != nil {
+			return nil, err
+		}
+		if start.After(today.AddDate(0, 0, 1)) || start.Before(today.AddDate(-1, -1, 0)) {
+			return nil, invalidField(title, "startDay", "", "A day from 13 months ago to tomorrow.")
 		}
 		// The bank is asked before any transaction opens (A29).
 		accounts, err := s.feedAccounts(ctx)
@@ -458,6 +484,15 @@ func (s *server) SetAccountingBankAccountSource(ctx context.Context, req gen.Set
 		}
 		p := store.SetBankAccountSourceParams{ID: req.Id, Source: b.Source, Now: s.now()}
 		if b.Source == sourceFeed {
+			// Again under the lock: a file imported meanwhile moves the
+			// earliest day.
+			earliest, err := feedEarliest(ctx, q, req.Id)
+			if err != nil {
+				return err
+			}
+			if err := feedStartRefusal(*start, earliest); err != nil {
+				return err
+			}
 			p.FeedStartDay, p.FeedNextSyncAt = start, ptr(s.now())
 		}
 		if err := q.SetBankAccountSource(ctx, p); err != nil {
@@ -470,6 +505,31 @@ func (s *server) SetAccountingBankAccountSource(ctx context.Context, req gen.Set
 		return nil, err
 	}
 	return gen.SetAccountingBankAccountSource200JSONResponse(out), nil
+}
+
+// feedEarliest is the first day the feed may read an account from: the day
+// after its latest line or statement imported; nil when it has none.
+func feedEarliest(ctx context.Context, q *store.Queries, id int64) (*time.Time, error) {
+	latest, err := q.LatestCovered(ctx, id)
+	if err != nil || latest == "" {
+		return nil, err
+	}
+	d, err := time.Parse(time.DateOnly, latest)
+	if err != nil {
+		return nil, err
+	}
+	return ptr(d.AddDate(0, 0, 1)), nil
+}
+
+// feedStartRefusal refuses a feed start day on or before a day already
+// imported.
+func feedStartRefusal(start time.Time, earliest *time.Time) error {
+	if earliest == nil || !start.Before(*earliest) {
+		return nil
+	}
+	return invalidField("The source cannot be switched", "startDay", codeBankFeedStartTooEarly,
+		"The statements imported run to "+earliest.AddDate(0, 0, -1).Format(time.DateOnly)+
+			": the feed starts on "+earliest.Format(time.DateOnly)+" or later, so no day is read twice.")
 }
 
 // csvMapping is a contract mapping as the reader's.

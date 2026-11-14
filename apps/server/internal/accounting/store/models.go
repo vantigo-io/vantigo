@@ -296,6 +296,9 @@ type AccountingStatementLine struct {
 	Kind                string
 	Reversal            bool
 	Batch               []byte
+	TxReference         string
+	PossibleDuplicateOf *int64
+	Note                string
 	State               string
 	CreatedAt           time.Time
 }
@@ -310,6 +313,8 @@ type AccountingStatementMatch struct {
 	SupplierPaymentID *int64
 	BankRuleID        *int64
 	BankRuleVersion   *int32
+	VatClosingID      *int64
+	VippsThrough      *time.Time
 	MatchedAt         time.Time
 	MatchedByUserID   uuid.UUID
 	UndoneAt          *time.Time

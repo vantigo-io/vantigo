@@ -86,6 +86,11 @@ func checkBankRule(ctx context.Context, q *store.Queries, b gen.AccountingBankRu
 	}
 	if len(accounts) != 1 || !accounts[0].Active {
 		f.addCoded("accountId", codeAccountUnknown, "An active account.")
+	} else if out.direction != "out" && customerPaymentAccount(accounts[0]) {
+		// A rule that could code money in to income or receivables would
+		// book a customer's payment past Invoices (R11).
+		f.addCoded("accountId", codeBankRuleCustomerPayment,
+			"A rule for money in codes to neither an income account nor receivables: customer payments are registered in Invoices. Make it a rule for money out, or choose another account.")
 	}
 	if b.TaxCodeId != nil {
 		codes, err := q.TaxCodesByCode(ctx)

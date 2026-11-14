@@ -155,6 +155,14 @@ const (
 	codeBankCustomerPayment      = "bank_line_customer_payment"
 	codeBankRuleInUse            = "bank_rule_in_use"
 	codeBankUnreconciled         = "bank_unreconciled"
+	codeBankAccountInUse         = "bank_account_in_use"
+	codeBankFeedStartTooEarly    = "bank_feed_start_too_early"
+	codeBankRuleCustomerPayment  = "bank_rule_customer_payment"
+	codeBankAmountCurrencyReq    = "bank_amount_currency_required"
+	codeBankFeeTooLarge          = "bank_fee_too_large"
+	codeBankOpenItemRequired     = "bank_open_item_required"
+	codeBankLinePossibleDup      = "bank_line_possible_duplicate"
+	codeBankLineNotDuplicate     = "bank_line_not_duplicate"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -188,7 +196,9 @@ var refusalCodes = []string{
 	codeBankFeedUnreachable, codeBankStatementInvalid, codeBankStatementTooLarge, codeBankStatementAccount,
 	codeBankStatementAccountReq, codeBankCsvMappingRequired, codeBankCsvMappingInvalid, codeBankLineMatched,
 	codeBankLineNotMatched, codeBankSuggestionStale, codeBankPostingMatched, codeBankCustomerPayment, codeBankRuleInUse,
-	codeBankUnreconciled,
+	codeBankUnreconciled, codeBankAccountInUse, codeBankFeedStartTooEarly, codeBankRuleCustomerPayment,
+	codeBankAmountCurrencyReq, codeBankFeeTooLarge, codeBankOpenItemRequired, codeBankLinePossibleDup,
+	codeBankLineNotDuplicate,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a

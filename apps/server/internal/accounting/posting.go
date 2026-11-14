@@ -57,6 +57,10 @@ type Voucher struct {
 	// Reverses is the voucher this one reverses, with the reason (A7).
 	Reverses       *int64
 	ReversalReason string
+	// TurnsBack is the voucher a removal turns back without reversing it — a
+	// payment removed in Invoices — nil for none: a bank match standing on
+	// it is undone with it, as on a reversed one.
+	TurnsBack *int64
 	// PostedBy is the person posting, nil for the system.
 	PostedBy *uuid.UUID
 	// At is when it is posted; zero is now.
@@ -355,6 +359,16 @@ func post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 		if err := q.InsertVoucherBankRef(ctx, store.InsertVoucherBankRefParams{VoucherID: id, BankAccount: v.BankRef.Account,
 			Reference: v.BankRef.Reference, Source: v.BankRef.Source}); err != nil {
 			return Posted{}, fmt.Errorf("accounting: insert the voucher's bank reference: %w", err)
+		}
+	}
+	if target := v.Reverses; target != nil || v.TurnsBack != nil {
+		if target == nil {
+			target = v.TurnsBack
+		}
+		// A bank line matched to what this voucher turns back is no longer
+		// matched (A28).
+		if err := undoBankMatchesOn(ctx, tx, *target, id, v.PostedBy, now); err != nil {
+			return Posted{}, err
 		}
 	}
 	return Posted{ID: id, FiscalYear: year, Number: number, VoucherDate: date, Moved: moved}, nil

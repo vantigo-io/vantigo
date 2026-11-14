@@ -52,7 +52,7 @@ func BankSuggestionKeys(ctx context.Context, d module.Deps, lineID int64) ([]str
 	if err != nil {
 		return nil, err
 	}
-	sg, err := newSuggester(ctx, q, account, l.booked, l.booked)
+	sg, err := newSuggester(ctx, q, account)
 	if err != nil {
 		return nil, err
 	}
@@ -71,5 +71,5 @@ func BankSuggestionKeys(ctx context.Context, d module.Deps, lineID int64) ([]str
 // in one transaction under the line's lock, as the API does.
 func AcceptBankSuggestion(ctx context.Context, d module.Deps, lineID int64, key string, by uuid.UUID) error {
 	s := newServer(d)
-	return s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error { return s.accept(ctx, tx, q, lineID, key, by) })
+	return s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error { return s.accept(ctx, tx, q, lineID, key, acceptOptions{}, by) })
 }
