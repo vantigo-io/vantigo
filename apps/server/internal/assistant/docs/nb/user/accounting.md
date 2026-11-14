@@ -863,7 +863,10 @@ legges inn to ganger.
 Innstillingene viser hvordan integrasjonen står: når banken sist ble lest, når den leses
 neste gang, og hva som gikk galt — **banken avviste nøkkelen** (lagre en ny nøkkel under
 Bankintegrasjon i Fakturering), **banken ba om å vente** (den leses igjen etter bankens
-ventetid) eller **ingen bank koblet til**. Oversikten og dashbordet sier det også.
+ventetid), **bankens svar er for stort** (banken klarer ikke å svare for én enkelt dag av
+kontoen i ett svar; det prøves igjen, og vedvarer det, spør banken) eller **ingen bank
+koblet til**. En startdag langt tilbake leses noen uker om gangen, så de eldste linjene kan
+bruke noen minutter på å komme. Oversikten og dashbordet sier det også.
 
 ### Å avstemme en bankkonto
 
