@@ -6,13 +6,14 @@ import {
   IconFileSpreadsheet,
   IconList,
   IconPlus,
+  IconReceiptTax,
   IconRefresh,
   IconScale,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ContentSkeleton, KpiCard, PageHeader } from "@vantigo/frontend-shell";
-import { catchUpQueryOptions, metaQueryOptions } from "../api/accounting";
+import { type AccountingMeta, catchUpQueryOptions, metaQueryOptions } from "../api/accounting";
 import { NotSetUp } from "../components/books-gate";
 import { useAccountingFormat } from "../lib/format";
 import {
@@ -23,13 +24,14 @@ import {
   REPORTS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   VOUCHERS_ROUTE_PATH,
+  vatTermPath,
 } from "../lib/routes";
 
 /**
  * The app's home: whether the books are set up, the lock date, the year's
  * vouchers and the open customer items, what needs attention — the sales
  * facts the books could not post (A15) — where the catch-up of sales stands
- * (A12), and the shortcuts. Until the books are set up it shows only the way there (R12).
+ * (A12), the next VAT term due (A22), and the shortcuts. Until the books are set up it shows only the way there (R12).
  */
 export const AccountingOverviewPage = () => {
   const { t, day } = useAccountingFormat();
@@ -96,6 +98,12 @@ export const AccountingOverviewPage = () => {
           </Text>
         )}
       </Card>
+      {m.vatRegistrationMismatch && (
+        <Alert color="orange" icon={<IconAlertTriangle size={16} />} data-testid="vat-mismatch">
+          {t("vatRegistrationMismatch")}
+        </Alert>
+      )}
+      {m.vatNextTerm && <VatCard meta={m} />}
       {m.invoicesEnabled && <CatchUpCard />}
       <Group gap="sm">
         <Button
@@ -121,6 +129,41 @@ export const AccountingOverviewPage = () => {
         </Button>
       </Group>
     </Stack>
+  );
+};
+
+/** The next VAT term due and its state (A22), with what waits to be closed or filed. */
+const VatCard = ({ meta }: { meta: AccountingMeta }) => {
+  const { t, day } = useAccountingFormat();
+  const term = meta.vatNextTerm;
+  if (!term) return null;
+  const state = term.filedAt ? t("vatStateFiled") : term.state === "closed" ? t("vatStateClosed") : t("vatStateOpen");
+  return (
+    <Card withBorder padding="md" data-testid="vat-card">
+      <Group gap="xs" mb="xs">
+        {meta.vatTermsToFile > 0 || meta.vatTermsToClose > 0 ? (
+          <IconAlertTriangle size={18} color="var(--mantine-color-orange-6)" />
+        ) : (
+          <IconReceiptTax size={18} />
+        )}
+        <Title order={4}>{t("vatNextTerm")}</Title>
+      </Group>
+      <Stack gap={4}>
+        <Anchor component={Link} to={vatTermPath(term.year, term.number)} size="sm">
+          {t("vatNextTermLine", {
+            term: t("vatTermName", { year: term.year, number: term.number, period: term.periodName }),
+            state,
+            due: day(term.dueDate),
+          })}
+        </Anchor>
+        {meta.vatTermsToClose > 0 && <Text size="sm">{t("vatTermsToClose", { count: meta.vatTermsToClose })}</Text>}
+        {meta.vatTermsToFile > 0 && (
+          <Text size="sm" c="red">
+            {t("vatTermsToFile", { count: meta.vatTermsToFile })}
+          </Text>
+        )}
+      </Stack>
+    </Card>
   );
 };
 

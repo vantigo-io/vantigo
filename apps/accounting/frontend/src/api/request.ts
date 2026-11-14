@@ -144,6 +144,18 @@ export const refusalCodes = [
   "supplier_retained",
   "supplier_anonymised",
   "expense_already_invoiced",
+  "vat_not_registered",
+  "vat_term_closed",
+  "vat_term_not_ended",
+  "vat_term_out_of_order",
+  "vat_term_attention",
+  "vat_term_lock_after_end",
+  "vat_term_unreconciled",
+  "vat_term_not_closed",
+  "vat_term_filed",
+  "vat_term_not_latest",
+  "vat_term_not_filed",
+  "lock_behind_filed_term",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 

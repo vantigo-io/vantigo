@@ -17,6 +17,9 @@ export const SUPPLIER_ROUTE_PATH = "/accounting/suppliers/$supplierId";
 export const SUPPLIER_INVOICES_ROUTE_PATH = "/accounting/supplier-invoices";
 export const SUPPLIER_INVOICE_ROUTE_PATH = "/accounting/supplier-invoices/$supplierInvoiceId";
 export const NEW_SUPPLIER_INVOICE_ROUTE_PATH = "/accounting/supplier-invoices/new";
+export const VAT_ROUTE_PATH = "/accounting/vat";
+export const VAT_TERM_ROUTE_PATH = "/accounting/vat/$year/$number";
+export const VAT_POSTINGS_ROUTE_PATH = "/accounting/vat/postings";
 
 /** A voucher's page. */
 export const voucherPath = (id: number) => `/accounting/vouchers/${id}`;
@@ -29,3 +32,21 @@ export const supplierPath = (id: number) => `/accounting/suppliers/${id}`;
 
 /** A supplier invoice's page. */
 export const supplierInvoicePath = (id: number) => `/accounting/supplier-invoices/${id}`;
+
+/** A VAT term's page. */
+export const vatTermPath = (year: number, number: number) => `/accounting/vat/${year}/${number}`;
+
+/** The postings behind a VAT figure: a period, and a tax code, a part, or the unreconciled ones. */
+export const vatPostingsPath = (params: {
+  from: string;
+  to: string;
+  taxCodeId?: number;
+  part?: string;
+  unreconciled?: boolean;
+}) => {
+  const search = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.taxCodeId !== undefined) search.set("taxCodeId", String(params.taxCodeId));
+  if (params.part) search.set("part", params.part);
+  if (params.unreconciled) search.set("unreconciled", "true");
+  return `${VAT_POSTINGS_ROUTE_PATH}?${search.toString()}`;
+};

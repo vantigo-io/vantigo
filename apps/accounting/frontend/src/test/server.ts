@@ -9,6 +9,8 @@ import type {
   AccountingSupplierInvoice,
   AccountingTaxCode,
   AccountingUnposted,
+  AccountingVatTermDetail,
+  AccountingVatTermItem,
   AccountingVoucher,
 } from "../api/accounting";
 import { jsonResponse } from "./api";
@@ -41,6 +43,10 @@ export const meta = (change: Partial<AccountingMeta> = {}): AccountingMeta => ({
   informational: 0,
   payablesOverdue: 0,
   payablesDueSoon: 0,
+  vatNextTerm: null,
+  vatRegistrationMismatch: false,
+  vatTermsToClose: 0,
+  vatTermsToFile: 0,
   ...change,
 });
 
@@ -195,6 +201,7 @@ export const report = (): AccountingReport => ({
       documentId: null,
       supplierId: null,
       supplierInvoiceId: null,
+      taxCodeId: null,
     },
     {
       style: "total",
@@ -205,6 +212,7 @@ export const report = (): AccountingReport => ({
       documentId: null,
       supplierId: null,
       supplierInvoiceId: null,
+      taxCodeId: null,
     },
   ],
 });
@@ -223,6 +231,9 @@ export interface ApiState {
   report?: AccountingReport;
   suppliers: AccountingSupplier[];
   supplierInvoices: AccountingSupplierInvoice[];
+  vatTerms?: AccountingVatTermItem[];
+  /** The page every term answers; vatTermDetail()'s unless set. */
+  vatTerm?: AccountingVatTermDetail;
   /** Refusals by "METHOD /path": the problem's status and code the request is answered with. */
   refusals?: Record<string, { status: number; code: string }>;
 }
@@ -357,6 +368,111 @@ export const unposted = (change: Partial<AccountingUnposted> = {}): AccountingUn
   resolvedAt: null,
   supplierInvoiceId: null,
   expenseLines: [],
+  ...change,
+});
+
+export const vatTermItem = (change: Partial<AccountingVatTermItem> = {}): AccountingVatTermItem => ({
+  year: 2026,
+  number: 4,
+  periodStart: "2026-07-01",
+  periodEnd: "2026-08-31",
+  periodName: "juli-august",
+  dueDate: "2026-10-10",
+  state: "open",
+  total: "12345",
+  closedAt: null,
+  closedByUserId: null,
+  settlementVoucher: null,
+  filedAt: null,
+  filedReference: null,
+  filedByUserId: null,
+  lockCovers: true,
+  needsClosing: true,
+  needsFiling: true,
+  ...change,
+});
+
+export const vatTermDetail = (change: Partial<AccountingVatTermDetail> = {}): AccountingVatTermDetail => ({
+  term: vatTermItem(),
+  return: {
+    year: 2026,
+    periodName: "juli-august",
+    periodStart: "2026-07-01",
+    periodEnd: "2026-08-31",
+    total: "12345",
+    exactTotal: "12345.67",
+    roundingDifference: "0.67",
+    direction: "pay",
+    organisationNumber: "923609016",
+    warnings: [],
+    lines: [
+      {
+        group: "sales_domestic",
+        code: "3",
+        name: "Utgående merverdiavgift, 25 %",
+        side: "output",
+        taxCodeId: 2003,
+        base: "60000",
+        exactBase: "60000.40",
+        rate: "25",
+        vat: "15000",
+        exactVat: "15000.10",
+        specification: null,
+        remark: null,
+      },
+      {
+        group: "purchases_domestic",
+        code: "1",
+        name: "Fradragsberettiget innenlands inngående merverdiavgift, 25 %",
+        side: "deduction",
+        taxCodeId: 2001,
+        base: null,
+        exactBase: null,
+        rate: null,
+        vat: "-2655",
+        exactVat: "-2654.43",
+        specification: null,
+        remark: null,
+      },
+    ],
+  },
+  specification: {
+    from: "2026-07-01",
+    to: "2026-08-31",
+    producedAt: STAMP,
+    codes: [
+      {
+        taxCodeId: 2003,
+        code: "3",
+        name: "Utgående merverdiavgift, 25 %",
+        direction: "output",
+        reverseCharge: false,
+        reported: true,
+        group: "sales_domestic",
+        ratePercent: "25.00",
+        specification: null,
+        base: "60000.40",
+        outputVat: "15000.10",
+        calculatedVat: "0.00",
+        deductedVat: "0.00",
+        notDeductedVat: "0.00",
+        lossVat: "0.00",
+        vat: "15000.10",
+        postings: 4,
+      },
+    ],
+    notReported: [],
+    reconciliation: {
+      reconciled: true,
+      movement: "-12345.67",
+      counted: "-12345.67",
+      difference: "0.00",
+      accounts: [],
+      postings: [],
+    },
+  },
+  checks: { ended: true, earlierOpen: null, attention: 0, lockAfterEnd: false, reconciled: true },
+  events: [],
   ...change,
 });
 
@@ -535,6 +651,60 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
       return jsonResponse(201, supplierInvoice({ id: 4011, sourceExpenseEntryId: 51 }));
     const ack = /^\/unposted\/(\d+)\/acknowledge$/.exec(path);
     if (method === "POST" && ack) return jsonResponse(200, unposted({ id: Number(ack[1]), resolvedAt: STAMP }));
+    if (method === "GET" && path === "/vat/terms")
+      return jsonResponse(200, {
+        vatTerm: state.meta.settings?.vatTerm ?? "bimonthly",
+        terms: state.vatTerms ?? [vatTermItem()],
+      });
+    const term = /^\/vat\/terms\/(\d+)\/(\d+)(\/[a-z]+)?$/.exec(path);
+    if (term) {
+      const detail = state.vatTerm ?? vatTermDetail();
+      const rest = term[3] ?? "";
+      if (method === "GET" && rest === "") return jsonResponse(200, detail);
+      const closed = {
+        ...detail,
+        term: {
+          ...detail.term,
+          state: "closed" as const,
+          needsClosing: false,
+          closedAt: STAMP,
+          settlementVoucher: { id: 5020, display: "2026-000030" },
+        },
+      };
+      if (method === "POST" && rest === "/close") return jsonResponse(200, closed);
+      if (method === "POST" && rest === "/reopen") return jsonResponse(200, vatTermDetail());
+      if (method === "POST" && rest === "/filing") {
+        const body = JSON.parse(String(init?.body));
+        return jsonResponse(200, {
+          ...closed,
+          term: { ...closed.term, filedAt: body.filedAt, filedReference: body.reference, needsFiling: false },
+        });
+      }
+      if (method === "POST" && rest === "/unfile") return jsonResponse(200, closed);
+    }
+    if (method === "GET" && path === "/vat/postings")
+      return jsonResponse(200, {
+        total: 1,
+        items: [
+          {
+            voucher: { id: 5001, display: "2026-000007" },
+            voucherDate: "2026-07-10",
+            voucherDescription: "Salg",
+            lineNo: 2,
+            accountId: 1005,
+            accountNumber: "3000",
+            accountName: "Salgsinntekt, avgiftspliktig",
+            amount: "-60000.40",
+            taxCodeId: 2003,
+            taxCode: "3",
+            taxRole: "base",
+            taxBase: null,
+            taxSpecification: null,
+            part: "base",
+            description: "",
+          },
+        ],
+      });
     if (method === "GET" && path === "/catch-up")
       return jsonResponse(200, {
         unposted: state.unposted.length,
