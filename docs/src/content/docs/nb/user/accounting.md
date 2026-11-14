@@ -1,6 +1,6 @@
 ---
 title: Regnskap
-description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, rapportene og CSV-filene deres, og å invitere en regnskapsfører.
+description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, leverandører og oppslaget i Brønnøysundregisteret, å føre, bokføre og betale en leverandørfaktura, annen valuta, omvendt avgiftsplikt og innførsel av varer, kreditnotaer, Tilbakefør og kopier, hvordan utgifter kommer inn fra Utgifter, posteringsreglene for salg og utgiftskategorier, Trenger oppmerksomhet med Prøv igjen, beløpet i NOK og Lag leverandørfaktura, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, mva-terminen — å kontrollere tallene, lukke den, laste ned mva-meldingen, levere den hos Skatteetaten og merke den som levert, åpne den igjen, rette etter levering og betale mvaen — rapportene og CSV-filene deres, og å invitere en regnskapsfører.
 sidebar:
   order: 67
 sources:
@@ -24,7 +24,8 @@ kreditnotaer, innbetalinger, purrekostnader og avskrivninger — bokføres av se
 [Utgifter](/nb/user/expenses/) godkjenner og refunderer
 ([Slik kommer utgiftene inn](#slik-kommer-utgiftene-inn-fra-utgifter)). Det leverandørene
 fakturerer, fører du som [leverandørfakturaer](#leverandørfakturaer) og registrerer betalingene
-av. Mva-melding, SAF-T og bank kommer i de neste utgavene. Reglene bak hvert skjermbilde — hva som avvises og hvorfor, statuskodene
+av. Hver [mva-termin](#mva-terminen) kontrolleres og lukkes her, og mva-meldingen leveres hos
+Skatteetaten. SAF-T og bank kommer i de neste utgavene. Reglene bak hvert skjermbilde — hva som avvises og hvorfor, statuskodene
 og tillatelsen hver forespørsel sjekkes mot — står i
 [referansen for Regnskap-modulen](/en/reference/accounting/) (på engelsk).
 
@@ -39,7 +40,8 @@ og tillatelsen hver forespørsel sjekkes mot — står i
 | **Leverandørfakturaer** | Fakturaer og kreditnotaer fra leverandører: utkast, bokført, betalt, tilbakeført. |
 | **Leverandører** | Selskapene og personene dere kjøper fra. |
 | **Åpne poster** | Det kundene skylder og det dere skylder leverandørene, dokument for dokument. |
-| **Rapporter** | Bokføringsspesifikasjon, kontospesifikasjon, kunder, leverandører, saldobalanse, resultatregnskap og balanse. |
+| **Mva** | Mva-terminene: hver termins mva-melding, lukkingen, XML-filen og leveringsmerket. Vises ikke når selskapet ikke er mva-registrert. |
+| **Rapporter** | Bokføringsspesifikasjon, kontospesifikasjon, kunder, leverandører, saldobalanse, resultatregnskap, balanse og merverdiavgiftsspesifikasjon. |
 | **Kontoplan** | Kontoene, grupperingskodene deres og systemkontoene. |
 | **Mva-koder** | Standard mva-kodene, kontoene deres og satsene. |
 | **Posteringsregler** | Hvilken inntektskonto hver salgslinje føres på, og hvilken kostnadskonto hver utgiftskategori føres på. |
@@ -185,6 +187,10 @@ En måned som er sperret for tidlig kan åpnes igjen: velg en tidligere måned, 
 **Begrunnelse**, og klikk **Flytt sperren tilbake** (eller **Opphev sperren**). Hver
 flytting lagres i sperrens historikk med hvem som gjorde det og hvorfor, fordi loven krever
 at det å åpne lukkede perioder kan gjøres rede for.
+
+Å lukke en [mva-termin](#å-lukke-terminen) flytter sperren til terminens siste dag, og å
+åpne en igjen flytter den tilbake. Sperren flyttes aldri tilbake bak en mva-termin som er
+merket som levert hos Skatteetaten: rett en slik termin i den åpne terminen i stedet.
 
 Mens en måned er sperret, avvises en postering datert i den. Det systemet bokfører av seg
 selv for en sperret dag, bokføres på første åpne dag og beholder dokumentdatoen.
@@ -555,6 +561,120 @@ i Fakturaer, aldri her. En leverandørfakturas post betales på leverandørfaktu
 
 Å registrere krever **Bokføre bilag**.
 
+## Mva-terminen
+
+Merverdiavgiften rapporteres til Skatteetaten én **termin** om gangen. **Mva** i
+sidemenyen viser terminene fra den regnskapet starter i til den inneværende, nyeste først:
+
+- Regnskap med **annenhver måned** har seks tomånedersterminer hvert kalenderår —
+  januar–februar, mars–april og så videre til november–desember — uansett regnskapsår.
+  Regnskap med **årlig** termin har én termin per kalenderår.
+- Hver termin viser perioden, statusen — **Åpen**, **Lukket** eller **Levert** — fristen og
+  summen i mva-meldingen, **Å betale** eller **Til gode**. En tomånederstermin har frist den
+  10. i den andre måneden etter (termin 1 den 10. april), unntatt termin 3, som har frist
+  31. august; en årlig termin 10. mars året etter.
+- **Klar til å lukkes** viser en termin som er slutt og ikke lukket; **Fristen er
+  passert** en termin der fristen er passert uten at den er merket som levert. Regnskap-kortet
+  på startsiden og **Oversikt** sier det samme, med neste termin som forfaller.
+
+Regnskap som er satt opp som **Ikke mva-registrert**, har ingen mva-terminer: Mva-siden sier
+at selskapet ikke er mva-registrert, og viser ikke noe annet. Når regnskapets mva-termin og
+selgerens mva-registrering i Fakturaer ikke stemmer overens, sier **Oversikt** fra.
+
+### Å kontrollere tallene for en termin
+
+Klikk på en termin. Siden viser **mva-meldingen** satt opp slik Skatteetatens er:
+
+- kodene i meldingens grupper og rekkefølge — salg i Norge, salg til utlandet, kjøp i
+  Norge, varer og tjenester fra utlandet, fisk, klimakvoter og gull — hver med grunnlag,
+  sats og mva;
+- omvendt avgiftsplikt og innførsel som to linjer på samme kode: den beregnede mvaen og
+  fradraget;
+- et tap på krav som er avskrevet med mva-korreksjon, som en egen linje, *Tap på krav*, på
+  inngående kode med samme sats (kode 1 for tap på salg med 25 %);
+- hele kroner: Skatteetaten tar ikke imot desimaler, så ørene kuttes på hver linje. Under
+  meldingen viser siden hva regnskapet sier på øret, og differansen, som lukkingen fører på
+  øreavrundingskontoen.
+
+En åpen termin viser meldingen slik regnskapet står nå; en lukket termin meldingen slik den
+ble lukket. Under den står **merverdiavgiftsspesifikasjonen**: per kode grunnlaget,
+utgående mva, beregnet mva, fradraget, tap på krav og mvaen som ikke er fradragsført (en
+kostnad, som på tjenester fra utlandet uten fradragsrett). Kode 0, 7, 20, 21 og 22 er ikke
+med i meldingen og står for seg. Klikk på et beløp for å se posteringene bak det.
+
+**Avstemming** sammenligner bevegelsen på mva-kontoene i terminen med mvaen meldingen
+teller. De er ulike når noe er ført rett på en mva-konto uten mva-kode; siden viser da de
+posteringene. Tilbakefør hver av dem og før dem på nytt med riktig mva-kode før terminen
+lukkes. Den samme spesifikasjonen, for hvilken som helst periode, er
+**Merverdiavgiftsspesifikasjon** under [Rapporter](#rapporter), med CSV-fil.
+
+### Å lukke terminen
+
+Når terminen er slutt og tallene stemmer, klikker du **Lukk terminen**. Dialogen sier hva
+lukkingen gjør og alt som stopper den nå:
+
+- Terminen må være slutt, og terminene før den må være lukket: terminene lukkes i
+  rekkefølge.
+- Ingenting datert i terminen kan vente under [Trenger oppmerksomhet](#trenger-oppmerksomhet).
+- Regnskapet kan ikke være sperret til og med terminens siste dag: flytt sperren tilbake
+  først ([Å sperre en periode](#å-sperre-en-periode)).
+- Mva-kontoene må stemme.
+
+Lukkingen
+
+1. lagrer mva-meldingen slik den står;
+2. fører **oppgjørsbilaget** på terminens siste dag: bevegelsen på hver mva-konto i
+   terminen flyttes til oppgjørskontoen for mva (2740), meldingens hele kroner der, og
+   ørene meldingen kuttet til øreavrundingskontoen (7790);
+3. sperrer regnskapet til og med terminens siste dag;
+4. gjør meldingens XML-fil klar til å lastes ned. Ingenting sendes noe sted.
+
+I en lukket termin føres ingenting mer: det Fakturaer eller Utgifter bokfører med en dato i
+den, bokføres på første dag etter den og teller i neste termin, og en postering datert i den
+avvises. Å lukke krever **Forvalte regnskapet**.
+
+### Å levere mva-meldingen hos Skatteetaten
+
+Vantigo sender ikke mva-meldingen til Skatteetaten i denne fasen: den leveres hos
+Skatteetaten, for hånd.
+
+1. Klikk **Last ned XML** på siden til den lukkede terminen: meldingen i Skatteetatens eget
+   format (*skattemelding for merverdiavgift*), til å oppbevare med regnskapet.
+2. Logg inn hos Skatteetaten og lever mva-meldingen for terminen. Skriv inn tallene fra
+   terminens side — kode, grunnlag, sats og mva linje for linje — eller sammenlign dem med
+   det du fører inn der.
+3. Tilbake i Vantigo klikker du **Merk som levert**, fører inn dagen du leverte og
+   Skatteetatens referanse fra kvitteringen, og klikker **Merk som levert**. Det krever
+   **Bokføre bilag**.
+
+En levert termin kan ikke åpnes igjen, og sperren kan ikke flyttes tilbake bak den. Er en
+termin merket som levert ved en feil, klikker du **Fjern leveringsmerket** og oppgir en
+begrunnelse; det krever **Forvalte regnskapet**, og terminens historikk tar vare på hvem som
+gjorde det og hvorfor.
+
+### Å åpne en termin igjen
+
+En lukket termin som ikke er levert, kan åpnes igjen — bare den sist lukkede. Klikk **Åpne
+igjen** og si hvorfor. Sperren flyttes tilbake til dagen før terminens første dag (for
+regnskapets første termin oppheves den), og oppgjørsbilaget tilbakeføres på terminens siste
+dag. Rett det som var feil, og lukk terminen igjen. Gjenåpningen lagres i sperrens og
+terminens historikk. Å åpne igjen krever **Forvalte regnskapet**.
+
+### Å rette en termin etter levering
+
+Når en termin er levert, forblir regnskapet for den lukket. Før rettelsen i den åpne
+terminen — en postering, en kreditnota, en tilbakeført og ny leverandørfaktura — datert i
+dag: den teller i terminen den er datert i, og slik rettes en liten feil i praksis. Å
+erstatte en levert melding venter til Vantigo leverer meldingene selv.
+
+### Å betale mvaen
+
+Etter lukkingen står terminens mva på 2740 Skyldig merverdiavgift, oppgjørskontoen for mva: kredit når det er
+mva å betale, debet når det er mva til gode. Når du betaler Skatteetaten innen fristen,
+fører du betalingen som en postering datert dagen banken betalte: debet 2740 og kredit
+bankkontoen (1920), med Skatteetatens KID i teksten. En tilbakebetaling går motsatt vei:
+debet banken, kredit 2740. Når 2740 er tilbake på null, er terminen gjort opp.
+
 ## Rapporter
 
 **Rapporter** lager spesifikasjonene for hvilken som helst periode, hver med når den ble
@@ -573,6 +693,9 @@ laget:
   står på siden til sin type; en utenfor de vanlige nummergruppene står under *Andre
   eiendeler*, *Annen gjeld* eller *Andre inntekter og kostnader*, så balansen alltid går
   opp.
+- **Merverdiavgiftsspesifikasjon** — per mva-kode grunnlaget, utgående mva, beregnet mva,
+  fradrag, tap på krav og mva som ikke er fradragsført, kodene meldingen ikke tar med for
+  seg, og bevegelsen på mva-kontoene ved siden av. En kode lenker til posteringene sine.
 
 Perioden starter første dag i inneværende regnskapsår. Velg rapport, periode og, for
 **Kontospesifikasjon**, kontoen; med Prosjekter slått på begrenser **Prosjekt** rapporten
@@ -590,8 +713,8 @@ tillatelsene som trengs:
 | Tillatelse | Hva den gir |
 | --- | --- |
 | **Bruke Regnskap** (`accounting:read`) | Alle skjermbilder og rapporter. |
-| **Bokføre bilag** (`accounting:post`) | Posteringer, tilbakeføringer, vedlegg, oppgjør, leverandører, leverandørfakturaer og betalingene av dem, og handlingene under Trenger oppmerksomhet. |
-| **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet, kontoplanen, mva-kodene, posteringsreglene, inngående balanse og sperren. Bare en eier kan gi den. |
+| **Bokføre bilag** (`accounting:post`) | Posteringer, tilbakeføringer, vedlegg, oppgjør, leverandører, leverandørfakturaer og betalingene av dem, handlingene under Trenger oppmerksomhet, og å merke en mva-termin som levert. |
+| **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet, kontoplanen, mva-kodene, posteringsreglene, inngående balanse, sperren, og å lukke og åpne igjen mva-terminer og fjerne et leveringsmerke. Bare en eier kan gi den. |
 | **Eksportere regnskapet** (`accounting:export`) | Rapportene som CSV, og en leverandørs opplysninger. |
 
 Når oppdraget er over, fjerner du rollen eller deaktiverer brukeren: alt vedkommende har

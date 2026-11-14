@@ -1,6 +1,6 @@
 ---
 title: "Accounting module"
-description: "The company's books: purchases — suppliers with the Brønnøysund lookup and a person's retention, supplier invoices from draft to voucher with every tax code's direction, foreign currency, credit notes, Reverse and copy, payments with the currency difference — and expenses that post themselves from Expenses' journal with the VAT inference, the amount in NOK and the supplier_invoice kind; sales that post themselves — the catch-up worker, its event handlers, streams, cursors and leases, what each document and fact posts as with every system rule and its version, the books' start and the opening's seqs, the posting rules, Needs attention and retry; the module and the module it requires; the four permissions; Set up the books and the gate before it; the settings; the default chart with Skatteetaten's grouping codes, the system roles and the standard tax codes with their rates from 2022; accounts and their rules; groupings per year; tax codes and rate periods; vouchers and postings and the rules the database keeps — balance, a voucher has postings, immutability, postings only on the voucher just inserted, the books' start and the lock read under a share lock; the posting engine — numbering, dating, the lock rule, zero lines, open items and idempotence on the source key; manual journals and their VAT lines; reversal; attachments; the lock and its history; the opening balances and Invoices' open invoices; open items and settlements; the reports and their CSV; the refusals and the endpoints."
+description: "The company's books: VAT — the specification by tax code with its parts, drill-down and reconciliation against the VAT accounts, the terms derived from the settings with their due dates, close with its refusals, the settlement voucher and the lock, reopen, filing and unfiling, the lock held to the last filed term, the return laid out as Skatteetaten's with each code's lines, the øre cut, kreditnota and tapPåKrav, and the skattemeldingformerverdiavgift XML; purchases — suppliers with the Brønnøysund lookup and a person's retention, supplier invoices from draft to voucher with every tax code's direction, foreign currency, credit notes, Reverse and copy, payments with the currency difference — and expenses that post themselves from Expenses' journal with the VAT inference, the amount in NOK and the supplier_invoice kind; sales that post themselves — the catch-up worker, its event handlers, streams, cursors and leases, what each document and fact posts as with every system rule and its version, the books' start and the opening's seqs, the posting rules, Needs attention and retry; the module and the module it requires; the four permissions; Set up the books and the gate before it; the settings; the default chart with Skatteetaten's grouping codes, the system roles and the standard tax codes with their rates from 2022; accounts and their rules; groupings per year; tax codes and rate periods; vouchers and postings and the rules the database keeps — balance, a voucher has postings, immutability, postings only on the voucher just inserted, the books' start and the lock read under a share lock; the posting engine — numbering, dating, the lock rule, zero lines, open items and idempotence on the source key; manual journals and their VAT lines; reversal; attachments; the lock and its history; the opening balances and Invoices' open invoices; open items and settlements; the reports and their CSV; the refusals and the endpoints."
 sources:
   - apps/server/internal/accounting
   - openapi/accounting.yaml
@@ -8,6 +8,7 @@ sources:
   - apps/server/internal/db/migrations/00181_accounting_baseline.sql
   - apps/server/internal/db/migrations/00183_accounting_sales.sql
   - apps/server/internal/db/migrations/00185_accounting_purchases.sql
+  - apps/server/internal/db/migrations/00186_accounting_vat.sql
 ---
 
 Accounting keeps the company's books as bokføringsloven asks for them. Its package is
@@ -16,8 +17,9 @@ its schema `accounting` (migration `00181_accounting_baseline.sql`), its contrac
 [`openapi/accounting.yaml`](https://github.com/vantigo-io/vantigo/blob/main/openapi/accounting.yaml),
 mounted at `/api/v1/accounting`. The design is
 `docs/superpowers/specs/2026-11-14-accounting-design.md`; this page is what deliveries A
-(the ledger), B (sales post themselves, migration `00183_accounting_sales.sql`) and C
-(purchases and expenses, migration `00185_accounting_purchases.sql`) built. The user guide is [Accounting](/en/user/accounting/).
+(the ledger), B (sales post themselves, migration `00183_accounting_sales.sql`), C
+(purchases and expenses, migration `00185_accounting_purchases.sql`) and D (VAT, migration
+`00186_accounting_vat.sql`) built. The user guide is [Accounting](/en/user/accounting/).
 
 ## The module
 
@@ -32,6 +34,9 @@ mounted at `/api/v1/accounting`. The design is
 - It calls Brønnøysundregisteret through the platform package `internal/brreg` for the
   supplier lookup (`BRREG_BASE_URL`, `BRREG_TIMEOUT`, as Customers does), read-only and
   rate-limited.
+- It reads the seller's organisation number and VAT registration through
+  `contracts.SalesTax.Seller()` for the VAT return and the meta, nil-safe: without Invoices'
+  seller the return goes without the number.
 - It publishes no event. It starts one worker, `accounting.catchup`, and declares four
   event handlers ([Sales post themselves](#sales-post-themselves)); before the books are
   set up both return at once, and the handlers do nothing with the module off in
@@ -43,8 +48,8 @@ mounted at `/api/v1/accounting`. The design is
 | Key | Display | Delegable | Sensitive | Asked by |
 | --- | --- | --- | --- | --- |
 | `accounting:read` | Use Accounting | yes | no | every operation |
-| `accounting:post` | Post vouchers | yes | no | manual journals, their preview, reversal, attachments, settlements, suppliers and the Brønnøysund lookup, supplier invoices, their files, Post, Reverse and copy and payments, a retry and the actions under Needs attention |
-| `accounting:close` | Manage the books | **no** | no | setup, the chart, the roles, the tax codes, the posting rules, the opening balances, the lock |
+| `accounting:post` | Post vouchers | yes | no | manual journals, their preview, reversal, attachments, settlements, suppliers and the Brønnøysund lookup, supplier invoices, their files, Post, Reverse and copy and payments, a retry and the actions under Needs attention, marking a VAT term as filed |
+| `accounting:close` | Manage the books | **no** | no | setup, the chart, the roles, the tax codes, the posting rules, the opening balances, the lock, closing and reopening a VAT term and removing its filing mark |
 | `accounting:export` | Export the books | yes | **yes** | the reports' CSV, a supplier's export |
 
 A write asks for `accounting:read` and its own key (`permission:accounting:post+accounting:read`
@@ -753,8 +758,10 @@ attachment is never removed.
 `lock_not_month_end`; not before `books_start`, else 400 `lock_before_books_start`; not
 after the end of the business calendar's current month, else 400 `lock_in_future`; null
 lifts it) and `reason`, required when the lock moves back or is lifted (400
-`lock_reason_required`). Each change writes a `lock_events` row. Delivery D will hold a
-move back to after the last filed VAT term.
+`lock_reason_required`). Each change writes a `lock_events` row. A move back behind the end
+of the last VAT term filed at Skatteetaten — or lifting the lock while one is filed — is 409
+`lock_behind_filed_term` (A8 as R10 amends it); a VAT term's close and reopening move the
+lock themselves ([VAT](#vat)).
 
 ## Opening balances
 
@@ -810,6 +817,204 @@ refuses 409 `settlement_source_document` for an item that stands for an Invoices
 (paid on the invoice, [Payments](#payments)), `settlement_settled` for one with nothing left
 and `settlement_exceeds_balance` for more than its balance.
 
+## VAT
+
+Delivery D (design A21–A23 as R4 and R10 amend them), migration `00186_accounting_vat.sql`.
+The return's layout and XML are the subpackage
+[`internal/accounting/mva`](https://github.com/vantigo-io/vantigo/tree/main/apps/server/internal/accounting/mva),
+which knows nothing of the ledger; Skatteetaten's material it follows — the
+`skattemeldingformerverdiavgift` v1.0 XSD, the code lists and example returns — is copied
+under its `testdata` with the commit it was taken from.
+
+### The specification
+
+`GET /vat/specification?from&to` (`accounting:read`; `from` after `to` is 400
+`period_invalid`) is the merverdiavgiftsspesifikasjon, computed from the postings by
+`voucher_date` and never stored. The vouchers of kind `vat_settlement` — a settlement and
+its reversal — are left out: they move a term's VAT and report nothing. Every posting that
+carries a tax code, or lands on a **VAT account** (an account a tax code names as its
+`vat_account_id` or `counter_vat_account_id`), falls in one **part**:
+
+| Part | The posting |
+| --- | --- |
+| `base` | `tax_role` `base` |
+| `output` | `tax` of an output code |
+| `calculated` | `tax_reverse`: a reverse charge's or an import's calculated VAT |
+| `deducted` | `tax` of an input code, on a VAT account |
+| `not_deducted` | `tax` of an input code on another account: a cost (82, 84, 87, 89, 92, or an input code without a VAT account) |
+| `loss`, `loss_base` | `tax_specification` `tapPåKrav`: a write-off's VAT taken back, and its share on `bad_debt` |
+| `untaxed` | no tax code, on a VAT account |
+| `other` | a `tax` line of a code of direction `none` |
+
+The figures are summed per tax code, per rate in force on each posting's voucher date, and
+per specification (a loss apart), in the return's sign: a base positive for sales and for
+purchases (a sale's credited base turned), VAT owed positive, VAT deducted and a loss's VAT
+negative; VAT not deducted is shown as the cost it is. `codes` are the reported codes in the
+return's order; `notReported` the codes with `reported = false` (0, 7, 20, 21, 22). Each
+figure carries its `taxCodeId` and its count of postings.
+
+`GET /vat/postings?from&to` with `taxCodeId`, `part` and `unreconciled` (`offset`, `limit`
+default 100, at most 500, and the `total` that match) answers the postings behind a figure,
+in voucher order, with their part.
+
+**The reconciliation** (R10) sets the VAT accounts' movement in the period beside what the
+return **counts** — the `output`, `calculated`, `deducted` and `loss` postings of reported
+codes — account by account. It reconciles when each VAT account's movement is what is
+counted on it and nothing counted lies on another account; otherwise it lists the first 200
+postings that make the difference (`unreconciled`): a posting on a VAT account the return
+does not count — a manual posting straight onto 2700, a base line or a not-reported code's
+tax on a VAT account — or a counted one off the VAT accounts.
+
+`GET /reports/vat` is the same specification as a report, its rows carrying `taxCodeId`, and
+`/reports/vat/csv` its file.
+
+### Terms
+
+Terms are derived from the settings, never stored until closed: with `vat_term`
+`bimonthly` six two-month terms each **calendar** year (1 January–February … 6
+November–December), whatever `fiscal_year_start_month` is; with `yearly` one per calendar
+year; with `none` none. They start with the term that holds `books_start` — a start in the
+middle of a term starts with that term — and `GET /vat/terms` lists them oldest first
+through the term that holds today, each with its `dueDate`: a two-month term on the 10th of
+the second month after it, the third on 31 August, the sixth on 10 February; a yearly term
+on 10 March of the next year (research §2.3). `needsClosing` is a term ended and not
+closed; `needsFiling` one past its due date and not filed; `lockCovers` whether the lock
+reaches its last day; `total` the return's total, as closed or as the books stand. With
+`vat_term` `none` the list is empty, and every term operation answers 409
+`vat_not_registered`. A term out of range, before the books or after today's term is 404.
+
+`GET /vat/terms/{year}/{number}` answers the term, its `return` (the stored one when closed,
+the books' now when open), its specification with the reconciliation, `checks` — what a close
+would refuse now: `ended`, `earlierOpen`, `attention`, `lockAfterEnd`, `reconciled` — and its
+history, newest first.
+
+| Table | What it holds |
+| --- | --- |
+| `vat_terms` | A term once first closed: `year`, `term`, `term_kind`, `period_start`, `period_end`, `state` (`open`, `closed`), `closings` (the closes so far), and while closed `figures` (the return as answered, jsonb), `return_xml`, `settlement_voucher_id` (null when nothing moved), `closed_at`, `closed_by_user_id`; `filed_at` (a date), `filed_reference`, `filed_by_user_id`, set together and only on a closed term (`ck_vat_terms_filed`). Unique per `(year, term)`. |
+| `vat_term_events` | Every `closed` (with the settlement voucher), `reopened` (the reversal and the reason), `filed` (the day and the reference) and `unfiled` (the reason), who and when. Append-only, like `lock_events`. |
+
+### Close
+
+`POST /vat/terms/{year}/{number}/close` (`accounting:close`) runs in one transaction that
+first takes `settings` **FOR UPDATE**, so every post in flight is waited for and none starts
+until it commits, then the term's row FOR UPDATE. It refuses, in this order:
+
+| Status, code | When |
+| --- | --- |
+| 409 `vat_term_closed` | the term is closed (a second close at the same moment waits for the first and gets this) |
+| 409 `vat_term_not_ended` | the term's last day has not passed |
+| 409 `vat_term_out_of_order` | an earlier term is not closed; the detail names it |
+| 409 `vat_term_attention` | facts under Needs attention that wait (not posted, not resolved; informational rows never) with a `fact_date` in the term; the detail counts them |
+| 409 `vat_term_lock_after_end` | `locked_through` is on or after the term's last day: the settlement cannot be posted on it; move the lock back |
+| 409 `vat_term_unreconciled` | the VAT accounts do not reconcile; the detail names the vouchers |
+
+It then builds the return and its XML, writes the row (state `closed`, `closings` + 1, the
+figures, the XML, who and when), posts the settlement voucher, and only then (R10) moves
+`locked_through` to the term's last day with a `lock_events` row whose reason names the
+term, and writes the `closed` event.
+
+| Rule (version) | Voucher kind | Source | Lines |
+| --- | --- | --- | --- |
+| `vat.settlement` (1) | `vat_settlement`, dated the term's last day | `(accounting, vat_settlement, term id, <closings>)` | each VAT account's movement in the term turned back; `vat_settlement` credited with the return's `total` in whole kroner (debited for a total to receive); the rounding difference on `rounding` |
+| `vat.settlement_reversed` (1) | `vat_settlement`, dated the term's last day | `(accounting, vat_settlement_reversed, term id, <closings>)` | the settlement's stored voucher, line for line with every sign turned, naming it as the one it `reverses` |
+
+Both are system vouchers: the generic reversal refuses them (`voucher_owned_by_source`). A
+term whose VAT accounts did not move posts none. After the close a system voucher dated in
+the term is booked on the first day after it (A8) and counts in the next term; a person's is
+refused (`period_locked`).
+
+### Reopen, filing and the lock
+
+- `POST …/reopen` (`accounting:close`, `reason` 1–500, else 400 `lock_reason_required`)
+  opens the **latest** closed term (409 `vat_term_not_latest` while a later one is closed)
+  that is **not filed** (409 `vat_term_filed`; 409 `vat_term_not_closed` for an open one).
+  Under the settings row FOR UPDATE it first moves the lock back to the day before the
+  term's first day — lifts it for a term that starts on or before `books_start`; never
+  forward — with a lock event carrying the reason, then posts `vat.settlement_reversed` on
+  the term's last day (R10), and sets the row `open` with its figures, XML and settlement
+  cleared; the history keeps them.
+- `POST …/filing` (`accounting:post`) takes `filedAt` — after the term's last day and not
+  after today (400) — and `reference` (1–100): 409 `vat_term_not_closed`, `vat_term_filed`.
+- `POST …/unfile` (`accounting:close`, `reason`) takes the mark off, writes the event and
+  logs a warning: 409 `vat_term_not_filed`.
+- **The lock** (A8 as R10 amends it): `PUT /lock` refuses to move back behind the end of the
+  latest filed term — to an earlier day, or lifted — with 409 `lock_behind_filed_term`.
+  Behind a closed term that is not filed it may move, with its reason; the term then
+  answers `lockCovers: false`, and its stored return no longer covers what is posted in it
+  since.
+- `GET …/xml` (`accounting:read`, never called by the Assistant) streams a closed term's
+  stored XML as `mva-melding-<year>-<number>.xml`, never cached; 409 `vat_term_not_closed`.
+
+Close, reopen, filing and unfiling are called by the Assistant only after the person
+confirmed them.
+
+### The return
+
+The return is laid out as Skatteetaten's: the groups and their order are the `mvaKodeSAFT`
+code list's `temaRekkefoelge` and `kodeRekkefoelgeITema` (the package's test holds its table
+to the list), and each code becomes its lines:
+
+| Codes | Group | Lines (`mvaSpesifikasjonslinje`) |
+| --- | --- | --- |
+| 3, 31, 33 | Sales in Norway | one: `grunnlag` the base, `sats` the rate, `merverdiavgift` the output VAT |
+| 5, 6 | Sales in Norway | one: the base, `sats` 0, VAT 0 |
+| 52 | Sales abroad | one: the base, 0, 0 |
+| 1, 11, 13 | Purchases in Norway | one deduction: `merverdiavgift` the VAT deducted, negative; no base, no rate (R065) |
+| 81, 83 | Goods from abroad | two: the base, the rate and the calculated VAT; then the deduction alone, negative (R081, the example `mvakode81.xml`) |
+| 14, 15 | Goods from abroad | one deduction |
+| 82, 84 | Goods from abroad | one: base, rate, calculated VAT — no deduction |
+| 85 | Goods from abroad | one: base, 0, 0 |
+| 86, 88 | Services from abroad | two, as 81 |
+| 87, 89 | Services from abroad | one, as 82 |
+| 32 | Fish | one, as 3 |
+| 12 | Fish | one deduction |
+| 51 | Emission allowances and gold | one: base, 0, 0 |
+| 91 | Emission allowances and gold | two, as 81 |
+| 92 | Emission allowances and gold | one, as 82 |
+| a loss posted with 3, 31, 32, 33 | on 1, 11, 12, 13 | one: `spesifikasjon` `tapPåKrav`, the VAT taken back, negative, no base (Skatteetaten's rule R038 allows `tapPåKrav` on 1, 11, 12 and 13 only, so the loss's output code becomes the input code of its rate) |
+| 0, 7, 20, 21, 22 | — | none: `reported = false`, listed apart in the specification |
+
+**Rounding.** The return takes no decimals (R082). Each line's base and VAT are the ledger's
+exact sums with the øre **cut toward zero** — Skatteetaten's FAQ speaks of cutting the
+decimals, and R019 checks the VAT against the base × the rate rounded down, within one
+krone a line (ten at least) — and `fastsattMerverdiavgift`, the `total`, is the sum of the
+lines' VAT (R018). `exactTotal` is the ledger's and `roundingDifference` = `exactTotal` −
+`total`, which the settlement voucher posts on `rounding`. A line whose base and VAT are
+both zero once cut is left out; its øre stay in `exactTotal`.
+
+**Signs.** VAT owed is positive and VAT deducted negative. A line whose sign is opposite to
+its code's — an output line with a negative base, a deduction with a positive VAT, as when a
+term holds more credit notes than sales — carries `merknad`/`utvalgtMerknad` `kreditnota`
+(R020, R021; the `merknadTilsvarendeMvaKode` list allows it for either sign on every code),
+and the return's `warnings` say so; a `tapPåKrav` line needs none (R021's exception).
+
+**The XML** (`mvaMeldingDto`, namespace
+`no:skatteetaten:fastsetting:avgift:mva:skattemeldingformerverdiavgift:v1.0`):
+
+| Element | Value |
+| --- | --- |
+| `innsending/regnskapssystemsreferanse` | `vantigo-<year>-<number>-<closings>`, one per close |
+| `innsending/regnskapssystem` | `systemnavn` Vantigo, `systemversjon` the build's version |
+| `skattegrunnlagOgBeregnetSkatt/skattleggingsperiode` | `periode/skattleggingsperiodeToMaaneder` `januar-februar` … `november-desember`, or `skattleggingsperiodeAar` `aarlig`; `aar` the year |
+| `fastsattMerverdiavgift` | the total, whole kroner |
+| `mvaSpesifikasjonslinje` | per line above: `mvaKode` the tax code's own code, `spesifikasjon`, `mvaKodeRegnskapsystem` the code's name in the books, `grunnlag` and `sats` (`25`, `15`, `12`, `11,11`, `0`) on an output side, `merverdiavgift`, `merknad` |
+| `betalingsinformasjon` | empty: a KID for a refund is Skatteetaten's to ask for |
+| `skattepliktig/organisasjonsnummer` | the seller's, from Invoices through `SalesTax.Seller()` (spaces, dots, `NO` and `MVA` taken out); left out — and a warning given — when Invoices is not composed or has no nine-digit number |
+| `meldingskategori` | `alminnelig` |
+
+The test suite validates the goldens (a term of mixed rates; one with reverse charge, VAT
+not deductible, a loss and a reversal; an empty term) and Skatteetaten's examples against
+the XSD with `xmllint` when it is on the PATH, and CI runs the
+[VAT return oracle](/en/contributing/vat-return-validation/) over the same files.
+
+### The meta and the Overview
+
+The meta answers `vatNextTerm` — the earliest term ended and not filed, else the one that
+holds today; null without VAT terms — `vatTermsToClose`, `vatTermsToFile`, and
+`vatRegistrationMismatch`: whether `vat_term` (`none` or not) disagrees with the seller's
+`VATRegistered` in Invoices (R10). The host's dashboard names, after the facts under Needs
+attention, the terms to file and then the terms to close.
+
 ## The reports
 
 `GET /reports/{report}` (`accounting:read`) and `GET /reports/{report}/csv`
@@ -828,6 +1033,7 @@ label in the books' language and a type, rows with a style (`line`, `heading`, `
 | `customers`, `suppliers` | Per party a heading, its items with a balance at `to` or a movement in the period, the balance aged by due date at `to` (not due, 1–30, 31–60, 61–90, over 90 days), the party's subtotal and the total. A supplier's heading is its name and carries `supplierId`; an item row carries the `supplierInvoiceId` it stands for. The suppliers' total is the balance of `payables`. |
 | `trial_balance` | Per account the opening balance, the debits, the credits and the closing balance, and with a comparison the closing balance at `compareTo`. |
 | `profit_and_loss` | The period's movement on income and expense accounts, income positive and costs negative, grouped by class with the operating result, the result before tax and the result; an income or expense account in no class group is under **Other income and costs**, before the result. |
+| `vat` | The [VAT specification](#the-specification): per tax code, rate and specification the base, output VAT, calculated VAT, deductions, loss and VAT not deducted, the reported codes in the return's order and then those left out, each row with its `taxCodeId`; the total the return counts and the VAT accounts' movement. |
 | `balance_sheet` | The balances at `to`, each account on the side of its kind: the asset accounts, then equity with two computed lines — **Earlier years' result, not yet closed** (every income and expense posting up to the day before the fiscal year of `to` begins) and **Result for the year, not yet closed** (the rest up to `to`) — and the liability accounts, shown positive. An asset or a liability account in no class group is under **Other assets** or **Other liabilities**, so the sheet always balances. |
 
 An income or expense account's balances count from the start of the fiscal year of `from`

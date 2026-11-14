@@ -10,7 +10,7 @@ tools, and a JDK for the EHF oracle — and developers and CI install it the sam
 From the repository root:
 
 ```bash
-mise install              # Go, Bun, lint and release tools, and Java (only for ehf:validate)
+mise install              # Go, Bun, lint and release tools, and Java (only for ehf:validate and mva:validate)
 bun install --frozen-lockfile
 
 mise run server:db        # PostgreSQL for tests (55432) and development (55433)
@@ -19,6 +19,7 @@ mise run server:test      # go test against a real PostgreSQL
 mise run server:check     # golangci-lint, govulncheck, shellcheck, actionlint, goreleaser check
 mise run frontend:check   # format, lint, typecheck and tests for every frontend workspace
 mise run ehf:validate     # the official EHF XSD and Schematron over the invoice goldens
+mise run mva:validate     # Skatteetaten's VAT return XSD over the accounting return goldens
 mise run server:dev       # the api command on http://localhost:8080
 mise run frontend:dev     # the Vite dev server on http://localhost:10011 (or: bun run dev)
 mise run smoke            # build the image and smoke-test it end to end

@@ -1,6 +1,6 @@
 ---
 title: Accounting
-description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, suppliers and the Brønnøysund lookup, entering, posting and paying a supplier invoice, another currency, reverse charge and import of goods, credit notes, Reverse and copy, how expenses arrive from Expenses, the posting rules for sales and expense categories, Needs attention with Retry, the amount in NOK and Make a supplier invoice, open items and registering a receipt, payment or refund, the reports and their CSV, and inviting an accountant.
+description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, suppliers and the Brønnøysund lookup, entering, posting and paying a supplier invoice, another currency, reverse charge and import of goods, credit notes, Reverse and copy, how expenses arrive from Expenses, the posting rules for sales and expense categories, Needs attention with Retry, the amount in NOK and Make a supplier invoice, open items and registering a receipt, payment or refund, the VAT term — checking its figures, closing it, downloading the return, filing it at Skatteetaten and marking it as filed, reopening it, correcting after filing and paying the VAT — the reports and their CSV, and inviting an accountant.
 sidebar:
   order: 67
 sources:
@@ -23,8 +23,9 @@ notes, payments, reminder charges and write-offs — posts itself
 ([How sales arrive](#how-sales-arrive-from-invoices)), and so does what
 [Expenses](/en/user/expenses/) approves and reimburses
 ([How expenses arrive](#how-expenses-arrive-from-expenses)). You enter what suppliers bill
-as [supplier invoices](#supplier-invoices) and register their payments. VAT returns, SAF-T
-and the bank follow with the next releases. The rules behind every screen — what is refused and why, the status codes and
+as [supplier invoices](#supplier-invoices) and register their payments. Each
+[VAT term](#the-vat-term) is checked and closed here, and its return filed at
+Skatteetaten. SAF-T and the bank follow with the next releases. The rules behind every screen — what is refused and why, the status codes and
 the permission each request is checked against — are in the
 [Accounting module reference](/en/reference/accounting/).
 
@@ -39,7 +40,8 @@ the permission each request is checked against — are in the
 | **Supplier invoices** | Invoices and credit notes from suppliers: drafts, posted, paid, reversed. |
 | **Suppliers** | The companies and people you buy from. |
 | **Open items** | What customers owe and what is owed to suppliers, document by document. |
-| **Reports** | The journal, an account, customers, suppliers, the trial balance, profit and loss and the balance sheet. |
+| **VAT** | The VAT terms: each term's return, its close, the XML and the filing mark. Not shown when the company is not VAT-registered. |
+| **Reports** | The journal, an account, customers, suppliers, the trial balance, profit and loss, the balance sheet and the VAT specification. |
 | **Chart of accounts** | The accounts, their grouping codes and the system accounts. |
 | **Tax codes** | The standard VAT codes, their accounts and their rates. |
 | **Posting rules** | Which revenue account each sales line goes to, and which cost account each expense category goes to. |
@@ -184,6 +186,10 @@ A month locked too early can be opened again: choose an earlier month, give the
 **Reason**, and click **Move the lock back** (or **Lift the lock**). Every move is kept in
 the lock's history with who made it and why, because opening closed books is something the
 law asks to be accounted for.
+
+Closing a [VAT term](#closing-the-term) moves the lock to the term's last day, and
+reopening one moves it back. The lock never moves back behind a VAT term marked as filed
+at Skatteetaten: correct such a term in the open term instead.
 
 While a month is locked, a journal entry dated in it is refused. What the system posts by
 itself for a locked day is booked on the first open day, keeping its document date.
@@ -559,6 +565,118 @@ invoice.
 
 Registering needs **Post vouchers**.
 
+## The VAT term
+
+VAT (merverdiavgift) is reported to Skatteetaten one **term** at a time. **VAT** in the
+sidebar lists the terms from the one the books start in through the current one, newest
+first:
+
+- **Bimonthly** books have six two-month terms each calendar year — January–February,
+  March–April and so on to November–December — whatever the fiscal year. **Yearly** books
+  have one term per calendar year.
+- Each term shows its period, its state — **Open**, **Closed** or **Filed** — its due date
+  and the return's total, **To pay** or **To receive**. A two-month term is due on the 10th
+  of the second month after it (term 1 on 10 April), except term 3, due on 31 August; a
+  yearly term on 10 March of the next year.
+- **Ready to close** marks a term that has ended and is not closed; **Past due** one whose
+  due date has passed without being marked as filed. The dashboard's Accounting card and
+  the **Overview** say so too, with the next term due.
+
+Books set up as **Not VAT-registered** have no VAT terms: the VAT page says the company is
+not VAT-registered and shows nothing else. When the books' VAT term and the seller's VAT
+registration in Invoices disagree, the **Overview** says so.
+
+### Checking a term's figures
+
+Click a term. Its page shows **the return** laid out as Skatteetaten's:
+
+- the codes in the return's groups and order — sales in Norway, sales abroad, purchases in
+  Norway, goods and services from abroad, fish, emission allowances and gold — each with
+  its base, rate and VAT;
+- reverse charge and import as two lines of one code: the VAT calculated, and the
+  deduction;
+- a loss on a receivable written off with the VAT correction as its own line, *Loss on
+  receivables*, on the input code of the same rate (code 1 for a loss on sales at 25 %);
+- whole kroner: Skatteetaten takes no decimals, so the øre are cut on each line. Below the
+  return the page shows what the books say to the øre, and the difference, which the close
+  posts to the rounding account.
+
+An open term shows the return as the books stand now; a closed term the return as it was
+closed. Below it is the **VAT specification**: per code, the base, the output VAT, the
+calculated VAT, what is deducted, the loss on receivables and the VAT that is not deducted
+(a cost, such as on services from abroad without deduction). Codes 0, 7, 20, 21 and 22 are
+not in the return and are listed apart. Click any amount to see the postings behind it.
+
+**Reconciliation** compares the VAT accounts' movement in the term with the VAT the return
+counts. They differ when something was posted straight onto a VAT account without a tax
+code; the page then lists those postings. Reverse each one and post it again with its tax
+code before closing the term. The same specification, for any period, is **VAT
+specification** under [Reports](#reports), with its CSV.
+
+### Closing the term
+
+When the term has ended and its figures are right, click **Close the term**. The dialog
+says what closing does and anything that stops it now:
+
+- The term must have ended, and the terms before it must be closed: terms close in order.
+- Nothing dated in the term may wait under [Needs attention](#needs-attention).
+- The books must not be locked through the term's last day: move the lock back first
+  ([Locking a period](#locking-a-period)).
+- The VAT accounts must reconcile.
+
+Closing then:
+
+1. stores the return as it stands;
+2. posts the **settlement voucher** on the term's last day: each VAT account's movement in
+   the term moved to the VAT settlement account (2740), the return's whole kroner there,
+   and the øre the return cut to the rounding account (7790);
+3. locks the books through the term's last day;
+4. makes the return's XML ready to download. Nothing is sent anywhere.
+
+A closed term has nothing posted in it any more: what Invoices or Expenses posts with a date
+in it is booked on the first day after it and counts in the next term, and a journal entry
+dated in it is refused. Closing needs **Manage the books**.
+
+### Filing the return at Skatteetaten
+
+Vantigo does not send the return to Skatteetaten in this phase: filing is done at
+Skatteetaten, by hand.
+
+1. On the closed term's page, click **Download XML**: the return in Skatteetaten's own
+   format (*skattemelding for merverdiavgift*), to keep with the books.
+2. Sign in to Skatteetaten and file the VAT return for the term, typing in the figures from
+   the term's page — code, base, rate and VAT line by line — or comparing them with what
+   you enter there.
+3. Back in Vantigo, click **Mark as filed**, enter the day you filed and Skatteetaten's
+   reference from the receipt, and click **Mark as filed**. This needs **Post vouchers**.
+
+A filed term cannot be reopened, and the lock cannot be moved back behind it. If a term was
+marked as filed by mistake, **Remove the filing mark** with a reason; it needs **Manage
+the books**, and the term's history keeps who did it and why.
+
+### Reopening a term
+
+A closed term that is not filed can be opened again — the latest closed one only. Click
+**Reopen** and say why. The lock moves back to the day before the term's first day (for the
+books' first term, it is lifted), and the settlement voucher is reversed on the term's last
+day. Correct what was wrong, then close the term again. The reopening is kept in the lock's
+history and the term's. Reopening needs **Manage the books**.
+
+### Correcting a term after filing
+
+Once a term is filed, its books stay closed. Post the correction in the open term — a
+journal entry, a credit note, a reversed and re-entered supplier invoice — dated today: it
+counts in the term it is dated in, which is how a small error is corrected in practice.
+Replacing a filed return waits until Vantigo files returns itself.
+
+### Paying the VAT
+
+After the close, the term's VAT stands on 2740, the VAT settlement account (*Unpaid value added tax*): a credit when there is VAT to
+pay, a debit when there is VAT to receive. When you pay Skatteetaten by the due date, post
+the payment as a journal entry dated the day the bank paid: debit 2740 and credit the bank
+account (1920), with Skatteetaten's KID in the text. A refund is the other way round: debit
+the bank, credit 2740. Once 2740 is back at zero, the term is settled.
+
 ## Reports
 
 **Reports** produces the specifications for any period, each with when it was produced:
@@ -577,6 +695,10 @@ Registering needs **Post vouchers**.
   closed*. Every account is on the side of its kind; one outside the usual number groups
   is under *Other assets*, *Other liabilities* or *Other income and costs*, so the
   balance sheet always balances.
+- **VAT specification** (merverdiavgiftsspesifikasjon) — per tax code the base, output
+  VAT, calculated VAT, deductions, loss on receivables and VAT not deducted, the codes the
+  return leaves out apart, and the VAT accounts' movement beside it. A code links to its
+  postings.
 
 The period starts on the first day of the current fiscal year. Choose the report, the
 period and, for **Account**, the account; with Projects on, a **Project** limits it to that
@@ -594,8 +716,8 @@ the permissions they need:
 | Permission | What it allows |
 | --- | --- |
 | **Use Accounting** (`accounting:read`) | Every screen and report. |
-| **Post vouchers** (`accounting:post`) | Journal entries, reversals, attachments, settlements, suppliers, supplier invoices and their payments, and the actions under Needs attention. |
-| **Manage the books** (`accounting:close`) | Setting up the books, the chart, the tax codes, the posting rules, the opening balances and the lock. Only an Owner can give it. |
+| **Post vouchers** (`accounting:post`) | Journal entries, reversals, attachments, settlements, suppliers, supplier invoices and their payments, the actions under Needs attention, and marking a VAT term as filed. |
+| **Manage the books** (`accounting:close`) | Setting up the books, the chart, the tax codes, the posting rules, the opening balances, the lock, and closing and reopening VAT terms and removing a filing mark. Only an Owner can give it. |
 | **Export the books** (`accounting:export`) | The reports as CSV, and a supplier's data. |
 
 When the engagement ends, remove the role or disable the user: everything they posted
