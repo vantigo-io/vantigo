@@ -104,7 +104,7 @@ describe("the admin permission catalog", () => {
     const en = adminCatalog.en as Record<string, string>;
     expect(en["admin.permission.invoicesAccess"]).toBe("Use Invoices");
     expect(en["admin.permission.invoicesAccessDescription"]).toBe(
-      "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings, the payment settings and a customer's reminder policy; an invoice's pay link and Vipps payment attempts, and the day's Vipps payments and their reconciliations; and the attention items about overdue invoices and refunds due.",
+      "Use the Invoices app and read every invoice, credit note, PDF, payment and delivery, the journal, the CSV export and the stats; the overdue list and an invoice's reminder letters and their PDFs, hold, hand-off, manual deliveries and charges; the collection rates, the reminder settings, the payment settings, the bank feed's connection and a customer's reminder policy; an invoice's pay link and Vipps payment attempts, and the day's Vipps payments and their reconciliations; and the attention items about overdue invoices and refunds due.",
     );
     expect(en["admin.permission.invoicesCreate"]).toBe("Create invoices");
     expect(en["admin.permission.invoicesCreateDescription"]).toBe(
@@ -116,7 +116,7 @@ describe("the admin permission catalog", () => {
     );
     expect(en["admin.permission.invoicesManage"]).toBe("Manage invoicing");
     expect(en["admin.permission.invoicesManageDescription"]).toBe(
-      "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the regime review, the collection rates — add one ahead of a release, or delete one nothing has relied on — and the format a bank account's files are imported in; the Vipps credentials and the payment settings — pay links, payment on site and its kontantsalg acknowledgement — and abandon a stuck Vipps payment once it has been checked in the Vipps portal.",
+      "Change the seller record and its Peppol id, the number series start, the KID agreement, the e-invoicing access point's credentials, the VAT codes and their rates, the reminder settings and the regime review, the collection rates — add one ahead of a release, or delete one nothing has relied on — and the format a bank account's files are imported in; the bank feed — connect the bank with an API key, switch the feed on or off for an account and disconnect it; the Vipps credentials and the payment settings — pay links, payment on site and its kontantsalg acknowledgement — and abandon a stuck Vipps payment once it has been checked in the Vipps portal.",
     );
     expect(en["admin.permission.invoicesPayments"]).toBe("Register payments");
     expect(en["admin.permission.invoicesPaymentsDescription"]).toBe(

@@ -22,6 +22,7 @@ import { Route as TimePeopleRoute } from "./time/people";
 import { Route as TimeSettingsRoute } from "./time/settings";
 import { Route as WorkspaceRoute } from "./workspace";
 import { Route as WorkspaceAiRoute } from "./workspace/ai";
+import { Route as WorkspaceBankRoute } from "./workspace/bank";
 import { Route as WorkspaceEntraRoute } from "./workspace/entra";
 import { Route as WorkspaceEntraAccountsRoute } from "./workspace/entra/accounts";
 import { Route as WorkspaceEntraConnectionRoute } from "./workspace/entra/connection";
@@ -749,6 +750,48 @@ describe("the Shipping route", () => {
     const thrown = await runGuard(WorkspaceShippingRoute, "/workspace/shipping");
     expect(isNotFound(thrown)).toBe(true);
     expect((thrown as { data?: unknown }).data).toEqual({ moduleDisabled: "orders" });
+  });
+});
+
+// Integrations › Bank (invoices bank feed design F9): the workspace layout
+// admits a holder of invoices:manage while the Invoices module is on, and the
+// page's own route asks the module and the permission again.
+describe("the Bank route", () => {
+  const injectModules = (modules: string[]) => {
+    window.__VANTIGO_APP__ = { basePath: "/", title: "Vantigo", support: {}, modules };
+  };
+  const withInvoices = ["customers", "products", "invoices"];
+  const withoutInvoices = ["customers", "products"];
+
+  beforeEach(() => injectModules(withInvoices));
+  afterEach(() => {
+    delete window.__VANTIGO_APP__;
+  });
+
+  const invoiceManager = { permissions: ["invoices:access", "invoices:manage"], canManageAuthorization: false };
+
+  it("admits an invoice manager who is not an Owner to /workspace and /workspace/bank while Invoices is on", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue(invoiceManager);
+    await expectAdmitted(WorkspaceRoute);
+    await expectAdmitted(WorkspaceBankRoute);
+  });
+
+  it("sends a member without invoices:manage home, and answers the not-enabled page while Invoices is off", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue({
+      permissions: ["invoices:access", "invoices:payments"],
+      canManageAuthorization: false,
+    });
+    await expectRedirectTo(WorkspaceRoute, "/");
+    await expectRedirectTo(WorkspaceBankRoute, "/");
+
+    getAuthorizationMe.mockResolvedValue(invoiceManager);
+    injectModules(withoutInvoices);
+    await expectRedirectTo(WorkspaceRoute, "/");
+    const thrown = await runGuard(WorkspaceBankRoute, "/workspace/bank");
+    expect(isNotFound(thrown)).toBe(true);
+    expect((thrown as { data?: unknown }).data).toEqual({ moduleDisabled: "invoices" });
   });
 });
 

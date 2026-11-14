@@ -898,14 +898,16 @@ describe("the administration areas", () => {
       const prefix = `/${area.key}`;
       for (const item of area.navSections.flatMap((section) => section.items)) {
         expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
-        // An area belongs to no module; only an entry a module provides, Entra's, Google's and Orders'
-        // Shipping Integrations pages, the Assistant's and Manufacturing's Stations, names its module.
+        // An area belongs to no module; only an entry a module provides, Entra's, Google's, Orders'
+        // Shipping and Invoices' Bank Integrations pages, the Assistant's and Manufacturing's Stations,
+        // names its module.
         // Connections names the providers' modules in `modules`.
         const owner: Record<string, string> = {
           "/workspace/entra": "entra",
           "/workspace/google": "google",
           "/workspace/meta": "meta",
           "/workspace/shipping": "orders",
+          "/workspace/bank": "invoices",
           "/workspace/assistant": "assistant",
           "/workspace/stations": "manufacturing",
         };
@@ -944,6 +946,7 @@ describe("the administration areas", () => {
       "/workspace/invitations",
       "/workspace/entra",
       "/workspace/google",
+      "/workspace/bank",
     ]);
     expect(workspaceFor(ownerOnWorkspace).map((section) => section.label)).toEqual([
       undefined,
@@ -968,8 +971,8 @@ describe("the administration areas", () => {
     expect(workspacePaths(workspaceFor(both))).toEqual(["/workspace/roles", "/workspace/entra"]);
   });
 
-  it("hides Integrations, section and all, while the Entra and Google modules are off", () => {
-    const withoutEither = allModules.filter((key) => key !== "entra" && key !== "google");
+  it("hides Integrations, section and all, while the Entra, Google and Invoices modules are off", () => {
+    const withoutEither = allModules.filter((key) => key !== "entra" && key !== "google" && key !== "invoices");
     const sections = workspaceFor(ownerOnWorkspace, withoutEither);
     expect(workspacePaths(sections)).toEqual(["/workspace/overview", "/workspace/users", "/workspace/invitations"]);
     expect(sections.map((section) => section.label)).toEqual([undefined]);
@@ -991,7 +994,7 @@ describe("the administration areas", () => {
     const integrations = areaForKey("workspace").navSections.find(
       (section) => section.label === "navigation.integrations",
     );
-    expect(integrations?.items).toHaveLength(6);
+    expect(integrations?.items).toHaveLength(7);
     expect(integrations?.items[0]).toMatchObject({
       label: "navigation.entra",
       to: "/workspace/entra",
@@ -1019,6 +1022,16 @@ describe("the administration areas", () => {
       requiredPermissions: ["orders:carriers-manage"],
     });
     expect(navigationCatalog.nb["navigation.shipping"]).toBe("Frakt");
+    // Invoices' bank feed (invoices bank feed design F9), behind invoices:manage.
+    expect(integrations?.items[4]).toMatchObject({
+      label: "navigation.bank",
+      to: "/workspace/bank",
+      module: "invoices",
+      requiredPermissions: ["invoices:manage"],
+      requiredAllPermissions: ["invoices:access"],
+    });
+    expect(navigationCatalog.en["navigation.bank"]).toBe("Bank");
+    expect(navigationCatalog.nb["navigation.bank"]).toBe("Bank");
     expect(navigationCatalog.en["navigation.google"]).toBe("Google Workspace");
     expect(navigationCatalog.nb["navigation.google"]).toBe("Google Workspace");
     expect(navigationCatalog.en["navigation.integrations"]).toBe("Integrations");
@@ -1037,6 +1050,7 @@ describe("the administration areas", () => {
         "/workspace/invitations",
         "/workspace/entra",
         "/workspace/google",
+        "/workspace/bank",
         "/workspace/ai",
         "/workspace/assistant",
       ]);
@@ -1070,6 +1084,7 @@ describe("the administration areas", () => {
         "/workspace/overview",
         "/workspace/users",
         "/workspace/invitations",
+        "/workspace/bank",
         "/workspace/ai",
         "/workspace/assistant",
       ]);
@@ -1143,6 +1158,7 @@ describe("the administration areas", () => {
       "/workspace/roles",
       "/workspace/entra",
       "/workspace/google",
+      "/workspace/bank",
     ]);
     const withoutEntra = allModules.filter((key) => key !== "entra");
     expect(menuPaths({ ...manager, enabledModules: withoutEntra })).toEqual(["/settings", "/docs"]);
@@ -1323,6 +1339,7 @@ describe("the Assistant app", () => {
       "/workspace/invitations",
       "/workspace/entra",
       "/workspace/google",
+      "/workspace/bank",
       "/workspace/ai",
       "/workspace/assistant",
     ]);
