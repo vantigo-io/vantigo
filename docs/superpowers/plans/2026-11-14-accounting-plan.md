@@ -33,6 +33,7 @@ hurdles*. Review happens once the stack is built.
 | 6 | `claude/accounting-d-vat` | D: VAT terms and the return | `00186_accounting_vat` |
 | 7 | `claude/accounting-e-saft` | E: SAF-T export and import | `00187_accounting_saft` |
 | 8 | `claude/accounting-f-bank` | F: bank accounts, statements, reconciliation | `00188_accounting_bank` |
+| 9 | `claude/accounting-g-seed` | G: the demo seed's books for Accounting | — |
 
 **Migration numbers.** If `main` takes a number first, the owning layer renumbers its
 migration in its own history before the stack is rebased (memory:
@@ -236,6 +237,21 @@ system; the reference.
 
 **The public site:** with this layer, the pull request in `vantigo-io/vantigo-landing`
 for `vantigo.io/apps/accounting`, written from the user guide, linked from this PR.
+
+## Layer 9 — the demo seed (G)
+
+**Seam:** none — no migration. `srv/accounting` exposes the operations the seed needs
+as Go calls; `module.WorkerDeps` is the deps `module.Workers` hands every worker.
+
+**Lanes:**
+
+1. **Server:** `apps/server/cmd/vantigo/seed_accounting.go`, run by `seed` after every
+   other seed it reads from: the books from 1 January, the opening, the catch-up of the
+   demo's sales and expenses, suppliers and their invoices, the VAT terms closed and
+   filed, and last month's bank statement half reconciled; its test.
+
+**Docs:** `admin/installation.md` (en and nb) and `CONTRIBUTING.md`: what the seed puts
+in Accounting.
 
 ## After the stack
 
