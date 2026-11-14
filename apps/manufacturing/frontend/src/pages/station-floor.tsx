@@ -18,7 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { manufacturingMetaQueryOptions } from "../api/meta";
-import { refusalCode } from "../api/request";
+import { isStationSignOut, refusalCode } from "../api/request";
 import {
   finishWorkOrder,
   isClosedWorkOrder,
@@ -49,12 +49,15 @@ import {
   useManufacturingFormat,
   workOrderStatusColor,
 } from "../lib/format";
-import { TOUCH_CARD_MIN_HEIGHT } from "../lib/shop-floor";
+import { operationProgress, TOUCH_CARD_MIN_HEIGHT } from "../lib/shop-floor";
 import { StationContext } from "../lib/station";
 import { formatElapsed, LONG_RUNNING_MS, useElapsed } from "../lib/timer";
 
 /** The big buttons' height: well past a 48 px touch target (M31). */
 const ACTION_HEIGHT = 72;
+
+/** A big button's label wraps to a second line rather than being cut off, in any language. */
+const ACTION_STYLES = { label: { whiteSpace: "normal", textAlign: "center" } } as const;
 
 type StationView =
   | { kind: "centers" }
@@ -181,7 +184,8 @@ const StationQueue = ({
       notifications.show({ color: "teal", title: t("workCenterUnblocked"), message: "" });
       await invalidate();
     } catch (error) {
-      notifications.show({ color: "red", title: t("couldNotUnblock"), message: refusalMessage(t, error as Error) });
+      if (!isStationSignOut(error))
+        notifications.show({ color: "red", title: t("couldNotUnblock"), message: refusalMessage(t, error as Error) });
     } finally {
       setBusy(false);
     }
@@ -198,7 +202,8 @@ const StationQueue = ({
         onOpen(workOrderId, true);
         return;
       }
-      notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
+      if (!isStationSignOut(error))
+        notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
       await invalidate();
     } finally {
       setBusy(false);
@@ -369,7 +374,8 @@ const StationWorkOrder = ({
         setAskForce(true);
         return;
       }
-      notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
+      if (!isStationSignOut(error))
+        notifications.show({ color: "red", title: t("couldNotDoThat"), message: refusalMessage(t, error as Error) });
       await invalidate();
     } finally {
       setBusy(undefined);
@@ -414,6 +420,7 @@ const StationWorkOrder = ({
   const { order } = workOrder;
   const runningHere = myOpenLog !== null && myOpenLog.workOrderId === workOrder.id;
   const closed = isClosedWorkOrder(workOrder);
+  const progress = operationProgress(workOrder);
   const finishable = !closed && workOrder.status !== "pending";
   const blocked = data.block !== null;
 
@@ -429,7 +436,13 @@ const StationWorkOrder = ({
         </Group>
         <Text size="lg">{`${order.variant.sku} · ${order.variant.productName}`}</Text>
         <Text size="md" c="dimmed">
-          {t("remainingValue", { quantity: quantity(order.remaining, order.variant.unit) })}
+          {[
+            t("doneOfQuantity", {
+              done: quantity(progress.done),
+              quantity: quantity(order.quantity, order.variant.unit),
+            }),
+            ...(closed ? [] : [t("remainingValue", { quantity: quantity(progress.remaining, order.variant.unit) })]),
+          ].join(" · ")}
         </Text>
       </Stack>
       {data.block && (
@@ -463,10 +476,11 @@ const StationWorkOrder = ({
       )}
       {runningHere && <RunningTimer log={myOpenLog} />}
       {work && !closed ? (
-        <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} spacing="md">
+        <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md">
           {!runningHere && (
             <Button
               h={ACTION_HEIGHT}
+              styles={ACTION_STYLES}
               size="xl"
               color="teal"
               leftSection={<IconPlayerPlay size={28} />}
@@ -480,6 +494,7 @@ const StationWorkOrder = ({
           {runningHere && (
             <Button
               h={ACTION_HEIGHT}
+              styles={ACTION_STYLES}
               size="xl"
               color="yellow"
               leftSection={<IconPlayerPause size={28} />}
@@ -492,6 +507,7 @@ const StationWorkOrder = ({
           {finishable && (
             <Button
               h={ACTION_HEIGHT}
+              styles={ACTION_STYLES}
               size="xl"
               variant={workOrder.last ? "default" : "filled"}
               leftSection={<IconCheck size={28} />}
@@ -504,6 +520,7 @@ const StationWorkOrder = ({
           {finishable && !workOrder.last && (
             <Button
               h={ACTION_HEIGHT}
+              styles={ACTION_STYLES}
               size="xl"
               variant="default"
               leftSection={<IconPackageExport size={28} />}
@@ -515,6 +532,7 @@ const StationWorkOrder = ({
           {finishable && workOrder.last && (
             <Button
               h={ACTION_HEIGHT}
+              styles={ACTION_STYLES}
               size="xl"
               leftSection={<IconClipboardCheck size={28} />}
               onClick={() => setProducing(true)}
@@ -524,6 +542,7 @@ const StationWorkOrder = ({
           )}
           <Button
             h={ACTION_HEIGHT}
+            styles={ACTION_STYLES}
             size="xl"
             variant="default"
             color="red"
@@ -534,6 +553,7 @@ const StationWorkOrder = ({
           </Button>
           <Button
             h={ACTION_HEIGHT}
+            styles={ACTION_STYLES}
             size="xl"
             variant="default"
             color="red"
