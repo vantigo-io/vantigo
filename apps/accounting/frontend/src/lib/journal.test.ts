@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { AccountingVoucher } from "../api/accounting";
-import { emptyLine, fromOre, linesFromVoucher, signedOre, toJournalInput, toOre, typedDifference } from "./journal";
+import {
+  emptyLine,
+  fromOre,
+  linesFromVoucher,
+  sentKeys,
+  signedOre,
+  toJournalInput,
+  toOre,
+  typedDifference,
+  withAccount,
+} from "./journal";
 
 describe("the journal form's arithmetic", () => {
   it("reads amounts as typed, to the øre", () => {
@@ -76,5 +86,20 @@ describe("the journal form's arithmetic", () => {
       ["1", "1000.00", "", "9", "4"],
       ["3", "", "1250.00", null, ""],
     ]);
+  });
+
+  it("keys a refusal's lines by the lines sent, blank lines left out", () => {
+    const first = { ...emptyLine(), accountId: "1001", debit: "1" };
+    const blank = emptyLine();
+    const third = { ...emptyLine(), accountId: "1003", credit: "1" };
+    expect(sentKeys([first, blank, third])).toEqual([first.key, third.key]);
+  });
+
+  it("takes the new account's tax code unless the person chose one", () => {
+    const line = { ...emptyLine(), accountId: "1003", taxCodeId: "2001" };
+    expect(withAccount(line, "1002", null).taxCodeId).toBeNull();
+    expect(withAccount(line, "1004", 2002).taxCodeId).toBe("2002");
+    const chosen = { ...line, taxCodeChosen: true };
+    expect(withAccount(chosen, "1002", 2002).taxCodeId).toBe("2001");
   });
 });

@@ -22,7 +22,10 @@ import { BooksGate } from "../components/books-gate";
 import { AccountSelect } from "../components/pickers";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
 
-/** The party ledgers' open items (A10), and a receipt, payment or refund on one (R5). */
+/** A page of open items. */
+const PAGE = 200;
+
+/** The party ledgers' open items (A10), a page at a time, and a receipt, payment or refund on one (R5). */
 export const OpenItemsPage = () => {
   const { t } = useAccountingFormat();
   return (
@@ -42,19 +45,30 @@ const OpenItems = ({ canPost, today }: { canPost: boolean; today: string }) => {
   const [kind, setKind] = useState<"customer" | "supplier">("customer");
   const [settled, setSettled] = useState(false);
   const [settling, setSettling] = useState<AccountingOpenItem | null>(null);
-  const items = useQuery(openItemsQueryOptions({ kind, open: !settled }));
+  const [offset, setOffset] = useState(0);
+  const items = useQuery(openItemsQueryOptions({ kind, open: !settled, offset, limit: PAGE }));
   return (
     <Stack gap="md">
       <Group>
         <SegmentedControl
           value={kind}
-          onChange={(value) => setKind(value === "supplier" ? "supplier" : "customer")}
+          onChange={(value) => {
+            setKind(value === "supplier" ? "supplier" : "customer");
+            setOffset(0);
+          }}
           data={[
             { value: "customer", label: t("customers") },
             { value: "supplier", label: t("suppliers") },
           ]}
         />
-        <Checkbox label={t("showSettled")} checked={settled} onChange={(e) => setSettled(e.currentTarget.checked)} />
+        <Checkbox
+          label={t("showSettled")}
+          checked={settled}
+          onChange={(e) => {
+            setSettled(e.currentTarget.checked);
+            setOffset(0);
+          }}
+        />
       </Group>
       {items.error ? (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotLoad")}>
@@ -62,48 +76,73 @@ const OpenItems = ({ canPost, today }: { canPost: boolean; today: string }) => {
         </Alert>
       ) : items.isPending ? (
         <ContentSkeleton rows={5} />
-      ) : items.data.length === 0 ? (
+      ) : items.data.items.length === 0 ? (
         <EmptyState icon={IconCash} title={t("noOpenItems")} description={t("noOpenItemsHint")} />
       ) : (
-        <Table striped data-assist="accounting.open-items.table">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("party")}</Table.Th>
-              <Table.Th>{t("document")}</Table.Th>
-              <Table.Th>{t("documentDate")}</Table.Th>
-              <Table.Th>{t("dueDate")}</Table.Th>
-              <Table.Th ta="right">{t("originalAmount")}</Table.Th>
-              <Table.Th ta="right">{t("balance")}</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {items.data.map((item) => (
-              <Table.Tr key={item.id}>
-                <Table.Td>{item.customerName ?? item.customerId ?? item.supplierId}</Table.Td>
-                <Table.Td>
-                  {item.unallocated ? t("unallocated") : item.documentNumber}
-                  {item.sourceDocumentId !== null && (
-                    <Badge ml="xs" variant="light">
-                      {t("fromInvoices")}
-                    </Badge>
-                  )}
-                </Table.Td>
-                <Table.Td>{day(item.documentDate)}</Table.Td>
-                <Table.Td>{day(item.dueDate)}</Table.Td>
-                <Table.Td ta="right">{money(item.originalAmount)}</Table.Td>
-                <Table.Td ta="right">{money(item.balance)}</Table.Td>
-                <Table.Td>
-                  {canPost && !item.settled && item.sourceDocumentId === null && (
-                    <Button size="xs" variant="light" onClick={() => setSettling(item)}>
-                      {t("settle")}
-                    </Button>
-                  )}
-                </Table.Td>
+        <>
+          <Table striped data-assist="accounting.open-items.table">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("party")}</Table.Th>
+                <Table.Th>{t("document")}</Table.Th>
+                <Table.Th>{t("documentDate")}</Table.Th>
+                <Table.Th>{t("dueDate")}</Table.Th>
+                <Table.Th ta="right">{t("originalAmount")}</Table.Th>
+                <Table.Th ta="right">{t("balance")}</Table.Th>
+                <Table.Th />
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {items.data.items.map((item) => (
+                <Table.Tr key={item.id}>
+                  <Table.Td>{item.customerName ?? item.customerId ?? item.supplierId}</Table.Td>
+                  <Table.Td>
+                    {item.unallocated ? t("unallocated") : item.documentNumber}
+                    {item.sourceDocumentId !== null && (
+                      <Badge ml="xs" variant="light">
+                        {t("fromInvoices")}
+                      </Badge>
+                    )}
+                  </Table.Td>
+                  <Table.Td>{day(item.documentDate)}</Table.Td>
+                  <Table.Td>{day(item.dueDate)}</Table.Td>
+                  <Table.Td ta="right">{money(item.originalAmount)}</Table.Td>
+                  <Table.Td ta="right">{money(item.balance)}</Table.Td>
+                  <Table.Td>
+                    {canPost && !item.settled && item.sourceDocumentId === null && (
+                      <Button size="xs" variant="light" onClick={() => setSettling(item)}>
+                        {t("settle")}
+                      </Button>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+          {items.data.total > PAGE && (
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">
+                {t("showingOf", {
+                  from: offset + 1,
+                  to: offset + items.data.items.length,
+                  total: items.data.total,
+                })}
+              </Text>
+              <Group gap="xs">
+                <Button variant="default" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))}>
+                  {t("previous")}
+                </Button>
+                <Button
+                  variant="default"
+                  disabled={offset + PAGE >= items.data.total}
+                  onClick={() => setOffset(offset + PAGE)}
+                >
+                  {t("next")}
+                </Button>
+              </Group>
+            </Group>
+          )}
+        </>
       )}
       {settling && <SettleDialog item={settling} today={today} onClose={() => setSettling(null)} />}
     </Stack>

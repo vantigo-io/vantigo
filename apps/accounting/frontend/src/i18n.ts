@@ -321,6 +321,17 @@ export const accountingCatalog = {
     "refusal.storage_not_configured": "This installation has no file storage, so attachments cannot be kept.",
     "refusal.report_account_required": "Choose the account.",
     "refusal.period_invalid": "The period is not valid.",
+    "refusal.open_item_source_document":
+      "The open item stands for an invoice in Invoices: register the payment or the credit note there.",
+    "refusal.report_too_large": "The report has too many postings: choose a shorter period.",
+    "refusal.lock_in_future": "The lock reaches at most the end of this month.",
+    "refusal.books_start_too_early": "The books start on 1 January 2022 or later.",
+    "refusal.account_kind_mismatch": "The kind does not match the account number's class.",
+    "refusal.reverse_charge_gross": "A reverse-charge code is entered net.",
+    attachmentsUnavailable: "This installation has no file storage, so files cannot be attached. Remove them to post.",
+    attachmentTooBig: "{{name}} is over 20 MB.",
+    postedWithoutAttachment:
+      "Posted as {{voucher}}, but {{name}} could not be attached: {{reason}} Attach it on the voucher.",
   },
   nb: {
     accounting: "Regnskap",
@@ -622,6 +633,18 @@ export const accountingCatalog = {
     "refusal.storage_not_configured": "Installasjonen har ingen fillagring, så vedlegg kan ikke lagres.",
     "refusal.report_account_required": "Velg kontoen.",
     "refusal.period_invalid": "Perioden er ugyldig.",
+    "refusal.open_item_source_document":
+      "Den åpne posten gjelder en faktura i Fakturaer: registrer innbetalingen eller kreditnotaen der.",
+    "refusal.report_too_large": "Rapporten har for mange posteringer: velg en kortere periode.",
+    "refusal.lock_in_future": "Låsen kan ikke gå lenger enn til slutten av denne måneden.",
+    "refusal.books_start_too_early": "Regnskapet starter 1. januar 2022 eller senere.",
+    "refusal.account_kind_mismatch": "Typen passer ikke med kontonummerets klasse.",
+    "refusal.reverse_charge_gross": "En kode for omvendt avgiftsplikt føres netto.",
+    attachmentsUnavailable:
+      "Installasjonen har ingen fillagring, så filer kan ikke legges ved. Fjern dem for å bokføre.",
+    attachmentTooBig: "{{name}} er over 20 MB.",
+    postedWithoutAttachment:
+      "Bokført som {{voucher}}, men {{name}} kunne ikke legges ved: {{reason}} Legg den ved på bilaget.",
   },
 } satisfies CatalogResources;
 
