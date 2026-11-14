@@ -137,7 +137,8 @@ repeated wrong PINs or badges there mailed the administrators.
    save; close it and try again.
 4. Turning **Require the PIN with a badge** off asks for your **Current password** unless
    you signed in within the last ten minutes, and the administrators are mailed.
-5. Beside each person **Signed in**, **End** signs them out of that station at once. A
+5. Beside each person **Signed in**, **End** signs them out of that station at once; the
+   tablet shows their chip as **Signed out** within a few seconds. A
    person with failed sign-ins in a row there is listed with how many; **Reset** lets them
    try again at once.
 

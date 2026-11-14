@@ -234,8 +234,9 @@ komponentene, og ordren regnes som fakturert og ferdig ut fra settets linje. Plu
 skriver bare ut komponentene; pakkseddelen skriver ut settet med komponentene under.
 
 **Registrer levert** behandler et sett etter hvordan ordren leveres. På en ordre som leveres
-med leveranser tilbys ikke settets linje — komponentene gjør det, og settet regnes som
-levert med de hele settene de gir. Å ta tilbake en komponent avvises når det ville gi færre
+med leveranser tilbys ikke settets linje — komponentene gjør det, hver merket *i* og settets
+navn, slik en komponent også er det på en leveranses linjer, så den skilles fra en linje med
+det samme produktet for seg selv — og settet regnes som levert med de hele settene de gir. Å ta tilbake en komponent avvises når det ville gi færre
 hele sett levert enn det som er fakturert eller ligger i et fakturautkast. På en ordre som registreres levert for hånd (uten
 lagersted, eller når Lager ikke fører beholdning) tilbys settets linje og ikke
 komponentene: å registrere settet registrerer hver komponent med det, settets antall
