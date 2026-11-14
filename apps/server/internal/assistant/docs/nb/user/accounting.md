@@ -796,8 +796,11 @@ Fakturering har ingen konto og går til bankkontoen i kontoplanen (1920). Innbet
 er bokført før, blir stående som de er.
 
 En bankkontos **innstillinger** (tannhjulet i listen) endrer opplysningene, hvor
-kontoutskriften kommer fra og CSV-oppsettet, og viser kontoutskriftene med filene. En
-bankkonto med kontoutskrifter slettes ikke: gjør den inaktiv.
+kontoutskriften kommer fra og CSV-oppsettet, og viser kontoutskriftene med filene. Når en
+bankkonto har kontoutskriftslinjer, står kontonummeret og hovedbokskontoen som de er —
+linjene er avstemt mot posteringer på den hovedbokskontoen; legg til en ny bankkonto i
+stedet. En bankkonto med kontoutskrifter slettes ikke: gjør den inaktiv. En inaktiv konto
+som fortsatt har linjer som ikke er avstemt, teller med når du sperrer en måned.
 
 ### Å importere en kontoutskrift
 
@@ -820,6 +823,17 @@ eller en inngående saldo som ikke er forrige utgående saldo, uten at noe avvis
 som ikke er bokført i banken ennå, utelates til de er bokført. Selve filen tas vare på
 sammen med regnskapet.
 
+En CSV-eksport og en camt.053-fil for de samme dagene har de samme bevegelsene, uten noe som
+skiller dem. En linje som har samme dag og beløp som en linje som allerede er importert fra
+en annen type fil, eller fra bankintegrasjonen, og samme KID, motpartskonto eller tekst,
+importeres derfor merket **Mulig duplikat**: svaret teller dem, og i avstemmingen får den
+ingen forslag før du klikker **Legg til side som duplikat** (den teller da i ingen saldo)
+eller **Behold den, den er ikke et duplikat**.
+
+For en bankkonto som leses fra bankintegrasjonen, bringer en fil som importeres etterpå
+bare dagene før dagen integrasjonen leser fra; svaret teller linjene som ble utelatt, og som
+integrasjonen henter.
+
 ### CSV-oppsettet
 
 I en bankkontos innstillinger sier **CSV-oppsett** hvordan bankens CSV-eksport leses:
@@ -835,8 +849,10 @@ importert, og deretter **Lagre oppsettet**.
 Når Fakturering er koblet til banken (Administrer arbeidsområde › **Integrasjoner** › **Bank**, se
 [Fakturering](/nb/user/invoices/)), kan en bankkonto banken tilbyr, få kontoutskriften fra
 banken selv. I bankkontoens innstillinger, under **Kontoutskrift fra**, velger du
-**Bankintegrasjon**, dagen det skal leses fra (**Les fra**, høyst 13 måneder tilbake), og
-klikker **Lagre kilden**. Kontoen leses da omtrent hver halvtime.
+**Bankintegrasjon** og klikker **Lagre kilden**. Integrasjonen leser fra dagen etter den
+siste kontoutskriften du importerte for kontoen; du kan oppgi en senere dag under **Les
+fra**, men ikke en tidligere, så ingen dag leses to ganger (og høyst 13 måneder tilbake).
+Kontoen leses da omtrent hver halvtime.
 
 Fakturering leser bare pengene som kommer inn, for å registrere innbetalinger fra kunder.
 Regnskapet leser hele bevegelsen på kontoen — betalinger til leverandører, lønn, gebyrer,
@@ -852,13 +868,16 @@ ventetid) eller **ingen bank koblet til**. Oversikten og dashbordet sier det ogs
 ### Å avstemme en bankkonto
 
 Klikk en bankkonto for å avstemme den. Velg perioden (inneværende måned som standard) og,
-under **Vis**, alle linjer, de som er **Ikke avstemt**, eller de som er **Avstemt**. Hver
-linje viser det banken oppga — dagen, teksten, motparten, KID-en — og beløpet.
+under **Vis**, alle linjer, de som er **Ikke avstemt**, de som er **Avstemt**, eller de som
+er **Lagt til side** som duplikater. Hver linje viser det banken oppga — dagen, teksten,
+motparten, KID-en — og beløpet. En lang periode kommer i sider på 200 linjer.
 
 En linje som ikke er avstemt, viser **forslagene**, det sikreste først, hvert med hvorfor
 det foreslås og, når det fører et bilag, hva det vil føre. Klikk **Godta** for å ta et;
 **Konter** for å føre linjen selv; eller la den stå til senere. En avstemt linje viser hva
-den er avstemt mot, og **Angre** så lenge måneden ikke er sperret.
+den er avstemt mot, og **Angre** så lenge måneden ikke er sperret. En linje som var avstemt
+mot en betaling som er fjernet siden — i Fakturering eller på leverandørfakturaen — eller mot
+et bilag som er tilbakeført, er åpen igjen, med en merknad om hvorfor.
 
 Forslagene:
 
@@ -867,11 +886,11 @@ Forslagene:
 | **Innbetalingen Fakturering registrerte** | Fakturering registrerte en innbetaling fra akkurat denne banklinjen — fra en bankfil eller bankintegrasjonen | knytter linjen til innbetalingens postering |
 | **En postering med samme beløp** | regnskapet har en postering på kontoen med samme beløp, innen ti dager | knytter dem sammen |
 | **En bunt med innbetalinger fra Fakturering** | flere KID-innbetalinger kommer som én linje: bankens bunt, eller innbetalingene Fakturering registrerte én dag | knytter linjen til alle |
-| **Betal en leverandørfaktura** | penger ut med en leverandørfakturas KID, nummeret i teksten, eller beløpet til leverandørens konto | registrerer betalingen på leverandørfakturaen, som **Registrer betaling** ville gjort; en faktura i annen valuta får valutadifferansen sin |
-| **En utbetaling fra Vipps** | penger inn fra Vipps | flytter den fra Vipps-oppgjørskontoen til banken, og det Vipps holdt tilbake til bank- og betalingsgebyrer (7770) |
-| **Merverdiavgift betalt eller tilbakebetalt** | penger til eller fra Skatteetaten som er det mva-terminen etterlot på 2740 | debiterer eller krediterer 2740 mot banken |
-| **En overføring mellom kontoene dine** | samme beløp går ut av én av bankkontoene og inn på en annen | ett bilag mellom hovedbokskontoene, avstemt på begge utskriftene |
-| **En bankregel** | teksten eller motparten inneholder en regels ord | fører linjen på regelens konto og mva-kode |
+| **Betal en leverandørfaktura** | penger ut med en leverandørfakturas KID, nummeret i teksten, eller beløpet til leverandørens konto | registrerer betalingen på leverandørfakturaen, som **Registrer betaling** ville gjort; for en faktura i annen valuta, se under |
+| **En utbetaling fra Vipps** | penger inn fra Vipps | flytter den fra Vipps-oppgjørskontoen til banken, med Vipps' gebyr til bank- og betalingsgebyrer (7770): se under |
+| **Merverdiavgift betalt eller tilbakebetalt** | penger til eller fra Skatteetaten som er beløpet for en lukket mva-termin, ikke betalt ennå, som fortsatt står på 2740 | debiterer eller krediterer 2740 mot banken |
+| **En overføring mellom kontoene dine** | samme beløp går ut av én av bankkontoene og inn på en annen, og ingen overføring er ført for det ennå | ett bilag mellom hovedbokskontoene, avstemt på begge utskriftene |
+| **En bankregel** | teksten eller motparten inneholder en regels ord — aldri penger inn med KID eller med et beløp en kunde skylder | fører linjen på regelens konto og mva-kode |
 | **Registrer den i Fakturering** | penger inn fra en kunde som Fakturering ikke har registrert | ingenting her: se under |
 
 Flere forslag merket **Sikker** — én postering med samme beløp samme dag, eller samme
@@ -882,7 +901,14 @@ konto, beløp og mva-kode for resten, som til sammen må gå i balanse med linje
 mva-kode er beløpet brutto: et kortkjøp på 349,00 på 6300 med kode 1 fører 279,20 på 6300 og
 69,80 på 2710. En linje kan gjøre opp en åpen post hos en kunde eller leverandør som ikke
 står for en faktura i Fakturering eller en leverandørfaktura — en inngående saldo, for
-eksempel.
+eksempel; en linje mot kundefordringer eller leverandørgjeld må oppgi den åpne posten den
+gjør opp.
+
+En leverandørfaktura i annen valuta gjøres opp i sin valuta. Når det banken trakk, ligger nær
+det som gjenstår etter fakturaens kurs — innenfor 5 % — gjør betalingen opp alt, og
+differansen er en valutagevinst eller et valutatap. Når det ikke gjør det, er det en
+delbetaling: **Godta** spør om **Beløp gjort opp i** fakturaens valuta, med det betalingen er
+verdt etter fakturaens kurs som forslag, og fakturaen skylder fortsatt resten.
 
 ### Hvorfor innbetalinger fra kunder registreres i Fakturering
 
@@ -895,17 +921,22 @@ eller registrer betalingen på fakturaen — så avstemmes posteringen mot linje
 
 ### Utbetalinger fra Vipps
 
-Vipps betaler ut dagens salg minus gebyrene. Vipps-betalingene Fakturering registrerer, står
-på Vipps-oppgjørskontoen (1580); utbetalingens forslag tar det oppgjørskontoen har til og med
-dagen før, flytter utbetalingen til banken og resten — Vipps' gebyrer — til 7770, og viser
-bilaget før du godtar det.
+Vipps betaler ut salget for hver oppgjørsdag minus gebyrene, en dag eller to senere.
+Vipps-betalingene Fakturering registrerer, står på Vipps-oppgjørskontoen (1580). Når salget
+for en dag — eller for noen dager på rad — som ikke er utbetalt ennå, stemmer med
+utbetalingen eller er inntil 3 % mer, sier forslaget hvilke dager, flytter det salget fra
+oppgjørskontoen, utbetalingen til banken og differansen — Vipps' gebyr — til 7770. Neste
+utbetaling starter da fra dagen etter. Når ingen rekke dager passer, gjettes ikke noe gebyr:
+utbetalingen alene flyttes fra oppgjørskontoen til banken. **Godta** viser gebyret og lar deg
+endre det til det oppgjørsrapporten fra Vipps sier, høyst 5 % av utbetalingen; det som står
+igjen på 1580, er salg som ikke er utbetalt ennå.
 
 ### Å betale mvaen fra banken
 
 Når mva-terminen er lukket, står merverdiavgiften på 2740. Banklinjen for betalingen til
 Skatteetaten — eller for tilbakebetalingen — foreslås som **Merverdiavgift betalt eller
 tilbakebetalt**: å godta den debiterer 2740 (en tilbakebetaling krediterer den) mot banken,
-og 2740 er tilbake på null.
+og 2740 er tilbake på null. En termin som er betalt gjennom banken, foreslås ikke igjen.
 
 ### Bankregler
 
@@ -913,14 +944,16 @@ og 2740 er tilbake på null.
 hvilke ord linjens tekst eller motpart inneholder, hvilken vei pengene går, og kontoen og
 mva-koden den føres på — *Gebyr* til 7770, bankens renter til 8050. Regelen vises da som et
 forslag på hver linje den passer på. En endring er en ny versjon; en regel som er brukt,
-gjøres inaktiv i stedet for å slettes.
+gjøres inaktiv i stedet for å slettes. En regel for penger inn kan ikke gå til en salgskonto
+eller til kundefordringer, og penger inn med KID eller med et beløp en kunde skylder, får
+ikke forslag fra noen regel: det er innbetalinger fra kunder, som registreres i Fakturering.
 
 ### Å angre en avstemming
 
 **Angre** på en avstemt linje, så lenge måneden ikke er sperret, tar avstemmingen tilbake:
 et bilag avstemmingen førte, tilbakeføres (en leverandørbetaling fjernes), en overføring
-åpner begge linjene, og en avstemming mot posteringer som fantes, slipper dem. Ingenting
-slettes.
+åpner begge linjene — også når den andre siden var avstemt mot overføringens postering — og
+en avstemming mot posteringer som fantes, slipper dem. Ingenting slettes.
 
 ### Å sperre en måned
 
