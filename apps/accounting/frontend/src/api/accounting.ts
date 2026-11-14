@@ -45,6 +45,17 @@ export type AccountingSupplierInvoiceList = Schemas["AccountingSupplierInvoiceLi
 export type AccountingSupplierInvoiceState = Schemas["AccountingSupplierInvoiceState"];
 export type AccountingSupplierPayment = Schemas["AccountingSupplierPayment"];
 export type AccountingEntryMode = Schemas["AccountingEntryMode"];
+export type AccountingVatTermList = Schemas["AccountingVatTermList"];
+export type AccountingVatTermItem = Schemas["AccountingVatTermItem"];
+export type AccountingVatTermDetail = Schemas["AccountingVatTermDetail"];
+export type AccountingVatReturn = Schemas["AccountingVatReturn"];
+export type AccountingVatReturnLine = Schemas["AccountingVatReturnLine"];
+export type AccountingVatSpecification = Schemas["AccountingVatSpecification"];
+export type AccountingVatCodeFigures = Schemas["AccountingVatCodeFigures"];
+export type AccountingVatPosting = Schemas["AccountingVatPosting"];
+export type AccountingVatPostingList = Schemas["AccountingVatPostingList"];
+export type AccountingVatPart = Schemas["AccountingVatPart"];
+export type AccountingVatGroup = Schemas["AccountingVatGroup"];
 
 const BASE = "/api/v1/accounting";
 
@@ -90,6 +101,7 @@ export const reportKinds: readonly AccountingReportKind[] = [
   "trial_balance",
   "profit_and_loss",
   "balance_sheet",
+  "vat",
 ];
 export const vatTerms: readonly AccountingVatTerm[] = ["bimonthly", "yearly", "none"];
 
@@ -460,3 +472,52 @@ export const deleteSupplierInvoiceFile = (id: number, fileId: number) =>
 /** The address a supplier invoice's file downloads from. */
 export const supplierInvoiceFileUrl = (id: number, fileId: number) =>
   appUrl(`${BASE}/supplier-invoices/${id}/files/${fileId}`);
+
+/** The VAT terms (A22): from the books' first through today's, each with its state, due date and total. */
+export const vatTermsQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "vat", "terms"],
+    queryFn: ({ signal }) => request<AccountingVatTermList>(`${BASE}/vat/terms`, { signal }),
+  });
+
+/** A term's page: the return, the specification with the reconciliation, the close's checks and its history. */
+export const vatTermQueryOptions = (year: number, number: number) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "vat", "term", year, number],
+    queryFn: ({ signal }) => request<AccountingVatTermDetail>(`${BASE}/vat/terms/${year}/${number}`, { signal }),
+  });
+
+const termUrl = (year: number, number: number) => `${BASE}/vat/terms/${year}/${number}`;
+
+export const closeVatTerm = (year: number, number: number) =>
+  send<AccountingVatTermDetail>(`${termUrl(year, number)}/close`, { method: "POST" });
+
+export const reopenVatTerm = (year: number, number: number, reason: string) =>
+  send<AccountingVatTermDetail>(`${termUrl(year, number)}/reopen`, json("POST", { reason }));
+
+export const fileVatTerm = (year: number, number: number, body: { filedAt: string; reference: string }) =>
+  send<AccountingVatTermDetail>(`${termUrl(year, number)}/filing`, json("POST", body));
+
+export const unfileVatTerm = (year: number, number: number, reason: string) =>
+  send<AccountingVatTermDetail>(`${termUrl(year, number)}/unfile`, json("POST", { reason }));
+
+/** The address a closed term's return downloads from, as XML. */
+export const vatReturnXmlUrl = (year: number, number: number) => appUrl(`${termUrl(year, number)}/xml`);
+
+/** What the drill-down behind a VAT figure is asked for (A21). */
+export interface VatPostingFilters {
+  from: string;
+  to: string;
+  taxCodeId?: number;
+  part?: AccountingVatPart;
+  unreconciled?: boolean;
+  offset?: number;
+  limit?: number;
+}
+
+export const vatPostingsQueryOptions = (filters: VatPostingFilters) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "vat", "postings", filters],
+    queryFn: ({ signal }) =>
+      request<AccountingVatPostingList>(`${BASE}/vat/postings${queryString({ ...filters })}`, { signal }),
+  });

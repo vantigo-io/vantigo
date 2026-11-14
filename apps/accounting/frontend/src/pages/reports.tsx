@@ -17,7 +17,7 @@ import { BooksGate } from "../components/books-gate";
 import { AccountSelect, ProjectSelect } from "../components/pickers";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
 import { fiscalYearStart, yearBefore } from "../lib/periods";
-import { invoicePath, supplierInvoicePath, supplierPath, voucherPath } from "../lib/routes";
+import { invoicePath, supplierInvoicePath, supplierPath, vatPostingsPath, voucherPath } from "../lib/routes";
 
 /** The reports with a comparison period (A11). */
 const comparable: readonly AccountingReportKind[] = ["trial_balance", "profit_and_loss", "balance_sheet"];
@@ -146,6 +146,13 @@ export const ReportTable = ({ report }: { report: AccountingReport }) => {
                       <Anchor href={appUrl(invoicePath(row.documentId))}>{shown}</Anchor>
                     ) : row.supplierInvoiceId !== null && c.key === "document" ? (
                       <Anchor component={Link} to={supplierInvoicePath(row.supplierInvoiceId)}>
+                        {shown}
+                      </Anchor>
+                    ) : row.taxCodeId !== null && c.key === "code" ? (
+                      <Anchor
+                        component={Link}
+                        to={vatPostingsPath({ from: report.from, to: report.to, taxCodeId: row.taxCodeId })}
+                      >
                         {shown}
                       </Anchor>
                     ) : row.supplierId !== null && row.style === "heading" && c.key === "party" ? (

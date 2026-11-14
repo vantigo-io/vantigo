@@ -274,5 +274,41 @@
       "en": "The lock date, the way to move it and its history.",
       "nb": "Sperredatoen, hvordan den flyttes, og historikken."
     }
+  },
+  {
+    "key": "accounting.vat.terms",
+    "route": "/accounting/vat",
+    "label": {
+      "en": "VAT terms",
+      "nb": "Mva-terminer"
+    },
+    "description": {
+      "en": "The list of VAT terms on the VAT page: each term's period, state, due date and the return's total.",
+      "nb": "Listen over mva-terminer på Mva-siden: hver termins periode, status, frist og mva-meldingens sum."
+    }
+  },
+  {
+    "key": "accounting.vat.close",
+    "route": "/accounting/vat",
+    "label": {
+      "en": "Close the term",
+      "nb": "Lukk terminen"
+    },
+    "description": {
+      "en": "The button on a VAT term's page that opens the close's confirmation: what closing does, and what stops it now.",
+      "nb": "Knappen på en mva-termins side som åpner bekreftelsen: hva lukkingen gjør, og hva som stopper den nå."
+    }
+  },
+  {
+    "key": "accounting.vat.xml",
+    "route": "/accounting/vat",
+    "label": {
+      "en": "Download XML",
+      "nb": "Last ned XML"
+    },
+    "description": {
+      "en": "The button on a closed VAT term's page that downloads the return as Skatteetaten's XML, to file at Skatteetaten by hand.",
+      "nb": "Knappen på en lukket mva-termins side som laster ned mva-meldingen som Skatteetatens XML, til å levere hos Skatteetaten."
+    }
   }
 ]

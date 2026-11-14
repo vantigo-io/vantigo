@@ -28,10 +28,13 @@ import {
   SUPPLIER_ROUTE_PATH,
   SUPPLIERS_ROUTE_PATH,
   TAX_CODES_ROUTE_PATH,
+  VAT_POSTINGS_ROUTE_PATH,
+  VAT_ROUTE_PATH,
+  VAT_TERM_ROUTE_PATH,
   VOUCHER_ROUTE_PATH,
   VOUCHERS_ROUTE_PATH,
 } from "../lib/routes";
-import { validateJournalSearch } from "../lib/search";
+import { validateJournalSearch, validateVatPostingsSearch } from "../lib/search";
 import { AccountsPage } from "../pages/accounts";
 import { JournalEntryPage } from "../pages/journal";
 import { NeedsAttentionPage } from "../pages/needs-attention";
@@ -45,6 +48,7 @@ import { SetupPage } from "../pages/setup";
 import { NewSupplierInvoicePage, SupplierInvoicePage, SupplierInvoicesPage } from "../pages/supplier-invoices";
 import { SupplierPage, SuppliersPage } from "../pages/suppliers";
 import { TaxCodesPage } from "../pages/tax-codes";
+import { VatPostingsPage, VatTermPage, VatTermsPage } from "../pages/vat";
 import { VoucherPage } from "../pages/voucher";
 import { VouchersPage } from "../pages/vouchers";
 import "../i18n";
@@ -79,6 +83,9 @@ export const makeRouteTree = () => {
     route(SUPPLIER_INVOICES_ROUTE_PATH, SupplierInvoicesPage),
     route(NEW_SUPPLIER_INVOICE_ROUTE_PATH, NewSupplierInvoicePage),
     route(SUPPLIER_INVOICE_ROUTE_PATH, SupplierInvoicePage),
+    route(VAT_ROUTE_PATH, VatTermsPage),
+    route(VAT_POSTINGS_ROUTE_PATH, VatPostingsPage, validateVatPostingsSearch),
+    route(VAT_TERM_ROUTE_PATH, VatTermPage),
   ]);
 };
 

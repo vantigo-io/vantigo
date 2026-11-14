@@ -10,6 +10,7 @@ import {
   SUPPLIER_INVOICES_ROUTE_PATH,
   SUPPLIERS_ROUTE_PATH,
   TAX_CODES_ROUTE_PATH,
+  VAT_ROUTE_PATH,
   VOUCHERS_ROUTE_PATH,
 } from "./routes";
 
@@ -23,6 +24,7 @@ export interface AccountingNavItem {
     | "supplierInvoices"
     | "suppliers"
     | "openItems"
+    | "vat"
     | "reports"
     | "accounts"
     | "taxCodes"
@@ -40,7 +42,7 @@ const read = ["accounting:read"] as const;
 /**
  * The sidebar: the overview, a new journal entry for those who post, the
  * vouchers, what needs attention, the supplier invoices and the suppliers,
- * the open items, the reports, then the
+ * the open items, the VAT terms, the reports, then the
  * chart, the tax codes, the posting rules and the books' settings. Set up the books and the opening balances have no
  * entry: the overview leads to them.
  */
@@ -57,6 +59,7 @@ export const accountingNavItems: readonly AccountingNavItem[] = [
   },
   { key: "suppliers", label: "navSuppliers", to: SUPPLIERS_ROUTE_PATH, requiredPermissions: read },
   { key: "openItems", label: "navOpenItems", to: OPEN_ITEMS_ROUTE_PATH, requiredPermissions: read },
+  { key: "vat", label: "navVat", to: VAT_ROUTE_PATH, requiredPermissions: read },
   { key: "reports", label: "navReports", to: REPORTS_ROUTE_PATH, requiredPermissions: read },
   { key: "accounts", label: "navAccounts", to: ACCOUNTS_ROUTE_PATH, requiredPermissions: read },
   { key: "taxCodes", label: "navTaxCodes", to: TAX_CODES_ROUTE_PATH, requiredPermissions: read },

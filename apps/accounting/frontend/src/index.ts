@@ -8,7 +8,12 @@ export { accountingCatalog } from "./i18n";
 export { monthEndOf } from "./lib/lock";
 export { type AccountingNavItem, accountingNavItems, visibleAccountingNavItems } from "./lib/navigation";
 export * from "./lib/routes";
-export { type JournalSearch, validateJournalSearch } from "./lib/search";
+export {
+  type JournalSearch,
+  type VatPostingsSearch,
+  validateJournalSearch,
+  validateVatPostingsSearch,
+} from "./lib/search";
 export { AccountsPage } from "./pages/accounts";
 export { JournalEntryPage } from "./pages/journal";
 export { NeedsAttentionPage } from "./pages/needs-attention";
@@ -22,5 +27,6 @@ export { SetupPage } from "./pages/setup";
 export { NewSupplierInvoicePage, SupplierInvoicePage, SupplierInvoicesPage } from "./pages/supplier-invoices";
 export { SupplierPage, SuppliersPage } from "./pages/suppliers";
 export { TaxCodesPage } from "./pages/tax-codes";
+export { VatPostingsPage, VatTermPage, VatTermsPage } from "./pages/vat";
 export { VoucherPage } from "./pages/voucher";
 export { VouchersPage } from "./pages/vouchers";
