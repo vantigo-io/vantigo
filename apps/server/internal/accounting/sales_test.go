@@ -227,6 +227,20 @@ func TestSales_CreditNoteOnAPartlyPaidInvoice(t *testing.T) {
 	if bal := itemBalance(t, b, 9001); bal != "125.00" {
 		t.Errorf("the invoice's item = %s, want 125.00", bal)
 	}
+	// A document's vouchers (L3): the invoice's page lists its own, its
+	// payment's and its credit note's; the credit note's page its own, which
+	// belongs to the invoice it credits.
+	for doc, want := range map[int64][]string{9001: {"credit_note", "payment", "invoice"}, 9002: {"credit_note"}} {
+		var list gen.AccountingVoucherList
+		b.c.Do(http.MethodGet, fmt.Sprintf("%s/vouchers?sourceDocumentId=%d", base, doc), nil).JSON(&list)
+		var kinds []string
+		for _, v := range list.Items {
+			kinds = append(kinds, v.Source.Kind)
+		}
+		if !slices.Equal(kinds, want) || int(list.Total) != len(want) {
+			t.Errorf("the vouchers of %d = %v (total %d), want %v", doc, kinds, list.Total, want)
+		}
+	}
 }
 
 // itemBalance is the balance of the item standing for an Invoices document.
@@ -424,8 +438,10 @@ func TestSales_NeedsAttentionAndRetry(t *testing.T) {
 		jsum("3", "25.00", "800.00", "200.00")))
 	b.h.journal.addDocument(invoice(9003, 103, day(t, "2026-03-02"), []contracts.JournalLine{jline(1, "100.00", "3")},
 		jsum("3", "25.00", "100.00", "25.00")))
-	b.h.journal.addFact(contracts.JournalFact{Kind: "refund", SubjectID: 1, Date: day(t, "2026-03-03"), InvoiceID: 9003,
-		InvoiceNumber: 103, CustomerID: customerAcme, AmountNOK: "5.00"})
+	// The unknown kind is another invoice's: a later fact of the same invoice
+	// would wait behind it (R15, TestSales_WhatWaitsWaitsInOrder).
+	b.h.journal.addFact(contracts.JournalFact{Kind: "refund", SubjectID: 1, Date: day(t, "2026-03-03"), InvoiceID: 9004,
+		InvoiceNumber: 104, CustomerID: customerAcme, AmountNOK: "5.00"})
 	b.h.journal.addFact(contracts.JournalFact{Kind: contracts.FactPayment, SubjectID: 501, Date: day(t, "2026-03-04"), InvoiceID: 9003,
 		InvoiceNumber: 103, CustomerID: customerAcme, AmountNOK: "125.00", Source: contracts.PaymentSourceManual})
 	catchUp(t, b.h)
@@ -484,15 +500,31 @@ func TestSales_NeedsAttentionAndRetry(t *testing.T) {
 	}
 }
 
-// The posting rules (A14): precedence line kind, tax category, tax code,
-// then the defaults by tax code; a change of account is a new version and
-// changes future vouchers only; a default rule is never deleted; books set up
-// before the rules existed are seeded on first use.
+// The posting rules (A14, R15): precedence line kind, tax category, tax
+// code, then the defaults by tax code; a sales rule names an income account;
+// a change of name or account is a new version and changes future vouchers
+// only, each posting naming the rule and version that placed it; a rule is
+// archived, never deleted, a default one not even that; books set up before
+// the rules existed are seeded by the worker, never by a read.
 func TestPostingRules(t *testing.T) {
 	b := newBooks(t)
-	res := b.c.Do(http.MethodGet, base+"/posting-rules", nil)
+	// Books set up before the rules existed: a read writes nothing (L1), the
+	// catch-up worker seeds them.
+	b.h.Exec(t, `ALTER TABLE accounting.posting_rules DISABLE TRIGGER tr_posting_rules_no_delete`)
+	b.h.Exec(t, `DELETE FROM accounting.posting_rule_versions`)
+	b.h.Exec(t, `DELETE FROM accounting.posting_rules`)
+	b.h.Exec(t, `ALTER TABLE accounting.posting_rules ENABLE TRIGGER tr_posting_rules_no_delete`)
 	var rules gen.AccountingPostingRuleList
+	b.c.Do(http.MethodGet, base+"/posting-rules", nil).JSON(&rules)
+	if len(rules.Items) != 0 {
+		t.Fatalf("a read seeded %d rules", len(rules.Items))
+	}
+	catchUp(t, b.h)
+	res := b.c.Do(http.MethodGet, base+"/posting-rules", nil)
 	res.JSON(&rules)
+	if len(rules.Items) != 10 {
+		t.Fatalf("the worker seeded %d rules, want the ten defaults", len(rules.Items))
+	}
 	defaults := map[string]string{}
 	for _, r := range rules.Items {
 		if r.Match == gen.Default {
@@ -523,6 +555,20 @@ func TestPostingRules(t *testing.T) {
 		"match": "tax_code", "taxCode": "99", "accountId": b.acc("3600")}), http.StatusBadRequest, "tax_code_unknown")
 	expectProblem(t, b.c.Do(http.MethodPost, base+"/posting-rules", map[string]any{"name": "Exp", "scope": "expense",
 		"match": "tax_code", "taxCode": "1", "accountId": b.acc("6300")}), http.StatusBadRequest, "")
+	// A sales rule credits income (R15): an expense or a balance account is
+	// refused, on a new rule and on a change.
+	for _, number := range []string{"6300", "1920"} {
+		res := b.c.Do(http.MethodPost, base+"/posting-rules", map[string]any{"name": "To " + number, "scope": "sales",
+			"match": "tax_code", "taxCode": "31", "accountId": b.acc(number)})
+		if res.Status != http.StatusBadRequest || !strings.Contains(string(res.Body), "account_kind_mismatch") {
+			t.Errorf("a sales rule to %s = %d %s, want 400 account_kind_mismatch", number, res.Status, res.Body)
+		}
+	}
+	if res := b.c.Do(http.MethodPut, fmt.Sprintf("%s/posting-rules/%d", base, byCode.Id), map[string]any{"name": byCode.Name,
+		"accountId": b.acc("6300"), "revision": byCode.Revision}); res.Status != http.StatusBadRequest ||
+		!strings.Contains(string(res.Body), "account_kind_mismatch") {
+		t.Errorf("a change to 6300 = %d %s, want 400 account_kind_mismatch", res.Status, res.Body)
+	}
 	for _, r := range rules.Items {
 		if r.Match == gen.Default {
 			expectProblem(t, b.c.Do(http.MethodDelete, fmt.Sprintf("%s/posting-rules/%d", base, r.Id), nil),
@@ -563,21 +609,66 @@ func TestPostingRules(t *testing.T) {
 	if !strings.Contains(v.Postings[3].Description, "v2") {
 		t.Errorf("the line names %q, want version 2", v.Postings[3].Description)
 	}
-	expectVoucher(t, b, "invoice", 9001, "1500 487.00", "3400 -100.00 3 base", "3700 -100.00 3 base",
+	old := expectVoucher(t, b, "invoice", 9001, "1500 487.00", "3400 -100.00 3 base", "3700 -100.00 3 base",
 		"3600 -100.00 3 base", "3020 -100.00 33 base", "2700 -75.00 3 tax", "2702 -12.00 33 tax")
-	if res := b.c.Do(http.MethodDelete, fmt.Sprintf("%s/posting-rules/%d", base, byCode.Id), nil); res.Status != http.StatusNoContent {
-		t.Errorf("delete = %d %s", res.Status, res.Body)
+
+	// A new name is a new version too (R15), and the posting stores the rule
+	// and the version that placed it, not only its text.
+	res = b.c.Do(http.MethodPut, fmt.Sprintf("%s/posting-rules/%d", base, byCode.Id), map[string]any{"name": "Standard sales",
+		"accountId": b.acc("3000"), "revision": changed.Revision})
+	res.JSON(&changed)
+	if res.Status != http.StatusOK || changed.Version != 3 || changed.Name != "Standard sales" {
+		t.Fatalf("rename = %d %s", res.Status, res.Body)
 	}
-	if got := b.c.Do(http.MethodDelete, fmt.Sprintf("%s/posting-rules/%d", base, byCode.Id), nil).Status; got != http.StatusNotFound {
-		t.Errorf("delete again = %d", got)
+	placed := func(p gen.AccountingPosting) string {
+		return fmt.Sprintf("%d v%d %s", deref(p.PostingRuleId), deref(p.PostingRuleVersion), deref(p.PostingRuleName))
+	}
+	if got, want := placed(old.Postings[3]), fmt.Sprintf("%d v1 Code 3 to 3600", byCode.Id); got != want {
+		t.Errorf("invoice 101's line was placed by %q, want %q", got, want)
+	}
+	if got, want := placed(v.Postings[3]), fmt.Sprintf("%d v2 Code 3 to 3600", byCode.Id); got != want {
+		t.Errorf("invoice 102's line was placed by %q, want %q", got, want)
+	}
+	if old.Postings[0].PostingRuleId != nil || old.Postings[5].PostingRuleId != nil {
+		t.Errorf("a receivables or a VAT line names a rule: %v %v", old.Postings[0].PostingRuleId, old.Postings[5].PostingRuleId)
+	}
+	if n := b.h.Count(t, `SELECT count(*)::int FROM accounting.posting_rule_versions WHERE rule_id = $1`, byCode.Id); n != 3 {
+		t.Errorf("the rule keeps %d versions, want 3", n)
 	}
 
-	// Books set up before the rules existed get the defaults on first use.
-	b.h.Exec(t, "DELETE FROM accounting.posting_rules")
-	b.c.Do(http.MethodGet, base+"/posting-rules", nil).JSON(&rules)
-	if len(rules.Items) != 10 {
-		t.Errorf("seeded again: %d rules, want the ten defaults", len(rules.Items))
+	// Archived, never deleted: it matches nothing from now on, is no longer
+	// listed, frees its match, and what it placed still names it.
+	if res := b.c.Do(http.MethodDelete, fmt.Sprintf("%s/posting-rules/%d", base, byCode.Id), nil); res.Status != http.StatusNoContent {
+		t.Errorf("archive = %d %s", res.Status, res.Body)
 	}
+	if got := b.c.Do(http.MethodDelete, fmt.Sprintf("%s/posting-rules/%d", base, byCode.Id), nil).Status; got != http.StatusNotFound {
+		t.Errorf("archive again = %d", got)
+	}
+	b.c.Do(http.MethodGet, base+"/posting-rules", nil).JSON(&rules)
+	for _, r := range rules.Items {
+		if r.Id == byCode.Id {
+			t.Errorf("the archived rule is listed: %+v", r)
+		}
+	}
+	if n := b.h.Count(t, `SELECT count(*)::int FROM accounting.posting_rules WHERE id = $1`, byCode.Id); n != 1 {
+		t.Errorf("the archived rule's row: %d, want kept", n)
+	}
+	create(map[string]any{"name": "Code 3 again", "scope": "sales", "match": "tax_code", "taxCode": "3", "accountId": b.acc("3600")})
+	if got, want := placed(voucherAgain(t, b, old.Id).Postings[3]), fmt.Sprintf("%d v1 Code 3 to 3600", byCode.Id); got != want {
+		t.Errorf("after the archive invoice 101's line names %q, want %q", got, want)
+	}
+}
+
+// voucherAgain is a voucher read again.
+func voucherAgain(t *testing.T, b *books, id int64) gen.AccountingVoucher {
+	t.Helper()
+	res := b.c.Do(http.MethodGet, fmt.Sprintf("%s/vouchers/%d", base, id), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("voucher %d = %d %s", id, res.Status, res.Body)
+	}
+	var v gen.AccountingVoucher
+	res.JSON(&v)
+	return v
 }
 
 func ptrTo[T any](v T) *T { return &v }
@@ -738,5 +829,138 @@ func TestSales_BankFeedPaymentsPostToTheBank(t *testing.T) {
 	expectVoucher(t, b, "charge_payment", 802, "1920 35.00", "3900 -35.00 7 base")
 	if bal := itemBalance(t, b, 9001); bal != "850.00" {
 		t.Errorf("the invoice's item = %s, want 850.00", bal)
+	}
+}
+
+// What waits, waits in order (R15): an invoice that cannot be posted — no
+// rule matches its line — holds back its payment, which waits under Needs
+// attention behind it while another invoice's payment posts; a retry of the
+// payment alone keeps it waiting; once a rule exists, retrying the invoice
+// posts it and then its payment, the invoice first.
+func TestSales_WhatWaitsWaitsInOrder(t *testing.T) {
+	b := newBooks(t)
+	// Code 1 is a purchase code: no sales rule matches it.
+	b.h.journal.addDocument(invoice(9001, 101, day(t, "2026-03-02"), []contracts.JournalLine{jline(1, "100.00", "1")},
+		jsum("1", "0.00", "100.00", "0.00")))
+	b.h.journal.addDocument(invoice(9002, 102, day(t, "2026-03-02"), []contracts.JournalLine{jline(1, "100.00", "3")},
+		jsum("3", "25.00", "100.00", "25.00")))
+	pay := func(id, invoice int64, amount string) {
+		b.h.journal.addFact(contracts.JournalFact{Kind: contracts.FactPayment, SubjectID: id, Date: day(t, "2026-03-05"),
+			InvoiceID: invoice, InvoiceNumber: invoice - 8900, CustomerID: customerAcme, AmountNOK: amount,
+			Source: contracts.PaymentSourceManual})
+	}
+	pay(501, 9001, "100.00")
+	pay(502, 9002, "125.00")
+	catchUp(t, b.h)
+
+	expectVoucher(t, b, "payment", 502, "1920 125.00", "1500 -125.00")
+	if _, ok := voucherOf(t, b, "payment", 501); ok {
+		t.Fatal("the payment of the invoice under Needs attention posted before it")
+	}
+	if got := position(t, b, "invoices.facts"); got != 2 {
+		t.Errorf("facts cursor = %d, want past the waiting payment", got)
+	}
+	rows := func() map[string]gen.AccountingUnposted {
+		t.Helper()
+		var list gen.AccountingUnpostedList
+		b.c.Do(http.MethodGet, base+"/unposted", nil).JSON(&list)
+		out := map[string]gen.AccountingUnposted{}
+		for _, u := range list.Items {
+			out[fmt.Sprintf("%s %d", u.Source.Kind, u.Source.Id)] = u
+		}
+		return out
+	}
+	open := rows()
+	inv, payment := open["invoice 9001"], open["payment 501"]
+	if len(open) != 2 || inv.Reason != "posting_rule_missing" || payment.Reason != "waiting_on" ||
+		deref(payment.WaitingOn) != inv.Id || deref(payment.InvoiceId) != 9001 {
+		t.Fatalf("needs attention = %+v", open)
+	}
+
+	// The payment alone cannot jump the queue.
+	res := b.c.Do(http.MethodPost, fmt.Sprintf("%s/unposted/%d/retry", base, payment.Id), nil)
+	var u gen.AccountingUnposted
+	res.JSON(&u)
+	if res.Status != http.StatusOK || u.PostedVoucher != nil || u.Reason != "waiting_on" {
+		t.Fatalf("retry of the payment first = %d %s", res.Status, res.Body)
+	}
+
+	if res := b.c.Do(http.MethodPost, base+"/posting-rules", map[string]any{"name": "Code 1 sales", "scope": "sales",
+		"match": "tax_code", "taxCode": "1", "accountId": b.acc("3000")}); res.Status != http.StatusCreated {
+		t.Fatalf("rule = %d %s", res.Status, res.Body)
+	}
+	res = b.c.Do(http.MethodPost, fmt.Sprintf("%s/unposted/%d/retry", base, inv.Id), nil)
+	res.JSON(&u)
+	if res.Status != http.StatusOK || u.PostedVoucher == nil {
+		t.Fatalf("retry of the invoice = %d %s", res.Status, res.Body)
+	}
+	invoiceVoucher := expectVoucher(t, b, "invoice", 9001, "1500 100.00", "3000 -100.00 1 base")
+	paymentVoucher := expectVoucher(t, b, "payment", 501, "1920 100.00", "1500 -100.00")
+	if paymentVoucher.Number <= invoiceVoucher.Number {
+		t.Errorf("the payment is voucher %s, the invoice %s: want the invoice first", paymentVoucher.Display, invoiceVoucher.Display)
+	}
+	if left := rows(); len(left) != 0 {
+		t.Errorf("still under Needs attention: %+v", left)
+	}
+	if bal := itemBalance(t, b, 9001); bal != "0.00" {
+		t.Errorf("invoice 101's item = %s, want settled", bal)
+	}
+}
+
+// A backlog asks for itself again (R15): a run that stops at its lease's
+// margin with items left leaves a wake-up behind, so the next poll — not the
+// five-minute sweep — takes the rest up.
+func TestCatchUp_ABacklogAsksForItselfAgain(t *testing.T) {
+	b := newBooks(t)
+	b.h.journal.addDocument(invoice(9001, 101, day(t, "2026-03-02"), []contracts.JournalLine{jline(1, "100.00", "3")},
+		jsum("3", "25.00", "100.00", "25.00")))
+	worker := catchUpWorker(t, b.h)
+	b.h.Advance(5*time.Minute + time.Second)
+	// A lease shorter than the margin: the run stops before its first item.
+	restore := accounting.SetCatchUpLease(10 * time.Second)
+	if err := worker.RunOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	restore()
+	if got := position(t, b, "invoices.documents"); got != 0 {
+		t.Fatalf("documents cursor = %d, want the run stopped at its margin", got)
+	}
+	if n := b.h.Count(t, `SELECT count(*)::int FROM accounting.catchup_requests WHERE stream = 'invoices.documents'`); n != 1 {
+		t.Fatalf("%d wake-ups for the documents, want the backlog's own", n)
+	}
+	// Seconds later, well before the sweep: the wake-up is due.
+	b.h.Advance(15 * time.Second)
+	if err := worker.RunOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	expectVoucher(t, b, "invoice", 9001, "1500 125.00", "3000 -100.00 3 base", "2700 -25.00 3 tax")
+	if n := b.h.Count(t, `SELECT count(*)::int FROM accounting.catchup_requests`); n != 0 {
+		t.Errorf("%d wake-ups left after a run that read to the end", n)
+	}
+}
+
+// An undo turns back the stored voucher (R15), line for line, whatever the
+// accounts say now: a write-off whose tax code's VAT account moved since is
+// undone on the account it was posted to.
+func TestSales_AnUndoReversesTheStoredVoucher(t *testing.T) {
+	b := newBooks(t)
+	b.h.journal.addDocument(invoice(9001, 101, day(t, "2026-02-02"), []contracts.JournalLine{jline(1, "1000.00", "3")},
+		jsum("3", "25.00", "1000.00", "250.00")))
+	w := &contracts.JournalWriteOff{ID: 31, Reason: contracts.WriteOffLoss, VATCorrection: true, AmountNOK: "1250.00"}
+	b.h.journal.addFact(contracts.JournalFact{Kind: contracts.FactWriteOff, SubjectID: 31, Date: day(t, "2026-06-30"),
+		InvoiceID: 9001, InvoiceNumber: 101, CustomerID: customerAcme, AmountNOK: "1250.00", Source: contracts.PaymentSourceManual, WriteOff: w})
+	catchUp(t, b.h)
+	written := expectVoucher(t, b, "write_off", 31, "1500 -1250.00", "7830 1000.00 3 base tapPåKrav", "2700 250.00 3 tax tapPåKrav")
+
+	b.h.Exec(t, `UPDATE accounting.tax_codes SET vat_account_id = $1 WHERE code = '3'`, b.acc("2701"))
+	b.h.journal.addFact(contracts.JournalFact{Kind: contracts.FactWriteOffUndone, SubjectID: 31, Date: day(t, "2026-07-02"),
+		InvoiceID: 9001, InvoiceNumber: 101, CustomerID: customerAcme, AmountNOK: "1250.00", Source: contracts.PaymentSourceManual, WriteOff: w})
+	catchUp(t, b.h)
+	undone := expectVoucher(t, b, "write_off_undone", 31, "1500 1250.00", "7830 -1000.00 3 base tapPåKrav", "2700 -250.00 3 tax tapPåKrav")
+	if undone.Reverses == nil || undone.Reverses.Id != written.Id {
+		t.Errorf("the undo reverses %+v, want voucher %s", undone.Reverses, written.Display)
+	}
+	if bal := itemBalance(t, b, 9001); bal != "1250.00" {
+		t.Errorf("the invoice's item = %s, want open again", bal)
 	}
 }

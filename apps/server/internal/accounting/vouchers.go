@@ -159,7 +159,8 @@ func (s *server) voucher(ctx context.Context, id int64) (gen.AccountingVoucher, 
 		g := gen.AccountingPosting{LineNo: p.LineNo, AccountId: p.AccountID, AccountNumber: p.AccountNumber, AccountName: p.AccountName,
 			Amount: money(mustRat(p.Amount)), TaxCodeId: p.TaxCodeID, TaxCode: p.TaxCode, TaxBase: numText(p.TaxBase),
 			CustomerId: p.CustomerID, SupplierId: p.SupplierID, OpenItemId: p.OpenItemID, ProjectId: p.ProjectID, Description: p.Description,
-			TaxSpecification: p.TaxSpecification}
+			TaxSpecification: p.TaxSpecification, PostingRuleId: p.PostingRuleID, PostingRuleVersion: p.PostingRuleVersion,
+			PostingRuleName: p.PostingRuleName}
 		if p.TaxRole != nil {
 			g.TaxRole = ptr(gen.AccountingTaxRole(*p.TaxRole))
 		}

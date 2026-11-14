@@ -9,7 +9,9 @@ package accounting
 // asks for. A change to a rule here is a new version.
 //
 // The builders are pure: they take what the books hold (salesBooks, read in
-// the fact's own transaction) and the fact, and answer a Voucher for Post, nil
+// the fact's own transaction), the fact and what it is built from (factInputs:
+// the invoice and its credit notes from the journal, the vouchers already
+// posted that it turns back or scales), and answer a Voucher for Post, nil
 // when there is nothing to post, or an *unpostable naming why the fact cannot
 // be posted — which goes under Needs attention while the cursor moves on
 // (A15).
@@ -55,6 +57,10 @@ const (
 	reasonUnknownKind     = "unknown_kind"
 	reasonDocumentUnknown = "document_unknown"
 	reasonNoRule          = "posting_rule_missing"
+	// reasonWaitingOn is a document or fact of an invoice another row under
+	// Needs attention is about (R15): it waits behind that row, and posts
+	// after it.
+	reasonWaitingOn = "waiting_on"
 )
 
 // The specification a loss's VAT taken back is reported on (A23, R4).
@@ -132,27 +138,33 @@ func (b salesBooks) taxCode(code string) (store.TaxCodesByCodeRow, error) {
 
 // revenueRule is the posting rule a sales line's net is credited by (A14):
 // the first that matches of its line kind, its product's tax category and its
-// standard tax code, then the default rule of its tax code.
+// standard tax code, then the default rule of its tax code. A rule whose
+// account is no longer an income account cannot place a line (R15): the
+// fact waits under Needs attention until the rule is pointed elsewhere.
 func (b salesBooks) revenueRule(l contracts.JournalLine) (store.SalesRulesRow, error) {
 	for _, match := range []string{"line_kind", "tax_category", "tax_code", "default"} {
 		for _, r := range b.rules {
 			if r.Match != match {
 				continue
 			}
+			matched := false
 			switch match {
 			case "line_kind":
-				if l.Kind != "" && deref(r.LineKind) == l.Kind {
-					return r, nil
-				}
+				matched = l.Kind != "" && deref(r.LineKind) == l.Kind
 			case "tax_category":
-				if l.TaxCategoryID != nil && r.TaxCategoryID != nil && *r.TaxCategoryID == *l.TaxCategoryID {
-					return r, nil
-				}
+				matched = l.TaxCategoryID != nil && r.TaxCategoryID != nil && *r.TaxCategoryID == *l.TaxCategoryID
 			default:
-				if deref(r.TaxCode) == l.SAFT {
-					return r, nil
-				}
+				matched = deref(r.TaxCode) == l.SAFT
 			}
+			if !matched {
+				continue
+			}
+			if r.AccountKind != "income" {
+				return store.SalesRulesRow{}, &unpostable{reason: codeAccountKindMismatch,
+					detail: fmt.Sprintf("The posting rule %q points at account %s, which is not an income account; point it at one under Posting rules.",
+						r.Name, r.AccountNumber)}
+			}
+			return r, nil
 		}
 	}
 	return store.SalesRulesRow{}, &unpostable{reason: reasonNoRule,
@@ -226,7 +238,8 @@ func documentVoucher(b salesBooks, d contracts.JournalDocument) (*Voucher, error
 		}
 		nets.Add(nets, net)
 		revenue = append(revenue, Line{AccountID: r.AccountID, Amount: neg(signed(net)), TaxCodeID: &tc.ID, TaxRole: "base",
-			ProjectID: l.ProjectID, Text: b.text("Line %d · rule %s v%d", "Linje %d · regel %s v%d", l.Position, r.Name, r.Version)})
+			ProjectID: l.ProjectID, PostingRuleID: &r.ID, PostingRuleVersion: &r.Version,
+			Text: b.text("Line %d · rule %s v%d", "Linje %d · regel %s v%d", l.Position, r.Name, r.Version)})
 		if largest < 0 || abs(net).Cmp(abs(neg(revenue[largest].Amount))) > 0 {
 			largest = len(revenue) - 1
 		}
@@ -299,12 +312,32 @@ func factInBooks(ctx context.Context, q *store.Queries, b salesBooks, f contract
 	return threshold != nil && f.Seq > *threshold, nil
 }
 
-// factVoucher is the voucher of a fact of the log (A13, R4, R5, R9, R14). doc
-// is the invoice the fact is about, read for a write-off's VAT correction and
-// nil otherwise. A removal is its registration's voucher with every sign
-// turned, dated the removal's day; a date before the books start or in a
-// locked period is the engine's to move (A8, R5).
-func factVoucher(b salesBooks, f contracts.JournalFact, doc *contracts.JournalDocument) (*Voucher, error) {
+// storedVoucher is a voucher already in the books, read back: its id and its
+// postings as lines.
+type storedVoucher struct {
+	id    int64
+	lines []Line
+}
+
+// factInputs is what a fact's voucher is built from besides the fact: the
+// invoice it is about and that invoice's credit notes, read from the journal
+// for a write-off's VAT correction (nil otherwise); the write-off's own
+// voucher, for a recovery; and the voucher of the registration an undo or a
+// removal of a recovery turns back. A voucher not posted is nil.
+type factInputs struct {
+	invoice  *contracts.JournalDocument
+	credits  []contracts.JournalDocument
+	writeOff *storedVoucher
+	original *storedVoucher
+}
+
+// factVoucher is the voucher of a fact of the log (A13, R4, R5, R9, R14, R15).
+// A removal is its registration's voucher with every sign turned, dated the
+// removal's day; the undoing of a write-off and the removal of a recovery turn
+// back the voucher stored for it, line for line, whatever the accounts say
+// now. A date before the books start or in a locked period is the engine's to
+// move (A8, R5).
+func factVoucher(b salesBooks, f contracts.JournalFact, in factInputs) (*Voucher, error) {
 	amount, err := amountOf(f.AmountNOK)
 	if err != nil {
 		return nil, err
@@ -346,14 +379,23 @@ func factVoucher(b salesBooks, f contracts.JournalFact, doc *contracts.JournalDo
 		if f.WriteOff == nil {
 			return nil, &unpostable{reason: reasonDocumentUnknown, detail: "The write-off's fact names no write-off."}
 		}
-		loss, rule, err := writeOffLines(b, f.WriteOff, amount, doc)
+		v.Kind = "write_off"
+		v.Description = b.text("Write-off of invoice %d", "Avskrivning av faktura %d", f.InvoiceNumber)
+		if f.Kind == contracts.FactWriteOffUndone && in.original != nil {
+			v.Rule = salesRuleWriteOffUndone
+			v.Description = b.text("Write-off of invoice %d undone", "Avskrivning av faktura %d angret", f.InvoiceNumber)
+			turnBack(v, in.original, b.text("Undone in Invoices", "Angret i Fakturering"))
+			break
+		}
+		loss, rule, err := writeOffLines(b, f.WriteOff, amount, in.invoice, in.credits)
 		if err != nil {
 			return nil, err
 		}
-		v.Kind, v.Rule = "write_off", rule
-		v.Description = b.text("Write-off of invoice %d", "Avskrivning av faktura %d", f.InvoiceNumber)
+		v.Rule = rule
 		v.Lines = append([]Line{receivables(neg(amount))}, loss...)
 		if f.Kind == contracts.FactWriteOffUndone {
+			// A write-off the books never posted — made before they started —
+			// is undone as it would have been posted.
 			v.Rule = salesRuleWriteOffUndone
 			v.Description = b.text("Write-off of invoice %d undone", "Avskrivning av faktura %d angret", f.InvoiceNumber)
 			turn(v.Lines)
@@ -362,17 +404,42 @@ func factVoucher(b salesBooks, f contracts.JournalFact, doc *contracts.JournalDo
 		if f.WriteOff == nil {
 			return nil, &unpostable{reason: reasonDocumentUnknown, detail: "The recovered payment names no write-off."}
 		}
+		v.Kind, v.Rule = "customer_payment", salesRuleRecovered
+		v.Description = b.text("Recovered on written-off invoice %d", "Innbetalt på avskrevet faktura %d", f.InvoiceNumber)
+		if f.Kind == contracts.FactRecoveredPaymentRemoved && in.original != nil {
+			v.Rule = salesRuleRecoveredRemoved
+			v.Description = b.text("Recovery on invoice %d removed", "Innbetaling på avskrevet faktura %d fjernet", f.InvoiceNumber)
+			turnBack(v, in.original, b.text("Removed in Invoices", "Fjernet i Fakturering"))
+			break
+		}
 		written, err := amountOf(f.WriteOff.AmountNOK)
 		if err != nil {
 			return nil, err
 		}
-		loss, _, err := writeOffLines(b, f.WriteOff, written, doc)
-		if err != nil {
+		before := new(big.Rat)
+		if f.WriteOff.RecoveredBeforeNOK != "" {
+			if before, err = amountOf(f.WriteOff.RecoveredBeforeNOK); err != nil {
+				return nil, err
+			}
+		}
+		var loss []Line
+		if in.writeOff != nil {
+			// The write-off's own voucher, as posted: its debits are what a
+			// recovery turns back in proportion.
+			for _, l := range in.writeOff.lines {
+				if l.OpenItemID == nil {
+					loss = append(loss, l)
+				}
+			}
+		} else if loss, _, err = writeOffLines(b, f.WriteOff, written, in.invoice, in.credits); err != nil {
 			return nil, err
 		}
-		v.Kind, v.Rule = "customer_payment", salesRuleRecovered
-		v.Description = b.text("Recovered on written-off invoice %d", "Innbetalt på avskrevet faktura %d", f.InvoiceNumber)
-		v.Lines = append([]Line{{Role: bank, Amount: amount}}, scaleTurned(loss, amount, written)...)
+		if f.Kind == contracts.FactRecoveredPaymentRemoved {
+			// A recovery the books never posted — made before they started —
+			// is removed as if it were the write-off's only one.
+			before = new(big.Rat)
+		}
+		v.Lines = append([]Line{{Role: bank, Amount: amount}}, scaleRecovery(loss, before, amount, written)...)
 		if f.Kind == contracts.FactRecoveredPaymentRemoved {
 			v.Rule = salesRuleRecoveredRemoved
 			v.Description = b.text("Recovery on invoice %d removed", "Innbetaling på avskrevet faktura %d fjernet", f.InvoiceNumber)
@@ -395,14 +462,85 @@ func turn(lines []Line) {
 	}
 }
 
-// writeOffLines is the debit side of a write-off of amount (R4), and the
+// turnBack makes v the reversal of a stored voucher (R15): its postings line
+// for line with every sign turned, on the accounts, parties, items and tax
+// codes they were posted with — an account inactive since is allowed, as a
+// reversal's — and the voucher it reverses named with reason.
+func turnBack(v *Voucher, stored *storedVoucher, reason string) {
+	v.Lines = make([]Line, 0, len(stored.lines))
+	for _, l := range stored.lines {
+		l.Amount = neg(l.Amount)
+		if l.TaxBase != nil {
+			l.TaxBase = neg(l.TaxBase)
+		}
+		v.Lines = append(v.Lines, l)
+	}
+	v.Reverses, v.ReversalReason = &stored.id, reason
+}
+
+// vatKey is a VAT summary's code and rate: what a credit note's summary is
+// taken from (R15).
+type vatKey struct{ saft, rate string }
+
+// remainingSummaries is the invoice's VAT summaries less its credit notes',
+// per code and rate, in the invoice's order (R15): what a write-off's VAT
+// correction is shared over, since what a credit note took back is no longer
+// owed.
+func remainingSummaries(doc *contracts.JournalDocument, credits []contracts.JournalDocument) ([]contracts.JournalVATSummary, error) {
+	type sums struct{ base, vat *big.Rat }
+	left := map[vatKey]*sums{}
+	var order []vatKey
+	take := func(v contracts.JournalVATSummary, sign int64) error {
+		base, err := amountOf(v.BaseNOK)
+		if err != nil {
+			return err
+		}
+		vat, err := amountOf(v.VATNOK)
+		if err != nil {
+			return err
+		}
+		k := vatKey{v.SAFT, v.RatePercent}
+		s, ok := left[k]
+		if !ok {
+			s = &sums{base: new(big.Rat), vat: new(big.Rat)}
+			left[k] = s
+			order = append(order, k)
+		}
+		f := big.NewRat(sign, 1)
+		s.base.Add(s.base, new(big.Rat).Mul(base, f))
+		s.vat.Add(s.vat, new(big.Rat).Mul(vat, f))
+		return nil
+	}
+	for _, v := range doc.VATSummaries {
+		if err := take(v, 1); err != nil {
+			return nil, err
+		}
+	}
+	for _, c := range credits {
+		for _, v := range c.VATSummaries {
+			if err := take(v, -1); err != nil {
+				return nil, err
+			}
+		}
+	}
+	out := make([]contracts.JournalVATSummary, 0, len(order))
+	for _, k := range order {
+		out = append(out, contracts.JournalVATSummary{SAFT: k.saft, RatePercent: k.rate,
+			BaseNOK: left[k].base.FloatString(2), VATNOK: left[k].vat.FloatString(2)})
+	}
+	return out, nil
+}
+
+// writeOffLines is the debit side of a write-off of amount (R4, R15), and the
 // rule it follows: a rounding to the rounding account; a loss or other
-// without the correction to bad debt, whole; with it, amount shared over the
-// invoice's VAT summaries in proportion to their gross, each share's VAT
-// debited to its code's VAT account and the rest to bad debt, the VAT and its
-// base marked for the return's tapPåKrav. The shares are rounded to øre and
-// the last summary takes what rounding left, so they sum to amount.
-func writeOffLines(b salesBooks, w *contracts.JournalWriteOff, amount *big.Rat, doc *contracts.JournalDocument) ([]Line, string, error) {
+// without the correction to bad debt, whole; with it, amount shared over what
+// is left of the invoice's VAT summaries once its credit notes' are taken off,
+// per code and rate, in proportion to their gross, each share's VAT debited
+// to its code's VAT account and the rest to bad debt, the VAT and its base
+// marked for the return's tapPåKrav. Payments are in proportion: they are not
+// taken off. The shares are rounded to øre and the last summary takes what
+// rounding left, so they sum to amount.
+func writeOffLines(b salesBooks, w *contracts.JournalWriteOff, amount *big.Rat, doc *contracts.JournalDocument, credits []contracts.JournalDocument) ([]Line, string, error) {
 	switch {
 	case w.Reason == contracts.WriteOffRounding:
 		return []Line{{Role: roleRounding, Amount: new(big.Rat).Set(amount)}}, salesRuleWriteOffRounding, nil
@@ -418,7 +556,11 @@ func writeOffLines(b salesBooks, w *contracts.JournalWriteOff, amount *big.Rat, 
 	}
 	var rows []summary
 	total := new(big.Rat)
-	for _, s := range doc.VATSummaries {
+	summaries, err := remainingSummaries(doc, credits)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, s := range summaries {
 		base, err := amountOf(s.BaseNOK)
 		if err != nil {
 			return nil, "", err
@@ -467,24 +609,40 @@ func writeOffLines(b salesBooks, w *contracts.JournalWriteOff, amount *big.Rat, 
 	return out, salesRuleWriteOffVAT, nil
 }
 
-// scaleTurned is a write-off's debit lines scaled to a recovery (R4): each
-// line times recovered / written, rounded to øre, the last line taking what
-// rounding left so they sum to recovered, every sign turned — the recovery
-// credits bad debt and gives the VAT back in the write-off's proportion.
-func scaleTurned(lines []Line, recovered, written *big.Rat) []Line {
-	out := make([]Line, 0, len(lines))
+// scaleRecovery is a write-off's debit lines scaled to a recovery (R4, R15),
+// every sign turned — the recovery credits bad debt and gives the VAT back in
+// the write-off's proportion. It scales cumulatively: each line is its share
+// of what is recovered with this one, before + recovered, less its share of
+// what was recovered before, each share rounded to øre, so the recoveries of
+// a write-off add up to its lines exactly once all of it is recovered. What
+// rounding leaves goes on a bad debt line with no tax code — the first such
+// line, or one of its own — never on a VAT line.
+func scaleRecovery(lines []Line, before, recovered, written *big.Rat) []Line {
+	share := func(r, of *big.Rat) *big.Rat {
+		return docmath.Round2(new(big.Rat).Quo(new(big.Rat).Mul(r, of), written))
+	}
+	after := add(before, recovered)
+	out := make([]Line, 0, len(lines)+1)
 	left := new(big.Rat).Set(recovered)
-	for i, l := range lines {
-		part := left
-		if i < len(lines)-1 {
-			part = docmath.Round2(new(big.Rat).Quo(new(big.Rat).Mul(l.Amount, recovered), written))
-		}
+	plain := -1
+	for _, l := range lines {
+		part := sub(share(l.Amount, after), share(l.Amount, before))
 		left = sub(left, part)
 		l.Amount = neg(part)
 		if l.TaxBase != nil {
-			l.TaxBase = neg(docmath.Round2(new(big.Rat).Quo(new(big.Rat).Mul(l.TaxBase, recovered), written)))
+			l.TaxBase = neg(sub(share(l.TaxBase, after), share(l.TaxBase, before)))
+		}
+		if plain < 0 && l.TaxCodeID == nil && l.TaxRole != "tax" {
+			plain = len(out)
 		}
 		out = append(out, l)
+	}
+	if left.Sign() != 0 {
+		if plain < 0 {
+			out = append(out, Line{Role: roleBadDebt, Amount: new(big.Rat)})
+			plain = len(out) - 1
+		}
+		out[plain].Amount = sub(out[plain].Amount, left)
 	}
 	return out
 }

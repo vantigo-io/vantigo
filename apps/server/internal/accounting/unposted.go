@@ -2,8 +2,9 @@ package accounting
 
 // Needs attention (A15) and the catch-up's state: the source facts that could
 // not be posted, each with Retry — read again through Invoices' sales journal
-// and posted when its cause is fixed — and where each stream stands. There is
-// no dismissal: a fact the books cannot hold is fixed, never waved away.
+// and posted when its cause is fixed, then what waited behind it, in order
+// (R15) — and where each stream stands. There is no dismissal: a fact the
+// books cannot hold is fixed, never waved away.
 
 import (
 	"context"
@@ -29,7 +30,7 @@ func unpostedView(r store.GetUnpostedRow, names map[int32]string) gen.Accounting
 		Source:   gen.AccountingSource{Module: r.SourceModule, Kind: r.SourceKind, Id: r.SourceID, Part: r.SourcePart},
 		FactDate: apiDatePtr(r.FactDate), DocumentId: r.DocumentID, DocumentNumber: r.DocumentNumber, CustomerId: r.CustomerID,
 		Reason: r.Reason, Detail: r.Detail, Attempts: r.Attempts, FirstSeenAt: r.FirstSeenAt, LastTriedAt: r.LastTriedAt,
-		PostedAt: r.PostedAt}
+		PostedAt: r.PostedAt, InvoiceId: r.InvoiceID, WaitingOn: r.WaitingOn}
 	if r.Amount != "" {
 		out.Amount = ptr(money(mustRat(r.Amount)))
 	}
@@ -74,14 +75,17 @@ func (s *server) ListAccountingUnposted(ctx context.Context, req gen.ListAccount
 			FactDate: r.FactDate, DocumentID: r.DocumentID, DocumentNumber: r.DocumentNumber, CustomerID: r.CustomerID,
 			Amount: r.Amount, Reason: r.Reason, Detail: r.Detail, Attempts: r.Attempts, FirstSeenAt: r.FirstSeenAt,
 			LastTriedAt: r.LastTriedAt, PostedVoucherID: r.PostedVoucherID, PostedAt: r.PostedAt, VoucherYear: r.VoucherYear,
-			VoucherNumber: r.VoucherNumber}, names))
+			VoucherNumber: r.VoucherNumber, InvoiceID: r.InvoiceID, WaitingOn: r.WaitingOn}, names))
 	}
 	return out, nil
 }
 
 // RetryAccountingUnposted reads the fact again through the journal, with no
-// transaction open, and posts it in one transaction (A15). The answer is the
-// row: with its voucher when it posted, with its new reason when it did not.
+// transaction open, and posts it in one transaction (A15). When it posts, the
+// rows of its invoice that waited behind it are retried the same way, one
+// transaction each, in the order they were met, until one does not post
+// (R15). The answer is the row: with its voucher when it posted, with its new
+// reason when it did not.
 func (s *server) RetryAccountingUnposted(ctx context.Context, req gen.RetryAccountingUnpostedRequestObject) (gen.RetryAccountingUnpostedResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	row, err := q.GetUnposted(ctx, req.Id)
@@ -94,22 +98,22 @@ func (s *server) RetryAccountingUnposted(ctx context.Context, req gen.RetryAccou
 	if row.PostedAt != nil {
 		return nil, conflict(codeUnpostedPosted, "The fact has posted", "")
 	}
-	it, err := s.reread(ctx, row)
+	got, err := s.retry(ctx, row)
 	if err != nil {
 		return nil, err
 	}
-	now := s.now()
-	err = s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
-		if it == nil {
-			return recordUnposted(ctx, q, sourceItem{stream: row.Stream, position: row.Position, fact: &contracts.JournalFact{
-				Seq: row.Position, Kind: row.SourceKind, SubjectID: row.SourceID, AmountNOK: row.Amount}},
-				reasonDocumentUnknown, "Invoices' journal no longer answers this fact.", now)
+	if got == outcomePosted && row.InvoiceID != nil {
+		dependants, err := q.UnpostedDependants(ctx, store.UnpostedDependantsParams{InvoiceID: row.InvoiceID, AfterID: row.ID})
+		if err != nil {
+			return nil, err
 		}
-		_, err := postSource(ctx, tx, *it, now)
-		return err
-	})
-	if err != nil {
-		return nil, err
+		for _, d := range dependants {
+			if got, err := s.retry(ctx, store.GetUnpostedRow(d)); err != nil {
+				return nil, err
+			} else if got != outcomePosted {
+				break
+			}
+		}
 	}
 	row, err = q.GetUnposted(ctx, req.Id)
 	if err != nil {
@@ -120,6 +124,29 @@ func (s *server) RetryAccountingUnposted(ctx context.Context, req gen.RetryAccou
 		ids = append(ids, *row.CustomerID)
 	}
 	return gen.RetryAccountingUnposted200JSONResponse(unpostedView(row, s.customerNames(ctx, ids))), nil
+}
+
+// retry reads a row's fact again, with no transaction open, and posts it in
+// one transaction, answering what it came to.
+func (s *server) retry(ctx context.Context, row store.GetUnpostedRow) (outcome, error) {
+	it, err := s.reread(ctx, row)
+	if err != nil {
+		return outcomeSkipped, err
+	}
+	now := s.now()
+	got := outcomeUnposted
+	err = s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		if it == nil {
+			return recordUnposted(ctx, q, sourceItem{stream: row.Stream, position: row.Position, fact: &contracts.JournalFact{
+				Seq: row.Position, Kind: row.SourceKind, SubjectID: row.SourceID, AmountNOK: row.Amount,
+				InvoiceID: deref(row.InvoiceID)}},
+				reasonDocumentUnknown, "Invoices' journal no longer answers this fact.", nil, now)
+		}
+		var err error
+		got, err = postSource(ctx, tx, *it, now)
+		return err
+	})
+	return got, err
 }
 
 // reread is the fact a row stands for, read again through the journal: nil
