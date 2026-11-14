@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00118_invoices_tax_category_vat_codes.sql
   - apps/server/internal/db/migrations/00122_invoices_order_sources.sql
   - apps/server/internal/db/migrations/00150_invoices_events.sql
+  - apps/server/internal/db/migrations/00178_invoices_journal.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -5319,7 +5320,7 @@ The module fills both customer slots ([module boundaries](/en/contributing/modul
 
 ## What Invoices reports to other modules
 
-This module provides two single-provider contracts. The first is
+This module provides three single-provider contracts. The first is
 [`contracts.CustomerReceivables`](/en/reference/customers/#contractscustomerreceivables)
 (`receivables.go`, `Module().Receivables`): what one customer was invoiced and owes,
 for the customers module's [Customer 360](/en/reference/customers/#customer-360)
@@ -5365,6 +5366,94 @@ Orders, which requires Invoices and so reads it as always present. Decided in
 Every method reads this module's own tables on the pool, holds no lock and opens no
 transaction, so a caller asks before it opens its own (rule 8's discipline); the
 provider is given the pool and the business calendar and nothing else.
+
+The third is **`contracts.SalesJournal`** (`sales_journal.go`, `Module().SalesJournal`,
+`Deps.SalesJournal`, resolved by Compose and by `module.Workers` alike): what this module
+issued and was paid, in an order a reader resumes from — the source a ledger posts from.
+Decided in
+[`docs/superpowers/specs/2026-11-14-accounting-design.md`](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-14-accounting-design.md)
+(A12, R1, R6). Nil when invoices is disabled. A reader keeps its own cursors and asks
+after them again until a page comes back short; a page is at most 500
+(`contracts.MaxJournalPage`).
+
+- **`Documents(ctx, afterNumber, limit)`** — the issued invoices and credit notes numbered
+  after `afterNumber`, in number order: id, number, kind, issue and due date, customer,
+  currency, the credited invoice's id and number, the totals, every line (id, position,
+  net in NOK, [what it was made from](#what-a-line-was-made-from), and the SAF-T code,
+  category and rate it was issued with) and every VAT summary (SAF-T code, category,
+  rate, base and VAT in NOK). A credit note and its lines are answered positive, as they
+  are stored; the kind says which way they go. **The number cursor never skips:** every
+  path that issues a document — the issue endpoint, the billing worker
+  (`issueDraft`), the quick invoice (`issueLocked`), a credit note, a settlement — takes
+  its number with `AllocateNumber`, which holds the `documents` counter row from the
+  allocation to the commit, so numbers become visible in order.
+- **`Facts(ctx, afterSeq, limit)`** — [the fact log](#the-fact-log) after `afterSeq`, in
+  seq order, each joined to what it is about: kind, seq, the payment's or charge
+  payment's id, the business day, the invoice's id, number and customer, the amount in
+  NOK, the source (`manual`, `ocr`, `camt054`, `vipps`), the receiving account number
+  when it came from a bank line (`""` otherwise), and for a charge payment what it paid:
+  its parts `reminder_fee`, `compensation`, `interest` and `refund_due` (paid beyond every
+  charge). A charge payment pays an invoice's charges, not one of its own, so the parts
+  are [the charges' allocation](#charges) — the sent letters' fees and compensation
+  oldest first, then the interest — over the letters sent and the waivers made by the
+  time it was registered, with it and without it, the charge payments registered before
+  it and not yet removed counted first. A removal answers its registration's parts.
+- **`OpenAt(ctx, day)`** — every invoice issued on or before `day` whose open amount at
+  the end of that day is not zero, in number order: the gross, less the credit notes
+  issued on or before the day, less the payments paid on or before it and not removed by
+  the end of it in the workspace's business time zone. Charges are never in it; below
+  zero is credit owed back.
+
+Amounts are exact two-decimal text. Invoices issues NOK only in this phase, so an
+amount in NOK is the document's own at its rate of 1.
+
+### The fact log
+
+A document has its number; a payment does not have an order a reader can resume from —
+its id is taken before its transaction commits, and a removal is an update.
+`invoices.journal_facts` (migration 00178) gives them one: a row for every registration
+and every removal of a payment and of a charge payment, with `seq`, `kind` (`payment`,
+`payment_removed`, `charge_payment`, `charge_payment_removed`), the row it is about
+(`subject_id`), the invoice, and the day — a registration's `paid_on` in
+`business_date`; a removal's moment in `removed_at`, whose business day the provider
+takes, since this schema cannot read the workspace's time zone. Exactly one of the two is
+set, and one fact of each kind exists for a row (`ux_journal_facts_subject`).
+
+- **Written by the database.** Four deferred constraint triggers
+  (`tr_payments_journal_registered`, `tr_payments_journal_removed` and the two on
+  `charge_payments`, `DEFERRABLE INITIALLY DEFERRED`) write the row when the transaction
+  commits: an insert is a registration, an update that sets `removed_at` a removal.
+  Every path that registers or removes — a person, a bank line matched or applied, a
+  reversal, a Vipps capture — writes its fact without knowing it.
+- **Numbered at commit.** `seq` comes from the counter row `journal`, beside `documents`
+  in `invoices.counters`, made by the first fact. The deferred trigger takes it last thing
+  before the commit and holds it for that instant, so two transactions take their seqs in
+  the order they commit and a seq is visible before the next is taken: a reader paging by
+  seq never passes a fact that commits later with a lower one, and a transaction that
+  rolls back gives its seq back. A bank line paying several invoices takes it after every
+  invoice lock it needs, so it cannot deadlock on it.
+- **Append-only.** `tr_journal_facts_immutable` refuses every update and delete.
+- **History.** The migration numbered what was there before it: every registration,
+  payments and charge payments together, in (`registered_at`, id) order, then every
+  removal in (`removed_at`, id) order. A company that turns the ledger on later finds its
+  whole history.
+
+### What a line was made from
+
+Every line is issued with three more snapshots, written by the statement that already
+writes its VAT (`SnapshotLine`), while the document is still a draft —
+`refuse_issued_child_change` refuses them after, as it refuses every write:
+
+| Column | Is |
+| --- | --- |
+| `line_kind` | `hours`, `expense`, `milestone` (a project's work), `settlement` (energy), `order_line`, `subscription_period` (an order allocation's), `deduction` (an a-konto deducted), `manual` (made from nothing), or `mixed` (sources of more than one kind) |
+| `tax_category_id` | the product's tax category in Products, for a line billing an order line with a product; the From orders wizard reads it through the product catalog when it makes the draft and keeps it on the held row (`line_sources.tax_category_id`) |
+| `project_id` | the project every source of the line belongs to; none when they are several or there are none |
+
+They are read from the line's sources — an energy settlement's covering all its lines —
+and a credit note's line takes its original line's. A draft made before migration 00178
+gets them at its issue like any other; a line issued before it has none, and a reader
+falls back to its VAT code.
 
 ## Permissions
 
@@ -5673,21 +5762,29 @@ purge of anything.
 
 ## Events
 
-Two events go onto the [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox) for the
-[virtual employees](/en/reference/agents/) (design V30). A payload carries ids, numbers, amounts and dates and never personal
+Four events go onto the [domain-events outbox](/en/contributing/platform-packages/#the-domain-events-outbox): two for the
+[virtual employees](/en/reference/agents/) (design V30), and two that wake a ledger's reader of
+[`contracts.SalesJournal`](#what-invoices-reports-to-other-modules) (accounting design A12) — the contract is the source, the
+event only makes the reader prompt. A payload carries ids, numbers, amounts and dates and never personal
 data: no buyer name, address or e-mail, and none of a payment's free text (`reference`, `note`).
 
 | Event (v1) | When | Payload |
 | --- | --- | --- |
 | `invoices.invoice.overdue` | An issued invoice's state became overdue (`invoices.document_state` on the business day, the overdue list's and the stats'). Published **once for each invoice** | `invoiceId`, `number`, `customerId`, `dueDate`, `day`, `currency`, `grossTotal` |
-| `invoices.payment.received` | A payment is registered against an invoice, by a person, a matched or applied bank line, or a Vipps capture. A removal is not an event | `paymentId`, `invoiceId`, `number`, `customerId`, `amount`, `currency`, `paidOn`, `source` (`manual`, `ocr`, `camt054`, `vipps`), `registeredAt` |
+| `invoices.payment.received` | A payment is registered against an invoice, by a person, a matched or applied bank line, or a Vipps capture. Its removal is `invoices.payment.removed` | `paymentId`, `invoiceId`, `number`, `customerId`, `amount`, `currency`, `paidOn`, `source` (`manual`, `ocr`, `camt054`, `vipps`), `registeredAt` |
+| `invoices.payment.removed` | A payment registration is removed, by a person or as a reversal the bank reported. Published **once for each payment** | `paymentId`, `invoiceId`, `number`, `customerId`, `amount`, `currency`, `paidOn`, `source`, `removedAt` (the moment; its business day is the removal fact's day) |
+| `invoices.document.issued` | An invoice or a credit note is issued, by any path | `documentId`, `number`, `kind` (`invoice`, `credit_note`), `customerId`, `issueDate`, `grossTotal` (positive on a credit note too), `currency` |
 
 **`invoices-overdue-events`** (every 15 minutes) selects the issued invoices that are overdue on the business day and not yet
 in `invoices.overdue_announced`, `FOR UPDATE OF` the invoice row with `SKIP LOCKED` so replicas share the work, and for each writes
 its row in `overdue_announced` and publishes the event in the same transaction, up to 200 a pass. **`payment.received`** is published
 by a trigger on `invoices.payments` (`tr_payments_received`, migration 00150), because four write paths register payments, two of
 them without the transaction in hand; every one holds the invoice `FOR UPDATE` and the event commits with the payment or not at all.
-The aggregate of the payment event is the payment. Any insert into `invoices.payments` publishes, whichever path made it: the trigger cannot know the path. The overdue worker announces only an invoice that fell due in the last seven days, and migration 00150 marks the invoices already past due when it runs as announced, so a backlog of old invoices does not wake every follow-up at once.
+**`payment.removed`** is published the same way, by `tr_payments_removed` (migration 00178), an `AFTER UPDATE` trigger whose
+condition is `removed_at` going from null to a value; two paths remove a payment, each holding the invoice `FOR UPDATE`, and no
+reason or note goes into the payload. **`document.issued`** is published from Go by the issue itself (`issueLocked`), on its
+transaction and under the document's lock, as the last write before the pay link: every path that issues runs it, and a refused
+issue publishes nothing. The aggregate of the two payment events is the payment, and of `document.issued` the document. Any insert into `invoices.payments` publishes, whichever path made it: the trigger cannot know the path. The overdue worker announces only an invoice that fell due in the last seven days, and migration 00150 marks the invoices already past due when it runs as announced, so a backlog of old invoices does not wake every follow-up at once.
 
 ## Agents and the customer scope
 
