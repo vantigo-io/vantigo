@@ -202,7 +202,7 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 		var reason *string
 		switch {
 		case errors.Is(syncErr, bankfeed.ErrUnauthorized):
-		case errors.Is(syncErr, errFeedAnswerTooLarge):
+		case errors.Is(syncErr, errFeedAnswerTooLarge), errors.Is(syncErr, errFeedNoProgress):
 			reason = ptr(failedAnswerTooLarge)
 			w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; the bank's answer for one day is too large",
 				"worker", bankFeedWorkerName, "account", account, "failures", failures)
@@ -258,6 +258,8 @@ func feedFailureDetail(err error) string {
 		return "The stored bank API key cannot be read on this server. Store the key again."
 	case errors.Is(err, errFeedAnswerTooLarge):
 		return "The bank's answer for one day is too large to read."
+	case errors.Is(err, errFeedNoProgress):
+		return "The bank's answers are too large for the account to be read forward this time."
 	case errors.Is(err, bankfeed.ErrUnauthorized):
 		return "The bank refused the API key, and the refusal could not be recorded; it is tried again later."
 	case errors.Is(err, context.DeadlineExceeded):

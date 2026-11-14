@@ -14,7 +14,7 @@ import (
 )
 
 const advanceBankFeedRead = `-- name: AdvanceBankFeedRead :execrows
-UPDATE invoices.bank_feed_accounts SET read_through = $1
+UPDATE invoices.bank_feed_accounts SET read_through = greatest(read_through, $1::date)
 WHERE account = $2 AND lease_id = $3::text
 `
 
@@ -26,7 +26,9 @@ type AdvanceBankFeedReadParams struct {
 
 // AdvanceBankFeedRead moves an account's read cursor to the end of a window
 // the sync read and judged to the end (00179): the next read starts ten days
-// before it. Only under the claim's lease; no row is the claim lost.
+// before it. It never moves back — a window of the overlap ends before it —
+// and greatest ignores a NULL cursor. Only under the claim's lease; no row
+// is the claim lost.
 func (q *Queries) AdvanceBankFeedRead(ctx context.Context, arg AdvanceBankFeedReadParams) (int64, error) {
 	result, err := q.db.Exec(ctx, advanceBankFeedRead, arg.ReadThrough, arg.Account, arg.LeaseID)
 	if err != nil {

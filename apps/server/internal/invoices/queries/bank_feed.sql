@@ -238,6 +238,8 @@ WHERE account = @account AND lease_id = @lease_id::text;
 -- name: AdvanceBankFeedRead :execrows
 -- AdvanceBankFeedRead moves an account's read cursor to the end of a window
 -- the sync read and judged to the end (00179): the next read starts ten days
--- before it. Only under the claim's lease; no row is the claim lost.
-UPDATE invoices.bank_feed_accounts SET read_through = @read_through
+-- before it. It never moves back — a window of the overlap ends before it —
+-- and greatest ignores a NULL cursor. Only under the claim's lease; no row
+-- is the claim lost.
+UPDATE invoices.bank_feed_accounts SET read_through = greatest(read_through, @read_through::date)
 WHERE account = @account AND lease_id = @lease_id::text;

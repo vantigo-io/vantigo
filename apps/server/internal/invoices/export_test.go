@@ -893,3 +893,11 @@ func SetBankFeedBeforeMark(hook func(ctx context.Context) error) func() {
 	bankFeedBeforeMark = hook
 	return func() { bankFeedBeforeMark = nil }
 }
+
+// SetBankFeedCallsPerCycle sets the calls a bank feed cycle makes at most,
+// and answers the function that restores the default.
+func SetBankFeedCallsPerCycle(n int) func() {
+	before := bankFeedCallsPerCycle
+	bankFeedCallsPerCycle = n
+	return func() { bankFeedCallsPerCycle = before }
+}

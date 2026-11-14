@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/bankfeed/folio/foliotest"
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -43,10 +44,10 @@ func readThroughOf(t *testing.T, h *harness, account string) string {
 	return modtest.One[string](t, h.Harness, `SELECT coalesce(read_through::text, '-') FROM invoices.bank_feed_accounts WHERE account = $1`, account)
 }
 
-// An account that only pays out keeps no line, yet each daily read starts
-// ten days before the last day read — yesterday's read, so eleven days
-// before today: the cursor moves with every window read to its end, so the
-// window never grows.
+// An account that only pays out keeps no line, yet each daily cycle reads
+// the one day past the cursor, then the ten days before yesterday's cursor
+// again: the cursor moves with every window read to its end, so the reads
+// never grow.
 func TestBankFeedCursor_AnAccountWithOnlyDebitsReadsTenDays(t *testing.T) {
 	t.Parallel()
 	h, _ := syncHarness(t)
@@ -57,9 +58,10 @@ func TestBankFeedCursor_AnAccountWithOnlyDebitsReadsTenDays(t *testing.T) {
 		windows := transactionWindows(t, h)
 		today := h.Now().Format(time.DateOnly)
 		if day > 0 {
-			want := h.Now().AddDate(0, 0, -11).Format(time.DateOnly) + ".." + today
-			if got := windows[len(windows)-1]; got != want {
-				t.Fatalf("day %d: the read = %s, want %s", day, got, want)
+			yesterday := h.Now().AddDate(0, 0, -1)
+			want := []string{today + ".." + today, yesterday.AddDate(0, 0, -10).Format(time.DateOnly) + ".." + yesterday.Format(time.DateOnly)}
+			if got := windows[len(windows)-2:]; !slices.Equal(got, want) {
+				t.Fatalf("day %d: the reads = %v, want %v", day, got, want)
 			}
 		}
 		if got := readThroughOf(t, h, sellerAccount); got != today {
@@ -105,7 +107,7 @@ func TestBankFeedCursor_ALongFirstReadDrainsInWindows(t *testing.T) {
 			t.Errorf("window %s is %d days, want at most 31", w, days)
 		}
 	}
-	if !strings.HasPrefix(windows[0], start+"..") || !strings.HasSuffix(windows[len(windows)-1], ".."+h.Now().Format(time.DateOnly)) {
+	if !strings.HasPrefix(windows[0], start+"..") || !slices.ContainsFunc(windows, func(w string) bool { return strings.HasSuffix(w, ".."+h.Now().Format(time.DateOnly)) }) {
 		t.Errorf("the windows = %v, want from %s to today", windows, start)
 	}
 	if n := h.Count(t, `SELECT count(*) FROM invoices.bank_transactions WHERE format = 'feed'`); n != 14 {
@@ -187,5 +189,80 @@ func TestBankFeedCursor_ANewStartDayResetsTheCursor(t *testing.T) {
 	windows := transactionWindows(t, h)
 	if got := windows[1]; got != "2026-08-01..2026-08-31" {
 		t.Errorf("the first read after the new start day = %s, want from it", got)
+	}
+}
+
+// A bank whose answers are too large for any read over three days (second
+// review, H1): each cycle halves its first window down to three days, keeps
+// that size for the rest of the cycle, and moves the cursor forward only —
+// never back to a window of the overlap. The account drains to today in
+// bounded calls, and each payment is registered once.
+func TestBankFeedCursor_SmallWindowsDrainWithoutRegressing(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	var invs []invoiceJSON
+	for range 4 {
+		invs = append(invs, kidInvoice(t, h))
+	}
+	feedReady(t, h)
+	for i, day := range []string{"2026-09-13", "2026-09-20", "2026-09-30", "2026-10-06"} {
+		h.folio.AddTransaction(sellerAccount, incoming(txID(i+1), day, "1000.00", *invs[i].Kid))
+	}
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Oversized: true, OverDays: 3})
+	ctx := t.Context()
+	w := feedWorker(t, h.Deps())
+	last, cycles := "", 0
+	for ; cycles < 40; cycles++ {
+		before := len(transactionWindows(t, h))
+		processed, err := w.ProcessOne(ctx)
+		if err != nil {
+			t.Fatalf("cycle %d: %v", cycles, err)
+		}
+		if !processed {
+			break
+		}
+		if calls := len(transactionWindows(t, h)) - before; calls > 8 {
+			t.Errorf("cycle %d made %d calls, want at most 8", cycles, calls)
+		}
+		got := readThroughOf(t, h, sellerAccount)
+		if got == "-" || (last != "" && got < last) {
+			t.Fatalf("cycle %d: the cursor = %s after %s, want it never to move back", cycles, got, last)
+		}
+		last = got
+	}
+	if last != "2026-10-07" {
+		t.Errorf("the cursor after %d cycles = %s, want today", cycles, last)
+	}
+	for _, inv := range invs {
+		if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+			t.Errorf("invoice %d's payments = %v, want one", inv.ID, got)
+		}
+	}
+	if s := feedStateOf(t, h, sellerAccount); s.status != "ok" || s.failures != 0 {
+		t.Errorf("the account = %+v, want ok", s)
+	}
+}
+
+// A cycle that spends its calls and reads nothing past the cursor it
+// started with fails as answer_too_large and backs off, instead of being
+// due again at once for ever (second review, H1). Reading forward first, a
+// cycle always moves on unless its calls run out halving the first window:
+// here a budget of two calls against answers too large past three days.
+func TestBankFeedCursor_NoProgressBacksOff(t *testing.T) {
+	h, _ := syncHarness(t)
+	feedReady(t, h)
+	restore := invoices.SetBankFeedCallsPerCycle(2)
+	defer restore()
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Oversized: true, OverDays: 3})
+	syncNow(t, h)
+	s := feedStateOf(t, h, sellerAccount)
+	if s.reason != "answer_too_large" || s.failures != 1 || s.next == nil || !s.next.Equal(h.Now().Add(time.Hour)) {
+		t.Errorf("a cycle without progress: %+v, want one failure answer_too_large, due in an hour", s)
+	}
+	if got := readThroughOf(t, h, sellerAccount); got != "-" {
+		t.Errorf("the cursor = %s, want none yet", got)
+	}
+	if n := len(transactionWindows(t, h)); n != 2 {
+		t.Errorf("%d calls, want the budget of 2", n)
 	}
 }
