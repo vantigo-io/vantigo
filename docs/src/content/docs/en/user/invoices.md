@@ -1183,8 +1183,8 @@ Instead of importing files, an account can be read from the bank itself. Today t
    what a key can do: it reads every account and transaction of the company, and it cannot
    move money — a payment made with it is a draft until a person signs it with BankID.
 2. Under **Accounts**, the bank's accounts are listed as the bank answers them now. Pick the
-   **Start day** — nothing booked before it is read, so payments already registered are not
-   registered again — and turn on the switch. Only the seller's **Bank account**, or one an
+   **Start day** — today or earlier, at most 13 months back; nothing booked before it is
+   read, so payments already registered are not registered again — and turn on the switch. Only the seller's **Bank account**, or one an
    issued invoice printed, can be switched on, and never a card account; the row says why
    when one cannot.
 3. The account's format becomes **Bank feed**. An account that had **OCR giro** or
@@ -1194,7 +1194,9 @@ Instead of importing files, an account can be read from the bank itself. Today t
 **Replace the key** saves a new key the same way, and brings back an account the bank had
 refused the old key for. **Disconnect** removes the key and switches every account off;
 the bank files, the payments registered from them and each account's format stay. When the
-installation allows no bank feed, the page says so and offers no **Connect**. In this
+installation allows no bank feed — the default in this release — the page says so and
+the **Connect** button stays disabled; an account the feed is switched on for is still
+listed, so it can be switched off. In this
 release the feed does not yet read the payments: an account switched on gets nothing from
 the bank, and files are no longer imported for it, so switch the feed on for an account
 only when Vantigo reads the payments ([Payments from the bank](/en/admin/payments/#the-bank-feed)).

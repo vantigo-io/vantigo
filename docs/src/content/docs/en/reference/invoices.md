@@ -3251,7 +3251,8 @@ port](/en/contributing/platform-packages/#the-bank-feed-port)). This part is the
 connection and the accounts; the sync that reads them is not built yet, so no feed batch,
 no feed line and no `bank_feed` payment exists yet.
 
-**The instance switch.** `INVOICES_BANK_FEED_ENABLED` (default on) and
+**The instance switch.** `INVOICES_BANK_FEED_ENABLED` (default off while the sync is not
+built, since a switched-on account takes no more files and nothing reads it) and
 `INVOICES_FOLIO_BASE_URL` (default `https://api.folio.no/v2`, `https` only — refused at
 load otherwise) are the operator's. With the switch off no Folio client is made and
 nothing is sent to the bank: a connection PUT, the accounts list and a switch on answer
@@ -3307,22 +3308,33 @@ accounts are held to. 409 `bank_feed_disabled` or **`bank_feed_not_connected`**;
 startDay?}`; `account` must be 11 digits with a valid check digit (400 on `account`).
 409 `bank_feed_not_connected` without a connection.
 
-- **On**: `startDay` defaults to today in the business time zone and may not be after it
-  (400 on `startDay`). The bank's accounts are read first, outside any transaction (409
+- **On**: `startDay` defaults to today in the business time zone and may be neither after
+  it nor more than 13 months before it (400 on `startDay`). The bank's accounts are read first, outside any transaction (409
   `bank_feed_disabled`, 422, 503 as above); the account must be one it answers and not a
   card (409 **`bank_feed_account_not_offered`**) and the seller's (409
   `bank_account_unknown`, naming its last four digits). Then one transaction: the
   account's `bank_import_accounts` row inserted with format `feed` by the caller when it
   has none — the import's own statement — then taken `FOR UPDATE`; the connection read
   `FOR SHARE`, so a DELETE meanwhile waits and then switches the account off with the
-  rest (gone already: 409 `bank_feed_not_connected`); a row in another format changed
+  rest (gone already: 409 `bank_feed_not_connected`; written over by another key since
+  the bank's read, whose version — its `updated_at` — differs: 409
+  **`bank_feed_key_changed`**); a row in another format changed
   to `feed` exactly as the format PUT changes one — `previous_format` the old one and
   `cutover_through` the latest booking day of the account's own lines in it — a row
-  already `feed` left as it is; then `invoices.bank_feed_accounts` upserted `enabled`,
+  already `feed` left as it is (a change to or from `feed` whose old format brought the
+  account no lines carries the previous format and cutover forward instead, so a detour
+  through the feed loses no file cutover); then `invoices.bank_feed_accounts` upserted `enabled`,
   from `startDay`, `status` `ok`, no reason, no failures, due now, by the caller.
 - **Off**: the account's import row `FOR UPDATE`, then the feed row `enabled` false, no
   next sync, its lease cleared; its format is left as it is. 404 for an account the feed
-  was never switched on for.
+  was never switched on for. The switch off, and the DELETE, are logged at info with the
+  caller's user id: neither table keeps who did them.
+
+**The rate limits.** Per client, under policies of their own: the connection PUT 10 per 10
+minutes (`invoices-bank-feed-key`), since each tries a key against the bank; the accounts
+list 60 per 10 minutes (`invoices-bank-feed-accounts`) and the switch 60 per 10 minutes
+(`invoices-bank-feed-switch`), each a call to the bank. Past one, 429 with
+`Retry-After`.
 
 200 answers the account `{account, enabled, startDay, status, reason?, detail?,
 lastSyncedAt?, lastBankFileId?, nextSyncAt?}`. While an account's format is `feed`, a
@@ -3346,7 +3358,8 @@ registering user or none — none when the feed matched it, the person's when a 
 applied it — while an `ocr` or `camt054` payment still needs its user
 (`ck_payments_origin`); a charge payment needs a user unless its source is `bank_feed`
 (`ck_charge_payments_origin`); a waiver needs one unless its reason is `deadline_met`
-(`ck_charge_waivers_by`); a line's event may be by no user. Its Down restores 00041's and
+(`ck_charge_waivers_by`); a line's `matched` or `queued` event may be by no user, every
+other event keeps its user (`ck_bank_transaction_events_by`). Its Down restores 00041's and
 00046's checks and `NOT NULL`s exactly, and fails while a row registered by no user, or a
 feed batch, exists.
 
@@ -5683,10 +5696,10 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `GET /bank-accounts` | `invoices:payments` | |
 | `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported; 409 `bank_feed_enabled` |
 | `GET /bank-feed` | | |
-| `PUT /bank-feed` | `invoices:manage` | 400 on `provider`, `apiKey`; 409 `bank_feed_disabled`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
+| `PUT /bank-feed` | `invoices:manage`; 10 per client per 10 minutes | 400 on `provider`, `apiKey`; 409 `bank_feed_disabled`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
 | `DELETE /bank-feed` | `invoices:manage` | |
-| `GET /bank-feed/accounts` | `invoices:manage` | 409 `bank_feed_disabled`, `bank_feed_not_connected`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
-| `PUT /bank-feed/accounts/{account}` | `invoices:manage` | 400 on `account`, `startDay`; 404 switching off an account never switched on; 409 `bank_feed_not_connected`, `bank_feed_disabled`, `bank_feed_account_not_offered`, `bank_account_unknown`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
+| `GET /bank-feed/accounts` | `invoices:manage`; 60 per client per 10 minutes | 409 `bank_feed_disabled`, `bank_feed_not_connected`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
+| `PUT /bank-feed/accounts/{account}` | `invoices:manage`; 60 per client per 10 minutes | 400 on `account`, `startDay`; 404 switching off an account never switched on; 409 `bank_feed_not_connected`, `bank_feed_disabled`, `bank_feed_account_not_offered`, `bank_account_unknown`, `bank_feed_key_changed`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
 | `GET /export.csv` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, more than 5000 rows |
 | `GET /vipps-payments` | | 400 `date` missing or not a calendar date |
