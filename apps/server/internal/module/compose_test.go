@@ -3340,3 +3340,34 @@ func (*fakeProductCatalog) ProductImages(context.Context, int32, string) ([]cont
 func (*fakeProductCatalog) OpenProductImage(context.Context, int32) (io.ReadCloser, contracts.ProductImage, error) {
 	return nil, contracts.ProductImage{}, nil
 }
+
+// fakeSalesJournal is a contracts.SalesJournal no test calls.
+type fakeSalesJournal struct{ contracts.SalesJournal }
+
+// The sales journal (contracts.SalesJournal, accounting design A12) resolves
+// like the other single-provider slots: onto every module's Deps before any
+// Mount runs, and two providers are a compose error naming the slot.
+func TestCompose_InjectsTheSalesJournal(t *testing.T) {
+	journal := &fakeSalesJournal{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", SalesJournal: func(Deps) contracts.SalesJournal { return journal }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.SalesJournal != journal {
+		t.Errorf("Deps.SalesJournal = %v, want the provider's", got.SalesJournal)
+	}
+	_, err = compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", SalesJournal: func(Deps) contracts.SalesJournal { return &fakeSalesJournal{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", SalesJournal: func(Deps) contracts.SalesJournal { return &fakeSalesJournal{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "a sales journal") {
+		t.Errorf("two sales journals: %v, want an error naming the slot", err)
+	}
+}

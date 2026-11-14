@@ -13,6 +13,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/events"
 	"github.com/vantigo-io/vantigo/server/internal/holidays"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/gen"
 	"github.com/vantigo-io/vantigo/server/internal/invoices/kid"
@@ -634,6 +635,19 @@ func (s *server) issueLocked(ctx context.Context, tx pgx.Tx, txq *store.Queries,
 	issued, err := txq.IssueDocument(ctx, params)
 	if err != nil {
 		return failed(fmt.Errorf("invoices: issue document %d: %w", locked.ID, err))
+	}
+	// The document's event, on the issue's transaction and under its lock
+	// (accounting design A12): it commits with the document or not at all.
+	// contracts.SalesJournal is what a reader posts from; this only wakes it.
+	gross, err := ratFromNumeric(issued.GrossTotal)
+	if err != nil {
+		return failed(err)
+	}
+	if err := events.Publish(ctx, tx, "invoices", contracts.DocumentIssued{
+		DocumentID: issued.ID, Number: number, Kind: issued.Kind, CustomerID: issued.CustomerID,
+		IssueDate: issueDate.Format(time.DateOnly), GrossTotal: gross.FloatString(2), Currency: issued.Currency,
+	}, now); err != nil {
+		return failed(err)
 	}
 	// 7. The pay link, on the document just issued (D15).
 	if err := s.payLinkAtIssue(ctx, tx, txq, issued, handedOver); err != nil {
