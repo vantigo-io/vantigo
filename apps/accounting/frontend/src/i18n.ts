@@ -365,7 +365,11 @@ export const accountingCatalog = {
     needsAttentionDescription:
       "Sales the books could not post: an unknown tax code, an inactive account, a kind this version does not know. The rest of the books carry on. Fix the cause and retry.",
     needsAttentionEmptyHint: "Every sale from Invoices is in the books.",
-    needsAttentionCount: "{{count}} sales facts wait to be posted.",
+    needsAttentionCount: "{{count}} facts wait to be posted.",
+    payablesCount: "Supplier invoices: {{overdue}} overdue, {{soon}} due within a week.",
+    supplierInvoicesInAccounting:
+      "The books are kept in Accounting: enter supplier invoices there, under Supplier invoices, where they are posted and paid. An approved one entered here waits in Accounting to be made into one.",
+    openSupplierInvoices: "Open Supplier invoices",
     showPosted: "Show those posted since",
     unpostedFact: "Fact",
     attempts: "Attempts",
@@ -905,7 +909,11 @@ export const accountingCatalog = {
     needsAttentionDescription:
       "Salg regnskapet ikke kunne bokføre: en ukjent mva-kode, en inaktiv konto, en type denne versjonen ikke kjenner. Resten av regnskapet går videre. Rett årsaken og prøv igjen.",
     needsAttentionEmptyHint: "Alt salg fra Fakturaer er bokført.",
-    needsAttentionCount: "{{count}} salgsfakta venter på å bli bokført.",
+    needsAttentionCount: "{{count}} fakta venter på å bli bokført.",
+    payablesCount: "Leverandørfakturaer: {{overdue}} forfalt, {{soon}} forfaller innen en uke.",
+    supplierInvoicesInAccounting:
+      "Regnskapet føres i Regnskap: før leverandørfakturaer der, under Leverandørfakturaer, der de bokføres og betales. En godkjent som føres her, venter i Regnskap på å bli gjort om til en.",
+    openSupplierInvoices: "Åpne Leverandørfakturaer",
     showPosted: "Vis også dem som er bokført siden",
     unpostedFact: "Faktum",
     attempts: "Forsøk",
