@@ -254,7 +254,7 @@ func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config) int {
 	}
 	defer func() { closePool(pool, cfg.ShutdownTimeout, logger) }()
 
-	if err := seedDemoDataset(ctx, pool, logger); err != nil {
+	if err := seedDemoDataset(ctx, pool, logger, cfg); err != nil {
 		logger.Error("development seed failed", "error", err)
 		return 1
 	}
@@ -265,8 +265,11 @@ func seed(ctx context.Context, logger *slog.Logger, cfg *config.Config) int {
 	return 0
 }
 
-func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
-	now := time.Now().UTC().Truncate(time.Second)
+// seedClock is the seed's now, every demo date relative to it; a test fixes it.
+var seedClock = time.Now
+
+func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, cfg *config.Config) error {
+	now := seedClock().UTC().Truncate(time.Second)
 	pwHash, err := seedPasswordHash(demoDefaultPassword)
 	if err != nil {
 		return err
@@ -325,6 +328,10 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 			return fmt.Errorf("seed invoices: %w", err)
 		}
 
+		if err := seedAccountingSources(ctx, tx, now, userIDs); err != nil {
+			return fmt.Errorf("seed accounting's sources: %w", err)
+		}
+
 		if err := seedEnergyAndCommunications(ctx, tx, now, userIDs, customerIDs, contactIDs); err != nil {
 			return fmt.Errorf("seed energy and communications: %w", err)
 		}
@@ -346,6 +353,10 @@ func seedDemoDataset(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logge
 	if skipped {
 		logger.Info("development seed already applied; skipping")
 		return nil
+	}
+
+	if err := seedDemoAccounting(ctx, pool, logger, cfg, now); err != nil {
+		return fmt.Errorf("seed accounting: %w", err)
 	}
 
 	attrs := []any{
@@ -1441,7 +1452,9 @@ func seedTimeAndExpenses(ctx context.Context, tx pgx.Tx, now time.Time, userIDs 
 			decidedAt = &now
 			decidedBy = &approverID
 		default:
-			status = "reimbursed"
+			// Expenses has no status of its own for a reimbursed expense: it
+			// stays approved, with reimbursed_at set.
+			status = "approved"
 			submittedAt = &now
 			decidedAt = &now
 			reimbursedAt = &now
