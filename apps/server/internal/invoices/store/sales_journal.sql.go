@@ -218,6 +218,7 @@ SELECT f.seq, f.kind, f.subject_id, f.invoice_id, f.business_date, f.removed_at,
     COALESCE(p.amount, c.amount, w.amount)::numeric AS amount,
     COALESCE(p.source, c.source, 'manual')::text AS source,
     COALESCE(t.account, '')::text AS bank_account,
+    COALESCE(t.archive_ref, '')::text AS bank_reference,
     w.id AS write_off_id, w.reason AS write_off_reason, w.vat_correction AS write_off_vat_correction,
     w.amount AS write_off_amount,
     COALESCE(CASE WHEN f.kind = 'recovered_payment' THEN (
@@ -258,6 +259,7 @@ type JournalFactsRow struct {
 	Amount                pgtype.Numeric
 	Source                string
 	BankAccount           string
+	BankReference         string
 	WriteOffID            *int64
 	WriteOffReason        *string
 	WriteOffVatCorrection *bool
@@ -292,6 +294,7 @@ func (q *Queries) JournalFacts(ctx context.Context, arg JournalFactsParams) ([]J
 			&i.Amount,
 			&i.Source,
 			&i.BankAccount,
+			&i.BankReference,
 			&i.WriteOffID,
 			&i.WriteOffReason,
 			&i.WriteOffVatCorrection,
