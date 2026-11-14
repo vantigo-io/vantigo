@@ -243,8 +243,14 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    server — reads the rest of `Deps` while it is built; `module.Workers` leaves it nil,
    as no worker reads it; nor does it resolve `Receivables`, which no worker reads
    either. It does resolve `SalesTax` (`withSalesTax`, after the line-level reads): Orders'
-   mail worker prints the seller block into every mail it sends. Two providers are a
-   compose error naming both, and a panic in Workers.
+   mail worker prints the seller block into every mail it sends. Both resolve, right after
+   `SalesTax`, the two journals a ledger posts from: `SalesJournal`
+   (`contracts.SalesJournal`, invoices) and then `ExpenseJournal`
+   (`contracts.ExpenseJournal`, expenses — its fact log of approvals, undoings and
+   reimbursements, and an expense's receipts to copy; `modtest.WithExpenseJournal` is the
+   seam), each from its provider's own tables only, since Accounting's catch-up worker reads
+   both in worker mode. Two providers are a compose error naming both, and a panic in
+   Workers.
    Twelve slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
@@ -1306,11 +1312,14 @@ lag, never what must refuse — go through the platform's domain-events outbox,
     reserve stays the person's **Reserve now** (M48a). `manufacturing.mto-cancelled` on
     `orders.sales_order.cancelled` sets a flag on Manufacturing's own orders and nothing
     else. Accounting's three catch-up handlers on Invoices' `invoices.document.issued`,
-    `invoices.payment.received` and `invoices.payment.removed` (accounting design R7)
-    each upsert a wake-up in `accounting.catchup_requests` and nothing else; the worker
+    `invoices.payment.received` and `invoices.payment.removed` (accounting design R7),
+    and its fourth on Expenses' `expenses.entry.*` and `expenses.claim.*` (R2), each
+    upsert a wake-up in `accounting.catchup_requests` and nothing else; the worker
     `accounting.catchup` claims a stream's lease, reads `contracts.SalesJournal` — its
-    `Documents`, `Facts` and `Document` — with no transaction open, and posts each fact
-    in its own transaction.
+    `Documents`, `Facts` and `Document` — or `contracts.ExpenseJournal`'s `Facts` with no
+    transaction open, and posts each fact in its own transaction. Expenses publishes its
+    events from the deferred trigger that writes the fact, so every write path does, under
+    the row lock the change took.
 24. **Inventory reserves and issues on the caller's transaction.** The thirteenth
     sanctioned cross-module direction, a module → Inventory, made for an order that
     must refuse to promise stock it cannot have (orders design O45):

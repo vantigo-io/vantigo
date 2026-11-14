@@ -1,6 +1,6 @@
 ---
 title: Utlegg
-description: Utlegg, kjøregodtgjørelse og reiseregninger, kvitteringer, godkjenning og utbetaling.
+description: Utlegg, kjøregodtgjørelse og reiseregninger, kvitteringer, godkjenning og utbetaling, og hva bokføringen endrer når Regnskap er slått på.
 sidebar:
   order: 40
 sources:
@@ -107,6 +107,11 @@ Etter **Lagre utkast** står skjemaet åpent så du kan legge ved **Leverandøre
 faktura**; **Lagre og send inn** er utilgjengelig til den er lagt ved. Når den er sendt
 inn, følger den den vanlige godkjenningsflyten. Se [the supplier
 invoice](/en/reference/expenses/#the-supplier-invoice).
+
+Føres regnskapet i [Regnskap](/nb/user/accounting/), hører leverandørfakturaer hjemme der:
+skjemaet sier det på denne typen, med en lenke til **Leverandørfakturaer**, der de bokføres og
+betales. En du godkjenner her, bokføres ikke av seg selv; den venter under Trenger
+oppmerksomhet i Regnskap til noen der gjør den om til en leverandørfaktura.
 
 ## Før en reiseregning
 
@@ -232,6 +237,26 @@ med reisens formål ved siden av hver av linjene sine, og heter
 `expenses-reimbursements-<dato>.csv`. En eksport på over 5 000 rader avvises med
 **Too many rows to export** — avgrens datoene i stedet. Kolonnene står under [the
 payroll CSV](/en/reference/expenses/#the-payroll-csv).
+
+## Når regnskapet føres i Regnskap
+
+Med [Regnskap](/nb/user/accounting/) slått på og regnskapet satt opp, bokføres det du gjør her,
+av seg selv, i løpet av minutter; ingen fører det på nytt:
+
+- **Å godkjenne** et utlegg eller en reiseregning bokfører kostnaden: på kategoriens konto,
+  som gjeld til den ansatte — eller, for en selskapet betalte, ut av banken.
+- **Å betale tilbake** bokfører utbetalingen ut av banken, på dagen du oppgir.
+- **Å angre godkjenningen** eller **angre en utbetaling** bokfører tilbakeføringen av det som
+  ble bokført; ingenting i regnskapet endres eller slettes. Godkjenner du igjen, bokføres det
+  igjen.
+
+Mva-en på en kvittering trekkes bare fra for en kategori der posteringsregelen tillater det, og
+når mva-en er en av de norske satsene av beløpet. Et utlegg i annen valuta venter i Regnskap
+på beløpet i kroner, som en regnskapsfører fører inn fra kontoutskriften. En leverandørfaktura
+føres i Regnskap (over). Ingenting her endrer hvordan du fører, sender inn, godkjenner eller
+betaler tilbake; periodelåsen her er Utgifters egen, og Regnskap bokfører en endring i en
+måned det har sperret, på første åpne dag. Se
+[Slik kommer utgiftene inn](/nb/user/accounting/#slik-kommer-utgiftene-inn-fra-utgifter).
 
 ## Utlegg på et prosjekt
 

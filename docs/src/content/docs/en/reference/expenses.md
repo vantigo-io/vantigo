@@ -1,8 +1,9 @@
 ---
 title: "Expenses module"
-description: "Outlays and mileage, receipts, approval, the reimbursed and invoiced tracks, dated rates, the payroll CSV and permissions."
+description: "Outlays and mileage, receipts, approval, the reimbursed and invoiced tracks, dated rates, the payroll CSV and permissions; and the expense journal — the fact log, contracts.ExpenseJournal and the expenses.entry.* and expenses.claim.* events a ledger posts from."
 sources:
   - apps/server/internal/expenses
+  - apps/server/internal/db/migrations/00184_expenses_journal.sql
   - apps/expenses/frontend
   - openapi/expenses.yaml
 ---
@@ -1341,6 +1342,66 @@ resolved *after* it commits. This is enforced mechanically across the module's w
 test suite: a hook installed once before any test runs records every cross-module
 and every object-store call together with whether it happened inside such a
 transaction, and fails the test if one ever did.
+
+## What Expenses reports to other modules
+
+### The expense journal
+
+A ledger posts what Expenses approves and reimburses (accounting design A20 as amended by
+R2), and an expense can be unapproved and a reimbursement undone, so neither the
+entries nor the claims are an order a reader could resume from. Migration
+`00184_expenses_journal.sql` adds a fact log beside them, `expenses.journal_facts`: one row
+per **occurrence** — `approved`, `unapproved`, `reimbursed`, `reimbursement_undone` — of a
+**subject**: a standalone expense (`entry`, an entry with no claim) or a whole travel claim
+(`claim`). A line of a claim makes no fact of its own: the claim is the unit that moves
+through the flow (`unitOf`), so each line's cost is in exactly one `approved` fact per
+approval of its claim and one `unapproved` fact per undoing.
+
+| Column | What it is |
+| --- | --- |
+| `seq` | The fact's place, from the counter row `journal` in `expenses.counters`, taken **at commit** by a `DEFERRABLE INITIALLY DEFERRED` constraint trigger and held for that instant only: seqs become visible in the order they were taken, so a reader paging by seq never passes one that commits later. |
+| `occurrence`, `subject`, `subject_id`, `user_id` | What happened to which entry or claim, and whose it is (an opaque id). |
+| `business_date` | For an approval and its undoing the cost's day — the entry's date, a claim's latest line date (its departure day when it has none); for a reimbursement and its undoing the reimbursement's own date. |
+| `undoes_seq` | On an `unapproved` or `reimbursement_undone` fact, the seq of the `approved` or `reimbursed` fact of the same subject it undoes; null when that predates the log. |
+| `reimbursement_reference` | A reimbursement's reference, as entered. |
+| `lines` | The subject's lines as they stood when the fact committed — per line `entryId`, `kind`, `date`, `categoryId`, `paidBy`, `currency`, `gross`, `vat`, `projectId`, `supplier` and, for the supplier invoice kind, `supplierInvoiceNumber` and `supplierDueDate` — because an unapproved expense is a draft again and may change: the fact keeps what was approved. No description, place or name. |
+
+Ten constraint triggers write it, on `entries` (with `claim_id` null) and on `claims`: a
+status that becomes `approved`, one that stops being `approved`, a `reimbursed_at` set and
+one cleared; and an entry inserted already approved or reimbursed (a seed, an import). Each
+fact publishes its event in the same statement. The table refuses every update and
+delete. The migration backfills the approvals and reimbursements standing when it runs,
+in the order they happened — an approval at its `decided_at`, a reimbursement at its
+`reimbursed_at`, an approval first at the same moment, then by subject and id — numbered
+from 1, with the counter after the last; there is no history of an undoing to replay. Its
+Down refuses while the log holds a fact or its counter has numbered one: a Down never
+deletes bookkeeping.
+
+### contracts.ExpenseJournal
+
+The module provides `contracts.ExpenseJournal` (`Module.ExpenseJournal`), which Compose and
+`module.Workers` resolve onto every module's Deps right after the sales journal; it is nil
+with Expenses off. It reads only this module's tables and object store, on the pool, holds
+no lock and authorizes nothing.
+
+| Method | What it answers |
+| --- | --- |
+| `Facts(ctx, afterSeq, limit)` | Up to `limit` (1–500) facts after a seq, in seq order: seq, occurrence, subject and id, user id, the day, `UndoesSeq`, the reimbursement's reference, and the lines with their category's **current** name. Amounts are exact two-decimal text in the line's own currency: Expenses keeps no exchange rate. `OwesEmployee` says whether a line is money owed to the employee, as `expenses.owes_employee` does. |
+| `Attachments(ctx, entryID)` | An expense's receipts, oldest first: id, file name, type, size. |
+| `OpenAttachment(ctx, entryID, attachmentID)` | One receipt opened from the module's object store, for a ledger to copy; `ErrExpenseAttachmentNotFound` for a receipt the expense does not have. |
+
+Accounting reads it to [post expenses](/en/reference/accounting/#expenses-post-themselves)
+and to copy the receipts of an expense of the supplier invoice kind into a draft supplier
+invoice.
+
+### The events
+
+Each fact publishes, on the transaction that made it and under the subject's row lock,
+`expenses.entry.<occurrence>` or `expenses.claim.<occurrence>` v1 — eight names in all
+(`contracts.ExpenseEntryEvent`, `contracts.ExpenseClaimEvent`). The payload is the fact's
+`seq`, the `entryId` or `claimId`, the `date`, and for an entry its `currency` and
+`grossAmount`, for a claim how many `lines` it had; never a name or a description. They
+only make a reader prompt: the journal is the source.
 
 ## API
 
