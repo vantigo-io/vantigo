@@ -253,7 +253,9 @@ av seg selv, i løpet av minutter; ingen fører det på nytt:
 Mva-en på en kvittering trekkes bare fra for en kategori der posteringsregelen tillater det, og
 når mva-en er en av de norske satsene av beløpet. Et utlegg i annen valuta venter i Regnskap
 på beløpet i kroner, som en regnskapsfører fører inn fra kontoutskriften. En leverandørfaktura
-føres i Regnskap (over). Ingenting her endrer hvordan du fører, sender inn, godkjenner eller
+føres i Regnskap (over); angrer du godkjenningen av en som allerede er gjort om til en
+leverandørfaktura der, endres ingenting i regnskapet — Regnskap viser det under Trenger
+oppmerksomhet, så regnskapsføreren kan slette eller tilbakeføre fakturaen. Ingenting her endrer hvordan du fører, sender inn, godkjenner eller
 betaler tilbake; periodelåsen her er Utgifters egen, og Regnskap bokfører en endring i en
 måned det har sperret, på første åpne dag. Se
 [Slik kommer utgiftene inn](/nb/user/accounting/#slik-kommer-utgiftene-inn-fra-utgifter).

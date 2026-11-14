@@ -1370,7 +1370,9 @@ Ten constraint triggers write it, on `entries` (with `claim_id` null) and on `cl
 status that becomes `approved`, one that stops being `approved`, a `reimbursed_at` set and
 one cleared; and an entry inserted already approved or reimbursed (a seed, an import). Each
 fact publishes its event in the same statement. The table refuses every update and
-delete. The migration backfills the approvals and reimbursements standing when it runs,
+delete. The migration takes `expenses.entries` and `expenses.claims` in SHARE ROW EXCLUSIVE
+mode first, so no approval can commit between the backfill and the triggers that record the
+next. It then backfills the approvals and reimbursements standing when it runs,
 in the order they happened — an approval at its `decided_at`, a reimbursement at its
 `reimbursed_at`, an approval first at the same moment, then by subject and id — numbered
 from 1, with the counter after the last; there is no history of an undoing to replay. Its

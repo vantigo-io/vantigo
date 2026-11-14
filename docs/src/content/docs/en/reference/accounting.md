@@ -115,6 +115,13 @@ transaction it writes the settings row — a second setup answers 409
   | 86, 88, 91 | reverse charge, services and emissions/gold with deduction | 2715 | 2705 |
   | 82, 84, 85, 87, 89, 92 | reverse charge without deduction | the line's own account | 2705 |
 
+  A reverse-charge code posts three lines beside its counter-party: the base (`tax_role`
+  `base`), the deducted side on the VAT account or the line's own account (`tax`), and the
+  calculated side on the counter account 2705 (`tax_reverse`), the last two with the same
+  `tax_base`. A VAT return counts the calculated VAT from `tax_reverse` and the deduction
+  from `tax`, so the base is never counted twice. Non-deductible VAT is a `tax` line on a
+  cost account (the line's own), not a VAT account.
+
 - **The default posting rules**, one per sales tax code ([Posting rules](#posting-rules)).
 
 The setup's choices never change afterwards; nothing changes `books_start`.
@@ -137,9 +144,9 @@ The setup's choices never change afterwards; nothing changes `books_start`.
 | `posting_rule_versions` | Every version of a rule: `rule_id`, `version`, `name`, `account_id`, `vat_deductible`, `valid_from`, written by a trigger when a rule is made and each time its version moves. |
 | `cursors` | One row per stream (`invoices.documents`, `invoices.facts`, `expenses.facts`): `position` (the last document number or fact seq read), `lease_id`/`lease_until`, `last_run_at`, `last_error`. |
 | `catchup_requests` | A wake-up per stream, `requested_at`: what a handler writes and a claim deletes. |
-| `unposted` | A source fact that could not be posted: its stream and position, its source key (unique), date, the Invoices document, `invoice_id` (the invoice it is about — a credit note's, the one it credits), customer and amount it is about, `reason`, `detail`, `attempts`, `waiting_on` (with reason `waiting_on`, the row it waits behind), and once a retry posted it `posted_voucher_id` and `posted_at`; for an expense fact `order_key` (`entry:<id>` or `claim:<id>`, what it waits behind) and `nok_amounts` (its lines in another currency, with the NOK a person entered); `informational` (a row that posted and says something, `vat_not_deducted`); `resolved_at` (acknowledged, made into a supplier invoice — `supplier_invoice_id` — or undone before it posted). |
-| `suppliers` | `number` (gap-free, from the counter row `supplier`), `name`, `organisation_number` (unique when set), `country`, `address_line`, `postal_code`, `city`, `email`, `bank_account` (eleven digits), `iban`, `bic`, `payment_terms_days` (0–365, default 14), `default_account_id`, `default_tax_code_id`, `currency`, `is_person`, `active`, `revision`. Never deleted once a posting, an item or an invoice names it. |
-| `supplier_invoices` | `supplier_id`, `kind` (`invoice`, `credit_note`), `supplier_number` (the supplier's own), `invoice_date`, `due_date`, `currency`, `exchange_rate` (NOK per unit, 1 for NOK), `total` (in the currency), `total_nok`, `kid`, `reference`, `description`, `state` (`draft`, `posted`, `reversed`; paid is derived), `credits_invoice_id`, `voucher_id`, `open_item_id`, `reversal_voucher_id`, `copied_from_id`, `source_expense_entry_id`, `revision`, who and when. Unique: the supplier, kind and number (case and spaces aside) among those not reversed (`ux_supplier_invoices_number`); one not reversed per expense (`ux_supplier_invoices_expense`). |
+| `unposted` | A source fact that could not be posted: its stream and position, its source key (unique), date, the Invoices document, `invoice_id` (the invoice it is about — a credit note's, the one it credits), customer and amount it is about, `reason`, `detail`, `attempts`, `waiting_on` (with reason `waiting_on`, the row it waits behind), and once a retry posted it `posted_voucher_id` and `posted_at`; for an expense fact `order_key` (`entry:<id>` or `claim:<id>`, what it waits behind) and `nok_amounts` (its lines in another currency, with the NOK a person entered, `enteredBy` and `enteredAt`); `informational` (a row that posted and says something, `vat_not_deducted` or `expense_invoice_unapproved`); `resolved_at` (acknowledged, made into a supplier invoice — `supplier_invoice_id`, repointed to the copy by Reverse and copy — undone before it posted, or its voucher turned back). |
+| `suppliers` | `number` (gap-free, from the counter row `supplier`), `name`, `organisation_number` (unique per `country` when set, `ux_suppliers_organisation_number`), `country`, `address_line`, `postal_code`, `city`, `email`, `bank_account` (eleven digits), `iban`, `bic`, `payment_terms_days` (0–365, default 14), `default_account_id`, `default_tax_code_id`, `currency`, `is_person`, `active`, `anonymised_at`, `revision`. Never deleted once a posting, an item or an invoice names it. |
+| `supplier_invoices` | `supplier_id`, `kind` (`invoice`, `credit_note`), `supplier_number` (the supplier's own), `invoice_date`, `due_date`, `currency`, `exchange_rate` (NOK per unit, 1 for NOK; null on a draft in another currency whose rate is not set, never on a posted one), `total` (in the currency), `total_nok` (null exactly when the rate is), `kid`, `reference`, `description`, `state` (`draft`, `posted`, `reversed`; paid is derived), `credits_invoice_id`, `voucher_id`, `open_item_id`, `reversal_voucher_id`, `copied_from_id`, `source_expense_entry_id`, `revision`, who and when. Unique: the supplier, kind and number (case and spaces aside) among those not reversed (`ux_supplier_invoices_number`); one not reversed per expense (`ux_supplier_invoices_expense`). |
 | `supplier_invoice_lines` | `supplier_invoice_id`, `position`, `account_id`, `tax_code_id`, `amount` (as entered, in the currency), `entry` (`net`, `gross`), `project_id`, `text`. |
 | `supplier_invoice_files` | A draft's files: the object key, name, type, size and SHA-256. At posting each becomes an `attachments` row of the voucher, the same object. |
 | `supplier_payments` | `supplier_invoice_id`, `paid_on`, `amount_nok`, `amount_currency`, `bank_account_id`, `voucher_id`, and once removed `removed_at`, `removed_by_user_id`, `removal_voucher_id`. |
@@ -197,7 +204,9 @@ A `Voucher` has a kind, the date asked for, the document date (default the date)
 description, an optional `Source{Module, Kind, ID, Part}` and the Invoices document it
 belongs to (`SourceDocumentID`), the rule and its version, the
 voucher it reverses with the reason, who posts it, and its `Line`s: an account id or a
-system role, a signed exact amount, an optional tax code with its role (`base` or `tax`),
+system role, a signed exact amount, an optional tax code with its role (`base`, `tax`, or
+`tax_reverse` for a reverse charge's calculated side — the CHECK `ck_postings_tax_role`;
+`tax_base` is carried by `tax` and `tax_reverse` lines),
 base and VAT-return specification (`TaxSpecification`), a customer or a supplier, the open item (by id, by the Invoices document it
 stands for, a new item with its document number and dates, or else the party's
 unallocated item), a project and a text. In order, `Post`:
@@ -414,8 +423,8 @@ standard code not active in the books, or a code with VAT and no VAT account),
 income account), `unknown_kind` (a fact kind this version does not post — never dropped),
 `document_unknown` (the written-off invoice not in the journal), `waiting_on` (below), or an
 engine refusal's code (`account_inactive`, `account_unknown`, …) with its detail; for an
-expense fact also `amount_in_nok_needed`, `enter_as_supplier_invoice` and
-`vat_not_deducted` ([Expenses post themselves](#expenses-post-themselves)). Each sales row
+expense fact also `amount_in_nok_needed`, `enter_as_supplier_invoice`,
+`expense_invoice_unapproved` and `vat_not_deducted` ([Expenses post themselves](#expenses-post-themselves)). Each sales row
 carries `invoiceId`, the invoice it is about — a credit note's, the invoice it credits; an
 expense row `orderKey`. The meta's `unposted` and the host's dashboard count the rows that
 wait — not posted and not resolved; an **informational** row (`informational`, posted, its
@@ -445,21 +454,27 @@ acknowledged. Three actions answer expense rows (`accounting:post`):
 
 - `POST /unposted/{id}/nok-amounts` takes `amounts` — per `entryId` of the row's
   `expenseLines` (its lines in another currency) an `amountNok` above zero — keeps them on
-  the row, and retries it as above. 400 for an entry not on the row or an amount that is
+  the row with `enteredBy` (the caller) and `enteredAt`, and retries it as above. The
+  voucher posted with them names the person who entered the latest as its poster, and each
+  such line's text names the figure and the original: `NOK 921.50 entered for EUR 80.00`. 400 for an entry not on the row or an amount that is
   not one (`amount_invalid`); 409 `unposted_wrong_reason` for another reason.
-- `POST /unposted/{id}/supplier-invoice` reads the fact again, takes its line of the
-  `supplier_invoice` kind and, in one transaction, makes a draft supplier invoice — the
-  active supplier of the line's supplier name, case aside (the lowest number), or a new
-  one; kind invoice; the expense's number or `EXP-<entry id>`; its date; its due date or
-  14 days on; its currency (another currency is drafted at rate 1, which Post refuses
-  until a rate is given); one gross line of its amount on the account its category's rule
+- `POST /unposted/{id}/supplier-invoice` (body optional: `supplierIsPerson`) reads the
+  fact again, takes its line of the `supplier_invoice` kind and, in one transaction, makes
+  a draft supplier invoice — the active supplier of the line's supplier name, case aside
+  (the lowest number), or a new one, `is_person` as `supplierIsPerson` says (default
+  false); kind invoice; the expense's number or `EXP-<entry id>`; its date; its due date
+  or 14 days on; its currency (another currency is drafted with no rate, which Post
+  refuses with `exchange_rate_required` until one is given); one gross line of its amount on the account its category's rule
   names (7700 without one), with the input code its VAT matches when the rule allows
   deduction, and its project — and resolves the row naming the draft. Then, with no
   transaction open, it copies the expense's receipts through `ExpenseJournal.Attachments`
   and `OpenAttachment` into the draft's files; one that cannot be copied is logged and left
-  for the person to attach. 201 with the draft; 409 `duplicate_supplier_invoice` when one
-  not reversed exists for the expense or the number; `unposted_wrong_reason`. Deleting the
-  draft reopens the row.
+  for the person to attach. 201 with the draft; 409 `expense_already_invoiced` when a
+  supplier invoice not reversed exists for the expense, or the row was resolved by another
+  request first (the resolve must touch exactly the row); `duplicate_supplier_invoice` for
+  the number; `unposted_wrong_reason`. Reverse and copy repoints the row to the copy;
+  deleting a draft that carries `source_expense_entry_id` — the draft or its copy —
+  reopens the entry's approval row, matched by the entry.
 - `POST /unposted/{id}/acknowledge` resolves an informational row; 409
   `unposted_wrong_reason` for any other.
 
@@ -488,9 +503,10 @@ are taken out), `country` (two letters, default `NO`), the address, `email`,
 `iban`, `bic`, `paymentTermsDays` (0–365, default 14), `currency` (default NOK),
 `defaultAccountId` (active, else `account_unknown`/`account_inactive`),
 `defaultTaxCodeId` (active, else `tax_code_unknown`; not an output code, else
-`tax_code_not_purchase`) and `isPerson`; 409 `supplier_organisation_number_taken`. `PUT
-/suppliers/{id}` replaces them, with `active`, under `revision` (400 without it, 409
-`revision_conflict`). `DELETE /suppliers/{id}` deletes one no posting, open item or invoice
+`tax_code_not_purchase`) and `isPerson`; 409 `supplier_organisation_number_taken` for the
+same organisation number in the same country. `GET /suppliers?q=` matches `%` and `_` as
+themselves. `PUT /suppliers/{id}` replaces them, with `active`, under `revision` (400
+without it, 409 `revision_conflict`; `supplier_anonymised` for an anonymised one). `DELETE /suppliers/{id}` deletes one no posting, open item or invoice
 names; any other is 409 `supplier_has_postings` — the postings' and items' foreign keys
 refuse it too.
 
@@ -506,8 +522,13 @@ is 502 `brreg_unavailable`.
 module's supplier, so Accounting answers a person's access request itself: `GET
 /suppliers/{id}/export` (`accounting:export`, never called by the Assistant) answers the
 supplier, its invoices with their lines, files and payments, and every posting naming it,
-with `producedAt`, and logs that it was asked. Nothing is erased: the record is
-bookkeeping material, kept until `retainedUntil`.
+with `producedAt`, and logs that it was asked. The record is bookkeeping material, kept
+until `retainedUntil`. After that day `POST /suppliers/{id}/anonymise` (`accounting:post`,
+confirm for the Assistant) sets the name to `Anonymised supplier <number>`, clears
+`organisation_number`, the address, `email`, `bank_account`, `iban` and `bic`, makes it
+inactive and sets `anonymisedAt`; postings, items and vouchers keep its id. 409
+`supplier_retained` on or before `retainedUntil`, `supplier_anonymised` a second time; 400
+for a supplier that is not a person. A person with no voucher has no retention date.
 
 ### Supplier invoices
 
@@ -526,12 +547,13 @@ takes `supplierId` (an active supplier for a new one, else 400 `supplier_inactiv
 `kind`, `invoiceNumber` (1–60), `invoiceDate`, `dueDate` (on or after it; default the
 supplier's terms after the invoice date), `currency` (default the supplier's), `total`
 (zero or more), `kid`, `reference`, `description`, for a credit note `creditsInvoiceId` (a
-posted invoice of the same supplier), and up to 200 `lines`: `accountId` (active, not the
+posted invoice of the same supplier; held again at Post, below), and up to 200 `lines`: `accountId` (active, not the
 receivables or payables account), `taxCodeId`, `amount` (two decimals, negative for a
 discount), `entry` (`gross` default, or `net`), `projectId` and `text`. In another currency
 it takes `exchangeRate` (NOK per unit, kept to six decimals; the NOK total is the total at
 it, rounded) or `totalNok` (the rate is then the NOK total over the total), else 400
-`exchange_rate_required`. Each line's code is held to the purchase rules below at the
+`exchange_rate_required`; given both, |round(total × rate) − totalNok| must be at most 0.01
+× max(1, lines), else 400 `exchange_rate_mismatch`. Each line's code is held to the purchase rules below at the
 invoice date. The lines need not make the total yet. 409 `duplicate_supplier_invoice` for
 the same supplier, kind and number on another invoice not reversed; a change of a posted
 or reversed one is 409 `supplier_invoice_not_draft`. `DELETE /supplier-invoices/{id}`
@@ -546,12 +568,18 @@ draft — the object first, then the row under the draft's lock; refused 409
 draft. Without an object store, 503 `storage_not_configured`.
 
 **Post** — `POST /supplier-invoices/{id}/post` — takes the draft FOR UPDATE and refuses it
-without a file (409 `supplier_invoice_file_required`), in another currency at rate 1
-(`exchange_rate_required`), without lines (`voucher_empty`) or when the lines' gross does
+without a file (409 `supplier_invoice_file_required`), with no rate set
+(`exchange_rate_required` — a rate of exactly 1 is a rate), without lines (`voucher_empty`) or when the lines' gross does
 not make the total (400 `supplier_invoice_total_mismatch`). It posts through the engine
 with the source key `(accounting, supplier_invoice, id, '')` and the person as poster; a
 date before `books_start` (400 `date_before_books_start`) or on or before the lock (409
-`period_locked`) is refused rather than moved, as for any person's voucher. The draft's
+`period_locked`) is refused rather than moved, as for any person's voucher. A credit note
+naming an invoice takes that invoice FOR UPDATE, then its open item — the order a payment
+takes them, so a credit note and a payment on the same item wait for each other — and
+refuses it unless the invoice is still `posted` (409 `credit_note_invoice_not_posted`), in
+the credit note's currency (`credit_note_currency_mismatch`), and has at least the credit
+note's NOK total left on its item, and in another currency its currency total
+(`credit_note_exceeds_balance`). The draft's
 files become the voucher's attachments, the same objects; the invoice records its voucher
 and the open item its payables line opened, and is `posted`. The voucher is a system
 voucher: the generic reversal refuses it (`voucher_owned_by_source`).
@@ -568,25 +596,35 @@ flags as seeded:
 
 | Codes | Direction, flags | Postings beside the base |
 | --- | --- | --- |
-| 1, 11, 12, 13; 14, 15 | input, a VAT account | the VAT debited on the code's VAT account (`tax`, with the base); in currency it carries its currency amount |
+| 1, 11, 12, 13 | input, a VAT account | the VAT debited on the code's VAT account (`tax`, with the base); in currency it carries its currency amount |
 | an input code without a VAT account | input, not deductible | the VAT debited on the line's own account (`tax`) |
-| 81, 83, 86, 88, 91 | input, reverse charge, a VAT account | entered net (gross is 400 `reverse_charge_gross`); VAT = round(NOK base × rate ÷ 100), debited on the VAT account and credited on the counter account (2705), both `tax`; no currency amount; the payable is the net |
-| 82, 84, 87, 89, 92 | input, reverse charge, no VAT account | the same, the debit on the line's own account: the VAT is a cost |
-| 85 | input, reverse charge, rate 0 | none |
-| 0, 20, 21, 22 | none | none: the base alone, with its code |
+| 86, 88, 91 | input, reverse charge, a VAT account | entered net (gross is 400 `reverse_charge_gross`); VAT = round(NOK base × rate ÷ 100), debited on the VAT account (`tax`) and credited on the counter account 2705 (`tax_reverse`), both with the base; no currency amount; the payable is the net |
+| 87, 89, 92 | input, reverse charge, no VAT account | the same, the `tax` debit on the line's own account: the VAT is a cost |
+| 0 | none | none: the base alone, with its code |
+| 14, 15, 20, 21, 22, 81–85 | import | refused, 400 `tax_code_not_for_supplier_invoice` |
 | 3, 31, 32, 33, 5, 51, 52, 6, 7 | output | refused, 400 `tax_code_not_purchase` |
 
-Import of goods is not a supplier invoice's VAT (R8): the supplier's invoice is coded 21 or
-22, and the import VAT is a manual journal from the customs declaration with 81–84 on a
-base line and its counter line (the user guide shows the entry).
+The NOK amounts are computed before the lines are built: each base and each VAT in NOK,
+the rounding difference against the NOK total put on the largest base, and only then the
+VAT lines, so a VAT line's `tax_base` is the base as posted.
+
+Import of goods is not a supplier invoice's VAT (R8): the supplier's invoice is coded 0 or
+carries no code, and the import VAT — the customs' or a forwarder's included — is a manual
+journal from the customs declaration with 81–84 on a base line and its counter line, or 14
+and 15 (the user guide shows the entry).
 
 **Reverse and copy** — `POST /supplier-invoices/{id}/reverse-and-copy` with `date` and
 `reason` (1–500) — takes a posted invoice FOR UPDATE (409 `supplier_invoice_not_posted`
-otherwise; `supplier_invoice_has_payments` while a payment stands), posts the reversal
+otherwise; `supplier_invoice_has_payments` while a payment stands), then its open item, and
+refuses it with `supplier_invoice_item_in_use` while a voucher other than its own (for a
+credit note, other than its own and its invoice's) that is neither reversed nor a reversal
+posts on that item — a credit note, a payment made through a credit note, a settlement.
+It posts the reversal
 above dated `date` (held to the books' start and the lock as Post is), marks it
 `reversed`, and makes a draft with its supplier, kind, number, dates, currency, rate,
 totals, lines and files (the same objects), `copiedFromId` naming it, which it answers
-(201). The duplicate guard lets the copy through: the original is reversed.
+(201). The duplicate guard lets the copy through: the original is reversed. A row under
+Needs attention that named the original names the copy.
 
 ### Payments
 
@@ -645,8 +683,8 @@ books' `vat_term` is not `none`, the line is an outlay in NOK with VAT above zer
 day: |VAT − round((gross − VAT) × rate ÷ 100)| at most one øre per hundred kroner of the
 net, and at least one øre — the nearest rate wins. Otherwise the line posts gross. When the
 rule allowed deduction and the VAT matched no rate, an informational row
-`vat_not_deducted` names the voucher. A foreign outlay's VAT is never deducted. Mileage and
-per diem carry none.
+`vat_not_deducted` names the voucher; the undoing that turns the voucher back resolves it.
+A foreign outlay's VAT is never deducted. Mileage and per diem carry none.
 
 **Another currency.** A line not in NOK has no rate in Expenses: the fact waits as
 `amount_in_nok_needed`, the row's `expenseLines` naming those lines, until
@@ -654,7 +692,11 @@ per diem carry none.
 VAT deducted.
 
 **The `supplier_invoice` kind** is never posted from Expenses: its approval waits as
-`enter_as_supplier_invoice` for `/unposted/{id}/supplier-invoice`.
+`enter_as_supplier_invoice` for `/unposted/{id}/supplier-invoice`. An unapproval of an
+approval that was made into a supplier invoice turns nothing back: it is recorded as
+`expense_invoice_unapproved`, its `supplierInvoiceId` naming the invoice — a row that waits
+while the invoice is a draft (delete or post it, then retry), and an informational row
+naming the invoice's voucher once it is posted.
 
 ## Manual journals
 
