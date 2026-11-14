@@ -91,8 +91,9 @@ func TestBankFeedWorker_FailuresThenFailing(t *testing.T) {
 	}
 }
 
-// The bank's 429 (F7): the status kept, the wait noted, the next read after
-// the wait and never before the interval.
+// The bank's 429 (F7): the status kept, the wait noted and counted as a
+// cycle that read nothing, the next read after the wait and never before
+// the interval.
 func TestBankFeedWorker_RetryAfterIsHonoured(t *testing.T) {
 	t.Parallel()
 	for retry, wait := range map[string]time.Duration{"120": 30 * time.Minute, "7200": 2 * time.Hour} {
@@ -103,7 +104,7 @@ func TestBankFeedWorker_RetryAfterIsHonoured(t *testing.T) {
 			h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Status: http.StatusTooManyRequests, RetryAfter: retry})
 			syncNow(t, h)
 			s := feedStateOf(t, h, sellerAccount)
-			if s.status != "ok" || s.failures != 0 || !strings.Contains(s.detail, "wait") || s.next == nil || !s.next.Equal(h.Now().Add(wait)) {
+			if s.status != "ok" || s.failures != 1 || !strings.Contains(s.detail, "wait") || s.next == nil || !s.next.Equal(h.Now().Add(wait)) {
 				t.Errorf("after a 429 with Retry-After %s: %+v, want ok, the wait noted, due in %v", retry, s, wait)
 			}
 		})
@@ -515,5 +516,37 @@ func TestBankFeedWorker_ARefusedKeyNeverLoops(t *testing.T) {
 	}
 	if got := modtest1(t, h, `SELECT status FROM invoices.bank_feed_connections`); got != "ok" {
 		t.Errorf("the connection = %s, want ok: the new key was not refused", got)
+	}
+}
+
+// A bank that keeps answering 429 does not leave the account ok for ever
+// (second review, M2): each counts as a cycle that read nothing, failing
+// from the third, the bank's wait still honoured. And the claim itself
+// never takes an account before the bank's wait is over.
+func TestBankFeedWorker_RateLimitedInARowIsFailing(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	feedReady(t, h)
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Status: http.StatusTooManyRequests, RetryAfter: "3600"})
+	for i, want := range []string{"ok", "ok", "failing"} {
+		syncNow(t, h)
+		s := feedStateOf(t, h, sellerAccount)
+		if s.status != want || s.failures != int32(i+1) || s.next == nil || !s.next.Equal(h.Now().Add(time.Hour)) {
+			t.Errorf("after 429 number %d: %+v, want %s, due when the bank allows", i+1, s, want)
+		}
+		h.Advance(time.Hour)
+	}
+	h.folio.Clear(foliotest.OpTransactions)
+	syncNow(t, h)
+	if s := feedStateOf(t, h, sellerAccount); s.status != "ok" || s.failures != 0 {
+		t.Errorf("after a read: %+v, want ok", s)
+	}
+
+	// Due by next_sync_at but not by the bank's wait: not claimed.
+	h.Exec(t, `UPDATE invoices.bank_feed_accounts SET next_sync_at = $1, rate_limited_until = $2`, h.Now(), h.Now().Add(time.Hour))
+	reads := transactionReads(h)
+	syncNow(t, h)
+	if n := transactionReads(h) - reads; n != 0 {
+		t.Errorf("the account was read %d times before the bank's wait was over, want none", n)
 	}
 }

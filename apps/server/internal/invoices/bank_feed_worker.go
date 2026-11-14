@@ -187,7 +187,7 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 		n, err = q.BankFeedRateLimited(ctx, store.BankFeedRateLimitedParams{
 			Detail:     fmt.Sprintf("The bank asked to wait %s.", limited.RetryAfter.Round(time.Second)),
 			NextSyncAt: c.now.Add(wait), RateLimitedUntil: c.now.Add(max(limited.RetryAfter, time.Minute)),
-			Account: account, LeaseID: c.lease,
+			FailingAfter: bankFeedFailingAfter, Now: c.now, Account: account, LeaseID: c.lease,
 		})
 	case syncErr != nil:
 		// A refused key the refusal was recorded for has stopped every

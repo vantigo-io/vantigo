@@ -68,12 +68,13 @@ SELECT max(last_booked_on)::date AS last_booked_on FROM invoices.bank_files;
 
 -- name: FeedFreshness :one
 -- FeedFreshness is the bank feed's part of the bank data's freshness
--- (invoices bank feed plan, delivery C's review): the latest day an account
--- the feed reads and whose last read was ok was read through, NULL with
--- none, and whether any account it reads is not ok — refused, failing or
--- unauthorized — whose payments may then be missing.
-SELECT max(read_through) FILTER (WHERE status = 'ok')::date AS read_through,
-       (count(*) FILTER (WHERE status <> 'ok') > 0)::boolean AS any_not_ok
+-- (invoices bank feed plan, delivery C's reviews): the earliest day an
+-- account the feed reads was read through — fresh only as far as the one
+-- furthest behind — NULL with none; and whether any account it reads is not
+-- being read as it should: not read yet, refused, failing, unauthorized, or
+-- with a payment that could not be matched — whose payments may be missing.
+SELECT min(read_through)::date AS read_through,
+       (count(*) FILTER (WHERE status <> 'ok' OR read_through IS NULL OR reason = 'line_unmatched') > 0)::boolean AS any_not_ok
 FROM invoices.bank_feed_accounts WHERE enabled;
 
 -- name: OcrAccounts :many

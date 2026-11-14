@@ -61,7 +61,7 @@ WHERE enabled AND EXISTS (SELECT 1 FROM conn);
 -- The caller holds the connection row.
 UPDATE invoices.bank_feed_accounts SET
     status = 'ok', reason = NULL, detail = '', failures = 0,
-    next_sync_at = CASE WHEN enabled THEN @now::timestamptz END,
+    next_sync_at = CASE WHEN enabled THEN greatest(@now::timestamptz, coalesce(rate_limited_until, @now::timestamptz)) END,
     updated_at = @now::timestamptz
 WHERE status = 'unauthorized';
 
@@ -170,6 +170,7 @@ WHERE account = (
     SELECT a.account FROM invoices.bank_feed_accounts a
     WHERE a.enabled AND a.next_sync_at <= @now::timestamptz
       AND (a.lease_until IS NULL OR a.lease_until <= @now::timestamptz)
+      AND (a.rate_limited_until IS NULL OR a.rate_limited_until <= @now::timestamptz)
       AND EXISTS (SELECT 1 FROM invoices.bank_feed_connections c WHERE c.id = 1 AND c.status = 'ok')
     ORDER BY a.next_sync_at, a.account
     LIMIT 1
@@ -196,11 +197,16 @@ WHERE account = @account AND lease_id = @lease_id::text;
 
 -- name: BankFeedRateLimited :execrows
 -- BankFeedRateLimited ends a claim the bank asked to wait (a 429; F7): the
--- status and the failures as they were, the wait in detail, read again at
--- @next_sync_at, and @rate_limited_until kept, before which Fetch now does
--- not make the account due.
+-- wait in detail, read again at @next_sync_at, and @rate_limited_until kept,
+-- before which neither the claim nor Fetch now makes the account due. It
+-- counts as a cycle that read nothing: failing from the same count in a row
+-- as a failure, so an account the bank keeps putting off is not ok for ever.
 UPDATE invoices.bank_feed_accounts SET
     detail = @detail, next_sync_at = @next_sync_at::timestamptz, rate_limited_until = @rate_limited_until::timestamptz,
+    failures = failures + 1,
+    status = CASE WHEN failures + 1 >= @failing_after::integer THEN 'failing' ELSE status END,
+    updated_at = CASE WHEN failures + 1 >= @failing_after::integer AND status <> 'failing'
+        THEN @now::timestamptz ELSE updated_at END,
     lease_id = NULL, lease_until = NULL
 WHERE account = @account AND lease_id = @lease_id::text;
 
@@ -238,7 +244,8 @@ WHERE account = @account AND lease_id = @lease_id::text;
 -- with nothing written but the lease cleared and the account due now, for
 -- the newer key. After MarkBankFeedUnauthorized the lease is gone and it
 -- writes nothing.
-UPDATE invoices.bank_feed_accounts SET next_sync_at = @now::timestamptz, lease_id = NULL, lease_until = NULL
+UPDATE invoices.bank_feed_accounts
+SET next_sync_at = greatest(@now::timestamptz, coalesce(rate_limited_until, @now::timestamptz)), lease_id = NULL, lease_until = NULL
 WHERE account = @account AND lease_id = @lease_id::text;
 
 -- name: AdvanceBankFeedRead :execrows

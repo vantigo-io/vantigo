@@ -798,3 +798,36 @@ func TestBankFeedSync_LinesFailingInARowStopMatching(t *testing.T) {
 		t.Errorf("%d lines pending, want all four", n)
 	}
 }
+
+// Fresh only as far as the account furthest behind (second review, M2): two
+// accounts the feed reads, one read through today and one twenty days ago,
+// make the bank data stale; so does one not read yet, or one holding a
+// payment it could not match.
+func TestBankFeedSync_FreshnessIsTheFurthestBehind(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	remindersOn(t, h, "late_interest = true")
+	h.folio.SetAccounts(
+		foliotest.Account{AccountNumber: sellerAccount, Name: "Drift", Type: "Operational", Balance: "0.00"},
+		foliotest.Account{AccountNumber: olderAccount, Name: "Gamle driftskonto", Type: "Savings", Balance: "0.00"},
+	)
+	feedReady(t, h)
+	switchedOn(t, h, olderAccount, feedStart)
+	syncNow(t, h)
+	c := reader(t, h)
+	if got := overdueOf(t, c, ""); got.Freshness.Stale {
+		t.Fatalf("both accounts read through today = %+v, want fresh", got.Freshness)
+	}
+	for name, sql := range map[string]string{
+		"one twenty days behind": `UPDATE invoices.bank_feed_accounts SET read_through = DATE '2026-09-17' WHERE account = '` + olderAccount + `'`,
+		"one not read yet":       `UPDATE invoices.bank_feed_accounts SET read_through = NULL WHERE account = '` + olderAccount + `'`,
+		"one with an unmatched payment": `UPDATE invoices.bank_feed_accounts SET reason = 'line_unmatched', detail = 'Transaction x.'
+			WHERE account = '` + olderAccount + `'`,
+	} {
+		h.Exec(t, `UPDATE invoices.bank_feed_accounts SET read_through = DATE '2026-10-07', reason = NULL, detail = ''`)
+		h.Exec(t, sql)
+		if got := overdueOf(t, c, ""); !got.Freshness.Stale || !slices.Contains(got.Warnings, "bank_data_stale") {
+			t.Errorf("%s = %+v %v, want stale", name, got.Freshness, got.Warnings)
+		}
+	}
+}
