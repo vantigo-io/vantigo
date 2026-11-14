@@ -172,10 +172,11 @@ WHERE account = @account AND format = @format;
 
 -- name: ChangeImportFormat :one
 -- ChangeImportFormat is the format PUT's write, under LockImportAccount: the
--- old format kept as previous_format with its cutover, the new one set, and
--- who and when.
+-- previous format with its cutover — the old format, or the one a detour
+-- through the bank feed carries forward (changeImportFormat) — the new one
+-- set, and who and when.
 UPDATE invoices.bank_import_accounts
-SET previous_format = format, format = @format, cutover_through = @cutover_through,
+SET previous_format = @previous_format::text, format = @format, cutover_through = @cutover_through,
     set_by_user_id = @set_by_user_id, set_at = @set_at::timestamptz
 WHERE account = @account
 RETURNING *;
