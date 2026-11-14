@@ -360,7 +360,8 @@ func feedAnswerTooLarge(txs []bankfeed.Transaction) bool {
 
 // judgeFeedBatch is F5 steps 2 and 3 over everything the bank answered, in
 // the order it answered: the batch refused whole on the first transaction
-// that breaks a rule — one id twice, a direction the adapter cannot place,
+// that breaks a rule — one id twice with an incoming credit among them, a
+// direction the adapter cannot place,
 // or an incoming credit of a kind the port does not name, unreadable, booked
 // after today or not in NOK — else the incoming credit transfers above zero
 // built as lines (findings 1 and 12) with the bytes the bank sent for each,
@@ -390,16 +391,21 @@ func judgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay 
 		refuse := func(reason string) ([]bankfile.Transaction, []json.RawMessage, map[bankfile.IgnoredKind]int, *feedRefusal) {
 			return nil, nil, nil, &feedRefusal{reason: reason, detail: feedDetail(tx.ID)}
 		}
-		if tx.ID != "" {
-			if seen[tx.ID] {
-				return refuse(refusedDuplicateTransaction)
-			}
-			seen[tx.ID] = true
-		}
 		if tx.Direction != bankfeed.DirectionCredit && tx.Direction != bankfeed.DirectionDebit {
 			// Fail closed: a transaction the adapter cannot place is never
 			// read as a payment, nor passed over as one going out.
 			return refuse(refusedDirectionUnknown)
+		}
+		// One id twice refuses the batch only when an incoming credit — a
+		// payment that might be kept — is one of them; two payments out or
+		// card lines sharing an id are counted (second review, low).
+		incoming := tx.Direction == bankfeed.DirectionCredit && tx.Kind != bankfeed.KindInternal && tx.Kind != bankfeed.KindCard
+		if tx.ID != "" {
+			before, twice := seen[tx.ID]
+			if twice && (before || incoming) {
+				return refuse(refusedDuplicateTransaction)
+			}
+			seen[tx.ID] = before || incoming
 		}
 		// Not an incoming customer payment — money out, a card, a transfer
 		// between the customer's own accounts: counted, whatever else is odd
