@@ -11,7 +11,8 @@ import {
   saftImportFileUrl,
   saftImportsQueryOptions,
 } from "../api/accounting";
-import { ACCOUNTING_QUERY_KEY, refusedFields } from "../api/request";
+import { ACCOUNTING_QUERY_KEY, ApiConflictError, refusalCode, refusedFields } from "../api/request";
+import { BankWarning } from "../components/bank-warning";
 import { BooksGate } from "../components/books-gate";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
 import { monthEndOf } from "../lib/lock";
@@ -110,13 +111,29 @@ const Lock = ({ canClose }: { canClose: boolean }) => {
   const queryClient = useQueryClient();
   const [month, setMonth] = useState("");
   const [reason, setReason] = useState("");
+  // Moving the lock over bank lines not matched, or a statement balance that
+  // differs from the ledger's, is refused until confirmed (A28).
+  const [unreconciled, setUnreconciled] = useState<{ target: string; detail: string } | null>(null);
   const move = useMutation({
-    mutationFn: (lockedThrough: string | null) => putLock({ lockedThrough, reason: reason.trim() || null }),
+    mutationFn: ({ lockedThrough, confirm }: { lockedThrough: string | null; confirm?: boolean }) =>
+      putLock({
+        lockedThrough,
+        reason: reason.trim() || null,
+        confirmUnreconciled: confirm === true ? true : undefined,
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
       notifications.show({ color: "green", message: t("lockMoved") });
       setMonth("");
       setReason("");
+      setUnreconciled(null);
+    },
+    onError: (error, { lockedThrough }) => {
+      if (refusalCode(error) === "bank_unreconciled" && lockedThrough !== null)
+        setUnreconciled({
+          target: lockedThrough,
+          detail: error instanceof ApiConflictError ? (error.detail ?? "") : "",
+        });
     },
   });
   if (lock.error)
@@ -149,14 +166,19 @@ const Lock = ({ canClose }: { canClose: boolean }) => {
               error={fields.lockedThrough}
             />
             <Button
-              onClick={() => move.mutate(target)}
+              onClick={() => move.mutate({ lockedThrough: target })}
               loading={move.isPending}
               disabled={target === null || (back && !reason.trim())}
             >
               {back ? t("moveLockBack") : t("moveLock")}
             </Button>
             {current && (
-              <Button variant="subtle" color="red" onClick={() => move.mutate(null)} disabled={!reason.trim()}>
+              <Button
+                variant="subtle"
+                color="red"
+                onClick={() => move.mutate({ lockedThrough: null })}
+                disabled={!reason.trim()}
+              >
                 {t("liftLock")}
               </Button>
             )}
@@ -170,7 +192,28 @@ const Lock = ({ canClose }: { canClose: boolean }) => {
               error={fields.reason}
             />
           )}
-          {move.error && Object.keys(fields).length === 0 && (
+          {target !== null && !back && !unreconciled && <BankWarning through={target} />}
+          {unreconciled && (
+            <Alert color="yellow" icon={<IconAlertCircle size={16} />} title={t("bankUnreconciledTitle")}>
+              <Stack gap="xs">
+                <Text size="sm">{unreconciled.detail}</Text>
+                <Text size="sm">{t("bankUnreconciledLockHint")}</Text>
+                <Group>
+                  <Button
+                    color="yellow"
+                    loading={move.isPending}
+                    onClick={() => move.mutate({ lockedThrough: unreconciled.target, confirm: true })}
+                  >
+                    {t("lockAnyway")}
+                  </Button>
+                  <Button variant="subtle" onClick={() => setUnreconciled(null)}>
+                    {t("cancel")}
+                  </Button>
+                </Group>
+              </Stack>
+            </Alert>
+          )}
+          {move.error && !unreconciled && Object.keys(fields).length === 0 && (
             <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotSave")}>
               {refusalMessage(t, move.error)}
             </Alert>

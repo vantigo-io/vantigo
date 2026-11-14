@@ -14,6 +14,11 @@ import { render } from "@testing-library/react";
 import {
   ACCOUNTING_HOME_ROUTE_PATH,
   ACCOUNTS_ROUTE_PATH,
+  BANK_ACCOUNT_ROUTE_PATH,
+  BANK_ACCOUNT_SETTINGS_ROUTE_PATH,
+  BANK_IMPORT_ROUTE_PATH,
+  BANK_ROUTE_PATH,
+  BANK_RULES_ROUTE_PATH,
   JOURNAL_ROUTE_PATH,
   NEEDS_ATTENTION_ROUTE_PATH,
   NEW_SUPPLIER_INVOICE_ROUTE_PATH,
@@ -37,12 +42,14 @@ import {
 } from "../lib/routes";
 import { validateJournalSearch, validateVatPostingsSearch } from "../lib/search";
 import { AccountsPage } from "../pages/accounts";
+import { BankAccountSettingsPage, BankAccountsPage, BankImportPage, BankRulesPage } from "../pages/bank";
 import { JournalEntryPage } from "../pages/journal";
 import { NeedsAttentionPage } from "../pages/needs-attention";
 import { OpenItemsPage } from "../pages/open-items";
 import { OpeningPage } from "../pages/opening";
 import { AccountingOverviewPage } from "../pages/overview";
 import { PostingRulesPage } from "../pages/posting-rules";
+import { ReconciliationPage } from "../pages/reconciliation";
 import { ReportsPage } from "../pages/reports";
 import { SaftExportPage } from "../pages/saft";
 import { SettingsPage } from "../pages/settings";
@@ -89,6 +96,11 @@ export const makeRouteTree = () => {
     route(SAFT_ROUTE_PATH, SaftExportPage),
     route(VAT_POSTINGS_ROUTE_PATH, VatPostingsPage, validateVatPostingsSearch),
     route(VAT_TERM_ROUTE_PATH, VatTermPage),
+    route(BANK_ROUTE_PATH, BankAccountsPage),
+    route(BANK_IMPORT_ROUTE_PATH, BankImportPage),
+    route(BANK_RULES_ROUTE_PATH, BankRulesPage),
+    route(BANK_ACCOUNT_ROUTE_PATH, ReconciliationPage),
+    route(BANK_ACCOUNT_SETTINGS_ROUTE_PATH, BankAccountSettingsPage),
   ]);
 };
 

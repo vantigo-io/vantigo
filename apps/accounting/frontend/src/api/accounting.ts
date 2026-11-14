@@ -245,8 +245,11 @@ export const lockQueryOptions = () =>
     queryFn: ({ signal }) => request<AccountingLock>(`${BASE}/lock`, { signal }),
   });
 
-export const putLock = (body: { lockedThrough: string | null; reason?: string | null }) =>
-  send<AccountingLock>(`${BASE}/lock`, json("PUT", body));
+export const putLock = (body: {
+  lockedThrough: string | null;
+  reason?: string | null;
+  confirmUnreconciled?: boolean;
+}) => send<AccountingLock>(`${BASE}/lock`, json("PUT", body));
 
 export const openingQueryOptions = () =>
   queryOptions({
@@ -620,3 +623,172 @@ export const linkSaftImportCustomer = (id: number, position: number, customerId:
 /** Matches the file's customers to Customers again. */
 export const matchSaftImport = (id: number) =>
   send<AccountingSaftImport>(`${BASE}/saft-imports/${id}/match`, { method: "POST" });
+
+// The bank (A26–A29): bank accounts, statements, reconciliation, bank rules.
+
+export type AccountingBankAccount = Schemas["AccountingBankAccount"];
+export type AccountingBankAccountInput = Schemas["AccountingBankAccountInput"];
+export type AccountingBankAccountList = Schemas["AccountingBankAccountList"];
+export type AccountingBankCsvMapping = Schemas["AccountingBankCsvMapping"];
+export type AccountingBankCsvPreview = Schemas["AccountingBankCsvPreview"];
+export type AccountingBankFeedAccount = Schemas["AccountingBankFeedAccount"];
+export type AccountingBankImportResult = Schemas["AccountingBankImportResult"];
+export type AccountingBankStatement = Schemas["AccountingBankStatement"];
+export type AccountingBankLine = Schemas["AccountingBankLine"];
+export type AccountingBankSuggestion = Schemas["AccountingBankSuggestion"];
+export type AccountingBankMatchedPosting = Schemas["AccountingBankMatchedPosting"];
+export type AccountingBankReconciliation = Schemas["AccountingBankReconciliation"];
+export type AccountingBankCodeInput = Schemas["AccountingBankCodeInput"];
+export type AccountingBankBulkAcceptResult = Schemas["AccountingBankBulkAcceptResult"];
+export type AccountingBankStatus = Schemas["AccountingBankStatus"];
+export type AccountingBankRule = Schemas["AccountingBankRule"];
+export type AccountingBankRuleInput = Schemas["AccountingBankRuleInput"];
+
+/** The kinds a suggestion is, in the order the server tries them. */
+export const bankSuggestionKinds = [
+  "feed_payment",
+  "posting",
+  "batch",
+  "supplier_invoice",
+  "vipps_payout",
+  "vat",
+  "transfer",
+  "rule",
+  "invoices",
+] as const;
+
+/** The kinds a match is. */
+export const bankMatchKinds = [
+  "posting",
+  "feed_payment",
+  "batch",
+  "supplier_invoice",
+  "vipps_payout",
+  "vat",
+  "transfer",
+  "rule",
+  "coded",
+] as const;
+
+/** The CSV date formats a mapping may name. */
+export const csvDateFormats = ["DD.MM.YYYY", "DD.MM.YY", "YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY", "YYYYMMDD"] as const;
+
+export const bankAccountsQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "accounts"],
+    queryFn: ({ signal }) => request<AccountingBankAccountList>(`${BASE}/bank/accounts`, { signal }),
+  });
+
+export const bankAccountQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "account", id],
+    queryFn: ({ signal }) => request<AccountingBankAccount>(`${BASE}/bank/accounts/${id}`, { signal }),
+  });
+
+export const createBankAccount = (body: AccountingBankAccountInput) =>
+  send<AccountingBankAccount>(`${BASE}/bank/accounts`, json("POST", body));
+
+export const updateBankAccount = (id: number, body: AccountingBankAccountInput) =>
+  send<AccountingBankAccount>(`${BASE}/bank/accounts/${id}`, json("PUT", body));
+
+export const deleteBankAccount = (id: number) => send<void>(`${BASE}/bank/accounts/${id}`, { method: "DELETE" });
+
+/** Switches the statement's source: files, or the bank feed from a start day (A29). */
+export const setBankAccountSource = (id: number, body: { source: "file" | "feed"; startDay?: string | null }) =>
+  send<AccountingBankAccount>(`${BASE}/bank/accounts/${id}/source`, json("PUT", body));
+
+/** The accounts the bank feed reads, from the bank. */
+export const bankFeedAccountsQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "feed-accounts"],
+    queryFn: ({ signal }) => request<{ items: AccountingBankFeedAccount[] }>(`${BASE}/bank/feed/accounts`, { signal }),
+    select: (answer) => answer.items,
+    retry: false,
+  });
+
+export const putCsvMapping = (id: number, body: AccountingBankCsvMapping) =>
+  send<AccountingBankAccount>(`${BASE}/bank/accounts/${id}/csv-mapping`, json("PUT", body));
+
+/** A multipart write — a statement file, and a mapping beside it — sent past the shared client. */
+const sendForm = async <T>(url: string, form: FormData): Promise<T> => {
+  const response = await fetch(appUrl(url), { method: "POST", body: form, credentials: "include" });
+  if (response.status === 401) await handleUnauthorized();
+  if (response.ok) return (await response.json()) as T;
+  throw await refusalOf(response);
+};
+
+/** Reads a CSV file with a mapping, as it would be imported; writes nothing. */
+export const previewCsv = (id: number, file: File, mapping: AccountingBankCsvMapping) => {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("mapping", JSON.stringify(mapping));
+  return sendForm<AccountingBankCsvPreview>(`${BASE}/bank/accounts/${id}/csv-preview`, form);
+};
+
+/** Imports a camt.053 file, or a CSV file of a bank account (A27). */
+export const importStatement = (file: File, bankAccountId?: number) => {
+  const form = new FormData();
+  form.append("file", file);
+  return sendForm<AccountingBankImportResult>(
+    `${BASE}/bank/imports${queryString({ bankAccountId: bankAccountId ?? undefined })}`,
+    form,
+  );
+};
+
+export const statementsQueryOptions = (bankAccountId?: number) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "statements", bankAccountId ?? null],
+    queryFn: ({ signal }) =>
+      request<{ items: AccountingBankStatement[] }>(`${BASE}/bank/statements${queryString({ bankAccountId })}`, {
+        signal,
+      }),
+    select: (answer) => answer.items,
+  });
+
+/** The address an imported statement's file downloads from. */
+export const statementFileUrl = (id: number) => appUrl(`${BASE}/bank/statements/${id}/file`);
+
+export const reconciliationQueryOptions = (id: number, from: string, to: string, state?: "open" | "matched") =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "reconciliation", id, from, to, state ?? null],
+    queryFn: ({ signal }) =>
+      request<AccountingBankReconciliation>(
+        `${BASE}/bank/accounts/${id}/reconciliation${queryString({ from, to, state })}`,
+        { signal },
+      ),
+  });
+
+export const acceptSuggestion = (lineId: number, key: string) =>
+  send<AccountingBankLine>(`${BASE}/bank/lines/${lineId}/accept`, json("POST", { key }));
+
+export const codeLine = (lineId: number, body: AccountingBankCodeInput) =>
+  send<AccountingBankLine>(`${BASE}/bank/lines/${lineId}/code`, json("POST", body));
+
+export const undoMatch = (lineId: number) =>
+  send<AccountingBankLine>(`${BASE}/bank/lines/${lineId}/undo`, { method: "POST" });
+
+export const acceptExact = (lineIds: number[]) =>
+  send<AccountingBankBulkAcceptResult>(`${BASE}/bank/lines/accept-exact`, json("POST", { lineIds }));
+
+/** The bank's reconciliation at a day: what locking a month or closing a VAT term warns about. */
+export const bankStatusQueryOptions = (through: string) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "status", through],
+    queryFn: ({ signal }) =>
+      request<AccountingBankStatus>(`${BASE}/bank/status${queryString({ through })}`, { signal }),
+  });
+
+export const bankRulesQueryOptions = () =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "rules"],
+    queryFn: ({ signal }) => request<{ items: AccountingBankRule[] }>(`${BASE}/bank/rules`, { signal }),
+    select: (answer) => answer.items,
+  });
+
+export const createBankRule = (body: AccountingBankRuleInput) =>
+  send<AccountingBankRule>(`${BASE}/bank/rules`, json("POST", body));
+
+export const updateBankRule = (id: number, body: AccountingBankRuleInput) =>
+  send<AccountingBankRule>(`${BASE}/bank/rules/${id}`, json("PUT", body));
+
+export const deleteBankRule = (id: number) => send<void>(`${BASE}/bank/rules/${id}`, { method: "DELETE" });

@@ -21,6 +21,20 @@ export const VAT_ROUTE_PATH = "/accounting/vat";
 export const VAT_TERM_ROUTE_PATH = "/accounting/vat/$year/$number";
 export const VAT_POSTINGS_ROUTE_PATH = "/accounting/vat/postings";
 export const SAFT_ROUTE_PATH = "/accounting/saft";
+export const BANK_ROUTE_PATH = "/accounting/bank";
+export const BANK_IMPORT_ROUTE_PATH = "/accounting/bank/import";
+export const BANK_RULES_ROUTE_PATH = "/accounting/bank/rules";
+export const BANK_ACCOUNT_ROUTE_PATH = "/accounting/bank/$bankAccountId";
+export const BANK_ACCOUNT_SETTINGS_ROUTE_PATH = "/accounting/bank/$bankAccountId/settings";
+
+/** A bank account's reconciliation. */
+export const bankAccountPath = (id: number) => `/accounting/bank/${id}`;
+
+/** A bank account's settings: its record, its source and its CSV mapping. */
+export const bankAccountSettingsPath = (id: number) => `/accounting/bank/${id}/settings`;
+
+/** Invoices' bank page, where a customer payment is registered from its bank line (R11). */
+export const INVOICES_BANK_PATH = "/invoices/payments";
 
 /** A voucher's page. */
 export const voucherPath = (id: number) => `/accounting/vouchers/${id}`;

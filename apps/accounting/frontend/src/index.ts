@@ -15,12 +15,14 @@ export {
   validateVatPostingsSearch,
 } from "./lib/search";
 export { AccountsPage } from "./pages/accounts";
+export { BankAccountSettingsPage, BankAccountsPage, BankImportPage, BankRulesPage } from "./pages/bank";
 export { JournalEntryPage } from "./pages/journal";
 export { NeedsAttentionPage } from "./pages/needs-attention";
 export { OpenItemsPage } from "./pages/open-items";
 export { OpeningPage } from "./pages/opening";
 export { AccountingOverviewPage } from "./pages/overview";
 export { PostingRulesPage } from "./pages/posting-rules";
+export { ReconciliationPage } from "./pages/reconciliation";
 export { ReportsPage } from "./pages/reports";
 export { SaftExportPage } from "./pages/saft";
 export { SaftImportPanel } from "./pages/saft-import";

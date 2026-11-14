@@ -1,6 +1,7 @@
 import {
   ACCOUNTING_HOME_ROUTE_PATH,
   ACCOUNTS_ROUTE_PATH,
+  BANK_ROUTE_PATH,
   JOURNAL_ROUTE_PATH,
   NEEDS_ATTENTION_ROUTE_PATH,
   OPEN_ITEMS_ROUTE_PATH,
@@ -25,6 +26,7 @@ export interface AccountingNavItem {
     | "supplierInvoices"
     | "suppliers"
     | "openItems"
+    | "bank"
     | "vat"
     | "reports"
     | "saft"
@@ -44,7 +46,7 @@ const read = ["accounting:read"] as const;
 /**
  * The sidebar: the overview, a new journal entry for those who post, the
  * vouchers, what needs attention, the supplier invoices and the suppliers,
- * the open items, the VAT terms, the reports, the SAF-T export for those who
+ * the open items, the bank and its reconciliation, the VAT terms, the reports, the SAF-T export for those who
  * export, then the
  * chart, the tax codes, the posting rules and the books' settings. Set up the books and the opening balances have no
  * entry: the overview leads to them.
@@ -62,6 +64,7 @@ export const accountingNavItems: readonly AccountingNavItem[] = [
   },
   { key: "suppliers", label: "navSuppliers", to: SUPPLIERS_ROUTE_PATH, requiredPermissions: read },
   { key: "openItems", label: "navOpenItems", to: OPEN_ITEMS_ROUTE_PATH, requiredPermissions: read },
+  { key: "bank", label: "navBank", to: BANK_ROUTE_PATH, requiredPermissions: read },
   { key: "vat", label: "navVat", to: VAT_ROUTE_PATH, requiredPermissions: read },
   { key: "reports", label: "navReports", to: REPORTS_ROUTE_PATH, requiredPermissions: read },
   { key: "saft", label: "navSaft", to: SAFT_ROUTE_PATH, requiredPermissions: ["accounting:export"] },
