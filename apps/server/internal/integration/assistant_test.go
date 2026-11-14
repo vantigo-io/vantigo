@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vantigo-io/vantigo/server/internal/accounting"
 	"github.com/vantigo-io/vantigo/server/internal/agents"
 	"github.com/vantigo-io/vantigo/server/internal/assistant"
 	"github.com/vantigo-io/vantigo/server/internal/calendar"
@@ -48,7 +49,7 @@ func everyModule() []module.Module {
 	return []module.Module{
 		customers.Module(), products.Module(), energy.Module(), communications.Module(),
 		projects.Module(), timetracking.Module(), expenses.Module(), invoices.Module(),
-		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), manufacturing.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(), agents.Module(),
+		staff.Module(), planning.Module(), inventory.Module(), orders.Module(), manufacturing.Module(), accounting.Module(), knowledge.Module(), calendar.Module(), entra.Module(), google.Module(), meta.Module(), assistant.Module(), agents.Module(),
 	}
 }
 
@@ -230,6 +231,16 @@ var markedByHand = map[string]string{
 	"deleteIdentityUsersByIdBadge":                    "never",
 	"getManufacturingStationWorkCenters":              "never",
 	"putManufacturingStationWorkCenters":              "never",
+	// A voucher's attachment is a file a person uploads and downloads: an
+	// agent neither sends nor fetches one (accounting design A4).
+	"uploadAccountingAttachment": "never",
+	"getAccountingAttachment":    "never",
+	// A report's CSV is a file for a person's spreadsheet, and it carries
+	// customers' names (accounting design A1, A11).
+	"exportAccountingReport": "never",
+	// The preview only reads: it computes a journal's tax lines and writes
+	// nothing (A6).
+	"previewAccountingVoucher": "auto",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {

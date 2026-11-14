@@ -53,6 +53,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Inventory**          | Stock of the catalog's goods in warehouses and stores: sites, locations, receipts, adjustments, moves, counts and labels. | 🚧 In development |
 | **Orders**             | Quotes and sales orders for customers, their PDFs and their sending.  | 🚧 In development |
 | **Manufacturing**      | Bills of materials, work centers, manufacturing orders and the shop floor. | 🚧 In development |
+| **Accounting**         | The books: the chart, vouchers, locked periods, open items and the specifications. | 🚧 In development |
 | **Knowledge**          | The company's own articles in a tree: routines, policies and how-tos. | 🚧 In development |
 | **Virtual employees**  | AI employees that answer customers on the channels they are given, under rules the Owner sets. | 🚧 In development |
 | **Calendar**           | One calendar per person: appointments and what the other apps hold.   | 🚧 In development |
@@ -129,6 +130,7 @@ vantigo/
 │   │       ├── inventory/           # Inventory vertical slice (stock in sites and locations)
 │   │       ├── orders/              # Orders vertical slice (quotes and sales orders)
 │   │       ├── manufacturing/       # Manufacturing vertical slice (work centers and bills of materials)
+│   │       ├── accounting/          # Accounting vertical slice (the ledger, vouchers and the specifications)
 │   │       ├── knowledge/           # Knowledge vertical slice (articles in a tree)
 │   │       ├── agents/              # Agents vertical slice (virtual employees)
 │   │       ├── calendar/            # Calendar vertical slice
@@ -152,6 +154,7 @@ vantigo/
 │   ├── inventory/frontend/          # @vantigo/inventory-ui
 │   ├── orders/frontend/             # @vantigo/orders-ui
 │   ├── manufacturing/frontend/      # @vantigo/manufacturing-ui
+│   ├── accounting/frontend/         # @vantigo/accounting-ui
 │   ├── knowledge/frontend/          # @vantigo/knowledge-ui
 │   ├── agents/frontend/             # @vantigo/agents-ui
 │   ├── calendar/frontend/           # @vantigo/calendar-ui

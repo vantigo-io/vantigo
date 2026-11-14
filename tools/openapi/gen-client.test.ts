@@ -26,6 +26,7 @@ describe("gen:client", () => {
       inventory: "apps/inventory/frontend/src/api-schema.d.ts",
       orders: "apps/orders/frontend/src/api-schema.d.ts",
       manufacturing: "apps/manufacturing/frontend/src/api-schema.d.ts",
+      accounting: "apps/accounting/frontend/src/api-schema.d.ts",
       knowledge: "apps/knowledge/frontend/src/api-schema.d.ts",
       calendar: "apps/calendar/frontend/src/api-schema.d.ts",
       entra: "apps/entra/frontend/src/api-schema.d.ts",

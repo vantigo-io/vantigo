@@ -182,3 +182,15 @@ func TestModulesEnv_ListsProductsAndInventoryBesideManufacturing(t *testing.T) {
 		t.Errorf("modulesEnv(manufacturing) = %q, want exactly %q", got, "customers,inventory,manufacturing,products")
 	}
 }
+
+// TestModulesEnv_ListsInvoicesBesideAccounting proves a harness composing
+// accounting lists invoices as enabled: config.go refuses "accounting" without
+// it, and accounting's own tests stand in a fake sales journal rather than
+// compose Invoices.
+func TestModulesEnv_ListsInvoicesBesideAccounting(t *testing.T) {
+	t.Parallel()
+
+	if got := modulesEnv([]module.Module{{Name: "accounting"}}); got != "accounting,customers,invoices" {
+		t.Errorf("modulesEnv(accounting) = %q, want exactly %q", got, "accounting,customers,invoices")
+	}
+}
