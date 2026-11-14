@@ -145,12 +145,16 @@ const (
 	FactChargePaymentRemoved = "charge_payment_removed"
 )
 
-// The sources of JournalFact.Source, as Invoices stores them.
+// The sources of JournalFact.Source, as Invoices stores them. A bank_feed
+// payment came from a line the bank feed read, matched by the feed with no
+// registering user or applied by a person: a bank payment as ocr and camt054
+// are.
 const (
-	PaymentSourceManual  = "manual"
-	PaymentSourceOCR     = "ocr"
-	PaymentSourceCamt054 = "camt054"
-	PaymentSourceVipps   = "vipps"
+	PaymentSourceManual   = "manual"
+	PaymentSourceOCR      = "ocr"
+	PaymentSourceCamt054  = "camt054"
+	PaymentSourceVipps    = "vipps"
+	PaymentSourceBankFeed = "bank_feed"
 )
 
 // JournalFact is one registration or removal of a payment of an invoice's
@@ -177,7 +181,8 @@ type JournalFact struct {
 	// vipps).
 	Source string
 	// BankAccount is the account number of the receiving account the bank
-	// file named, when the payment came from a bank line; "" otherwise.
+	// file or the bank feed named, when the payment came from a bank line
+	// (ocr, camt054 or bank_feed); "" otherwise.
 	BankAccount string
 }
 
