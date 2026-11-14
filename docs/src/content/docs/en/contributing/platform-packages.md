@@ -489,11 +489,12 @@ counts, and when a batch is refused.
 
 ### Errors
 
-An adapter answers two typed errors: `ErrUnauthorized` (a 401 or 403: the bank refused
-the credential) and `*ErrRateLimited{RetryAfter}` (a 429, with the wait the bank named,
-zero when it named none). Anything else — a transport failure, a timeout, a 5xx, a
-redirect, an answer past the size bound or one that does not decode — is a plain error:
-the read failed and nothing was learnt.
+An adapter answers three typed errors: `ErrUnauthorized` (a 401 or 403: the bank refused
+the credential), `*ErrRateLimited{RetryAfter}` (a 429, with the wait the bank named,
+zero when it named none) and `ErrTooLarge` (an answer past the size bound: the consumer
+asks again for fewer days — Invoices halves its window). Anything else — a transport
+failure, a timeout, a 5xx, a redirect or an answer that does not decode — is a plain
+error: the read failed and nothing was learnt.
 
 **An adapter never retries.** A read has no side effect, so the consumer's next cycle
 reads again; an adapter neither repeats a call nor caches an answer.

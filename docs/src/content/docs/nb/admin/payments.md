@@ -239,9 +239,13 @@ mens `INVOICES_BANK_FEED_ENABLED` er på
 ([Bakgrunnsjobber og skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering)).
 Én gang i minuttet tar den hver konto som står for tur, hver under en lease av sin egen,
 så to prosesser aldri leser én konto samtidig. Hver lesing ber Folio om kontoens bokførte
-transaksjoner fra den siste dagen integrasjonen bokførte, minus **10 dager** — en bank kan
+transaksjoner fra den siste dagen den leste til ende, minus **10 dager** — en bank kan
 bokføre en betaling på en tidligere dag enn den først viste den — til i dag, så hver lesing
-dekker de siste ti dagene på nytt; det som er lest før, kjennes igjen og lagres én gang.
+dekker de siste ti dagene på nytt; det som er lest før, kjennes igjen og lagres én gang. En
+lengre periode — en første lesing fra en startdag måneder tilbake, eller en konto som ikke
+er lest på en stund — leses i vinduer på høyst 31 dager, hvert sin egen bunke, noen per
+runde, og kontoen står for tur igjen med en gang til den har tatt igjen; et vindu der svaret
+er for stort, halveres og spørres på nytt.
 Den beholder bare innbetalingene: utbetalinger (lønn, leverandører), kortkjøp og
 overføringer mellom selskapets egne kontoer telles på bunken og lagres aldri.
 Innbetalingene fra én lesing lagres som én bunke i objektlageret
@@ -249,21 +253,30 @@ Innbetalingene fra én lesing lagres som én bunke i objektlageret
 **Innbetalinger** som **Bankintegrasjon · Folio**, og avstemmes på KID-en med en gang.
 **Hent nå** under **Innbetalinger** eller på Bank-siden (`invoices:payments`;
 `POST /api/v1/invoices/bank-feed/sync`, 30 per 10 minutter) setter alle kontoer til tur
-nå; jobben leser dem innen ett minutt.
+nå — også over ventetiden etter en feil — og jobben leser dem innen ett minutt. Den lar en
+konto som er lest de siste to minuttene, være, og en konto Folio svarte 429 for, settes til
+tur først når Folios ventetid er over. En henting mens en konto leses, gjør at den leses
+igjen rett etter.
 
 **Statusen til hver konto** står på Bank-siden, og en konto med annen status enn **OK** står
 på dashbordet til alle med `invoices:manage`. Det sendes ingen e-post.
 
 | Status | Hva som skjedde | Når den leses neste gang | Hva du gjør |
 | --- | --- | --- | --- |
-| **OK** | Siste lesing lyktes; en 429 fra Folio lar den stå som OK med ventetiden notert | Etter intervallet; etter en 429, etter Folios ventetid om den er lengre | Ingenting |
-| **Feiler** | Tre lesinger på rad eller flere feilet: Folio kunne ikke nås eller svarte ikke som det skulle, eller objektlageret kunne ikke ta vare på bunken — logget som en advarsel med kontoen (aldri nøkkelen) | Etter intervallet doblet for hver feil, høyst 6 timer | Sjekk at serveren når `api.folio.no` over HTTPS, og objektlageret; den forsvinner ved neste lesing som lykkes |
-| **Avvist** | Folio svarte en bunke Vantigo avviser i sin helhet, og ingenting av den ble lagret: en betaling bokført etter i dag, en som ikke er i NOK, en den ikke kan avgjøre om er penger inn eller ut, én transaksjon to ganger, en den ikke kan lese — eller kontoens format er ikke lenger **feed** | Etter intervallet; den samme bunken avvises igjen til Folios svar endres | Les årsaken på Bank-siden; for et format slår du integrasjonen av og på igjen. Enhver annen årsak er at Folio svarer noe denne versjonen ikke leser: meld den, med transaksjons-ID-en siden navngir |
+| **OK** | Siste lesing lyktes; en 429 fra Folio lar den stå som OK med ventetiden notert. En innbetaling som ikke kunne avstemmes — KID-en peker på en faktura i en annen valuta, for eksempel — navngis med årsaken *linje ikke avstemt*: den venter i bunken sin, og resten avstemmes | Etter intervallet; etter en 429, etter Folios ventetid om den er lengre | For en innbetaling som ikke er avstemt, sjekk fakturaen KID-en peker på, og fordel linjen fra avvikskøen når det går |
+| **Feiler** | Tre lesinger på rad eller flere feilet: Folio kunne ikke nås eller svarte ikke som det skulle, objektlageret kunne ikke ta vare på bunken, eller Folios svar for én dag var for stort til å leses (*svaret er for stort*) — logget som en advarsel med kontoen (aldri nøkkelen) | Etter intervallet doblet for hver feil, høyst 6 timer, aldri før intervallet | Sjekk at serveren når `api.folio.no` over HTTPS, og objektlageret; den forsvinner ved neste lesing som lykkes. En dag som er for stor: meld fra |
+| **Avvist** | Folio svarte en bunke Vantigo avviser i sin helhet, og ingenting av den ble lagret: en innbetaling bokført etter i dag, ikke i NOK, av en type den ikke kjenner eller som den ikke kan lese, en transaksjon den ikke kan avgjøre om er penger inn eller ut, én transaksjon to ganger — eller én gang til med et annet beløp eller en annen KID enn før — eller kontoens format er ikke lenger **feed**. En utbetaling, et kortkjøp eller en intern overføring avviser aldri en bunke, hvor rar den enn er | Etter intervallet; den samme bunken avvises igjen til Folios svar endres, så **kontoen leser ingenting i mellomtiden** | Les årsaken og transaksjonen på Bank-siden. Slå kontoen av, og slå den så enten på igjen med en startdag etter den transaksjonen — og registrer den for hånd hvis den var en betaling — eller gå tilbake til filer ved å endre formatet under **Innbetalinger**. Meld en annen årsak enn et format: da svarer Folio noe denne versjonen ikke leser |
 | **Nøkkel avvist** | Folio avviste nøkkelen (401 eller 403): tilkoblingen og alle kontoer stopper | Ikke før en ny nøkkel er lagret | Lag en ny nøkkel i Folio og lagre den; alle kontoer leses da med en gang |
 
 En innbetaling uten KID, eller med en som ikke peker på noen faktura, venter i avvikskøen på
-en person, som fra en fil. En betaling banken senere sender tilbake, er en utbetaling, som
-integrasjonen ikke lagrer: den blir stående registrert til noen fjerner den.
+en person, som fra en fil. **Folio merker ingen tilbakeføringer**: en betaling banken senere
+sender tilbake, kommer som en vanlig utbetaling, som integrasjonen teller og ikke lagrer, så
+betalingen blir stående registrert til en person fjerner den med en begrunnelse.
+
+Mens bankintegrasjonen leser en konto, regnes purrekjøringenes bankdata som ferske til og
+med den siste dagen den ble lest, og som gamle så lenge en konto den leser, står som
+**Feiler**, **Avvist** eller **Nøkkel avvist** — en kjøring som ville kreve gebyr eller
+renter, ber da om bekreftelse.
 
 **Hva som kan gå galt.**
 

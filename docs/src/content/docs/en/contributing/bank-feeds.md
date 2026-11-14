@@ -35,7 +35,8 @@ account, and `Raw`. **The adapter decides direction and kind; the module decides
 line means.** An adapter cuts nothing — lengths are the module's — and answers
 `unknown` rather than guess, which the module refuses.
 
-**Errors.** `ErrUnauthorized` (a 401 or 403) and `*ErrRateLimited{RetryAfter}` (a 429).
+**Errors.** `ErrUnauthorized` (a 401 or 403), `*ErrRateLimited{RetryAfter}` (a 429) and
+`ErrTooLarge` (an answer past the adapter's bound — the consumer asks again for fewer days).
 Anything else is a plain error: the read failed and nothing was learnt. **An adapter never
 retries**: a read has no side effect, and the consumer's next cycle reads again.
 
@@ -126,7 +127,8 @@ changed, and say so in their comment.
 
 1. Add the adapter beside Folio's, `internal/bankfeed/<bank>`, implementing
    `bankfeed.Feed`. Map refused credentials to `ErrUnauthorized` and a rate limit to
-   `ErrRateLimited`, and leave everything else a plain error. Decide direction from what
+   `ErrRateLimited`, an answer past the size bound to `ErrTooLarge`, and leave everything
+   else a plain error. Decide direction from what
    the bank answers, and answer `unknown` whenever it is not certain. Follow no redirect,
    bound the call and the answer, and never retry.
 2. Add its fake, `internal/bankfeed/<bank>/<bank>test`, to depguard's `test-fakes` set in

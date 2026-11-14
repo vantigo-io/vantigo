@@ -744,4 +744,15 @@ linked to C's, opened once C's user guide pages are written:
 ## What is left open after C
 
 The open items at the top; a second bank's adapter; everything under the spec's *Out of
-scope* and *Later*.
+scope* and *Later*. And, from C's review:
+
+- **Which account-number form Folio's transactions path wants.** The sync asks
+  `/accounts/{accountNumber}/transactions` with the account's 11 digits (BBAN); were
+  Folio to want the form it writes the account in (an IBAN, say), every read of that
+  account would fail. To be settled against a real account with the open item above.
+- **A day's slack on the cutover from files to the feed.** An account switched from
+  `camt054` or `ocr` to `feed` holds back feed lines booked on or before the cutover —
+  the latest day the files brought. A file of that day may not have carried every
+  payment of it (an intraday notification), so the first feed read holds back a payment
+  the files never registered, and a person applies it from the queue. A day of slack, or
+  matching on the files' lines, was left for later.
