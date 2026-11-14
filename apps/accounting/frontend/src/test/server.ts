@@ -5,6 +5,8 @@ import type {
   AccountingOpening,
   AccountingPostingRule,
   AccountingReport,
+  AccountingSaftExport,
+  AccountingSaftImport,
   AccountingSupplier,
   AccountingSupplierInvoice,
   AccountingTaxCode,
@@ -720,6 +722,27 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
           },
         ],
       });
+    if (method === "GET" && path === "/saft-exports/check")
+      return jsonResponse(200, {
+        fiscalYear: Number(url.searchParams.get("fiscalYear")),
+        fromPeriod: Number(url.searchParams.get("fromPeriod")),
+        toPeriod: Number(url.searchParams.get("toPeriod")),
+        from: "2026-01-01",
+        to: "2026-12-31",
+        sellerMissing: false,
+        vouchers: 12,
+        unmappedAccounts: [{ accountId: 1099, number: "7999", name: "Egen konto" }],
+      });
+    if (method === "GET" && path === "/saft-exports") return jsonResponse(200, { items: [saftExport()] });
+    if (method === "POST" && path === "/saft-exports")
+      return jsonResponse(202, {
+        export: saftExport({ id: 7002, state: "queued", files: [], finishedAt: null, totalBytes: null }),
+        unmappedAccounts: [],
+      });
+    if (method === "POST" && path === "/saft-imports") return jsonResponse(201, saftImport());
+    if (method === "GET" && /^\/saft-imports\/\d+$/.test(path)) return jsonResponse(200, saftImport());
+    if (method === "POST" && /^\/saft-imports\/\d+\/apply$/.test(path))
+      return jsonResponse(201, saftImport({ state: "applied", appliedAt: STAMP, openingVoucherId: 5030 }));
     if (method === "GET" && path === "/catch-up")
       return jsonResponse(200, {
         unposted: state.unposted.length,
@@ -747,6 +770,114 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
     return new Response(null, { status: 404 });
   });
 };
+
+/** A finished SAF-T export with one file. */
+export const saftExport = (change: Partial<AccountingSaftExport> = {}): AccountingSaftExport => ({
+  id: 7001,
+  fiscalYear: 2026,
+  fromPeriod: 1,
+  toPeriod: 12,
+  from: "2026-01-01",
+  to: "2026-12-31",
+  state: "done",
+  error: null,
+  attempts: 1,
+  requestedAt: STAMP,
+  requestedBy: "00000000-0000-0000-0000-000000000001",
+  requestedByName: "Kari Regnskap",
+  startedAt: STAMP,
+  finishedAt: STAMP,
+  totalBytes: 2048,
+  unmappedAccounts: 0,
+  files: [
+    {
+      part: 1,
+      parts: 1,
+      fileName: "SAF-T Financial_923609016_20261114090000_1_1.xml",
+      sizeBytes: 2048,
+      sha256: "ab",
+      fromPeriod: 1,
+      toPeriod: 12,
+      from: "2026-01-01",
+      to: "2026-12-31",
+    },
+  ],
+  ...change,
+});
+
+/** An import's preview: one customer Customers does not hold. */
+export const saftImport = (change: Partial<AccountingSaftImport> = {}): AccountingSaftImport => ({
+  id: 8001,
+  state: "preview",
+  fileName: "gammel.xml",
+  sizeBytes: 4096,
+  sha256: "cd",
+  uploadedAt: STAMP,
+  appliedAt: null,
+  openingVoucherId: null,
+  auditFileVersion: "1.40",
+  companyName: "Fjord Bygg AS",
+  companyOrganisationNumber: "923609016",
+  selectionStart: "2025-01-01",
+  selectionEnd: "2025-12-31",
+  booksStart: "2026-01-01",
+  fiscalYearStartMonth: 1,
+  transactions: 120,
+  canApply: false,
+  blockers: ["Customer 15000 Local Retail Inc has a balance of 12500.00 and is unmatched in Customers."],
+  notes: ["The file's 120 transactions are not imported as vouchers."],
+  accounts: [
+    {
+      fileAccountId: "1500",
+      number: "1500",
+      name: "Kundefordringer",
+      kind: "asset",
+      groupingCategory: "balanseverdiForOmloepsmiddel",
+      groupingCode: "1500",
+      closingBalance: "12500.00",
+      action: "import",
+      problem: null,
+    },
+    {
+      fileAccountId: "1920",
+      number: "1920",
+      name: "Bank",
+      kind: "asset",
+      groupingCategory: null,
+      groupingCode: null,
+      closingBalance: "-12500.00",
+      action: "import",
+      problem: null,
+    },
+  ],
+  addedAccounts: [{ number: "2060", name: "Åpningsbalanse, motkonto", kind: "equity", reason: "rollen opening" }],
+  roles: [{ role: "receivables", accountNumber: "1500", added: false }],
+  taxCodes: [{ fileTaxCode: "30", description: "Utgående", percentage: "25", standardTaxCode: "3", code: "3" }],
+  suppliers: [],
+  customers: [
+    {
+      fileCustomerId: "15000",
+      name: "Local Retail Inc",
+      organisationNumber: "922222229",
+      closingBalance: "12500.00",
+      match: "unmatched",
+      customerId: null,
+      customerName: null,
+    },
+  ],
+  opening: {
+    lines: [
+      { accountNumber: "1920", amount: "-12500.00", text: "Bank", party: null },
+      { accountNumber: "1500", amount: "12500.00", text: "Inngående saldo 15000", party: "Local Retail Inc" },
+    ],
+    result: "0.00",
+    vatMoved: "0.00",
+    vatSettlementAccount: "2740",
+    receivablesDifference: "0.00",
+    payablesDifference: "0.00",
+  },
+  ...change,
+});
 
 /** The body of a request the fake received. */
 export const parseBody = (body: BodyInit | null | undefined): unknown =>
