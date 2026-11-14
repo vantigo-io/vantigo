@@ -1,6 +1,6 @@
 ---
 title: Regnskap
-description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, rapportene og CSV-filene deres, og å invitere en regnskapsfører.
+description: Regnskap-appen — å sette opp regnskapet, kontoplanen med grupperingskoder og systemkontoer, mva-kodene og satsene deres, å bokføre en postering netto eller brutto med mva-linjene, å kopiere et bilag, å legge ved filer, å tilbakeføre et bilag, å sperre en periode og flytte sperren tilbake, inngående balanse og de åpne fakturaene fra Fakturaer, hvordan fakturaer, innbetalinger, purrekostnader og avskrivninger bokføres av seg selv, posteringsreglene, Trenger oppmerksomhet og Prøv igjen, åpne poster og å registrere en innbetaling, utbetaling eller tilbakebetaling, rapportene og CSV-filene deres, og å invitere en regnskapsfører.
 sidebar:
   order: 67
 sources:
@@ -17,10 +17,11 @@ poster** er det hver kunde skylder, dokument for dokument. **Sperredatoen** lukk
 månedene bak seg, og **rapportene** er spesifikasjonene loven krever at et selskap kan
 legge fram.
 
-Regnskap krever at [Fakturaer](/nb/user/invoices/) er slått på. I denne utgaven bokfører du
-posteringer for hånd og registrerer inngående balanse; i de neste utgavene bokføres
-utstedte fakturaer og betalingene på dem av seg selv, og innkjøp, mva-melding, SAF-T og
-bank kommer etter. Reglene bak hvert skjermbilde — hva som avvises og hvorfor, statuskodene
+Regnskap krever at [Fakturaer](/nb/user/invoices/) er slått på. Du bokfører posteringer for
+hånd og registrerer inngående balanse; det Fakturaer utsteder og får betalt — fakturaer,
+kreditnotaer, innbetalinger, purrekostnader og avskrivninger — bokføres av seg selv
+([Slik kommer salget inn](#slik-kommer-salget-inn-fra-fakturaer)). Innkjøp, mva-melding, SAF-T
+og bank kommer i de neste utgavene. Reglene bak hvert skjermbilde — hva som avvises og hvorfor, statuskodene
 og tillatelsen hver forespørsel sjekkes mot — står i
 [referansen for Regnskap-modulen](/en/reference/accounting/) (på engelsk).
 
@@ -31,10 +32,12 @@ og tillatelsen hver forespørsel sjekkes mot — står i
 | **Oversikt** | Om regnskapet er satt opp, bilagene i regnskapsåret, de åpne kundepostene, sperredatoen, det som trenger oppmerksomhet og snarveier. |
 | **Ny postering** | Skjemaet for en postering. Vises for dem som kan bokføre bilag. |
 | **Bilag** | Alle bilag, nyeste først. |
+| **Trenger oppmerksomhet** | Salget regnskapet ikke kunne bokføre, med årsaken og **Prøv igjen**. |
 | **Åpne poster** | Det kundene skylder, dokument for dokument. |
 | **Rapporter** | Bokføringsspesifikasjon, kontospesifikasjon, kunder, leverandører, saldobalanse, resultatregnskap og balanse. |
 | **Kontoplan** | Kontoene, grupperingskodene deres og systemkontoene. |
 | **Mva-koder** | Standard mva-kodene, kontoene deres og satsene. |
+| **Posteringsregler** | Hvilken inntektskonto hver salgslinje føres på. |
 | **Innstillinger** | Regnskapsinnstillingene og sperredatoen. |
 
 ## Å sette opp regnskapet
@@ -151,7 +154,8 @@ Bilagssiden viser datoene — **Bilagsdato** det bokføres på og **Dokumentdato
 gjelder — typen, når det ble bokført, hver postering med konto, tekst, mva-kode, kunde og
 prosjekt, debet og kredit, og vedleggene. **Legg ved en fil** legger til et vedlegg; et
 vedlegg fjernes aldri. Et bilag systemet har bokført for noe en annen app har registrert,
-sier det, og oppgir kilden.
+sier det, oppgir kilden og regelen som laget det med versjonen, og lenker til fakturaen i
+Fakturaer det hører til.
 
 ## Å tilbakeføre et bilag
 
@@ -205,6 +209,72 @@ måned er sperret; etter det ligger den fast, også om sperren senere flyttes ti
 oppheves. Å registrere den, og å tilbakeføre den, krever **Forvalte regnskapet**: den som
 bare kan bokføre bilag, ser ingen **Tilbakefør** på bilaget for inngående balanse.
 
+## Slik kommer salget inn fra Fakturaer
+
+Når regnskapet er satt opp, bokføres alt Fakturaer utsteder og får betalt av seg selv, ett
+bilag for hvert, som regel i løpet av sekunder og senest innen fem minutter. Ingen skriver
+dem inn, og en faktura holdes aldri igjen på grunn av regnskapet: kan noe ikke bokføres,
+venter det under [Trenger oppmerksomhet](#trenger-oppmerksomhet) mens resten går videre.
+
+| I Fakturaer | Bilaget |
+| --- | --- |
+| En faktura utstedes | Kundefordringer debiteres for totalen på fakturaens egen åpne post; hver linjes beløp krediteres inntektskontoen sin ([Posteringsregler](#posteringsregler)); hver sats' merverdiavgift krediteres mva-kontoen til mva-koden. En linje på null utelates, og en faktura med bare nuller bokfører ingenting. |
+| En kreditnota utstedes | Det samme med alle fortegn snudd, på den åpne posten til fakturaen den krediterer. |
+| En betaling registreres | Bankkontoen debiteres — Vipps-mellomkontoen for en Vipps-betaling — og kundefordringer krediteres på fakturaens post. |
+| En betaling fjernes | Det samme snudd tilbake, datert dagen den ble fjernet. |
+| Purrekostnader betales | Banken debiteres og kontoen for purreinntekter krediteres, med mva-kode 7 (uten mva): gebyr, erstatning og renter er ikke omsetning. Fjernes betalingen, snus det tilbake. |
+| En faktura avskrives | Tap på fordringer debiteres og kundefordringer krediteres for det som var åpent; tilbakeføres merverdiavgiften, føres mva-andelen tilbake på hver sats' mva-konto, merket for mva-meldingen. En avrunding føres på avrundingskontoen. Angres avskrivningen, snus bilaget tilbake. |
+| Det kommer penger etter en avskrivning | Banken debiteres og tap på fordringer krediteres — og den tilbakeførte merverdiavgiften føres tilbake, forholdsmessig. |
+
+Hvordan du [avskriver en faktura](/nb/user/invoices/#å-avskrive-en-faktura) i Fakturaer, står på den siden.
+
+Regnskapets start og sperren bestemmer datoen:
+
+- En faktura utstedt før regnskapet starter, bokføres ikke: den hører hjemme i inngående
+  balanse.
+- En betaling på en faktura fra før regnskapet starter, bokføres på fakturaens post i
+  inngående balanse. En som er datert før regnskapet starter, men registrert etter at du
+  la inn inngående balanse, bokføres på regnskapets startdato, så den telles én gang; en som
+  inngående balanse allerede tar med, bokføres ikke igjen.
+- Et bilag datert i en sperret måned bokføres på første åpne dag, med sin egen dato som
+  dokumentdato.
+
+**Salg fra Fakturaer** på oversikten viser hvor langt regnskapet har lest, og om noe venter.
+
+## Posteringsregler
+
+**Posteringsregler** bestemmer hvilken inntektskonto hver fakturalinje krediteres. En regel
+treffer på én ting, og den første som treffer, gjelder:
+
+1. linjens **type** — timer, utlegg, milepæler, energioppgjør, ordrelinjer,
+   abonnementsperioder, fradrag av a konto, linjer skrevet inn for hånd;
+2. produktets **avgiftskategori**, for en linje fra en ordre;
+3. linjens **mva-kode**;
+4. **standardregelen** for mva-koden, satt opp med regnskapet: avgiftspliktig salg på 3000
+   (3010 middels sats, 3020 lav sats), avgiftsfritt salg på 3100, utførsel på 3150,
+   innenlands omvendt avgiftsplikt på 3160, salg utenfor merverdiavgiftsloven på 3200.
+
+**Legg til en regel** med navn, hva den treffer, og kontoen. Klikk på navnet til en regel
+for å endre navn eller konto: en ny konto gir en ny **versjon** av regelen, og bare bilag
+som bokføres etter det, følger den — det som er bokført, blir stående. Hver inntektslinje i
+et bilag oppgir regelen og versjonen som valgte kontoen. En standardregel slettes aldri; pek
+den til en annen konto i stedet.
+
+Å endre reglene krever **Forvalte regnskapet**.
+
+## Trenger oppmerksomhet
+
+**Trenger oppmerksomhet** viser hvert salg regnskapet ikke kunne bokføre, med årsaken: en
+mva-kode regnskapet ikke har, eller som er inaktiv; en konto som er inaktiv; en type faktum
+denne versjonen ikke kjenner. Oversikten og dashbordet teller dem.
+
+Rett årsaken — aktiver kontoen, legg til mva-koden, endre regelen — og klikk **Prøv igjen** på
+linjen: faktumet leses på nytt fra Fakturaer og bokføres, og linjen viser deretter bilaget.
+Et faktum avvises aldri. **Vis også dem som er bokført siden** viser dem et nytt forsøk har
+bokført.
+
+Å prøve igjen krever **Bokføre bilag**.
+
 ## Åpne poster
 
 **Åpne poster** viser, per kunde, hvert dokument som ikke er gjort opp: nummer, datoer,
@@ -229,7 +299,8 @@ laget:
 - **Bokføringsspesifikasjon** — alle bilagenes posteringer i nummerrekkefølge.
 - **Kontospesifikasjon** — én kontos inngående saldo, posteringene og utgående saldo.
 - **Kunder** og **Leverandører** — per part, postene med saldo eller bevegelse i perioden,
-  og saldoen fordelt på forfall: ikke forfalt, 1–30, 31–60, 61–90 og over 90 dager.
+  og saldoen fordelt på forfall: ikke forfalt, 1–30, 31–60, 61–90 og over 90 dager. En post
+  for en faktura lenker til den i Fakturaer.
 - **Saldobalanse**, **Resultatregnskap** og **Balanse**. **Sammenlign med året før** legger
   til samme periode året før (29. februar sammenlignes med 28. februar). Balansen viser
   resultatet som ikke er avsluttet mot egenkapitalen som to linjer i egenkapitalen:
@@ -254,8 +325,8 @@ tillatelsene som trengs:
 | Tillatelse | Hva den gir |
 | --- | --- |
 | **Bruke Regnskap** (`accounting:read`) | Alle skjermbilder og rapporter. |
-| **Bokføre bilag** (`accounting:post`) | Posteringer, tilbakeføringer, vedlegg og oppgjør. |
-| **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet, kontoplanen, mva-kodene, inngående balanse og sperren. Bare en eier kan gi den. |
+| **Bokføre bilag** (`accounting:post`) | Posteringer, tilbakeføringer, vedlegg, oppgjør og **Prøv igjen** under Trenger oppmerksomhet. |
+| **Forvalte regnskapet** (`accounting:close`) | Å sette opp regnskapet, kontoplanen, mva-kodene, posteringsreglene, inngående balanse og sperren. Bare en eier kan gi den. |
 | **Eksportere regnskapet** (`accounting:export`) | Rapportene som CSV. |
 
 Når oppdraget er over, fjerner du rollen eller deaktiverer brukeren: alt vedkommende har
