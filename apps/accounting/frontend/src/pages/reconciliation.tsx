@@ -8,6 +8,7 @@ import {
   Group,
   Modal,
   NumberInput,
+  Pagination,
   SegmentedControl,
   SimpleGrid,
   Stack,
@@ -22,13 +23,16 @@ import { Link, useParams } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
+  type AcceptExtras,
   type AccountingBankLine,
   type AccountingBankSuggestion,
   type AccountingMeta,
   acceptExact,
   acceptSuggestion,
   codeLine,
+  RECONCILIATION_PAGE,
   reconciliationQueryOptions,
+  resolveDuplicate,
   undoMatch,
 } from "../api/accounting";
 import { ACCOUNTING_QUERY_KEY, refusedFields } from "../api/request";
@@ -52,6 +56,8 @@ const monthOf = (today: string) => {
  * certain first, each with its reason; accept one, code the line, or undo a
  * match while the period is open. The foot says the statement's balance, the
  * ledger's, the difference, and the ledger's postings no line is matched to.
+ * A line that may repeat one of another origin waits for the person to set
+ * it aside or keep it; the lines come in pages.
  */
 export const ReconciliationPage = () => {
   const { bankAccountId } = useParams({ strict: false }) as { bankAccountId: string };
@@ -63,8 +69,11 @@ const Reconciliation = ({ id, meta }: { id: number; meta: AccountingMeta }) => {
   const month = monthOf(meta.today);
   const [from, setFrom] = useState(month.from);
   const [to, setTo] = useState(month.to);
-  const [state, setState] = useState<"all" | "open" | "matched">("all");
-  const query = useQuery(reconciliationQueryOptions(id, from, to, state === "all" ? undefined : state));
+  const [state, setState] = useState<"all" | "open" | "matched" | "duplicate">("all");
+  const [page, setPage] = useState(1);
+  const query = useQuery(
+    reconciliationQueryOptions(id, from, to, state === "all" ? undefined : state, (page - 1) * RECONCILIATION_PAGE),
+  );
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
   const bulk = useMutation({
@@ -83,7 +92,8 @@ const Reconciliation = ({ id, meta }: { id: number; meta: AccountingMeta }) => {
     );
   if (query.isPending) return <ContentSkeleton rows={8} />;
   const r = query.data;
-  const exact = r.lines.filter((l) => l.state === "open" && l.suggestions[0]?.exact);
+  const exact = r.lines.filter((l) => l.state === "open" && !l.possibleDuplicateOf && l.suggestions[0]?.exact);
+  const pages = Math.max(1, Math.ceil(r.total / RECONCILIATION_PAGE));
   const confirmBulk = () =>
     modals.openConfirmModal({
       title: t("bankBulkTitle"),
@@ -109,15 +119,35 @@ const Reconciliation = ({ id, meta }: { id: number; meta: AccountingMeta }) => {
         }
       />
       <Group align="flex-end" gap="sm">
-        <TextInput type="date" label={t("from")} value={from} onChange={(e) => setFrom(e.currentTarget.value)} />
-        <TextInput type="date" label={t("to")} value={to} onChange={(e) => setTo(e.currentTarget.value)} />
+        <TextInput
+          type="date"
+          label={t("from")}
+          value={from}
+          onChange={(e) => {
+            setFrom(e.currentTarget.value);
+            setPage(1);
+          }}
+        />
+        <TextInput
+          type="date"
+          label={t("to")}
+          value={to}
+          onChange={(e) => {
+            setTo(e.currentTarget.value);
+            setPage(1);
+          }}
+        />
         <SegmentedControl
           value={state}
-          onChange={(v) => setState(v as "all" | "open" | "matched")}
+          onChange={(v) => {
+            setState(v as "all" | "open" | "matched" | "duplicate");
+            setPage(1);
+          }}
           data={[
             { value: "all", label: t("bankFilterAll") },
             { value: "open", label: t("bankFilterOpen") },
             { value: "matched", label: t("bankFilterMatched") },
+            { value: "duplicate", label: t("bankFilterDuplicate") },
           ]}
           aria-label={t("bankFilter")}
         />
@@ -135,6 +165,14 @@ const Reconciliation = ({ id, meta }: { id: number; meta: AccountingMeta }) => {
             <LineCard key={l.id} line={l} canPost={meta.canPost} />
           ))}
         </Stack>
+      )}
+      {pages > 1 && (
+        <Group justify="space-between">
+          <Text size="sm" c="dimmed">
+            {t("bankLinesOf", { count: r.lines.length, total: r.total })}
+          </Text>
+          <Pagination value={page} onChange={setPage} total={pages} aria-label={t("bankPages")} />
+        </Group>
       )}
       <Card withBorder padding="md" data-testid="bank-foot">
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
@@ -186,6 +224,7 @@ const LineCard = ({ line, canPost }: { line: AccountingBankLine; canPost: boolea
   const { t, money, day } = useAccountingFormat();
   const queryClient = useQueryClient();
   const [coding, setCoding] = useState(false);
+  const [asking, setAsking] = useState<AccountingBankSuggestion | null>(null);
   const done = async () => {
     await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
   };
@@ -205,6 +244,14 @@ const LineCard = ({ line, canPost }: { line: AccountingBankLine; canPost: boolea
     },
     onError: (error) => notifications.show({ color: "red", message: refusalMessage(t, error) }),
   });
+  const settle = useMutation({
+    mutationFn: (duplicate: boolean) => resolveDuplicate(line.id, duplicate),
+    onSuccess: async (_, duplicate) => {
+      await done();
+      notifications.show({ color: "green", message: duplicate ? t("bankDuplicateSetAside") : t("bankDuplicateKept") });
+    },
+    onError: (error) => notifications.show({ color: "red", message: refusalMessage(t, error) }),
+  });
   const confirmUndo = () =>
     modals.openConfirmModal({
       title: t("bankUndoTitle"),
@@ -219,9 +266,17 @@ const LineCard = ({ line, canPost }: { line: AccountingBankLine; canPost: boolea
         <Stack gap={2}>
           <Group gap="xs">
             <Text fw={600}>{day(line.bookedOn)}</Text>
-            <Badge variant="light" color={line.state === "matched" ? "teal" : "orange"}>
+            <Badge
+              variant="light"
+              color={line.state === "matched" ? "teal" : line.state === "duplicate" ? "gray" : "orange"}
+            >
               {t(`bankLineState_${line.state}`)}
             </Badge>
+            {line.possibleDuplicateOf !== null && line.state === "open" && (
+              <Badge variant="outline" color="yellow">
+                {t("bankPossibleDuplicate")}
+              </Badge>
+            )}
             {line.kind !== "transfer" && <Badge variant="outline">{t(`bankLineKind_${line.kind}`)}</Badge>}
             {line.reversal && (
               <Badge variant="outline" color="grape">
@@ -244,6 +299,11 @@ const LineCard = ({ line, canPost }: { line: AccountingBankLine; canPost: boolea
             <Text size="xs" c="dimmed">
               {t("bankBatchOf", { count: line.batch.length })}:{" "}
               {line.batch.map((b) => `${money(b.amount)}${b.kid ? ` (${b.kid})` : ""}`).join(", ")}
+            </Text>
+          )}
+          {line.note && line.state === "open" && (
+            <Text size="xs" c="orange" data-testid="bank-line-note">
+              {line.note}
             </Text>
           )}
         </Stack>
@@ -278,6 +338,24 @@ const LineCard = ({ line, canPost }: { line: AccountingBankLine; canPost: boolea
             </Button>
           )}
         </Group>
+      ) : line.state === "duplicate" ? (
+        <Text size="sm" c="dimmed" mt="xs">
+          {t("bankDuplicateHint")}
+        </Text>
+      ) : line.possibleDuplicateOf !== null ? (
+        <Stack gap="xs" mt="xs" data-testid="bank-possible-duplicate">
+          <Text size="sm">{t("bankPossibleDuplicateHint")}</Text>
+          {canPost && (
+            <Group>
+              <Button size="xs" variant="light" onClick={() => settle.mutate(true)} loading={settle.isPending}>
+                {t("bankDuplicateSetAsideAction")}
+              </Button>
+              <Button size="xs" variant="subtle" onClick={() => settle.mutate(false)} loading={settle.isPending}>
+                {t("bankDuplicateKeepAction")}
+              </Button>
+            </Group>
+          )}
+        </Stack>
       ) : (
         <Stack gap="xs" mt="xs">
           {line.suggestions.map((s, i) => (
@@ -287,7 +365,9 @@ const LineCard = ({ line, canPost }: { line: AccountingBankLine; canPost: boolea
               first={i === 0}
               canPost={canPost}
               accepting={accept.isPending && accept.variables === s.key}
-              onAccept={() => accept.mutate(s.key)}
+              onAccept={() =>
+                s.needsAmountCurrency || s.kind === "vipps_payout" ? setAsking(s) : accept.mutate(s.key)
+              }
             />
           ))}
           {line.suggestions.length === 0 && (
@@ -305,7 +385,79 @@ const LineCard = ({ line, canPost }: { line: AccountingBankLine; canPost: boolea
         </Stack>
       )}
       {coding && <CodeModal line={line} onClose={() => setCoding(false)} />}
+      {asking && <AcceptModal line={line} suggestion={asking} onClose={() => setAsking(null)} />}
     </Card>
+  );
+};
+
+/**
+ * Accept with what the bank does not say: a foreign-currency supplier
+ * payment's amount in the invoice's currency, or a Vipps payout's fee from
+ * Vipps' settlement report (at most 5 % of the line).
+ */
+const AcceptModal = ({
+  line,
+  suggestion: s,
+  onClose,
+}: {
+  line: AccountingBankLine;
+  suggestion: AccountingBankSuggestion;
+  onClose: () => void;
+}) => {
+  const { t, money } = useAccountingFormat();
+  const queryClient = useQueryClient();
+  const vipps = s.kind === "vipps_payout";
+  const [value, setValue] = useState<string | number>(() => (vipps ? s.fee : s.amountCurrency) ?? "");
+  const ore = Math.round(Number(value || 0) * 100);
+  const save = useMutation({
+    mutationFn: () => {
+      const extras: AcceptExtras = vipps ? { fee: decimalOf(ore) } : { amountCurrency: decimalOf(ore) };
+      return acceptSuggestion(line.id, s.key, extras);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
+      notifications.show({ color: "green", message: t("bankMatched") });
+      onClose();
+    },
+  });
+  const fields = refusedFields(save.error);
+  return (
+    <Modal
+      opened
+      onClose={onClose}
+      title={vipps ? t("bankVippsFeeTitle") : t("bankAmountCurrencyTitle", { currency: s.currency ?? "" })}
+    >
+      <Stack gap="sm">
+        <Text size="sm">{s.reason}</Text>
+        <NumberInput
+          label={vipps ? t("bankVippsFee") : t("bankAmountCurrency", { currency: s.currency ?? "" })}
+          description={
+            vipps
+              ? t("bankVippsFeeHint", { max: money(s.feeMax ?? "0") })
+              : t("bankAmountCurrencyHint", { amount: money(line.amount) })
+          }
+          decimalScale={2}
+          fixedDecimalScale
+          min={0}
+          value={value}
+          onChange={setValue}
+          error={fields[vipps ? "fee" : "amountCurrency"]}
+        />
+        {save.error && (
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotSave")}>
+            {refusalMessage(t, save.error)}
+          </Alert>
+        )}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            {t("cancel")}
+          </Button>
+          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!vipps && ore <= 0}>
+            {t("bankAccept")}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 };
 

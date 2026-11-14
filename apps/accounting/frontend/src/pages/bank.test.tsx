@@ -125,6 +125,11 @@ describe("reconciling", () => {
               supplierInvoiceId: null,
               otherLineId: null,
               bankRuleId: null,
+              currency: null,
+              amountCurrency: null,
+              needsAmountCurrency: false,
+              fee: null,
+              feeMax: null,
             },
           ],
         }),
@@ -165,6 +170,112 @@ describe("reconciling", () => {
     await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Accept them" }));
     await waitFor(() => expect(sent(fetchMock, "POST", /\/bank\/lines\/accept-exact$/)).toHaveLength(1));
     expect(sent(fetchMock, "POST", /\/bank\/lines\/accept-exact$/)[0].body).toEqual({ lineIds: [8105] });
+  });
+});
+
+describe("what the bank does not say", () => {
+  const suggestion = bankLine().suggestions[0];
+
+  it("asks a Vipps payout's fee from the settlement report", async () => {
+    const fetchMock = stubAccountingApi({
+      bankAccounts: [bankAccount()],
+      bankLines: [
+        bankLine({
+          id: 8201,
+          amount: "1234.00",
+          text: "Utbetaling Vipps",
+          suggestions: [
+            {
+              ...suggestion,
+              key: "vipps:nofee",
+              kind: "vipps_payout",
+              certainty: "possible",
+              reason: "No run of settlement days' sales comes to it.",
+              fee: "0.00",
+              feeMax: "61.70",
+              bankRuleId: null,
+            },
+          ],
+        }),
+      ],
+    });
+    renderRoute("/accounting/bank/7001");
+    await userEvent.click(await screen.findByRole("button", { name: "Accept: A Vipps payout" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/At most/)).toHaveTextContent("61.70");
+    const fee = within(dialog).getByLabelText("Vipps' fee");
+    await userEvent.clear(fee);
+    await userEvent.type(fee, "16");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/bank\/lines\/8201\/accept$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/bank\/lines\/8201\/accept$/)[0].body).toEqual({
+      key: "vipps:nofee",
+      fee: "16.00",
+    });
+  });
+
+  it("asks the amount in the invoice's currency a part payment settles", async () => {
+    const fetchMock = stubAccountingApi({
+      bankAccounts: [bankAccount()],
+      bankLines: [
+        bankLine({
+          id: 8202,
+          amount: "-470.00",
+          text: "Cloud GmbH INV-77",
+          suggestions: [
+            {
+              ...suggestion,
+              key: "supplier:1001",
+              kind: "supplier_invoice",
+              certainty: "possible",
+              reason: "Needs the amount in EUR the payment settles.",
+              currency: "EUR",
+              amountCurrency: "40.87",
+              needsAmountCurrency: true,
+              supplierInvoiceId: 1001,
+              bankRuleId: null,
+            },
+          ],
+        }),
+      ],
+    });
+    renderRoute("/accounting/bank/7001");
+    await userEvent.click(await screen.findByRole("button", { name: "Accept: Pay a supplier invoice" }));
+    const dialog = await screen.findByRole("dialog");
+    const amount = within(dialog).getByLabelText("Amount settled in EUR");
+    await userEvent.clear(amount);
+    await userEvent.type(amount, "40");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/bank\/lines\/8202\/accept$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/bank\/lines\/8202\/accept$/)[0].body).toEqual({
+      key: "supplier:1001",
+      amountCurrency: "40.00",
+    });
+  });
+
+  it("sets a possible duplicate aside, offering it no match", async () => {
+    const fetchMock = stubAccountingApi({
+      bankAccounts: [bankAccount()],
+      bankLines: [bankLine({ id: 8203, possibleDuplicateOf: 8101, source: "csv", suggestions: [] })],
+    });
+    renderRoute("/accounting/bank/7001");
+    const card = await screen.findByTestId("bank-possible-duplicate");
+    expect(screen.queryByRole("button", { name: "Code it" })).not.toBeInTheDocument();
+    await userEvent.click(within(card).getByRole("button", { name: "Set aside as a duplicate" }));
+    await waitFor(() => expect(sent(fetchMock, "POST", /\/bank\/lines\/8203\/duplicate$/)).toHaveLength(1));
+    expect(sent(fetchMock, "POST", /\/bank\/lines\/8203\/duplicate$/)[0].body).toEqual({ duplicate: true });
+  });
+
+  it("says when an import holds possible duplicates", async () => {
+    stubAccountingApi({ bankAccounts: [bankAccount()] });
+    renderRoute("/accounting/bank/import");
+    await screen.findByText("Statement file");
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+    await userEvent.upload(input, new File(["<Document/>"], "camt053.xml", { type: "application/xml" }));
+    await userEvent.click(screen.getByRole("button", { name: "Import" }));
+    const result = await screen.findByTestId("bank-import-result");
+    expect(within(result).getByText(/2 lines may repeat lines already imported/)).toBeInTheDocument();
   });
 });
 

@@ -199,6 +199,14 @@ export const refusalCodes = [
   "bank_line_customer_payment",
   "bank_rule_in_use",
   "bank_unreconciled",
+  "bank_account_in_use",
+  "bank_feed_start_too_early",
+  "bank_rule_customer_payment",
+  "bank_amount_currency_required",
+  "bank_fee_too_large",
+  "bank_open_item_required",
+  "bank_line_possible_duplicate",
+  "bank_line_not_duplicate",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 

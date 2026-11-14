@@ -323,9 +323,17 @@ export const bankLine = (change: Partial<AccountingBankLine> = {}): AccountingBa
       supplierInvoiceId: null,
       otherLineId: null,
       bankRuleId: 1,
+      currency: null,
+      amountCurrency: null,
+      needsAmountCurrency: false,
+      fee: null,
+      feeMax: null,
     },
   ],
   customerPayment: false,
+  possibleDuplicateOf: null,
+  note: "",
+  txReference: "",
   ...change,
 });
 
@@ -334,6 +342,7 @@ const reconciliation = (state: ApiState): AccountingBankReconciliation => ({
   from: "2026-11-01",
   to: "2026-11-30",
   lines: state.bankLines ?? [],
+  total: (state.bankLines ?? []).length,
   foot: {
     statementBalance: "88655.00",
     ledgerBalance: "88750.00",
@@ -952,11 +961,22 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
             continuity: "gap",
             continuityDetail: "No statement covers 2026-10-25 to 2026-10-31.",
             repeated: false,
+            coveredByFeed: 0,
+            possibleDuplicates: 2,
           },
         ],
         unknownAccounts: ["30001234567"],
         notBooked: 1,
       });
+    const duplicate = /^\/bank\/lines\/(\d+)\/duplicate$/.exec(path);
+    if (method === "POST" && duplicate) {
+      const found = (state.bankLines ?? []).find((l) => l.id === Number(duplicate[1])) ?? bankLine();
+      const body = JSON.parse(String(init?.body));
+      return jsonResponse(
+        200,
+        body.duplicate ? { ...found, state: "duplicate", suggestions: [] } : { ...found, possibleDuplicateOf: null },
+      );
+    }
     const lineAction = /^\/bank\/lines\/(\d+)\/(accept|code|undo)$/.exec(path);
     if (method === "POST" && lineAction) {
       const found = (state.bankLines ?? []).find((l) => l.id === Number(lineAction[1])) ?? bankLine();
