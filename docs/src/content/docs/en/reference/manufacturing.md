@@ -49,7 +49,9 @@ The module is `manufacturing` (M6), its schema `manufacturing` (migration
 `00156_manufacturing_baseline.sql`), its API `/api/v1/manufacturing` from
 `openapi/manufacturing.yaml` and its frontend `@vantigo/manufacturing-ui`
 (`apps/manufacturing/frontend`). It is a vertical-slice module inside the single Vantigo
-binary (`apps/server/internal/manufacturing`).
+binary (`apps/server/internal/manufacturing`). Like every module package,
+`@vantigo/manufacturing-ui` imports no other module's package and none imports it: its
+`eslint.config.js` refuses each of them by name, `@vantigo/accounting-ui` the newest.
 
 It reads the catalog through `contracts.ProductCatalog` — searching goods variants, and
 locking every variant a BoM write names (M10a) — and the sites and stock through
