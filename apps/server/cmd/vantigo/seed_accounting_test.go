@@ -70,6 +70,8 @@ func TestRun_SeedBooksTheDemo(t *testing.T) {
 	}
 
 	expect("the books' start", `SELECT books_start::text FROM accounting.settings`, "2026-01-01")
+	// The workshop's seed ran in the same seed as the books.
+	expect("the workshop's manufacturing orders", `SELECT count(*)::text FROM manufacturing.orders`, "6")
 	expect("the trial balance", `SELECT coalesce(sum(amount), 0)::text FROM accounting.postings`, "0.00")
 	// Receivables on the ledger are what Invoices has open.
 	expect("receivables less Invoices' open amount", `

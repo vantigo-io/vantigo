@@ -922,13 +922,25 @@ func (b *demoBooks) bank() error {
 		if err != nil {
 			return err
 		}
-		if len(keys) == 0 {
-			continue
+		// The most certain suggestion a person could accept with one click: one
+		// that needs what a person gives — a part payment's amount in the
+		// invoice's currency — is refused without it and left for them, and the
+		// next is tried. A possible duplicate and a set-aside line have none.
+		matched := false
+		for _, key := range keys {
+			err := accounting.AcceptBankSuggestion(b.ctx, b.deps, l.ID, key, b.owner)
+			if _, isRefusal := accounting.RefusalProblem(err); isRefusal {
+				continue
+			}
+			if err != nil {
+				return refused(fmt.Sprintf("accept the bank line %q", l.Text), err)
+			}
+			matched = true
+			break
 		}
-		if err := accounting.AcceptBankSuggestion(b.ctx, b.deps, l.ID, keys[0], b.owner); err != nil {
-			return refused(fmt.Sprintf("accept the bank line %q", l.Text), err)
+		if matched {
+			b.counts["lines_matched"]++
 		}
-		b.counts["lines_matched"]++
 	}
 	return nil
 }
