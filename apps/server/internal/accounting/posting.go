@@ -46,6 +46,10 @@ type Voucher struct {
 	Description  string
 	// Source is the fact a system voucher records; nil for a person's.
 	Source *Source
+	// SourceDocumentID is the document in Invoices a system voucher belongs
+	// to — the invoice its payment, credit note or write-off is about — so
+	// the voucher links to it; nil for none.
+	SourceDocumentID *int64
 	// Rule and RuleVersion name the posting rule that made a system voucher
 	// (A14); "" for none.
 	Rule        string
@@ -74,6 +78,10 @@ type Line struct {
 	TaxCodeID *int32
 	TaxRole   string
 	TaxBase   *big.Rat
+	// TaxSpecification is the VAT return's specification line the posting
+	// belongs to (tapPåKrav for a loss's VAT taken back, R4); "" for none.
+	// It needs a tax code.
+	TaxSpecification string
 	// CustomerID or SupplierID names the party, at most one.
 	CustomerID *int32
 	SupplierID *int64
@@ -274,7 +282,8 @@ func post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 		return Posted{}, fmt.Errorf("accounting: allocate a voucher number: %w", err)
 	}
 	params := store.InsertVoucherParams{FiscalYear: year, Number: number, VoucherDate: date, DocumentDate: documentDate,
-		Description: v.Description, Kind: v.Kind, ReversesVoucherID: v.Reverses, PostedAt: now, PostedByUserID: v.PostedBy}
+		Description: v.Description, Kind: v.Kind, ReversesVoucherID: v.Reverses, PostedAt: now, PostedByUserID: v.PostedBy,
+		SourceDocumentID: v.SourceDocumentID}
 	if v.Source != nil {
 		params.SourceModule, params.SourceKind, params.SourceID = &v.Source.Module, &v.Source.Kind, &v.Source.ID
 		params.SourcePart = v.Source.Part
@@ -304,6 +313,9 @@ func post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 			p.TaxRole = &role
 			if role == "tax" && l.TaxBase != nil {
 				p.TaxBase = ptr(money(l.TaxBase))
+			}
+			if l.TaxSpecification != "" {
+				p.TaxSpecification = &l.TaxSpecification
 			}
 		}
 		if err := q.InsertPosting(ctx, p); err != nil {
@@ -546,7 +558,8 @@ func reversal(ctx context.Context, q *store.Queries, id int64, date time.Time, r
 	}
 	for _, p := range postings {
 		l := Line{AccountID: p.AccountID, Amount: neg(mustRat(p.Amount)), TaxCodeID: p.TaxCodeID, CustomerID: p.CustomerID,
-			SupplierID: p.SupplierID, OpenItemID: p.OpenItemID, ProjectID: p.ProjectID, Text: p.Description}
+			SupplierID: p.SupplierID, OpenItemID: p.OpenItemID, ProjectID: p.ProjectID, Text: p.Description,
+			TaxSpecification: deref(p.TaxSpecification)}
 		if p.TaxRole != nil {
 			l.TaxRole = *p.TaxRole
 		}

@@ -183,25 +183,27 @@ func (q *Queries) InsertAttachment(ctx context.Context, arg InsertAttachmentPara
 
 const insertPosting = `-- name: InsertPosting :exec
 INSERT INTO accounting.postings (voucher_id, line_no, account_id, amount, tax_code_id, tax_role, tax_base,
-    customer_id, supplier_id, open_item_id, project_id, description)
+    customer_id, supplier_id, open_item_id, project_id, description, tax_specification)
 VALUES ($1, $2, $3, $4::text::numeric,
     $5, $6, $7::text::numeric, $8,
-    $9, $10, $11, $12)
+    $9, $10, $11, $12,
+    $13)
 `
 
 type InsertPostingParams struct {
-	VoucherID   int64
-	LineNo      int32
-	AccountID   int32
-	Amount      string
-	TaxCodeID   *int32
-	TaxRole     *string
-	TaxBase     *string
-	CustomerID  *int32
-	SupplierID  *int64
-	OpenItemID  *int64
-	ProjectID   *int32
-	Description string
+	VoucherID        int64
+	LineNo           int32
+	AccountID        int32
+	Amount           string
+	TaxCodeID        *int32
+	TaxRole          *string
+	TaxBase          *string
+	CustomerID       *int32
+	SupplierID       *int64
+	OpenItemID       *int64
+	ProjectID        *int32
+	Description      string
+	TaxSpecification *string
 }
 
 func (q *Queries) InsertPosting(ctx context.Context, arg InsertPostingParams) error {
@@ -218,6 +220,7 @@ func (q *Queries) InsertPosting(ctx context.Context, arg InsertPostingParams) er
 		arg.OpenItemID,
 		arg.ProjectID,
 		arg.Description,
+		arg.TaxSpecification,
 	)
 	return err
 }
@@ -225,11 +228,11 @@ func (q *Queries) InsertPosting(ctx context.Context, arg InsertPostingParams) er
 const insertVoucher = `-- name: InsertVoucher :one
 INSERT INTO accounting.vouchers (fiscal_year, number, voucher_date, document_date, description, kind,
     source_module, source_kind, source_id, source_part, rule, rule_version, reverses_voucher_id, reversal_reason,
-    posted_at, posted_by_user_id)
+    posted_at, posted_by_user_id, source_document_id)
 VALUES ($1, $2, $3, $4,
     $5, $6, $7, $8, $9,
     $10, $11, $12, $13,
-    $14, $15, $16)
+    $14, $15, $16, $17)
 RETURNING id
 `
 
@@ -250,6 +253,7 @@ type InsertVoucherParams struct {
 	ReversalReason    *string
 	PostedAt          time.Time
 	PostedByUserID    *uuid.UUID
+	SourceDocumentID  *int64
 }
 
 func (q *Queries) InsertVoucher(ctx context.Context, arg InsertVoucherParams) (int64, error) {
@@ -270,6 +274,7 @@ func (q *Queries) InsertVoucher(ctx context.Context, arg InsertVoucherParams) (i
 		arg.ReversalReason,
 		arg.PostedAt,
 		arg.PostedByUserID,
+		arg.SourceDocumentID,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -313,7 +318,7 @@ func (q *Queries) ListAttachments(ctx context.Context, voucherID int64) ([]Accou
 const listPostings = `-- name: ListPostings :many
 SELECT p.voucher_id, p.line_no, p.account_id, a.number AS account_number, a.name AS account_name,
     p.amount::text AS amount, p.tax_code_id, t.code AS tax_code, p.tax_role, p.tax_base,
-    p.customer_id, p.supplier_id, p.open_item_id, p.project_id, p.description
+    p.customer_id, p.supplier_id, p.open_item_id, p.project_id, p.description, p.tax_specification
 FROM accounting.postings p
 JOIN accounting.accounts a ON a.id = p.account_id
 LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
@@ -322,21 +327,22 @@ ORDER BY p.voucher_id, p.line_no
 `
 
 type ListPostingsRow struct {
-	VoucherID     int64
-	LineNo        int32
-	AccountID     int32
-	AccountNumber string
-	AccountName   string
-	Amount        string
-	TaxCodeID     *int32
-	TaxCode       *string
-	TaxRole       *string
-	TaxBase       pgtype.Numeric
-	CustomerID    *int32
-	SupplierID    *int64
-	OpenItemID    *int64
-	ProjectID     *int32
-	Description   string
+	VoucherID        int64
+	LineNo           int32
+	AccountID        int32
+	AccountNumber    string
+	AccountName      string
+	Amount           string
+	TaxCodeID        *int32
+	TaxCode          *string
+	TaxRole          *string
+	TaxBase          pgtype.Numeric
+	CustomerID       *int32
+	SupplierID       *int64
+	OpenItemID       *int64
+	ProjectID        *int32
+	Description      string
+	TaxSpecification *string
 }
 
 func (q *Queries) ListPostings(ctx context.Context, voucherIds []int64) ([]ListPostingsRow, error) {
@@ -364,6 +370,7 @@ func (q *Queries) ListPostings(ctx context.Context, voucherIds []int64) ([]ListP
 			&i.OpenItemID,
 			&i.ProjectID,
 			&i.Description,
+			&i.TaxSpecification,
 		); err != nil {
 			return nil, err
 		}
@@ -378,6 +385,7 @@ func (q *Queries) ListPostings(ctx context.Context, voucherIds []int64) ([]ListP
 const listVouchers = `-- name: ListVouchers :many
 SELECT v.id, v.fiscal_year, v.number, v.voucher_date, v.document_date, v.description, v.kind, v.source_module,
     v.source_kind, v.source_id, v.source_part, v.reverses_voucher_id, v.posted_at, r.id AS reversed_by_id,
+    v.source_document_id,
     coalesce((SELECT sum(p.amount) FILTER (WHERE p.amount > 0) FROM accounting.postings p WHERE p.voucher_id = v.id), 0)::text AS debit,
     count(*) OVER () AS total
 FROM accounting.vouchers v
@@ -385,30 +393,32 @@ LEFT JOIN accounting.vouchers r ON r.reverses_voucher_id = v.id
 WHERE ($1::date IS NULL OR v.voucher_date >= $1::date)
   AND ($2::date IS NULL OR v.voucher_date <= $2::date)
   AND ($3::text IS NULL OR v.kind = $3::text)
-  AND ($4::int IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p
-       WHERE p.voucher_id = v.id AND p.account_id = $4::int))
+  AND ($4::bigint IS NULL OR v.source_document_id = $4::bigint)
   AND ($5::int IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p
-       WHERE p.voucher_id = v.id AND p.customer_id = $5::int))
-  AND ($6::bigint IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p
-       WHERE p.voucher_id = v.id AND p.supplier_id = $6::bigint))
-  AND ($7::text IS NULL OR v.description ILIKE '%' || $7::text || '%'
-       OR (v.fiscal_year::text || '-' || lpad(v.number::text, 6, '0')) LIKE $7::text || '%'
+       WHERE p.voucher_id = v.id AND p.account_id = $5::int))
+  AND ($6::int IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p
+       WHERE p.voucher_id = v.id AND p.customer_id = $6::int))
+  AND ($7::bigint IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p
+       WHERE p.voucher_id = v.id AND p.supplier_id = $7::bigint))
+  AND ($8::text IS NULL OR v.description ILIKE '%' || $8::text || '%'
+       OR (v.fiscal_year::text || '-' || lpad(v.number::text, 6, '0')) LIKE $8::text || '%'
        OR EXISTS (SELECT 1 FROM accounting.postings p
-           WHERE p.voucher_id = v.id AND p.description ILIKE '%' || $7::text || '%'))
+           WHERE p.voucher_id = v.id AND p.description ILIKE '%' || $8::text || '%'))
 ORDER BY v.voucher_date DESC, v.fiscal_year DESC, v.number DESC
-LIMIT $9 OFFSET $8
+LIMIT $10 OFFSET $9
 `
 
 type ListVouchersParams struct {
-	FromDate   *time.Time
-	ToDate     *time.Time
-	Kind       *string
-	AccountID  *int32
-	CustomerID *int32
-	SupplierID *int64
-	Q          *string
-	RowOffset  int32
-	RowLimit   int32
+	FromDate         *time.Time
+	ToDate           *time.Time
+	Kind             *string
+	SourceDocumentID *int64
+	AccountID        *int32
+	CustomerID       *int32
+	SupplierID       *int64
+	Q                *string
+	RowOffset        int32
+	RowLimit         int32
 }
 
 type ListVouchersRow struct {
@@ -426,6 +436,7 @@ type ListVouchersRow struct {
 	ReversesVoucherID *int64
 	PostedAt          time.Time
 	ReversedByID      *int64
+	SourceDocumentID  *int64
 	Debit             string
 	Total             int64
 }
@@ -437,6 +448,7 @@ func (q *Queries) ListVouchers(ctx context.Context, arg ListVouchersParams) ([]L
 		arg.FromDate,
 		arg.ToDate,
 		arg.Kind,
+		arg.SourceDocumentID,
 		arg.AccountID,
 		arg.CustomerID,
 		arg.SupplierID,
@@ -466,6 +478,7 @@ func (q *Queries) ListVouchers(ctx context.Context, arg ListVouchersParams) ([]L
 			&i.ReversesVoucherID,
 			&i.PostedAt,
 			&i.ReversedByID,
+			&i.SourceDocumentID,
 			&i.Debit,
 			&i.Total,
 		); err != nil {

@@ -6,8 +6,9 @@
 // docs/superpowers/specs/2026-11-14-accounting-design.md, delivery A).
 //
 // Every voucher, whoever makes it, goes through one function, Post
-// (posting.go): later deliveries post Invoices' sales, purchases, VAT terms
-// and bank lines through it with a source key. The module requires invoices
+// (posting.go): Invoices' sales post through it with a source key, read by
+// the catch-up worker (catchup.go, sales.go; delivery B), and later
+// deliveries post purchases, VAT terms and bank lines the same way. The module requires invoices
 // (A1): Invoices' journal is what its sales post from (contracts.SalesJournal)
 // and its seller is the company (contracts.SalesTax).
 package accounting
@@ -43,12 +44,12 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: permPost, Display: "Post vouchers",
-		Description: "Post manual journals, reverse vouchers, attach files and register payments on open items.",
+		Description: "Post manual journals, reverse vouchers, attach files, register payments on open items and retry the facts under Needs attention.",
 		Category:    "Accounting", Sensitive: false, Delegable: true,
 	},
 	{
 		Key: permClose, Display: "Manage the books",
-		Description: "Set up the books, change the chart of accounts, the tax codes and the system roles, enter the opening balances and move the lock date.",
+		Description: "Set up the books, change the chart of accounts, the tax codes, the system roles and the posting rules, enter the opening balances and move the lock date.",
 		Category:    "Accounting", Sensitive: false, Delegable: false,
 	},
 	{
@@ -72,9 +73,11 @@ var bodyLimits = map[string]int64{
 // Module is the Accounting module.
 func Module() module.Module {
 	return module.Module{
-		Name:        moduleName,
-		Permissions: permissions,
-		Mount:       mount,
+		Name:          moduleName,
+		Permissions:   permissions,
+		Mount:         mount,
+		EventHandlers: eventHandlers,
+		Workers:       workers,
 	}
 }
 

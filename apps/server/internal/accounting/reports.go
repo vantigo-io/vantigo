@@ -394,7 +394,7 @@ func (t *table) parties(ctx context.Context, q *store.Queries, in reportInput) (
 		}
 		bucket := agedBucket(r.DueDate, in.to)
 		cells[bucket] = money(balance)
-		t.row(gen.Line, 1, cells)
+		t.row(gen.Line, 1, cells).DocumentId = r.SourceDocumentID
 		for _, m := range []map[string]*big.Rat{partyTotal, total} {
 			accumulate(m, "balance", balance)
 			accumulate(m, "movement", movement)

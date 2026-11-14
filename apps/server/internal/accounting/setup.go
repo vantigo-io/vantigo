@@ -46,6 +46,9 @@ func (s *server) GetAccountingMeta(ctx context.Context, _ gen.GetAccountingMetaR
 	if out.OpenCustomerItems, err = q.CountOpenCustomerItems(ctx); err != nil {
 		return nil, err
 	}
+	if out.Unposted, err = q.CountUnposted(ctx); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -106,7 +109,10 @@ func (s *server) SetUpAccountingBooks(ctx context.Context, req gen.SetUpAccounti
 		if err != nil {
 			return err
 		}
-		return seedBooks(ctx, q, string(b.Language), start, now)
+		if err := seedBooks(ctx, q, string(b.Language), start, now); err != nil {
+			return err
+		}
+		return seedDefaultRules(ctx, q, string(b.Language), now)
 	})
 	if err != nil {
 		return nil, err

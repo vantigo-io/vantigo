@@ -79,7 +79,8 @@ var refusalCodes = []string{
 	codeLockBeforeBooksStart, codeSettlementSourceDoc, codeSettlementExceeds, codeSettlementSettled,
 	codeBankAccountInvalid, codeAttachmentTooLarge, codeStorageNotConfigured, codeReportAccountNeeded,
 	codePeriodInvalid, codeOpenItemSourceDocument, codeReportTooLarge, codeLockInFuture, codeBooksStartTooEarly,
-	codeAccountKindMismatch, codeReverseChargeGross,
+	codeAccountKindMismatch, codeReverseChargeGross, codeRuleNameTaken, codeRuleMatchTaken, codeRuleDefault,
+	codeUnpostedPosted,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a

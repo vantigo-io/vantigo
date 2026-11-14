@@ -1,0 +1,201 @@
+package accounting
+
+// Needs attention (A15) and the catch-up's state: the source facts that could
+// not be posted, each with Retry — read again through Invoices' sales journal
+// and posted when its cause is fixed — and where each stream stands. There is
+// no dismissal: a fact the books cannot hold is fixed, never waved away.
+
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/accounting/gen"
+	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
+)
+
+// codeUnpostedPosted is a retry of a fact that has posted.
+const codeUnpostedPosted = "unposted_already_posted"
+
+const (
+	defaultUnpostedLimit = 100
+	maxUnpostedLimit     = 500
+)
+
+// unpostedView is a row as the contract answers it, with the customers' names.
+func unpostedView(r store.GetUnpostedRow, names map[int32]string) gen.AccountingUnposted {
+	out := gen.AccountingUnposted{Id: r.ID, Stream: r.Stream, Position: r.Position,
+		Source:   gen.AccountingSource{Module: r.SourceModule, Kind: r.SourceKind, Id: r.SourceID, Part: r.SourcePart},
+		FactDate: apiDatePtr(r.FactDate), DocumentId: r.DocumentID, DocumentNumber: r.DocumentNumber, CustomerId: r.CustomerID,
+		Reason: r.Reason, Detail: r.Detail, Attempts: r.Attempts, FirstSeenAt: r.FirstSeenAt, LastTriedAt: r.LastTriedAt,
+		PostedAt: r.PostedAt}
+	if r.Amount != "" {
+		out.Amount = ptr(money(mustRat(r.Amount)))
+	}
+	if r.CustomerID != nil {
+		if name, ok := names[*r.CustomerID]; ok {
+			out.CustomerName = &name
+		}
+	}
+	if r.PostedVoucherID != nil && r.VoucherYear != nil && r.VoucherNumber != nil {
+		out.PostedVoucher = &gen.AccountingVoucherRef{Id: *r.PostedVoucherID, Display: display(*r.VoucherYear, *r.VoucherNumber)}
+	}
+	return out
+}
+
+// ListAccountingUnposted is the facts under Needs attention, oldest first.
+func (s *server) ListAccountingUnposted(ctx context.Context, req gen.ListAccountingUnpostedRequestObject) (gen.ListAccountingUnpostedResponseObject, error) {
+	p := req.Params
+	limit, offset := int32(defaultUnpostedLimit), int32(0)
+	if p.Limit != nil {
+		limit = min(max(*p.Limit, 1), maxUnpostedLimit)
+	}
+	if p.Offset != nil && *p.Offset > 0 {
+		offset = *p.Offset
+	}
+	open := p.Open == nil || *p.Open
+	rows, err := store.New(s.deps.Pool).ListUnposted(ctx, store.ListUnpostedParams{OpenOnly: open, RowLimit: limit, RowOffset: offset})
+	if err != nil {
+		return nil, err
+	}
+	var ids []int32
+	for _, r := range rows {
+		if r.CustomerID != nil {
+			ids = append(ids, *r.CustomerID)
+		}
+	}
+	names := s.customerNames(ctx, ids)
+	out := gen.ListAccountingUnposted200JSONResponse{Items: []gen.AccountingUnposted{}}
+	for _, r := range rows {
+		out.Total = int32(r.Total)
+		out.Items = append(out.Items, unpostedView(store.GetUnpostedRow{ID: r.ID, Stream: r.Stream, Position: r.Position,
+			SourceModule: r.SourceModule, SourceKind: r.SourceKind, SourceID: r.SourceID, SourcePart: r.SourcePart,
+			FactDate: r.FactDate, DocumentID: r.DocumentID, DocumentNumber: r.DocumentNumber, CustomerID: r.CustomerID,
+			Amount: r.Amount, Reason: r.Reason, Detail: r.Detail, Attempts: r.Attempts, FirstSeenAt: r.FirstSeenAt,
+			LastTriedAt: r.LastTriedAt, PostedVoucherID: r.PostedVoucherID, PostedAt: r.PostedAt, VoucherYear: r.VoucherYear,
+			VoucherNumber: r.VoucherNumber}, names))
+	}
+	return out, nil
+}
+
+// RetryAccountingUnposted reads the fact again through the journal, with no
+// transaction open, and posts it in one transaction (A15). The answer is the
+// row: with its voucher when it posted, with its new reason when it did not.
+func (s *server) RetryAccountingUnposted(ctx context.Context, req gen.RetryAccountingUnpostedRequestObject) (gen.RetryAccountingUnpostedResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	row, err := q.GetUnposted(ctx, req.Id)
+	if noRows(err) {
+		return nil, notFound()
+	}
+	if err != nil {
+		return nil, err
+	}
+	if row.PostedAt != nil {
+		return nil, conflict(codeUnpostedPosted, "The fact has posted", "")
+	}
+	it, err := s.reread(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now()
+	err = s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		if it == nil {
+			return recordUnposted(ctx, q, sourceItem{stream: row.Stream, position: row.Position, fact: &contracts.JournalFact{
+				Seq: row.Position, Kind: row.SourceKind, SubjectID: row.SourceID, AmountNOK: row.Amount}},
+				reasonDocumentUnknown, "Invoices' journal no longer answers this fact.", now)
+		}
+		_, err := postSource(ctx, tx, *it, now)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	row, err = q.GetUnposted(ctx, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int32
+	if row.CustomerID != nil {
+		ids = append(ids, *row.CustomerID)
+	}
+	return gen.RetryAccountingUnposted200JSONResponse(unpostedView(row, s.customerNames(ctx, ids))), nil
+}
+
+// reread is the fact a row stands for, read again through the journal: nil
+// when the journal no longer answers it (or Invoices is off).
+func (s *server) reread(ctx context.Context, row store.GetUnpostedRow) (*sourceItem, error) {
+	journal := s.deps.SalesJournal
+	if journal == nil {
+		return nil, nil
+	}
+	switch row.Stream {
+	case streamDocuments:
+		doc, err := journal.Document(ctx, row.SourceID)
+		if err != nil || doc == nil {
+			return nil, err
+		}
+		return &sourceItem{stream: row.Stream, position: doc.Number, doc: doc}, nil
+	case streamFacts:
+		items, err := readStream(ctx, journal, streamFacts, row.Position-1, 1)
+		if err != nil {
+			return nil, err
+		}
+		if len(items) != 1 || items[0].fact.Seq != row.Position || items[0].fact.SubjectID != row.SourceID {
+			return nil, nil
+		}
+		return &items[0], nil
+	}
+	return nil, nil
+}
+
+// GetAccountingCatchUp is where each stream stands: its cursor, its last
+// run, a wake-up waiting, and how many items the journal has after the
+// cursor, counted up to a page — read with no transaction open.
+func (s *server) GetAccountingCatchUp(ctx context.Context, _ gen.GetAccountingCatchUpRequestObject) (gen.GetAccountingCatchUpResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	rows, err := q.ListCursors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	unposted, err := q.CountUnposted(ctx)
+	if err != nil {
+		return nil, err
+	}
+	known := map[string]store.ListCursorsRow{}
+	for _, r := range rows {
+		known[r.Stream] = r
+	}
+	out := gen.GetAccountingCatchUp200JSONResponse{Streams: []gen.AccountingCatchUpStream{}, Unposted: unposted}
+	for _, stream := range catchupStreams {
+		r := known[stream]
+		v := gen.AccountingCatchUpStream{Stream: gen.AccountingCatchUpStreamStream(stream), Position: r.Position,
+			LastRunAt: r.LastRunAt, LastError: r.LastError, RequestedAt: r.RequestedAt}
+		if r.Stream == "" {
+			if at, err := q.PendingRequest(ctx, stream); err == nil {
+				v.RequestedAt = &at
+			}
+		}
+		if s.deps.SalesJournal != nil {
+			items, err := readStream(ctx, countingJournal{s.deps.SalesJournal}, stream, r.Position, contracts.MaxJournalPage)
+			if err != nil {
+				s.logger().WarnContext(ctx, "accounting: read how far the books are behind", "stream", stream, "error", err)
+			} else {
+				v.Behind = ptr(int32(len(items)))
+				v.BehindMore = len(items) >= contracts.MaxJournalPage
+			}
+		} else {
+			v.Behind = ptr(int32(0))
+		}
+		out.Streams = append(out.Streams, v)
+	}
+	return out, nil
+}
+
+// countingJournal reads a journal for counting only: it never fetches a
+// write-off's invoice.
+type countingJournal struct{ contracts.SalesJournal }
+
+func (countingJournal) Document(context.Context, int64) (*contracts.JournalDocument, error) {
+	return nil, nil
+}
