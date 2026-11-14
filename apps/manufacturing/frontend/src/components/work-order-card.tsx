@@ -61,13 +61,17 @@ export const WorkOrderCard = ({ workOrder, onOpen }: { workOrder: ManufacturingW
         </Stack>
         <Stack gap={4} align="flex-end">
           <Text size="lg" fw={600}>
-            {t("doneOfQuantity", {
-              done: quantity(progress.done),
-              quantity: quantity(order.quantity, order.variant.unit),
-            })}
+            {progress
+              ? t("doneOfQuantity", {
+                  done: quantity(progress.done),
+                  quantity: quantity(order.quantity, order.variant.unit),
+                })
+              : quantity(order.quantity, order.variant.unit)}
           </Text>
           {!isClosedWorkOrder(workOrder) && (
-            <Text size="md">{t("remainingValue", { quantity: quantity(progress.remaining, order.variant.unit) })}</Text>
+            <Text size="md">
+              {t("remainingValue", { quantity: quantity(progress?.remaining ?? order.remaining, order.variant.unit) })}
+            </Text>
           )}
           <Text size="md">{t("dueValue", { date: order.dueDate ? day(order.dueDate) : "—" })}</Text>
           {order.reservationStatus && (

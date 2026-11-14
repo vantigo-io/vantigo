@@ -70,6 +70,7 @@ const recordFetch = (refuse: (path: string) => boolean = () => false) => {
   let paired = false;
   let operators: unknown[] = [];
   let sessions = 0;
+  let failingReads = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -80,6 +81,10 @@ const recordFetch = (refuse: (path: string) => boolean = () => false) => {
       if (refuse(path)) {
         operators = [];
         return Promise.resolve(json({ error: { code: "operator_session_ended", message: "Signed out." } }, 401));
+      }
+      if (path === "/api/v1/identity/station" && method === "GET" && failingReads > 0) {
+        failingReads--;
+        return Promise.resolve(new Response(null, { status: 503 }));
       }
       if (path === "/api/v1/identity/station" && method === "GET")
         return Promise.resolve(
@@ -161,6 +166,10 @@ const recordFetch = (refuse: (path: string) => boolean = () => false) => {
   return Object.assign(requests, {
     endSessions: () => {
       operators = [];
+    },
+    /** The station's next reads of itself fail: the network, a deploy. */
+    failReads: (count: number) => {
+      failingReads = count;
     },
   });
 };
@@ -295,6 +304,44 @@ describe("the /station route", () => {
     expect(screen.getAllByText("Ada Lovelace · Signed out")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Ada Lovelace" })).toHaveLength(1);
   });
+
+  it("keeps one chip per person: switching in while switched in replaces the live one", async () => {
+    vi.stubGlobal("WebSocket", QuietSocket);
+    recordFetch();
+    renderSpaAt("/station");
+    await userEvent.type(await screen.findByLabelText("Pairing code"), "ABCD-EFGH");
+    await userEvent.click(screen.getByRole("button", { name: "Pair" }));
+
+    await switchInAda();
+    await screen.findByRole("button", { name: /SAW/ });
+    // The server ends her first session as it starts the second: the next read lists only the new one.
+    await switchInAda();
+    await screen.findByRole("button", { name: /SAW/ });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(screen.queryByText("Ada Lovelace · Signed out")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Ada Lovelace" })).toHaveLength(1);
+  });
+
+  it("keeps the station up through a read that fails, and goes on asking", async () => {
+    vi.stubGlobal("WebSocket", QuietSocket);
+    const server = recordFetch();
+    renderSpaAt("/station");
+    await userEvent.type(await screen.findByLabelText("Pairing code"), "ABCD-EFGH");
+    await userEvent.click(screen.getByRole("button", { name: "Pair" }));
+    await switchInAda();
+    await screen.findByRole("button", { name: /SAW/ });
+
+    const reads = () => server.filter((request) => request.url.endsWith("/identity/station")).length;
+    const before = reads();
+    server.failReads(1);
+    await vi.waitFor(() => expect(reads()).toBeGreaterThan(before), { timeout: 8_000 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(screen.getByRole("button", { name: /SAW/ })).toBeInTheDocument();
+
+    // The reads go on: an ended session still shows without a tap.
+    server.endSessions();
+    expect(await screen.findByText("Ada Lovelace · Signed out", {}, { timeout: 8_000 })).toBeInTheDocument();
+  }, 25_000);
 
   it("notices a session ended elsewhere without a tap", async () => {
     vi.stubGlobal("WebSocket", QuietSocket);

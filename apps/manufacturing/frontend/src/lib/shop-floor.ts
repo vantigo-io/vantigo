@@ -19,11 +19,16 @@ export const TOUCH_CARD_MIN_HEIGHT = 96;
  * How far one work order has come: the good units it has registered — Register
  * quantity's for an operation that passes them on, the order's production for
  * its last — and what is left of the order's quantity for it, never below 0.
+ * Null for an operation before the last that has registered nothing: only
+ * Register quantity counts there, and most operations never use it, so "0 of
+ * 10" would say nothing was made of an operation that is running or done —
+ * the order's own quantity and remaining say what there is to say.
  */
 export const operationProgress = (
   workOrder: Pick<ManufacturingWorkOrder, "last" | "quantityDone" | "order">,
-): { done: string; remaining: string } => {
+): { done: string; remaining: string } | null => {
   const passed = workOrder.quantityDone ?? "0";
+  if (!workOrder.last && compareDecimal(passed, "0") <= 0) return null;
   const done =
     workOrder.last && compareDecimal(workOrder.order.produced, passed) > 0 ? workOrder.order.produced : passed;
   return { done, remaining: subtractDecimal(workOrder.order.quantity, done) };

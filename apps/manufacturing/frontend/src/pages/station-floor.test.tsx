@@ -265,6 +265,20 @@ describe("the shop floor on a shared station", () => {
     expect(screen.queryByText(/remaining/)).not.toBeInTheDocument();
   });
 
+  it("shows the order's quantity and remaining for an operation that registers none", async () => {
+    stubManufacturingApi({
+      meta: { canWorkShopFloor: true },
+      workOrders: [workOrderFixture({ status: "in_progress", last: false, quantityDone: "0" })],
+    });
+    setStationOperator(() => TOKEN);
+    renderStation();
+    await userEvent.click(await screen.findByRole("button", { name: /SAW/ }));
+    const card = await screen.findByRole("button", { name: "MO-12 · Cut" });
+    expect(card).toHaveTextContent("10 pcs");
+    expect(card).not.toHaveTextContent("0 of 10");
+    expect(card).toHaveTextContent("10 pcs remaining");
+  });
+
   it("counts what is left from the quantity the work order registered", async () => {
     stubManufacturingApi({
       meta: { canWorkShopFloor: true },

@@ -802,9 +802,9 @@ again.
 
 The work center page shows its **Queue**: the work orders that are ready, in progress or
 paused, of orders still open — first by planned start, then the urgent orders, then by
-due date. Each shows the order's number, the product, the good units the operation has
-registered of the order's quantity — *4 of 10 pcs* — and, while it is open, how many are
-still to go, the due date, whether its components are reserved, and who is running it. The queue updates by
+due date. Each shows the order's number, the product, the order's quantity and, while
+it is open, how many are still to make — counted from the operation's own good units once it
+has registered any, as *4 of 10 pcs* — the due date, whether its components are reserved, and who is running it. The queue updates by
 itself as others start and finish work. **My work** is at the top of every shop-floor
 screen.
 
