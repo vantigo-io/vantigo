@@ -10,6 +10,8 @@ sources:
   - apps/host/frontend/src/routes/invoices
   - apps/host/frontend/src/routes/pay.tsx
   - apps/host/frontend/src/lib/public-paths.ts
+  - apps/host/frontend/src/lib/dashboard-helpers.ts
+  - apps/host/frontend/src/catalogs/dashboard.ts
 ---
 
 Fakturaer-appen utsteder salgsdokumentene i bokføringen din: et utkast blir en
@@ -1210,15 +1212,46 @@ I stedet for å importere filer kan en konto leses fra banken selv. I dag er den
    **camt.054**, beholder det gamle formatet som det tidligere, med skjæringsdagen, slik en
    endring av formatet gjør.
 
+Fra da av kommer kontoens innbetalinger av seg selv: se
+[Innbetalinger hentet fra banken](#innbetalinger-hentet-fra-banken). Raden til hver konto
+viser statusen, når den sist ble lest, og hvorfor, når bankens svar ble avvist.
+
 **Bytt nøkkel** lagrer en ny nøkkel på samme måte, og henter tilbake en konto banken hadde
 avvist den gamle nøkkelen for. **Koble fra** fjerner nøkkelen og slår av alle kontoer;
 bankfilene, betalingene som er registrert fra dem, og formatet til hver konto blir stående.
-Når installasjonen ikke tillater bankintegrasjon — standard i denne versjonen — sier siden
-det, og knappen **Koble til** er ikke aktiv; en konto integrasjonen er slått på for, listes
-fortsatt, så den kan slås av. I denne versjonen leser integrasjonen ennå ikke betalingene: en konto som er slått på,
-får ingenting fra banken, og det importeres ikke lenger filer for den, så slå integrasjonen
-på for en konto først når Vantigo leser betalingene ([Innbetalinger fra
-banken](/nb/admin/payments/#bankintegrasjonen)).
+Når installasjonen ikke tillater bankintegrasjon, sier siden det, og knappen **Koble til**
+er ikke aktiv; en konto integrasjonen er slått på for, listes fortsatt, så den kan slås av
+([Innbetalinger fra banken](/nb/admin/payments/#bankintegrasjonen)).
+
+### Innbetalinger hentet fra banken
+
+En konto bankintegrasjonen leser, trenger ingen fil. Omtrent hvert 30. minutt spør Vantigo
+banken om kontoens innbetalinger de siste dagene, og hver av dem avstemmes på KID-en slik
+en innbetaling fra en fil blir: en som peker på en utstedt faktura, registreres med en gang,
+og resten går til [avvikskøen](#avvikskøen). Utbetalinger fra kontoen — lønn, leverandører
+— kortkjøp og overføringer mellom selskapets egne kontoer telles bare, og beholdes aldri.
+
+- **Hent nå**, ved siden av **Importer** på **Innbetalinger** (og på Bank-siden, for noen
+  med `invoices:payments`), spør etter alle kontoer med en gang; innbetalingene kommer innen
+  ett minutt. Under knappene viser hver konto integrasjonen leser, statusen og når den sist
+  ble lest.
+- Hver henting som ga nye innbetalinger, listes blant filene som **Bankintegrasjon ·
+  Folio**, med tallene sine, og åpnes som en fil. En innbetaling banken viser igjen ved en
+  senere henting, kjennes igjen og registreres ikke to ganger.
+- Der en fil sier hvem som lastet den opp, og en linje eller en betaling hvem som
+  registrerte den, sier en betaling integrasjonen registrerte av seg selv,
+  **bankintegrasjonen**. En du fordeler fra avvikskøen, registreres av deg.
+- En innbetaling uten KID venter i køen som **Ingen KID**, med forslagene, til ett klikk
+  fordeler den.
+- **At banken sender en betaling tilbake**, er en utbetaling, som integrasjonen ikke
+  beholder: betalingen blir stående registrert til noen fjerner den med en begrunnelse.
+
+Når banken avviser nøkkelen, ikke kan nås tre ganger på rad, eller svarer en henting
+Vantigo ikke kan ta imot, sier kontoens status det på Bank-siden, og dashbordets liste
+**Trenger oppfølging** forteller det til alle med `invoices:manage` — *Banken avviste
+API-nøkkelen*, *Bankintegrasjonen klarer ikke å lese kontoen som slutter på …* eller
+*Bankintegrasjonen avviste en bunke for kontoen som slutter på …* — med lenke til
+Bank-siden. Ingenting registreres fra en avvist henting.
 
 **En ekte andre betaling som ser ut som en gjentakelse.** En betaling holdes tilbake som
 **Et mulig duplikat**, og registreres ikke, når en betaling fra **en annen fil** til samme
@@ -1234,7 +1267,8 @@ slike betalinger i samme fil registreres begge.
 ## Avvikskøen
 
 **Avvikskøen**, nederst på **Innbetalinger**, har betalingene avstemmingen ikke kunne
-plassere, og duplikatene — det som venter på en person. Den åpner på **I køen**;
+plassere, fra en fil eller [fra bankintegrasjonen](#innbetalinger-hentet-fra-banken), og
+duplikatene — det som venter på en person. Den åpner på **I køen**;
 duplikatene står under statusen **Duplikat**. Filtrer den på **Status**, **Årsak** og
 **Fil** (skriv for å finne en fil; den tilbyr de siste 500 filene og sier fra når det er
 flere), eller kryss av for **Bare betalinger med en rest
@@ -1242,8 +1276,8 @@ som ikke er ført** for å se betalinger som er ført delvis, avstemt og senere 
 avvist som penger som skal tilbake. Hver linje viser dagen banken bokførte den, KID-en
 eller ellers teksten, betaleren og kontoen deres, beløpet, det som er ført — hver betaling
 lenket til fakturaen sin, en fjernet en gjennomstreket — det som ikke er ført, og tilstand
-og årsak. **Detaljer** viser hva som har skjedd med linjen, hvert steg med når, og om det var av deg
-eller en annen bruker,
+og årsak. **Detaljer** viser hva som har skjedd med linjen, hvert steg med når, og om det var av deg,
+en annen bruker eller bankintegrasjonen,
 fakturaene den kan betale, og for et mulig duplikat linjen den kan gjenta: den linjens fil,
 bokføringsdag og betalinger, og om banken tilbakeførte en betaling fra den.
 
@@ -2073,7 +2107,12 @@ som fortsatt ligger i den, som leder til **Papirbrev**; og Vipps-betalingene som
 en person, hver med lenke til fakturaen — *En Vipps-betaling fra … må sjekkes: det er
 ukjent om pengene ble trukket*, *… kunne ikke trekkes*, *… står fast og trenger en
 person* og *… ble refundert i Vipps-portalen*
-([Når en Vipps-betaling trenger deg](#når-en-vipps-betaling-trenger-deg)). En
+([Når en Vipps-betaling trenger deg](#når-en-vipps-betaling-trenger-deg)); og med
+`invoices:manage` bankintegrasjonens kontoer som trenger en ansvarlig, hver med lenke til
+**Administrer arbeidsområde** › **Integrasjoner** › **Bank** — *Banken avviste
+API-nøkkelen: kontoen som slutter på …, leses ikke*, *Bankintegrasjonen klarer ikke å lese
+kontoen som slutter på …* og *Bankintegrasjonen avviste en bunke for kontoen som slutter
+på …* ([Innbetalinger hentet fra banken](#innbetalinger-hentet-fra-banken)). En
 faktura som en pågående Vipps-betaling dekker helt, vises ikke som forfalt
 ([oppmerksomhet](/en/reference/invoices/#stats)).
 
@@ -2128,7 +2167,7 @@ Ingen innebygd rolle har disse; en eier har alt
 | Lage, redigere, forhåndsvise og slette utkast | `invoices:create`, og `customers:view` for å velge kjøperen |
 | Se det ufakturerte arbeidet — timene, personene og satsene — på en kundes fane Fakturaer eller et prosjekts fane Fakturagrunnlag, lage et utkast av det eller legge det til i et, oppdatere arbeidet på et utkast, slå timelisten av eller på, trekke fra tidligere fakturaer; se en kundes forbruk som skal faktureres, og lage et utkast av det eller legge det til i et; fakturere ordre med **Fra ordre**; lage, følge og avbryte fakturakjøringer | `invoices:create` (og `invoices:issue` for en kjøring som utsteder fakturaene) |
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, forbruket i Energi og ordrelinjene i Ordre, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden mens betaling på stedet tilbys, ta imot en Vipps-betaling på stedet | `invoices:issue` |
-| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
+| Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, **Hent nå** fra bankintegrasjonen, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
 | Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert — og ta betalt for den med Vipps på stedet | `invoices:create` og `invoices:issue` |
 | Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortene **Arbeid til fakturering** og **Forbruk til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes; sette opp Vipps og betalingsinnstillingene, bekrefte kontantsalg, forlate en Vipps-betaling som står fast; koble til banken, slå kontoene av og på og koble den fra, under **Administrer arbeidsområde** › **Integrasjoner** › **Bank** | `invoices:manage` |
 

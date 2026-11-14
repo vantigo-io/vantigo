@@ -15,6 +15,8 @@ sources:
   - apps/server/internal/security/publichost.go
   - apps/server/internal/bankfeed
   - apps/server/internal/invoices/bank_feed.go
+  - apps/server/internal/invoices/bank_feed_sync.go
+  - apps/server/internal/invoices/bank_feed_worker.go
   - apps/host/frontend/src/routes/workspace/bank.tsx
 ---
 
@@ -67,7 +69,8 @@ monthly fee and a fee per KID payment.
 ## Getting the files
 
 Download the file of the days you want from the online bank, then import it in Invoices.
-Vantigo does not fetch files from the bank by itself in this release.
+Vantigo fetches no file from the bank by itself; with Folio, [the bank feed](#the-bank-feed)
+reads the payments instead of a file.
 
 - **DNB**: the corporate online bank's file transfer offers the OCR and the eGiro files,
   and a file can be ordered again under "File transfer – Order files" (at a fee).
@@ -160,10 +163,11 @@ while the feed is on for the account.
 
 Instead of downloading files, the incoming payments of an account can be read from the bank
 through its API. The one bank today is **Folio**, read with an API key the company creates
-in Folio. This release connects the bank and chooses the accounts; reading the payments
-from them comes in the next one. **Until then, an account switched on gets no payments
-from the feed, and files are no longer imported for it** — connect the bank, but switch an
-account on only once the release that reads it is installed.
+in Folio. Once the bank is connected and an account switched on, the `invoices-bank-feed`
+background worker reads the account's incoming payments every 30 minutes by default, and each one
+carrying the KID of an issued invoice is registered as a file's payment would be — by
+nobody in particular: the screens say **Bank feed** where they name who registered it.
+Files are no longer imported for an account the feed reads.
 
 **What a key can do.** A Folio API key reads every account and every transaction of the
 company. It cannot move money: a payment created with it is a draft until a person signs
@@ -172,14 +176,18 @@ in Folio when it is no longer used or may have leaked.
 
 **The installation's settings** (`vantigo.env`, [Configuration](/en/admin/configuration/)):
 
-- `INVOICES_BANK_FEED_ENABLED` — default `0` in this release, since the feed reads no
-  payments yet; set `1` to let the workspace connect the bank and choose its accounts. `0`
-  sends no request to any bank: a key is refused `bank_feed_disabled`, the bank's accounts
-  are not read, and what is stored is kept. The page says the feed is switched off, and
-  still lists every account the feed is switched on for, so it can be switched off.
+- `INVOICES_BANK_FEED_ENABLED` — default `1`: the workspace can connect the bank and choose
+  its accounts, and the worker reads them. Nothing is read until a workspace does. `0` sends
+  no request to any bank — the worker does not run — a key is refused `bank_feed_disabled`,
+  the bank's accounts are not read, and what is stored is kept. The page says the feed is
+  switched off, and still lists every account the feed is switched on for, so it can be
+  switched off.
 - `INVOICES_FOLIO_BASE_URL` — default `https://api.folio.no/v2`. It must be an `https` URL:
   the server refuses to start on anything else, since the key goes with every request. It
   is the operator's setting; nobody in the workspace can point the key at another host.
+- `INVOICES_BANK_FEED_INTERVAL` — default `30m`: how often each account is read, a
+  duration from `5m` to `24h` (anything else stops the server at start). Every read is a
+  call to Folio; a shorter interval brings payments in sooner. **Fetch now** reads at once.
 
 The server reaches Folio over outbound HTTPS; Folio sends nothing in, so no public host is
 needed.
@@ -221,6 +229,36 @@ the key and switches every account off. Who disconnected, and who switched an ac
 is logged at info with their user id. Bank files, their payments and each account's
 format stay: to go back to files, change each account's format under **Payments**.
 Delete the key in Folio too.
+
+**The worker.** `invoices-bank-feed` runs in every API process and in the dedicated worker
+container while `INVOICES_BANK_FEED_ENABLED` is on
+([Background workers and scaling](/en/admin/installation/#background-workers-and-scaling)).
+Once a minute it takes every account that is due, each under a lease of its own, so two
+processes never read one account together. Each read asks Folio for the account's booked
+transactions from the latest day the feed booked less **10 days** — a bank may book a
+payment on an earlier day than it first showed it — to today, so every read covers the
+last ten days again; what was read before is recognised and stored once. It keeps the
+incoming payments only: payments out (salaries, suppliers), card purchases and transfers
+between the company's own accounts are counted on the batch and never stored. The
+incoming payments of a read are stored as one batch in the object store
+(`bank-files/<sha256>.json`, [Object storage](/en/admin/object-storage/)), listed under
+**Payments** as **Bank feed · Folio**, and matched on their KID at once. **Fetch now** on
+**Payments** or on the Bank page (`invoices:payments`; `POST /api/v1/invoices/bank-feed/sync`,
+30 per 10 minutes) makes every account due now; the worker reads them within a minute.
+
+**Each account's status** is on the Bank page, and an account in any but **OK** is on the
+dashboard of everyone with `invoices:manage`. No e-mail is sent.
+
+| Status | What happened | When it is read next | What to do |
+| --- | --- | --- | --- |
+| **OK** | The last read succeeded; a 429 from Folio leaves it OK with the wait noted | After the interval; after a 429, after Folio's wait if that is longer | Nothing |
+| **Failing** | Three reads in a row or more failed: Folio could not be reached or did not answer as it should, or the object store could not keep the batch — logged at warn with the account (never the key) | After the interval doubled for each failure, at most 6 hours | Check the server reaches `api.folio.no` over HTTPS, and the object store; it clears at the next read that succeeds |
+| **Refused** | Folio answered a batch Vantigo refuses whole, and nothing of it was stored: a payment booked after today, one not in NOK, one it cannot tell is money in or out, one transaction twice, one it cannot read — or the account's format is no longer **feed** | After the interval; the same batch is refused again until Folio's answer changes | Read the reason on the Bank page; for a format, switch the feed off and on again. Any other reason is Folio answering something this version does not read: report it, with the transaction id the page names |
+| **Key refused** | Folio refused the key (401 or 403): the connection and every account stop | Not until a new key is saved | Create a new key in Folio and save it; every account is then read at once |
+
+A payment without a KID, or with one that names no invoice, waits in the exception queue
+for a person, as from a file. A payment the bank later sends back is a payment out, which
+the feed does not store: it stays registered until someone removes it.
 
 **What can go wrong.**
 

@@ -15,6 +15,8 @@ sources:
   - apps/server/internal/security/publichost.go
   - apps/server/internal/bankfeed
   - apps/server/internal/invoices/bank_feed.go
+  - apps/server/internal/invoices/bank_feed_sync.go
+  - apps/server/internal/invoices/bank_feed_worker.go
   - apps/host/frontend/src/routes/workspace/bank.tsx
 ---
 
@@ -65,7 +67,8 @@ månedsgebyr og et gebyr per KID-innbetaling.
 ## Hente filene
 
 Last ned filen for dagene du vil ha fra nettbanken, og importer den i Fakturaer. Vantigo
-henter ikke filer fra banken av seg selv i denne versjonen.
+henter ingen fil fra banken av seg selv; med Folio leser [bankintegrasjonen](#bankintegrasjonen)
+innbetalingene i stedet for en fil.
 
 - **DNB**: filoverføringen i bedriftsnettbanken tilbyr OCR- og eGiro-filene, og en fil
   kan bestilles på nytt under «Filoverføring – Bestill filer» (mot gebyr).
@@ -161,10 +164,12 @@ formatvalget tilbyr bare de to filformatene, og avviser en endring bort fra `fee
 
 I stedet for å laste ned filer kan innbetalingene til en konto leses fra banken gjennom
 API-et dens. Den ene banken i dag er **Folio**, lest med en API-nøkkel selskapet lager i
-Folio. Denne versjonen kobler til banken og velger kontoene; å lese innbetalingene fra dem
-kommer i neste. **Inntil da får en konto som er slått på, ingen innbetalinger fra
-integrasjonen, og det importeres ikke lenger filer for den** — koble til banken, men slå på
-en konto først når versjonen som leser den, er installert.
+Folio. Når banken er koblet til og en konto slått på, leser bakgrunnsjobben
+`invoices-bank-feed` kontoens innbetalinger hvert 30. minutt som standard, og hver som har
+KID-en til en utstedt faktura, registreres slik en innbetaling fra en fil ville blitt —
+uten at noen bestemt person registrerer den: skjermene sier **Bankintegrasjon** der de
+navngir hvem som registrerte den. Det importeres ikke lenger filer for en konto
+integrasjonen leser.
 
 **Hva en nøkkel kan gjøre.** En API-nøkkel fra Folio leser alle kontoer og alle
 transaksjoner i selskapet. Den kan ikke flytte penger: en betaling laget med den er et
@@ -173,9 +178,9 @@ bare for Vantigo, og slett den i Folio når den ikke lenger brukes eller kan ha 
 
 **Installasjonens innstillinger** (`vantigo.env`, [Konfigurasjon](/nb/admin/configuration/)):
 
-- `INVOICES_BANK_FEED_ENABLED` — standard `0` i denne versjonen, fordi integrasjonen ennå
-  ikke leser betalinger; sett `1` for å la arbeidsområdet koble til banken og velge
-  kontoene. `0` sender ingen forespørsel til noen bank: en nøkkel avvises med
+- `INVOICES_BANK_FEED_ENABLED` — standard `1`: arbeidsområdet kan koble til banken og velge
+  kontoene, og jobben leser dem. Ingenting leses før et arbeidsområde gjør det. `0` sender
+  ingen forespørsel til noen bank — jobben kjører ikke — en nøkkel avvises med
   `bank_feed_disabled`, bankens kontoer leses ikke, og det som er lagret, beholdes. Siden
   sier at integrasjonen er slått av, og lister fortsatt hver konto integrasjonen er slått
   på for, så den kan slås av.
@@ -183,6 +188,9 @@ bare for Vantigo, og slett den i Folio når den ikke lenger brukes eller kan ha 
   `https`-URL: serveren nekter å starte med noe annet, fordi nøkkelen følger med hver
   forespørsel. Den er driftsansvarliges innstilling; ingen i arbeidsområdet kan sende
   nøkkelen til en annen vert.
+- `INVOICES_BANK_FEED_INTERVAL` — standard `30m`: hvor ofte hver konto leses, en varighet
+  fra `5m` til `24h` (alt annet stopper serveren ved start). Hver lesing er et kall til
+  Folio; et kortere intervall gir innbetalingene raskere. **Hent nå** leser med en gang.
 
 Serveren når Folio over utgående HTTPS; Folio sender ingenting inn, så det trengs ingen
 offentlig vert.
@@ -225,6 +233,37 @@ nøkkelen og slår av alle kontoer. Hvem som koblet fra, og hvem som slo av en k
 som info med bruker-ID-en. Bankfilene, innbetalingene deres og formatet til hver
 konto blir stående: for å gå tilbake til filer endrer du formatet til hver konto under
 **Innbetalinger**. Slett nøkkelen i Folio også.
+
+**Jobben.** `invoices-bank-feed` kjører i hver API-prosess og i den egne jobbcontaineren
+mens `INVOICES_BANK_FEED_ENABLED` er på
+([Bakgrunnsjobber og skalering](/nb/admin/installation/#bakgrunnsjobber-og-skalering)).
+Én gang i minuttet tar den hver konto som står for tur, hver under en lease av sin egen,
+så to prosesser aldri leser én konto samtidig. Hver lesing ber Folio om kontoens bokførte
+transaksjoner fra den siste dagen integrasjonen bokførte, minus **10 dager** — en bank kan
+bokføre en betaling på en tidligere dag enn den først viste den — til i dag, så hver lesing
+dekker de siste ti dagene på nytt; det som er lest før, kjennes igjen og lagres én gang.
+Den beholder bare innbetalingene: utbetalinger (lønn, leverandører), kortkjøp og
+overføringer mellom selskapets egne kontoer telles på bunken og lagres aldri.
+Innbetalingene fra én lesing lagres som én bunke i objektlageret
+(`bank-files/<sha256>.json`, [Objektlagring](/nb/admin/object-storage/)), listes under
+**Innbetalinger** som **Bankintegrasjon · Folio**, og avstemmes på KID-en med en gang.
+**Hent nå** under **Innbetalinger** eller på Bank-siden (`invoices:payments`;
+`POST /api/v1/invoices/bank-feed/sync`, 30 per 10 minutter) setter alle kontoer til tur
+nå; jobben leser dem innen ett minutt.
+
+**Statusen til hver konto** står på Bank-siden, og en konto med annen status enn **OK** står
+på dashbordet til alle med `invoices:manage`. Det sendes ingen e-post.
+
+| Status | Hva som skjedde | Når den leses neste gang | Hva du gjør |
+| --- | --- | --- | --- |
+| **OK** | Siste lesing lyktes; en 429 fra Folio lar den stå som OK med ventetiden notert | Etter intervallet; etter en 429, etter Folios ventetid om den er lengre | Ingenting |
+| **Feiler** | Tre lesinger på rad eller flere feilet: Folio kunne ikke nås eller svarte ikke som det skulle, eller objektlageret kunne ikke ta vare på bunken — logget som en advarsel med kontoen (aldri nøkkelen) | Etter intervallet doblet for hver feil, høyst 6 timer | Sjekk at serveren når `api.folio.no` over HTTPS, og objektlageret; den forsvinner ved neste lesing som lykkes |
+| **Avvist** | Folio svarte en bunke Vantigo avviser i sin helhet, og ingenting av den ble lagret: en betaling bokført etter i dag, en som ikke er i NOK, en den ikke kan avgjøre om er penger inn eller ut, én transaksjon to ganger, en den ikke kan lese — eller kontoens format er ikke lenger **feed** | Etter intervallet; den samme bunken avvises igjen til Folios svar endres | Les årsaken på Bank-siden; for et format slår du integrasjonen av og på igjen. Enhver annen årsak er at Folio svarer noe denne versjonen ikke leser: meld den, med transaksjons-ID-en siden navngir |
+| **Nøkkel avvist** | Folio avviste nøkkelen (401 eller 403): tilkoblingen og alle kontoer stopper | Ikke før en ny nøkkel er lagret | Lag en ny nøkkel i Folio og lagre den; alle kontoer leses da med en gang |
+
+En innbetaling uten KID, eller med en som ikke peker på noen faktura, venter i avvikskøen på
+en person, som fra en fil. En betaling banken senere sender tilbake, er en utbetaling, som
+integrasjonen ikke lagrer: den blir stående registrert til noen fjerner den.
 
 **Hva som kan gå galt.**
 
