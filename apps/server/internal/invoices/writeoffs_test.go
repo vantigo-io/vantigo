@@ -8,7 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/invoices"
+	"github.com/vantigo-io/vantigo/server/internal/invoices/bankfile/bankfiletest"
 )
 
 // The write-off (accounting design A16 as amended by R4): an issued
@@ -240,5 +244,53 @@ func TestWriteOff_NeverOpenOverdueOrReminded(t *testing.T) {
 	}
 	if l := list(t, h, "?state=overdue"); !slices.Equal(ids(l), []int64{over}) {
 		t.Errorf("?state=overdue = %v", ids(l))
+	}
+}
+
+// A written-off invoice has nothing open (accounting design A16, R4): a line
+// paying it is queued invoice_settled and registers nothing, whether a bank
+// file brought it or the bank feed read it (bank feed design F6) — the feed's
+// lines are judged by the same rule as a file's. Money that arrives after a
+// write-off is a person's to register, as a recovered payment, which is
+// always manual (ck_payments_recovered).
+func TestWriteOff_ALineForAWrittenOffInvoiceIsQueued(t *testing.T) {
+	t.Parallel()
+	h, _ := matchHarness(t)
+	byFile, byFeed := kidInvoice(t, h), kidInvoice(t, h)
+	for _, inv := range []invoiceJSON{byFile, byFeed} {
+		h.Exec(t, `INSERT INTO invoices.write_offs (invoice_id, written_off_on, amount, currency, reason, registered_by_user_id, registered_at)
+			VALUES ($1, DATE '2026-09-12', 1000, 'NOK', 'loss', gen_random_uuid(), now())`, inv.ID)
+	}
+	toMatchDay(h)
+	r := imported(t, importer(t, h), bankfiletest.OCR("1", kidPay(sellerAccount, 6, 1000, *byFile.Kid, "1")))
+	fileLine := lineID(t, h, r.File.ID, "1")
+
+	batch := plantID(t, h, `INSERT INTO invoices.bank_files (format, sha256, file_identity, object_key, byte_size, accounts,
+		    transactions, ignored, ignored_kinds, uploaded_by_user_id, uploaded_at, provider)
+		VALUES ('feed', repeat('b', 64), 'folio-1', 'bank-files/folio-1', 2, ARRAY[$1::text], 1, 0, '{}', NULL, now(), 'folio')
+		RETURNING id`, sellerAccount)
+	feedLine := plantID(t, h, `INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on,
+		    amount, currency, kid, fingerprint, ordinal)
+		VALUES ($1, 'feed-1', 'feed', $2, 'credit', DATE '2026-10-06', 1000, 'NOK', $3, repeat('e', 64), 1) RETURNING id`,
+		batch, sellerAccount, *byFeed.Kid)
+	if err := invoices.MatchFile(context.Background(), h.Deps(), batch, uuid.New(), h.Now()); err != nil {
+		t.Fatalf("matching the feed batch: %v", err)
+	}
+
+	for name, id := range map[string]int64{"the file's line": fileLine, "the feed's line": feedLine} {
+		if got := stateOf(t, h, id); got != "exception invoice_settled" {
+			t.Errorf("%s = %s, want exception invoice_settled", name, got)
+		}
+		if got := paymentsFrom(t, h, id); len(got) != 0 {
+			t.Errorf("%s's payments = %v, want none", name, got)
+		}
+		if got := chargePaymentsFrom(t, h, id); len(got) != 0 {
+			t.Errorf("%s's charge payments = %v, want none", name, got)
+		}
+	}
+	for _, inv := range []invoiceJSON{byFile, byFeed} {
+		if got := getInvoice(t, h, inv.ID); got.State != "written_off" {
+			t.Errorf("invoice %d = %s, want still written_off", inv.ID, got.State)
+		}
 	}
 }

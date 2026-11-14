@@ -720,3 +720,23 @@ func TestPermissions_Sales(t *testing.T) {
 		}
 	}
 }
+
+// A payment the bank feed brought is a bank payment, as a bank file's is
+// (bank feed design F6): it posts to the bank, and its charge payment too.
+func TestSales_BankFeedPaymentsPostToTheBank(t *testing.T) {
+	b := newBooks(t)
+	b.h.journal.addDocument(invoice(9001, 101, day(t, "2026-01-05"), []contracts.JournalLine{jline(1, "1000.00", "3")},
+		jsum("3", "25.00", "1000.00", "250.00")))
+	b.h.journal.addFact(contracts.JournalFact{Kind: contracts.FactPayment, SubjectID: 601, Date: day(t, "2026-01-15"),
+		InvoiceID: 9001, InvoiceNumber: 101, CustomerID: customerAcme, AmountNOK: "400.00",
+		Source: contracts.PaymentSourceBankFeed, BankAccount: "15030012345"})
+	b.h.journal.addFact(contracts.JournalFact{Kind: contracts.FactChargePayment, SubjectID: 802, Date: day(t, "2026-01-15"),
+		InvoiceID: 9001, InvoiceNumber: 101, CustomerID: customerAcme, AmountNOK: "35.00",
+		Source: contracts.PaymentSourceBankFeed, BankAccount: "15030012345"})
+	catchUp(t, b.h)
+	expectVoucher(t, b, "payment", 601, "1920 400.00", "1500 -400.00")
+	expectVoucher(t, b, "charge_payment", 802, "1920 35.00", "3900 -35.00 7 base")
+	if bal := itemBalance(t, b, 9001); bal != "850.00" {
+		t.Errorf("the invoice's item = %s, want 850.00", bal)
+	}
+}

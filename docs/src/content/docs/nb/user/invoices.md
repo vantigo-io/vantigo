@@ -1153,7 +1153,10 @@ første åpne måned — unntatt mens det står innbetalinger etter avskrivninge
 Penger som kommer inn etter en avskrivning, er ikke en vanlig betaling: klikk **Registrer
 innbetaling etter avskrivning** på avskrivningen. Beløpet er forhåndsutfylt med det som
 gjenstår å kreve inn, og høyst det. Fakturaen forblir avskrevet; betalingen vises som
-**Innbetalt etter avskrivning**, og avskrivningen viser hvor mye som er innbetalt.
+**Innbetalt etter avskrivning**, og avskrivningen viser hvor mye som er innbetalt. En
+bankinnbetaling til en avskrevet faktura — fra en bankfil eller fra bankintegrasjonen — blir
+aldri registrert av seg selv: den venter i [avvikskøen](#avvikskøen) som **Ingenting er igjen
+å betale**, og du registrerer den her som innbetaling etter avskrivning.
 
 Å avskrive, å angre og å registrere en innbetaling etter avskrivning krever
 `invoices:payments`. Med [Regnskap](/nb/user/accounting/#slik-kommer-salget-inn-fra-fakturaer)
