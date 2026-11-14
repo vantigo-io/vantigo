@@ -2912,6 +2912,19 @@ func TestInvoicesPaymentsDelivery_AppliesAndIsIdempotent(t *testing.T) {
 		t.Errorf("a payment after the erase: %v, note %q, want it written with the note blanked", err, lateNote)
 	}
 
+	// 00178's Down refuses while the sales journal holds a fact, and the
+	// payments above wrote some: the log is emptied by hand first, past its
+	// append-only trigger, as only a test may.
+	for _, sql := range []string{
+		`ALTER TABLE invoices.journal_facts DISABLE TRIGGER tr_journal_facts_immutable`,
+		`DELETE FROM invoices.journal_facts`,
+		`DELETE FROM invoices.counters WHERE counter_name = 'journal'`,
+	} {
+		if _, err := pool.Exec(ctx, sql); err != nil {
+			t.Fatalf("empty the journal: %v", err)
+		}
+	}
+
 	// Down drops all of it, document_state included, and leaves 1A's schema.
 	migrateTo(t, url, 34)
 	tables, triggers, checks, functions, indexes := invoicesPhase1BObjects(t, ctx, pool)

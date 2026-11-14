@@ -245,8 +245,11 @@ func TestInvoicesJournal_RemovalsAndAppendOnly(t *testing.T) {
 }
 
 // The backfill: a database with payments and charge payments, some removed,
-// migrated to 00178, gets them in registration order and then their removals
-// in removal order, numbered from 1, with the counter after the last.
+// migrated to 00178, gets every registration and every removal in one order,
+// the order they happened in — a removal that came before a later
+// registration keeps its place, and at the same moment a registration comes
+// first — numbered from 1, with the counter after the last. Its Down then
+// refuses: a Down never deletes bookkeeping.
 func TestInvoicesJournal_TheBackfill(t *testing.T) {
 	t.Parallel()
 	url := testdb.URL(t)
@@ -271,40 +274,101 @@ func TestInvoicesJournal_TheBackfill(t *testing.T) {
 	c1 := f.mustInsert("a charge payment", `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency, source,
 		registered_by_user_id, registered_at) VALUES ($1, DATE '2026-10-06', 35, 'NOK', 'manual', gen_random_uuid(), $2) RETURNING id`,
 		invoice, base.Add(3*time.Hour))
+	// Registered at +6h, after c1's removal at +5h and at the same moment as
+	// p2's removal.
+	p3, err := journalPayment(ctx, pool, invoice, base.Add(6*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.mustExec("remove p1", `UPDATE invoices.payments SET removed_at = $2, removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil'
 		WHERE id = $1`, p1, base.Add(10*time.Hour))
 	f.mustExec("remove c1", `UPDATE invoices.charge_payments SET removed_at = $2, removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil'
 		WHERE id = $1`, c1, base.Add(5*time.Hour))
+	f.mustExec("remove p2", `UPDATE invoices.payments SET removed_at = $2, removed_by_user_id = gen_random_uuid(), removal_reason = 'Feil'
+		WHERE id = $1`, p2, base.Add(6*time.Hour))
 
 	migrateTo(t, url, journalVersion)
 	want := []string{
-		fmt.Sprintf("payment:%d", p2), fmt.Sprintf("payment:%d", p1), fmt.Sprintf("charge_payment:%d", c1),
-		fmt.Sprintf("charge_payment_removed:%d", c1), fmt.Sprintf("payment_removed:%d", p1),
+		fmt.Sprintf("payment:%d", p2),                // +1h
+		fmt.Sprintf("payment:%d", p1),                // +2h
+		fmt.Sprintf("charge_payment:%d", c1),         // +3h
+		fmt.Sprintf("charge_payment_removed:%d", c1), // +5h, before p3's registration
+		fmt.Sprintf("payment:%d", p3),                // +6h, a registration first
+		fmt.Sprintf("payment_removed:%d", p2),        // +6h
+		fmt.Sprintf("payment_removed:%d", p1),        // +10h
 	}
 	if got := journalFacts(t, ctx, pool); !equalStrings(got, want) {
 		t.Errorf("backfilled = %v, want %v", got, want)
 	}
-	if got := f.text(`SELECT string_agg(seq::text, ',' ORDER BY seq) FROM invoices.journal_facts`); got != "1,2,3,4,5" {
-		t.Errorf("seqs = %s, want 1 to 5", got)
+	if got := f.text(`SELECT string_agg(seq::text, ',' ORDER BY seq) FROM invoices.journal_facts`); got != "1,2,3,4,5,6,7" {
+		t.Errorf("seqs = %s, want 1 to 7", got)
 	}
 	// The next fact follows the backfill.
-	p3, err := journalPayment(ctx, pool, invoice, time.Now())
+	p4, err := journalPayment(ctx, pool, invoice, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := f.text(`SELECT seq::text FROM invoices.journal_facts WHERE kind = 'payment' AND subject_id = $1`, p3); got != "6" {
-		t.Errorf("the first fact after the backfill has seq %s, want 6", got)
+	if got := f.text(`SELECT seq::text FROM invoices.journal_facts WHERE kind = 'payment' AND subject_id = $1`, p4); got != "8" {
+		t.Errorf("the first fact after the backfill has seq %s, want 8", got)
 	}
-	// Down and up again: the log and its counter go, and come back from the
-	// rows as they are now.
-	migrateTo(t, url, journalVersion-1)
-	var counters int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM invoices.counters WHERE counter_name = 'journal'`).Scan(&counters); err != nil || counters != 0 {
-		t.Errorf("journal counters after down = %d (%v), want none", counters, err)
+	// The Down refuses while the log holds a fact, and leaves it whole.
+	if err := migrateDown(t, url, journalVersion-1); !refusedWith(err, "invoices: the sales journal holds facts") {
+		t.Errorf("the Down with facts: %v, want it refused", err)
 	}
-	migrateTo(t, url, journalVersion)
-	if got := journalFacts(t, ctx, pool); len(got) != 6 {
-		t.Errorf("after down and up: %v, want the six facts again", got)
+	if got := journalFacts(t, ctx, pool); len(got) != 8 {
+		t.Errorf("after the refused Down: %v, want the eight facts", got)
+	}
+}
+
+// A registration removed in its own transaction writes both facts, the
+// registration first, with the registration's day and the removal's moment;
+// a row inserted already removed does too; a savepoint rolled back takes its
+// fact with it.
+func TestInvoicesJournal_OneTransactionsFacts(t *testing.T) {
+	t.Parallel()
+	f := newReceivablesFixture(t)
+	invoice := f.issued(7)
+
+	tx, err := f.pool.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(f.ctx) }()
+	both, err := journalPayment(f.ctx, tx, invoice, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(f.ctx, `UPDATE invoices.payments SET removed_at = '2026-10-08T10:00:00Z', removed_by_user_id = gen_random_uuid(),
+		removal_reason = 'Feil' WHERE id = $1`, both); err != nil {
+		t.Fatal(err)
+	}
+	// A savepoint registers one more and rolls back.
+	if _, err := tx.Exec(f.ctx, `SAVEPOINT sp`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journalPayment(f.ctx, tx, invoice, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(f.ctx, `ROLLBACK TO SAVEPOINT sp`); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	removed := f.mustInsert("a charge payment inserted removed", `INSERT INTO invoices.charge_payments (invoice_id, paid_on, amount, currency,
+		source, registered_by_user_id, registered_at, removed_at, removed_by_user_id, removal_reason)
+		VALUES ($1, DATE '2026-10-07', 35, 'NOK', 'manual', gen_random_uuid(), now(), '2026-10-09T10:00:00Z', gen_random_uuid(), 'Feil') RETURNING id`, invoice)
+
+	want := []string{
+		fmt.Sprintf("payment:%d", both), fmt.Sprintf("payment_removed:%d", both),
+		fmt.Sprintf("charge_payment:%d", removed), fmt.Sprintf("charge_payment_removed:%d", removed),
+	}
+	if got := journalFacts(t, f.ctx, f.pool); !equalStrings(got, want) {
+		t.Errorf("facts = %v, want %v — the rolled-back savepoint's payment has none", got, want)
+	}
+	if got := f.text(`SELECT string_agg(seq::text || ' ' || coalesce(business_date::text, '-') || ' ' || coalesce(removed_at::text, '-'), ', ' ORDER BY seq)
+		FROM invoices.journal_facts`); got != "1 2026-10-06 -, 2 - 2026-10-08 10:00:00+00, 3 2026-10-07 -, 4 - 2026-10-09 10:00:00+00" {
+		t.Errorf("the facts' seqs and days = %q, want seqs 1 to 4, each registration's day and each removal's moment", got)
 	}
 }
 

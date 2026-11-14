@@ -88,25 +88,29 @@ CREATE TRIGGER tr_journal_facts_immutable
     FOR EACH ROW EXECUTE FUNCTION invoices.refuse_journal_fact_change();
 
 -- The facts that exist when this migration runs, so a company that turns the
--- ledger on later finds its history in the log: every registration, payments
--- and charge payments together in (registered_at, id) order, then every
--- removal in (removed_at, id) order, numbered from 1. The counter row is made
--- only when there is something to number.
+-- ledger on later finds its history in the log: every registration and every
+-- removal, payments and charge payments together, in the order they happened
+-- — a registration at its registered_at, a removal at its removed_at — a
+-- registration before a removal at the same moment, then by id, numbered from
+-- 1. One order, not registrations and then removals: a removal before a later
+-- registration keeps its place, so a reader replaying the log sees the
+-- receivable as it was. The counter row is made only when there is something
+-- to number.
 INSERT INTO invoices.journal_facts (seq, kind, subject_id, invoice_id, business_date, removed_at, created_at)
-SELECT row_number() OVER (ORDER BY f.phase, f.at, f.subject_id, f.kind), f.kind, f.subject_id, f.invoice_id,
+SELECT row_number() OVER (ORDER BY f.at, f.removal, f.subject_id, f.kind), f.kind, f.subject_id, f.invoice_id,
     f.business_date, f.removed_at, now()
 FROM (
-    SELECT 1 AS phase, registered_at AS at, 'payment' AS kind, id AS subject_id, invoice_id,
+    SELECT registered_at AS at, false AS removal, 'payment' AS kind, id AS subject_id, invoice_id,
         paid_on AS business_date, NULL::timestamptz AS removed_at
     FROM invoices.payments
     UNION ALL
-    SELECT 1, registered_at, 'charge_payment', id, invoice_id, paid_on, NULL
+    SELECT registered_at, false, 'charge_payment', id, invoice_id, paid_on, NULL
     FROM invoices.charge_payments
     UNION ALL
-    SELECT 2, removed_at, 'payment_removed', id, invoice_id, NULL, removed_at
+    SELECT removed_at, true, 'payment_removed', id, invoice_id, NULL, removed_at
     FROM invoices.payments WHERE removed_at IS NOT NULL
     UNION ALL
-    SELECT 2, removed_at, 'charge_payment_removed', id, invoice_id, NULL, removed_at
+    SELECT removed_at, true, 'charge_payment_removed', id, invoice_id, NULL, removed_at
     FROM invoices.charge_payments WHERE removed_at IS NOT NULL
 ) AS f;
 
@@ -116,24 +120,34 @@ SELECT 'journal', max(seq) + 1 FROM invoices.journal_facts HAVING count(*) > 0;
 -- The trigger behind every fact from now on. TG_ARGV[0] is the row's kind,
 -- 'payment' or 'charge_payment'; an INSERT is its registration, an UPDATE that
 -- sets removed_at (the only one a WHEN lets through) its removal. It runs at
--- commit, so NEW is the row as the transaction left it.
+-- commit, but NEW is the row as the statement that queued it left it, not as
+-- the transaction did: a registration removed in its own transaction still
+-- writes its registration, then its removal, in that order. A row inserted
+-- already removed writes both at once, so no removal goes unlogged whatever
+-- wrote it.
 -- +goose StatementBegin
 CREATE FUNCTION invoices.record_journal_fact()
 RETURNS trigger LANGUAGE plpgsql AS $function$
 DECLARE
     next_seq bigint;
 BEGIN
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO invoices.counters (counter_name, next_value)
+        VALUES ('journal', 2)
+        ON CONFLICT (counter_name) DO UPDATE SET next_value = invoices.counters.next_value + 1
+        RETURNING next_value - 1 INTO next_seq;
+        INSERT INTO invoices.journal_facts (seq, kind, subject_id, invoice_id, business_date, created_at)
+        VALUES (next_seq, TG_ARGV[0], NEW.id, NEW.invoice_id, NEW.paid_on, now());
+        IF NEW.removed_at IS NULL THEN
+            RETURN NULL;
+        END IF;
+    END IF;
     INSERT INTO invoices.counters (counter_name, next_value)
     VALUES ('journal', 2)
     ON CONFLICT (counter_name) DO UPDATE SET next_value = invoices.counters.next_value + 1
     RETURNING next_value - 1 INTO next_seq;
-    IF TG_OP = 'INSERT' THEN
-        INSERT INTO invoices.journal_facts (seq, kind, subject_id, invoice_id, business_date, created_at)
-        VALUES (next_seq, TG_ARGV[0], NEW.id, NEW.invoice_id, NEW.paid_on, now());
-    ELSE
-        INSERT INTO invoices.journal_facts (seq, kind, subject_id, invoice_id, removed_at, created_at)
-        VALUES (next_seq, TG_ARGV[0] || '_removed', NEW.id, NEW.invoice_id, NEW.removed_at, now());
-    END IF;
+    INSERT INTO invoices.journal_facts (seq, kind, subject_id, invoice_id, removed_at, created_at)
+    VALUES (next_seq, TG_ARGV[0] || '_removed', NEW.id, NEW.invoice_id, NEW.removed_at, now());
     RETURN NULL;
 END;
 $function$;
@@ -189,6 +203,20 @@ CREATE TRIGGER tr_payments_removed AFTER UPDATE ON invoices.payments
     EXECUTE FUNCTION invoices.publish_payment_removed();
 
 -- +goose Down
+-- The log is bookkeeping: the Down refuses while it holds a fact (or its
+-- counter has numbered one), as 00046's does while a Vipps payment exists —
+-- a Down never deletes bookkeeping. With none, it drops what the Up made.
+-- +goose StatementBegin
+DO $down$
+BEGIN
+    IF EXISTS (SELECT 1 FROM invoices.journal_facts)
+       OR EXISTS (SELECT 1 FROM invoices.counters WHERE counter_name = 'journal') THEN
+        RAISE EXCEPTION 'invoices: the sales journal holds facts' USING ERRCODE = 'P0001';
+    END IF;
+END;
+$down$;
+-- +goose StatementEnd
+
 DROP TRIGGER tr_payments_removed ON invoices.payments;
 DROP FUNCTION invoices.publish_payment_removed();
 DROP TRIGGER tr_charge_payments_journal_removed ON invoices.charge_payments;
@@ -198,7 +226,6 @@ DROP TRIGGER tr_payments_journal_registered ON invoices.payments;
 DROP FUNCTION invoices.record_journal_fact();
 DROP TABLE invoices.journal_facts;
 DROP FUNCTION invoices.refuse_journal_fact_change();
-DELETE FROM invoices.counters WHERE counter_name = 'journal';
 ALTER TABLE invoices.line_sources
     DROP CONSTRAINT ck_line_sources_tax_category,
     DROP COLUMN tax_category_id;
