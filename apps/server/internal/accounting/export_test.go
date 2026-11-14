@@ -17,3 +17,11 @@ func SetCatchUpLease(d time.Duration) (restore func()) {
 	catchupLease = d
 	return func() { catchupLease = was }
 }
+
+// SetSaftLease sets the lease a SAF-T export's claim takes for a test and
+// gives back the function that restores it.
+func SetSaftLease(d time.Duration) (restore func()) {
+	was := saftLease
+	saftLease = d
+	return func() { saftLease = was }
+}

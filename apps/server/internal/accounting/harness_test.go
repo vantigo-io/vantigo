@@ -39,7 +39,8 @@ func newHarness(t *testing.T, opts ...modtest.Option) *harness {
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(accounting.Module()),
-		modtest.WithDirectory(fakeDirectory{names: map[int32]string{customerAcme: "Acme AS", customerBeta: "Beta AS"}}),
+		modtest.WithDirectory(fakeDirectory{names: map[int32]string{customerAcme: "Acme AS", customerBeta: "Beta AS"},
+			legal: map[int32]string{customerAcme: "914778271", customerBeta: "987654325"}}),
 		modtest.WithSalesJournal(h.journal),
 		modtest.WithObjectStore(h.objects),
 	}
@@ -150,10 +151,35 @@ func expectProblem(t *testing.T, res *modtest.Response, status int, code string)
 }
 
 // fakeDirectory is Customers' directory as far as this module reads it: the
-// customers' names.
+// customers' names, their organisation numbers (legal) and their billing
+// profiles, a customer's number being its id plus 10000.
 type fakeDirectory struct {
 	contracts.CustomerDirectory
 	names map[int32]string
+	legal map[int32]string
+}
+
+func (d fakeDirectory) BillingProfile(_ context.Context, id int32, _ contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
+	name, ok := d.names[id]
+	if !ok {
+		return nil, nil
+	}
+	return &contracts.CustomerBillingProfile{ID: id, CustomerNumber: int64(id) + 10000, Name: name, LegalName: name,
+		Type: "business", Status: "active", LegalCountry: "no", LegalID: d.legal[id],
+		InvoiceAddress: &contracts.CustomerAddressEntry{Line1: "Storgata 1", PostalCode: "0150", City: "Oslo", Country: "no"},
+		InvoiceEmail:   "post@example.no"}, nil
+}
+
+func (d fakeDirectory) CustomersByLegalID(_ context.Context, _ string, ids []string) (map[string][]contracts.CustomerEntry, error) {
+	out := map[string][]contracts.CustomerEntry{}
+	for _, want := range ids {
+		for id, legal := range d.legal {
+			if legal == strings.ReplaceAll(want, " ", "") {
+				out[want] = append(out[want], contracts.CustomerEntry{ID: id, Name: d.names[id]})
+			}
+		}
+	}
+	return out, nil
 }
 
 func (d fakeDirectory) Customers(_ context.Context, ids []int32) ([]contracts.CustomerEntry, error) {
