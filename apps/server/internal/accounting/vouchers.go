@@ -14,6 +14,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/accounting/gen"
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 )
 
 const (
@@ -236,7 +237,9 @@ type journalPosting struct {
 // input code posts its tax on the code's VAT account with the base's sign; a
 // reverse-charge code posts both sides — the deductible side on the VAT
 // account (or, without deduction, the line's own account) and the calculated
-// side on the counter account — and is always entered net. It reads the
+// side on the counter account — and is entered net: a gross journal naming
+// one is refused (reverse_charge_gross). The tax is computed and rounded per
+// line, never over the voucher's sum. It reads the
 // codes on q; it checks every field it can before the engine checks the rest.
 func expandJournal(ctx context.Context, q *store.Queries, in gen.AccountingJournalInput) ([]journalPosting, error) {
 	var f fieldErrors
@@ -301,8 +304,12 @@ func expandJournal(ctx context.Context, q *store.Queries, in gen.AccountingJourn
 			out = append(out, journalPosting{line: base, fromLine: i})
 			continue
 		}
+		if gross && code.ReverseCharge {
+			f.addCoded(field, codeReverseChargeGross, "A reverse-charge code is entered net: the invoice carries no VAT to take out.")
+			continue
+		}
 		r := ratPercent(*rate)
-		netBase, tax := taxOf(amounts[i], r, gross && !code.ReverseCharge)
+		netBase, tax := taxOf(amounts[i], r, gross)
 		base.Amount = netBase
 		out = append(out, journalPosting{line: base, fromLine: i, rate: rate})
 		if tax.Sign() == 0 {
@@ -410,7 +417,7 @@ func (s *server) PreviewAccountingVoucher(ctx context.Context, req gen.PreviewAc
 
 // ReverseAccountingVoucher reverses a voucher a person posted (A7): a system
 // voucher is reversed only by its source, an opening only until the first
-// lock (A9).
+// lock (A9) and only by a caller with accounting:close, who enters it.
 func (s *server) ReverseAccountingVoucher(ctx context.Context, req gen.ReverseAccountingVoucherRequestObject) (gen.ReverseAccountingVoucherResponseObject, error) {
 	if req.Body == nil {
 		return nil, invalidField("The voucher cannot be reversed", "body", "", "A body is required.")
@@ -418,6 +425,10 @@ func (s *server) ReverseAccountingVoucher(ctx context.Context, req gen.ReverseAc
 	reason := strings.TrimSpace(req.Body.Reason)
 	if reason == "" || len([]rune(reason)) > 500 {
 		return nil, invalidField("The voucher cannot be reversed", "reason", "", "A reason of at most 500 characters.")
+	}
+	// A voucher's kind never changes, so it is read before the transaction.
+	if v, err := store.New(s.deps.Pool).GetVoucher(ctx, req.Id); err == nil && v.Kind == "opening" && !s.has(ctx, permClose) {
+		return gen.ReverseAccountingVoucher403JSONResponse(apicommon.ForbiddenBody()), nil
 	}
 	var posted Posted
 	err := s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
@@ -438,13 +449,21 @@ func (s *server) ReverseAccountingVoucher(ctx context.Context, req gen.ReverseAc
 		if v.ReversesVoucherID != nil {
 			return conflict(codeAlreadyReversed, "The voucher is a reversal", "Post a new voucher instead.")
 		}
-		settings, err := q.GetSettingsForShare(ctx)
+		// An opening's reversal takes the settings FOR UPDATE, as entering one
+		// does, so the two are never in flight at once (H1).
+		read := q.GetSettingsForShare
+		if v.Kind == "opening" {
+			read = q.GetSettingsForUpdate
+		}
+		settings, err := read(ctx)
 		if err != nil {
 			return err
 		}
 		date := day(req.Body.Date)
 		if v.Kind == "opening" {
-			if settings.LockedThrough != nil {
+			if final, err := openingFinal(ctx, q, settings); err != nil {
+				return err
+			} else if final {
 				return conflict(codeOpeningLocked, "The opening balances are final", "They cannot be reversed after the first lock.")
 			}
 			date = settings.BooksStart

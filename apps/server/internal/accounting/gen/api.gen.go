@@ -515,6 +515,9 @@ type AccountingLockInput struct {
 
 // AccountingMeta defines model for AccountingMeta.
 type AccountingMeta struct {
+	// AttachmentsEnabled Whether the installation has file storage: without it an attachment is refused (storage_not_configured), so the journal form says so before posting.
+	AttachmentsEnabled bool `json:"attachmentsEnabled"`
+
 	// CanClose accounting:close
 	CanClose bool `json:"canClose"`
 
@@ -586,6 +589,9 @@ type AccountingOpenItem struct {
 // AccountingOpenItemList defines model for AccountingOpenItemList.
 type AccountingOpenItemList struct {
 	Items []AccountingOpenItem `json:"items"`
+
+	// Total Every item the filters match.
+	Total int32 `json:"total"`
 }
 
 // AccountingOpening defines model for AccountingOpening.
@@ -673,7 +679,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -942,7 +948,11 @@ type ListAccountingOpenItemsParams struct {
 	SupplierId *int64               `form:"supplierId,omitempty" json:"supplierId,omitempty"`
 
 	// Open Default true: only items with a balance.
-	Open *bool `form:"open,omitempty" json:"open,omitempty"`
+	Open   *bool  `form:"open,omitempty" json:"open,omitempty"`
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit Default 200, at most 1000.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetAccountingReportParams defines parameters for GetAccountingReport.
@@ -1467,6 +1477,32 @@ func (siw *ServerInterfaceWrapper) ListAccountingOpenItems(w http.ResponseWriter
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "open"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "open", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
 	}

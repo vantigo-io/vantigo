@@ -128,7 +128,8 @@ func (q *Queries) InsertOpenItem(ctx context.Context, arg InsertOpenItemParams) 
 
 const listOpenItems = `-- name: ListOpenItems :many
 SELECT o.id, o.kind, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
-    o.original_amount::text AS original_amount, o.source_document_id, b.balance::text AS balance
+    o.original_amount::text AS original_amount, o.source_document_id, b.balance::text AS balance,
+    count(*) OVER () AS total
 FROM accounting.open_items o
 CROSS JOIN LATERAL (SELECT coalesce(sum(p.amount), 0) AS balance FROM accounting.postings p
     WHERE p.open_item_id = o.id) b
@@ -137,7 +138,7 @@ WHERE ($1::text IS NULL OR o.kind = $1::text)
   AND ($3::bigint IS NULL OR o.supplier_id = $3::bigint)
   AND (NOT $4::boolean OR b.balance <> 0)
 ORDER BY o.kind, coalesce(o.customer_id::bigint, o.supplier_id), o.due_date NULLS FIRST, o.id
-LIMIT 2000
+LIMIT $6 OFFSET $5
 `
 
 type ListOpenItemsParams struct {
@@ -145,6 +146,8 @@ type ListOpenItemsParams struct {
 	CustomerID *int32
 	SupplierID *int64
 	OnlyOpen   bool
+	RowOffset  int32
+	RowLimit   int32
 }
 
 type ListOpenItemsRow struct {
@@ -159,14 +162,19 @@ type ListOpenItemsRow struct {
 	OriginalAmount   string
 	SourceDocumentID *int64
 	Balance          string
+	Total            int64
 }
 
+// ListOpenItems is a page of the items matching the filters, with the count
+// of every match.
 func (q *Queries) ListOpenItems(ctx context.Context, arg ListOpenItemsParams) ([]ListOpenItemsRow, error) {
 	rows, err := q.db.Query(ctx, listOpenItems,
 		arg.Kind,
 		arg.CustomerID,
 		arg.SupplierID,
 		arg.OnlyOpen,
+		arg.RowOffset,
+		arg.RowLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -187,6 +195,7 @@ func (q *Queries) ListOpenItems(ctx context.Context, arg ListOpenItemsParams) ([
 			&i.OriginalAmount,
 			&i.SourceDocumentID,
 			&i.Balance,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
@@ -207,8 +216,20 @@ func (q *Queries) LockOpenItem(ctx context.Context, id int64) error {
 	return err
 }
 
+const lockOpenItems = `-- name: LockOpenItems :exec
+SELECT id FROM accounting.open_items WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE
+`
+
+// LockOpenItems takes every item a post names FOR UPDATE, in id order, so two
+// posts naming the same items wait for each other rather than deadlock (M5).
+func (q *Queries) LockOpenItems(ctx context.Context, ids []int64) error {
+	_, err := q.db.Exec(ctx, lockOpenItems, ids)
+	return err
+}
+
 const openItemBySourceDocument = `-- name: OpenItemBySourceDocument :one
-SELECT id FROM accounting.open_items WHERE kind = $1 AND source_document_id = $2
+SELECT id, customer_id, supplier_id FROM accounting.open_items
+WHERE kind = $1 AND source_document_id = $2
 `
 
 type OpenItemBySourceDocumentParams struct {
@@ -216,22 +237,30 @@ type OpenItemBySourceDocumentParams struct {
 	SourceDocumentID *int64
 }
 
-func (q *Queries) OpenItemBySourceDocument(ctx context.Context, arg OpenItemBySourceDocumentParams) (int64, error) {
+type OpenItemBySourceDocumentRow struct {
+	ID         int64
+	CustomerID *int32
+	SupplierID *int64
+}
+
+func (q *Queries) OpenItemBySourceDocument(ctx context.Context, arg OpenItemBySourceDocumentParams) (OpenItemBySourceDocumentRow, error) {
 	row := q.db.QueryRow(ctx, openItemBySourceDocument, arg.Kind, arg.SourceDocumentID)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+	var i OpenItemBySourceDocumentRow
+	err := row.Scan(&i.ID, &i.CustomerID, &i.SupplierID)
+	return i, err
 }
 
 const openItemsForPosting = `-- name: OpenItemsForPosting :many
-SELECT id, kind, customer_id, supplier_id FROM accounting.open_items WHERE id = ANY($1::bigint[])
+SELECT id, kind, customer_id, supplier_id, source_document_id FROM accounting.open_items
+WHERE id = ANY($1::bigint[])
 `
 
 type OpenItemsForPostingRow struct {
-	ID         int64
-	Kind       string
-	CustomerID *int32
-	SupplierID *int64
+	ID               int64
+	Kind             string
+	CustomerID       *int32
+	SupplierID       *int64
+	SourceDocumentID *int64
 }
 
 func (q *Queries) OpenItemsForPosting(ctx context.Context, ids []int64) ([]OpenItemsForPostingRow, error) {
@@ -248,6 +277,7 @@ func (q *Queries) OpenItemsForPosting(ctx context.Context, ids []int64) ([]OpenI
 			&i.Kind,
 			&i.CustomerID,
 			&i.SupplierID,
+			&i.SourceDocumentID,
 		); err != nil {
 			return nil, err
 		}
@@ -257,6 +287,24 @@ func (q *Queries) OpenItemsForPosting(ctx context.Context, ids []int64) ([]OpenI
 		return nil, err
 	}
 	return items, nil
+}
+
+const setOpeningAsOfSeqs = `-- name: SetOpeningAsOfSeqs :exec
+UPDATE accounting.open_items o SET opening_as_of_seq = s.seq
+FROM (SELECT unnest($1::bigint[]) AS document_id, unnest($2::bigint[]) AS seq) s
+WHERE o.kind = 'customer' AND o.source_document_id = s.document_id
+`
+
+type SetOpeningAsOfSeqsParams struct {
+	DocumentIds []int64
+	Seqs        []int64
+}
+
+// SetOpeningAsOfSeqs records, on each customer item the opening made for an
+// invoice in Invoices, the AsOfSeq of the OpenAt page it was read on (R14).
+func (q *Queries) SetOpeningAsOfSeqs(ctx context.Context, arg SetOpeningAsOfSeqsParams) error {
+	_, err := q.db.Exec(ctx, setOpeningAsOfSeqs, arg.DocumentIds, arg.Seqs)
+	return err
 }
 
 const unallocatedItem = `-- name: UnallocatedItem :one

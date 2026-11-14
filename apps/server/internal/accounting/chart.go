@@ -273,8 +273,9 @@ type standardTaxCode struct {
 	notReported     bool
 }
 
-// standardTaxCodes is Skatteetaten's whole list with the 2026 rates — 25, 15,
-// 12 and 11.11 % for raw fish, Invoices' own (00034). Names come from
+// standardTaxCodes is Skatteetaten's whole list with its rates — 25, 15, 12
+// and 11.11 % for raw fish, Invoices' own (00034), unchanged since
+// 2022-01-01 (firstRateDay). Names come from
 // grouping/standard-tax-codes.csv with the rate after them. A
 // reverse-charge code without deduction posts its input side onto the line's
 // own account (vatAccount empty).
@@ -333,6 +334,12 @@ func taxCodeNames() (map[string][2]string, error) {
 	return out, nil
 }
 
+// firstRateDay is the first day the seeded rates are known to hold: 25, 15
+// and 12 % and 11.11 % for raw fish have stood since 2022-01-01 (the low
+// rate's temporary 6 % ended on 2021-09-30), so the books start on it or
+// later (books_start_too_early).
+var firstRateDay = time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // rateLabel is a rate as a name shows it: "25 %", "11,11 %" in Norwegian.
 func rateLabel(rate, language string) string {
 	label := strings.TrimSuffix(rate, ".00")
@@ -343,8 +350,8 @@ func rateLabel(rate, language string) string {
 }
 
 // seedBooks writes the default chart, its groupings, the standard tax codes
-// with their 2026 rates and the system roles, named in language (R12), on the
-// setup's transaction.
+// with their rates from firstRateDay and the system roles, named in language
+// (R12), on the setup's transaction.
 func seedBooks(ctx context.Context, q *store.Queries, language string, booksStart time.Time, now time.Time) error {
 	list, err := groupingsFor(booksStart.Year())
 	if err != nil {
@@ -389,12 +396,7 @@ func seedBooks(ctx context.Context, q *store.Queries, language string, booksStar
 	if err != nil {
 		return err
 	}
-	// The 2026 rates hold from 2026, or from books_start when the books begin
-	// earlier: they were the same in 2025.
-	rateStart := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	if booksStart.Before(rateStart) {
-		rateStart = booksStart
-	}
+	rateStart := firstRateDay
 	codes := map[string]int32{}
 	for _, t := range standardTaxCodes {
 		n := names[t.code]
