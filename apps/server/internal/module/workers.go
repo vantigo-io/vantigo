@@ -59,6 +59,24 @@ func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
 // any Mount runs, with no per-module Doc or Catalog — since a background worker is a data-layer concern (Pool, Config,
 // Clock, Mail, Secrets, ...), not a contract one.
 func Workers(deps Deps, mods ...Module) []worker.Worker {
+	deps = WorkerDeps(deps, mods...)
+	var out []worker.Worker
+	for _, mod := range enabledModules(deps, mods) {
+		if mod.Workers == nil {
+			continue
+		}
+		out = append(out, mod.Workers(deps)...)
+	}
+	return out
+}
+
+// WorkerDeps is deps as Workers hands it to every module's workers: each
+// slot Workers resolves, resolved from the enabled modules among mods as
+// Compose resolves it. A program that drives a module's own entry points
+// without composing — the demo seed — builds its Deps here, so they do not
+// differ from a worker's in who holds what. Like Workers, it panics on a slot
+// two modules claim: a bug in the binary's own module list.
+func WorkerDeps(deps Deps, mods ...Module) Deps {
 	// Every module given, enabled or not, before enablement drops any: the
 	// anonymisation worker is where contracts.CustomerPersonalData's erase
 	// runs (customers GDPR design D2), and worker mode never composes, so
@@ -193,14 +211,7 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	if err != nil {
 		panic(err.Error())
 	}
-	var out []worker.Worker
-	for _, mod := range enabled {
-		if mod.Workers == nil {
-			continue
-		}
-		out = append(out, mod.Workers(deps)...)
-	}
-	return out
+	return deps
 }
 
 // withUsersAndAccounts resolves the single-provider slots a worker needs

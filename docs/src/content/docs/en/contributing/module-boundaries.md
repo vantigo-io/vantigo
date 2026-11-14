@@ -254,7 +254,9 @@ lag, never what must refuse — go through the platform's domain-events outbox,
    and kind; its provider answers nil while `INVOICES_BANK_FEED_ENABLED` is off;
    `modtest.WithBankFeed` is the seam), which Accounting's `accounting.bankfeed` worker reads
    in worker mode. Two providers are a compose error naming both, and a panic in
-   Workers.
+   Workers. `module.WorkerDeps` is that resolution on its own — the `Deps` `module.Workers`
+   hands every worker — for a program that drives a module's entry points without composing:
+   the demo seed builds Accounting's `Deps` with it.
    Twelve slots are *many-provider* instead — any number of modules may fill them,
    and Compose collects them in module order: `Workers` (background work, from
    the enabled modules), `CalendarSources` (`contracts.CalendarSource`, rule 12,
