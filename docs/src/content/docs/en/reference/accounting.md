@@ -1347,8 +1347,8 @@ postings on its ledger account or leaves it open. Migration `00188_accounting_ba
 | --- | --- |
 | `bank_accounts` | name, `account_number` (11 digits, mod 11), IBAN, BIC, `currency` (NOK only), `ledger_account_id` (unique: one bank account a ledger account), `source` (`file` or `feed`), the feed's start day, status, detail, last and next read and lease, the CSV mapping (jsonb), active, revision |
 | `statements` | the bank account, `source` (`camt053`, `csv`, `feed`), the statement's own id, the period, the opening and closing balances when the source gives them, `continuity` (`ok`, `gap`, `overlap`, `mismatch`, `unknown`) with its detail, the file's name, object key and SHA-256 (none for the feed), lines imported and skipped, who imported it (none for the feed) and when |
-| `statement_lines` | the statement and bank account, booking and value day, `amount` signed (money in positive), NOK, text, reference, KID, counterparty name and account, `bank_id`, `fingerprint`, `ordinal`, `kind` (`transfer`, `card`, `internal`, `other`), `reversal`, `batch` (a camt.053 batch's transactions, jsonb), `state` (`open`, `matched`) |
-| `statement_matches` | the line, `kind`, the request key, the reason shown, the voucher it posted, the supplier payment it registered, the bank rule and its version, who matched it and when; and once undone, who, when and the reversal. One standing match a line (`ux_statement_matches_line`) |
+| `statement_lines` | the statement and bank account, booking and value day, `amount` signed (money in positive), NOK, text, reference, KID, counterparty name and account, `bank_id`, `fingerprint`, `ordinal`, `kind` (`transfer`, `card`, `internal`, `other`), `reversal`, `batch` (a camt.053 batch's transactions, each with its own `AcctSvcrRef`, jsonb), `tx_reference` (a single transaction's `AcctSvcrRef`), `possible_duplicate_of` (a line of another source it may repeat), `note` (why a match was taken back by itself), `state` (`open`, `matched`, `duplicate`) |
+| `statement_matches` | the line, `kind`, the request key, the reason shown, the voucher it posted, the supplier payment it registered, the bank rule and its version, the VAT term's closing it paid (`vat_closing_id`), the last Vipps settlement day it read (`vipps_through`), who matched it and when; and once undone, when, who (none when the system took it back) and the reversal. One standing match a line (`ux_statement_matches_line`) |
 | `statement_match_postings` | the match's postings, `standing`; a posting is matched to one line at most while the match stands (`ux_statement_match_postings_posting`) |
 | `bank_rules` | name, bank account (none: every one), `text_contains`, `counterparty_contains`, `direction` (`in`, `out`, `any`), the account, tax code and project, description, active, version |
 | `voucher_bank_refs` | a payment voucher's receiving account, bank reference and source, as Invoices registered it; never changed |
@@ -1366,9 +1366,12 @@ and dots dropped, or a Norwegian IBAN as its BBAN, and must pass mod 11 (400
 `bank_account_number_invalid`); the currency is NOK (400 `bank_account_currency`); the
 ledger account an active asset account (400 `bank_account_invalid`). Another bank account
 with the number or the ledger account is 409 `bank_account_number_taken` or
-`bank_account_ledger_taken`. A bank account with statements, or with bank rules, is not
-deleted (409 `bank_account_has_statements`): make it inactive. An inactive bank account is
-left out of the payments' mapping, the status and the meta.
+`bank_account_ledger_taken`. Once the bank account has statement lines, or a payment from
+Invoices was posted through its number (`voucher_bank_refs`), a change of its number or its
+ledger account is 409 `bank_account_in_use`: its lines are matched to postings on that
+ledger account. A bank account with statements, or with bank rules, is not deleted (409
+`bank_account_has_statements`): make it inactive. An inactive bank account is left out of
+the payments' mapping and the meta, and of the status unless it has lines not matched.
 
 ### Statements
 
@@ -1387,12 +1390,14 @@ is decoded alone. Its account is `Acct/Id/IBAN` (a Norwegian IBAN read as its BB
 signed by `CdtDbtInd`, kept only as a pair; its period `FrToDt`, else its entries' days.
 Only entries with status `BOOK` (`Sts` as text in .02, `Sts/Cd` from .08) are read; the
 rest are counted as `notBooked`. An entry's amount is signed by its `CdtDbtInd` — a reversal
-(`RvslInd`) keeps its own direction and is marked; its bank id is `AcctSvcrRef`, else
-`NtryRef`, else the one transaction's `AcctSvcrRef`; with one transaction its reference is
-`EndToEndId` (not `NOTPROVIDED`), its KID the first `Strd/CdtrRefInf/Ref` of digits, its
-text `Ustrd`, `AddtlTxInf` or `AddtlNtryInf`, and its counterparty the debtor of money in, the
-creditor of money out; with several the transactions are kept as `batch`, each with its
-amount, KID, reference and name. The bank transaction code says the kind: card families
+(`RvslInd`) keeps its own direction and is marked; its bank id is `AcctSvcrRef`, else the
+one transaction's `AcctSvcrRef` — never `NtryRef` or `TxId`, which number the entries
+within a statement and repeat across statements; an entry with neither takes the
+fingerprint path. With one transaction its `AcctSvcrRef` is kept as `tx_reference`, its
+reference is `EndToEndId` (not `NOTPROVIDED`), its KID the first `Strd/CdtrRefInf/Ref` of
+digits, its text `Ustrd`, `AddtlTxInf` or `AddtlNtryInf`, and its counterparty the debtor of
+money in, the creditor of money out; with several the transactions are kept as `batch`,
+each with its amount, KID, reference, name and `AcctSvcrRef`. The bank transaction code says the kind: card families
 (`CCRD`, `DCRD`, `POSD`, `CWDL`) are `card`, the sub-family `BOOK` or `ACCT` is `internal`.
 An amount that is not a decimal with at most two places, an entry without a booking day or
 neither CRDT nor DBIT refuses the file (400 `bank_statement_invalid`).
@@ -1410,8 +1415,9 @@ and the columns from 0 — the booking day, and either a signed amount (`invertS
 bank that shows money out as positive) or a debit and a credit column, and optionally the
 value day, text, reference, KID, counterparty, its account and the bank's id. A mapping with
 no amount, both kinds or a column twice is 400 `bank_csv_mapping_invalid`; a bank account
-with none is 409 `bank_csv_mapping_required`. A row that cannot be read refuses the file,
-naming the row. `POST /bank/accounts/{id}/csv-preview` (`accounting:post`) answers the first
+with none is 409 `bank_csv_mapping_required`. With a thousands separator, the whole part of
+an amount is one to three digits and then groups of exactly three (`12 345,00`), else the
+row cannot be read. A row that cannot be read refuses the file, naming the row. `POST /bank/accounts/{id}/csv-preview` (`accounting:post`) answers the first
 20 rows as they would be imported, with each row's error, and writes nothing.
 
 The file is kept in the object store under `bank-statements/<sha256>` (503
@@ -1428,6 +1434,20 @@ of the account with balances starting on or before it — `overlap` when it star
 `gap` when days lie between, `mismatch` when its opening is not that one's closing, else
 `ok`; flagged, never refused. Without balances it is `unknown`.
 
+**Across sources.** The guard cannot see one movement read from two sources — a CSV export
+and a camt.053 file, or a file and the feed — whose ids and fields differ. A new line with the
+same day and amount as a line of the account from another source (not set aside) and the
+same KID, counterparty account or text (lower case, letters and digits only) is written with
+`possible_duplicate_of` that line and counted in `possibleDuplicates`. It gets no
+suggestion, bulk accept skips it, accept and code are 409 `bank_line_possible_duplicate`,
+and the transfer search ignores it, until `POST /bank/lines/{id}/duplicate`
+(`accounting:post`, its day after the lock) settles it: `duplicate: true` sets it aside
+(`state` `duplicate`, in no balance, never matched); `false` clears the flag. A line not
+flagged, set aside already, or matched is 409 `bank_line_not_duplicate`. For a bank account
+whose source is `feed`, a file imported writes only the lines booked before the feed's
+start day; the rest are counted in `coveredByFeed`, and the statement's balances, which run
+into the feed's days, are dropped.
+
 `GET /bank/statements?bankAccountId=` lists the statements, newest first, at most 200;
 `GET /bank/statements/{id}/file` streams a statement's file as uploaded (404 for the feed's).
 
@@ -1439,8 +1459,11 @@ statement from the feed (A29). Invoices keeps the one connection and its sealed 
 no second key. `GET /bank/feed/accounts` (`accounting:close`) asks the bank — with no
 transaction open — for every account the key reads, cards and tax accounts too, each with
 the bank account here with its number. `PUT /bank/accounts/{id}/source` (`accounting:close`)
-switches the source: to `feed` from `startDay` (default today, at most 13 months back), only
-when the bank answers the account's number (409 `bank_feed_account_not_offered`); to `file`,
+switches the source: to `feed` from `startDay` — by default the day after the latest line or
+statement period of the account, else today; one before that day is 400
+`bank_feed_start_too_early`, checked again under the account's lock; at most 13 months back
+and tomorrow — only when the bank answers the account's number (409
+`bank_feed_account_not_offered`); to `file`,
 the feed's state cleared and its lines kept. With the feed not composed — Invoices off or
 `INVOICES_BANK_FEED_ENABLED` off — it is 409 `bank_feed_off`; with no key in Invoices
 `bank_feed_not_connected`; with the key refused `bank_feed_refused`; with the bank not
@@ -1468,32 +1491,55 @@ or `off`; `bankFeedEnabled` says whether the feed is composed.
 
 ### Reconciliation
 
-`GET /bank/accounts/{id}/reconciliation?from=&to=&state=` (`accounting:read`; at most 366
-days, else 400 `period_invalid`) answers the lines booked in the period, each with its
-standing match, an open line with its suggestions, and the **foot**: the statement's balance
-at the period's end — the latest closing balance given on or before it and the lines booked
-after that statement's period, none when no statement gave one — the ledger account's
-balance at the end, the difference, and the ledger's postings dated in the period that no
-standing match holds (at most 200 listed, the count of all).
+`GET /bank/accounts/{id}/reconciliation?from=&to=&state=&offset=&limit=` (`accounting:read`;
+at most 366 days, else 400 `period_invalid`; `state` `open`, `matched` or `duplicate`; a page
+of `limit` lines, 200 by default, at most 500, from `offset`) answers the page of lines
+booked in the period, each with its standing match, an open line with its suggestions,
+`total` — the lines the pages hold together — and the **foot**: the statement's balance at
+the period's end — the latest closing balance given on or before it and the lines booked
+after that statement's period, set-aside duplicates left out, none when no statement gave
+one — the ledger account's balance at the end, the difference, and the ledger's postings
+dated in the period that no standing match holds (the first 200 listed, the exact count of
+all). Like Invoices' bank transactions, the read is the Assistant's to make without asking:
+it holds the counterparties the bank named, as the statement does.
 
 **The suggestions** are computed from the books alone, no call out, in this order, then
 ordered `exact`, `likely`, `possible`; at most eight. A posting is a candidate when it is on
-the ledger account, dated within ten days of the line, held by no standing match, and its
-voucher neither reversed nor a reversal.
+the ledger account, dated within ten days of the line — read per line's day, in SQL on the
+account's and the day's indexes — held by no standing match, and its voucher neither
+reversed nor a reversal, nor a payment removed in Invoices or its removal. A line flagged
+as a possible duplicate, or set aside, has none.
 
 | Kind | When | Certainty | What accepting does |
 | --- | --- | --- | --- |
-| `feed_payment` | a candidate of the line's amount whose voucher's bank reference is the line's bank id or reference: the payment Invoices registered from the same bank transaction, a feed's or a file's | exact | links it |
+| `feed_payment` | a candidate of the line's amount whose voucher's bank reference is the line's bank id, its transaction's `AcctSvcrRef` or its reference: the payment Invoices registered from the same bank transaction, a feed's or a file's | exact | links it |
 | `posting` | a candidate of the same amount, nearest day first, at most five | exact the same day, likely within three days, else possible | links it |
-| `batch` | money in that several of Invoices' payment postings sum to: by camt.053's batch transactions one by one, each to a payment of its amount nearest the day; else the payments of one day — of one source (`ocr`, `camt054`, `bank_feed`) first, then of any — from the booking day back three days | exact by the transactions, likely by source, possible by day | links them |
-| `supplier_invoice` | money out and a posted supplier invoice owed (at most three): its KID, the amount with the supplier's bank account as the counterparty's, its number or reference in the text, or the amount alone | exact by KID and amount, likely, possible | registers the payment through the supplier payment's own path (A19, R8): the invoice and its item FOR UPDATE, the line's amount as the NOK the bank took, on the bank account's ledger account, all that is left settled in the invoice's currency, the difference to `currency_gain` or `currency_loss` |
-| `vipps_payout` | money in whose text, counterparty or reference names Vipps, at most what `clearing_vipps` holds through the day before (or the day itself, when the day before holds less) | exact with no fees, else likely | posts `bank.vipps_payout` |
-| `vat` | the line is the balance of `vat_settlement` through its day, or a closed term's settlement on it (A22) | likely when the text names Skatteetaten, skatt or mva, else possible | posts `bank.vat_settlement` |
-| `transfer` | an open line on another bank account's statement of the opposite amount within three days, or money to or from another active bank account's number | exact the same day, else likely | posts `bank.transfer`, and matches the other line too |
-| `rule` | an active bank rule — of this bank account or every one — whose direction and words (case aside) the line holds; at most two | likely | posts `bank.rule` |
+| `batch` | money in that several of Invoices' payment postings sum to: by camt.053's batch transactions one by one, each to the payment registered from that transaction's `AcctSvcrRef`, else to a payment of its amount nearest the day; else the payments of one day — of one source (`ocr`, `camt054`, `bank_feed`) first, then of any — from the booking day back three days | exact by the transactions, likely by source, possible by day | links them |
+| `supplier_invoice` | money out and a posted supplier invoice owed (at most three): its KID, the amount (in a foreign currency: the payment settling it, below) with the supplier's bank account as the counterparty's, its number or reference in the text, or the amount alone | exact by KID when it settles the invoice, likely, possible | registers the payment through the supplier payment's own path (A19, R8): the invoice and its item FOR UPDATE, the line's amount as the NOK the bank took, on the bank account's ledger account; in a foreign currency the share settled is `amountCurrency`, the difference to `currency_gain` or `currency_loss` |
+| `vipps_payout` | money in whose text, counterparty or reference names Vipps | exact when a run of settlement days comes to the line, likely with a fee, possible with no run | posts `bank.vipps_payout`, below |
+| `vat` | the line is a closed term's settlement (A22) that no standing match paid and the balance of `vat_settlement` through its day still holds on the same side, or that balance itself | likely when the text names Skatteetaten, skatt or mva, else possible | posts `bank.vat_settlement`; the match keeps the term's closing (`vat_closing_id`), so the term is not offered again |
+| `transfer` | an open line on another bank account's statement of the opposite amount within three days, or — when no candidate of the line's amount is a `bank.transfer` voucher's posting already — money to or from another active bank account's number | exact the same day, else likely | posts `bank.transfer`, and matches the other line too |
+| `rule` | an active bank rule — of this bank account or every one — whose direction and words (case aside) the line holds; never for money in with a KID, of an amount a customer's open item is owed, or to an income (class 3) or receivables account; at most two | likely | posts `bank.rule` |
 | `invoices` | money in with a KID, or a batch, that none of the first three explains | likely | nothing: it points to Invoices' bank import (R11); accepting it is 409 `bank_line_customer_payment` |
 
 A line's lone first suggestion that is `exact` is marked `exact`: the one bulk accept takes.
+
+**A foreign-currency supplier invoice.** With `left` what is left in its currency and `rate`
+the invoice's rate, the payment settles all of `left` when the rate it implies for it,
+NOK paid ÷ `left`, is within 5 % of `rate`: the suggestion's `amountCurrency` is `left`.
+Otherwise it is a part payment: `amountCurrency` is the NOK paid ÷ `rate`, rounded to the øre
+and at most `left`, `needsAmountCurrency` is true, and accept without `amountCurrency` in its
+body is 400 `bank_amount_currency_required`; given, it is held to what is left (409
+`payment_exceeds_balance`). A part payment never closes the invoice.
+
+**A Vipps payout.** The settlement days are the days whose vouchers debit `clearing_vipps`
+(reversed vouchers and reversals left out), after the last day a standing payout match read
+(`vipps_through`), at most 62 days back, before the payout's day. The earliest run of
+consecutive such days whose debits come to the line or up to 3 % more is the payout's: the
+fee is their sum less the line, the key `vipps:<first day>..<last day>`, and the match keeps
+the last day. With no such run the key is `vipps:nofee` and the fee 0: no fee is guessed.
+Accept takes `fee` in its body — from Vipps' settlement report — from 0 to `feeMax`, 5 % of
+the line (400 `bank_fee_too_large` beyond), the suggestion's when left out.
 
 **The bank's vouchers.** Every voucher a match posts is kind `bank`, dated the line's
 booking day, posted by the person with the source key `(accounting, bank_match, line id,
@@ -1503,7 +1549,7 @@ system voucher: only the bank's undo reverses it (409 `voucher_owned_by_source` 
 
 | Rule (version) | Lines |
 | --- | --- |
-| `bank.vipps_payout` (1) | the bank account's ledger account debited with the line; `payment_fees` with what the clearing holds beyond it; `clearing_vipps` credited with all it holds through the day used |
+| `bank.vipps_payout` (1) | the bank account's ledger account debited with the line; `payment_fees` with the fee; `clearing_vipps` credited with the line and the fee — never all it holds |
 | `bank.vat_settlement` (1) | the ledger account by the line; `vat_settlement` the other way: a payment debits it, a refund credits it |
 | `bank.transfer` (1) | the ledger account by the line; the other bank account's ledger account the other way |
 | `bank.rule` (1) | the ledger account by the line; the rule's account the other way, the amount gross with the rule's tax code, through the manual journal's tax computation (A6); the match keeps the rule's id and version |
@@ -1515,28 +1561,45 @@ system voucher: only the bank's undo reverses it (409 `voucher_owned_by_source` 
 transaction that takes the line FOR UPDATE first, computes the suggestions again and
 accepts the one with that key: 409 `bank_suggestion_stale` when none has it, 409
 `bank_line_matched` when another match stands, and the same key again answers the match it
-made (a double click posts once; two people accepting the same suggestion at once leave one
-match). Linked postings are taken FOR SHARE; one another line holds meanwhile is 409
-`bank_posting_matched`. A transfer takes the other line FOR UPDATE too, and two people
-matching its two sides at once is answered 409 `bank_line_matched`.
+made, whoever sends it (a double click posts once; two people accepting the same suggestion
+at once leave one match); another key on a matched line is 409 `bank_line_matched`. A line
+flagged as a possible duplicate is 409 `bank_line_possible_duplicate`. Linked postings'
+vouchers are taken FOR UPDATE — as a reversal or a removal of one takes it — and one
+reversed or removed meanwhile is 409 `bank_suggestion_stale`; the postings FOR SHARE, and
+one another line holds meanwhile is 409 `bank_posting_matched`. A rule's voucher for money
+in is checked again against income and receivables (409 `bank_line_customer_payment`). A
+transfer takes the other line FOR UPDATE too, and two people matching its two sides at once
+is answered 409 `bank_line_matched`.
 
 **Code it** — `POST /bank/lines/{id}/code` with `key`, `description`, `entry` (`gross` by
 default) and `lines` (`accounting:post`) — posts `bank.coded`: the bank account's ledger
 account by the line's amount, then the lines given, through the manual journal's validation
 and tax computation (A6), so they must balance it (400 `voucher_unbalanced`). A line naming
 a party's open item settles it (R5); an item that stands for a document in Invoices is 409
-`settlement_source_document`, a supplier invoice's 409 `settlement_supplier_invoice`.
+`settlement_source_document`, a supplier invoice's 409 `settlement_supplier_invoice`; a line
+to receivables or payables without one is 400 `bank_open_item_required`.
 **A customer payment is never coded here** (R11): money in with a KID or a batch, or money
 in coded to a sales income account (class 3), is 409 `bank_line_customer_payment`: it is
 registered in Invoices, and its posting then matches the line. The same key again answers
 the first's match.
 
-**Undo** — `POST /bank/lines/{id}/undo` (`accounting:post`) — while the line's day is after
-the lock (409 `period_locked` otherwise): a supplier payment is removed through its own
-path; another voucher is reversed (`bank.match_undone`) and every match standing on it is
-undone, so a transfer's other line opens too; a match of postings that were there lets them
-go. The match row is kept, undone, with who and the reversal. With no standing match it is
-409 `bank_line_not_matched`.
+**Undo** — `POST /bank/lines/{id}/undo` (`accounting:post`) — takes every line it touches
+FOR UPDATE, in id order, each of whose days must be after the lock (409 `period_locked`
+otherwise), and undoes the matches before it turns anything back: a match that posted a
+voucher undoes every match standing on any of that voucher's postings
+(`statement_match_postings`) or posted by it — so a transfer's other line opens, also when
+it was matched to the transfer's posting — and then the supplier payment is removed through
+its own path (only unlinked when it was removed already), or the voucher reversed
+(`bank.match_undone`); a match of postings that were there lets them go. The match rows are
+kept, undone, with who and the reversal. With no standing match it is 409
+`bank_line_not_matched`.
+
+**Taken back with its voucher.** Every voucher Post writes that reverses another, or turns
+back a payment removed in Invoices (`payment_removed`, `charge_payment_removed`, and a
+recovery's removal, which reverses), takes that voucher FOR UPDATE and undoes, in the same
+transaction, every bank match standing on it: the supplier payment removed on its invoice's
+page, the customer payment removed in Invoices, a voucher reversed by hand. Each line opens
+again with a `note` saying which voucher was turned back; the match is undone by no person.
 
 **Accept the exact ones** — `POST /bank/lines/accept-exact` with up to 500 `lineIds`
 (`accounting:post`) — accepts each line's lone exact suggestion, each in its own
@@ -1544,8 +1607,9 @@ transaction, and answers the lines `accepted` and `skipped`.
 
 ### The lock and the status
 
-`GET /bank/status?through=` (`accounting:read`) answers, per active bank account, the lines
-booked on or before the day not matched, the statement's and the ledger's balance at it,
+`GET /bank/status?through=` (`accounting:read`) answers, per active bank account — and per
+inactive one that still has lines not matched — the lines booked on or before the day not
+matched, the statement's and the ledger's balance at it,
 the difference, and whether all is reconciled. `PUT /lock` moving the lock forward over a
 bank account that is not — a line not matched through the new lock, or a statement balance
 that differs from the ledger's — is refused 409 `bank_unreconciled`, the detail naming the
@@ -1560,7 +1624,9 @@ shows them, and the feed's problems, when nothing more pressing waits.
 `GET /bank/rules` (`accounting:read`); `POST`, `PUT /bank/rules/{id}` and `DELETE`
 (`accounting:close`). A rule needs words in the text or the counterparty (at most 140
 characters each), an active account (400 `account_unknown`) and an active tax code when it
-names one (400 `tax_code_unknown`). A change is a new version. A rule a match was made with
+names one (400 `tax_code_unknown`). A rule for money `in` or `any` to an income account of
+class 3 or to receivables is 400 `bank_rule_customer_payment` (R11). A change is a new
+version. A rule a match was made with
 is not deleted (409 `bank_rule_in_use`): make it inactive.
 
 ### SAF-T and the bank
@@ -1574,8 +1640,8 @@ the seller's account in Invoices as before.
 
 | Status | Codes |
 | --- | --- |
-| 400 | `bank_account_number_invalid`, `bank_account_currency`, `bank_account_invalid`, `bank_statement_invalid`, `bank_statement_too_large`, `bank_statement_account_unknown`, `bank_statement_account_required`, `bank_csv_mapping_invalid`, `voucher_unbalanced`, `period_invalid` |
-| 409 | `bank_account_number_taken`, `bank_account_ledger_taken`, `bank_account_has_statements`, `bank_feed_off`, `bank_feed_not_connected`, `bank_feed_refused`, `bank_feed_account_not_offered`, `bank_csv_mapping_required`, `bank_line_matched`, `bank_line_not_matched`, `bank_suggestion_stale`, `bank_posting_matched`, `bank_line_customer_payment`, `bank_rule_in_use`, `bank_unreconciled`, `period_locked`, `settlement_source_document`, `settlement_supplier_invoice` |
+| 400 | `bank_account_number_invalid`, `bank_account_currency`, `bank_account_invalid`, `bank_statement_invalid`, `bank_statement_too_large`, `bank_statement_account_unknown`, `bank_statement_account_required`, `bank_csv_mapping_invalid`, `bank_feed_start_too_early`, `bank_rule_customer_payment`, `bank_amount_currency_required`, `bank_fee_too_large`, `bank_open_item_required`, `voucher_unbalanced`, `period_invalid` |
+| 409 | `bank_account_number_taken`, `bank_account_ledger_taken`, `bank_account_has_statements`, `bank_account_in_use`, `bank_feed_off`, `bank_feed_not_connected`, `bank_feed_refused`, `bank_feed_account_not_offered`, `bank_csv_mapping_required`, `bank_line_matched`, `bank_line_not_matched`, `bank_suggestion_stale`, `bank_posting_matched`, `bank_line_customer_payment`, `bank_line_possible_duplicate`, `bank_line_not_duplicate`, `bank_rule_in_use`, `bank_unreconciled`, `period_locked`, `settlement_source_document`, `settlement_supplier_invoice`, `payment_exceeds_balance` |
 | 503 | `bank_feed_unreachable`, `storage_not_configured` |
 
 ## The reports
