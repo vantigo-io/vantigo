@@ -806,6 +806,9 @@ export const accountingCatalog = {
     saftImportFinal: "Applying sets up the books from the file in one go. It cannot be undone.",
     saftImportApply: "Set up the books from the file",
     saftImportApplied: "The books are set up from the file.",
+    saftImportedFrom: "Set up from a SAF-T file",
+    saftImportedFromHint:
+      "The books were set up on {{at}} from the old system's file for {{from}} – {{to}}. It is the record of the years before the books: keep it.",
     "refusal.saft_seller_missing": "The company has no organisation number in Invoices' settings.",
     "refusal.saft_file_invalid": "This is not a SAF-T Financial file Vantigo can read.",
     "refusal.saft_version_unsupported": "Only SAF-T Financial 1.30 and 1.40 are read.",
@@ -1606,6 +1609,9 @@ export const accountingCatalog = {
     saftImportFinal: "Når filen tas i bruk, settes regnskapet opp fra den i én operasjon. Det kan ikke angres.",
     saftImportApply: "Sett opp regnskapet fra filen",
     saftImportApplied: "Regnskapet er satt opp fra filen.",
+    saftImportedFrom: "Satt opp fra en SAF-T-fil",
+    saftImportedFromHint:
+      "Regnskapet ble satt opp {{at}} fra filen fra det gamle systemet for {{from}} – {{to}}. Den er dokumentasjonen for årene før regnskapet: ta vare på den.",
     "refusal.saft_seller_missing": "Selskapet har ikke organisasjonsnummer i innstillingene i Fakturering.",
     "refusal.saft_file_invalid": "Dette er ikke en SAF-T Financial-fil Vantigo kan lese.",
     "refusal.saft_version_unsupported": "Bare SAF-T Financial 1.30 og 1.40 leses.",

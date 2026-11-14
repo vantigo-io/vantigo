@@ -739,6 +739,7 @@ export const stubAccountingApi = (change: Partial<ApiState> = {}): StubbedFetch 
         export: saftExport({ id: 7002, state: "queued", files: [], finishedAt: null, totalBytes: null }),
         unmappedAccounts: [],
       });
+    if (method === "GET" && path === "/saft-imports") return jsonResponse(200, { items: [] });
     if (method === "POST" && path === "/saft-imports") return jsonResponse(201, saftImport());
     if (method === "GET" && /^\/saft-imports\/\d+$/.test(path)) return jsonResponse(200, saftImport());
     if (method === "POST" && /^\/saft-imports\/\d+\/apply$/.test(path))
