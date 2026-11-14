@@ -236,6 +236,7 @@ describe("the payments card", () => {
           },
           {
             id: 1005,
+            kind: "payment",
             paidOn: "2026-09-11",
             amount: 1,
             currency: "NOK",
