@@ -9,7 +9,7 @@ sources:
 ---
 
 The Accounting module writes SAF-T Financial files in Skatteetaten's schema, version 1.40
-([SAF-T Financial](/en/reference/accounting/#saft-financial)), and reads 1.30 and 1.40
+([SAF-T Financial](/en/reference/accounting/#saf-t-financial)), and reads 1.30 and 1.40
 files to set up the books. The Go tests prove what the file says — every voucher, the
 balances, the parties, the references — and compare a fixed ledger's file with a golden.
 That the files are valid against Skatteetaten's schema is the **SAF-T oracle**'s to prove.

@@ -41,7 +41,7 @@ mounted at `/api/v1/accounting`. The design is
 - For SAF-T it reads Customers' `BillingProfile` (a customer's number, name, organisation
   number and invoice address) and `CustomersByLegalID` (the import's matching), the
   projects' names, and the names of who asked for an export
-  ([SAF-T Financial](#saft-financial)).
+  ([SAF-T Financial](#saf-t-financial)).
 - It publishes no event. It starts two workers, `accounting.catchup` and `accounting.saft`, and declares four
   event handlers ([Sales post themselves](#sales-post-themselves)); before the books are
   set up both return at once, and the handlers do nothing with the module off in
