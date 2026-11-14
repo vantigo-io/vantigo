@@ -14,6 +14,7 @@
 package accounting
 
 import (
+	"maps"
 	"net/http"
 	"time"
 
@@ -50,12 +51,12 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: permClose, Display: "Manage the books",
-		Description: "Set up the books, change the chart of accounts, the tax codes, the system roles and the posting rules, enter the opening balances and move the lock date.",
+		Description: "Set up the books (from a SAF-T file too), change the chart of accounts, the tax codes, the system roles and the posting rules, enter the opening balances and move the lock date.",
 		Category:    "Accounting", Sensitive: false, Delegable: false,
 	},
 	{
 		Key: permExport, Display: "Export the books",
-		Description: "Download the specifications as files, which carry customers' and suppliers' names.",
+		Description: "Download the specifications as files and export the books as SAF-T, which carry customers' and suppliers' names — a person's among them.",
 		Category:    "Accounting", Sensitive: true, Delegable: true,
 	},
 }
@@ -82,6 +83,7 @@ var policyFileUpload = ratelimit.Policy{
 var limits = map[string]ratelimit.Policy{
 	"lookupAccountingSupplierBrreg":       policyBrregLookup,
 	"uploadAccountingSupplierInvoiceFile": policyFileUpload,
+	"uploadAccountingSaftImport":          policyFileUpload,
 }
 
 // bodyLimits raises the router's request-body cap for an attachment: the file
@@ -108,11 +110,15 @@ func Module() module.Module {
 // setup answers 409 books_not_set_up until the books are set up (R12); the
 // gate is a strict middleware, so no handler runs before it.
 func mount(d module.Deps) (http.Handler, error) {
+	srv := newServer(d)
+	// A SAF-T file is as large as the configuration allows (A25), with room
+	// for the multipart framing around it.
+	limitsByOp := maps.Clone(bodyLimits)
+	limitsByOp["uploadAccountingSaftImport"] = srv.saftImportMax() + 64<<10
 	router := module.NewRouter(module.RouterOptions{
 		Doc: d.Doc, Access: d.Access, Limiter: d.Limiter, Limits: limits, Catalog: d.Catalog,
-		BodyLimits: bodyLimits,
+		BodyLimits: limitsByOp,
 	})
-	srv := newServer(d)
 	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{srv.setupGate}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: writeRefusal(),

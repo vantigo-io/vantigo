@@ -151,7 +151,7 @@ ORDER BY coalesce(s.number, b.supplier_id), b.supplier_id;
 -- SaftTaxCodes is every tax code (Skatteetaten's rule: all of them), with the
 -- rate period in force at at_date, else the latest before it.
 SELECT t.id, t.code, t.name, t.direction, t.reverse_charge, t.vat_account_id, t.active,
-    coalesce(r.rate_percent::text, '')::text AS rate_percent, r.valid_from, r.valid_to
+    coalesce(r.rate_percent::text, '')::text AS rate_percent, coalesce(r.valid_from::text, '')::text AS valid_from
 FROM accounting.tax_codes t
 LEFT JOIN LATERAL (
     SELECT tr.rate_percent, tr.valid_from, tr.valid_to FROM accounting.tax_code_rates tr
