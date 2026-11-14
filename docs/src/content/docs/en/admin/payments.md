@@ -235,30 +235,42 @@ container while `INVOICES_BANK_FEED_ENABLED` is on
 ([Background workers and scaling](/en/admin/installation/#background-workers-and-scaling)).
 Once a minute it takes every account that is due, each under a lease of its own, so two
 processes never read one account together. Each read asks Folio for the account's booked
-transactions from the latest day the feed booked less **10 days** — a bank may book a
+transactions from the last day it read to the end less **10 days** — a bank may book a
 payment on an earlier day than it first showed it — to today, so every read covers the
-last ten days again; what was read before is recognised and stored once. It keeps the
+last ten days again; what was read before is recognised and stored once. A longer stretch
+— a first read from a start day months back, or an account not read for a while — is read
+in windows of at most 31 days, each its own batch, a few per cycle, the account due again
+at once until it has caught up; a window whose answer is too large is halved and asked
+again. It keeps the
 incoming payments only: payments out (salaries, suppliers), card purchases and transfers
 between the company's own accounts are counted on the batch and never stored. The
 incoming payments of a read are stored as one batch in the object store
 (`bank-files/<sha256>.json`, [Object storage](/en/admin/object-storage/)), listed under
 **Payments** as **Bank feed · Folio**, and matched on their KID at once. **Fetch now** on
 **Payments** or on the Bank page (`invoices:payments`; `POST /api/v1/invoices/bank-feed/sync`,
-30 per 10 minutes) makes every account due now; the worker reads them within a minute.
+30 per 10 minutes) makes every account due now — over the wait after a failure, too — and
+the worker reads them within a minute. It leaves alone an account read in the last two
+minutes, and one Folio answered 429 is made due only when Folio's wait is over. A fetch
+while an account is being read makes it read again right after.
 
 **Each account's status** is on the Bank page, and an account in any but **OK** is on the
 dashboard of everyone with `invoices:manage`. No e-mail is sent.
 
 | Status | What happened | When it is read next | What to do |
 | --- | --- | --- | --- |
-| **OK** | The last read succeeded; a 429 from Folio leaves it OK with the wait noted | After the interval; after a 429, after Folio's wait if that is longer | Nothing |
-| **Failing** | Three reads in a row or more failed: Folio could not be reached or did not answer as it should, or the object store could not keep the batch — logged at warn with the account (never the key) | After the interval doubled for each failure, at most 6 hours | Check the server reaches `api.folio.no` over HTTPS, and the object store; it clears at the next read that succeeds |
-| **Refused** | Folio answered a batch Vantigo refuses whole, and nothing of it was stored: a payment booked after today, one not in NOK, one it cannot tell is money in or out, one transaction twice, one it cannot read — or the account's format is no longer **feed** | After the interval; the same batch is refused again until Folio's answer changes | Read the reason on the Bank page; for a format, switch the feed off and on again. Any other reason is Folio answering something this version does not read: report it, with the transaction id the page names |
+| **OK** | The last read succeeded; a 429 from Folio leaves it OK with the wait noted. A payment that could not be matched — its KID names an invoice in another currency, say — is named with the reason *line unmatched*: it waits in its batch, and the rest are matched | After the interval; after a 429, after Folio's wait if that is longer | For an unmatched payment, check the invoice its KID names, and apply the line from the exception queue once it can be |
+| **Failing** | Three reads in a row or more failed: Folio could not be reached or did not answer as it should, the object store could not keep the batch, or Folio's answer for a single day was too large to read (*answer too large*) — logged at warn with the account (never the key) | After the interval doubled for each failure, at most 6 hours, never sooner than the interval | Check the server reaches `api.folio.no` over HTTPS, and the object store; it clears at the next read that succeeds. A day too large: report it |
+| **Refused** | Folio answered a batch Vantigo refuses whole, and nothing of it was stored: an incoming payment booked after today, not in NOK, of a kind it does not know or that it cannot read, a transaction it cannot tell is money in or out, one transaction twice — or once more with another amount or KID than before — or the account's format is no longer **feed**. A payment out, a card purchase or an internal transfer never refuses a batch, however odd | After the interval; the same batch is refused again until Folio's answer changes, so **the account reads nothing meanwhile** | Read the reason and the transaction on the Bank page. Switch the account off, then either switch it on again with a start day after that transaction — and register it by hand if it was a payment — or go back to files by changing its format under **Payments**. Report a reason other than a format: it is Folio answering something this version does not read |
 | **Key refused** | Folio refused the key (401 or 403): the connection and every account stop | Not until a new key is saved | Create a new key in Folio and save it; every account is then read at once |
 
 A payment without a KID, or with one that names no invoice, waits in the exception queue
-for a person, as from a file. A payment the bank later sends back is a payment out, which
-the feed does not store: it stays registered until someone removes it.
+for a person, as from a file. **Folio marks no reversals**: a payment the bank later sends
+back arrives as an ordinary payment out, which the feed counts and does not store, so the
+payment stays registered until a person removes it with a reason.
+
+While the bank feed reads an account, the reminder runs' bank data counts as fresh through
+the last day it was read, and as stale while any account it reads is **Failing**,
+**Refused** or **Key refused** — a run that would claim charges then asks to confirm.
 
 **What can go wrong.**
 

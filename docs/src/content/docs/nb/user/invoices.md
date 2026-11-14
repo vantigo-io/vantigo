@@ -1233,7 +1233,8 @@ og resten går til [avvikskøen](#avvikskøen). Utbetalinger fra kontoen — lø
 
 - **Hent nå**, ved siden av **Importer** på **Innbetalinger** (og på Bank-siden, for noen
   med `invoices:payments`), spør etter alle kontoer med en gang; innbetalingene kommer innen
-  ett minutt. Under knappene viser hver konto integrasjonen leser, statusen og når den sist
+  ett minutt. En konto som er lest de siste to minuttene, spørres ikke igjen, og en banken
+  har bedt om å vente med, spørres når banken tillater det. Under knappene viser hver konto integrasjonen leser, statusen og når den sist
   ble lest.
 - Hver henting som ga nye innbetalinger, listes blant filene som **Bankintegrasjon ·
   Folio**, med tallene sine, og åpnes som en fil. En innbetaling banken viser igjen ved en
@@ -1243,15 +1244,24 @@ og resten går til [avvikskøen](#avvikskøen). Utbetalinger fra kontoen — lø
   **bankintegrasjonen**. En du fordeler fra avvikskøen, registreres av deg.
 - En innbetaling uten KID venter i køen som **Ingen KID**, med forslagene, til ett klikk
   fordeler den.
-- **At banken sender en betaling tilbake**, er en utbetaling, som integrasjonen ikke
-  beholder: betalingen blir stående registrert til noen fjerner den med en begrunnelse.
+- **At banken sender en betaling tilbake**: banken merker ingen tilbakeføringer, så penger
+  som sendes tilbake, kommer som en utbetaling, som integrasjonen ikke beholder.
+  Betalingen blir stående registrert til noen fjerner den med en begrunnelse.
+- En innbetaling som ikke kan avstemmes i det hele tatt — KID-en peker på en faktura i en
+  annen valuta, for eksempel — venter i bunken sin; resten avstemmes likevel, og kontoens
+  rad på Bank-siden sier hvilken innbetaling det er.
 
 Når banken avviser nøkkelen, ikke kan nås tre ganger på rad, eller svarer en henting
 Vantigo ikke kan ta imot, sier kontoens status det på Bank-siden, og dashbordets liste
 **Trenger oppfølging** forteller det til alle med `invoices:manage` — *Banken avviste
 API-nøkkelen*, *Bankintegrasjonen klarer ikke å lese kontoen som slutter på …* eller
 *Bankintegrasjonen avviste en bunke for kontoen som slutter på …* — med lenke til
-Bank-siden. Ingenting registreres fra en avvist henting.
+Bank-siden. Ingenting registreres fra en avvist henting, og **en avvist konto leser
+ingenting i mellomtiden**: det samme svaret avvises ved hver lesing. Veien ut, for noen med
+`invoices:manage` på Bank-siden, er å slå kontoen av og så enten slå den på igjen med en
+**Startdag** etter transaksjonen siden navngir — registrer den betalingen for hånd hvis den
+var en — eller gå tilbake til å importere kontoens bankfiler (**Endre formatet** under
+**Innbetalinger**).
 
 **En ekte andre betaling som ser ut som en gjentakelse.** En betaling holdes tilbake som
 **Et mulig duplikat**, og registreres ikke, når en betaling fra **en annen fil** til samme
@@ -1439,8 +1449,11 @@ gebyr eller renter fortsatt skyldes. Over 5 000 forfalte fakturaer må avgrenses
 eller forfallsdato.
 
 Over listen står hvor ferske bankdataene er: *Bankdata bokført til og med …*, eller
-**Bankdataene er gamle** når den siste bankbokføringen som er importert, er eldre enn
-grensen i purreinnstillingene — og alltid når ingen bankfil er noen gang importert. Brev
+**Bankdataene er gamle** når den siste bankbokføringen som er importert — eller den siste
+dagen bankintegrasjonen leste en konto til og med — er eldre enn grensen i
+purreinnstillingene, alltid når ingen av dem finnes, og hver gang en konto
+bankintegrasjonen leser, står som **Avvist**, **Feiler** eller **Nøkkel avvist**, fordi
+innbetalingene på den da kan mangle. Brev
 vurdert på gamle bankdata kan kreve gebyr og renter av fakturaer som er betalt. Når en
 konto importeres som OCR-giro, står en merknad om at betalinger uten KID aldri kommer med i
 en slik fil: **registrer betalingene uten KID for hånd først, og gjør så kjøringen**.
