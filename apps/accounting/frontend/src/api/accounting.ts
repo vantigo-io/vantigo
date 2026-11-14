@@ -748,18 +748,37 @@ export const statementsQueryOptions = (bankAccountId?: number) =>
 /** The address an imported statement's file downloads from. */
 export const statementFileUrl = (id: number) => appUrl(`${BASE}/bank/statements/${id}/file`);
 
-export const reconciliationQueryOptions = (id: number, from: string, to: string, state?: "open" | "matched") =>
+/** The lines a reconciliation page holds. */
+export const RECONCILIATION_PAGE = 200;
+
+export const reconciliationQueryOptions = (
+  id: number,
+  from: string,
+  to: string,
+  state?: "open" | "matched" | "duplicate",
+  offset = 0,
+) =>
   queryOptions({
-    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "reconciliation", id, from, to, state ?? null],
+    queryKey: [ACCOUNTING_QUERY_KEY, "bank", "reconciliation", id, from, to, state ?? null, offset],
     queryFn: ({ signal }) =>
       request<AccountingBankReconciliation>(
-        `${BASE}/bank/accounts/${id}/reconciliation${queryString({ from, to, state })}`,
+        `${BASE}/bank/accounts/${id}/reconciliation${queryString({ from, to, state, offset: offset || undefined, limit: RECONCILIATION_PAGE })}`,
         { signal },
       ),
   });
 
-export const acceptSuggestion = (lineId: number, key: string) =>
-  send<AccountingBankLine>(`${BASE}/bank/lines/${lineId}/accept`, json("POST", { key }));
+/** What a person adds to a suggestion: a foreign payment's amount in the invoice's currency, a Vipps payout's fee. */
+export interface AcceptExtras {
+  amountCurrency?: string;
+  fee?: string;
+}
+
+export const acceptSuggestion = (lineId: number, key: string, extras: AcceptExtras = {}) =>
+  send<AccountingBankLine>(`${BASE}/bank/lines/${lineId}/accept`, json("POST", { key, ...extras }));
+
+/** Confirms a possible duplicate (set aside) or dismisses it (kept as its own movement). */
+export const resolveDuplicate = (lineId: number, duplicate: boolean) =>
+  send<AccountingBankLine>(`${BASE}/bank/lines/${lineId}/duplicate`, json("POST", { duplicate }));
 
 export const codeLine = (lineId: number, body: AccountingBankCodeInput) =>
   send<AccountingBankLine>(`${BASE}/bank/lines/${lineId}/code`, json("POST", body));

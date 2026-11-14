@@ -877,7 +877,8 @@ export const accountingCatalog = {
       "The account is read through the bank Invoices is connected to — every payment in and out, card purchases and transfers too — about every half hour.",
     bankFeedNotOffered: "The connected bank does not offer account {{number}}.",
     bankFeedStartDay: "Read from",
-    bankFeedStartDayHint: "Nothing booked before this day is read. At most 13 months back.",
+    bankFeedStartDayHint:
+      "Nothing booked before this day is read. Left empty, the feed starts the day after the last statement imported; an earlier day is refused, so no day is read twice.",
     bankFeedLastSync: "last read {{at}}",
     bankFeedNextSync: "next {{at}}",
     bankFeedSince: "from {{day}}",
@@ -963,6 +964,28 @@ export const accountingCatalog = {
     bankFilterAll: "All",
     bankFilterOpen: "Not matched",
     bankFilterMatched: "Matched",
+    bankFilterDuplicate: "Set aside",
+    bankLineState_duplicate: "Set aside",
+    bankLinesOf: "{{count}} of {{total}} lines",
+    bankPages: "Pages of lines",
+    bankPossibleDuplicate: "Possible duplicate",
+    bankPossibleDuplicateHint:
+      "This line looks like one already imported from another file or the bank feed: the same day, amount and KID, account or text. Set it aside if it is the same movement, or keep it if it is one of its own.",
+    bankDuplicateHint: "Set aside as a duplicate: it counts in no balance and is never matched.",
+    bankDuplicateSetAsideAction: "Set aside as a duplicate",
+    bankDuplicateKeepAction: "Keep it, it is not a duplicate",
+    bankDuplicateSetAside: "The line is set aside as a duplicate.",
+    bankDuplicateKept: "The line is kept and offered for matching.",
+    bankVippsFeeTitle: "Vipps payout",
+    bankVippsFee: "Vipps' fee",
+    bankVippsFeeHint: "From Vipps' settlement report. At most {{max}}, 5 % of the payout.",
+    bankAmountCurrencyTitle: "Payment in {{currency}}",
+    bankAmountCurrency: "Amount settled in {{currency}}",
+    bankAmountCurrencyHint:
+      "The bank took {{amount}}. Give what the payment settles in the invoice's currency; the difference at the invoice's rate is a currency gain or loss.",
+    bankCoveredByFeed: "{{count}} lines on or after the feed's start day were left out: the bank feed brings them.",
+    bankPossibleDuplicates:
+      "{{count}} lines may repeat lines already imported: confirm or dismiss them in the reconciliation.",
     bankBulkAcceptCount: "Accept the {{count}} exact ones",
     bankBulkTitle: "Accept the exact suggestions",
     bankBulkConfirm:
@@ -1048,6 +1071,16 @@ export const accountingCatalog = {
     "refusal.bank_line_customer_payment": "A customer payment is registered in Invoices, never coded here.",
     "refusal.bank_rule_in_use": "The rule was used: make it inactive instead.",
     "refusal.bank_unreconciled": "The bank is not reconciled through the month.",
+    "refusal.bank_account_in_use":
+      "The account has statement lines: its number and ledger account stay. Add a new bank account instead.",
+    "refusal.bank_feed_start_too_early": "The feed starts after the last day a statement was imported for.",
+    "refusal.bank_rule_customer_payment":
+      "A rule for money in cannot code to income or receivables: customer payments are registered in Invoices.",
+    "refusal.bank_amount_currency_required": "Give the amount in the invoice's currency the payment settles.",
+    "refusal.bank_fee_too_large": "The fee is at most 5 % of the payout.",
+    "refusal.bank_open_item_required": "A line to receivables or payables names the open item it settles.",
+    "refusal.bank_line_possible_duplicate": "The line may be a duplicate: set it aside or keep it first.",
+    "refusal.bank_line_not_duplicate": "The line is not a possible duplicate.",
   },
   nb: {
     accounting: "Regnskap",
@@ -1907,7 +1940,8 @@ export const accountingCatalog = {
       "Kontoen leses gjennom banken Fakturering er koblet til — alle inn- og utbetalinger, også kortkjøp og overføringer — omtrent hver halvtime.",
     bankFeedNotOffered: "Den tilkoblede banken tilbyr ikke konto {{number}}.",
     bankFeedStartDay: "Les fra",
-    bankFeedStartDayHint: "Ingenting bokført før denne dagen leses. Høyst 13 måneder tilbake.",
+    bankFeedStartDayHint:
+      "Ingenting bokført før denne dagen leses. Står feltet tomt, starter bankintegrasjonen dagen etter den siste kontoutskriften som er importert; en tidligere dag avvises, så ingen dag leses to ganger.",
     bankFeedLastSync: "sist lest {{at}}",
     bankFeedNextSync: "neste {{at}}",
     bankFeedSince: "fra {{day}}",
@@ -1993,6 +2027,29 @@ export const accountingCatalog = {
     bankFilterAll: "Alle",
     bankFilterOpen: "Ikke avstemt",
     bankFilterMatched: "Avstemt",
+    bankFilterDuplicate: "Lagt til side",
+    bankLineState_duplicate: "Lagt til side",
+    bankLinesOf: "{{count}} av {{total}} linjer",
+    bankPages: "Sider med linjer",
+    bankPossibleDuplicate: "Mulig duplikat",
+    bankPossibleDuplicateHint:
+      "Denne linjen ligner en som allerede er importert fra en annen fil eller bankintegrasjonen: samme dag, beløp og KID, konto eller tekst. Legg den til side hvis det er samme bevegelse, eller behold den hvis den er en egen.",
+    bankDuplicateHint: "Lagt til side som duplikat: den teller i ingen saldo og avstemmes aldri.",
+    bankDuplicateSetAsideAction: "Legg til side som duplikat",
+    bankDuplicateKeepAction: "Behold den, den er ikke et duplikat",
+    bankDuplicateSetAside: "Linjen er lagt til side som duplikat.",
+    bankDuplicateKept: "Linjen er beholdt og kan avstemmes.",
+    bankVippsFeeTitle: "Utbetaling fra Vipps",
+    bankVippsFee: "Vipps' gebyr",
+    bankVippsFeeHint: "Fra oppgjørsrapporten fra Vipps. Høyst {{max}}, 5 % av utbetalingen.",
+    bankAmountCurrencyTitle: "Betaling i {{currency}}",
+    bankAmountCurrency: "Beløp gjort opp i {{currency}}",
+    bankAmountCurrencyHint:
+      "Banken trakk {{amount}}. Oppgi hva betalingen gjør opp i fakturaens valuta; differansen etter fakturaens kurs er en valutagevinst eller et valutatap.",
+    bankCoveredByFeed:
+      "{{count}} linjer på eller etter bankintegrasjonens startdag ble utelatt: bankintegrasjonen henter dem.",
+    bankPossibleDuplicates:
+      "{{count}} linjer kan gjenta linjer som allerede er importert: bekreft eller avvis dem i avstemmingen.",
     bankBulkAcceptCount: "Godta de {{count}} sikre",
     bankBulkTitle: "Godta de sikre forslagene",
     bankBulkConfirm:
@@ -2078,6 +2135,18 @@ export const accountingCatalog = {
     "refusal.bank_line_customer_payment": "En innbetaling fra en kunde registreres i Fakturering, aldri her.",
     "refusal.bank_rule_in_use": "Regelen er brukt: gjør den inaktiv i stedet.",
     "refusal.bank_unreconciled": "Banken er ikke avstemt for måneden.",
+    "refusal.bank_account_in_use":
+      "Kontoen har kontoutskriftslinjer: kontonummeret og hovedbokskontoen står. Legg til en ny bankkonto i stedet.",
+    "refusal.bank_feed_start_too_early":
+      "Bankintegrasjonen starter etter den siste dagen en kontoutskrift er importert for.",
+    "refusal.bank_rule_customer_payment":
+      "En regel for innbetalinger kan ikke føre mot inntekt eller kundefordringer: innbetalinger fra kunder registreres i Fakturering.",
+    "refusal.bank_amount_currency_required": "Oppgi beløpet i fakturaens valuta som betalingen gjør opp.",
+    "refusal.bank_fee_too_large": "Gebyret er høyst 5 % av utbetalingen.",
+    "refusal.bank_open_item_required":
+      "En linje mot kundefordringer eller leverandørgjeld oppgir den åpne posten den gjør opp.",
+    "refusal.bank_line_possible_duplicate": "Linjen kan være et duplikat: legg den til side eller behold den først.",
+    "refusal.bank_line_not_duplicate": "Linjen er ikke et mulig duplikat.",
   },
 } satisfies CatalogResources;
 

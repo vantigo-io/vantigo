@@ -414,14 +414,16 @@ const SourceCard = ({ account, meta }: { account: AccountingBankAccount; meta: A
   const { t, day, stamp } = useAccountingFormat();
   const invalidate = useInvalidate();
   const [source, setSource] = useState<"file" | "feed">(account.source === "feed" ? "feed" : "file");
-  const [startDay, setStartDay] = useState(account.feedStartDay ?? meta.today);
+  // Left empty, the feed starts the day after the last statement imported.
+  const [startDay, setStartDay] = useState(account.feedStartDay ?? "");
   const feedAccounts = useQuery({
     ...bankFeedAccountsQueryOptions(),
     enabled: meta.bankFeedEnabled && source === "feed",
   });
   const offered = feedAccounts.data?.some((f) => f.number === account.accountNumber) ?? false;
   const save = useMutation({
-    mutationFn: () => setBankAccountSource(account.id, { source, startDay: source === "feed" ? startDay : null }),
+    mutationFn: () =>
+      setBankAccountSource(account.id, { source, startDay: source === "feed" && startDay ? startDay : null }),
     onSuccess: async () => {
       await invalidate();
       notifications.show({ color: "green", message: t("saved") });
@@ -859,6 +861,16 @@ const ImportForm = () => {
                     {s.continuityDetail && (
                       <Text size="xs" c="dimmed">
                         {s.continuityDetail}
+                      </Text>
+                    )}
+                    {s.coveredByFeed > 0 && (
+                      <Text size="xs" c="dimmed">
+                        {t("bankCoveredByFeed", { count: s.coveredByFeed })}
+                      </Text>
+                    )}
+                    {s.possibleDuplicates > 0 && (
+                      <Text size="xs" c="orange">
+                        {t("bankPossibleDuplicates", { count: s.possibleDuplicates })}
                       </Text>
                     )}
                   </Table.Td>
