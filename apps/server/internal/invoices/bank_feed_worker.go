@@ -41,7 +41,10 @@ const (
 	// failedAnswerTooLarge is the reason of a failure that is not the
 	// bank's reachability: one day's answer is too large to read.
 	failedAnswerTooLarge = "answer_too_large"
-	maxBankFeedBackoff   = 6 * time.Hour
+	// syncedLineUnmatched is the reason an ok account carries while a line
+	// matching could not match stays pending: detail names its transaction.
+	syncedLineUnmatched = "line_unmatched"
+	maxBankFeedBackoff  = 6 * time.Hour
 )
 
 // bankFeedWorkerLease is the lease a claim takes. A test shortens it
@@ -208,8 +211,14 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 			// A backlog of windows: due again at once, until it is read.
 			next = c.now
 		}
+		var reason *string
+		detail := ""
+		if outcome.unmatched != "" {
+			reason, detail = ptr(syncedLineUnmatched), feedDetail(outcome.unmatched)
+		}
 		n, err = q.BankFeedSynced(ctx, store.BankFeedSyncedParams{
 			Now: c.now, LastBankFileID: outcome.bankFileID, NextSyncAt: next, Account: account, LeaseID: c.lease,
+			Reason: reason, Detail: detail,
 		})
 	}
 	if err != nil {

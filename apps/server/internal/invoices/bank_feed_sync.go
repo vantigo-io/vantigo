@@ -87,6 +87,9 @@ type syncOutcome struct {
 	bankFileID *int64
 	refused    *feedRefusal
 	more       bool
+	// unmatched is the bank's id of the first line matching could not
+	// match, left pending; "" for none.
+	unmatched string
 }
 
 // feedClaim is one claimed account: the row as the claim saw it, its lease
@@ -244,14 +247,20 @@ windows:
 
 	// 7. Matching, by no user, of every feed batch of the account with a
 	// line still pending — this cycle's, and any an earlier cycle stored and
-	// did not get to match.
+	// did not get to match. A line that cannot be matched is passed over and
+	// named on the account; the rest are matched.
 	files, err := q.PendingFeedFilesOfAccount(ctx, account)
 	if err != nil {
 		return syncOutcome{}, fmt.Errorf("invoices: read account %s's pending feed batches: %w", account, err)
 	}
 	for _, id := range files {
-		if _, err := s.matchFile(ctx, id, nil, c.now, loc); err != nil {
-			// Logged by matchFile; the lines stay pending for the next cycle.
+		failed, err := s.matchFilePastFailures(ctx, id, c.now, loc)
+		if out.unmatched == "" {
+			out.unmatched = failed
+		}
+		if err != nil {
+			// ctx's, or the file's lines unread: logged by matching; what
+			// it did not reach stays pending for the next cycle.
 			break
 		}
 	}
