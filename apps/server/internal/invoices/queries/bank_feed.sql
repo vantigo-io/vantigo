@@ -175,14 +175,15 @@ RETURNING *;
 
 -- name: BankFeedSynced :execrows
 -- BankFeedSynced ends a claim whose read succeeded (F7): ok, no failures,
--- the reason and detail cleared, last_synced_at the claim's time, the batch
+-- the reason and detail those of a line matching could not match
+-- (line_unmatched), else cleared, last_synced_at the claim's time, the batch
 -- it stored when it stored one, read again at @next_sync_at. Only under the
 -- claim's lease, which it clears; no row is a claim lost. updated_at moves
 -- only with the status, so attention dates an item by its change. Like the
 -- claim's other ends, it keeps a next_sync_at Fetch now moved after the
 -- claim (@now), and clears the bank's wait.
 UPDATE invoices.bank_feed_accounts SET
-    status = 'ok', reason = NULL, detail = '', failures = 0, last_synced_at = @now::timestamptz,
+    status = 'ok', reason = sqlc.narg(reason)::text, detail = @detail, failures = 0, last_synced_at = @now::timestamptz,
     last_bank_file_id = coalesce(sqlc.narg(last_bank_file_id)::bigint, last_bank_file_id),
     next_sync_at = CASE WHEN next_sync_at > @now::timestamptz THEN next_sync_at ELSE @next_sync_at::timestamptz END,
     rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,

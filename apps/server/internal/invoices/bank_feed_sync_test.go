@@ -583,3 +583,43 @@ func TestBankFeedSync_UploadForAFeedAccountIsRefused(t *testing.T) {
 		t.Errorf("payments = %v, want the feed's", got)
 	}
 }
+
+// One line that cannot be matched never stops the rest (plan C review, item
+// 4): a payment whose KID names an invoice in EUR fails closed and stays
+// pending, matching goes on with the next line and the next batch, and the
+// account stays ok with the line named in its reason and detail.
+func TestBankFeedSync_AFailingLineDoesNotStopLaterBatches(t *testing.T) {
+	t.Parallel()
+	h, _ := syncHarness(t)
+	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'EUR'`)
+	euro := kidded(t, issued(t, h, createDraft(t, h, draftBody(customerEuro, line("Konsulenttime", 10, 80, vat25))).ID))
+	h.Exec(t, `UPDATE invoices.settings SET default_currency = 'NOK'`)
+	inv, later := kidInvoice(t, h), kidInvoice(t, h)
+	feedReady(t, h)
+	h.folio.AddTransaction(sellerAccount, incoming(txID(1), "2026-10-05", "100.00", *euro.Kid))
+	h.folio.AddTransaction(sellerAccount, incoming(txID(2), "2026-10-06", "1000.00", *inv.Kid))
+	syncNow(t, h)
+	if got := stateOf(t, h, feedLine(t, h, txID(1))); got != "pending -" {
+		t.Errorf("the line that cannot be matched = %s, want pending", got)
+	}
+	if got := livePaymentsOf(t, h, inv.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("the next line's payments = %v, want matched", got)
+	}
+	s := feedStateOf(t, h, sellerAccount)
+	if s.status != "ok" || s.reason != "line_unmatched" || !strings.Contains(s.detail, txID(1)) {
+		t.Errorf("the account = %+v, want ok naming the line that could not be matched", s)
+	}
+
+	h.folio.AddTransaction(sellerAccount, incoming(txID(3), "2026-10-07", "1000.00", *later.Kid))
+	h.Advance(30 * time.Minute)
+	syncNow(t, h)
+	if got := livePaymentsOf(t, h, later.ID); !slices.Equal(got, []string{"1000.00 bank_feed"}) {
+		t.Errorf("a later batch's payments = %v, want matched past the line that fails", got)
+	}
+	if got := stateOf(t, h, feedLine(t, h, txID(1))); got != "pending -" {
+		t.Errorf("the line that cannot be matched = %s, want still pending", got)
+	}
+	if !strings.Contains(h.Logs(), "a bank line could not be matched; it stays pending") {
+		t.Error("no warning names the line passed over")
+	}
+}

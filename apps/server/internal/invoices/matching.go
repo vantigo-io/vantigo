@@ -101,12 +101,32 @@ type matchCounts struct {
 // the line, and the counts say what was done; POST …/match finishes the
 // rest. The error answered is why it stopped, nil when it ran to the end.
 func (s *server) matchFile(ctx context.Context, fileID int64, caller *uuid.UUID, now time.Time, loc *time.Location) (matchCounts, error) {
+	counts, _, err := s.matchLines(ctx, fileID, caller, now, loc, false)
+	return counts, err
+}
+
+// matchFilePastFailures is matchFile for the bank feed's sync (plan C
+// review, item 4): a line whose match fails for any reason but ctx is
+// logged, left pending and passed over, and matching goes on with the next,
+// so one line that cannot be matched never stops every later batch. It
+// answers the first such line's line_ref, "" for none; the error is ctx's,
+// or a read of the file's lines that failed.
+func (s *server) matchFilePastFailures(ctx context.Context, fileID int64, now time.Time, loc *time.Location) (string, error) {
+	_, failed, err := s.matchLines(ctx, fileID, nil, now, loc, true)
+	return failed, err
+}
+
+// matchLines is matchFile's loop; with pastFailures, a line's failure that
+// is not ctx's is logged and passed over, its line_ref answered when it is
+// the first.
+func (s *server) matchLines(ctx context.Context, fileID int64, caller *uuid.UUID, now time.Time, loc *time.Location, pastFailures bool) (matchCounts, string, error) {
 	counts := matchCounts{matchedAmount: new(big.Rat), exceptionsAmount: new(big.Rat)}
+	failedRef := ""
 	q := store.New(s.deps.Pool)
-	stopped := func(lineID int64, err error) (matchCounts, error) {
+	stopped := func(lineID int64, err error) (matchCounts, string, error) {
 		s.deps.Logger.WarnContext(ctx, "invoices: matching stopped early; the rest of the file stays pending",
 			"bankFileId", fileID, "bankTransactionId", lineID, "error", err.Error())
-		return counts, err
+		return counts, failedRef, err
 	}
 	lines, err := q.PendingTransactionsOfFile(ctx, fileID)
 	if err != nil {
@@ -117,15 +137,35 @@ func (s *server) matchFile(ctx context.Context, fileID int64, caller *uuid.UUID,
 		if err := ctx.Err(); err != nil {
 			return stopped(line.ID, err)
 		}
+		// passOver is a line's failure under pastFailures: logged, the line
+		// left pending, matching going on with the next.
+		passOver := func(err error) bool {
+			if !pastFailures || ctx.Err() != nil {
+				return false
+			}
+			s.deps.Logger.WarnContext(ctx, "invoices: a bank line could not be matched; it stays pending",
+				"bankFileId", fileID, "bankTransactionId", line.ID, "error", err.Error())
+			if failedRef == "" {
+				failedRef = line.LineRef
+			}
+			return true
+		}
 		acct, ok := accounts[line.Account]
 		if !ok {
 			if acct, err = q.ImportAccount(ctx, line.Account); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return stopped(line.ID, fmt.Errorf("invoices: read account %s: %w", line.Account, err))
+				err = fmt.Errorf("invoices: read account %s: %w", line.Account, err)
+				if passOver(err) {
+					continue
+				}
+				return stopped(line.ID, err)
 			}
 			accounts[line.Account] = acct
 		}
 		reason, invoiceID, err := s.classify(ctx, q, line, acct)
 		if err != nil {
+			if passOver(err) {
+				continue
+			}
 			return stopped(line.ID, err)
 		}
 		var outcome string
@@ -135,6 +175,9 @@ func (s *server) matchFile(ctx context.Context, fileID int64, caller *uuid.UUID,
 			if invoiceID == 0 && suggestible(reason) {
 				_, one, err := suggestionsFor(ctx, q, line)
 				if err != nil {
+					if passOver(err) {
+						continue
+					}
 					return stopped(line.ID, err)
 				}
 				if one != nil {
@@ -146,10 +189,16 @@ func (s *server) matchFile(ctx context.Context, fileID int64, caller *uuid.UUID,
 			outcome, err = s.matchLine(ctx, line.ID, invoiceID, caller, now, loc)
 		}
 		if err != nil {
+			if passOver(err) {
+				continue
+			}
 			return stopped(line.ID, err)
 		}
 		amount, err := ratFromNumeric(line.Amount)
 		if err != nil {
+			if passOver(err) {
+				continue
+			}
 			return stopped(line.ID, err)
 		}
 		switch outcome {
@@ -162,7 +211,7 @@ func (s *server) matchFile(ctx context.Context, fileID int64, caller *uuid.UUID,
 		}
 		counts.done++
 	}
-	return counts, nil
+	return counts, failedRef, nil
 }
 
 // classify is D4's steps 1–7 on the pool, in order: the reason the line is

@@ -148,15 +148,17 @@ func (q *Queries) BankFeedRefused(ctx context.Context, arg BankFeedRefusedParams
 
 const bankFeedSynced = `-- name: BankFeedSynced :execrows
 UPDATE invoices.bank_feed_accounts SET
-    status = 'ok', reason = NULL, detail = '', failures = 0, last_synced_at = $1::timestamptz,
-    last_bank_file_id = coalesce($2::bigint, last_bank_file_id),
-    next_sync_at = CASE WHEN next_sync_at > $1::timestamptz THEN next_sync_at ELSE $3::timestamptz END,
+    status = 'ok', reason = $1::text, detail = $2, failures = 0, last_synced_at = $3::timestamptz,
+    last_bank_file_id = coalesce($4::bigint, last_bank_file_id),
+    next_sync_at = CASE WHEN next_sync_at > $3::timestamptz THEN next_sync_at ELSE $5::timestamptz END,
     rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
-    updated_at = CASE WHEN status <> 'ok' THEN $1::timestamptz ELSE updated_at END
-WHERE account = $4 AND lease_id = $5::text
+    updated_at = CASE WHEN status <> 'ok' THEN $3::timestamptz ELSE updated_at END
+WHERE account = $6 AND lease_id = $7::text
 `
 
 type BankFeedSyncedParams struct {
+	Reason         *string
+	Detail         string
 	Now            time.Time
 	LastBankFileID *int64
 	NextSyncAt     time.Time
@@ -165,7 +167,8 @@ type BankFeedSyncedParams struct {
 }
 
 // BankFeedSynced ends a claim whose read succeeded (F7): ok, no failures,
-// the reason and detail cleared, last_synced_at the claim's time, the batch
+// the reason and detail those of a line matching could not match
+// (line_unmatched), else cleared, last_synced_at the claim's time, the batch
 // it stored when it stored one, read again at @next_sync_at. Only under the
 // claim's lease, which it clears; no row is a claim lost. updated_at moves
 // only with the status, so attention dates an item by its change. Like the
@@ -173,6 +176,8 @@ type BankFeedSyncedParams struct {
 // claim (@now), and clears the bank's wait.
 func (q *Queries) BankFeedSynced(ctx context.Context, arg BankFeedSyncedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, bankFeedSynced,
+		arg.Reason,
+		arg.Detail,
 		arg.Now,
 		arg.LastBankFileID,
 		arg.NextSyncAt,
