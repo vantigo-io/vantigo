@@ -22,7 +22,7 @@ func TestRead_SkatteetatensExamples(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			f, err := Read(bytes.NewReader(data))
+			f, err := Read(bytes.NewReader(data), Limits{})
 			if err != nil {
 				t.Fatalf("Read: %v", err)
 			}
@@ -72,7 +72,7 @@ func TestRead_RefusesWhatIsNotAFile(t *testing.T) {
 	}
 	for name, doc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := Read(strings.NewReader(doc))
+			_, err := Read(strings.NewReader(doc), Limits{})
 			var inv *InvalidError
 			if !errors.As(err, &inv) {
 				t.Fatalf("Read = %v, want an InvalidError", err)
@@ -80,7 +80,7 @@ func TestRead_RefusesWhatIsNotAFile(t *testing.T) {
 		})
 	}
 	for _, v := range []string{"1.20", "1.10", "1.0", "a"} {
-		_, err := Read(strings.NewReader(head + strings.Replace(root, "%s", v, 1)))
+		_, err := Read(strings.NewReader(head+strings.Replace(root, "%s", v, 1)), Limits{})
 		if !errors.Is(err, ErrUnsupportedVersion) {
 			t.Errorf("version %s: Read = %v, want ErrUnsupportedVersion", v, err)
 		}
@@ -144,5 +144,49 @@ func ValidateWithXmllint(t *testing.T, doc []byte, xsd string) {
 	}
 	if !ran {
 		t.Log("xmllint is not on the PATH: the file is not validated here; tools/saft/validate.sh does it in CI")
+	}
+}
+
+// TestRead_ByteOrderMarkAndAmounts: a UTF-8 byte order mark is skipped; an
+// amount is the XSD's monetary type or the file is refused, the element
+// named; a limit on parties is held.
+func TestRead_ByteOrderMarkAndAmounts(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "examples", "example-1.40.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(bytes.NewReader(append([]byte("\xef\xbb\xbf"), data...)), Limits{}); err != nil {
+		t.Errorf("with a byte order mark: %v", err)
+	}
+	for _, bad := range []string{"12500,00", "1.25e4", "12 500.00", "12500.001", "abc"} {
+		doc := strings.Replace(string(data), "<ClosingDebitBalance>12500.00</ClosingDebitBalance>", "<ClosingDebitBalance>"+bad+"</ClosingDebitBalance>", 1)
+		_, err := Read(strings.NewReader(doc), Limits{})
+		var inv *InvalidError
+		if !errors.As(err, &inv) || !strings.Contains(inv.Reason, "Account[1500]/Closing") {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+	var many *TooManyError
+	if _, err := Read(bytes.NewReader(data), Limits{Parties: 1}); !errors.As(err, &many) {
+		t.Errorf("a party past the limit: %v", err)
+	}
+	for _, good := range []string{"12500", "+12500.0", ".50", "0"} {
+		if _, ok := Amount(good); !ok {
+			t.Errorf("%q is an amount", good)
+		}
+	}
+}
+
+// TestXmllint_MissingInCIFails: where CI is set a missing xmllint is a
+// failure, so no golden goes unvalidated in the test job (M4).
+func TestXmllint_MissingInCIFails(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("CI", "")
+	if ran, err := Xmllint([]byte("<x/>"), "x.xsd"); ran || err != nil {
+		t.Errorf("locally: ran %v, %v", ran, err)
+	}
+	t.Setenv("CI", "true")
+	if _, err := Xmllint([]byte("<x/>"), "x.xsd"); err == nil {
+		t.Error("in CI a missing xmllint passed")
 	}
 }
