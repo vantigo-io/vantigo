@@ -45,8 +45,10 @@ func (s *server) GetAccountingLock(ctx context.Context, _ gen.GetAccountingLockR
 }
 
 // PutAccountingLock moves the lock (A8). A month end on or after the books'
-// first month and no later than this month's end; back, a reason. The VAT terms of delivery D will bound how far
-// back it may move: not behind the last filed term.
+// first month and no later than this month's end; back, a reason, and never
+// behind the last VAT term filed at Skatteetaten (A8 as R10 amends it): a
+// filed return's books stay closed, and a correction is posted in the open
+// term.
 func (s *server) PutAccountingLock(ctx context.Context, req gen.PutAccountingLockRequestObject) (gen.PutAccountingLockResponseObject, error) {
 	if req.Body == nil {
 		return nil, invalidField("The lock cannot be moved", "body", "", "A body is required.")
@@ -82,6 +84,16 @@ func (s *server) PutAccountingLock(ctx context.Context, req gen.PutAccountingLoc
 		if back && reason == "" {
 			return invalidField("The lock cannot be moved", "reason", codeLockReasonRequired,
 				"Moving the lock back opens closed books: say why.")
+		}
+		if back {
+			filed, err := q.LastFiledTermEnd(ctx)
+			if err != nil && !noRows(err) {
+				return err
+			}
+			if err == nil && (target == nil || target.Before(filed)) {
+				return conflict(codeLockBehindFiled, "A filed VAT term is behind the lock",
+					"The VAT return through "+filed.Format(time.DateOnly)+" is filed at Skatteetaten: the lock stays on or after that day. Post a correction in the open term.")
+			}
 		}
 		same := (current == nil && target == nil) || (current != nil && target != nil && current.Equal(*target))
 		if !same {

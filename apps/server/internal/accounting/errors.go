@@ -95,6 +95,19 @@ const (
 	codeSupplierRetained         = "supplier_retained"
 	codeSupplierAnonymised       = "supplier_anonymised"
 	codeExpenseAlreadyInvoiced   = "expense_already_invoiced"
+	// Delivery D, VAT.
+	codeVatNotRegistered    = "vat_not_registered"
+	codeVatTermClosed       = "vat_term_closed"
+	codeVatTermNotEnded     = "vat_term_not_ended"
+	codeVatTermOutOfOrder   = "vat_term_out_of_order"
+	codeVatTermAttention    = "vat_term_attention"
+	codeVatTermLockAfterEnd = "vat_term_lock_after_end"
+	codeVatTermUnreconciled = "vat_term_unreconciled"
+	codeVatTermNotClosed    = "vat_term_not_closed"
+	codeVatTermFiled        = "vat_term_filed"
+	codeVatTermNotLatest    = "vat_term_not_latest"
+	codeVatTermNotFiled     = "vat_term_not_filed"
+	codeLockBehindFiled     = "lock_behind_filed_term"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -115,7 +128,9 @@ var refusalCodes = []string{
 	codePaymentExceedsBalance, codePaymentRemoved, codeSettlementSupplierInv, codeUnpostedWrongReason,
 	codeBrregUnavailable, codeSupplierInvHasPayments, codeTaxCodeNotForSupplierInv, codeExchangeRateMismatch,
 	codeCreditNoteNotPosted, codeCreditNoteCurrency, codeCreditNoteExceeds, codeSupplierInvItemInUse,
-	codeSupplierRetained, codeSupplierAnonymised, codeExpenseAlreadyInvoiced,
+	codeSupplierRetained, codeSupplierAnonymised, codeExpenseAlreadyInvoiced, codeVatNotRegistered, codeVatTermClosed,
+	codeVatTermNotEnded, codeVatTermOutOfOrder, codeVatTermAttention, codeVatTermLockAfterEnd, codeVatTermUnreconciled,
+	codeVatTermNotClosed, codeVatTermFiled, codeVatTermNotLatest, codeVatTermNotFiled, codeLockBehindFiled,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a
