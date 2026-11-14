@@ -188,6 +188,7 @@ describe("the app registry", () => {
       "/accounting/open-items",
       "/accounting/vat",
       "/accounting/reports",
+      "/accounting/saft",
       "/accounting/accounts",
       "/accounting/tax-codes",
       "/accounting/posting-rules",
@@ -814,12 +815,13 @@ describe("the app registry", () => {
 
   // Accounting's destinations are the package's (`accountingNavItems`, A1):
   // every one is accounting:read's but a new journal entry, which posts.
-  it("registers Accounting with the package's thirteen destinations", () => {
+  it("registers Accounting with the package's fourteen destinations", () => {
     const accounting = appForKey("accounting");
     expect(accounting).toMatchObject({ module: "accounting", label: "navigation.accounting", home: "/accounting" });
     const items = accounting.navSections.flatMap((section) => section.items);
     expect(items.map((item) => item.to)).toEqual(accountingNavItems.map((item) => item.to));
     expect(items.find((item) => item.to === "/accounting/journal")?.requiredPermissions).toEqual(["accounting:post"]);
+    expect(items.find((item) => item.to === "/accounting/saft")?.requiredPermissions).toEqual(["accounting:export"]);
     expect(navigationCatalog.nb["navigation.accounting"]).toBe("Regnskap");
     const keys = (permissions: string[], enabled: readonly ModuleKey[]) =>
       switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);

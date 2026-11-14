@@ -11,6 +11,7 @@ import {
   OPENING_ROUTE_PATH,
   POSTING_RULES_ROUTE_PATH,
   REPORTS_ROUTE_PATH,
+  SAFT_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETUP_ROUTE_PATH,
   SUPPLIER_INVOICE_ROUTE_PATH,
@@ -65,6 +66,7 @@ describe("the Accounting routes", () => {
       VAT_ROUTE_PATH,
       VAT_POSTINGS_ROUTE_PATH,
       VAT_TERM_ROUTE_PATH,
+      SAFT_ROUTE_PATH,
     ]) {
       const concrete = path
         .replace("$voucherId", "7")

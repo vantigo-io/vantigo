@@ -51,6 +51,7 @@ import { Route as AccountingOpenItemsRouteImport } from './routes/accounting/ope
 import { Route as AccountingOpeningRouteImport } from './routes/accounting/opening'
 import { Route as AccountingPostingRulesRouteImport } from './routes/accounting/posting-rules'
 import { Route as AccountingReportsRouteImport } from './routes/accounting/reports'
+import { Route as AccountingSaftRouteImport } from './routes/accounting/saft'
 import { Route as AccountingSettingsRouteImport } from './routes/accounting/settings'
 import { Route as AccountingSetupRouteImport } from './routes/accounting/setup'
 import { Route as AccountingTaxCodesRouteImport } from './routes/accounting/tax-codes'
@@ -458,6 +459,11 @@ const AccountingPostingRulesRoute = AccountingPostingRulesRouteImport.update({
 const AccountingReportsRoute = AccountingReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingSaftRoute = AccountingSaftRouteImport.update({
+  id: '/saft',
+  path: '/saft',
   getParentRoute: () => AccountingRoute,
 } as any)
 const AccountingSettingsRoute = AccountingSettingsRouteImport.update({
@@ -1547,6 +1553,7 @@ export interface FileRoutesByFullPath {
   '/accounting/opening': typeof AccountingOpeningRoute
   '/accounting/posting-rules': typeof AccountingPostingRulesRoute
   '/accounting/reports': typeof AccountingReportsRoute
+  '/accounting/saft': typeof AccountingSaftRoute
   '/accounting/settings': typeof AccountingSettingsRoute
   '/accounting/setup': typeof AccountingSetupRoute
   '/accounting/tax-codes': typeof AccountingTaxCodesRoute
@@ -1766,6 +1773,7 @@ export interface FileRoutesByTo {
   '/accounting/opening': typeof AccountingOpeningRoute
   '/accounting/posting-rules': typeof AccountingPostingRulesRoute
   '/accounting/reports': typeof AccountingReportsRoute
+  '/accounting/saft': typeof AccountingSaftRoute
   '/accounting/settings': typeof AccountingSettingsRoute
   '/accounting/setup': typeof AccountingSetupRoute
   '/accounting/tax-codes': typeof AccountingTaxCodesRoute
@@ -2004,6 +2012,7 @@ export interface FileRoutesById {
   '/accounting/opening': typeof AccountingOpeningRoute
   '/accounting/posting-rules': typeof AccountingPostingRulesRoute
   '/accounting/reports': typeof AccountingReportsRoute
+  '/accounting/saft': typeof AccountingSaftRoute
   '/accounting/settings': typeof AccountingSettingsRoute
   '/accounting/setup': typeof AccountingSetupRoute
   '/accounting/tax-codes': typeof AccountingTaxCodesRoute
@@ -2247,6 +2256,7 @@ export interface FileRouteTypes {
     | '/accounting/opening'
     | '/accounting/posting-rules'
     | '/accounting/reports'
+    | '/accounting/saft'
     | '/accounting/settings'
     | '/accounting/setup'
     | '/accounting/tax-codes'
@@ -2466,6 +2476,7 @@ export interface FileRouteTypes {
     | '/accounting/opening'
     | '/accounting/posting-rules'
     | '/accounting/reports'
+    | '/accounting/saft'
     | '/accounting/settings'
     | '/accounting/setup'
     | '/accounting/tax-codes'
@@ -2703,6 +2714,7 @@ export interface FileRouteTypes {
     | '/accounting/opening'
     | '/accounting/posting-rules'
     | '/accounting/reports'
+    | '/accounting/saft'
     | '/accounting/settings'
     | '/accounting/setup'
     | '/accounting/tax-codes'
@@ -3235,6 +3247,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/accounting/reports'
       preLoaderRoute: typeof AccountingReportsRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/saft': {
+      id: '/accounting/saft'
+      path: '/saft'
+      fullPath: '/accounting/saft'
+      preLoaderRoute: typeof AccountingSaftRouteImport
       parentRoute: typeof AccountingRoute
     }
     '/accounting/settings': {
@@ -4627,6 +4646,7 @@ interface AccountingRouteChildren {
   AccountingOpeningRoute: typeof AccountingOpeningRoute
   AccountingPostingRulesRoute: typeof AccountingPostingRulesRoute
   AccountingReportsRoute: typeof AccountingReportsRoute
+  AccountingSaftRoute: typeof AccountingSaftRoute
   AccountingSettingsRoute: typeof AccountingSettingsRoute
   AccountingSetupRoute: typeof AccountingSetupRoute
   AccountingTaxCodesRoute: typeof AccountingTaxCodesRoute
@@ -4651,6 +4671,7 @@ const AccountingRouteChildren: AccountingRouteChildren = {
   AccountingOpeningRoute: AccountingOpeningRoute,
   AccountingPostingRulesRoute: AccountingPostingRulesRoute,
   AccountingReportsRoute: AccountingReportsRoute,
+  AccountingSaftRoute: AccountingSaftRoute,
   AccountingSettingsRoute: AccountingSettingsRoute,
   AccountingSetupRoute: AccountingSetupRoute,
   AccountingTaxCodesRoute: AccountingTaxCodesRoute,
