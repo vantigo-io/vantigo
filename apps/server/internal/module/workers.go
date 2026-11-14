@@ -51,7 +51,7 @@ func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
-// Deps.Products, Deps.SalesTax, Deps.SalesJournal, Deps.ExpenseJournal, Deps.Workforce, Deps.Stock, Deps.StockLedger,
+// Deps.Products, Deps.SalesTax, Deps.SalesJournal, Deps.ExpenseJournal, Deps.BankFeed, Deps.Workforce, Deps.Stock, Deps.StockLedger,
 // Deps.SalesOrderLines, Deps.Production, Deps.DeliveryTrace, Deps.KitStructure, Deps.CalendarSources,
 // Deps.IdentityProvisioners, Deps.MailboxCalendars, Deps.ChannelMailboxes and
 // Deps.PersonalMailboxes, which it resolves from the enabled modules the way
@@ -128,6 +128,10 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	}
 	// The expense journal, likewise: the ledger's catch-up reads it too.
 	if deps, err = withExpenseJournal(deps, enabled); err != nil {
+		panic(err.Error())
+	}
+	// The bank feed, likewise: the ledger's bank feed worker reads it.
+	if deps, err = withBankFeed(deps, enabled); err != nil {
 		panic(err.Error())
 	}
 	// The stock read and the stock ledger, resolved as Compose resolves
@@ -288,6 +292,22 @@ func withExpenseJournal(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.ExpenseJournal = provider.ExpenseJournal(deps)
+	}
+	return deps, nil
+}
+
+// withBankFeed resolves contracts.BankFeed from the enabled modules — at most
+// one may declare it — keeping a preset value when none does (the seam
+// modtest.WithBankFeed fills). The provider may answer nil: the feed is
+// switched off on the instance. Compose and Workers both call it right after
+// withExpenseJournal.
+func withBankFeed(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "a bank feed", func(m Module) bool { return m.BankFeed != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.BankFeed = provider.BankFeed(deps)
 	}
 	return deps, nil
 }

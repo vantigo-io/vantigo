@@ -353,6 +353,11 @@ func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.
 	if deps, err = withExpenseJournal(deps, mods); err != nil {
 		return nil, nil, err
 	}
+	// The bank feed (contracts.BankFeed, accounting design A29) resolves
+	// right after it: Invoices provides it over its own connection.
+	if deps, err = withBankFeed(deps, mods); err != nil {
+		return nil, nil, err
+	}
 
 	// The three billable reads, consumption and billable orders resolve
 	// beside actuals and expenses, after the project directory (withBillables

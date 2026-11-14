@@ -640,6 +640,27 @@ func TestWorkers_ResolvesTheExpenseJournal(t *testing.T) {
 	}
 }
 
+// Workers resolves the bank feed as Compose does: the ledger's bank feed
+// worker reads it in worker mode. A disabled owner leaves the caller's preset.
+func TestWorkers_ResolvesTheBankFeed(t *testing.T) {
+	var seen Deps
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d
+		return nil
+	}}
+	feed := &fakeBankFeed{}
+	owner := Module{Name: "owner", BankFeed: func(Deps) contracts.BankFeed { return feed }}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}}, reader, owner)
+	if seen.BankFeed != feed {
+		t.Errorf("the workers saw Deps.BankFeed = %v, want the enabled owner's", seen.BankFeed)
+	}
+	preset := &fakeBankFeed{}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, BankFeed: preset}, reader, owner)
+	if seen.BankFeed != preset {
+		t.Errorf("the workers saw Deps.BankFeed = %v, want the caller's, the owner being disabled", seen.BankFeed)
+	}
+}
+
 // Two enabled providers of one of the slots Workers learned for the billing
 // worker are a bug in the binary's module list, which Compose refuses at
 // startup; Workers has no error to return, so it panics, naming the slot.

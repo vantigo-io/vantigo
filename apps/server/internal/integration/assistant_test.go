@@ -259,6 +259,11 @@ var markedByHand = map[string]string{
 	"downloadAccountingSaftExport":     "never",
 	"uploadAccountingSaftImport":       "never",
 	"downloadAccountingSaftImportFile": "never",
+	// A bank statement is a file a person uploads from the bank and
+	// downloads again, and a CSV preview reads one (accounting design A27).
+	"importAccountingBankStatement":       "never",
+	"previewAccountingBankCsv":            "never",
+	"downloadAccountingBankStatementFile": "never",
 }
 
 func TestOperations_TheRealContract(t *testing.T) {
@@ -374,12 +379,15 @@ func TestOperations_TheRealContract(t *testing.T) {
 	// reversed and copied, paid or its payment removed, a person supplier anonymised, the opening and the
 	// lock (the last two under accounting:close, which no agent level can raise, reference/agents.md),
 	// and a VAT term closed, reopened, marked as filed or unmarked (the close, the reopening and the
-	// unmarking under accounting:close), and the books set up from a SAF-T file (under accounting:close).
+	// unmarking under accounting:close), the books set up from a SAF-T file (under accounting:close), and a bank
+	// line's match accepted, coded or undone, the exact ones accepted together, a bank account added and its source
+	// switched (accounting design A26–A29).
 	for _, id := range []string{"postAccountingVoucher", "reverseAccountingVoucher", "postAccountingOpening", "putAccountingLock",
 		"settleAccountingOpenItem", "postAccountingSupplierInvoice", "reverseAndCopyAccountingSupplierInvoice",
 		"payAccountingSupplierInvoice", "removeAccountingSupplierPayment", "anonymiseAccountingSupplier",
 		"closeAccountingVatTerm", "reopenAccountingVatTerm", "fileAccountingVatTerm", "unfileAccountingVatTerm",
-		"applyAccountingSaftImport"} {
+		"applyAccountingSaftImport", "acceptAccountingBankSuggestion", "codeAccountingBankLine", "undoAccountingBankMatch",
+		"acceptAccountingBankExact", "createAccountingBankAccount", "setAccountingBankAccountSource"} {
 		if got, _ := ops.Effective(context.Background(), id); got != operations.ModeConfirm {
 			t.Errorf("%s: the default gate's mode %q, want confirm", id, got)
 		}

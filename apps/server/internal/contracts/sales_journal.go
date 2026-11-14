@@ -235,6 +235,13 @@ type JournalFact struct {
 	// file or the bank feed named, when the payment came from a bank line
 	// (ocr, camt054 or bank_feed); "" otherwise.
 	BankAccount string
+	// BankReference is the bank's own reference of the line the payment came
+	// from: the account servicer's reference of a camt.054 transaction or an
+	// OCR line's archive reference, and for a bank_feed payment the bank's
+	// transaction id; "" when the payment came from no bank line or the line
+	// carried none. A ledger matches its own statement's line by it
+	// (accounting design A29).
+	BankReference string
 	// WriteOff is, on a write-off's fact, that write-off, and on a recovered
 	// payment's, the write-off it recovers; nil on every other kind. A
 	// write-off's AmountNOK is its amount, its Source manual.
