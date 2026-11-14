@@ -301,7 +301,6 @@ type importParty struct {
 	// supplier: what is kept, and what was dropped.
 	fields supplierFields
 	notes  []string
-	org    *string
 }
 
 // importPlan is everything Apply writes, and what stands in its way.
@@ -408,7 +407,7 @@ func (s *server) plan(ctx context.Context, row store.AccountingSaftImport, body 
 	p.selectionStart, p.selectionEnd = start, end
 	p.booksStart = end.AddDate(0, 0, 1)
 	p.year = p.booksStart.Year()
-	p.midYear = !(p.booksStart.Day() == 1 && int32(p.booksStart.Month()) == p.month)
+	p.midYear = p.booksStart.Day() != 1 || int32(p.booksStart.Month()) != p.month
 	if p.midYear {
 		p.notes = append(p.notes, "The books start inside a fiscal year: the income and expense accounts open with their year-to-date balances, and no result goes to equity.")
 	} else {
