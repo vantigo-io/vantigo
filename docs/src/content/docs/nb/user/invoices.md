@@ -1449,11 +1449,12 @@ gebyr eller renter fortsatt skyldes. Over 5 000 forfalte fakturaer må avgrenses
 eller forfallsdato.
 
 Over listen står hvor ferske bankdataene er: *Bankdata bokført til og med …*, eller
-**Bankdataene er gamle** når den siste bankbokføringen som er importert — eller den siste
-dagen bankintegrasjonen leste en konto til og med — er eldre enn grensen i
-purreinnstillingene, alltid når ingen av dem finnes, og hver gang en konto
-bankintegrasjonen leser, står som **Avvist**, **Feiler** eller **Nøkkel avvist**, fordi
-innbetalingene på den da kan mangle. Brev
+**Bankdataene er gamle** når den siste bankbokføringen som er importert — eller den
+tidligste dagen bankintegrasjonen leste noen av kontoene sine til og med — er eldre enn
+grensen i purreinnstillingene, alltid når ingen av dem finnes, og hver gang en konto
+bankintegrasjonen leser, ikke er lest ennå, står som **Avvist**, **Feiler** eller **Nøkkel
+avvist**, eller har en innbetaling den ikke kunne avstemme, fordi innbetalinger da kan
+mangle. Brev
 vurdert på gamle bankdata kan kreve gebyr og renter av fakturaer som er betalt. Når en
 konto importeres som OCR-giro, står en merknad om at betalinger uten KID aldri kommer med i
 en slik fil: **registrer betalingene uten KID for hånd først, og gjør så kjøringen**.

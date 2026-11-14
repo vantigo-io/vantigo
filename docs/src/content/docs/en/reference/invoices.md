@@ -3388,27 +3388,35 @@ out and another claim took it).
 **The read cursor** (migration `00179_invoices_bank_feed_cursor.sql`):
 `bank_feed_accounts.read_through` (`date`, nullable) is the last day an account was read
 successfully to the end of a window, NULL until the first and again whenever switching the
-feed on sets a start day; `rate_limited_until` (`timestamptz`, nullable) is when Folio,
-answering 429, said it may be asked again. Both are the worker's alone.
+feed on sets a start day — which also clears a cycle in flight's lease, so that cycle
+loses its claim at its next write and cannot write the old cursor back;
+`rate_limited_until` (`timestamptz`, nullable) is when Folio, answering 429, said it may be
+asked again: neither the claim, nor a released claim, nor a new key's revival, nor Fetch
+now makes the account due before it. Both are the worker's alone. The cursor never moves
+back: `AdvanceBankFeedRead` writes `greatest(read_through, @read_through)`.
 
 **One cycle**, with the claim's one clock read, the bank called outside any transaction:
 
 1. **The account's format** is read first: anything but `feed` — a person moved it back to
    files — refuses the batch `format_mismatch` without asking the bank.
-2. **The days.** `from` is the later of the start day and `read_through` less 10 days —
-   the cursor, not the last payment kept, so an account with few incoming payments reads a
-   short window too; the overlap is read again every time. The days up to today, the
-   business day, are read in **windows of at most 31 days**, each its own batch, at most
-   four windows and eight calls to the bank a cycle so a cycle never outlives its lease;
-   while a window ends before today the account is due again at once (`next_sync_at` the
-   claim's time) until the backlog is read. An answer past the adapter's bound
+2. **The days.** Forward first: from the day after `read_through` — the cursor, not the
+   last payment kept, so an account with few incoming payments reads a short span too —
+   or from the start day, to today, the business day; then the overlap again, the 10 days
+   before the cursor the cycle started with (not before the start day). Both are read in
+   **windows of at most 31 days**, each its own batch, the cycle budgeted by eight calls to
+   the bank so it never outlives its lease. An answer past the adapter's bound
    (`bankfeed.ErrTooLarge`) or past a bank file's 5 000 transactions or 10 MiB halves the
-   window and asks again, down to a single day; a day still too large fails the cycle with
-   reason `answer_too_large`. After each window is judged and stored — also when it held
-   nothing to keep — `read_through` moves to its end, under the claim's lease.
+   window, rounded up, and asks again, the smaller size kept for the rest of the cycle;
+   a single day still too large fails the cycle with reason `answer_too_large`. After each
+   window is judged and stored — also when it held nothing to keep — `read_through` moves
+   to its end, never back, under the claim's lease. Calls spent with days left: the
+   account is due again at once (`next_sync_at` the claim's time) when the cycle moved the
+   cursor past where it started, and fails as `answer_too_large` (`errFeedNoProgress`),
+   backing off, when it did not; overlap left unread waits for the next cycle.
 3. **Refuse the whole batch**, storing nothing, on the first transaction booked on or after
-   the start day that carries an id the answer already carried (`duplicate_transaction`)
-   or a direction the adapter could not place (`direction_unknown` — never read as a
+   the start day that carries an id the answer already carried with an incoming credit
+   among the two (`duplicate_transaction`; two payments out or card lines sharing an id are
+   counted) or a direction the adapter could not place (`direction_unknown` — never read as a
    payment, nor passed over as one going out), or that is an **incoming credit** of a kind
    the port does not name, with an empty id, an id over 60 characters or an amount over
    `numeric(14,2)` (`transaction_unreadable`), booked after today (`booked_in_future`) or
@@ -3440,14 +3448,17 @@ answering 429, said it may be asked again. Both are the worker's alone.
    `folio|<account>|<from>..<to>|<lease id>`, unique per window and claim — the lines,
    their duplicate rows and the duplicates count, the upload's own code. A unique violation
    — the same batch committed meanwhile — releases the claim, due now, logged at info.
-8. **Matching** after the windows, by no user, over every feed batch of the account with a
+8. **Matching** after the windows — also after a refused or failed read, never after a
+   claim lost or a key refused — by no user, over every feed batch of the account with a
    line still pending — this cycle's and any an earlier cycle stored and did not get to
    match — so a process that stopped between the commit and the match registers nothing
    twice and leaves nothing pending for good. A line whose match fails for anything but
    the context's end is logged at warn, left pending and passed over, and matching goes on
    with the next line and the next batch; the account stays `ok` with reason
-   `line_unmatched` and the line's transaction id in `detail`. Matching stopping early is
-   not a failure.
+   `line_unmatched` and the line's transaction id in `detail`. Three lines failing in a
+   row, or one failing as the database's connection does (SQLSTATE classes 08, 53, 57P, a
+   connect error or a timeout), stop matching as a failure of the cycle
+   (`errFeedMatchingStopped`), not `line_unmatched`.
 
 **Reversals.** Folio marks none: money the bank sends back arrives as an ordinary
 outgoing transaction, which is counted as `debit` and stored nowhere. The payment it
@@ -3479,8 +3490,8 @@ the day, amount and KID of a payment registered from another batch, is held back
 | What happened | The account | Next read |
 | --- | --- | --- |
 | success | `ok`, no failures, no reason and no detail but `line_unmatched` and its transaction, `last_synced_at` the claim's time, `last_bank_file_id` the last batch when one was stored, `rate_limited_until` cleared | after the interval; at once while a backlog of windows is left |
-| the batch refused (steps 1, 3 and 5) | `refused`, its `reason` and `detail`, no failures, `rate_limited_until` cleared | after the interval |
-| 429 (`bankfeed.ErrRateLimited`) | status and failures as they were, the wait in `detail`, `rate_limited_until` the claim's time plus the wait (at least a minute) | after `max(Retry-After, interval)` |
+| the batch refused (steps 1, 3 and 5) | `refused`, its `reason` and `detail`, no failures, `last_bank_file_id` the last batch an earlier window stored, `rate_limited_until` cleared | after the interval |
+| 429 (`bankfeed.ErrRateLimited`) | one more cycle in a row that read nothing, `failing` from the third as for a failure, the wait in `detail`, `rate_limited_until` the claim's time plus the wait (at least a minute) | after `max(Retry-After, interval)` |
 | 401 or 403 (`bankfeed.ErrUnauthorized`), the refusal recorded | the connection and every enabled account `unauthorized`, no next sync, no lease (see above) | none until a PUT stores a key, which makes them `ok` and due now |
 | 401 or 403 of a key a manager replaced while the call was out (the stored key's version differs) | nothing written; the claim released | at once, with the new key |
 | 401 or 403 whose refusal could not be recorded, or any other error — a transport error, a timeout, an answer that does not decode, a day too large (`answer_too_large`), the object store, the database | one more failure in a row, `failing` from the third, `detail` a sentence on what failed (never the bank's answer), `rate_limited_until` cleared | after the interval doubled once per failure (`interval << failures`), at most 6 hours, never sooner than the interval |
@@ -3505,10 +3516,11 @@ accounts named as they now stand. It calls nothing itself; the worker reads with
 minute.
 
 **The bank data's freshness** (reminder runs' `bank_import_stale`, the overdue list's
-`freshness`): an enabled feed account whose status is `ok` counts through its
-`read_through` day beside the files' latest booking day; any enabled feed account that is
-`refused`, `failing` or `unauthorized` makes the bank data stale. The rule for files is
-unchanged.
+`freshness`; `FeedFreshness`): the bank feed counts through the **earliest**
+`read_through` of its enabled accounts, beside the files' latest booking day; that day
+more than `staleImportDays` before today is stale, and so is any enabled feed account with
+no `read_through`, a status other than `ok`, or reason `line_unmatched`. The rule for files
+is unchanged.
 
 **Attention** (`GET /stats/attention`): for a caller holding `invoices:manage`, one item per
 enabled account whose status is `unauthorized`, `failing` or `refused` —
@@ -4188,10 +4200,11 @@ naming a missing rate, and `letter`, the letter as it would go today, when it is
 live `hold` and `handoff`; and `policyMode`, the customer's policy.
 
 The answer carries the bank data's **`freshness`** — `lastBookedOn`, the latest booking day
-of any imported file or the latest `read_through` of an enabled bank feed account whose
-status is `ok`, whichever is later, absent when there is neither; `stale` when that is
-more than `staleImportDays` before today, always when there is neither, and whenever an
-enabled bank feed account is `refused`, `failing` or `unauthorized`
+of any imported file or the earliest `read_through` of the enabled bank feed accounts,
+whichever is later, absent when there is neither; `stale` when that is more than
+`staleImportDays` before today, always when there is neither, when the earliest
+`read_through` is, and whenever an enabled bank feed account has none, is not `ok`, or
+holds reason `line_unmatched`
 ([the bank feed's sync](#the-bank-feeds-sync)); `ocrAccounts`, the accounts
 imported as OCR giro — and the **warnings** that apply: `collection_rates_outdated`
 (reminders on and a rate the settings use — the late interest, the compensation, the
