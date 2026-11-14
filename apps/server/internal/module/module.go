@@ -157,6 +157,12 @@ type Deps struct {
 	// copy, from whichever enabled module declares Module.ExpenseJournal,
 	// right after SalesJournal; it is nil when expenses is disabled.
 	ExpenseJournal contracts.ExpenseJournal
+	// BankFeed is the bank feed Invoices holds, read for every direction and
+	// kind (contracts.BankFeed, accounting design A29). Compose and Workers
+	// set it, on every module's Deps copy, from whichever enabled module
+	// declares Module.BankFeed, right after ExpenseJournal; it is nil when
+	// invoices is disabled or INVOICES_BANK_FEED_ENABLED is off.
+	BankFeed contracts.BankFeed
 	// CustomerReferenceHolders are every given module's
 	// contracts.CustomerReferenceHolder (customers merge design D1), enabled
 	// or not, in the order the modules were given to Compose — the one
@@ -603,6 +609,12 @@ type Module struct {
 	// right after SalesJournal and put the result on every module's Deps,
 	// including the provider's own.
 	ExpenseJournal func(Deps) contracts.ExpenseJournal
+	// BankFeed builds this module's contracts.BankFeed implementation, if it
+	// provides one (invoices, accounting design A29); it may answer nil, when
+	// the feed is switched off on the instance. At most one enabled module may
+	// set it; Compose and Workers call it right after ExpenseJournal and put
+	// the result on every module's Deps, including the provider's own.
+	BankFeed func(Deps) contracts.BankFeed
 	// EventHandlers builds this module's handlers of the domain-events outbox
 	// (events.Handler, orders design O2), if it has any — a many-provider
 	// slot. Like CustomerReferences it is called for a module MODULES leaves

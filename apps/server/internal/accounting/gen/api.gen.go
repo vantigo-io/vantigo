@@ -768,6 +768,552 @@ type AccountingAttachment struct {
 	UploadedAt  time.Time `json:"uploadedAt"`
 }
 
+// AccountingBankAcceptInput defines model for AccountingBankAcceptInput.
+type AccountingBankAcceptInput struct {
+	Key string `json:"key"`
+}
+
+// AccountingBankAccount defines model for AccountingBankAccount.
+type AccountingBankAccount struct {
+	// AccountNumber The 11-digit Norwegian account number (BBAN).
+	AccountNumber string  `json:"accountNumber"`
+	Active        bool    `json:"active"`
+	Bic           *string `json:"bic"`
+
+	// CsvMapping The saved CSV mapping; null until one is saved.
+	CsvMapping *AccountingBankCsvMapping `json:"csvMapping"`
+
+	// Currency NOK.
+	Currency string `json:"currency"`
+
+	// Feed The feed's state; null while the source is file.
+	Feed *AccountingBankFeedState `json:"feed"`
+
+	// FeedStartDay The first day the feed reads; null for a file account.
+	FeedStartDay *openapi_types.Date `json:"feedStartDay"`
+	Iban         *string             `json:"iban"`
+	Id           int64               `json:"id"`
+
+	// LastStatementTo The last day a statement covers.
+	LastStatementTo     *openapi_types.Date `json:"lastStatementTo"`
+	LedgerAccountId     int32               `json:"ledgerAccountId"`
+	LedgerAccountName   string              `json:"ledgerAccountName"`
+	LedgerAccountNumber string              `json:"ledgerAccountNumber"`
+	Name                string              `json:"name"`
+
+	// OpenLines Statement lines not matched.
+	OpenLines int32 `json:"openLines"`
+	Revision  int32 `json:"revision"`
+
+	// Source Where the statement comes from: file (camt.053 or CSV uploaded) or feed (Invoices' bank feed, A29). One of: file, feed.
+	Source string `json:"source"`
+}
+
+// AccountingBankAccountInput defines model for AccountingBankAccountInput.
+type AccountingBankAccountInput struct {
+	// AccountNumber Eleven digits, spaces and dots dropped, passing mod 11; a Norwegian IBAN is read as its BBAN.
+	AccountNumber string `json:"accountNumber"`
+
+	// Active Default true.
+	Active *bool   `json:"active,omitempty"`
+	Bic    *string `json:"bic,omitempty"`
+
+	// Currency NOK, the only currency in this phase; default NOK.
+	Currency *string `json:"currency,omitempty"`
+	Iban     *string `json:"iban,omitempty"`
+
+	// LedgerAccountId An active asset account no other bank account holds.
+	LedgerAccountId int32  `json:"ledgerAccountId"`
+	Name            string `json:"name"`
+
+	// Revision Required on a change: the revision read.
+	Revision *int32 `json:"revision,omitempty"`
+}
+
+// AccountingBankAccountList defines model for AccountingBankAccountList.
+type AccountingBankAccountList struct {
+	Feed  AccountingBankFeedInfo  `json:"feed"`
+	Items []AccountingBankAccount `json:"items"`
+
+	// Suggested The seller's account, while no bank account has its number.
+	Suggested *AccountingBankAccountSuggestion `json:"suggested"`
+}
+
+// AccountingBankAccountSuggestion The seller's account in Invoices, offered as the first bank account (A26).
+type AccountingBankAccountSuggestion struct {
+	AccountNumber string  `json:"accountNumber"`
+	Bic           *string `json:"bic"`
+	Iban          *string `json:"iban"`
+
+	// LedgerAccountId The bank role's account.
+	LedgerAccountId *int32 `json:"ledgerAccountId"`
+	Name            string `json:"name"`
+}
+
+// AccountingBankBatchItem One transaction of a batch entry, as camt.053 details it.
+type AccountingBankBatchItem struct {
+	// Amount Exact decimal text with two decimals.
+	Amount    string  `json:"amount"`
+	Kid       *string `json:"kid"`
+	Name      string  `json:"name"`
+	Reference string  `json:"reference"`
+	Text      string  `json:"text"`
+}
+
+// AccountingBankBulkAcceptInput defines model for AccountingBankBulkAcceptInput.
+type AccountingBankBulkAcceptInput struct {
+	LineIds []int64 `json:"lineIds"`
+}
+
+// AccountingBankBulkAcceptResult defines model for AccountingBankBulkAcceptResult.
+type AccountingBankBulkAcceptResult struct {
+	// Accepted The lines matched.
+	Accepted []int64 `json:"accepted"`
+
+	// Skipped The lines left: no exact suggestion, or matched meanwhile.
+	Skipped []int64 `json:"skipped"`
+}
+
+// AccountingBankCodeInput defines model for AccountingBankCodeInput.
+type AccountingBankCodeInput struct {
+	// Description Default the line's text.
+	Description *string `json:"description,omitempty"`
+
+	// Entry gross (default: the bank's amount includes the VAT) or net.
+	Entry *AccountingEntryMode `json:"entry,omitempty"`
+
+	// Key A key the client makes for the request, so a second click answers the first's match.
+	Key   string                   `json:"key"`
+	Lines []AccountingBankCodeLine `json:"lines"`
+}
+
+// AccountingBankCodeLine defines model for AccountingBankCodeLine.
+type AccountingBankCodeLine struct {
+	AccountId int32 `json:"accountId"`
+
+	// Amount Signed, debit positive; the lines together balance the bank line, which is added on the bank account's ledger account.
+	Amount     string `json:"amount"`
+	CustomerId *int32 `json:"customerId,omitempty"`
+
+	// OpenItemId A party's open item the line settles (R5); refused for an item that stands for a document in Invoices or a supplier invoice.
+	OpenItemId *int64  `json:"openItemId,omitempty"`
+	ProjectId  *int32  `json:"projectId,omitempty"`
+	SupplierId *int64  `json:"supplierId,omitempty"`
+	TaxCodeId  *int32  `json:"taxCodeId,omitempty"`
+	Text       *string `json:"text,omitempty"`
+}
+
+// AccountingBankCsvColumns The columns of a CSV statement, counted from 0. Either amount, or debit and credit.
+type AccountingBankCsvColumns struct {
+	// Amount A signed amount's column; or debit and credit.
+	Amount *int32 `json:"amount,omitempty"`
+
+	// BankId The bank's own id of the line, when the file has one: the duplicate guard then keys on it.
+	BankId              *int32 `json:"bankId,omitempty"`
+	CounterpartyAccount *int32 `json:"counterpartyAccount,omitempty"`
+	CounterpartyName    *int32 `json:"counterpartyName,omitempty"`
+
+	// Credit The money in column, as a positive figure.
+	Credit *int32 `json:"credit,omitempty"`
+
+	// Date The booking day's column, counted from 0.
+	Date int32 `json:"date"`
+
+	// Debit The money out column, as a positive figure.
+	Debit     *int32 `json:"debit,omitempty"`
+	Kid       *int32 `json:"kid,omitempty"`
+	Reference *int32 `json:"reference,omitempty"`
+	Text      *int32 `json:"text,omitempty"`
+	ValueDate *int32 `json:"valueDate,omitempty"`
+}
+
+// AccountingBankCsvMapping How a CSV statement of the bank account is read, saved per bank account (A27).
+type AccountingBankCsvMapping struct {
+	// Columns The columns of a CSV statement, counted from 0. Either amount, or debit and credit.
+	Columns AccountingBankCsvColumns `json:"columns"`
+
+	// DateFormat One of: DD.MM.YYYY, DD.MM.YY, YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, YYYYMMDD.
+	DateFormat string `json:"dateFormat"`
+
+	// DecimalSeparator One of: ,, ..
+	DecimalSeparator string `json:"decimalSeparator"`
+
+	// Delimiter The separator: one character, ; , tab or |.
+	Delimiter string `json:"delimiter"`
+
+	// Encoding utf-8 (a byte order mark is dropped) or iso-8859-1. One of: utf-8, iso-8859-1.
+	Encoding string `json:"encoding"`
+
+	// HeaderRows Rows before the first line, skipped.
+	HeaderRows int32 `json:"headerRows"`
+
+	// InvertSign Whether the amount column shows money out as positive.
+	InvertSign bool `json:"invertSign"`
+
+	// ThousandsSeparator "" for none. One of: "",  , ., ,, '.
+	ThousandsSeparator string `json:"thousandsSeparator"`
+}
+
+// AccountingBankCsvPreview defines model for AccountingBankCsvPreview.
+type AccountingBankCsvPreview struct {
+	// Errors The rows that cannot be read.
+	Errors int32 `json:"errors"`
+
+	// Rows The first rows, at most 20.
+	Rows []AccountingBankCsvPreviewRow `json:"rows"`
+
+	// Total The rows read, header rows not counted.
+	Total int32 `json:"total"`
+}
+
+// AccountingBankCsvPreviewRow defines model for AccountingBankCsvPreviewRow.
+type AccountingBankCsvPreviewRow struct {
+	Amount           *string             `json:"amount"`
+	BookedOn         *openapi_types.Date `json:"bookedOn"`
+	CounterpartyName string              `json:"counterpartyName"`
+
+	// Error Why the row cannot be read; null when it can.
+	Error     *string `json:"error"`
+	Kid       *string `json:"kid"`
+	Reference string  `json:"reference"`
+
+	// Row The file's row, counted from 1.
+	Row  int32  `json:"row"`
+	Text string `json:"text"`
+}
+
+// AccountingBankFeedAccount defines model for AccountingBankFeedAccount.
+type AccountingBankFeedAccount struct {
+	// BankAccountId The bank account here with that number, if any.
+	BankAccountId *int64 `json:"bankAccountId"`
+
+	// Kind operational, tax, savings, earmarks, card or other.
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+
+	// Number As the bank writes it; its 11 digits when it reads as a Norwegian account number.
+	Number string `json:"number"`
+}
+
+// AccountingBankFeedAccountList defines model for AccountingBankFeedAccountList.
+type AccountingBankFeedAccountList struct {
+	Items []AccountingBankFeedAccount `json:"items"`
+}
+
+// AccountingBankFeedInfo defines model for AccountingBankFeedInfo.
+type AccountingBankFeedInfo struct {
+	// Connected Whether a bank is connected in Invoices' Bank integration.
+	Connected bool `json:"connected"`
+
+	// Enabled Whether the bank feed is composed: Invoices is on and INVOICES_BANK_FEED_ENABLED is on.
+	Enabled  bool    `json:"enabled"`
+	Provider *string `json:"provider"`
+
+	// Refused Whether the bank refused the stored key.
+	Refused bool `json:"refused"`
+}
+
+// AccountingBankFeedState The bank feed's state on a bank account whose source is feed (A29).
+type AccountingBankFeedState struct {
+	// Detail What the bank or the read last said, for the screen.
+	Detail string `json:"detail"`
+
+	// LastSyncedAt The last read that succeeded.
+	LastSyncedAt *time.Time `json:"lastSyncedAt"`
+
+	// NextSyncAt When the account is due again.
+	NextSyncAt *time.Time `json:"nextSyncAt"`
+
+	// Status ok, unauthorized (the bank refused Invoices' key), rate_limited, failing, not_offered (the bank no longer offers the account) or off (the feed is switched off or not connected in Invoices); null before the first read.
+	Status *string `json:"status"`
+}
+
+// AccountingBankFoot defines model for AccountingBankFoot.
+type AccountingBankFoot struct {
+	// Difference Statement less ledger; null without a statement balance.
+	Difference *string `json:"difference"`
+
+	// LedgerBalance The ledger account's balance at the period's end.
+	LedgerBalance string `json:"ledgerBalance"`
+
+	// StatementBalance The statement's balance at the period's end: the last closing balance given, and the lines booked after it; null when no statement gave a balance.
+	StatementBalance *string `json:"statementBalance"`
+
+	// UnmatchedPostings The ledger account's postings in the period no line is matched to, at most 200.
+	UnmatchedPostings      []AccountingBankMatchedPosting `json:"unmatchedPostings"`
+	UnmatchedPostingsTotal int32                          `json:"unmatchedPostingsTotal"`
+}
+
+// AccountingBankImportResult defines model for AccountingBankImportResult.
+type AccountingBankImportResult struct {
+	// NotBooked Entries the file holds that are not booked (pending or information), left out.
+	NotBooked  int32                           `json:"notBooked"`
+	Statements []AccountingBankImportStatement `json:"statements"`
+
+	// UnknownAccounts The file's accounts no bank account here has: their statements were not imported.
+	UnknownAccounts []string `json:"unknownAccounts"`
+}
+
+// AccountingBankImportStatement defines model for AccountingBankImportStatement.
+type AccountingBankImportStatement struct {
+	BankAccountId   int64  `json:"bankAccountId"`
+	BankAccountName string `json:"bankAccountName"`
+
+	// Continuity One of: ok, gap, overlap, mismatch, unknown.
+	Continuity       string             `json:"continuity"`
+	ContinuityDetail string             `json:"continuityDetail"`
+	Imported         int32              `json:"imported"`
+	PeriodFrom       openapi_types.Date `json:"periodFrom"`
+	PeriodTo         openapi_types.Date `json:"periodTo"`
+
+	// Repeated Whether the same statement of the same file was imported before: nothing new was written.
+	Repeated bool `json:"repeated"`
+
+	// Skipped Lines already imported, by the bank's id or by fingerprint.
+	Skipped int32 `json:"skipped"`
+
+	// Source One of: camt053, csv, feed.
+	Source      string `json:"source"`
+	StatementId int64  `json:"statementId"`
+}
+
+// AccountingBankLine defines model for AccountingBankLine.
+type AccountingBankLine struct {
+	// Amount Signed: money in positive.
+	Amount        string `json:"amount"`
+	BankAccountId int64  `json:"bankAccountId"`
+
+	// BankId The bank's own id of the line; for the feed its transaction id.
+	BankId *string `json:"bankId"`
+
+	// Batch A batch entry's transactions; empty for a single one.
+	Batch               []AccountingBankBatchItem `json:"batch"`
+	BookedOn            openapi_types.Date        `json:"bookedOn"`
+	CounterpartyAccount string                    `json:"counterpartyAccount"`
+	CounterpartyName    string                    `json:"counterpartyName"`
+
+	// CustomerPayment Whether the line looks like a customer payment (money in with a KID, or a batch): it is never coded as income here, and is registered in Invoices (R11).
+	CustomerPayment bool    `json:"customerPayment"`
+	Id              int64   `json:"id"`
+	Kid             *string `json:"kid"`
+
+	// Kind One of: transfer, card, internal, other.
+	Kind string `json:"kind"`
+
+	// Match The standing match; null while open.
+	Match     *AccountingBankMatch `json:"match"`
+	Reference string               `json:"reference"`
+	Reversal  bool                 `json:"reversal"`
+
+	// Source One of: camt053, csv, feed.
+	Source string `json:"source"`
+
+	// State One of: open, matched.
+	State       string `json:"state"`
+	StatementId int64  `json:"statementId"`
+
+	// Suggestions Most certain first; for an open line only.
+	Suggestions []AccountingBankSuggestion `json:"suggestions"`
+	Text        string                     `json:"text"`
+	ValueOn     *openapi_types.Date        `json:"valueOn"`
+}
+
+// AccountingBankMatch defines model for AccountingBankMatch.
+type AccountingBankMatch struct {
+	Id int64 `json:"id"`
+
+	// Kind One of: posting, feed_payment, batch, supplier_invoice, vipps_payout, vat, transfer, rule, coded.
+	Kind            string                         `json:"kind"`
+	MatchedAt       time.Time                      `json:"matchedAt"`
+	MatchedByUserId openapi_types.UUID             `json:"matchedByUserId"`
+	Postings        []AccountingBankMatchedPosting `json:"postings"`
+	Reason          string                         `json:"reason"`
+
+	// VoucherId The voucher the match posted; null when it linked postings that were there.
+	VoucherId *int64 `json:"voucherId"`
+}
+
+// AccountingBankMatchedPosting defines model for AccountingBankMatchedPosting.
+type AccountingBankMatchedPosting struct {
+	// Amount Exact decimal text with two decimals.
+	Amount         string             `json:"amount"`
+	Description    string             `json:"description"`
+	PostingId      int64              `json:"postingId"`
+	VoucherDate    openapi_types.Date `json:"voucherDate"`
+	VoucherDisplay string             `json:"voucherDisplay"`
+	VoucherId      int64              `json:"voucherId"`
+	VoucherKind    string             `json:"voucherKind"`
+}
+
+// AccountingBankProposedLine A posting of the voucher a suggestion would post, shown before it is posted.
+type AccountingBankProposedLine struct {
+	AccountId     int32  `json:"accountId"`
+	AccountName   string `json:"accountName"`
+	AccountNumber string `json:"accountNumber"`
+
+	// Amount Signed: debit positive.
+	Amount    string  `json:"amount"`
+	TaxCode   *string `json:"taxCode"`
+	TaxCodeId *int32  `json:"taxCodeId"`
+}
+
+// AccountingBankReconciliation defines model for AccountingBankReconciliation.
+type AccountingBankReconciliation struct {
+	BankAccount AccountingBankAccount `json:"bankAccount"`
+	Foot        AccountingBankFoot    `json:"foot"`
+	From        openapi_types.Date    `json:"from"`
+	Lines       []AccountingBankLine  `json:"lines"`
+	To          openapi_types.Date    `json:"to"`
+}
+
+// AccountingBankRule defines model for AccountingBankRule.
+type AccountingBankRule struct {
+	AccountId     int32  `json:"accountId"`
+	AccountName   string `json:"accountName"`
+	AccountNumber string `json:"accountNumber"`
+	Active        bool   `json:"active"`
+
+	// BankAccountId Null for every bank account.
+	BankAccountId        *int64  `json:"bankAccountId"`
+	CounterpartyContains *string `json:"counterpartyContains"`
+	Description          string  `json:"description"`
+
+	// Direction One of: in, out, any.
+	Direction    string  `json:"direction"`
+	Id           int64   `json:"id"`
+	Name         string  `json:"name"`
+	ProjectId    *int32  `json:"projectId"`
+	TaxCode      *string `json:"taxCode"`
+	TaxCodeId    *int32  `json:"taxCodeId"`
+	TextContains *string `json:"textContains"`
+	Version      int32   `json:"version"`
+}
+
+// AccountingBankRuleInput defines model for AccountingBankRuleInput.
+type AccountingBankRuleInput struct {
+	AccountId            int32   `json:"accountId"`
+	Active               *bool   `json:"active,omitempty"`
+	BankAccountId        *int64  `json:"bankAccountId,omitempty"`
+	CounterpartyContains *string `json:"counterpartyContains,omitempty"`
+	Description          *string `json:"description,omitempty"`
+
+	// Direction One of: in, out, any.
+	Direction *string `json:"direction,omitempty"`
+	Name      string  `json:"name"`
+	ProjectId *int32  `json:"projectId,omitempty"`
+	TaxCodeId *int32  `json:"taxCodeId,omitempty"`
+
+	// TextContains Matched case aside within the line's text.
+	TextContains *string `json:"textContains,omitempty"`
+}
+
+// AccountingBankRuleList defines model for AccountingBankRuleList.
+type AccountingBankRuleList struct {
+	Items []AccountingBankRule `json:"items"`
+}
+
+// AccountingBankSourceInput defines model for AccountingBankSourceInput.
+type AccountingBankSourceInput struct {
+	// Source One of: file, feed.
+	Source string `json:"source"`
+
+	// StartDay For feed: the first booking day read; default today. Nothing booked before it is read.
+	StartDay *openapi_types.Date `json:"startDay,omitempty"`
+}
+
+// AccountingBankStatement defines model for AccountingBankStatement.
+type AccountingBankStatement struct {
+	BankAccountId int64 `json:"bankAccountId"`
+
+	// ClosingBalance Exact decimal text with two decimals; null when not known.
+	ClosingBalance *string `json:"closingBalance"`
+
+	// Continuity One of: ok, gap, overlap, mismatch, unknown.
+	Continuity       string    `json:"continuity"`
+	ContinuityDetail string    `json:"continuityDetail"`
+	FileName         *string   `json:"fileName"`
+	HasFile          bool      `json:"hasFile"`
+	Id               int64     `json:"id"`
+	ImportedAt       time.Time `json:"importedAt"`
+
+	// ImportedByUserId Null for the feed.
+	ImportedByUserId *openapi_types.UUID `json:"importedByUserId"`
+	LinesImported    int32               `json:"linesImported"`
+	LinesSkipped     int32               `json:"linesSkipped"`
+
+	// OpeningBalance Exact decimal text with two decimals; null when not known.
+	OpeningBalance *string            `json:"openingBalance"`
+	PeriodFrom     openapi_types.Date `json:"periodFrom"`
+	PeriodTo       openapi_types.Date `json:"periodTo"`
+
+	// Source One of: camt053, csv, feed.
+	Source       string `json:"source"`
+	StatementRef string `json:"statementRef"`
+}
+
+// AccountingBankStatementList defines model for AccountingBankStatementList.
+type AccountingBankStatementList struct {
+	Items []AccountingBankStatement `json:"items"`
+}
+
+// AccountingBankStatus defines model for AccountingBankStatus.
+type AccountingBankStatus struct {
+	Accounts   []AccountingBankStatusAccount `json:"accounts"`
+	Reconciled bool                          `json:"reconciled"`
+	Through    openapi_types.Date            `json:"through"`
+}
+
+// AccountingBankStatusAccount defines model for AccountingBankStatusAccount.
+type AccountingBankStatusAccount struct {
+	BankAccountId int64 `json:"bankAccountId"`
+
+	// Difference Exact decimal text with two decimals; null when not known.
+	Difference *string `json:"difference"`
+
+	// LedgerBalance Exact decimal text with two decimals.
+	LedgerBalance string `json:"ledgerBalance"`
+	Name          string `json:"name"`
+
+	// OpenLines Lines booked on or before the day not matched.
+	OpenLines int32 `json:"openLines"`
+
+	// Reconciled No open line and no difference.
+	Reconciled bool `json:"reconciled"`
+
+	// StatementBalance Exact decimal text with two decimals; null when not known.
+	StatementBalance *string `json:"statementBalance"`
+}
+
+// AccountingBankSuggestion defines model for AccountingBankSuggestion.
+type AccountingBankSuggestion struct {
+	BankRuleId *int64 `json:"bankRuleId"`
+
+	// Certainty One of: exact, likely, possible.
+	Certainty string `json:"certainty"`
+
+	// Exact Whether bulk accept takes it: one posting of the same amount and the same day or the same bank reference.
+	Exact bool `json:"exact"`
+
+	// Key What accept names: the suggestion as it was computed.
+	Key string `json:"key"`
+
+	// Kind feed_payment, posting, batch, supplier_invoice, vipps_payout, vat, transfer, rule, or invoices (a customer payment to register in Invoices: not accepted here). One of: feed_payment, posting, batch, supplier_invoice, vipps_payout, vat, transfer, rule, invoices.
+	Kind string `json:"kind"`
+
+	// Lines The voucher it would post, when it posts one.
+	Lines []AccountingBankProposedLine `json:"lines"`
+
+	// OtherLineId A transfer's line on the other bank account's statement.
+	OtherLineId *int64 `json:"otherLineId"`
+
+	// Postings The existing postings it links.
+	Postings []AccountingBankMatchedPosting `json:"postings"`
+
+	// Reason Why it is suggested, for the screen.
+	Reason            string `json:"reason"`
+	SupplierInvoiceId *int64 `json:"supplierInvoiceId"`
+}
+
 // AccountingBrregEntity defines model for AccountingBrregEntity.
 type AccountingBrregEntity struct {
 	AddressLine *string `json:"addressLine"`
@@ -914,6 +1460,9 @@ type AccountingLockEvent struct {
 
 // AccountingLockInput defines model for AccountingLockInput.
 type AccountingLockInput struct {
+	// ConfirmUnreconciled Moves the lock forward over bank lines not matched, or a statement balance that differs from the ledgers, knowingly (A28); without it such a move is refused bank_unreconciled.
+	ConfirmUnreconciled *bool `json:"confirmUnreconciled,omitempty"`
+
 	// LockedThrough A month end on or after booksStart; null unlocks every month.
 	LockedThrough *openapi_types.Date `json:"lockedThrough"`
 
@@ -931,6 +1480,12 @@ type AccountingMakeSupplierInvoiceInput struct {
 type AccountingMeta struct {
 	// AttachmentsEnabled Whether the installation has file storage: without it an attachment is refused (storage_not_configured), so the journal form says so before posting.
 	AttachmentsEnabled bool `json:"attachmentsEnabled"`
+
+	// BankFeedEnabled Whether the bank feed is composed (Invoices on and INVOICES_BANK_FEED_ENABLED on): a bank account can then be read from it.
+	BankFeedEnabled bool `json:"bankFeedEnabled"`
+
+	// BankFeedProblems Bank accounts read by the feed whose last read failed: the key refused, the account no longer offered, the feed off (A29).
+	BankFeedProblems int32 `json:"bankFeedProblems"`
 
 	// CanClose accounting:close
 	CanClose bool `json:"canClose"`
@@ -952,6 +1507,9 @@ type AccountingMeta struct {
 
 	// InvoicesEnabled Whether Invoices' sales journal is composed: open invoices are offered on the opening form, and sales post themselves.
 	InvoicesEnabled bool `json:"invoicesEnabled"`
+
+	// OpenBankLines Statement lines of active bank accounts not matched (A28).
+	OpenBankLines int32 `json:"openBankLines"`
 
 	// OpenCustomerItems Customer open items with a balance.
 	OpenCustomerItems int32 `json:"openCustomerItems"`
@@ -1214,7 +1772,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention), bank_account_number_invalid (400: an account number that is not eleven digits passing mod 11, nor a Norwegian IBAN), bank_account_currency (400: a bank account not in NOK, the only currency in this phase), bank_account_number_taken (409: another bank account has that number), bank_account_ledger_taken (409: another bank account has that ledger account), bank_account_has_statements (409: a delete of a bank account with statements; make it inactive), bank_feed_off (409: the bank feed is not composed — Invoices off or INVOICES_BANK_FEED_ENABLED off), bank_feed_not_connected (409: no bank is connected in Invoices' Bank integration), bank_feed_refused (409: the bank refused Invoices' key; store it again there), bank_feed_account_not_offered (409: the bank feed does not read that account number), bank_feed_unreachable (503: the bank could not be reached, or limited the request), bank_statement_invalid (400: not a readable camt.053 or CSV file, a DOCTYPE or an entity, a currency other than NOK), bank_statement_too_large (400: over 20 MB, or more lines than a statement holds), bank_statement_account_unknown (400: none of the file's accounts is a bank account here; the detail names them), bank_statement_account_required (400: a CSV file without bankAccountId), bank_csv_mapping_required (409: a CSV file for a bank account with no mapping saved), bank_csv_mapping_invalid (400: a mapping with no amount, or both an amount and debit and credit columns, or a column twice), bank_line_matched (409: a match stands on the line already, made by another request), bank_line_not_matched (409: an undo of a line with no match), bank_suggestion_stale (409: the suggestion accepted no longer holds; read the line again), bank_posting_matched (409: a posting the suggestion names is matched to another line meanwhile), bank_line_customer_payment (409: a customer payment — money in with a KID, a batch, or a credit to a sales income account — coded here; register it in Invoices, R11), bank_rule_in_use (409: a delete of a bank rule a match was made with; make it inactive), bank_unreconciled (409: the lock moved forward over bank lines not matched or a statement balance that differs from the ledger's, without confirmUnreconciled; the detail names the accounts). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -2567,6 +3125,44 @@ type ListAccountingAccountsParams struct {
 	Active *bool `form:"active,omitempty" json:"active,omitempty"`
 }
 
+// PreviewAccountingBankCsvMultipartBody defines parameters for PreviewAccountingBankCsv.
+type PreviewAccountingBankCsvMultipartBody struct {
+	File openapi_types.File `json:"file"`
+
+	// Mapping The mapping as JSON.
+	Mapping *string `json:"mapping,omitempty"`
+}
+
+// GetAccountingBankReconciliationParams defines parameters for GetAccountingBankReconciliation.
+type GetAccountingBankReconciliationParams struct {
+	From openapi_types.Date `form:"from" json:"from"`
+	To   openapi_types.Date `form:"to" json:"to"`
+
+	// State open or matched; both when left out.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// ImportAccountingBankStatementMultipartBody defines parameters for ImportAccountingBankStatement.
+type ImportAccountingBankStatementMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
+// ImportAccountingBankStatementParams defines parameters for ImportAccountingBankStatement.
+type ImportAccountingBankStatementParams struct {
+	// BankAccountId The bank account a CSV file is of; a camt.053 file names its own.
+	BankAccountId *int64 `form:"bankAccountId,omitempty" json:"bankAccountId,omitempty"`
+}
+
+// ListAccountingBankStatementsParams defines parameters for ListAccountingBankStatements.
+type ListAccountingBankStatementsParams struct {
+	BankAccountId *int64 `form:"bankAccountId,omitempty" json:"bankAccountId,omitempty"`
+}
+
+// GetAccountingBankStatusParams defines parameters for GetAccountingBankStatus.
+type GetAccountingBankStatusParams struct {
+	Through openapi_types.Date `form:"through" json:"through"`
+}
+
 // ListAccountingGroupingCodesParams defines parameters for ListAccountingGroupingCodes.
 type ListAccountingGroupingCodesParams struct {
 	// Year Default the current year; the latest list not after it is answered.
@@ -2775,6 +3371,39 @@ type UpdateAccountingAccountJSONRequestBody = AccountingAccountUpdate
 // PutAccountingAccountGroupingsJSONRequestBody defines body for PutAccountingAccountGroupings for application/json ContentType.
 type PutAccountingAccountGroupingsJSONRequestBody = AccountingGroupingsInput
 
+// CreateAccountingBankAccountJSONRequestBody defines body for CreateAccountingBankAccount for application/json ContentType.
+type CreateAccountingBankAccountJSONRequestBody = AccountingBankAccountInput
+
+// UpdateAccountingBankAccountJSONRequestBody defines body for UpdateAccountingBankAccount for application/json ContentType.
+type UpdateAccountingBankAccountJSONRequestBody = AccountingBankAccountInput
+
+// PutAccountingBankCsvMappingJSONRequestBody defines body for PutAccountingBankCsvMapping for application/json ContentType.
+type PutAccountingBankCsvMappingJSONRequestBody = AccountingBankCsvMapping
+
+// PreviewAccountingBankCsvMultipartRequestBody defines body for PreviewAccountingBankCsv for multipart/form-data ContentType.
+type PreviewAccountingBankCsvMultipartRequestBody PreviewAccountingBankCsvMultipartBody
+
+// SetAccountingBankAccountSourceJSONRequestBody defines body for SetAccountingBankAccountSource for application/json ContentType.
+type SetAccountingBankAccountSourceJSONRequestBody = AccountingBankSourceInput
+
+// ImportAccountingBankStatementMultipartRequestBody defines body for ImportAccountingBankStatement for multipart/form-data ContentType.
+type ImportAccountingBankStatementMultipartRequestBody ImportAccountingBankStatementMultipartBody
+
+// AcceptAccountingBankExactJSONRequestBody defines body for AcceptAccountingBankExact for application/json ContentType.
+type AcceptAccountingBankExactJSONRequestBody = AccountingBankBulkAcceptInput
+
+// AcceptAccountingBankSuggestionJSONRequestBody defines body for AcceptAccountingBankSuggestion for application/json ContentType.
+type AcceptAccountingBankSuggestionJSONRequestBody = AccountingBankAcceptInput
+
+// CodeAccountingBankLineJSONRequestBody defines body for CodeAccountingBankLine for application/json ContentType.
+type CodeAccountingBankLineJSONRequestBody = AccountingBankCodeInput
+
+// CreateAccountingBankRuleJSONRequestBody defines body for CreateAccountingBankRule for application/json ContentType.
+type CreateAccountingBankRuleJSONRequestBody = AccountingBankRuleInput
+
+// UpdateAccountingBankRuleJSONRequestBody defines body for UpdateAccountingBankRule for application/json ContentType.
+type UpdateAccountingBankRuleJSONRequestBody = AccountingBankRuleInput
+
 // PutAccountingLockJSONRequestBody defines body for PutAccountingLock for application/json ContentType.
 type PutAccountingLockJSONRequestBody = AccountingLockInput
 
@@ -2885,6 +3514,72 @@ type ServerInterface interface {
 	// PutAccountingAccountGroupings Set an account's grouping codes
 	// (PUT /api/v1/accounting/accounts/{id}/groupings)
 	PutAccountingAccountGroupings(w http.ResponseWriter, r *http.Request, id int32)
+	// ListAccountingBankAccounts List the bank accounts
+	// (GET /api/v1/accounting/bank/accounts)
+	ListAccountingBankAccounts(w http.ResponseWriter, r *http.Request)
+	// CreateAccountingBankAccount Add a bank account
+	// (POST /api/v1/accounting/bank/accounts)
+	CreateAccountingBankAccount(w http.ResponseWriter, r *http.Request)
+	// DeleteAccountingBankAccount Delete a bank account
+	// (DELETE /api/v1/accounting/bank/accounts/{id})
+	DeleteAccountingBankAccount(w http.ResponseWriter, r *http.Request, id int64)
+	// GetAccountingBankAccount Get a bank account
+	// (GET /api/v1/accounting/bank/accounts/{id})
+	GetAccountingBankAccount(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateAccountingBankAccount Change a bank account
+	// (PUT /api/v1/accounting/bank/accounts/{id})
+	UpdateAccountingBankAccount(w http.ResponseWriter, r *http.Request, id int64)
+	// PutAccountingBankCsvMapping Save a bank account's CSV mapping
+	// (PUT /api/v1/accounting/bank/accounts/{id}/csv-mapping)
+	PutAccountingBankCsvMapping(w http.ResponseWriter, r *http.Request, id int64)
+	// PreviewAccountingBankCsv Preview a CSV statement
+	// (POST /api/v1/accounting/bank/accounts/{id}/csv-preview)
+	PreviewAccountingBankCsv(w http.ResponseWriter, r *http.Request, id int64)
+	// GetAccountingBankReconciliation Reconcile a bank account
+	// (GET /api/v1/accounting/bank/accounts/{id}/reconciliation)
+	GetAccountingBankReconciliation(w http.ResponseWriter, r *http.Request, id int64, params GetAccountingBankReconciliationParams)
+	// SetAccountingBankAccountSource Switch a bank account's statement source
+	// (PUT /api/v1/accounting/bank/accounts/{id}/source)
+	SetAccountingBankAccountSource(w http.ResponseWriter, r *http.Request, id int64)
+	// ListAccountingBankFeedAccounts List the bank feed's accounts
+	// (GET /api/v1/accounting/bank/feed/accounts)
+	ListAccountingBankFeedAccounts(w http.ResponseWriter, r *http.Request)
+	// ImportAccountingBankStatement Import a bank statement
+	// (POST /api/v1/accounting/bank/imports)
+	ImportAccountingBankStatement(w http.ResponseWriter, r *http.Request, params ImportAccountingBankStatementParams)
+	// AcceptAccountingBankExact Accept the exact suggestions
+	// (POST /api/v1/accounting/bank/lines/accept-exact)
+	AcceptAccountingBankExact(w http.ResponseWriter, r *http.Request)
+	// AcceptAccountingBankSuggestion Accept a reconciliation suggestion
+	// (POST /api/v1/accounting/bank/lines/{id}/accept)
+	AcceptAccountingBankSuggestion(w http.ResponseWriter, r *http.Request, id int64)
+	// CodeAccountingBankLine Code a bank line
+	// (POST /api/v1/accounting/bank/lines/{id}/code)
+	CodeAccountingBankLine(w http.ResponseWriter, r *http.Request, id int64)
+	// UndoAccountingBankMatch Undo a bank line's match
+	// (POST /api/v1/accounting/bank/lines/{id}/undo)
+	UndoAccountingBankMatch(w http.ResponseWriter, r *http.Request, id int64)
+	// ListAccountingBankRules List the bank rules
+	// (GET /api/v1/accounting/bank/rules)
+	ListAccountingBankRules(w http.ResponseWriter, r *http.Request)
+	// CreateAccountingBankRule Add a bank rule
+	// (POST /api/v1/accounting/bank/rules)
+	CreateAccountingBankRule(w http.ResponseWriter, r *http.Request)
+	// DeleteAccountingBankRule Delete a bank rule
+	// (DELETE /api/v1/accounting/bank/rules/{id})
+	DeleteAccountingBankRule(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateAccountingBankRule Change a bank rule
+	// (PUT /api/v1/accounting/bank/rules/{id})
+	UpdateAccountingBankRule(w http.ResponseWriter, r *http.Request, id int64)
+	// ListAccountingBankStatements List the imported statements
+	// (GET /api/v1/accounting/bank/statements)
+	ListAccountingBankStatements(w http.ResponseWriter, r *http.Request, params ListAccountingBankStatementsParams)
+	// DownloadAccountingBankStatementFile Download an imported statement file
+	// (GET /api/v1/accounting/bank/statements/{id}/file)
+	DownloadAccountingBankStatementFile(w http.ResponseWriter, r *http.Request, id int64)
+	// GetAccountingBankStatus Get the bank reconciliation at a day
+	// (GET /api/v1/accounting/bank/status)
+	GetAccountingBankStatus(w http.ResponseWriter, r *http.Request, params GetAccountingBankStatusParams)
 	// GetAccountingCatchUp Where the catch-up of sales stands
 	// (GET /api/v1/accounting/catch-up)
 	GetAccountingCatchUp(w http.ResponseWriter, r *http.Request)
@@ -3282,6 +3977,569 @@ func (siw *ServerInterfaceWrapper) PutAccountingAccountGroupings(w http.Response
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutAccountingAccountGroupings(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingBankAccounts operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingBankAccounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingBankAccounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccountingBankAccount operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccountingBankAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccountingBankAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccountingBankAccount operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccountingBankAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccountingBankAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingBankAccount operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingBankAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingBankAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAccountingBankAccount operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAccountingBankAccount(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAccountingBankAccount(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutAccountingBankCsvMapping operation middleware
+func (siw *ServerInterfaceWrapper) PutAccountingBankCsvMapping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutAccountingBankCsvMapping(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewAccountingBankCsv operation middleware
+func (siw *ServerInterfaceWrapper) PreviewAccountingBankCsv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewAccountingBankCsv(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingBankReconciliation operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingBankReconciliation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAccountingBankReconciliationParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingBankReconciliation(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAccountingBankAccountSource operation middleware
+func (siw *ServerInterfaceWrapper) SetAccountingBankAccountSource(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAccountingBankAccountSource(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingBankFeedAccounts operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingBankFeedAccounts(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingBankFeedAccounts(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportAccountingBankStatement operation middleware
+func (siw *ServerInterfaceWrapper) ImportAccountingBankStatement(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ImportAccountingBankStatementParams
+
+	// ------------- Optional query parameter "bankAccountId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bankAccountId", r.URL.Query(), &params.BankAccountId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bankAccountId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bankAccountId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportAccountingBankStatement(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptAccountingBankExact operation middleware
+func (siw *ServerInterfaceWrapper) AcceptAccountingBankExact(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptAccountingBankExact(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptAccountingBankSuggestion operation middleware
+func (siw *ServerInterfaceWrapper) AcceptAccountingBankSuggestion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptAccountingBankSuggestion(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CodeAccountingBankLine operation middleware
+func (siw *ServerInterfaceWrapper) CodeAccountingBankLine(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CodeAccountingBankLine(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UndoAccountingBankMatch operation middleware
+func (siw *ServerInterfaceWrapper) UndoAccountingBankMatch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UndoAccountingBankMatch(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingBankRules operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingBankRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingBankRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccountingBankRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccountingBankRule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccountingBankRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccountingBankRule operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccountingBankRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccountingBankRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAccountingBankRule operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAccountingBankRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAccountingBankRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingBankStatements operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingBankStatements(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAccountingBankStatementsParams
+
+	// ------------- Optional query parameter "bankAccountId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bankAccountId", r.URL.Query(), &params.BankAccountId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bankAccountId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bankAccountId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingBankStatements(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadAccountingBankStatementFile operation middleware
+func (siw *ServerInterfaceWrapper) DownloadAccountingBankStatementFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadAccountingBankStatementFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingBankStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingBankStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAccountingBankStatusParams
+
+	// ------------- Required query parameter "through" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "through", r.URL.Query(), &params.Through, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "through"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "through", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingBankStatus(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6171,6 +7429,28 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/accounts/{id}", wrapper.GetAccountingAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/accounts/{id}", wrapper.UpdateAccountingAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/accounts/{id}/groupings", wrapper.PutAccountingAccountGroupings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/accounts", wrapper.ListAccountingBankAccounts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/accounts", wrapper.CreateAccountingBankAccount)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/accounting/bank/accounts/{id}", wrapper.DeleteAccountingBankAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/accounts/{id}", wrapper.GetAccountingBankAccount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/bank/accounts/{id}", wrapper.UpdateAccountingBankAccount)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/bank/accounts/{id}/csv-mapping", wrapper.PutAccountingBankCsvMapping)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/accounts/{id}/csv-preview", wrapper.PreviewAccountingBankCsv)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/accounts/{id}/reconciliation", wrapper.GetAccountingBankReconciliation)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/bank/accounts/{id}/source", wrapper.SetAccountingBankAccountSource)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/feed/accounts", wrapper.ListAccountingBankFeedAccounts)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/imports", wrapper.ImportAccountingBankStatement)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/accept-exact", wrapper.AcceptAccountingBankExact)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/{id}/accept", wrapper.AcceptAccountingBankSuggestion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/{id}/code", wrapper.CodeAccountingBankLine)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/lines/{id}/undo", wrapper.UndoAccountingBankMatch)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/rules", wrapper.ListAccountingBankRules)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/bank/rules", wrapper.CreateAccountingBankRule)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/accounting/bank/rules/{id}", wrapper.DeleteAccountingBankRule)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/bank/rules/{id}", wrapper.UpdateAccountingBankRule)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/statements", wrapper.ListAccountingBankStatements)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/statements/{id}/file", wrapper.DownloadAccountingBankStatementFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/bank/status", wrapper.GetAccountingBankStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/catch-up", wrapper.GetAccountingCatchUp)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/grouping-codes", wrapper.ListAccountingGroupingCodes)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/lock", wrapper.GetAccountingLock)
@@ -6695,6 +7975,1750 @@ func (response PutAccountingAccountGroupings404Response) VisitPutAccountingAccou
 type PutAccountingAccountGroupings409ApplicationProblemPlusJSONResponse AccountingProblem
 
 func (response PutAccountingAccountGroupings409ApplicationProblemPlusJSONResponse) VisitPutAccountingAccountGroupingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankAccountsRequestObject struct {
+}
+
+type ListAccountingBankAccountsResponseObject interface {
+	VisitListAccountingBankAccountsResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingBankAccounts200JSONResponse AccountingBankAccountList
+
+func (response ListAccountingBankAccounts200JSONResponse) VisitListAccountingBankAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankAccounts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingBankAccounts401JSONResponse) VisitListAccountingBankAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankAccounts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingBankAccounts403JSONResponse) VisitListAccountingBankAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankAccounts409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingBankAccounts409ApplicationProblemPlusJSONResponse) VisitListAccountingBankAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankAccountRequestObject struct {
+	Body *CreateAccountingBankAccountJSONRequestBody
+}
+
+type CreateAccountingBankAccountResponseObject interface {
+	VisitCreateAccountingBankAccountResponse(w http.ResponseWriter) error
+}
+
+type CreateAccountingBankAccount201JSONResponse AccountingBankAccount
+
+func (response CreateAccountingBankAccount201JSONResponse) VisitCreateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankAccount400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingBankAccount400ApplicationProblemPlusJSONResponse) VisitCreateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingBankAccount401JSONResponse) VisitCreateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingBankAccount403JSONResponse) VisitCreateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankAccount409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingBankAccount409ApplicationProblemPlusJSONResponse) VisitCreateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingBankAccountRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteAccountingBankAccountResponseObject interface {
+	VisitDeleteAccountingBankAccountResponse(w http.ResponseWriter) error
+}
+
+type DeleteAccountingBankAccount204Response struct {
+}
+
+func (response DeleteAccountingBankAccount204Response) VisitDeleteAccountingBankAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAccountingBankAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingBankAccount401JSONResponse) VisitDeleteAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingBankAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingBankAccount403JSONResponse) VisitDeleteAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingBankAccount404Response struct {
+}
+
+func (response DeleteAccountingBankAccount404Response) VisitDeleteAccountingBankAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteAccountingBankAccount409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DeleteAccountingBankAccount409ApplicationProblemPlusJSONResponse) VisitDeleteAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankAccountRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetAccountingBankAccountResponseObject interface {
+	VisitGetAccountingBankAccountResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingBankAccount200JSONResponse AccountingBankAccount
+
+func (response GetAccountingBankAccount200JSONResponse) VisitGetAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingBankAccount401JSONResponse) VisitGetAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingBankAccount403JSONResponse) VisitGetAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankAccount404Response struct {
+}
+
+func (response GetAccountingBankAccount404Response) VisitGetAccountingBankAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetAccountingBankAccount409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingBankAccount409ApplicationProblemPlusJSONResponse) VisitGetAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankAccountRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateAccountingBankAccountJSONRequestBody
+}
+
+type UpdateAccountingBankAccountResponseObject interface {
+	VisitUpdateAccountingBankAccountResponse(w http.ResponseWriter) error
+}
+
+type UpdateAccountingBankAccount200JSONResponse AccountingBankAccount
+
+func (response UpdateAccountingBankAccount200JSONResponse) VisitUpdateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankAccount400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingBankAccount400ApplicationProblemPlusJSONResponse) VisitUpdateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankAccount401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingBankAccount401JSONResponse) VisitUpdateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankAccount403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingBankAccount403JSONResponse) VisitUpdateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankAccount404Response struct {
+}
+
+func (response UpdateAccountingBankAccount404Response) VisitUpdateAccountingBankAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateAccountingBankAccount409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingBankAccount409ApplicationProblemPlusJSONResponse) VisitUpdateAccountingBankAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountingBankCsvMappingRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutAccountingBankCsvMappingJSONRequestBody
+}
+
+type PutAccountingBankCsvMappingResponseObject interface {
+	VisitPutAccountingBankCsvMappingResponse(w http.ResponseWriter) error
+}
+
+type PutAccountingBankCsvMapping200JSONResponse AccountingBankAccount
+
+func (response PutAccountingBankCsvMapping200JSONResponse) VisitPutAccountingBankCsvMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountingBankCsvMapping400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response PutAccountingBankCsvMapping400ApplicationProblemPlusJSONResponse) VisitPutAccountingBankCsvMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountingBankCsvMapping401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutAccountingBankCsvMapping401JSONResponse) VisitPutAccountingBankCsvMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountingBankCsvMapping403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutAccountingBankCsvMapping403JSONResponse) VisitPutAccountingBankCsvMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountingBankCsvMapping404Response struct {
+}
+
+func (response PutAccountingBankCsvMapping404Response) VisitPutAccountingBankCsvMappingResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutAccountingBankCsvMapping409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response PutAccountingBankCsvMapping409ApplicationProblemPlusJSONResponse) VisitPutAccountingBankCsvMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewAccountingBankCsvRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *multipart.Reader
+}
+
+type PreviewAccountingBankCsvResponseObject interface {
+	VisitPreviewAccountingBankCsvResponse(w http.ResponseWriter) error
+}
+
+type PreviewAccountingBankCsv200JSONResponse AccountingBankCsvPreview
+
+func (response PreviewAccountingBankCsv200JSONResponse) VisitPreviewAccountingBankCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewAccountingBankCsv400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response PreviewAccountingBankCsv400ApplicationProblemPlusJSONResponse) VisitPreviewAccountingBankCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewAccountingBankCsv401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PreviewAccountingBankCsv401JSONResponse) VisitPreviewAccountingBankCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewAccountingBankCsv403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PreviewAccountingBankCsv403JSONResponse) VisitPreviewAccountingBankCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewAccountingBankCsv404Response struct {
+}
+
+func (response PreviewAccountingBankCsv404Response) VisitPreviewAccountingBankCsvResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PreviewAccountingBankCsv409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response PreviewAccountingBankCsv409ApplicationProblemPlusJSONResponse) VisitPreviewAccountingBankCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankReconciliationRequestObject struct {
+	Id     int64 `json:"id"`
+	Params GetAccountingBankReconciliationParams
+}
+
+type GetAccountingBankReconciliationResponseObject interface {
+	VisitGetAccountingBankReconciliationResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingBankReconciliation200JSONResponse AccountingBankReconciliation
+
+func (response GetAccountingBankReconciliation200JSONResponse) VisitGetAccountingBankReconciliationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankReconciliation400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingBankReconciliation400ApplicationProblemPlusJSONResponse) VisitGetAccountingBankReconciliationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankReconciliation401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingBankReconciliation401JSONResponse) VisitGetAccountingBankReconciliationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankReconciliation403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingBankReconciliation403JSONResponse) VisitGetAccountingBankReconciliationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankReconciliation404Response struct {
+}
+
+func (response GetAccountingBankReconciliation404Response) VisitGetAccountingBankReconciliationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetAccountingBankReconciliation409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingBankReconciliation409ApplicationProblemPlusJSONResponse) VisitGetAccountingBankReconciliationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAccountingBankAccountSourceRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *SetAccountingBankAccountSourceJSONRequestBody
+}
+
+type SetAccountingBankAccountSourceResponseObject interface {
+	VisitSetAccountingBankAccountSourceResponse(w http.ResponseWriter) error
+}
+
+type SetAccountingBankAccountSource200JSONResponse AccountingBankAccount
+
+func (response SetAccountingBankAccountSource200JSONResponse) VisitSetAccountingBankAccountSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAccountingBankAccountSource400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response SetAccountingBankAccountSource400ApplicationProblemPlusJSONResponse) VisitSetAccountingBankAccountSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAccountingBankAccountSource401JSONResponse externalRef0.AuthErrorResponse
+
+func (response SetAccountingBankAccountSource401JSONResponse) VisitSetAccountingBankAccountSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAccountingBankAccountSource403JSONResponse externalRef0.AuthErrorResponse
+
+func (response SetAccountingBankAccountSource403JSONResponse) VisitSetAccountingBankAccountSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAccountingBankAccountSource404Response struct {
+}
+
+func (response SetAccountingBankAccountSource404Response) VisitSetAccountingBankAccountSourceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type SetAccountingBankAccountSource409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response SetAccountingBankAccountSource409ApplicationProblemPlusJSONResponse) VisitSetAccountingBankAccountSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAccountingBankAccountSource503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response SetAccountingBankAccountSource503ApplicationProblemPlusJSONResponse) VisitSetAccountingBankAccountSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankFeedAccountsRequestObject struct {
+}
+
+type ListAccountingBankFeedAccountsResponseObject interface {
+	VisitListAccountingBankFeedAccountsResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingBankFeedAccounts200JSONResponse AccountingBankFeedAccountList
+
+func (response ListAccountingBankFeedAccounts200JSONResponse) VisitListAccountingBankFeedAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankFeedAccounts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingBankFeedAccounts401JSONResponse) VisitListAccountingBankFeedAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankFeedAccounts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingBankFeedAccounts403JSONResponse) VisitListAccountingBankFeedAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankFeedAccounts409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingBankFeedAccounts409ApplicationProblemPlusJSONResponse) VisitListAccountingBankFeedAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankFeedAccounts503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingBankFeedAccounts503ApplicationProblemPlusJSONResponse) VisitListAccountingBankFeedAccountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportAccountingBankStatementRequestObject struct {
+	Params ImportAccountingBankStatementParams
+	Body   *multipart.Reader
+}
+
+type ImportAccountingBankStatementResponseObject interface {
+	VisitImportAccountingBankStatementResponse(w http.ResponseWriter) error
+}
+
+type ImportAccountingBankStatement201JSONResponse AccountingBankImportResult
+
+func (response ImportAccountingBankStatement201JSONResponse) VisitImportAccountingBankStatementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportAccountingBankStatement400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ImportAccountingBankStatement400ApplicationProblemPlusJSONResponse) VisitImportAccountingBankStatementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportAccountingBankStatement401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ImportAccountingBankStatement401JSONResponse) VisitImportAccountingBankStatementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportAccountingBankStatement403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ImportAccountingBankStatement403JSONResponse) VisitImportAccountingBankStatementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportAccountingBankStatement404Response struct {
+}
+
+func (response ImportAccountingBankStatement404Response) VisitImportAccountingBankStatementResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ImportAccountingBankStatement409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ImportAccountingBankStatement409ApplicationProblemPlusJSONResponse) VisitImportAccountingBankStatementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportAccountingBankStatement503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ImportAccountingBankStatement503ApplicationProblemPlusJSONResponse) VisitImportAccountingBankStatementResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankExactRequestObject struct {
+	Body *AcceptAccountingBankExactJSONRequestBody
+}
+
+type AcceptAccountingBankExactResponseObject interface {
+	VisitAcceptAccountingBankExactResponse(w http.ResponseWriter) error
+}
+
+type AcceptAccountingBankExact200JSONResponse AccountingBankBulkAcceptResult
+
+func (response AcceptAccountingBankExact200JSONResponse) VisitAcceptAccountingBankExactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankExact400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response AcceptAccountingBankExact400ApplicationProblemPlusJSONResponse) VisitAcceptAccountingBankExactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankExact401JSONResponse externalRef0.AuthErrorResponse
+
+func (response AcceptAccountingBankExact401JSONResponse) VisitAcceptAccountingBankExactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankExact403JSONResponse externalRef0.AuthErrorResponse
+
+func (response AcceptAccountingBankExact403JSONResponse) VisitAcceptAccountingBankExactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankExact409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response AcceptAccountingBankExact409ApplicationProblemPlusJSONResponse) VisitAcceptAccountingBankExactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankSuggestionRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *AcceptAccountingBankSuggestionJSONRequestBody
+}
+
+type AcceptAccountingBankSuggestionResponseObject interface {
+	VisitAcceptAccountingBankSuggestionResponse(w http.ResponseWriter) error
+}
+
+type AcceptAccountingBankSuggestion200JSONResponse AccountingBankLine
+
+func (response AcceptAccountingBankSuggestion200JSONResponse) VisitAcceptAccountingBankSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankSuggestion400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response AcceptAccountingBankSuggestion400ApplicationProblemPlusJSONResponse) VisitAcceptAccountingBankSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankSuggestion401JSONResponse externalRef0.AuthErrorResponse
+
+func (response AcceptAccountingBankSuggestion401JSONResponse) VisitAcceptAccountingBankSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankSuggestion403JSONResponse externalRef0.AuthErrorResponse
+
+func (response AcceptAccountingBankSuggestion403JSONResponse) VisitAcceptAccountingBankSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptAccountingBankSuggestion404Response struct {
+}
+
+func (response AcceptAccountingBankSuggestion404Response) VisitAcceptAccountingBankSuggestionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type AcceptAccountingBankSuggestion409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response AcceptAccountingBankSuggestion409ApplicationProblemPlusJSONResponse) VisitAcceptAccountingBankSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CodeAccountingBankLineRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *CodeAccountingBankLineJSONRequestBody
+}
+
+type CodeAccountingBankLineResponseObject interface {
+	VisitCodeAccountingBankLineResponse(w http.ResponseWriter) error
+}
+
+type CodeAccountingBankLine201JSONResponse AccountingBankLine
+
+func (response CodeAccountingBankLine201JSONResponse) VisitCodeAccountingBankLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CodeAccountingBankLine400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CodeAccountingBankLine400ApplicationProblemPlusJSONResponse) VisitCodeAccountingBankLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CodeAccountingBankLine401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CodeAccountingBankLine401JSONResponse) VisitCodeAccountingBankLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CodeAccountingBankLine403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CodeAccountingBankLine403JSONResponse) VisitCodeAccountingBankLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CodeAccountingBankLine404Response struct {
+}
+
+func (response CodeAccountingBankLine404Response) VisitCodeAccountingBankLineResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type CodeAccountingBankLine409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CodeAccountingBankLine409ApplicationProblemPlusJSONResponse) VisitCodeAccountingBankLineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoAccountingBankMatchRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type UndoAccountingBankMatchResponseObject interface {
+	VisitUndoAccountingBankMatchResponse(w http.ResponseWriter) error
+}
+
+type UndoAccountingBankMatch200JSONResponse AccountingBankLine
+
+func (response UndoAccountingBankMatch200JSONResponse) VisitUndoAccountingBankMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoAccountingBankMatch401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UndoAccountingBankMatch401JSONResponse) VisitUndoAccountingBankMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoAccountingBankMatch403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UndoAccountingBankMatch403JSONResponse) VisitUndoAccountingBankMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UndoAccountingBankMatch404Response struct {
+}
+
+func (response UndoAccountingBankMatch404Response) VisitUndoAccountingBankMatchResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UndoAccountingBankMatch409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UndoAccountingBankMatch409ApplicationProblemPlusJSONResponse) VisitUndoAccountingBankMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankRulesRequestObject struct {
+}
+
+type ListAccountingBankRulesResponseObject interface {
+	VisitListAccountingBankRulesResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingBankRules200JSONResponse AccountingBankRuleList
+
+func (response ListAccountingBankRules200JSONResponse) VisitListAccountingBankRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankRules401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingBankRules401JSONResponse) VisitListAccountingBankRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankRules403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingBankRules403JSONResponse) VisitListAccountingBankRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankRules409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingBankRules409ApplicationProblemPlusJSONResponse) VisitListAccountingBankRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankRuleRequestObject struct {
+	Body *CreateAccountingBankRuleJSONRequestBody
+}
+
+type CreateAccountingBankRuleResponseObject interface {
+	VisitCreateAccountingBankRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateAccountingBankRule201JSONResponse AccountingBankRule
+
+func (response CreateAccountingBankRule201JSONResponse) VisitCreateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankRule400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingBankRule400ApplicationProblemPlusJSONResponse) VisitCreateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankRule401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingBankRule401JSONResponse) VisitCreateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankRule403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingBankRule403JSONResponse) VisitCreateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingBankRule409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingBankRule409ApplicationProblemPlusJSONResponse) VisitCreateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingBankRuleRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteAccountingBankRuleResponseObject interface {
+	VisitDeleteAccountingBankRuleResponse(w http.ResponseWriter) error
+}
+
+type DeleteAccountingBankRule204Response struct {
+}
+
+func (response DeleteAccountingBankRule204Response) VisitDeleteAccountingBankRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAccountingBankRule401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingBankRule401JSONResponse) VisitDeleteAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingBankRule403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingBankRule403JSONResponse) VisitDeleteAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingBankRule404Response struct {
+}
+
+func (response DeleteAccountingBankRule404Response) VisitDeleteAccountingBankRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteAccountingBankRule409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DeleteAccountingBankRule409ApplicationProblemPlusJSONResponse) VisitDeleteAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankRuleRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateAccountingBankRuleJSONRequestBody
+}
+
+type UpdateAccountingBankRuleResponseObject interface {
+	VisitUpdateAccountingBankRuleResponse(w http.ResponseWriter) error
+}
+
+type UpdateAccountingBankRule200JSONResponse AccountingBankRule
+
+func (response UpdateAccountingBankRule200JSONResponse) VisitUpdateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankRule400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingBankRule400ApplicationProblemPlusJSONResponse) VisitUpdateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankRule401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingBankRule401JSONResponse) VisitUpdateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankRule403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingBankRule403JSONResponse) VisitUpdateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingBankRule404Response struct {
+}
+
+func (response UpdateAccountingBankRule404Response) VisitUpdateAccountingBankRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateAccountingBankRule409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingBankRule409ApplicationProblemPlusJSONResponse) VisitUpdateAccountingBankRuleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankStatementsRequestObject struct {
+	Params ListAccountingBankStatementsParams
+}
+
+type ListAccountingBankStatementsResponseObject interface {
+	VisitListAccountingBankStatementsResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingBankStatements200JSONResponse AccountingBankStatementList
+
+func (response ListAccountingBankStatements200JSONResponse) VisitListAccountingBankStatementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankStatements401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingBankStatements401JSONResponse) VisitListAccountingBankStatementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankStatements403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingBankStatements403JSONResponse) VisitListAccountingBankStatementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingBankStatements409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingBankStatements409ApplicationProblemPlusJSONResponse) VisitListAccountingBankStatementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingBankStatementFileRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DownloadAccountingBankStatementFileResponseObject interface {
+	VisitDownloadAccountingBankStatementFileResponse(w http.ResponseWriter) error
+}
+
+type DownloadAccountingBankStatementFile200ApplicationoctetStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response DownloadAccountingBankStatementFile200ApplicationoctetStreamResponse) VisitDownloadAccountingBankStatementFileResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadAccountingBankStatementFile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingBankStatementFile401JSONResponse) VisitDownloadAccountingBankStatementFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingBankStatementFile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DownloadAccountingBankStatementFile403JSONResponse) VisitDownloadAccountingBankStatementFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingBankStatementFile404Response struct {
+}
+
+func (response DownloadAccountingBankStatementFile404Response) VisitDownloadAccountingBankStatementFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DownloadAccountingBankStatementFile409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DownloadAccountingBankStatementFile409ApplicationProblemPlusJSONResponse) VisitDownloadAccountingBankStatementFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadAccountingBankStatementFile503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DownloadAccountingBankStatementFile503ApplicationProblemPlusJSONResponse) VisitDownloadAccountingBankStatementFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankStatusRequestObject struct {
+	Params GetAccountingBankStatusParams
+}
+
+type GetAccountingBankStatusResponseObject interface {
+	VisitGetAccountingBankStatusResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingBankStatus200JSONResponse AccountingBankStatus
+
+func (response GetAccountingBankStatus200JSONResponse) VisitGetAccountingBankStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankStatus401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingBankStatus401JSONResponse) VisitGetAccountingBankStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankStatus403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingBankStatus403JSONResponse) VisitGetAccountingBankStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingBankStatus409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingBankStatus409ApplicationProblemPlusJSONResponse) VisitGetAccountingBankStatusResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -12633,6 +15657,72 @@ type StrictServerInterface interface {
 	// PutAccountingAccountGroupings Set an account's grouping codes
 	// (PUT /api/v1/accounting/accounts/{id}/groupings)
 	PutAccountingAccountGroupings(ctx context.Context, request PutAccountingAccountGroupingsRequestObject) (PutAccountingAccountGroupingsResponseObject, error)
+	// ListAccountingBankAccounts List the bank accounts
+	// (GET /api/v1/accounting/bank/accounts)
+	ListAccountingBankAccounts(ctx context.Context, request ListAccountingBankAccountsRequestObject) (ListAccountingBankAccountsResponseObject, error)
+	// CreateAccountingBankAccount Add a bank account
+	// (POST /api/v1/accounting/bank/accounts)
+	CreateAccountingBankAccount(ctx context.Context, request CreateAccountingBankAccountRequestObject) (CreateAccountingBankAccountResponseObject, error)
+	// DeleteAccountingBankAccount Delete a bank account
+	// (DELETE /api/v1/accounting/bank/accounts/{id})
+	DeleteAccountingBankAccount(ctx context.Context, request DeleteAccountingBankAccountRequestObject) (DeleteAccountingBankAccountResponseObject, error)
+	// GetAccountingBankAccount Get a bank account
+	// (GET /api/v1/accounting/bank/accounts/{id})
+	GetAccountingBankAccount(ctx context.Context, request GetAccountingBankAccountRequestObject) (GetAccountingBankAccountResponseObject, error)
+	// UpdateAccountingBankAccount Change a bank account
+	// (PUT /api/v1/accounting/bank/accounts/{id})
+	UpdateAccountingBankAccount(ctx context.Context, request UpdateAccountingBankAccountRequestObject) (UpdateAccountingBankAccountResponseObject, error)
+	// PutAccountingBankCsvMapping Save a bank account's CSV mapping
+	// (PUT /api/v1/accounting/bank/accounts/{id}/csv-mapping)
+	PutAccountingBankCsvMapping(ctx context.Context, request PutAccountingBankCsvMappingRequestObject) (PutAccountingBankCsvMappingResponseObject, error)
+	// PreviewAccountingBankCsv Preview a CSV statement
+	// (POST /api/v1/accounting/bank/accounts/{id}/csv-preview)
+	PreviewAccountingBankCsv(ctx context.Context, request PreviewAccountingBankCsvRequestObject) (PreviewAccountingBankCsvResponseObject, error)
+	// GetAccountingBankReconciliation Reconcile a bank account
+	// (GET /api/v1/accounting/bank/accounts/{id}/reconciliation)
+	GetAccountingBankReconciliation(ctx context.Context, request GetAccountingBankReconciliationRequestObject) (GetAccountingBankReconciliationResponseObject, error)
+	// SetAccountingBankAccountSource Switch a bank account's statement source
+	// (PUT /api/v1/accounting/bank/accounts/{id}/source)
+	SetAccountingBankAccountSource(ctx context.Context, request SetAccountingBankAccountSourceRequestObject) (SetAccountingBankAccountSourceResponseObject, error)
+	// ListAccountingBankFeedAccounts List the bank feed's accounts
+	// (GET /api/v1/accounting/bank/feed/accounts)
+	ListAccountingBankFeedAccounts(ctx context.Context, request ListAccountingBankFeedAccountsRequestObject) (ListAccountingBankFeedAccountsResponseObject, error)
+	// ImportAccountingBankStatement Import a bank statement
+	// (POST /api/v1/accounting/bank/imports)
+	ImportAccountingBankStatement(ctx context.Context, request ImportAccountingBankStatementRequestObject) (ImportAccountingBankStatementResponseObject, error)
+	// AcceptAccountingBankExact Accept the exact suggestions
+	// (POST /api/v1/accounting/bank/lines/accept-exact)
+	AcceptAccountingBankExact(ctx context.Context, request AcceptAccountingBankExactRequestObject) (AcceptAccountingBankExactResponseObject, error)
+	// AcceptAccountingBankSuggestion Accept a reconciliation suggestion
+	// (POST /api/v1/accounting/bank/lines/{id}/accept)
+	AcceptAccountingBankSuggestion(ctx context.Context, request AcceptAccountingBankSuggestionRequestObject) (AcceptAccountingBankSuggestionResponseObject, error)
+	// CodeAccountingBankLine Code a bank line
+	// (POST /api/v1/accounting/bank/lines/{id}/code)
+	CodeAccountingBankLine(ctx context.Context, request CodeAccountingBankLineRequestObject) (CodeAccountingBankLineResponseObject, error)
+	// UndoAccountingBankMatch Undo a bank line's match
+	// (POST /api/v1/accounting/bank/lines/{id}/undo)
+	UndoAccountingBankMatch(ctx context.Context, request UndoAccountingBankMatchRequestObject) (UndoAccountingBankMatchResponseObject, error)
+	// ListAccountingBankRules List the bank rules
+	// (GET /api/v1/accounting/bank/rules)
+	ListAccountingBankRules(ctx context.Context, request ListAccountingBankRulesRequestObject) (ListAccountingBankRulesResponseObject, error)
+	// CreateAccountingBankRule Add a bank rule
+	// (POST /api/v1/accounting/bank/rules)
+	CreateAccountingBankRule(ctx context.Context, request CreateAccountingBankRuleRequestObject) (CreateAccountingBankRuleResponseObject, error)
+	// DeleteAccountingBankRule Delete a bank rule
+	// (DELETE /api/v1/accounting/bank/rules/{id})
+	DeleteAccountingBankRule(ctx context.Context, request DeleteAccountingBankRuleRequestObject) (DeleteAccountingBankRuleResponseObject, error)
+	// UpdateAccountingBankRule Change a bank rule
+	// (PUT /api/v1/accounting/bank/rules/{id})
+	UpdateAccountingBankRule(ctx context.Context, request UpdateAccountingBankRuleRequestObject) (UpdateAccountingBankRuleResponseObject, error)
+	// ListAccountingBankStatements List the imported statements
+	// (GET /api/v1/accounting/bank/statements)
+	ListAccountingBankStatements(ctx context.Context, request ListAccountingBankStatementsRequestObject) (ListAccountingBankStatementsResponseObject, error)
+	// DownloadAccountingBankStatementFile Download an imported statement file
+	// (GET /api/v1/accounting/bank/statements/{id}/file)
+	DownloadAccountingBankStatementFile(ctx context.Context, request DownloadAccountingBankStatementFileRequestObject) (DownloadAccountingBankStatementFileResponseObject, error)
+	// GetAccountingBankStatus Get the bank reconciliation at a day
+	// (GET /api/v1/accounting/bank/status)
+	GetAccountingBankStatus(ctx context.Context, request GetAccountingBankStatusRequestObject) (GetAccountingBankStatusResponseObject, error)
 	// GetAccountingCatchUp Where the catch-up of sales stands
 	// (GET /api/v1/accounting/catch-up)
 	GetAccountingCatchUp(ctx context.Context, request GetAccountingCatchUpRequestObject) (GetAccountingCatchUpResponseObject, error)
@@ -13073,6 +16163,644 @@ func (sh *strictHandler) PutAccountingAccountGroupings(w http.ResponseWriter, r 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutAccountingAccountGroupingsResponseObject); ok {
 		if err := validResponse.VisitPutAccountingAccountGroupingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingBankAccounts operation middleware
+func (sh *strictHandler) ListAccountingBankAccounts(w http.ResponseWriter, r *http.Request) {
+	var request ListAccountingBankAccountsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingBankAccounts(ctx, request.(ListAccountingBankAccountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingBankAccounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingBankAccountsResponseObject); ok {
+		if err := validResponse.VisitListAccountingBankAccountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccountingBankAccount operation middleware
+func (sh *strictHandler) CreateAccountingBankAccount(w http.ResponseWriter, r *http.Request) {
+	var request CreateAccountingBankAccountRequestObject
+
+	var body CreateAccountingBankAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccountingBankAccount(ctx, request.(CreateAccountingBankAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccountingBankAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccountingBankAccountResponseObject); ok {
+		if err := validResponse.VisitCreateAccountingBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAccountingBankAccount operation middleware
+func (sh *strictHandler) DeleteAccountingBankAccount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteAccountingBankAccountRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAccountingBankAccount(ctx, request.(DeleteAccountingBankAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAccountingBankAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAccountingBankAccountResponseObject); ok {
+		if err := validResponse.VisitDeleteAccountingBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingBankAccount operation middleware
+func (sh *strictHandler) GetAccountingBankAccount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetAccountingBankAccountRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingBankAccount(ctx, request.(GetAccountingBankAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingBankAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingBankAccountResponseObject); ok {
+		if err := validResponse.VisitGetAccountingBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAccountingBankAccount operation middleware
+func (sh *strictHandler) UpdateAccountingBankAccount(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateAccountingBankAccountRequestObject
+
+	request.Id = id
+
+	var body UpdateAccountingBankAccountJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAccountingBankAccount(ctx, request.(UpdateAccountingBankAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAccountingBankAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAccountingBankAccountResponseObject); ok {
+		if err := validResponse.VisitUpdateAccountingBankAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutAccountingBankCsvMapping operation middleware
+func (sh *strictHandler) PutAccountingBankCsvMapping(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutAccountingBankCsvMappingRequestObject
+
+	request.Id = id
+
+	var body PutAccountingBankCsvMappingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutAccountingBankCsvMapping(ctx, request.(PutAccountingBankCsvMappingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutAccountingBankCsvMapping")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutAccountingBankCsvMappingResponseObject); ok {
+		if err := validResponse.VisitPutAccountingBankCsvMappingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewAccountingBankCsv operation middleware
+func (sh *strictHandler) PreviewAccountingBankCsv(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PreviewAccountingBankCsvRequestObject
+
+	request.Id = id
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewAccountingBankCsv(ctx, request.(PreviewAccountingBankCsvRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewAccountingBankCsv")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewAccountingBankCsvResponseObject); ok {
+		if err := validResponse.VisitPreviewAccountingBankCsvResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingBankReconciliation operation middleware
+func (sh *strictHandler) GetAccountingBankReconciliation(w http.ResponseWriter, r *http.Request, id int64, params GetAccountingBankReconciliationParams) {
+	var request GetAccountingBankReconciliationRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingBankReconciliation(ctx, request.(GetAccountingBankReconciliationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingBankReconciliation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingBankReconciliationResponseObject); ok {
+		if err := validResponse.VisitGetAccountingBankReconciliationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAccountingBankAccountSource operation middleware
+func (sh *strictHandler) SetAccountingBankAccountSource(w http.ResponseWriter, r *http.Request, id int64) {
+	var request SetAccountingBankAccountSourceRequestObject
+
+	request.Id = id
+
+	var body SetAccountingBankAccountSourceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAccountingBankAccountSource(ctx, request.(SetAccountingBankAccountSourceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAccountingBankAccountSource")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAccountingBankAccountSourceResponseObject); ok {
+		if err := validResponse.VisitSetAccountingBankAccountSourceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingBankFeedAccounts operation middleware
+func (sh *strictHandler) ListAccountingBankFeedAccounts(w http.ResponseWriter, r *http.Request) {
+	var request ListAccountingBankFeedAccountsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingBankFeedAccounts(ctx, request.(ListAccountingBankFeedAccountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingBankFeedAccounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingBankFeedAccountsResponseObject); ok {
+		if err := validResponse.VisitListAccountingBankFeedAccountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ImportAccountingBankStatement operation middleware
+func (sh *strictHandler) ImportAccountingBankStatement(w http.ResponseWriter, r *http.Request, params ImportAccountingBankStatementParams) {
+	var request ImportAccountingBankStatementRequestObject
+
+	request.Params = params
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportAccountingBankStatement(ctx, request.(ImportAccountingBankStatementRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportAccountingBankStatement")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportAccountingBankStatementResponseObject); ok {
+		if err := validResponse.VisitImportAccountingBankStatementResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptAccountingBankExact operation middleware
+func (sh *strictHandler) AcceptAccountingBankExact(w http.ResponseWriter, r *http.Request) {
+	var request AcceptAccountingBankExactRequestObject
+
+	var body AcceptAccountingBankExactJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptAccountingBankExact(ctx, request.(AcceptAccountingBankExactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptAccountingBankExact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptAccountingBankExactResponseObject); ok {
+		if err := validResponse.VisitAcceptAccountingBankExactResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptAccountingBankSuggestion operation middleware
+func (sh *strictHandler) AcceptAccountingBankSuggestion(w http.ResponseWriter, r *http.Request, id int64) {
+	var request AcceptAccountingBankSuggestionRequestObject
+
+	request.Id = id
+
+	var body AcceptAccountingBankSuggestionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptAccountingBankSuggestion(ctx, request.(AcceptAccountingBankSuggestionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptAccountingBankSuggestion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptAccountingBankSuggestionResponseObject); ok {
+		if err := validResponse.VisitAcceptAccountingBankSuggestionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CodeAccountingBankLine operation middleware
+func (sh *strictHandler) CodeAccountingBankLine(w http.ResponseWriter, r *http.Request, id int64) {
+	var request CodeAccountingBankLineRequestObject
+
+	request.Id = id
+
+	var body CodeAccountingBankLineJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CodeAccountingBankLine(ctx, request.(CodeAccountingBankLineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CodeAccountingBankLine")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CodeAccountingBankLineResponseObject); ok {
+		if err := validResponse.VisitCodeAccountingBankLineResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UndoAccountingBankMatch operation middleware
+func (sh *strictHandler) UndoAccountingBankMatch(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UndoAccountingBankMatchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UndoAccountingBankMatch(ctx, request.(UndoAccountingBankMatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UndoAccountingBankMatch")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UndoAccountingBankMatchResponseObject); ok {
+		if err := validResponse.VisitUndoAccountingBankMatchResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingBankRules operation middleware
+func (sh *strictHandler) ListAccountingBankRules(w http.ResponseWriter, r *http.Request) {
+	var request ListAccountingBankRulesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingBankRules(ctx, request.(ListAccountingBankRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingBankRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingBankRulesResponseObject); ok {
+		if err := validResponse.VisitListAccountingBankRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccountingBankRule operation middleware
+func (sh *strictHandler) CreateAccountingBankRule(w http.ResponseWriter, r *http.Request) {
+	var request CreateAccountingBankRuleRequestObject
+
+	var body CreateAccountingBankRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccountingBankRule(ctx, request.(CreateAccountingBankRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccountingBankRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccountingBankRuleResponseObject); ok {
+		if err := validResponse.VisitCreateAccountingBankRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAccountingBankRule operation middleware
+func (sh *strictHandler) DeleteAccountingBankRule(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteAccountingBankRuleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAccountingBankRule(ctx, request.(DeleteAccountingBankRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAccountingBankRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAccountingBankRuleResponseObject); ok {
+		if err := validResponse.VisitDeleteAccountingBankRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAccountingBankRule operation middleware
+func (sh *strictHandler) UpdateAccountingBankRule(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateAccountingBankRuleRequestObject
+
+	request.Id = id
+
+	var body UpdateAccountingBankRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAccountingBankRule(ctx, request.(UpdateAccountingBankRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAccountingBankRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAccountingBankRuleResponseObject); ok {
+		if err := validResponse.VisitUpdateAccountingBankRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingBankStatements operation middleware
+func (sh *strictHandler) ListAccountingBankStatements(w http.ResponseWriter, r *http.Request, params ListAccountingBankStatementsParams) {
+	var request ListAccountingBankStatementsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingBankStatements(ctx, request.(ListAccountingBankStatementsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingBankStatements")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingBankStatementsResponseObject); ok {
+		if err := validResponse.VisitListAccountingBankStatementsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadAccountingBankStatementFile operation middleware
+func (sh *strictHandler) DownloadAccountingBankStatementFile(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DownloadAccountingBankStatementFileRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadAccountingBankStatementFile(ctx, request.(DownloadAccountingBankStatementFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadAccountingBankStatementFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadAccountingBankStatementFileResponseObject); ok {
+		if err := validResponse.VisitDownloadAccountingBankStatementFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingBankStatus operation middleware
+func (sh *strictHandler) GetAccountingBankStatus(w http.ResponseWriter, r *http.Request, params GetAccountingBankStatusParams) {
+	var request GetAccountingBankStatusRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingBankStatus(ctx, request.(GetAccountingBankStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingBankStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingBankStatusResponseObject); ok {
+		if err := validResponse.VisitGetAccountingBankStatusResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -43,6 +43,46 @@ type AccountingAttachment struct {
 	UploadedByUserID uuid.UUID
 }
 
+type AccountingBankAccount struct {
+	ID               int64
+	Name             string
+	AccountNumber    string
+	Iban             *string
+	Bic              *string
+	Currency         string
+	LedgerAccountID  int32
+	Source           string
+	FeedStartDay     *time.Time
+	FeedStatus       *string
+	FeedDetail       string
+	FeedLastSyncedAt *time.Time
+	FeedNextSyncAt   *time.Time
+	FeedLeaseID      *uuid.UUID
+	FeedLeaseUntil   *time.Time
+	CsvMapping       []byte
+	Active           bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Revision         int32
+}
+
+type AccountingBankRule struct {
+	ID                   int64
+	Name                 string
+	BankAccountID        *int64
+	TextContains         *string
+	CounterpartyContains *string
+	Direction            string
+	AccountID            int32
+	TaxCodeID            *int32
+	ProjectID            *int32
+	Description          string
+	Active               bool
+	Version              int32
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
 type AccountingCatchupRequest struct {
 	Stream      string
 	RequestedAt time.Time
@@ -215,6 +255,72 @@ type AccountingSetting struct {
 	SetUpAt              time.Time
 	SetUpByUserID        uuid.UUID
 	UpdatedAt            time.Time
+}
+
+type AccountingStatement struct {
+	ID               int64
+	BankAccountID    int64
+	Source           string
+	StatementRef     string
+	PeriodFrom       time.Time
+	PeriodTo         time.Time
+	OpeningBalance   pgtype.Numeric
+	ClosingBalance   pgtype.Numeric
+	Continuity       string
+	ContinuityDetail string
+	FileName         *string
+	ObjectKey        *string
+	FileSha256       *string
+	LinesImported    int32
+	LinesSkipped     int32
+	ImportedAt       time.Time
+	ImportedByUserID *uuid.UUID
+}
+
+type AccountingStatementLine struct {
+	ID                  int64
+	StatementID         int64
+	BankAccountID       int64
+	BookedOn            time.Time
+	ValueOn             *time.Time
+	Amount              pgtype.Numeric
+	Currency            string
+	Text                string
+	Reference           string
+	Kid                 *string
+	CounterpartyName    string
+	CounterpartyAccount string
+	BankID              *string
+	Fingerprint         string
+	Ordinal             int16
+	Kind                string
+	Reversal            bool
+	Batch               []byte
+	State               string
+	CreatedAt           time.Time
+}
+
+type AccountingStatementMatch struct {
+	ID                int64
+	StatementLineID   int64
+	Kind              string
+	RequestKey        string
+	Reason            string
+	VoucherID         *int64
+	SupplierPaymentID *int64
+	BankRuleID        *int64
+	BankRuleVersion   *int32
+	MatchedAt         time.Time
+	MatchedByUserID   uuid.UUID
+	UndoneAt          *time.Time
+	UndoneByUserID    *uuid.UUID
+	UndoVoucherID     *int64
+}
+
+type AccountingStatementMatchPosting struct {
+	MatchID   int64
+	PostingID int64
+	Standing  bool
 }
 
 type AccountingSupplier struct {
@@ -423,4 +529,11 @@ type AccountingVoucher struct {
 	PostedAt          time.Time
 	PostedByUserID    *uuid.UUID
 	SourceDocumentID  *int64
+}
+
+type AccountingVoucherBankRef struct {
+	VoucherID   int64
+	BankAccount string
+	Reference   string
+	Source      string
 }

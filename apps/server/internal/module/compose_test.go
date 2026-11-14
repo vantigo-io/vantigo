@@ -3402,3 +3402,42 @@ func TestCompose_InjectsTheExpenseJournal(t *testing.T) {
 		t.Errorf("two expense journals: %v, want an error naming the slot", err)
 	}
 }
+
+// fakeBankFeed is a contracts.BankFeed no test calls.
+type fakeBankFeed struct{ contracts.BankFeed }
+
+// The bank feed (contracts.BankFeed, accounting design A29) resolves like the
+// expense journal: onto every module's Deps before any Mount runs; a provider
+// answering nil — the feed switched off — leaves it nil; and two providers
+// are a compose error naming the slot.
+func TestCompose_InjectsTheBankFeed(t *testing.T) {
+	feed := &fakeBankFeed{}
+	var got Deps
+	alpha := Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+		got = d
+		return staticHandler("alpha")(d)
+	}}
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", BankFeed: func(Deps) contracts.BankFeed { return feed }, Mount: staticHandler("beta")}, alpha)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.BankFeed != feed {
+		t.Errorf("Deps.BankFeed = %v, want the provider's", got.BankFeed)
+	}
+	_, err = compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", BankFeed: func(Deps) contracts.BankFeed { return nil }, Mount: staticHandler("beta")}, alpha)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.BankFeed != nil {
+		t.Errorf("Deps.BankFeed = %v, want nil when the provider is switched off", got.BankFeed)
+	}
+	_, err = compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", BankFeed: func(Deps) contracts.BankFeed { return &fakeBankFeed{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", BankFeed: func(Deps) contracts.BankFeed { return &fakeBankFeed{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil || !strings.Contains(err.Error(), "a bank feed") {
+		t.Errorf("two bank feeds: %v, want an error naming the slot", err)
+	}
+}

@@ -152,6 +152,7 @@ type setup struct {
 	salesTax          contracts.SalesTax
 	salesJournal      contracts.SalesJournal
 	expenseJournal    contracts.ExpenseJournal
+	bankFeed          contracts.BankFeed
 	holders           []contracts.CustomerReferenceHolder
 	variantHolders    []contracts.VariantReferenceHolder
 	personalData      []contracts.CustomerPersonalDataHolder
@@ -397,6 +398,16 @@ func WithSalesJournal(p contracts.SalesJournal) Option {
 // stays nil.
 func WithExpenseJournal(p contracts.ExpenseJournal) Option {
 	return func(s *setup) { s.expenseJournal = p }
+}
+
+// WithBankFeed sets Deps.BankFeed directly to p, for a module under test
+// that reads the bank feed Invoices holds (contracts.BankFeed, accounting
+// design A29). module.Compose and module.Workers only ever overwrite
+// Deps.BankFeed when one of the composed modules declares Module.BankFeed, so
+// a value set here survives untouched. Leaving it out is the installation
+// without the feed: Deps.BankFeed stays nil.
+func WithBankFeed(p contracts.BankFeed) Option {
+	return func(s *setup) { s.bankFeed = p }
 }
 
 // WithCustomerReferenceHolders adds holders to Deps.CustomerReferenceHolders,
@@ -917,6 +928,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		SalesTax:                 s.salesTax,
 		SalesJournal:             s.salesJournal,
 		ExpenseJournal:           s.expenseJournal,
+		BankFeed:                 s.bankFeed,
 		CustomerReferenceHolders: s.holders,
 		VariantReferenceHolders:  s.variantHolders,
 		CustomerPersonalData:     s.personalData,

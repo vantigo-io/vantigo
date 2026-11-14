@@ -56,6 +56,366 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounting/bank/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the bank accounts
+         * @description Every bank account with its ledger account, its source, its open lines and its last statement (A26); while none has the seller's account number in Invoices, the seller's account is offered as the first, mapped to the bank role's account; and whether the bank feed can be a source (A29).
+         */
+        get: operations["listAccountingBankAccounts"];
+        put?: never;
+        /**
+         * Add a bank account
+         * @description A bank account (A26): its number held to mod 11, NOK, and an active asset account as its ledger account, one bank account a ledger account. Its source is file until switched.
+         */
+        post: operations["createAccountingBankAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/accounts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a bank account
+         * @description One bank account.
+         */
+        get: operations["getAccountingBankAccount"];
+        /**
+         * Change a bank account
+         * @description Changes the name, number, IBAN, BIC, ledger account or active, held to the revision read. The ledger account of an account with statements may change: its lines keep their matches.
+         */
+        put: operations["updateAccountingBankAccount"];
+        post?: never;
+        /**
+         * Delete a bank account
+         * @description Deletes a bank account with no statement; one with statements is made inactive instead.
+         */
+        delete: operations["deleteAccountingBankAccount"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/accounts/{id}/csv-mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save a bank account's CSV mapping
+         * @description How a CSV statement of the account is read (A27): separator, encoding, header rows, date format, decimal and thousands separators, and the columns.
+         */
+        put: operations["putAccountingBankCsvMapping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/accounts/{id}/csv-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a CSV statement
+         * @description Reads a CSV file in the multipart field file with the mapping in the field mapping (JSON; the saved one when left out) and answers its first rows as they would be imported; nothing is written.
+         */
+        post: operations["previewAccountingBankCsv"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/accounts/{id}/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reconcile a bank account
+         * @description The account's lines booked in the period, each matched or open, an open line with its suggestions most certain first and the reason of each (A28, R11); and the foot: the statement's balance at the period's end, the ledger account's, the difference, and the ledger's postings no line is matched to.
+         */
+        get: operations["getAccountingBankReconciliation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/accounts/{id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch a bank account's statement source
+         * @description To feed (A29): the bank is asked, with no transaction open, for the accounts Invoices' key reads, and the account's number must be one of them — cards and tax accounts included; the worker accounting.bankfeed then reads it from the start day. To file: the feed stops; the lines it wrote stay.
+         */
+        put: operations["setAccountingBankAccountSource"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/feed/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the bank feed's accounts
+         * @description The accounts Invoices' bank key reads, from the bank, with no transaction open (A29): every kind, cards and tax accounts too, each with the bank account here that has its number.
+         */
+        get: operations["listAccountingBankFeedAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a bank statement
+         * @description Imports a camt.053 file (ISO 20022 bank-to-customer statement, versions .001.02 and newer) or a CSV file in the multipart field file (A27). A camt.053 file is read as a stream, no DOCTYPE or entity allowed, at most 20 MB; its statements are routed to the bank accounts by account number, booked entries only, a batch with its transactions kept; a statement of an account not here is left out and named in unknownAccounts. A CSV file is read with the mapping saved on bankAccountId. A line already imported is skipped, by the bank's id or by its fingerprint and its ordinal in the file. The file is kept in the object store; a gap or an overlap in the balances against the previous statement is flagged, not refused.
+         */
+        post: operations["importAccountingBankStatement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/lines/accept-exact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept the exact suggestions
+         * @description Accepts, line by line, each named line's first suggestion when it is exact (the same amount and day, or the same bank reference, and only one), each in its own transaction; the others are left.
+         */
+        post: operations["acceptAccountingBankExact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/lines/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a reconciliation suggestion
+         * @description Accepts the suggestion key names, computed again in the transaction that takes the line FOR UPDATE: linking the postings that are there, or posting the voucher shown — a supplier invoice's payment through the supplier payment's own path, a Vipps payout with its fees, a VAT payment on the settlement account, a transfer between two bank accounts matched on both statements, a bank rule's coded voucher. A second accept of the same key answers the match it made.
+         */
+        post: operations["acceptAccountingBankSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/lines/{id}/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Code a bank line
+         * @description Posts a bank voucher for the line (A28): the bank account's ledger account by the line's amount, and the lines given, through the manual journal's validation and tax computation (gross by default); a party's line settles its open item as a settlement does (R5). Refused for a customer payment (money in with a KID, a batch, or a credit to a sales income account): that is registered in Invoices (R11). The same key again answers the first's match.
+         */
+        post: operations["codeAccountingBankLine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/lines/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo a bank line's match
+         * @description Undoes the line's match while its period is open: a match that posted a voucher reverses it (a supplier payment is removed; a transfer's other line opens too); one that linked existing postings unlinks them.
+         */
+        post: operations["undoAccountingBankMatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the bank rules
+         * @description The bank rules: what a line whose text or counterparty matches is coded to.
+         */
+        get: operations["listAccountingBankRules"];
+        put?: never;
+        /**
+         * Add a bank rule
+         * @description A rule that proposes a coded voucher for a line whose text or counterparty contains the words, in a direction: bank fees to an account, with a tax code.
+         */
+        post: operations["createAccountingBankRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a bank rule
+         * @description A change is a new version; a match keeps the version it was made with.
+         */
+        put: operations["updateAccountingBankRule"];
+        post?: never;
+        /**
+         * Delete a bank rule
+         * @description Deletes a rule no match was made with; one that was used is made inactive instead.
+         */
+        delete: operations["deleteAccountingBankRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/statements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the imported statements
+         * @description The statements imported, newest first, at most 200: their period, balances, continuity and counts.
+         */
+        get: operations["listAccountingBankStatements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/statements/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download an imported statement file
+         * @description Streams the file as it was uploaded, never cached.
+         */
+        get: operations["downloadAccountingBankStatementFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/bank/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the bank reconciliation at a day
+         * @description Per active bank account, the lines booked on or before the day not matched, and the statement's and the ledger's balance at it: what locking a month or closing a VAT term warns about.
+         */
+        get: operations["getAccountingBankStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounting/catch-up": {
         parameters: {
             query?: never;
@@ -1359,6 +1719,542 @@ export interface components {
             /** Format: date-time */
             uploadedAt: string;
         };
+        AccountingBankAcceptInput: {
+            key: string;
+        };
+        AccountingBankAccount: {
+            /** @description The 11-digit Norwegian account number (BBAN). */
+            accountNumber: string;
+            active: boolean;
+            bic: string | null;
+            /** @description The saved CSV mapping; null until one is saved. */
+            csvMapping: components["schemas"]["AccountingBankCsvMapping"] | null;
+            /** @description NOK. */
+            currency: string;
+            /** @description The feed's state; null while the source is file. */
+            feed: components["schemas"]["AccountingBankFeedState"] | null;
+            /**
+             * Format: date
+             * @description The first day the feed reads; null for a file account.
+             */
+            feedStartDay: string | null;
+            iban: string | null;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: date
+             * @description The last day a statement covers.
+             */
+            lastStatementTo: string | null;
+            /** Format: int32 */
+            ledgerAccountId: number;
+            ledgerAccountName: string;
+            ledgerAccountNumber: string;
+            name: string;
+            /**
+             * Format: int32
+             * @description Statement lines not matched.
+             */
+            openLines: number;
+            /** Format: int32 */
+            revision: number;
+            /** @description Where the statement comes from: file (camt.053 or CSV uploaded) or feed (Invoices' bank feed, A29). One of: file, feed. */
+            source: string;
+        };
+        AccountingBankAccountInput: {
+            /** @description Eleven digits, spaces and dots dropped, passing mod 11; a Norwegian IBAN is read as its BBAN. */
+            accountNumber: string;
+            /** @description Default true. */
+            active?: boolean | null;
+            bic?: string | null;
+            /** @description NOK, the only currency in this phase; default NOK. */
+            currency?: string | null;
+            iban?: string | null;
+            /**
+             * Format: int32
+             * @description An active asset account no other bank account holds.
+             */
+            ledgerAccountId: number;
+            name: string;
+            /**
+             * Format: int32
+             * @description Required on a change: the revision read.
+             */
+            revision?: number | null;
+        };
+        AccountingBankAccountList: {
+            feed: components["schemas"]["AccountingBankFeedInfo"];
+            items: components["schemas"]["AccountingBankAccount"][];
+            /** @description The seller's account, while no bank account has its number. */
+            suggested: components["schemas"]["AccountingBankAccountSuggestion"] | null;
+        };
+        /** @description The seller's account in Invoices, offered as the first bank account (A26). */
+        AccountingBankAccountSuggestion: {
+            accountNumber: string;
+            bic: string | null;
+            iban: string | null;
+            /**
+             * Format: int32
+             * @description The bank role's account.
+             */
+            ledgerAccountId: number | null;
+            name: string;
+        };
+        /** @description One transaction of a batch entry, as camt.053 details it. */
+        AccountingBankBatchItem: {
+            /** @description Exact decimal text with two decimals. */
+            amount: string;
+            kid: string | null;
+            name: string;
+            reference: string;
+            text: string;
+        };
+        AccountingBankBulkAcceptInput: {
+            lineIds: number[];
+        };
+        AccountingBankBulkAcceptResult: {
+            /** @description The lines matched. */
+            accepted: number[];
+            /** @description The lines left: no exact suggestion, or matched meanwhile. */
+            skipped: number[];
+        };
+        AccountingBankCodeInput: {
+            /** @description Default the line's text. */
+            description?: string | null;
+            /** @description gross (default: the bank's amount includes the VAT) or net. */
+            entry?: components["schemas"]["AccountingEntryMode"] | null;
+            /** @description A key the client makes for the request, so a second click answers the first's match. */
+            key: string;
+            lines: components["schemas"]["AccountingBankCodeLine"][];
+        };
+        AccountingBankCodeLine: {
+            /** Format: int32 */
+            accountId: number;
+            /** @description Signed, debit positive; the lines together balance the bank line, which is added on the bank account's ledger account. */
+            amount: string;
+            /** Format: int32 */
+            customerId?: number | null;
+            /**
+             * Format: int64
+             * @description A party's open item the line settles (R5); refused for an item that stands for a document in Invoices or a supplier invoice.
+             */
+            openItemId?: number | null;
+            /** Format: int32 */
+            projectId?: number | null;
+            /** Format: int64 */
+            supplierId?: number | null;
+            /** Format: int32 */
+            taxCodeId?: number | null;
+            text?: string | null;
+        };
+        /** @description The columns of a CSV statement, counted from 0. Either amount, or debit and credit. */
+        AccountingBankCsvColumns: {
+            /**
+             * Format: int32
+             * @description A signed amount's column; or debit and credit.
+             */
+            amount?: number | null;
+            /**
+             * Format: int32
+             * @description The bank's own id of the line, when the file has one: the duplicate guard then keys on it.
+             */
+            bankId?: number | null;
+            /** Format: int32 */
+            counterpartyAccount?: number | null;
+            /** Format: int32 */
+            counterpartyName?: number | null;
+            /**
+             * Format: int32
+             * @description The money in column, as a positive figure.
+             */
+            credit?: number | null;
+            /**
+             * Format: int32
+             * @description The booking day's column, counted from 0.
+             */
+            date: number;
+            /**
+             * Format: int32
+             * @description The money out column, as a positive figure.
+             */
+            debit?: number | null;
+            /** Format: int32 */
+            kid?: number | null;
+            /** Format: int32 */
+            reference?: number | null;
+            /** Format: int32 */
+            text?: number | null;
+            /** Format: int32 */
+            valueDate?: number | null;
+        };
+        /** @description How a CSV statement of the bank account is read, saved per bank account (A27). */
+        AccountingBankCsvMapping: {
+            columns: components["schemas"]["AccountingBankCsvColumns"];
+            /** @description One of: DD.MM.YYYY, DD.MM.YY, YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY, YYYYMMDD. */
+            dateFormat: string;
+            /** @description One of: ,, .. */
+            decimalSeparator: string;
+            /** @description The separator: one character, ; , tab or |. */
+            delimiter: string;
+            /** @description utf-8 (a byte order mark is dropped) or iso-8859-1. One of: utf-8, iso-8859-1. */
+            encoding: string;
+            /**
+             * Format: int32
+             * @description Rows before the first line, skipped.
+             */
+            headerRows: number;
+            /** @description Whether the amount column shows money out as positive. */
+            invertSign: boolean;
+            /** @description "" for none. One of: "",  , ., ,, '. */
+            thousandsSeparator: string;
+        };
+        AccountingBankCsvPreview: {
+            /**
+             * Format: int32
+             * @description The rows that cannot be read.
+             */
+            errors: number;
+            /** @description The first rows, at most 20. */
+            rows: components["schemas"]["AccountingBankCsvPreviewRow"][];
+            /**
+             * Format: int32
+             * @description The rows read, header rows not counted.
+             */
+            total: number;
+        };
+        AccountingBankCsvPreviewRow: {
+            amount: string | null;
+            /** Format: date */
+            bookedOn: string | null;
+            counterpartyName: string;
+            /** @description Why the row cannot be read; null when it can. */
+            error: string | null;
+            kid: string | null;
+            reference: string;
+            /**
+             * Format: int32
+             * @description The file's row, counted from 1.
+             */
+            row: number;
+            text: string;
+        };
+        AccountingBankFeedAccount: {
+            /**
+             * Format: int64
+             * @description The bank account here with that number, if any.
+             */
+            bankAccountId: number | null;
+            /** @description operational, tax, savings, earmarks, card or other. */
+            kind: string;
+            name: string;
+            /** @description As the bank writes it; its 11 digits when it reads as a Norwegian account number. */
+            number: string;
+        };
+        AccountingBankFeedAccountList: {
+            items: components["schemas"]["AccountingBankFeedAccount"][];
+        };
+        AccountingBankFeedInfo: {
+            /** @description Whether a bank is connected in Invoices' Bank integration. */
+            connected: boolean;
+            /** @description Whether the bank feed is composed: Invoices is on and INVOICES_BANK_FEED_ENABLED is on. */
+            enabled: boolean;
+            provider: string | null;
+            /** @description Whether the bank refused the stored key. */
+            refused: boolean;
+        };
+        /** @description The bank feed's state on a bank account whose source is feed (A29). */
+        AccountingBankFeedState: {
+            /** @description What the bank or the read last said, for the screen. */
+            detail: string;
+            /**
+             * Format: date-time
+             * @description The last read that succeeded.
+             */
+            lastSyncedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the account is due again.
+             */
+            nextSyncAt: string | null;
+            /** @description ok, unauthorized (the bank refused Invoices' key), rate_limited, failing, not_offered (the bank no longer offers the account) or off (the feed is switched off or not connected in Invoices); null before the first read. */
+            status: string | null;
+        };
+        AccountingBankFoot: {
+            /** @description Statement less ledger; null without a statement balance. */
+            difference: string | null;
+            /** @description The ledger account's balance at the period's end. */
+            ledgerBalance: string;
+            /** @description The statement's balance at the period's end: the last closing balance given, and the lines booked after it; null when no statement gave a balance. */
+            statementBalance: string | null;
+            /** @description The ledger account's postings in the period no line is matched to, at most 200. */
+            unmatchedPostings: components["schemas"]["AccountingBankMatchedPosting"][];
+            /** Format: int32 */
+            unmatchedPostingsTotal: number;
+        };
+        AccountingBankImportResult: {
+            /**
+             * Format: int32
+             * @description Entries the file holds that are not booked (pending or information), left out.
+             */
+            notBooked: number;
+            statements: components["schemas"]["AccountingBankImportStatement"][];
+            /** @description The file's accounts no bank account here has: their statements were not imported. */
+            unknownAccounts: string[];
+        };
+        AccountingBankImportStatement: {
+            /** Format: int64 */
+            bankAccountId: number;
+            bankAccountName: string;
+            /** @description One of: ok, gap, overlap, mismatch, unknown. */
+            continuity: string;
+            continuityDetail: string;
+            /** Format: int32 */
+            imported: number;
+            /** Format: date */
+            periodFrom: string;
+            /** Format: date */
+            periodTo: string;
+            /** @description Whether the same statement of the same file was imported before: nothing new was written. */
+            repeated: boolean;
+            /**
+             * Format: int32
+             * @description Lines already imported, by the bank's id or by fingerprint.
+             */
+            skipped: number;
+            /** @description One of: camt053, csv, feed. */
+            source: string;
+            /** Format: int64 */
+            statementId: number;
+        };
+        AccountingBankLine: {
+            /** @description Signed: money in positive. */
+            amount: string;
+            /** Format: int64 */
+            bankAccountId: number;
+            /** @description The bank's own id of the line; for the feed its transaction id. */
+            bankId: string | null;
+            /** @description A batch entry's transactions; empty for a single one. */
+            batch: components["schemas"]["AccountingBankBatchItem"][];
+            /** Format: date */
+            bookedOn: string;
+            counterpartyAccount: string;
+            counterpartyName: string;
+            /** @description Whether the line looks like a customer payment (money in with a KID, or a batch): it is never coded as income here, and is registered in Invoices (R11). */
+            customerPayment: boolean;
+            /** Format: int64 */
+            id: number;
+            kid: string | null;
+            /** @description One of: transfer, card, internal, other. */
+            kind: string;
+            /** @description The standing match; null while open. */
+            match: components["schemas"]["AccountingBankMatch"] | null;
+            reference: string;
+            reversal: boolean;
+            /** @description One of: camt053, csv, feed. */
+            source: string;
+            /** @description One of: open, matched. */
+            state: string;
+            /** Format: int64 */
+            statementId: number;
+            /** @description Most certain first; for an open line only. */
+            suggestions: components["schemas"]["AccountingBankSuggestion"][];
+            text: string;
+            /** Format: date */
+            valueOn: string | null;
+        };
+        AccountingBankMatch: {
+            /** Format: int64 */
+            id: number;
+            /** @description One of: posting, feed_payment, batch, supplier_invoice, vipps_payout, vat, transfer, rule, coded. */
+            kind: string;
+            /** Format: date-time */
+            matchedAt: string;
+            /** Format: uuid */
+            matchedByUserId: string;
+            postings: components["schemas"]["AccountingBankMatchedPosting"][];
+            reason: string;
+            /**
+             * Format: int64
+             * @description The voucher the match posted; null when it linked postings that were there.
+             */
+            voucherId: number | null;
+        };
+        AccountingBankMatchedPosting: {
+            /** @description Exact decimal text with two decimals. */
+            amount: string;
+            description: string;
+            /** Format: int64 */
+            postingId: number;
+            /** Format: date */
+            voucherDate: string;
+            voucherDisplay: string;
+            /** Format: int64 */
+            voucherId: number;
+            voucherKind: string;
+        };
+        /** @description A posting of the voucher a suggestion would post, shown before it is posted. */
+        AccountingBankProposedLine: {
+            /** Format: int32 */
+            accountId: number;
+            accountName: string;
+            accountNumber: string;
+            /** @description Signed: debit positive. */
+            amount: string;
+            taxCode: string | null;
+            /** Format: int32 */
+            taxCodeId: number | null;
+        };
+        AccountingBankReconciliation: {
+            bankAccount: components["schemas"]["AccountingBankAccount"];
+            foot: components["schemas"]["AccountingBankFoot"];
+            /** Format: date */
+            from: string;
+            lines: components["schemas"]["AccountingBankLine"][];
+            /** Format: date */
+            to: string;
+        };
+        AccountingBankRule: {
+            /** Format: int32 */
+            accountId: number;
+            accountName: string;
+            accountNumber: string;
+            active: boolean;
+            /**
+             * Format: int64
+             * @description Null for every bank account.
+             */
+            bankAccountId: number | null;
+            counterpartyContains: string | null;
+            description: string;
+            /** @description One of: in, out, any. */
+            direction: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: int32 */
+            projectId: number | null;
+            taxCode: string | null;
+            /** Format: int32 */
+            taxCodeId: number | null;
+            textContains: string | null;
+            /** Format: int32 */
+            version: number;
+        };
+        AccountingBankRuleInput: {
+            /** Format: int32 */
+            accountId: number;
+            active?: boolean | null;
+            /** Format: int64 */
+            bankAccountId?: number | null;
+            counterpartyContains?: string | null;
+            description?: string | null;
+            /** @description One of: in, out, any. */
+            direction?: string | null;
+            name: string;
+            /** Format: int32 */
+            projectId?: number | null;
+            /** Format: int32 */
+            taxCodeId?: number | null;
+            /** @description Matched case aside within the line's text. */
+            textContains?: string | null;
+        };
+        AccountingBankRuleList: {
+            items: components["schemas"]["AccountingBankRule"][];
+        };
+        AccountingBankSourceInput: {
+            /** @description One of: file, feed. */
+            source: string;
+            /**
+             * Format: date
+             * @description For feed: the first booking day read; default today. Nothing booked before it is read.
+             */
+            startDay?: string | null;
+        };
+        AccountingBankStatement: {
+            /** Format: int64 */
+            bankAccountId: number;
+            /** @description Exact decimal text with two decimals; null when not known. */
+            closingBalance: string | null;
+            /** @description One of: ok, gap, overlap, mismatch, unknown. */
+            continuity: string;
+            continuityDetail: string;
+            fileName: string | null;
+            hasFile: boolean;
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            importedAt: string;
+            /**
+             * Format: uuid
+             * @description Null for the feed.
+             */
+            importedByUserId: string | null;
+            /** Format: int32 */
+            linesImported: number;
+            /** Format: int32 */
+            linesSkipped: number;
+            /** @description Exact decimal text with two decimals; null when not known. */
+            openingBalance: string | null;
+            /** Format: date */
+            periodFrom: string;
+            /** Format: date */
+            periodTo: string;
+            /** @description One of: camt053, csv, feed. */
+            source: string;
+            statementRef: string;
+        };
+        AccountingBankStatementList: {
+            items: components["schemas"]["AccountingBankStatement"][];
+        };
+        AccountingBankStatus: {
+            accounts: components["schemas"]["AccountingBankStatusAccount"][];
+            reconciled: boolean;
+            /** Format: date */
+            through: string;
+        };
+        AccountingBankStatusAccount: {
+            /** Format: int64 */
+            bankAccountId: number;
+            /** @description Exact decimal text with two decimals; null when not known. */
+            difference: string | null;
+            /** @description Exact decimal text with two decimals. */
+            ledgerBalance: string;
+            name: string;
+            /**
+             * Format: int32
+             * @description Lines booked on or before the day not matched.
+             */
+            openLines: number;
+            /** @description No open line and no difference. */
+            reconciled: boolean;
+            /** @description Exact decimal text with two decimals; null when not known. */
+            statementBalance: string | null;
+        };
+        AccountingBankSuggestion: {
+            /** Format: int64 */
+            bankRuleId: number | null;
+            /** @description One of: exact, likely, possible. */
+            certainty: string;
+            /** @description Whether bulk accept takes it: one posting of the same amount and the same day or the same bank reference. */
+            exact: boolean;
+            /** @description What accept names: the suggestion as it was computed. */
+            key: string;
+            /** @description feed_payment, posting, batch, supplier_invoice, vipps_payout, vat, transfer, rule, or invoices (a customer payment to register in Invoices: not accepted here). One of: feed_payment, posting, batch, supplier_invoice, vipps_payout, vat, transfer, rule, invoices. */
+            kind: string;
+            /** @description The voucher it would post, when it posts one. */
+            lines: components["schemas"]["AccountingBankProposedLine"][];
+            /**
+             * Format: int64
+             * @description A transfer's line on the other bank account's statement.
+             */
+            otherLineId: number | null;
+            /** @description The existing postings it links. */
+            postings: components["schemas"]["AccountingBankMatchedPosting"][];
+            /** @description Why it is suggested, for the screen. */
+            reason: string;
+            /** Format: int64 */
+            supplierInvoiceId: number | null;
+        };
         AccountingBrregEntity: {
             addressLine: string | null;
             city: string | null;
@@ -1496,6 +2392,8 @@ export interface components {
             reason: string | null;
         };
         AccountingLockInput: {
+            /** @description Moves the lock forward over bank lines not matched, or a statement balance that differs from the ledgers, knowingly (A28); without it such a move is refused bank_unreconciled. */
+            confirmUnreconciled?: boolean | null;
             /**
              * Format: date
              * @description A month end on or after booksStart; null unlocks every month.
@@ -1511,6 +2409,13 @@ export interface components {
         AccountingMeta: {
             /** @description Whether the installation has file storage: without it an attachment is refused (storage_not_configured), so the journal form says so before posting. */
             attachmentsEnabled: boolean;
+            /** @description Whether the bank feed is composed (Invoices on and INVOICES_BANK_FEED_ENABLED on): a bank account can then be read from it. */
+            bankFeedEnabled: boolean;
+            /**
+             * Format: int32
+             * @description Bank accounts read by the feed whose last read failed: the key refused, the account no longer offered, the feed off (A29).
+             */
+            bankFeedProblems: number;
             /** @description accounting:close */
             canClose: boolean;
             /** @description accounting:export */
@@ -1528,6 +2433,11 @@ export interface components {
             informational: number;
             /** @description Whether Invoices' sales journal is composed: open invoices are offered on the opening form, and sales post themselves. */
             invoicesEnabled: boolean;
+            /**
+             * Format: int32
+             * @description Statement lines of active bank accounts not matched (A28).
+             */
+            openBankLines: number;
             /**
              * Format: int32
              * @description Customer open items with a balance.
@@ -1804,7 +2714,7 @@ export interface components {
             taxCodeId: number | null;
             taxRole: components["schemas"]["AccountingTaxRole"] | null;
         };
-        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
+        /** @description An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached), supplier_invoice_has_payments (409: Reverse and copy of an invoice with a payment standing; remove the payment first), tax_code_not_for_supplier_invoice (400: an import code — 14, 15, 20, 21, 22, 81 to 85 — on a supplier invoice line; import VAT is a manual journal), exchange_rate_mismatch (400: both the rate and the NOK total, and they disagree), credit_note_invoice_not_posted (409: Post of a credit note whose invoice is no longer posted), credit_note_currency_mismatch (409: a credit note in another currency than the invoice it credits), credit_note_exceeds_balance (409: a credit note of more than is left on the credited invoice), supplier_invoice_item_in_use (409: Reverse and copy of an invoice whose open item another voucher standing posts on — a credit note, a payment, a settlement; reverse that first), supplier_retained (409: anonymising a person supplier before its retention date), supplier_anonymised (409: a change or an anonymisation of a supplier anonymised already), expense_already_invoiced (409: an expense made into a supplier invoice already), vat_not_registered (409: a VAT term of books whose vatTerm is none), vat_term_closed (409: a close of a closed term), vat_term_not_ended (409: a close before the term's last day has passed), vat_term_out_of_order (409: a close while an earlier term is open), vat_term_attention (409: a close while Needs attention holds facts that wait dated in the term; the detail counts them), vat_term_lock_after_end (409: a close while the lock is on or after the term's last day; move the lock back first), vat_term_unreconciled (409: a close while the VAT accounts' movement differs from the return's VAT; the detail names the vouchers), vat_term_not_closed (409: a reopening, a filing or the XML of an open term), vat_term_filed (409: a reopening or a second filing of a filed term), vat_term_not_latest (409: a reopening while a later term is closed), vat_term_not_filed (409: an unfiling of a term not filed), lock_behind_filed_term (409: the lock moved back behind a term filed at Skatteetaten, R10), lock_behind_closed_term (409: the lock moved back behind a closed VAT term; reopen the term instead), vat_term_stale (409: a close while a closed term's figures, computed again, differ from the return it was closed with), opening_vat_account (400: an opening line on a tax code's VAT or counter account; VAT owed from before the books start belongs on the VAT settlement account), tax_code_in_use (409: a change of a tax code's VAT or counter account once a posting carries the code), vat_term_inconsistent (409: a close whose counted VAT is not the return's exact total, or whose rounding difference is a krone a line or more), vat_term_partial (409: a close of a term that starts before the books without confirmPartial), vat_term_rate_missing (409: a close while a reported code has no rate on a posting's date), saft_seller_missing (409: a SAF-T export with no company in Invoices that has an organisation number), saft_file_invalid (400: an upload that is not a readable SAF-T Financial file, or one with a DOCTYPE, an entity or an external reference), saft_version_unsupported (400: a SAF-T file of version 1.20 or older; export it again as 1.30 or 1.40), saft_file_too_large (400: an upload over ACCOUNTING_SAFT_IMPORT_MAX_BYTES), saft_import_ledger_has_vouchers (409: an import while the ledger has vouchers), saft_import_applied (409: an import applied already), saft_import_unresolved (409: Apply while an account needs a number or a problem stands; the detail names them), saft_import_unmatched_customers (409: Apply while a customer with a balance is matched to no customer in Customers, or to several; create or link them there), saft_import_parties_mismatch (409: Apply of a file whose customers' or suppliers' balances differ from the control account's; the detail shows the difference), saft_import_books_start_mismatch (400: a booksStart that is not the day after the file's selection ends), saft_import_link_unknown (400: a link to a customer Customers does not hold), saft_import_other_company (409: Apply of a file of another company than the seller in Invoices, not confirmed with confirmOtherCompany), saft_export_file_removed (409: the download of a SAF-T file deleted after its retention), bank_account_number_invalid (400: an account number that is not eleven digits passing mod 11, nor a Norwegian IBAN), bank_account_currency (400: a bank account not in NOK, the only currency in this phase), bank_account_number_taken (409: another bank account has that number), bank_account_ledger_taken (409: another bank account has that ledger account), bank_account_has_statements (409: a delete of a bank account with statements; make it inactive), bank_feed_off (409: the bank feed is not composed — Invoices off or INVOICES_BANK_FEED_ENABLED off), bank_feed_not_connected (409: no bank is connected in Invoices' Bank integration), bank_feed_refused (409: the bank refused Invoices' key; store it again there), bank_feed_account_not_offered (409: the bank feed does not read that account number), bank_feed_unreachable (503: the bank could not be reached, or limited the request), bank_statement_invalid (400: not a readable camt.053 or CSV file, a DOCTYPE or an entity, a currency other than NOK), bank_statement_too_large (400: over 20 MB, or more lines than a statement holds), bank_statement_account_unknown (400: none of the file's accounts is a bank account here; the detail names them), bank_statement_account_required (400: a CSV file without bankAccountId), bank_csv_mapping_required (409: a CSV file for a bank account with no mapping saved), bank_csv_mapping_invalid (400: a mapping with no amount, or both an amount and debit and credit columns, or a column twice), bank_line_matched (409: a match stands on the line already, made by another request), bank_line_not_matched (409: an undo of a line with no match), bank_suggestion_stale (409: the suggestion accepted no longer holds; read the line again), bank_posting_matched (409: a posting the suggestion names is matched to another line meanwhile), bank_line_customer_payment (409: a customer payment — money in with a KID, a batch, or a credit to a sales income account — coded here; register it in Invoices, R11), bank_rule_in_use (409: a delete of a bank rule a match was made with; make it inactive), bank_unreconciled (409: the lock moved forward over bank lines not matched or a statement balance that differs from the ledger's, without confirmUnreconciled; the detail names the accounts). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId). */
         AccountingProblem: {
             code?: string | null;
             detail?: string | null;
@@ -3539,6 +4449,1371 @@ export interface operations {
             };
         };
     };
+    listAccountingBankAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankAccountList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    createAccountingBankAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankAccountInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankAccount"];
+                };
+            };
+            /** @description Bad Request — field errors, bank_account_number_invalid, bank_account_currency, bank_account_invalid (the ledger account is not an active asset account). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up; bank_account_number_taken, bank_account_ledger_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    getAccountingBankAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    updateAccountingBankAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankAccountInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankAccount"];
+                };
+            };
+            /** @description Bad Request — field errors, bank_account_number_invalid, bank_account_currency, bank_account_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; revision_conflict, bank_account_number_taken, bank_account_ledger_taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    deleteAccountingBankAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; bank_account_has_statements. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    putAccountingBankCsvMapping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankCsvMapping"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankAccount"];
+                };
+            };
+            /** @description Bad Request — field errors, bank_csv_mapping_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    previewAccountingBankCsv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @description The mapping as JSON. */
+                    mapping?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankCsvPreview"];
+                };
+            };
+            /** @description Bad Request — bank_statement_invalid, bank_statement_too_large, bank_csv_mapping_invalid, or no file. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; bank_csv_mapping_required. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    getAccountingBankReconciliation: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                /** @description open or matched; both when left out. */
+                state?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankReconciliation"];
+                };
+            };
+            /** @description Bad Request — period_invalid (from after to, or over 366 days). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    setAccountingBankAccountSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankSourceInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankAccount"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; bank_feed_off (the feed is not composed: Invoices off or INVOICES_BANK_FEED_ENABLED off), bank_feed_not_connected, bank_feed_refused, bank_feed_account_not_offered. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Service Unavailable — bank_feed_unreachable: the bank could not be reached or limited the request. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    listAccountingBankFeedAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankFeedAccountList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up; bank_feed_off, bank_feed_not_connected, bank_feed_refused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Service Unavailable — bank_feed_unreachable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    importAccountingBankStatement: {
+        parameters: {
+            query?: {
+                /** @description The bank account a CSV file is of; a camt.053 file names its own. */
+                bankAccountId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankImportResult"];
+                };
+            };
+            /** @description Bad Request — bank_statement_invalid (not a readable camt.053 or CSV, a DOCTYPE or an entity, not NOK), bank_statement_too_large, bank_statement_account_unknown (none of the file's accounts is a bank account here; the detail names them), bank_statement_account_required (a CSV without bankAccountId), or no file. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no bank account bankAccountId. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; bank_csv_mapping_required. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_not_configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    acceptAccountingBankExact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankBulkAcceptInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankBulkAcceptResult"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    acceptAccountingBankSuggestion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The statement line. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankAcceptInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankLine"];
+                };
+            };
+            /** @description Bad Request — field errors. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; bank_line_matched (another match stands), bank_suggestion_stale (the suggestion no longer holds), bank_posting_matched, bank_line_customer_payment, period_locked, and a supplier payment's refusals. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    codeAccountingBankLine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The statement line. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankCodeInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankLine"];
+                };
+            };
+            /** @description Bad Request — field errors, voucher_unbalanced, tax_code_unknown, party_required, open_item_unknown, amount_invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; bank_line_matched, bank_line_customer_payment, settlement_source_document, settlement_supplier_invoice, period_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    undoAccountingBankMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The statement line. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankLine"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; bank_line_not_matched, period_locked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    listAccountingBankRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankRuleList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    createAccountingBankRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankRuleInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankRule"];
+                };
+            };
+            /** @description Bad Request — field errors, account_unknown, tax_code_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    updateAccountingBankRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingBankRuleInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankRule"];
+                };
+            };
+            /** @description Bad Request — field errors, account_unknown, tax_code_unknown. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    deleteAccountingBankRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up; bank_rule_in_use. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    listAccountingBankStatements: {
+        parameters: {
+            query?: {
+                bankAccountId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankStatementList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    downloadAccountingBankStatementFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+            /** @description Service Unavailable — storage_not_configured, or the store failed. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
+    getAccountingBankStatus: {
+        parameters: {
+            query: {
+                through: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountingBankStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Conflict — books_not_set_up. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["AccountingProblem"];
+                };
+            };
+        };
+    };
     getAccountingCatchUp: {
         parameters: {
             query?: never;
@@ -3734,7 +6009,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
             };
-            /** @description Conflict — books_not_set_up; lock_behind_filed_term, lock_behind_closed_term. */
+            /** @description Conflict — books_not_set_up; lock_behind_filed_term, lock_behind_closed_term, bank_unreconciled (moving forward over bank lines not matched or balances that differ, without confirmUnreconciled). */
             409: {
                 headers: {
                     [name: string]: unknown;

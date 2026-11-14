@@ -131,6 +131,30 @@ const (
 	codeSaftLinkUnknown       = "saft_import_link_unknown"
 	codeSaftOtherCompany      = "saft_import_other_company"
 	codeSaftExportFileRemoved = "saft_export_file_removed"
+	// Delivery F, bank.
+	codeBankAccountNumberInvalid = "bank_account_number_invalid"
+	codeBankAccountCurrency      = "bank_account_currency"
+	codeBankAccountNumberTaken   = "bank_account_number_taken"
+	codeBankAccountLedgerTaken   = "bank_account_ledger_taken"
+	codeBankAccountHasStatements = "bank_account_has_statements"
+	codeBankFeedOff              = "bank_feed_off"
+	codeBankFeedNotConnected     = "bank_feed_not_connected"
+	codeBankFeedRefused          = "bank_feed_refused"
+	codeBankFeedNotOffered       = "bank_feed_account_not_offered"
+	codeBankFeedUnreachable      = "bank_feed_unreachable"
+	codeBankStatementInvalid     = "bank_statement_invalid"
+	codeBankStatementTooLarge    = "bank_statement_too_large"
+	codeBankStatementAccount     = "bank_statement_account_unknown"
+	codeBankStatementAccountReq  = "bank_statement_account_required"
+	codeBankCsvMappingRequired   = "bank_csv_mapping_required"
+	codeBankCsvMappingInvalid    = "bank_csv_mapping_invalid"
+	codeBankLineMatched          = "bank_line_matched"
+	codeBankLineNotMatched       = "bank_line_not_matched"
+	codeBankSuggestionStale      = "bank_suggestion_stale"
+	codeBankPostingMatched       = "bank_posting_matched"
+	codeBankCustomerPayment      = "bank_line_customer_payment"
+	codeBankRuleInUse            = "bank_rule_in_use"
+	codeBankUnreconciled         = "bank_unreconciled"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -159,6 +183,12 @@ var refusalCodes = []string{
 	codeSaftSellerMissing, codeSaftFileInvalid, codeSaftVersionUnsupported, codeSaftFileTooLarge,
 	codeSaftLedgerHasVouchers, codeSaftImportApplied, codeSaftImportUnresolved, codeSaftUnmatchedCustomers,
 	codeSaftPartiesMismatch, codeSaftBooksStartMismatch, codeSaftLinkUnknown, codeSaftOtherCompany, codeSaftExportFileRemoved,
+	codeBankAccountNumberInvalid, codeBankAccountCurrency, codeBankAccountNumberTaken, codeBankAccountLedgerTaken,
+	codeBankAccountHasStatements, codeBankFeedOff, codeBankFeedNotConnected, codeBankFeedRefused, codeBankFeedNotOffered,
+	codeBankFeedUnreachable, codeBankStatementInvalid, codeBankStatementTooLarge, codeBankStatementAccount,
+	codeBankStatementAccountReq, codeBankCsvMappingRequired, codeBankCsvMappingInvalid, codeBankLineMatched,
+	codeBankLineNotMatched, codeBankSuggestionStale, codeBankPostingMatched, codeBankCustomerPayment, codeBankRuleInUse,
+	codeBankUnreconciled,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a
