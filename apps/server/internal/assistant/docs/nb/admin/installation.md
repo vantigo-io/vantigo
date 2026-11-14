@@ -87,7 +87,7 @@ Modulene Kunder, Produkter, Energi, Kommunikasjon, Prosjekter, Tid, Utgifter,
 Fakturaer, Ansatte, Bemanning, Lager, Ordre, Produksjon, Kunnskap, Kalender, Microsoft Entra ID, Google Workspace og Assistent er aktivert som standard
 (`MODULES` i `vantigo.env`). De deler én PostgreSQL-database ved navn `vantigo`, med
 uavhengige skjemaer `identity`, `customers`, `products`, `energy`, `communications`,
-`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `manufacturing`, `knowledge`, `calendar`, `entra`, `google` og `assistant`, hver med sin egen
+`projects`, `time`, `expenses`, `invoices`, `staff`, `planning`, `inventory`, `orders`, `manufacturing`, `accounting`, `knowledge`, `calendar`, `entra`, `google` og `assistant`, hver med sin egen
 migreringshistorikk.
 
 ## Hva stacken inneholder
@@ -191,7 +191,7 @@ prosedyrene og gjenopprettingen.
   denne installasjonen aktiverer. `identity` er alltid montert og listes aldri. Usatt
   aktiverer hver modul binæren kan montere: `customers`, `products`, `energy`,
   `communications`, `projects`, `time`, `expenses`, `invoices`, `staff`, `planning`,
-  `inventory`, `orders`, `manufacturing`, `knowledge`, `calendar`, `entra`, `google` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
+  `inventory`, `orders`, `manufacturing`, `accounting`, `knowledge`, `calendar`, `entra`, `google` og `assistant`. `energy`, `communications`, `projects` og `invoices` krever hver
   `customers`, `time` krever `projects`, `planning` krever både `projects` og `staff`,
   `inventory` krever `products`, `orders` krever `products`, `customers` og `invoices`,
   `manufacturing` krever `products` og `inventory`, og `entra` og `google` krever hver `staff`; `projects` bruker
@@ -273,9 +273,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Standardrettigheter dekker bare objekter som opprettes etterpå; gi rettigheter
 -- på skjemaene de aktiverte modulene allerede har opprettet (legg til/fjern
 -- skjemaer så de stemmer med MODULES aktivert i din installasjon).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, knowledge, calendar, entra, google, assistant TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses, invoices, staff, planning, inventory, orders, manufacturing, accounting, knowledge, calendar, entra, google, assistant TO "vantigo_app";
 ```
 
 ## Bakgrunnsjobber og skalering
@@ -546,7 +546,7 @@ den interne nettklienten ([Google Workspace](/nb/admin/google-workspace/#tilkobl
 API-prefiksene forblir `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`,
 `/api/v1/energy`, `/api/v1/communications`, `/api/v1/projects`, `/api/v1/time`,
 `/api/v1/expenses`, `/api/v1/invoices`, `/api/v1/staff`, `/api/v1/planning`,
-`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` og `/api/v1/assistant`.
+`/api/v1/inventory`, `/api/v1/orders`, `/api/v1/manufacturing`, `/api/v1/accounting`, `/api/v1/knowledge`, `/api/v1/calendar`, `/api/v1/entra`, `/api/v1/google` og `/api/v1/assistant`.
 
 For eksempel, med nginx:
 
@@ -716,6 +716,42 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 # OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 # OTEL_EXPORTER_OTLP_HEADERS=x-api-key=secret
 ```
+
+## Regnskapet
+
+Med Regnskap-modulen slått på holder databasen selskapets regnskap, og loven har regler for
+hvor det er og hvordan det oppbevares. Dette er driftsansvarliges å følge; Vantigo kan ikke
+kontrollere det.
+
+**Forutsetninger.** Regnskap står i `MODULES` ved siden av `invoices`, og regnskapet er satt
+opp (*Sett opp regnskapet*, se [Regnskap](/nb/user/accounting/#å-sette-opp-regnskapet)).
+
+**Hvor regnskapet kan lagres** (bokføringsforskriften § 7-2). Databasen, sikkerhetskopiene og
+objektlageret med bilagenes vedlegg oppbevares i Norge — eller i en annen EØS-stat,
+Storbritannia eller Sveits når skattekontoret (Skatteetaten) er varslet om at regnskapet
+oppbevares der. Velg region for databasen, sikkerhetskopiene og
+[objektlageret](/nb/admin/object-storage/) med dette i tankene, og oppbevar varselet sammen
+med selskapets papirer.
+
+**Hvor lenge.** Bilag, posteringer og vedlegg endres eller slettes aldri av applikasjonen.
+Loven krever at de oppbevares i fem år etter regnskapsårets slutt; en rotasjon av
+sikkerhetskopier som forkaster eldre kopier, må likevel beholde en kopi som dekker dem.
+
+**Den årlige kontrollen av sikkerhetskopien** (bokføringsforskriften § 7-5). Én gang i året
+viser du at regnskapet kan leses tilbake fra sikkerhetskopien:
+
+1. Gjenopprett den nyeste databasekopien og objektlagerets kopi i et eget miljø.
+2. Start Vantigo mot det, logg inn med en bruker som har `accounting:read`, og åpne
+   **Rapporter** → **Bokføringsspesifikasjon** for siste avsluttede måned; åpne et bilag med
+   vedlegg og last det ned.
+3. Sammenlign **Saldobalanse** ved årets slutt med den som ble laget i produksjon.
+4. Skriv ned datoen, hvem som gjorde det og resultatet, og oppbevar det sammen med
+   selskapets papirer.
+
+**Hva som kan gå galt.** En gjenoppretting uten objektlagerets kopi viser alle bilag, men
+svarer 503 på vedleggene; sikkerhetskopien av filene er en del av regnskapet. En databaserolle
+uten tilgang til skjemaet `accounting` svarer 500 på alle Regnskap-sider
+([Databaseroller](#databaseroller)).
 
 ## Produksjonsmerknader
 
@@ -1102,6 +1138,19 @@ Fra denne utgivelsen nekter Produkter også å slette en variant, eller å gjør
 til en tjeneste, mens en aktiv stykkliste navngir den. Å rulle migreringen tilbake fjerner
 skjemaet med alle arbeidsstasjoner og stykklister. Se
 [Produksjon](/nb/admin/manufacturing/).
+
+**Utgivelsen med Regnskap.** Den har `00179_accounting_baseline.sql`, skjemaet `accounting`,
+tomt. En installasjon som lar `MODULES` være uten verdi, får modulen, med flisen **Regnskap**
+for alle som får `accounting:read`, ved oppgradering; en som lister `MODULES`, får den når
+`accounting` legges til ved siden av `invoices`, som den krever — `accounting` uten den
+nekter å starte og navngir den som mangler. Appen gjør ingenting før en med **Forvalte
+regnskapet** (`accounting:close`) har fullført *Sett opp regnskapet*; de fire tillatelsene er
+nye og ligger ikke i noen egendefinert rolle før en eier legger dem til. En rolle med færrest
+mulige rettigheter trenger skjemaet `accounting` ([Databaseroller](#databaseroller)). Den
+starter ingen bakgrunnsjobb og trenger ingen innstilling; vedlegg bruker
+[objektlageret](/nb/admin/object-storage/). Les [Regnskapet](#regnskapet) før første bilag.
+Å rulle migreringen tilbake sletter skjemaet med alle bilag — ikke gjør det når regnskapet er
+i bruk.
 
 **Utgivelsen med kompetanse i Ansatte.** Den har `00066_staff_competence.sql`:
 kompetansekatalogen — fem kategorier og femten norske sertifikater forhåndsdefinert — og
