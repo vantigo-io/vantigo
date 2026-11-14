@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"slices"
 	"time"
 
@@ -65,14 +66,17 @@ const (
 	// The streams.
 	streamDocuments = "invoices.documents"
 	streamFacts     = "invoices.facts"
+	// streamExpenses is Expenses' fact log by seq (delivery C, R2).
+	streamExpenses = "expenses.facts"
 )
 
 // catchupLease is the lease a claim takes. A test may shorten it.
 var catchupLease = 2 * time.Minute
 
 // catchupStreams are the streams in the order a run reads them: documents
-// first, so an invoice's item exists before its payment's fact posts.
-var catchupStreams = []string{streamDocuments, streamFacts}
+// first, so an invoice's item exists before its payment's fact posts; then
+// Expenses' facts, which no sales item waits for.
+var catchupStreams = []string{streamDocuments, streamFacts, streamExpenses}
 
 // errLeaseLost is a write that found the stream no longer under this claim.
 var errLeaseLost = errors.New("accounting: the catch-up's lease was lost")
@@ -88,6 +92,9 @@ const (
 	handlerDocumentIssued  = "accounting.catchup.document-issued"
 	handlerPaymentReceived = "accounting.catchup.payment-received"
 	handlerPaymentRemoved  = "accounting.catchup.payment-removed"
+	// handlerExpenses wakes the expenses stream on every event of
+	// Expenses' fact log (R2).
+	handlerExpenses = "accounting.catchup.expenses"
 )
 
 // eventHandlers wake the catch-up for the stream an event belongs to (R7):
@@ -116,7 +123,17 @@ func eventHandlers(d module.Deps) []events.Handler {
 			Handle: wake(streamFacts)},
 		{Name: handlerPaymentRemoved, Events: []events.EventRef{{Name: contracts.PaymentRemoved{}.EventName(), Version: 1}},
 			Handle: wake(streamFacts)},
+		{Name: handlerExpenses, Events: expenseEvents(), Handle: wake(streamExpenses)},
 	}
+}
+
+// expenseEvents is every event Expenses' fact log publishes, at version 1.
+func expenseEvents() []events.EventRef {
+	out := make([]events.EventRef, 0, len(contracts.ExpenseEventNames))
+	for _, name := range contracts.ExpenseEventNames {
+		out = append(out, events.EventRef{Name: name, Version: 1})
+	}
+	return out
 }
 
 // clockOf is Deps' clock, time.Now without one.
@@ -172,10 +189,11 @@ func (w *CatchUpWorker) logger() *slog.Logger {
 	return slog.Default()
 }
 
-// RunOnce runs every stream that is due once: nothing without Invoices'
-// journal or before the books are set up.
+// RunOnce runs every stream that is due once: nothing before the books are
+// set up, and no stream whose journal is not composed — Invoices' two
+// without Invoices, Expenses' without Expenses.
 func (w *CatchUpWorker) RunOnce(ctx context.Context) error {
-	if w.deps.SalesJournal == nil || w.deps.Pool == nil {
+	if w.deps.Pool == nil || (w.deps.SalesJournal == nil && w.deps.ExpenseJournal == nil) {
 		return nil
 	}
 	if _, err := store.New(w.deps.Pool).GetSettings(ctx); noRows(err) {
@@ -188,11 +206,22 @@ func (w *CatchUpWorker) RunOnce(ctx context.Context) error {
 	}
 	var errs []error
 	for _, stream := range catchupStreams {
+		if !composed(w.deps, stream) {
+			continue
+		}
 		if err := w.runStream(ctx, stream); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", stream, err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// composed reports whether a stream's journal is in Deps.
+func composed(d module.Deps, stream string) bool {
+	if stream == streamExpenses {
+		return d.ExpenseJournal != nil
+	}
+	return d.SalesJournal != nil
 }
 
 // runStream claims a stream, reads it after its cursor and posts what it
@@ -253,7 +282,7 @@ func (w *CatchUpWorker) runStream(ctx context.Context, stream string) error {
 func (w *CatchUpWorker) read(ctx context.Context, stream string, lease uuid.UUID, until time.Time, position int64) (more bool, err error) {
 	now := clockOf(w.deps)
 	for {
-		items, err := readStream(ctx, w.deps.SalesJournal, stream, position, catchupPage)
+		items, err := readAny(ctx, w.deps, stream, position, catchupPage)
 		if err != nil {
 			return false, err
 		}
@@ -300,7 +329,8 @@ func deadlocked(err error) bool {
 
 // sourceItem is one item of a stream: an issued document, or a fact with the
 // invoice it is about and that invoice's credit notes when a write-off's VAT
-// needs them.
+// needs them, or a fact of Expenses' log with the amounts in NOK a person
+// entered for its lines in another currency.
 type sourceItem struct {
 	stream   string
 	position int64
@@ -308,6 +338,17 @@ type sourceItem struct {
 	fact     *contracts.JournalFact
 	invoice  *contracts.JournalDocument
 	credits  []contracts.JournalDocument
+	expense  *contracts.ExpenseFact
+	nok      map[int64]*big.Rat
+}
+
+// readAny reads up to limit items of any stream after position, from the
+// journal Deps composes for it.
+func readAny(ctx context.Context, d module.Deps, stream string, position int64, limit int) ([]sourceItem, error) {
+	if stream == streamExpenses {
+		return readExpenseStream(ctx, d.ExpenseJournal, position, limit)
+	}
+	return readStream(ctx, d.SalesJournal, stream, position, limit)
 }
 
 // invoiceID is the invoice the item is about: a document's own id, or for a
@@ -380,6 +421,9 @@ const (
 // has an earlier row there. Any other error rolls the item back, and the
 // stream stops there.
 func postSource(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (outcome, error) {
+	if it.expense != nil {
+		return postExpense(ctx, tx, it, now)
+	}
 	q := store.New(tx)
 	books, err := readSalesBooks(ctx, q)
 	if err != nil {
@@ -495,8 +539,11 @@ func readStoredVoucher(ctx context.Context, q *store.Queries, kind string, id in
 
 // itemSource is an item's source key.
 func itemSource(it sourceItem) *Source {
-	if it.doc != nil {
+	switch {
+	case it.doc != nil:
 		return documentSource(*it.doc)
+	case it.expense != nil:
+		return expenseSource(*it.expense)
 	}
 	return factSource(*it.fact)
 }
@@ -520,6 +567,12 @@ func recordUnposted(ctx context.Context, q *store.Queries, it sourceItem, reason
 		f := it.fact
 		p.FactDate, p.DocumentID, p.CustomerID = &f.Date, &f.InvoiceID, &f.CustomerID
 		p.DocumentNumber, p.Amount = ptr(fmt.Sprint(f.InvoiceNumber)), ptr(f.AmountNOK)
+	case it.expense != nil:
+		f := it.expense
+		p.FactDate, p.OrderKey = &f.Date, ptr(expenseOrderKey(*f))
+		if total, ok := expenseNOKTotal(*f); ok {
+			p.Amount = ptr(total)
+		}
 	}
 	if p.Amount != nil {
 		if _, ok := parseAmount(*p.Amount); !ok {

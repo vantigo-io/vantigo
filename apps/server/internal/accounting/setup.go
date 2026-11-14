@@ -15,8 +15,12 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
 )
 
-// currency is the books' currency in this phase (§12).
+// currency is the books' currency in this phase (§12); a purchase in another
+// currency is kept beside it on its postings (R8).
 const currency = "NOK"
+
+// payablesSoonDays is how far ahead the meta counts supplier invoices due.
+const payablesSoonDays = 7
 
 // GetAccountingMeta is what the caller may do, and whether the books are set up.
 func (s *server) GetAccountingMeta(ctx context.Context, _ gen.GetAccountingMetaRequestObject) (gen.GetAccountingMetaResponseObject, error) {
@@ -28,7 +32,7 @@ func (s *server) GetAccountingMeta(ctx context.Context, _ gen.GetAccountingMetaR
 		CanPost: s.has(ctx, permPost), CanClose: s.has(ctx, permClose), CanExport: s.has(ctx, permExport),
 		Currency: currency, Today: apiDate(today),
 		ProjectsEnabled: s.deps.Projects != nil, InvoicesEnabled: s.deps.SalesJournal != nil,
-		AttachmentsEnabled: s.storageConfigured,
+		ExpensesEnabled: s.deps.ExpenseJournal != nil, AttachmentsEnabled: s.storageConfigured,
 	}
 	q := store.New(s.deps.Pool)
 	settings, err := q.GetSettings(ctx)
@@ -49,6 +53,14 @@ func (s *server) GetAccountingMeta(ctx context.Context, _ gen.GetAccountingMetaR
 	if out.Unposted, err = q.CountUnposted(ctx); err != nil {
 		return nil, err
 	}
+	if out.Informational, err = q.CountInformational(ctx); err != nil {
+		return nil, err
+	}
+	due, err := q.PayablesDue(ctx, store.PayablesDueParams{Today: today, Soon: today.AddDate(0, 0, payablesSoonDays)})
+	if err != nil {
+		return nil, err
+	}
+	out.PayablesOverdue, out.PayablesDueSoon = due.Overdue, due.DueSoon
 	return out, nil
 }
 

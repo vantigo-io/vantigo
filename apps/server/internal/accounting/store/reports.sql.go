@@ -281,18 +281,20 @@ func (q *Queries) JournalPostings(ctx context.Context, arg JournalPostingsParams
 const partyItemsAt = `-- name: PartyItemsAt :many
 SELECT o.id, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
     o.source_document_id,
-    (SELECT s.name FROM accounting.suppliers s WHERE s.id = o.supplier_id)::varchar AS supplier_name,
-    (SELECT min(si.id) FROM accounting.supplier_invoices si WHERE si.open_item_id = o.id)::bigint AS supplier_invoice_id,
+    sup.name AS supplier_name, coalesce(inv.supplier_invoice_id, 0)::bigint AS supplier_invoice_id,
     coalesce(sum(p.amount), 0)::text AS balance,
     coalesce(sum(p.amount) FILTER (WHERE v.voucher_date >= $1::date), 0)::text AS movement
 FROM accounting.open_items o
 JOIN accounting.postings p ON p.open_item_id = o.id
 JOIN accounting.vouchers v ON v.id = p.voucher_id
+LEFT JOIN accounting.suppliers sup ON sup.id = o.supplier_id
+LEFT JOIN LATERAL (SELECT si.id AS supplier_invoice_id FROM accounting.supplier_invoices si
+    WHERE si.open_item_id = o.id ORDER BY si.id LIMIT 1) inv ON true
 WHERE o.kind = $2 AND v.voucher_date <= $3::date
   AND ($4::int IS NULL OR o.customer_id = $4::int)
   AND ($5::bigint IS NULL OR o.supplier_id = $5::bigint)
   AND ($6::int IS NULL OR p.project_id = $6::int)
-GROUP BY o.id
+GROUP BY o.id, sup.name, inv.supplier_invoice_id
 HAVING coalesce(sum(p.amount), 0) <> 0
     OR coalesce(sum(p.amount) FILTER (WHERE v.voucher_date >= $1::date), 0) <> 0
 ORDER BY coalesce(o.customer_id::bigint, o.supplier_id), o.due_date NULLS FIRST, o.id
@@ -316,7 +318,7 @@ type PartyItemsAtRow struct {
 	DocumentDate      *time.Time
 	DueDate           *time.Time
 	SourceDocumentID  *int64
-	SupplierName      string
+	SupplierName      *string
 	SupplierInvoiceID int64
 	Balance           string
 	Movement          string

@@ -13,6 +13,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/accounting/gen"
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
+	"github.com/vantigo-io/vantigo/server/internal/brreg"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -33,6 +34,9 @@ type server struct {
 	// storageConfigured is whether the deployment has an object store at all
 	// (an unset STORAGE_PROVIDER answers ErrNotConfigured on every use).
 	storageConfigured bool
+	// brreg is the Brønnøysund client the supplier lookup reads through
+	// (internal/brreg), its transport and backoff Deps' seams.
+	brreg *brreg.Client
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
@@ -40,7 +44,15 @@ var _ gen.StrictServerInterface = (*server)(nil)
 func newServer(d module.Deps) *server {
 	objects, objectsErr := moduleObjectStore(d)
 	configured := objectsErr == nil && (d.ObjectStore != nil || (d.Config != nil && d.Config.StorageProvider != ""))
-	return &server{deps: d, objects: objects, objectsErr: objectsErr, storageConfigured: configured}
+	baseURL, timeout := "https://data.brreg.no", 15*time.Second
+	if d.Config != nil && d.Config.BrregBaseURL != "" {
+		baseURL = d.Config.BrregBaseURL
+		if d.Config.BrregTimeout > 0 {
+			timeout = d.Config.BrregTimeout
+		}
+	}
+	return &server{deps: d, objects: objects, objectsErr: objectsErr, storageConfigured: configured,
+		brreg: brreg.New(baseURL, timeout, d.HTTPTransport, d.HTTPBackoff)}
 }
 
 // has reports whether the caller holds a permission key. It fails closed.

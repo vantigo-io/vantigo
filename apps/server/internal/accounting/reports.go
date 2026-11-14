@@ -378,7 +378,10 @@ func (t *table) parties(ctx context.Context, q *store.Queries, in reportInput) (
 				ids = append(ids, *r.CustomerID)
 				cells["customerId"] = fmt.Sprint(party)
 			}
-			t.row(gen.Heading, 0, cells)
+			if r.SupplierID != nil && r.SupplierName != nil {
+				cells["party"] = *r.SupplierName
+			}
+			t.row(gen.Heading, 0, cells).SupplierId = r.SupplierID
 		}
 		balance, movement := mustRat(r.Balance), mustRat(r.Movement)
 		document := deref(r.DocumentNumber)
@@ -394,7 +397,11 @@ func (t *table) parties(ctx context.Context, q *store.Queries, in reportInput) (
 		}
 		bucket := agedBucket(r.DueDate, in.to)
 		cells[bucket] = money(balance)
-		t.row(gen.Line, 1, cells).DocumentId = r.SourceDocumentID
+		line := t.row(gen.Line, 1, cells)
+		line.DocumentId, line.SupplierId = r.SourceDocumentID, r.SupplierID
+		if r.SupplierInvoiceID != 0 {
+			line.SupplierInvoiceId = ptr(r.SupplierInvoiceID)
+		}
 		for _, m := range []map[string]*big.Rat{partyTotal, total} {
 			accumulate(m, "balance", balance)
 			accumulate(m, "movement", movement)

@@ -45,7 +45,8 @@ SELECT id, fiscal_year, number FROM accounting.vouchers WHERE id = ANY(sqlc.arg(
 SELECT p.voucher_id, p.line_no, p.account_id, a.number AS account_number, a.name AS account_name,
     p.amount::text AS amount, p.tax_code_id, t.code AS tax_code, p.tax_role, p.tax_base,
     p.customer_id, p.supplier_id, p.open_item_id, p.project_id, p.description, p.tax_specification,
-    p.posting_rule_id, p.posting_rule_version, rv.name AS posting_rule_name
+    p.posting_rule_id, p.posting_rule_version, rv.name AS posting_rule_name, p.currency,
+    coalesce(p.currency_amount::text, '')::text AS currency_amount, coalesce(p.exchange_rate::text, '')::text AS exchange_rate
 FROM accounting.postings p
 LEFT JOIN accounting.posting_rule_versions rv ON rv.rule_id = p.posting_rule_id AND rv.version = p.posting_rule_version
 JOIN accounting.accounts a ON a.id = p.account_id

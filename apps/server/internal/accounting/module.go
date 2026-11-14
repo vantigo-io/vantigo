@@ -15,6 +15,7 @@ package accounting
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/accounting/gen"
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
@@ -44,7 +45,7 @@ var permissions = []contracts.Permission{
 	},
 	{
 		Key: permPost, Display: "Post vouchers",
-		Description: "Post manual journals, reverse vouchers, attach files, register payments on open items and retry the facts under Needs attention.",
+		Description: "Post manual journals, reverse vouchers, attach files, keep the suppliers, enter, post and pay supplier invoices, register payments on open items and act on the facts under Needs attention.",
 		Category:    "Accounting", Sensitive: false, Delegable: true,
 	},
 	{
@@ -59,13 +60,35 @@ var permissions = []contracts.Permission{
 	},
 }
 
-// limits are the module's rate limits; none beyond the platform's.
-var limits = map[string]ratelimit.Policy{}
+// policyBrregLookup bounds the supplier lookup, the module's one call out of
+// the installation: a lookup as one types, per client address.
+var policyBrregLookup = ratelimit.Policy{
+	Name:    "AccountingBrregLookup",
+	Limit:   600,
+	Window:  time.Hour,
+	Message: "Too many lookups in Brønnøysundregisteret. Please wait a little.",
+}
+
+// policyFileUpload bounds the supplier invoices' file uploads, which write
+// bytes outside the database, as Expenses' receipt uploads are bounded.
+var policyFileUpload = ratelimit.Policy{
+	Name:    "AccountingFileUpload",
+	Limit:   600,
+	Window:  time.Hour,
+	Message: "Too many file uploads. Please wait a little before adding more.",
+}
+
+// limits are the module's rate limits beyond the platform's.
+var limits = map[string]ratelimit.Policy{
+	"lookupAccountingSupplierBrreg":       policyBrregLookup,
+	"uploadAccountingSupplierInvoiceFile": policyFileUpload,
+}
 
 // bodyLimits raises the router's request-body cap for an attachment: the file
 // at most 20 MB and room for the multipart framing around it.
 var bodyLimits = map[string]int64{
-	"uploadAccountingAttachment": maxAttachmentBytes + 64<<10,
+	"uploadAccountingAttachment":          maxAttachmentBytes + 64<<10,
+	"uploadAccountingSupplierInvoiceFile": maxAttachmentBytes + 64<<10,
 	// The opening balances may name a couple of thousand open documents.
 	"postAccountingOpening": 4 << 20,
 }
