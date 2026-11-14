@@ -68,7 +68,7 @@ func (b *books) sys(t *testing.T, kind, date string, source accounting.Source, l
 	err := db.WithTx(t.Context(), b.h.Pool(), pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var err error
 		posted, err = accounting.Post(t.Context(), tx, accounting.Voucher{Kind: kind, Date: d, Description: kind + " " + date,
-			Source: &source, Rule: "test." + kind, RuleVersion: 1, Lines: lines})
+			Source: &source, Rule: "test." + kind, RuleVersion: 1, At: b.h.Now(), Lines: lines})
 		return err
 	})
 	if err != nil {
@@ -159,6 +159,10 @@ func (b *books) ledger(t *testing.T) {
 		t.Fatalf("reverse = %d %s", res.Status, res.Body)
 	}
 	b.close(t, 2026, 1)
+	// A loss's VAT taken back with no base posting beside it.
+	b.sys(t, "write_off", "2026-03-10", accounting.Source{Module: "invoices", Kind: "write_off", ID: 99},
+		accounting.Line{AccountID: b.acc("2700"), Amount: rat("100"), TaxCodeID: &c3, TaxRole: "tax", TaxBase: rat("400"), TaxSpecification: "tapPåKrav"},
+		accounting.Line{Role: "receivables", Amount: rat("-100"), CustomerID: &acme})
 	mustPost(t, b.c, "2026-03-05", "Leie mars",
 		line{"accountId": b.acc("6300"), "amount": "8000.00", "taxCodeId": b.code("1")},
 		line{"accountId": b.acc("1920"), "amount": "-10000.00"})
@@ -248,7 +252,7 @@ type xBalances struct {
 }
 type xFile struct {
 	Header struct {
-		SelectionCriteria struct{ PeriodStart, PeriodEnd, PeriodStartYear int }
+		SelectionCriteria struct{ SelectionStartDate, SelectionEndDate string }
 	}
 	Accounts []struct {
 		AccountID, GroupingCategory, GroupingCode string
@@ -273,6 +277,7 @@ type xFile struct {
 				TransactionID      string
 				Period, PeriodYear int
 				TransactionDate    string
+				SystemEntryDate    string
 				Lines              []struct {
 					AccountID, CustomerID, SupplierID string
 					Debit                             *xAmount `xml:"DebitAmount"`
@@ -493,23 +498,33 @@ func TestSaftExport_TheLedgerGolden(t *testing.T) {
 	for _, j := range f.Entries.Journals {
 		journals[j.JournalID] = len(j.Transactions)
 	}
-	if journals["SALES"] != 5 || journals["PURCHASES"] != 3 || journals["BANK"] != 3 || journals["GENERAL"] != 8 {
+	if journals["SALES"] != 6 || journals["PURCHASES"] != 3 || journals["BANK"] != 3 || journals["GENERAL"] != 8 {
 		t.Errorf("journals = %v", journals)
 	}
-	// TaxInformation: the base line carries the base and 0.00, the VAT line
-	// its VAT, each on its own side; the euro purchase its currency.
-	var sale, euro, reverse bool
+	// TaxInformation as Skatteetaten's example file has it: on the base line,
+	// its base and the voucher's VAT for the code; none on a VAT line, but for
+	// a loss's VAT taken back with no base line beside it.
+	var sale, euro, reverse, loss, lossAlone bool
 	for _, j := range f.Entries.Journals {
 		for _, tx := range j.Transactions {
 			for _, l := range tx.Lines {
+				if len(l.Tax) > 0 && (l.AccountID == "2700" || l.AccountID == "2710" || l.AccountID == "2705" || l.AccountID == "2715") {
+					if l.AccountID == "2700" && l.Debit != nil && l.Debit.Amount == "100.00" && l.Tax[0].TaxBase == "400.00" && l.Tax[0].Debit != nil && l.Tax[0].Debit.Amount == "100.00" {
+						lossAlone = true
+					} else {
+						t.Errorf("%s: a VAT line on %s carries TaxInformation %+v", tx.TransactionID, l.AccountID, l.Tax)
+					}
+				}
 				for _, x := range l.Tax {
 					switch {
-					case l.AccountID == "3000" && x.TaxCode == "3" && x.TaxBase == "10000.00" && x.Credit != nil && x.Credit.Amount == "0.00":
+					case l.AccountID == "3000" && x.TaxCode == "3" && x.TaxBase == "10000.00" && x.Credit != nil && x.Credit.Amount == "2500.00":
 						sale = true
-					case l.AccountID == "2710" && x.TaxCode == "1" && x.Debit != nil && x.Debit.Amount == "2250.00" && x.Debit.CurrencyCode == "EUR":
+					case l.AccountID == "4005" && x.TaxCode == "1" && x.TaxBase == "9000.00" && x.Debit != nil && x.Debit.Amount == "2250.00":
 						euro = true
-					case l.AccountID == "2705" && x.TaxCode == "86" && x.Credit != nil && x.Credit.Amount == "500.00" && x.TaxBase == "2000.00":
+					case l.AccountID == "6300" && x.TaxCode == "86" && x.TaxBase == "2000.00" && x.Credit != nil && x.Credit.Amount == "500.00":
 						reverse = true
+					case l.AccountID == "7830" && x.TaxCode == "3" && x.TaxBase == "2000.00" && x.Debit != nil && x.Debit.Amount == "500.00":
+						loss = true
 					}
 				}
 				if l.AccountID == "2400" && l.Credit != nil && l.Credit.Amount == "11250.00" && (l.Credit.CurrencyCode != "EUR" || l.Credit.CurrencyAmount != "1000.00") {
@@ -518,12 +533,24 @@ func TestSaftExport_TheLedgerGolden(t *testing.T) {
 			}
 		}
 	}
-	if !sale || !euro || !reverse {
-		t.Errorf("tax information: sale %v, euro %v, reverse charge %v", sale, euro, reverse)
+	if !sale || !euro || !reverse || !loss || !lossAlone {
+		t.Errorf("tax information: sale %v, euro %v, reverse charge %v, loss %v, a loss's VAT alone %v", sale, euro, reverse, loss, lossAlone)
 	}
+	// Every voucher was entered on the harness's day: no wall clock in the
+	// file (the golden would move with the date the test runs on).
+	for _, j := range f.Entries.Journals {
+		for _, tx := range j.Transactions {
+			if tx.SystemEntryDate != b.h.Now().Format(time.DateOnly) {
+				t.Errorf("%s entered %s, the harness's day is %s", tx.TransactionID, tx.SystemEntryDate, b.h.Now().Format(time.DateOnly))
+			}
+		}
+	}
+	// BaseRate 0 for exactly the input codes whose VAT is a cost — no VAT
+	// account to deduct on — as the reference names them.
+	notDeductible := map[string]bool{"82": true, "84": true, "85": true, "87": true, "89": true, "92": true}
 	for _, c := range f.TaxCodes {
-		if (c.TaxCode == "87" && c.BaseRate != "0") || (c.TaxCode == "1" && c.BaseRate != "100") {
-			t.Errorf("code %s base rate %s", c.TaxCode, c.BaseRate)
+		if want := map[bool]string{true: "0", false: "100"}[notDeductible[c.TaxCode]]; c.BaseRate != want {
+			t.Errorf("code %s base rate %s, want %s", c.TaxCode, c.BaseRate, want)
 		}
 	}
 	golden := filepath.Join("saft", "testdata", "golden", "2026-ledger.xml")
@@ -569,7 +596,7 @@ func TestSaftExport_EmptyYearPeriodsAndRefusals(t *testing.T) {
 	b.ledger(t)
 	_, files = b.export(t, map[string]any{"fiscalYear": 2026, "fromPeriod": 2, "toPeriod": 3})
 	f = b.checkFile(t, files[0], "2026-02-01", "2026-03-31")
-	if s := f.Header.SelectionCriteria; s.PeriodStart != 2 || s.PeriodEnd != 3 {
+	if s := f.Header.SelectionCriteria; s.SelectionStartDate != "2026-02-01" || s.SelectionEndDate != "2026-03-31" {
 		t.Errorf("selection = %+v", s)
 	}
 	tb := b.report(t, "trial_balance", "2026-02-01", "2026-03-31")
@@ -974,4 +1001,142 @@ func TestSaftImport_PartiesThatDoNotAddUp(t *testing.T) {
 		"customerLinks": map[string]int32{"15000": customerAcme}}), http.StatusConflict, "saft_import_parties_mismatch")
 	expectProblem(t, c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), map[string]any{"vatTerm": "none", "language": "en",
 		"booksStart": "2026-02-01"}), http.StatusBadRequest, "saft_import_books_start_mismatch")
+}
+
+// TestSaftExport_TaxInformationReproducesTheVatSpecification: summed per
+// code over the file, the bases and the tax amounts of TaxInformation are the
+// VAT specification of the same period (H2) — each base once, each VAT once.
+func TestSaftExport_TaxInformationReproducesTheVatSpecification(t *testing.T) {
+	b := saftBooks(t)
+	b.ledger(t)
+	_, files := b.export(t, map[string]any{"fiscalYear": 2026})
+	f := parseFile(t, files[0])
+	bases, vat := map[string]*big.Rat{}, map[string]*big.Rat{}
+	add := func(m map[string]*big.Rat, code string, r *big.Rat) {
+		if m[code] == nil {
+			m[code] = new(big.Rat)
+		}
+		m[code].Add(m[code], r)
+	}
+	for _, j := range f.Entries.Journals {
+		for _, tx := range j.Transactions {
+			for _, l := range tx.Lines {
+				for _, x := range l.Tax {
+					// A VAT line keeps TaxInformation only with no base
+					// line beside it, its base the one it was computed
+					// from: not a base the voucher posts.
+					if !strings.HasPrefix(l.AccountID, "27") {
+						tb := rat(x.TaxBase)
+						if l.Credit != nil {
+							tb.Neg(tb)
+						}
+						add(bases, x.TaxCode, tb)
+					}
+					if x.Debit != nil {
+						add(vat, x.TaxCode, rat(x.Debit.Amount))
+					} else {
+						add(vat, x.TaxCode, new(big.Rat).Neg(rat(x.Credit.Amount)))
+					}
+				}
+			}
+		}
+	}
+	res := b.c.Do(http.MethodGet, base+"/vat/specification?from=2026-01-01&to=2026-12-31", nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("specification = %d %s", res.Status, res.Body)
+	}
+	var spec gen.AccountingVatSpecification
+	res.JSON(&spec)
+	wantBase, wantVat := map[string]*big.Rat{}, map[string]*big.Rat{}
+	for _, c := range append(spec.Codes, spec.NotReported...) {
+		// The specification's signs are the return's: a base positive for
+		// sales and purchases, VAT owed positive, deducted negative. In the
+		// ledger's: an output code's base is a credit; the VAT is what the
+		// tax postings carry — for a reverse charge its calculated side once.
+		bse := rat(c.Base)
+		if (c.Direction == gen.AccountingTaxDirectionOutput || c.Code == "7") && (c.Specification == nil || *c.Specification != "tapPåKrav") {
+			bse.Neg(bse)
+		}
+		add(wantBase, c.Code, bse)
+		v := new(big.Rat)
+		if c.ReverseCharge {
+			v.Neg(rat(c.CalculatedVat))
+		} else {
+			v.Neg(rat(c.OutputVat))
+			v.Sub(v, rat(c.DeductedVat))
+			v.Sub(v, rat(c.LossVat))
+			v.Add(v, rat(c.NotDeductedVat))
+		}
+		add(wantVat, c.Code, v)
+	}
+	for code, w := range wantBase {
+		if got := orZero(bases[code]); got.Cmp(w) != 0 {
+			t.Errorf("code %s: TaxBase sums to %s, the specification's base %s", code, got.FloatString(2), w.FloatString(2))
+		}
+		if got := orZero(vat[code]); got.Cmp(wantVat[code]) != 0 {
+			t.Errorf("code %s: the tax amounts sum to %s, the specification's VAT %s", code, got.FloatString(2), wantVat[code].FloatString(2))
+		}
+	}
+	for code := range bases {
+		if wantBase[code] == nil {
+			t.Errorf("code %s is in the file's TaxInformation and not in the specification", code)
+		}
+	}
+}
+
+// TestSaftExport_BoundWaitsForAPostInFlight: the read bound is taken under
+// the settings row FOR UPDATE, so a voucher being posted when the run starts
+// is in the file whole, or the run waits for it (M1).
+func TestSaftExport_BoundWaitsForAPostInFlight(t *testing.T) {
+	b := saftBooks(t)
+	b.ledger(t)
+	res := b.c.Do(http.MethodPost, base+"/saft-exports", map[string]any{"fiscalYear": 2026})
+	var created gen.AccountingSaftExportCreated
+	res.JSON(&created)
+	tx, err := b.h.Pool().Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _ := time.Parse(time.DateOnly, "2026-03-20")
+	if _, err := accounting.Post(t.Context(), tx, accounting.Voucher{Kind: "manual", Date: d, Description: "In flight", At: b.h.Now(),
+		Lines: []accounting.Line{{AccountID: b.acc("6300"), Amount: rat("77")}, {AccountID: b.acc("1920"), Amount: rat("-77")}}}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- saftWorker(t, b.h).RunOnce(context.Background()) }()
+	select {
+	case err := <-done:
+		t.Fatalf("the worker did not wait for the post in flight: %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	_, files := b.exportDone(t, created.Export.Id)
+	if !bytes.Contains(files[0], []byte("<Description>In flight</Description>")) {
+		t.Error("the voucher in flight is not in the file")
+	}
+	b.checkFile(t, files[0], "2026-01-01", "2026-12-31")
+}
+
+// TestSaftExport_GivesUpAfterFiveAttempts: an export whose runs keep
+// stopping is failed with its reason rather than taken up for ever (M2).
+func TestSaftExport_GivesUpAfterFiveAttempts(t *testing.T) {
+	b := saftBooks(t)
+	res := b.c.Do(http.MethodPost, base+"/saft-exports", map[string]any{"fiscalYear": 2026})
+	var created gen.AccountingSaftExportCreated
+	res.JSON(&created)
+	b.h.Exec(t, `UPDATE accounting.saft_exports SET state = 'running', attempts = 5, lease_id = gen_random_uuid(),
+		lease_until = '2000-01-01' WHERE id = $1`, created.Export.Id)
+	if err := saftWorker(t, b.h).RunOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var got gen.AccountingSaftExport
+	b.c.Do(http.MethodGet, fmt.Sprintf("%s/saft-exports/%d", base, created.Export.Id), nil).JSON(&got)
+	if got.State != gen.Failed || got.Error == nil || !strings.Contains(*got.Error, "5 attempts") {
+		t.Errorf("export = %s %v", got.State, deref(got.Error))
+	}
 }

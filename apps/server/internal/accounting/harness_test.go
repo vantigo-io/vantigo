@@ -356,7 +356,7 @@ func postSystem(t *testing.T, h *harness, debit, credit int32, date string) int6
 	var posted accounting.Posted
 	err = db.WithTx(t.Context(), h.Pool(), pgx.TxOptions{}, func(tx pgx.Tx) error {
 		var err error
-		posted, err = accounting.Post(t.Context(), tx, accounting.Voucher{Kind: "sales_invoice", Date: day, Description: "Invoice",
+		posted, err = accounting.Post(t.Context(), tx, accounting.Voucher{Kind: "sales_invoice", Date: day, Description: "Invoice", At: h.Now(),
 			Source: &accounting.Source{Module: "invoices", Kind: "document", ID: systemSeq}, Rule: "sales.invoice", RuleVersion: 1,
 			Lines: []accounting.Line{{AccountID: debit, Amount: big.NewRat(100, 1)}, {AccountID: credit, Amount: big.NewRat(-100, 1)}}})
 		return err

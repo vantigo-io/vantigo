@@ -114,7 +114,7 @@ func TestVatOpening_VatAccounts(t *testing.T) {
 	// An opening voucher posted on a VAT account by code is left out too.
 	err := db.WithTx(t.Context(), b.h.Pool(), pgx.TxOptions{}, func(tx pgx.Tx) error {
 		_, err := accounting.Post(t.Context(), tx, accounting.Voucher{Kind: "opening", Date: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-			Description: "Opening on a VAT account", Lines: []accounting.Line{
+			Description: "Opening on a VAT account", At: b.h.Now(), Lines: []accounting.Line{
 				{AccountID: b.acc("2710"), Amount: big.NewRat(300, 1)}, {Role: "opening", Amount: big.NewRat(-300, 1)}}})
 		return err
 	})

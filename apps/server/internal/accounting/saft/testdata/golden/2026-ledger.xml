@@ -5,7 +5,7 @@
 <TaxRegistration><TaxRegistrationNumber>923609016MVA</TaxRegistrationNumber><TaxAuthority>Skatteetaten</TaxAuthority></TaxRegistration>
 <BankAccount><BankAccountNumber>12345678903</BankAccountNumber></BankAccount>
 </Company>
-<DefaultCurrencyCode>NOK</DefaultCurrencyCode><SelectionCriteria><PeriodStart>1</PeriodStart><PeriodStartYear>2026</PeriodStartYear><PeriodEnd>12</PeriodEnd><PeriodEndYear>2026</PeriodEndYear></SelectionCriteria>
+<DefaultCurrencyCode>NOK</DefaultCurrencyCode><SelectionCriteria><SelectionStartDate>2026-01-01</SelectionStartDate><SelectionEndDate>2026-12-31</SelectionEndDate></SelectionCriteria>
 <HeaderComment>Hovedbok og grunndata, 2026-01-01–2026-12-31</HeaderComment><TaxAccountingBasis>A</TaxAccountingBasis></Header>
 <MasterFiles><GeneralLedgerAccounts><Account><AccountID>1070</AccountID><AccountDescription>Utsatt skattefordel</AccountDescription><GroupingCategory>balanseverdiForAnleggsmiddel</GroupingCategory><GroupingCode>1070</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>1080</AccountID><AccountDescription>Goodwill</AccountDescription><GroupingCategory>balanseverdiForAnleggsmiddel</GroupingCategory><GroupingCode>1080</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
@@ -19,7 +19,7 @@
 <Account><AccountID>1380</AccountID><AccountDescription>Krav/fordringer mot ansatte</AccountDescription><GroupingCategory>balanseverdiForAnleggsmiddel</GroupingCategory><GroupingCode>1380</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>1390</AccountID><AccountDescription>Andre langsiktige fordringer</AccountDescription><GroupingCategory>balanseverdiForAnleggsmiddel</GroupingCategory><GroupingCode>1390</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>1400</AccountID><AccountDescription>Varelager</AccountDescription><GroupingCategory>balanseverdiForOmloepsmiddel</GroupingCategory><GroupingCode>1400</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
-<Account><AccountID>1500</AccountID><AccountDescription>Kundefordringer</AccountDescription><GroupingCategory>balanseverdiForOmloepsmiddel</GroupingCategory><GroupingCode>1500</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>6250.00</ClosingDebitBalance></Account>
+<Account><AccountID>1500</AccountID><AccountDescription>Kundefordringer</AccountDescription><GroupingCategory>balanseverdiForOmloepsmiddel</GroupingCategory><GroupingCode>1500</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>6150.00</ClosingDebitBalance></Account>
 <Account><AccountID>1530</AccountID><AccountDescription>Opptjente ikke fakturerte driftsinntekter</AccountDescription><GroupingCategory>balanseverdiForOmloepsmiddel</GroupingCategory><GroupingCode>1530</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>1565</AccountID><AccountDescription>Kortsiktige fordringer mot personlig eier, styremedlem o.l.</AccountDescription><GroupingCategory>balanseverdiForOmloepsmiddel</GroupingCategory><GroupingCode>1565</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>1570</AccountID><AccountDescription>Andre kortsiktige krav/fordringer</AccountDescription><GroupingCategory>balanseverdiForOmloepsmiddel</GroupingCategory><GroupingCode>1570</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
@@ -46,7 +46,7 @@
 <Account><AccountID>2500</AccountID><AccountDescription>Betalbar skatt, ikke fastsatt</AccountDescription><GroupingCategory>kortsiktigGjeld</GroupingCategory><GroupingCode>2500</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>2510</AccountID><AccountDescription>Betalbar skatt, fastsatt</AccountDescription><GroupingCategory>kortsiktigGjeld</GroupingCategory><GroupingCode>2510</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>2600</AccountID><AccountDescription>Skattetrekk og andre trekk</AccountDescription><GroupingCategory>kortsiktigGjeld</GroupingCategory><GroupingCode>2600</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
-<Account><AccountID>2700</AccountID><AccountDescription>Utgående merverdiavgift, alminnelig sats</AccountDescription><GroupingCategory>kortsiktigGjeld</GroupingCategory><GroupingCode>2740</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
+<Account><AccountID>2700</AccountID><AccountDescription>Utgående merverdiavgift, alminnelig sats</AccountDescription><GroupingCategory>kortsiktigGjeld</GroupingCategory><GroupingCode>2740</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>100.00</ClosingDebitBalance></Account>
 <Account><AccountID>2701</AccountID><AccountDescription>Utgående merverdiavgift, middels sats</AccountDescription><GroupingCategory>kortsiktigGjeld</GroupingCategory><GroupingCode>2740</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>2702</AccountID><AccountDescription>Utgående merverdiavgift, lav sats</AccountDescription><GroupingCategory>kortsiktigGjeld</GroupingCategory><GroupingCode>2740</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
 <Account><AccountID>2703</AccountID><AccountDescription>Utgående merverdiavgift, råfisk</AccountDescription><GroupingCategory>kortsiktigGjeld</GroupingCategory><GroupingCode>2740</GroupingCode><AccountType>GL</AccountType><AccountCreationDate>2026-09-12</AccountCreationDate><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>0.00</ClosingDebitBalance></Account>
@@ -139,7 +139,7 @@
 </GeneralLedgerAccounts>
 <Customers><Customer><RegistrationNumber>914778271</RegistrationNumber><Name>Acme AS</Name><Address><StreetName>Storgata 1</StreetName><City>Oslo</City><PostalCode>0150</PostalCode><Country>NO</Country><AddressType>BillingAddress</AddressType></Address>
 <Contact><ContactPerson><FirstName>NA</FirstName><LastName>NA</LastName></ContactPerson><Email>post@example.no</Email></Contact>
-<CustomerID>10501</CustomerID><BalanceAccount><AccountID>1500</AccountID><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>3750.00</ClosingDebitBalance></BalanceAccount>
+<CustomerID>10501</CustomerID><BalanceAccount><AccountID>1500</AccountID><OpeningDebitBalance>0.00</OpeningDebitBalance><ClosingDebitBalance>3650.00</ClosingDebitBalance></BalanceAccount>
 <PartyInfo><Type>Company</Type><Status>Active</Status></PartyInfo>
 </Customer>
 <Customer><RegistrationNumber>987654325</RegistrationNumber><Name>Beta AS</Name><Address><StreetName>Storgata 1</StreetName><City>Oslo</City><PostalCode>0150</PostalCode><Country>NO</Country><AddressType>BillingAddress</AddressType></Address>
@@ -189,103 +189,98 @@
 <AnalysisTypeTable><AnalysisTypeTableEntry><AnalysisType>P</AnalysisType><AnalysisTypeDescription>Prosjekt</AnalysisTypeDescription><AnalysisID>7</AnalysisID><AnalysisIDDescription>P7 Kaia</AnalysisIDDescription></AnalysisTypeTableEntry>
 </AnalysisTypeTable>
 </MasterFiles>
-<GeneralLedgerEntries><NumberOfEntries>19</NumberOfEntries><TotalDebit>120970.00</TotalDebit><TotalCredit>120970.00</TotalCredit>
+<GeneralLedgerEntries><NumberOfEntries>20</NumberOfEntries><TotalDebit>121070.00</TotalDebit><TotalCredit>121070.00</TotalCredit>
 <Journal><JournalID>SALES</JournalID><Description>Salg</Description><Type>AR</Type>
-<Transaction><TransactionID>2026-000003</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-10</TransactionDate><VoucherType>sales_invoice</VoucherType><VoucherDescription>Salgsfaktura</VoucherDescription><Description>sales_invoice 2026-01-10</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1003</SystemID><Line><RecordID>1</RecordID><AccountID>1500</AccountID><SourceDocumentID>10001</SourceDocumentID><CustomerID>10501</CustomerID><Description>sales_invoice 2026-01-10</Description><DebitAmount><Amount>12500.00</Amount></DebitAmount>
+<Transaction><TransactionID>2026-000003</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-10</TransactionDate><VoucherType>sales_invoice</VoucherType><VoucherDescription>Salgsfaktura</VoucherDescription><Description>sales_invoice 2026-01-10</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1003</SystemID><Line><RecordID>1</RecordID><AccountID>1500</AccountID><SourceDocumentID>10001</SourceDocumentID><CustomerID>10501</CustomerID><Description>sales_invoice 2026-01-10</Description><DebitAmount><Amount>12500.00</Amount></DebitAmount>
 <ReferenceNumber>10001</ReferenceNumber></Line>
 <Line><RecordID>2</RecordID><AccountID>3000</AccountID><SourceDocumentID>invoices:document:1</SourceDocumentID><Description>sales_invoice 2026-01-10</Description><CreditAmount><Amount>10000.00</Amount></CreditAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>10000.00</TaxBase><CreditTaxAmount><Amount>0.00</Amount></CreditTaxAmount>
-</TaxInformation>
-</Line>
-<Line><RecordID>3</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:document:1</SourceDocumentID><Description>sales_invoice 2026-01-10</Description><CreditAmount><Amount>2500.00</Amount></CreditAmount>
 <TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>10000.00</TaxBase><CreditTaxAmount><Amount>2500.00</Amount></CreditTaxAmount>
 </TaxInformation>
 </Line>
+<Line><RecordID>3</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:document:1</SourceDocumentID><Description>sales_invoice 2026-01-10</Description><CreditAmount><Amount>2500.00</Amount></CreditAmount>
+</Line>
 </Transaction>
-<Transaction><TransactionID>2026-000004</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-12</TransactionDate><VoucherType>sales_invoice</VoucherType><VoucherDescription>Salgsfaktura</VoucherDescription><Description>sales_invoice 2026-01-12</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1004</SystemID><Line><RecordID>1</RecordID><AccountID>1500</AccountID><SourceDocumentID>10002</SourceDocumentID><CustomerID>10502</CustomerID><Description>sales_invoice 2026-01-12</Description><DebitAmount><Amount>2500.00</Amount></DebitAmount>
+<Transaction><TransactionID>2026-000004</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-12</TransactionDate><VoucherType>sales_invoice</VoucherType><VoucherDescription>Salgsfaktura</VoucherDescription><Description>sales_invoice 2026-01-12</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1004</SystemID><Line><RecordID>1</RecordID><AccountID>1500</AccountID><SourceDocumentID>10002</SourceDocumentID><CustomerID>10502</CustomerID><Description>sales_invoice 2026-01-12</Description><DebitAmount><Amount>2500.00</Amount></DebitAmount>
 <ReferenceNumber>10002</ReferenceNumber></Line>
 <Line><RecordID>2</RecordID><AccountID>3000</AccountID><Analysis><AnalysisType>P</AnalysisType><AnalysisID>7</AnalysisID><CreditAnalysisAmount><Amount>2000.00</Amount></CreditAnalysisAmount>
 </Analysis>
 <SourceDocumentID>invoices:document:2</SourceDocumentID><Description>sales_invoice 2026-01-12</Description><CreditAmount><Amount>2000.00</Amount></CreditAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><CreditTaxAmount><Amount>0.00</Amount></CreditTaxAmount>
-</TaxInformation>
-</Line>
-<Line><RecordID>3</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:document:2</SourceDocumentID><Description>sales_invoice 2026-01-12</Description><CreditAmount><Amount>500.00</Amount></CreditAmount>
 <TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><CreditTaxAmount><Amount>500.00</Amount></CreditTaxAmount>
 </TaxInformation>
 </Line>
+<Line><RecordID>3</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:document:2</SourceDocumentID><Description>sales_invoice 2026-01-12</Description><CreditAmount><Amount>500.00</Amount></CreditAmount>
+</Line>
 </Transaction>
-<Transaction><TransactionID>2026-000005</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-15</TransactionDate><VoucherType>sales_credit_note</VoucherType><VoucherDescription>Kreditnota</VoucherDescription><Description>sales_credit_note 2026-01-15</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1005</SystemID><Line><RecordID>1</RecordID><AccountID>1500</AccountID><SourceDocumentID>invoices:document:3</SourceDocumentID><CustomerID>10501</CustomerID><Description>sales_credit_note 2026-01-15</Description><CreditAmount><Amount>1250.00</Amount></CreditAmount>
+<Transaction><TransactionID>2026-000005</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-15</TransactionDate><VoucherType>sales_credit_note</VoucherType><VoucherDescription>Kreditnota</VoucherDescription><Description>sales_credit_note 2026-01-15</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1005</SystemID><Line><RecordID>1</RecordID><AccountID>1500</AccountID><SourceDocumentID>invoices:document:3</SourceDocumentID><CustomerID>10501</CustomerID><Description>sales_credit_note 2026-01-15</Description><CreditAmount><Amount>1250.00</Amount></CreditAmount>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>3000</AccountID><SourceDocumentID>invoices:document:3</SourceDocumentID><Description>sales_credit_note 2026-01-15</Description><DebitAmount><Amount>1000.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>1000.00</TaxBase><DebitTaxAmount><Amount>0.00</Amount></DebitTaxAmount>
-</TaxInformation>
-</Line>
-<Line><RecordID>3</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:document:3</SourceDocumentID><Description>sales_credit_note 2026-01-15</Description><DebitAmount><Amount>250.00</Amount></DebitAmount>
 <TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>1000.00</TaxBase><DebitTaxAmount><Amount>250.00</Amount></DebitTaxAmount>
 </TaxInformation>
 </Line>
+<Line><RecordID>3</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:document:3</SourceDocumentID><Description>sales_credit_note 2026-01-15</Description><DebitAmount><Amount>250.00</Amount></DebitAmount>
+</Line>
 </Transaction>
-<Transaction><TransactionID>2026-000007</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-21</TransactionDate><VoucherType>charge</VoucherType><VoucherDescription>Gebyr eller renter</VoucherDescription><Description>charge 2026-01-21</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1007</SystemID><Line><RecordID>1</RecordID><AccountID>1920</AccountID><SourceDocumentID>invoices:charge_payment:1</SourceDocumentID><Description>charge 2026-01-21</Description><DebitAmount><Amount>70.00</Amount></DebitAmount>
+<Transaction><TransactionID>2026-000007</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-21</TransactionDate><VoucherType>charge</VoucherType><VoucherDescription>Gebyr eller renter</VoucherDescription><Description>charge 2026-01-21</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1007</SystemID><Line><RecordID>1</RecordID><AccountID>1920</AccountID><SourceDocumentID>invoices:charge_payment:1</SourceDocumentID><Description>charge 2026-01-21</Description><DebitAmount><Amount>70.00</Amount></DebitAmount>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>3900</AccountID><SourceDocumentID>invoices:charge_payment:1</SourceDocumentID><Description>charge 2026-01-21</Description><CreditAmount><Amount>70.00</Amount></CreditAmount>
 <TaxInformation><TaxType>MVA</TaxType><TaxCode>7</TaxCode><Country>NO</Country><TaxBase>70.00</TaxBase><CreditTaxAmount><Amount>0.00</Amount></CreditTaxAmount>
 </TaxInformation>
 </Line>
 </Transaction>
-<Transaction><TransactionID>2026-000008</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-25</TransactionDate><VoucherType>write_off</VoucherType><VoucherDescription>Avskrivning av fordring</VoucherDescription><Description>Write-off</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1008</SystemID><Line><RecordID>1</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:write_off:2</SourceDocumentID><Description>Write-off</Description><DebitAmount><Amount>500.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><DebitTaxAmount><Amount>500.00</Amount></DebitTaxAmount>
-</TaxInformation>
+<Transaction><TransactionID>2026-000008</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-25</TransactionDate><VoucherType>write_off</VoucherType><VoucherDescription>Avskrivning av fordring</VoucherDescription><Description>Write-off</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1008</SystemID><Line><RecordID>1</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:write_off:2</SourceDocumentID><Description>Write-off</Description><DebitAmount><Amount>500.00</Amount></DebitAmount>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>7830</AccountID><SourceDocumentID>invoices:write_off:2</SourceDocumentID><Description>Write-off</Description><DebitAmount><Amount>2000.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><DebitTaxAmount><Amount>0.00</Amount></DebitTaxAmount>
+<TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><DebitTaxAmount><Amount>500.00</Amount></DebitTaxAmount>
 </TaxInformation>
 </Line>
 <Line><RecordID>3</RecordID><AccountID>1500</AccountID><SourceDocumentID>invoices:write_off:2</SourceDocumentID><CustomerID>10501</CustomerID><Description>Write-off</Description><CreditAmount><Amount>2500.00</Amount></CreditAmount>
 </Line>
 </Transaction>
+<Transaction><TransactionID>2026-000019</TransactionID><Period>3</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-03-10</TransactionDate><VoucherType>write_off</VoucherType><VoucherDescription>Avskrivning av fordring</VoucherDescription><Description>write_off 2026-03-10</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1019</SystemID><Line><RecordID>1</RecordID><AccountID>2700</AccountID><SourceDocumentID>invoices:write_off:99</SourceDocumentID><Description>write_off 2026-03-10</Description><DebitAmount><Amount>100.00</Amount></DebitAmount>
+<TaxInformation><TaxType>MVA</TaxType><TaxCode>3</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>400.00</TaxBase><DebitTaxAmount><Amount>100.00</Amount></DebitTaxAmount>
+</TaxInformation>
+</Line>
+<Line><RecordID>2</RecordID><AccountID>1500</AccountID><SourceDocumentID>invoices:write_off:99</SourceDocumentID><CustomerID>10501</CustomerID><Description>write_off 2026-03-10</Description><CreditAmount><Amount>100.00</Amount></CreditAmount>
+</Line>
+</Transaction>
 </Journal>
 <Journal><JournalID>PURCHASES</JournalID><Description>Innkjøp</Description><Type>AP</Type>
-<Transaction><TransactionID>2026-000009</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-02</TransactionDate><VoucherType>supplier_invoice</VoucherType><VoucherDescription>Leverandørfaktura</VoucherDescription><Description>supplier_invoice 2026-02-02</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1009</SystemID><Line><RecordID>1</RecordID><AccountID>2400</AccountID><SourceDocumentID>F-77</SourceDocumentID><SupplierID>1</SupplierID><Description>supplier_invoice 2026-02-02</Description><CreditAmount><Amount>11250.00</Amount><CurrencyCode>EUR</CurrencyCode><CurrencyAmount>1000.00</CurrencyAmount><ExchangeRate>11.250000</ExchangeRate></CreditAmount>
+<Transaction><TransactionID>2026-000009</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-02</TransactionDate><VoucherType>supplier_invoice</VoucherType><VoucherDescription>Leverandørfaktura</VoucherDescription><Description>supplier_invoice 2026-02-02</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1009</SystemID><Line><RecordID>1</RecordID><AccountID>2400</AccountID><SourceDocumentID>F-77</SourceDocumentID><SupplierID>1</SupplierID><Description>supplier_invoice 2026-02-02</Description><CreditAmount><Amount>11250.00</Amount><CurrencyCode>EUR</CurrencyCode><CurrencyAmount>1000.00</CurrencyAmount><ExchangeRate>11.250000</ExchangeRate></CreditAmount>
 <ReferenceNumber>F-77</ReferenceNumber></Line>
 <Line><RecordID>2</RecordID><AccountID>4005</AccountID><SourceDocumentID>accounting:supplier_invoice:1</SourceDocumentID><Description>supplier_invoice 2026-02-02</Description><DebitAmount><Amount>9000.00</Amount><CurrencyCode>EUR</CurrencyCode><CurrencyAmount>800.00</CurrencyAmount><ExchangeRate>11.250000</ExchangeRate></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>9000.00</TaxBase><DebitTaxAmount><Amount>0.00</Amount></DebitTaxAmount>
+<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>9000.00</TaxBase><DebitTaxAmount><Amount>2250.00</Amount></DebitTaxAmount>
 </TaxInformation>
 </Line>
 <Line><RecordID>3</RecordID><AccountID>2710</AccountID><SourceDocumentID>accounting:supplier_invoice:1</SourceDocumentID><Description>supplier_invoice 2026-02-02</Description><DebitAmount><Amount>2250.00</Amount><CurrencyCode>EUR</CurrencyCode><CurrencyAmount>200.00</CurrencyAmount><ExchangeRate>11.250000</ExchangeRate></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>9000.00</TaxBase><DebitTaxAmount><Amount>2250.00</Amount><CurrencyCode>EUR</CurrencyCode><CurrencyAmount>200.00</CurrencyAmount></DebitTaxAmount>
-</TaxInformation>
 </Line>
 </Transaction>
-<Transaction><TransactionID>2026-000010</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-05</TransactionDate><VoucherType>supplier_credit_note</VoucherType><VoucherDescription>Leverandørkreditnota</VoucherDescription><Description>supplier_credit_note 2026-02-05</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1010</SystemID><Line><RecordID>1</RecordID><AccountID>2400</AccountID><SourceDocumentID>accounting:supplier_invoice:2</SourceDocumentID><SupplierID>1</SupplierID><Description>supplier_credit_note 2026-02-05</Description><DebitAmount><Amount>1250.00</Amount></DebitAmount>
+<Transaction><TransactionID>2026-000010</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-05</TransactionDate><VoucherType>supplier_credit_note</VoucherType><VoucherDescription>Leverandørkreditnota</VoucherDescription><Description>supplier_credit_note 2026-02-05</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1010</SystemID><Line><RecordID>1</RecordID><AccountID>2400</AccountID><SourceDocumentID>accounting:supplier_invoice:2</SourceDocumentID><SupplierID>1</SupplierID><Description>supplier_credit_note 2026-02-05</Description><DebitAmount><Amount>1250.00</Amount></DebitAmount>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>4005</AccountID><SourceDocumentID>accounting:supplier_invoice:2</SourceDocumentID><Description>supplier_credit_note 2026-02-05</Description><CreditAmount><Amount>1000.00</Amount></CreditAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>1000.00</TaxBase><CreditTaxAmount><Amount>0.00</Amount></CreditTaxAmount>
-</TaxInformation>
-</Line>
-<Line><RecordID>3</RecordID><AccountID>2710</AccountID><SourceDocumentID>accounting:supplier_invoice:2</SourceDocumentID><Description>supplier_credit_note 2026-02-05</Description><CreditAmount><Amount>250.00</Amount></CreditAmount>
 <TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>1000.00</TaxBase><CreditTaxAmount><Amount>250.00</Amount></CreditTaxAmount>
 </TaxInformation>
 </Line>
+<Line><RecordID>3</RecordID><AccountID>2710</AccountID><SourceDocumentID>accounting:supplier_invoice:2</SourceDocumentID><Description>supplier_credit_note 2026-02-05</Description><CreditAmount><Amount>250.00</Amount></CreditAmount>
+</Line>
 </Transaction>
-<Transaction><TransactionID>2026-000012</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-12</TransactionDate><VoucherType>expense</VoucherType><VoucherDescription>Utlegg</VoucherDescription><Description>expense 2026-02-12</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1012</SystemID><Line><RecordID>1</RecordID><AccountID>7700</AccountID><SourceDocumentID>expenses:entry.approved:1</SourceDocumentID><Description>expense 2026-02-12</Description><DebitAmount><Amount>400.00</Amount></DebitAmount>
+<Transaction><TransactionID>2026-000012</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-12</TransactionDate><VoucherType>expense</VoucherType><VoucherDescription>Utlegg</VoucherDescription><Description>expense 2026-02-12</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1012</SystemID><Line><RecordID>1</RecordID><AccountID>7700</AccountID><SourceDocumentID>expenses:entry.approved:1</SourceDocumentID><Description>expense 2026-02-12</Description><DebitAmount><Amount>400.00</Amount></DebitAmount>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>2910</AccountID><SourceDocumentID>expenses:entry.approved:1</SourceDocumentID><Description>expense 2026-02-12</Description><CreditAmount><Amount>400.00</Amount></CreditAmount>
 </Line>
 </Transaction>
 </Journal>
 <Journal><JournalID>BANK</JournalID><Description>Bank og betalinger</Description><Type>GL</Type>
-<Transaction><TransactionID>2026-000006</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-20</TransactionDate><VoucherType>customer_payment</VoucherType><VoucherDescription>Innbetaling</VoucherDescription><Description>customer_payment 2026-01-20</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1006</SystemID><Line><RecordID>1</RecordID><AccountID>1920</AccountID><SourceDocumentID>invoices:payment:1</SourceDocumentID><Description>customer_payment 2026-01-20</Description><DebitAmount><Amount>5000.00</Amount></DebitAmount>
+<Transaction><TransactionID>2026-000006</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-20</TransactionDate><VoucherType>customer_payment</VoucherType><VoucherDescription>Innbetaling</VoucherDescription><Description>customer_payment 2026-01-20</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1006</SystemID><Line><RecordID>1</RecordID><AccountID>1920</AccountID><SourceDocumentID>invoices:payment:1</SourceDocumentID><Description>customer_payment 2026-01-20</Description><DebitAmount><Amount>5000.00</Amount></DebitAmount>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>1500</AccountID><SourceDocumentID>invoices:payment:1</SourceDocumentID><CustomerID>10501</CustomerID><Description>customer_payment 2026-01-20</Description><CreditAmount><Amount>5000.00</Amount></CreditAmount>
 </Line>
 </Transaction>
-<Transaction><TransactionID>2026-000011</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-10</TransactionDate><VoucherType>supplier_payment</VoucherType><VoucherDescription>Utbetaling</VoucherDescription><Description>supplier_payment 2026-02-10</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1011</SystemID><Line><RecordID>1</RecordID><AccountID>2400</AccountID><SourceDocumentID>accounting:supplier_payment:1</SourceDocumentID><SupplierID>1</SupplierID><Description>supplier_payment 2026-02-10</Description><DebitAmount><Amount>5000.00</Amount></DebitAmount>
+<Transaction><TransactionID>2026-000011</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-10</TransactionDate><VoucherType>supplier_payment</VoucherType><VoucherDescription>Utbetaling</VoucherDescription><Description>supplier_payment 2026-02-10</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1011</SystemID><Line><RecordID>1</RecordID><AccountID>2400</AccountID><SourceDocumentID>accounting:supplier_payment:1</SourceDocumentID><SupplierID>1</SupplierID><Description>supplier_payment 2026-02-10</Description><DebitAmount><Amount>5000.00</Amount></DebitAmount>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>1920</AccountID><SourceDocumentID>accounting:supplier_payment:1</SourceDocumentID><Description>supplier_payment 2026-02-10</Description><CreditAmount><Amount>5000.00</Amount></CreditAmount>
 </Line>
 </Transaction>
-<Transaction><TransactionID>2026-000013</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-14</TransactionDate><VoucherType>reimbursement</VoucherType><VoucherDescription>Refusjon av utlegg</VoucherDescription><Description>reimbursement 2026-02-14</Description><SystemEntryDate>2026-11-14</SystemEntryDate><GLPostingDate>2026-11-14</GLPostingDate><SystemID>1013</SystemID><Line><RecordID>1</RecordID><AccountID>2910</AccountID><SourceDocumentID>expenses:entry.reimbursed:1</SourceDocumentID><Description>reimbursement 2026-02-14</Description><DebitAmount><Amount>400.00</Amount></DebitAmount>
+<Transaction><TransactionID>2026-000013</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-14</TransactionDate><VoucherType>reimbursement</VoucherType><VoucherDescription>Refusjon av utlegg</VoucherDescription><Description>reimbursement 2026-02-14</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1013</SystemID><Line><RecordID>1</RecordID><AccountID>2910</AccountID><SourceDocumentID>expenses:entry.reimbursed:1</SourceDocumentID><Description>reimbursement 2026-02-14</Description><DebitAmount><Amount>400.00</Amount></DebitAmount>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>1920</AccountID><SourceDocumentID>expenses:entry.reimbursed:1</SourceDocumentID><Description>reimbursement 2026-02-14</Description><CreditAmount><Amount>400.00</Amount></CreditAmount>
 </Line>
@@ -302,44 +297,34 @@
 <Transaction><TransactionID>2026-000002</TransactionID><Period>1</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-01-03</TransactionDate><VoucherType>manual</VoucherType><VoucherDescription>Manuelt bilag</VoucherDescription><Description>Leie januar</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1002</SystemID><Line><RecordID>1</RecordID><AccountID>6300</AccountID><Analysis><AnalysisType>P</AnalysisType><AnalysisID>7</AnalysisID><DebitAnalysisAmount><Amount>8000.00</Amount></DebitAnalysisAmount>
 </Analysis>
 <Description>Leie januar</Description><DebitAmount><Amount>8000.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>8000.00</TaxBase><DebitTaxAmount><Amount>0.00</Amount></DebitTaxAmount>
+<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>8000.00</TaxBase><DebitTaxAmount><Amount>2000.00</Amount></DebitTaxAmount>
 </TaxInformation>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>2710</AccountID><Analysis><AnalysisType>P</AnalysisType><AnalysisID>7</AnalysisID><DebitAnalysisAmount><Amount>2000.00</Amount></DebitAnalysisAmount>
 </Analysis>
 <Description>Leie januar</Description><DebitAmount><Amount>2000.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>8000.00</TaxBase><DebitTaxAmount><Amount>2000.00</Amount></DebitTaxAmount>
-</TaxInformation>
 </Line>
 <Line><RecordID>3</RecordID><AccountID>1920</AccountID><Description>Leie januar</Description><CreditAmount><Amount>10000.00</Amount></CreditAmount>
 </Line>
 </Transaction>
 <Transaction><TransactionID>2026-000014</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-16</TransactionDate><VoucherType>manual</VoucherType><VoucherDescription>Manuelt bilag</VoucherDescription><Description>Code 86 2000.00</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1014</SystemID><Line><RecordID>1</RecordID><AccountID>6300</AccountID><Description>Code 86 2000.00</Description><DebitAmount><Amount>2000.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>86</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><DebitTaxAmount><Amount>0.00</Amount></DebitTaxAmount>
+<TaxInformation><TaxType>MVA</TaxType><TaxCode>86</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><CreditTaxAmount><Amount>500.00</Amount></CreditTaxAmount>
 </TaxInformation>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>2715</AccountID><Description>Code 86 2000.00</Description><DebitAmount><Amount>500.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>86</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><DebitTaxAmount><Amount>500.00</Amount></DebitTaxAmount>
-</TaxInformation>
 </Line>
 <Line><RecordID>3</RecordID><AccountID>2705</AccountID><Description>Code 86 2000.00</Description><CreditAmount><Amount>500.00</Amount></CreditAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>86</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>2000.00</TaxBase><CreditTaxAmount><Amount>500.00</Amount></CreditTaxAmount>
-</TaxInformation>
 </Line>
 <Line><RecordID>4</RecordID><AccountID>1920</AccountID><Description>Code 86 2000.00</Description><CreditAmount><Amount>2000.00</Amount></CreditAmount>
 </Line>
 </Transaction>
 <Transaction><TransactionID>2026-000015</TransactionID><Period>2</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-02-17</TransactionDate><VoucherType>manual</VoucherType><VoucherDescription>Manuelt bilag</VoucherDescription><Description>Code 87 1000.00</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1015</SystemID><Line><RecordID>1</RecordID><AccountID>6300</AccountID><Description>Code 87 1000.00</Description><DebitAmount><Amount>1000.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>87</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>1000.00</TaxBase><DebitTaxAmount><Amount>0.00</Amount></DebitTaxAmount>
+<TaxInformation><TaxType>MVA</TaxType><TaxCode>87</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>1000.00</TaxBase><CreditTaxAmount><Amount>250.00</Amount></CreditTaxAmount>
 </TaxInformation>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>6300</AccountID><Description>Code 87 1000.00</Description><DebitAmount><Amount>250.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>87</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>1000.00</TaxBase><DebitTaxAmount><Amount>250.00</Amount></DebitTaxAmount>
-</TaxInformation>
 </Line>
 <Line><RecordID>3</RecordID><AccountID>2705</AccountID><Description>Code 87 1000.00</Description><CreditAmount><Amount>250.00</Amount></CreditAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>87</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>1000.00</TaxBase><CreditTaxAmount><Amount>250.00</Amount></CreditTaxAmount>
-</TaxInformation>
 </Line>
 <Line><RecordID>4</RecordID><AccountID>1920</AccountID><Description>Code 87 1000.00</Description><CreditAmount><Amount>1000.00</Amount></CreditAmount>
 </Line>
@@ -365,13 +350,11 @@
 <Line><RecordID>5</RecordID><AccountID>2740</AccountID><SourceDocumentID>accounting:vat_settlement:1001</SourceDocumentID><Description>Mva-oppgjør, termin 2026-1</Description><DebitAmount><Amount>1500.00</Amount></DebitAmount>
 </Line>
 </Transaction>
-<Transaction><TransactionID>2026-000019</TransactionID><Period>3</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-03-05</TransactionDate><VoucherType>manual</VoucherType><VoucherDescription>Manuelt bilag</VoucherDescription><Description>Leie mars</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1019</SystemID><Line><RecordID>1</RecordID><AccountID>6300</AccountID><Description>Leie mars</Description><DebitAmount><Amount>8000.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>8000.00</TaxBase><DebitTaxAmount><Amount>0.00</Amount></DebitTaxAmount>
+<Transaction><TransactionID>2026-000020</TransactionID><Period>3</Period><PeriodYear>2026</PeriodYear><TransactionDate>2026-03-05</TransactionDate><VoucherType>manual</VoucherType><VoucherDescription>Manuelt bilag</VoucherDescription><Description>Leie mars</Description><SystemEntryDate>2026-09-12</SystemEntryDate><GLPostingDate>2026-09-12</GLPostingDate><SystemID>1020</SystemID><Line><RecordID>1</RecordID><AccountID>6300</AccountID><Description>Leie mars</Description><DebitAmount><Amount>8000.00</Amount></DebitAmount>
+<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>8000.00</TaxBase><DebitTaxAmount><Amount>2000.00</Amount></DebitTaxAmount>
 </TaxInformation>
 </Line>
 <Line><RecordID>2</RecordID><AccountID>2710</AccountID><Description>Leie mars</Description><DebitAmount><Amount>2000.00</Amount></DebitAmount>
-<TaxInformation><TaxType>MVA</TaxType><TaxCode>1</TaxCode><TaxPercentage>25.00</TaxPercentage><Country>NO</Country><TaxBase>8000.00</TaxBase><DebitTaxAmount><Amount>2000.00</Amount></DebitTaxAmount>
-</TaxInformation>
 </Line>
 <Line><RecordID>3</RecordID><AccountID>1920</AccountID><Description>Leie mars</Description><CreditAmount><Amount>10000.00</Amount></CreditAmount>
 </Line>
