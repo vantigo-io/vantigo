@@ -101,6 +101,11 @@ applikasjonen.
   kundenumrene, testmodus, standardkontoen per lagersted, fraktproduktet og påslaget.
   `SHIPPING_CARRIERS` i `vantigo.env` holder tilbake en transportør; kontoene ligger under
   **Integrasjoner** i Administrer arbeidsområde.
+- **Bank.** [Bankintegrasjonen](/nb/admin/payments/#bankintegrasjonen) kobler til selskapets
+  Folio-konto med en API-nøkkel, forseglet og vist bare som de fire siste tegnene, og velger
+  kontoene Fakturaer leser innbetalinger fra. `INVOICES_BANK_FEED_ENABLED` og
+  `INVOICES_FOLIO_BASE_URL` i `vantigo.env` er installasjonens; nøkkelen og kontoene ligger
+  under **Integrasjoner** i Administrer arbeidsområde.
 
 ## Konfigurasjon
 

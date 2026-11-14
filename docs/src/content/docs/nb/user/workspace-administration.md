@@ -13,11 +13,11 @@ Administrasjon av arbeidsområdet er der en **Eier** styrer hvem som kan bruke
 Vantigo og hva de kan gjøre. Åpne avatar-menyen øverst til høyre og velg
 **Administrer arbeidsområde**; sidemenyen har **Oversikt**, **Brukere**,
 **Invitasjoner**, **Roller og tilgang** og, når Produksjon er på, **Nettbrettstasjoner**, og, under **Integrasjoner**, **Microsoft Entra ID**,
-**Google Workspace**, **Meta**, **Frakt** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
+**Google Workspace**, **Meta**, **Frakt**, **Bank** og, når Vantigo har satt opp KI for installasjonen, **KI-modeller** og **Assistent**.
 
 Alt her krever eierrollen, med ett unntak: den en eier har delegert
 rolleadministrasjon til, ser bare **Roller og tilgang**, både i avatar-menyen og i
-sidemenyen; den som har `entra:manage`, `google:manage` eller `orders:carriers-manage` uten å være eier, ser bare
+sidemenyen; den som har `entra:manage`, `google:manage`, `orders:carriers-manage` eller `invoices:manage` uten å være eier, ser bare
 **Integrasjoner**
 ([nedenfor](#integrasjoner)); og den som har `identity:manage`, ser **Nettbrettstasjoner**
 ([nedenfor](#nettbrettstasjoner-i-verkstedet)). Den siste aktive eieren kan aldri degraderes, deaktiveres
@@ -608,20 +608,26 @@ mens modulen Meta er på.
 API-nøkkelen hos Bring, kundenumrene, testmodus — og standardkontoen per lagersted, beskrevet i
 [Frakt](/nb/admin/shipping/). Det er der bare mens modulen Ordre er på, og bare for den som har
 `orders:carriers-manage`.
+**Bank** kobler til selskapets bank — Folio, med en API-nøkkel — og velger kontoene Fakturaer
+leser innbetalinger fra, og fra hvilken dag, beskrevet i [Koble til
+banken](/nb/user/invoices/#koble-til-banken). Den er der bare mens modulen Fakturaer er på, og
+bare for den som har både `invoices:access` og `invoices:manage`.
 **KI-modeller** er bare eierens, og er der bare
 mens Vantigo har satt opp KI for denne installasjonen ([nedenfor](#ki-modeller)). **Assistent** er
 også bare eierens, og er der mens modulen Assistent er på og KI er satt opp
 ([nedenfor](#assistent)).
 
 - En eier ser hele Administrer arbeidsområde, med **Integrasjoner** etter resten.
-- Den som har `entra:manage`, `google:manage` eller `orders:carriers-manage` uten å være
-  eier, ser bare **Integrasjoner** i sidemenyen — slik en person med delegert
-  rolleadministrasjon bare ser **Roller og tilgang** — med sidene rettighetene åpner, og
-  finner **Microsoft Entra ID**, **Google Workspace** eller **Frakt** i avatar-menyen. Stegene som er en eiers, leser
+- Den som har `entra:manage`, `google:manage`, `orders:carriers-manage` eller
+  `invoices:manage` uten å være eier, ser bare **Integrasjoner** i sidemenyen — slik en
+  person med delegert rolleadministrasjon bare ser **Roller og tilgang** — med sidene
+  rettighetene åpner, og finner **Microsoft Entra ID**, **Google Workspace**, **Frakt** eller
+  **Bank** i avatar-menyen. Stegene som er en eiers, leser
   vedkommende uten skjemaene. Vedkommende ser ikke **KI-modeller** eller **Assistent**.
-- Uten `entra:manage`, `google:manage` eller `orders:carriers-manage` (og uten å være eier)
-  finnes ingen seksjon **Integrasjoner**. For en eier finnes den heller ikke mens modulene
-  Microsoft Entra ID, Google Workspace og Ordre er av og KI ikke er satt opp.
+- Uten `entra:manage`, `google:manage`, `orders:carriers-manage` eller `invoices:manage`
+  (og uten å være eier) finnes ingen seksjon **Integrasjoner**. For en eier finnes den heller
+  ikke mens modulene Microsoft Entra ID, Google Workspace, Ordre og Fakturaer er av og KI ikke
+  er satt opp.
 
 Dine egne kontoer andre steder, som Outlook, kobler du til under **Innstillinger** ›
 **Tilkoblinger** ([Tilkoblinger](/nb/user/connections/)); postboksene Kommunikasjon

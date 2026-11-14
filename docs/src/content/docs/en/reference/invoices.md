@@ -11,6 +11,7 @@ sources:
   - apps/server/internal/db/migrations/00118_invoices_tax_category_vat_codes.sql
   - apps/server/internal/db/migrations/00122_invoices_order_sources.sql
   - apps/server/internal/db/migrations/00150_invoices_events.sql
+  - apps/server/internal/db/migrations/00178_invoices_bank_feed.sql
   - apps/server/internal/docmath
 ---
 The Invoices module issues the sales document of Norwegian bookkeeping: a draft
@@ -3223,7 +3224,10 @@ lines in the old format** — never a file's `last_booked_on`, which a file nami
 accounts can push past this one's — or `NULL` when it has none, and sets the new one. An
 account never imported is 404. Matching then holds back a line of the new format booked
 on or before the cutover as `possible_duplicate`, since the old format may already have
-registered it. A change of bank
+registered it. The PUT never takes `feed`, which only [the bank feed's switch](#the-bank-feed)
+sets; under the same lock, a change away from `feed` is refused 409 **`bank_feed_enabled`**
+while the feed is switched on for the account, and made as any other once it is off. A
+change of bank
 is a new account and gets its own row.
 
 **The reads.** `GET /invoices/bank-files` (`invoices:payments`) pages the files newest
@@ -3236,6 +3240,119 @@ The import's 201 answers the file, `transactions`, `matched` and `matchedAmount`
 `exceptions` and `exceptionsAmount`, `duplicates`, `ignored` by kind and `pending` — 0
 unless matching stopped early. `GET /meta` answers `capabilities.canImportBankFiles`,
 `invoices:payments`.
+
+### The bank feed
+
+The bank feed reads an account's incoming payments from the bank's API instead of a file
+([design](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/specs/2026-11-13-bank-feed-folio-design.md),
+F3, F4, F8, F10; [plan](https://github.com/vantigo-io/vantigo/blob/main/docs/superpowers/plans/2026-11-14-bank-feed-folio-plan.md)).
+Folio is the one bank, behind the platform's port ([the bank feed
+port](/en/contributing/platform-packages/#the-bank-feed-port)). This part is the
+connection and the accounts; the sync that reads them is not built yet, so no feed batch,
+no feed line and no `bank_feed` payment exists yet.
+
+**The instance switch.** `INVOICES_BANK_FEED_ENABLED` (default on) and
+`INVOICES_FOLIO_BASE_URL` (default `https://api.folio.no/v2`, `https` only — refused at
+load otherwise) are the operator's. With the switch off no Folio client is made and
+nothing is sent to the bank: a connection PUT, the accounts list and a switch on answer
+409 **`bank_feed_disabled`**; the GET says `enabledOnInstance: false` and what is stored
+stays.
+
+**The connection** is one row, `invoices.bank_feed_connections` (`id = 1`), the
+payment provider's shape: `provider` (`folio`), the API key sealed by the secrets box
+under the purpose `invoices/bank-feed-credential`, `key_last4` — its last four
+characters, the one part kept in clear — `status` (`ok`, or `unauthorized` once the bank
+refused the key, with `rejected_at`), and who connected it and when. No part of the key
+but its last four is ever answered, logged or put in an error.
+
+- `GET /invoices/bank-feed` (`invoices:access`, plan finding 8: it answers no secret)
+  answers `{connected, enabledOnInstance, provider?, keyLastFour?, status?, rejectedAt?,
+  connectedBy?, connectedAt?, accounts}`, the fields of the connection absent while none
+  is stored, and every account of `invoices.bank_feed_accounts` in account order.
+- `PUT /invoices/bank-feed` (`invoices:manage`, `x-vantigo-assistant: never`) takes
+  `{provider, apiKey}`: 400 on `provider` unless `folio`, on `apiKey` when it is empty or
+  blank once trimmed, under 12 or over 1 000 characters, or holds a space or a character
+  outside printable ASCII. The key is **verified first**, by one `Accounts` call, outside
+  any transaction (plan finding 6): the bank refusing it (401 or 403) is 422
+  **`bank_feed_credential_rejected`**; anything else — a transport error, a 429, a 5xx,
+  an answer that does not decode — is 503 **`bank_feed_unavailable`**; nothing is stored
+  either way. Then one transaction: the row inserted or written over by one statement,
+  which locks it, so two PUTs at once store one row, the later; the key sealed, its last
+  four kept, `status` `ok`, `rejected_at` cleared, the connection's who and when the
+  caller and now; and every account whose status is `unauthorized` made `ok` again, due
+  now when it is enabled. 200 answers the GET's body.
+- `DELETE /invoices/bank-feed` (`invoices:manage`) takes the row `FOR UPDATE`, deletes
+  it and switches every account off — `enabled` false, no next sync, the lease cleared —
+  in one transaction. Bank files, lines, payments and each account's format stay. 204,
+  also when nothing is stored.
+
+A call to the bank that answers 401 or 403 marks the connection `unauthorized`, with
+`rejected_at`, against the version the key was opened from (its `updated_at`): a refusal
+of a key a later PUT replaced flags nothing. A stored key the secrets box cannot open is
+503 `bank_feed_unavailable`, logged at error. Every call is reported as
+`BankFeed.Verify`, `BankFeed.Accounts` or `BankFeed.Transactions` to the module's
+contract-call seam, and none is made while a transaction holds locks.
+
+**The accounts.** `GET /invoices/bank-feed/accounts` (`invoices:manage`) reads the bank's
+accounts now and answers each as `{account, name, kind, canEnable, whyNot?}`: `account`
+its 11 digits when the bank's number reads as a Norwegian account number
+(`bankfile.NormaliseAccount`, a Norwegian IBAN read as its BBAN), else as the bank
+writes it; `kind` `operational`, `tax`, `savings`, `earmarks`, `card` or `other`;
+`canEnable` unless `whyNot` is `card` (never offered) or `not_sellers_account` — not the
+seller's **Bank account** nor one an issued invoice printed, the rule a bank file's
+accounts are held to. 409 `bank_feed_disabled` or **`bank_feed_not_connected`**; 422
+`bank_feed_credential_rejected`; 503 `bank_feed_unavailable`.
+
+`PUT /invoices/bank-feed/accounts/{account}` (`invoices:manage`) takes `{enabled,
+startDay?}`; `account` must be 11 digits with a valid check digit (400 on `account`).
+409 `bank_feed_not_connected` without a connection.
+
+- **On**: `startDay` defaults to today in the business time zone and may not be after it
+  (400 on `startDay`). The bank's accounts are read first, outside any transaction (409
+  `bank_feed_disabled`, 422, 503 as above); the account must be one it answers and not a
+  card (409 **`bank_feed_account_not_offered`**) and the seller's (409
+  `bank_account_unknown`, naming its last four digits). Then one transaction: the
+  account's `bank_import_accounts` row inserted with format `feed` by the caller when it
+  has none — the import's own statement — then taken `FOR UPDATE`; the connection read
+  `FOR SHARE`, so a DELETE meanwhile waits and then switches the account off with the
+  rest (gone already: 409 `bank_feed_not_connected`); a row in another format changed
+  to `feed` exactly as the format PUT changes one — `previous_format` the old one and
+  `cutover_through` the latest booking day of the account's own lines in it — a row
+  already `feed` left as it is; then `invoices.bank_feed_accounts` upserted `enabled`,
+  from `startDay`, `status` `ok`, no reason, no failures, due now, by the caller.
+- **Off**: the account's import row `FOR UPDATE`, then the feed row `enabled` false, no
+  next sync, its lease cleared; its format is left as it is. 404 for an account the feed
+  was never switched on for.
+
+200 answers the account `{account, enabled, startDay, status, reason?, detail?,
+lastSyncedAt?, lastBankFileId?, nextSyncAt?}`. While an account's format is `feed`, a
+file uploaded for it is refused 409 `bank_import_format_mismatch`, the import's rule.
+
+**The lock order.** A switch takes the account's import row, then the connection; a
+format PUT the account's import row alone, reading the feed row under it; a connection
+PUT and the DELETE the connection, then the accounts. No path takes them the other way
+round.
+
+**The schema.** `invoices.bank_feed_accounts`: `account` (11 digits, the key), `enabled`,
+`start_day`, `status` (`ok`, `failing`, `refused`, `unauthorized`), `reason`, `detail`
+(at most 500 characters), `failures`, `last_synced_at`, `last_bank_file_id`,
+`next_sync_at` and the lease, `lease_id` and `lease_until` together; the index
+`ix_bank_feed_accounts_due` on `next_sync_at` where `enabled`. Neither table is frozen.
+00178 also prepares the rest of the tables for the sync (design F10, plan findings 3 and
+4): `bank_files.provider`, and `uploaded_by_user_id` absent exactly when the format is
+`feed` and the provider present (`ck_bank_files_origin`); `feed` among the formats of
+files, lines and accounts; a `bank_feed` payment names its line and no attempt, with a
+registering user or none — none when the feed matched it, the person's when a person
+applied it — while an `ocr` or `camt054` payment still needs its user
+(`ck_payments_origin`); a charge payment needs a user unless its source is `bank_feed`
+(`ck_charge_payments_origin`); a waiver needs one unless its reason is `deadline_met`
+(`ck_charge_waivers_by`); a line's event may be by no user. Its Down restores 00041's and
+00046's checks and `NOT NULL`s exactly, and fails while a row registered by no user, or a
+feed batch, exists.
+
+`GET /meta` answers `capabilities.canManageBankFeed`, `invoices:manage`; the page is
+Workspace admin › Integrations › Bank in the host, `/workspace/bank`, for `invoices:access`
+and `invoices:manage` both.
 
 ### Matching
 
@@ -5374,10 +5491,10 @@ administrator reads when building a role, say so.
 
 | Key | Sensitive | What it allows |
 | --- | --- | --- |
-| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)); the billing runs and their items ([Billing runs](#billing-runs)). |
+| `invoices:access` | no | Use the app; read every invoice, credit note, PDF, payment and delivery, an invoice's charges, charge payments, waivers and manual deliveries, every document's EHF state and transmissions and download their UBL, the journal, the CSV export and the stats; read the collection rates, the reminder settings, the payment settings, the bank feed's connection and a customer's reminder policy; the overdue list, and an issued invoice's letters, next action, hold and hand-off, and a sent letter's PDF; an invoice's pay link (its id and when it was made, not its address) and its Vipps payment attempts; the day's Vipps payments, their CSV and whether the day is reconciled (marking it is `invoices:payments`; [The day's Vipps payments](#the-days-vipps-payments)); the attention items about overdue invoices and refunds due ([Attention](#attention)); the billing runs and their items ([Billing runs](#billing-runs)). |
 | `invoices:create` | no | Create, edit and delete drafts; preview a draft; list the uninvoiced work, with its people and rates, and make a draft of it, or add it to one; refresh a draft's work and see whether it is still fresh; turn a draft's timesheet on or off; list what earlier invoices have left to deduct ([Invoicing work](#invoicing-work)); list a customer's consumption due and its settlements, and make a draft of them, or add them to one ([Invoicing consumption](#invoicing-consumption)); make and cancel a billing run — one that issues also needs `invoices:issue` ([Billing runs](#billing-runs)). |
 | `invoices:issue` | yes | Issue a draft — and so mark the work it bills invoiced in its modules — and create a credit-note draft, whose issue releases the work it returns; send an issued document by e-mail, and see where each send went; send it as EHF, cancel a transmission never attempted and resolve an unconfirmed one; record that an invoice was handed over or posted, and remove such a record with a reason ([The delivery fact](#the-delivery-fact)); make an invoice's pay link on demand or revoke it, and read its address and QR code while payment on site is available ([Pay links](#pay-links)); ask for a Vipps payment on site, read the request and cancel it ([Paid on site — kontantsalg](#paid-on-site--kontantsalg)). |
-| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the two VAT codes energy lines take, the timesheet's default and person label, VAT codes and their rates, the VAT code each Products tax category maps to ([Tax categories and VAT codes](#tax-categories-and-vat-codes)), the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
+| `invoices:manage` | yes | The seller record and its Peppol id, the series start, the KID agreement, the VAT code each kind of work is invoiced at, the two VAT codes energy lines take, the timesheet's default and person label, VAT codes and their rates, the VAT code each Products tax category maps to ([Tax categories and VAT codes](#tax-categories-and-vat-codes)), the access point's credentials, the Vipps credentials and the payment settings, abandoning a stuck Vipps payment attempt ([Abandon](#abandon)), the format a bank account's files are imported in, the bank feed — connecting the bank, listing its accounts, switching the feed on or off for one, disconnecting ([The bank feed](#the-bank-feed)), the collection rates (add one ahead of a release, delete one nothing has relied on) and the reminder settings, the regime's review among them. |
 | `invoices:payments` | yes | Register a payment against an issued invoice, and remove a registration with a reason; import bank files and read the imported files and their accounts; work the exception queue — apply, dismiss, handle a reversal, confirm a duplicate, treat one as distinct, reopen ([The exception queue](#the-exception-queue)); set a customer's reminder policy — whether, and with what charges, they are reminded; register a payment of an invoice's reminder charges and remove one, and waive charges ([Charges](#charges)); preview and make reminder runs and read them ([Runs](#runs)), see the address each letter goes to, print paper letters, confirm them posted or reprint them, and withdraw or retry a letter ([Letters](#letters)); hold a disputed invoice and lift the hold, record a hand-off to a collection agency and withdraw it, and export the collection file ([Holds and the hand-off to collection](#holds-and-the-hand-off-to-collection)); mark a day's Vipps payments reconciled ([The day's Vipps payments](#the-days-vipps-payments)); the attention items about the bank lines, the letters, the print batches and the Vipps payments ([Attention](#attention)). |
 
 **The quick invoice needs `invoices:create` and `invoices:issue` both** ([The quick
@@ -5564,7 +5681,12 @@ All under `/api/v1/invoices`, every one behind `invoices:access` but the pay pag
 | `POST /bank-transactions/{id}/treat-as-distinct` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_not_open`; then under the lock `bank_transaction_reversed` |
 | `POST /bank-transactions/{id}/reopen` | `invoices:payments` | 404; 409 `bank_transaction_not_applicable`, `bank_transaction_applied`, `bank_transaction_reversed` |
 | `GET /bank-accounts` | `invoices:payments` | |
-| `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported |
+| `PUT /bank-accounts/{account}/format` | `invoices:manage` | 400 on `format`; 404 an account never imported; 409 `bank_feed_enabled` |
+| `GET /bank-feed` | | |
+| `PUT /bank-feed` | `invoices:manage` | 400 on `provider`, `apiKey`; 409 `bank_feed_disabled`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
+| `DELETE /bank-feed` | `invoices:manage` | |
+| `GET /bank-feed/accounts` | `invoices:manage` | 409 `bank_feed_disabled`, `bank_feed_not_connected`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
+| `PUT /bank-feed/accounts/{account}` | `invoices:manage` | 400 on `account`, `startDay`; 404 switching off an account never switched on; 409 `bank_feed_not_connected`, `bank_feed_disabled`, `bank_feed_account_not_offered`, `bank_account_unknown`; 422 `bank_feed_credential_rejected`; 503 `bank_feed_unavailable` |
 | `GET /journal` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, paging |
 | `GET /export.csv` | | 400 `from` or `to` missing or not a calendar date, `from` after `to`, more than 5000 rows |
 | `GET /vipps-payments` | | 400 `date` missing or not a calendar date |

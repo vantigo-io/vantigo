@@ -13,6 +13,9 @@ sources:
   - apps/server/internal/invoices/payment_worker.go
   - apps/server/internal/payments
   - apps/server/internal/security/publichost.go
+  - apps/server/internal/bankfeed
+  - apps/server/internal/invoices/bank_feed.go
+  - apps/host/frontend/src/routes/workspace/bank.tsx
 ---
 
 Vantigo reads the bank's own record of the money that arrived on the seller's account: a
@@ -102,6 +105,11 @@ account, with its own format.
 **Bank accounts** on the same page — or `GET /api/v1/invoices/bank-accounts` — lists every
 account with its format, the previous format and cutover, and its latest file.
 
+A third format, `feed` (**Bank feed** on the screen), is an account the bank feed reads
+([below](#the-bank-feed)). Only switching the feed on sets it; the format control offers
+the two file formats alone, and refuses a change away from `feed` with `bank_feed_enabled`
+while the feed is on for the account.
+
 ## Before you import
 
 - **The accounts.** Every account a file names must be the seller's **Bank account** in
@@ -147,6 +155,80 @@ account with its format, the previous format and cutover, and its latest file.
   payment it reverses, which is then removed, or saying why none is. After the switch of
   an account's format, the payments held back by the cutover are confirmed as duplicates
   there, or applied when they were not in the old format's files after all.
+
+## The bank feed
+
+Instead of downloading files, the incoming payments of an account can be read from the bank
+through its API. The one bank today is **Folio**, read with an API key the company creates
+in Folio. This release connects the bank and chooses the accounts; reading the payments
+from them comes in the next one. **Until then, an account switched on gets no payments
+from the feed, and files are no longer imported for it** — connect the bank, but switch an
+account on only once the release that reads it is installed.
+
+**What a key can do.** A Folio API key reads every account and every transaction of the
+company. It cannot move money: a payment created with it is a draft until a person signs
+it with BankID in Folio. Treat it as a password: create it for Vantigo alone, and delete it
+in Folio when it is no longer used or may have leaked.
+
+**The installation's settings** (`vantigo.env`, [Configuration](/en/admin/configuration/)):
+
+- `INVOICES_BANK_FEED_ENABLED` — default `1`. `0` sends no request to any bank: a key is
+  refused `bank_feed_disabled`, the bank's accounts are not read, and what is stored is
+  kept. The page says the feed is switched off.
+- `INVOICES_FOLIO_BASE_URL` — default `https://api.folio.no/v2`. It must be an `https` URL:
+  the server refuses to start on anything else, since the key goes with every request. It
+  is the operator's setting; nobody in the workspace can point the key at another host.
+
+The server reaches Folio over outbound HTTPS; Folio sends nothing in, so no public host is
+needed.
+
+**Connect the bank.** Someone with `invoices:access` and `invoices:manage`:
+
+1. creates an API key in Folio;
+2. opens the avatar menu › **Workspace admin** › **Integrations** › **Bank**, chooses
+   **Folio**, pastes the key and clicks **Connect** (or `PUT /api/v1/invoices/bank-feed`).
+
+Vantigo first reads the accounts with the key, and stores it only if Folio accepts it:
+sealed by the secrets box under `invoices/bank-feed-credential`, with its last four
+characters kept in clear for the screen. It is never shown, logged or answered again, and
+the Assistant never calls this operation, so a key is never typed into a conversation.
+Folio refusing the key is `422 bank_feed_credential_rejected`; Folio not answering is
+`503 bank_feed_unavailable`; nothing is stored either way. A new key is saved the same way
+and replaces the old.
+
+**Choose the accounts and the start day.** Under **Accounts** the page lists the accounts
+the key reads, as Folio answers them now. An account can be switched on when it is the
+seller's **Bank account** in **Invoice settings** or one an issued invoice printed — the
+rule a bank file's accounts are held to — and never when it is a card account. Switching
+one on asks for a **start day**, today by default and never later: nothing booked before
+it is read, so payments already registered from files are not registered again.
+
+**The cutover from files.** Switching an account on sets its format to **feed**, as a
+change of format does ([the format of each account](#the-format-of-each-account)): an
+account that had `ocr` or `camt054` keeps that as its previous format, with the latest
+booking day of its payments in it as the cutover, and a feed payment booked on or before
+the cutover will be held back as a possible duplicate. From then on a file uploaded for the
+account is refused `bank_import_format_mismatch`. The format control never sets `feed`,
+and refuses a change away from it with `bank_feed_enabled` while the feed is on for the
+account; switch the feed off first.
+
+**Disconnect.** **Disconnect** on the page (or `DELETE /api/v1/invoices/bank-feed`) removes
+the key and switches every account off. Bank files, their payments and each account's
+format stay: to go back to files, change each account's format under **Payments**.
+Delete the key in Folio too.
+
+**What can go wrong.**
+
+- **`bank_feed_credential_rejected`** when the accounts are read or one is switched on:
+  Folio refused the stored key. The connection shows **Key refused**; create a new key and
+  save it.
+- **`bank_feed_unavailable`**: Folio did not answer, or answered something Vantigo does not
+  read, logged at warn with the status (never the key). Or the stored key cannot be opened
+  on this server — `APP_SECRET` changed — logged at error: save the key again.
+- **`bank_account_unknown`** on switching an account on: it is not the seller's; check
+  **Invoice settings**.
+- **`bank_feed_account_not_offered`**: Folio does not answer that account for the key, or
+  it is a card account.
 
 ## The reminder worker and mail
 

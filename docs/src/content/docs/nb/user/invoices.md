@@ -1182,6 +1182,43 @@ den dagen eller tidligere som mulig duplikat, fordi det gamle formatet kan ha br
 allerede. Gjør endringen når den siste filen i det gamle formatet er importert. Uten
 `invoices:manage` vises formatene, og siden sier at det trengs for å endre et.
 
+En konto bankintegrasjonen leser (Administrer arbeidsområde › **Integrasjoner** › **Bank**,
+[under](#koble-til-banken)), har formatet **Bankintegrasjon**. Det importeres ikke lenger
+filer for den, og **Endre formatet** tilbyr ikke **Bankintegrasjon**: bare det å slå på
+integrasjonen setter det. Mens integrasjonen er på for kontoen, avvises en endring av
+formatet, og det sies hvorfor; slå integrasjonen av først, og endre så formatet tilbake til
+filene.
+
+### Koble til banken
+
+I stedet for å importere filer kan en konto leses fra banken selv. I dag er den banken
+**Folio**. Noen med `invoices:manage` åpner avatar-menyen › **Administrer arbeidsområde** ›
+**Integrasjoner** › **Bank**:
+
+1. Under **Tilkobling** velger du **Bank** — **Folio** — limer inn **API-nøkkel**en som er
+   laget i banken, og klikker **Koble til**. Nøkkelen kontrolleres hos banken først og
+   lagres bare hvis banken godtar den; etterpå vises bare de fire siste tegnene. Kortet sier
+   hva en nøkkel kan gjøre: den leser alle kontoer og transaksjoner i selskapet, og den kan
+   ikke flytte penger — en betaling laget med den er et utkast til en person signerer den
+   med BankID.
+2. Under **Kontoer** listes bankens kontoer slik banken svarer nå. Velg **Startdag** —
+   ingenting som er bokført før den, leses, så betalinger som allerede er registrert,
+   registreres ikke på nytt — og slå på bryteren. Bare selgerens **Bankkonto**, eller en som
+   en utstedt faktura har skrevet ut, kan slås på, og aldri en kortkonto; raden sier hvorfor
+   når en ikke kan.
+3. Kontoens format blir **Bankintegrasjon**. En konto som hadde **OCR giro** eller
+   **camt.054**, beholder det gamle formatet som det tidligere, med skjæringsdagen, slik en
+   endring av formatet gjør.
+
+**Bytt nøkkel** lagrer en ny nøkkel på samme måte, og henter tilbake en konto banken hadde
+avvist den gamle nøkkelen for. **Koble fra** fjerner nøkkelen og slår av alle kontoer;
+bankfilene, betalingene som er registrert fra dem, og formatet til hver konto blir stående.
+Når installasjonen ikke tillater bankintegrasjon, sier siden det og tilbyr ingen **Koble
+til**. I denne versjonen leser integrasjonen ennå ikke betalingene: en konto som er slått på,
+får ingenting fra banken, og det importeres ikke lenger filer for den, så slå integrasjonen
+på for en konto først når Vantigo leser betalingene ([Innbetalinger fra
+banken](/nb/admin/payments/#bankintegrasjonen)).
+
 **En ekte andre betaling som ser ut som en gjentakelse.** En betaling holdes tilbake som
 **Et mulig duplikat**, og registreres ikke, når en betaling fra **en annen fil** til samme
 konto, bokført samme dag, med samme beløp og samme KID, allerede er registrert — fordi det
@@ -2092,7 +2129,7 @@ Ingen innebygd rolle har disse; en eier har alt
 | Utstede et utkast — som merker arbeidet på det som fakturert i Timer, Utlegg og Prosjekter, forbruket i Energi og ordrelinjene i Ordre, uten å spørre etter rettighetene der — lage en kreditnota, sende et dokument på e-post eller som EHF, se hvor hver sending gikk, avbryte eller avklare en EHF-sending, registrere en levering manuelt eller fjerne en, lage eller trekke tilbake en betalingslenke og se adressen og QR-koden mens betaling på stedet tilbys, ta imot en Vipps-betaling på stedet | `invoices:issue` |
 | Registrere en betaling eller fjerne en med begrunnelse; importere bankfiler, og bruke **Innbetalinger** og avvikskøen der; sette en kundes purreregel; forhåndsvise og gjøre purrekjøringer, skrive ut papirbrev, bekrefte en bunke postlagt eller skrive den ut på nytt; trekke tilbake et brev eller sende et som feilet på nytt; registrere en betaling av purrekrav, fjerne en, ettergi et purrekrav; sette en faktura på vent og fjerne den fra vent, registrere en overlevering til inkasso og trekke den tilbake, eksportere inkassofilen; registrere en dags Vipps-betalinger som avstemt; se dashbordets varsler om banklinjer, brev, utskriftsbunker og Vipps-betalinger | `invoices:payments` |
 | Lage en hurtigfaktura — laget og utstedt i ett steg, registrert som overlevert — og ta betalt for den med Vipps på stedet | `invoices:create` og `invoices:issue` |
-| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortene **Arbeid til fakturering** og **Forbruk til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes; sette opp Vipps og betalingsinnstillingene, bekrefte kontantsalg, forlate en Vipps-betaling som står fast | `invoices:manage` |
+| Redigere selgeropplysningene, nummerserien, Peppol-ID-en, aksesspunktet, KID-avtalen, mva-kodene, kortene **Arbeid til fakturering** og **Forbruk til fakturering**, inkassosatsene og purreinnstillingene, gjennomgangen av regelverket blant dem; endre en bankkontos filformat under **Innbetalinger**, som også krever `invoices:payments` for å åpnes; sette opp Vipps og betalingsinnstillingene, bekrefte kontantsalg, forlate en Vipps-betaling som står fast; koble til banken, slå kontoene av og på og koble den fra, under **Administrer arbeidsområde** › **Integrasjoner** › **Bank** | `invoices:manage` |
 
 Innbetalinger og purring har ingen egen rettighet. Purringer, avvikskøen, vent og
 overlevering til inkasso krever `invoices:payments`, ikke `invoices:issue`: en purring er
