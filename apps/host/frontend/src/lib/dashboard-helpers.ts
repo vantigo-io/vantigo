@@ -989,8 +989,9 @@ export const accountingKpi = (
 /**
  * What the Accounting card's hint says waits, the most pressing first: facts
  * under Needs attention (A15); VAT terms past their due date and not marked as
- * filed, then terms that have ended and are not closed (A22); supplier
- * invoices overdue or due within the week (A19). Undefined when nothing waits,
+ * filed, then terms that have ended and are not closed (A22); a bank
+ * account the feed cannot read (A29); supplier invoices overdue or due within
+ * the week (A19); bank lines not matched (A28). Undefined when nothing waits,
  * and the KPI's own hint stands.
  */
 export const accountingAttentionHint = (
@@ -1001,8 +1002,10 @@ export const accountingAttentionHint = (
   if (meta.unposted > 0) return t("needsAttentionCount", { count: meta.unposted });
   if (meta.vatTermsToFile > 0) return t("vatTermsToFile", { count: meta.vatTermsToFile });
   if (meta.vatTermsToClose > 0) return t("vatTermsToClose", { count: meta.vatTermsToClose });
+  if (meta.bankFeedProblems > 0) return t("bankFeedProblemsCount", { count: meta.bankFeedProblems });
   if (meta.payablesOverdue + meta.payablesDueSoon > 0)
     return t("payablesCount", { overdue: meta.payablesOverdue, soon: meta.payablesDueSoon });
+  if (meta.openBankLines > 0) return t("openBankLinesCount", { count: meta.openBankLines });
   return undefined;
 };
 

@@ -143,6 +143,9 @@ import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceShippingRouteImport } from './routes/workspace/shipping'
 import { Route as WorkspaceStationsRouteImport } from './routes/workspace/stations'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
+import { Route as AccountingBankIndexRouteImport } from './routes/accounting/bank.index'
+import { Route as AccountingBankImportRouteImport } from './routes/accounting/bank.import'
+import { Route as AccountingBankRulesRouteImport } from './routes/accounting/bank.rules'
 import { Route as AccountingSupplierInvoicesIndexRouteImport } from './routes/accounting/supplier-invoices.index'
 import { Route as AccountingSupplierInvoicesSupplierInvoiceIdRouteImport } from './routes/accounting/supplier-invoices.$supplierInvoiceId'
 import { Route as AccountingSupplierInvoicesNewRouteImport } from './routes/accounting/supplier-invoices.new'
@@ -235,6 +238,8 @@ import { Route as WorkspaceGoogleIndexRouteImport } from './routes/workspace/goo
 import { Route as WorkspaceGoogleAccountsRouteImport } from './routes/workspace/google/accounts'
 import { Route as WorkspaceGoogleCalendarGmailRouteImport } from './routes/workspace/google/calendar-gmail'
 import { Route as WorkspaceGoogleConnectionRouteImport } from './routes/workspace/google/connection'
+import { Route as AccountingBankBankAccountIdIndexRouteImport } from './routes/accounting/bank.$bankAccountId.index'
+import { Route as AccountingBankBankAccountIdSettingsRouteImport } from './routes/accounting/bank.$bankAccountId.settings'
 import { Route as AccountingVatYearNumberRouteImport } from './routes/accounting/vat.$year.$number'
 import { Route as AgentsAgentIdRolesRoleIdRouteImport } from './routes/agents/$agentId.roles.$roleId'
 import { Route as EnergyMeteringPointsImportIndexRouteImport } from './routes/energy/metering-points/import.index'
@@ -923,6 +928,21 @@ const WorkspaceUsersRoute = WorkspaceUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const AccountingBankIndexRoute = AccountingBankIndexRouteImport.update({
+  id: '/bank/',
+  path: '/bank/',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingBankImportRoute = AccountingBankImportRouteImport.update({
+  id: '/bank/import',
+  path: '/bank/import',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingBankRulesRoute = AccountingBankRulesRouteImport.update({
+  id: '/bank/rules',
+  path: '/bank/rules',
+  getParentRoute: () => AccountingRoute,
+} as any)
 const AccountingSupplierInvoicesIndexRoute =
   AccountingSupplierInvoicesIndexRouteImport.update({
     id: '/supplier-invoices/',
@@ -1427,6 +1447,18 @@ const WorkspaceGoogleConnectionRoute =
     path: '/connection',
     getParentRoute: () => WorkspaceGoogleRoute,
   } as any)
+const AccountingBankBankAccountIdIndexRoute =
+  AccountingBankBankAccountIdIndexRouteImport.update({
+    id: '/bank/$bankAccountId/',
+    path: '/bank/$bankAccountId/',
+    getParentRoute: () => AccountingRoute,
+  } as any)
+const AccountingBankBankAccountIdSettingsRoute =
+  AccountingBankBankAccountIdSettingsRouteImport.update({
+    id: '/bank/$bankAccountId/settings',
+    path: '/bank/$bankAccountId/settings',
+    getParentRoute: () => AccountingRoute,
+  } as any)
 const AccountingVatYearNumberRoute = AccountingVatYearNumberRouteImport.update({
   id: '/vat/$year/$number',
   path: '/vat/$year/$number',
@@ -1646,6 +1678,8 @@ export interface FileRoutesByFullPath {
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
+  '/accounting/bank/import': typeof AccountingBankImportRoute
+  '/accounting/bank/rules': typeof AccountingBankRulesRoute
   '/accounting/supplier-invoices/$supplierInvoiceId': typeof AccountingSupplierInvoicesSupplierInvoiceIdRoute
   '/accounting/supplier-invoices/new': typeof AccountingSupplierInvoicesNewRoute
   '/accounting/suppliers/$supplierId': typeof AccountingSuppliersSupplierIdRoute
@@ -1707,6 +1741,7 @@ export interface FileRoutesByFullPath {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/bank/': typeof AccountingBankIndexRoute
   '/accounting/supplier-invoices/': typeof AccountingSupplierInvoicesIndexRoute
   '/accounting/suppliers/': typeof AccountingSuppliersIndexRoute
   '/accounting/vat/': typeof AccountingVatIndexRoute
@@ -1738,6 +1773,7 @@ export interface FileRoutesByFullPath {
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/workspace/entra/': typeof WorkspaceEntraIndexRoute
   '/workspace/google/': typeof WorkspaceGoogleIndexRoute
+  '/accounting/bank/$bankAccountId/settings': typeof AccountingBankBankAccountIdSettingsRoute
   '/accounting/vat/$year/$number': typeof AccountingVatYearNumberRoute
   '/agents/$agentId/roles/$roleId': typeof AgentsAgentIdRolesRoleIdRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
@@ -1749,6 +1785,7 @@ export interface FileRoutesByFullPath {
   '/manufacturing/boms/$bomId/overview': typeof ManufacturingBomsBomIdOverviewRoute
   '/manufacturing/shop-floor/work-centers/$workCenterId': typeof ManufacturingShopFloorWorkCentersWorkCenterIdRoute
   '/manufacturing/shop-floor/work-orders/$workOrderId': typeof ManufacturingShopFloorWorkOrdersWorkOrderIdRoute
+  '/accounting/bank/$bankAccountId/': typeof AccountingBankBankAccountIdIndexRoute
   '/energy/metering-points/import/': typeof EnergyMeteringPointsImportIndexRoute
   '/inventory/transfers/$transferId/': typeof InventoryTransfersTransferIdIndexRoute
   '/manufacturing/boms/$bomId/': typeof ManufacturingBomsBomIdIndexRoute
@@ -1862,6 +1899,8 @@ export interface FileRoutesByTo {
   '/staff': typeof StaffIndexRoute
   '/time': typeof TimeIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
+  '/accounting/bank/import': typeof AccountingBankImportRoute
+  '/accounting/bank/rules': typeof AccountingBankRulesRoute
   '/accounting/supplier-invoices/$supplierInvoiceId': typeof AccountingSupplierInvoicesSupplierInvoiceIdRoute
   '/accounting/supplier-invoices/new': typeof AccountingSupplierInvoicesNewRoute
   '/accounting/suppliers/$supplierId': typeof AccountingSuppliersSupplierIdRoute
@@ -1923,6 +1962,7 @@ export interface FileRoutesByTo {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/bank': typeof AccountingBankIndexRoute
   '/accounting/supplier-invoices': typeof AccountingSupplierInvoicesIndexRoute
   '/accounting/suppliers': typeof AccountingSuppliersIndexRoute
   '/accounting/vat': typeof AccountingVatIndexRoute
@@ -1954,6 +1994,7 @@ export interface FileRoutesByTo {
   '/staff/people': typeof StaffPeopleIndexRoute
   '/workspace/entra': typeof WorkspaceEntraIndexRoute
   '/workspace/google': typeof WorkspaceGoogleIndexRoute
+  '/accounting/bank/$bankAccountId/settings': typeof AccountingBankBankAccountIdSettingsRoute
   '/accounting/vat/$year/$number': typeof AccountingVatYearNumberRoute
   '/agents/$agentId/roles/$roleId': typeof AgentsAgentIdRolesRoleIdRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
@@ -1965,6 +2006,7 @@ export interface FileRoutesByTo {
   '/manufacturing/boms/$bomId/overview': typeof ManufacturingBomsBomIdOverviewRoute
   '/manufacturing/shop-floor/work-centers/$workCenterId': typeof ManufacturingShopFloorWorkCentersWorkCenterIdRoute
   '/manufacturing/shop-floor/work-orders/$workOrderId': typeof ManufacturingShopFloorWorkOrdersWorkOrderIdRoute
+  '/accounting/bank/$bankAccountId': typeof AccountingBankBankAccountIdIndexRoute
   '/energy/metering-points/import': typeof EnergyMeteringPointsImportIndexRoute
   '/inventory/transfers/$transferId': typeof InventoryTransfersTransferIdIndexRoute
   '/manufacturing/boms/$bomId': typeof ManufacturingBomsBomIdIndexRoute
@@ -2105,6 +2147,8 @@ export interface FileRoutesById {
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
+  '/accounting/bank/import': typeof AccountingBankImportRoute
+  '/accounting/bank/rules': typeof AccountingBankRulesRoute
   '/accounting/supplier-invoices/$supplierInvoiceId': typeof AccountingSupplierInvoicesSupplierInvoiceIdRoute
   '/accounting/supplier-invoices/new': typeof AccountingSupplierInvoicesNewRoute
   '/accounting/suppliers/$supplierId': typeof AccountingSuppliersSupplierIdRoute
@@ -2166,6 +2210,7 @@ export interface FileRoutesById {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/bank/': typeof AccountingBankIndexRoute
   '/accounting/supplier-invoices/': typeof AccountingSupplierInvoicesIndexRoute
   '/accounting/suppliers/': typeof AccountingSuppliersIndexRoute
   '/accounting/vat/': typeof AccountingVatIndexRoute
@@ -2197,6 +2242,7 @@ export interface FileRoutesById {
   '/staff/people/': typeof StaffPeopleIndexRoute
   '/workspace/entra/': typeof WorkspaceEntraIndexRoute
   '/workspace/google/': typeof WorkspaceGoogleIndexRoute
+  '/accounting/bank/$bankAccountId/settings': typeof AccountingBankBankAccountIdSettingsRoute
   '/accounting/vat/$year/$number': typeof AccountingVatYearNumberRoute
   '/agents/$agentId/roles/$roleId': typeof AgentsAgentIdRolesRoleIdRoute
   '/energy/metering-points/import/$importId': typeof EnergyMeteringPointsImportImportIdRoute
@@ -2208,6 +2254,7 @@ export interface FileRoutesById {
   '/manufacturing/boms/$bomId/overview': typeof ManufacturingBomsBomIdOverviewRoute
   '/manufacturing/shop-floor/work-centers/$workCenterId': typeof ManufacturingShopFloorWorkCentersWorkCenterIdRoute
   '/manufacturing/shop-floor/work-orders/$workOrderId': typeof ManufacturingShopFloorWorkOrdersWorkOrderIdRoute
+  '/accounting/bank/$bankAccountId/': typeof AccountingBankBankAccountIdIndexRoute
   '/energy/metering-points/import/': typeof EnergyMeteringPointsImportIndexRoute
   '/inventory/transfers/$transferId/': typeof InventoryTransfersTransferIdIndexRoute
   '/manufacturing/boms/$bomId/': typeof ManufacturingBomsBomIdIndexRoute
@@ -2349,6 +2396,8 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/time/'
     | '/workspace/'
+    | '/accounting/bank/import'
+    | '/accounting/bank/rules'
     | '/accounting/supplier-invoices/$supplierInvoiceId'
     | '/accounting/supplier-invoices/new'
     | '/accounting/suppliers/$supplierId'
@@ -2410,6 +2459,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/bank/'
     | '/accounting/supplier-invoices/'
     | '/accounting/suppliers/'
     | '/accounting/vat/'
@@ -2441,6 +2491,7 @@ export interface FileRouteTypes {
     | '/staff/people/'
     | '/workspace/entra/'
     | '/workspace/google/'
+    | '/accounting/bank/$bankAccountId/settings'
     | '/accounting/vat/$year/$number'
     | '/agents/$agentId/roles/$roleId'
     | '/energy/metering-points/import/$importId'
@@ -2452,6 +2503,7 @@ export interface FileRouteTypes {
     | '/manufacturing/boms/$bomId/overview'
     | '/manufacturing/shop-floor/work-centers/$workCenterId'
     | '/manufacturing/shop-floor/work-orders/$workOrderId'
+    | '/accounting/bank/$bankAccountId/'
     | '/energy/metering-points/import/'
     | '/inventory/transfers/$transferId/'
     | '/manufacturing/boms/$bomId/'
@@ -2565,6 +2617,8 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/accounting/bank/import'
+    | '/accounting/bank/rules'
     | '/accounting/supplier-invoices/$supplierInvoiceId'
     | '/accounting/supplier-invoices/new'
     | '/accounting/suppliers/$supplierId'
@@ -2626,6 +2680,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/bank'
     | '/accounting/supplier-invoices'
     | '/accounting/suppliers'
     | '/accounting/vat'
@@ -2657,6 +2712,7 @@ export interface FileRouteTypes {
     | '/staff/people'
     | '/workspace/entra'
     | '/workspace/google'
+    | '/accounting/bank/$bankAccountId/settings'
     | '/accounting/vat/$year/$number'
     | '/agents/$agentId/roles/$roleId'
     | '/energy/metering-points/import/$importId'
@@ -2668,6 +2724,7 @@ export interface FileRouteTypes {
     | '/manufacturing/boms/$bomId/overview'
     | '/manufacturing/shop-floor/work-centers/$workCenterId'
     | '/manufacturing/shop-floor/work-orders/$workOrderId'
+    | '/accounting/bank/$bankAccountId'
     | '/energy/metering-points/import'
     | '/inventory/transfers/$transferId'
     | '/manufacturing/boms/$bomId'
@@ -2807,6 +2864,8 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/time/'
     | '/workspace/'
+    | '/accounting/bank/import'
+    | '/accounting/bank/rules'
     | '/accounting/supplier-invoices/$supplierInvoiceId'
     | '/accounting/supplier-invoices/new'
     | '/accounting/suppliers/$supplierId'
@@ -2868,6 +2927,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/bank/'
     | '/accounting/supplier-invoices/'
     | '/accounting/suppliers/'
     | '/accounting/vat/'
@@ -2899,6 +2959,7 @@ export interface FileRouteTypes {
     | '/staff/people/'
     | '/workspace/entra/'
     | '/workspace/google/'
+    | '/accounting/bank/$bankAccountId/settings'
     | '/accounting/vat/$year/$number'
     | '/agents/$agentId/roles/$roleId'
     | '/energy/metering-points/import/$importId'
@@ -2910,6 +2971,7 @@ export interface FileRouteTypes {
     | '/manufacturing/boms/$bomId/overview'
     | '/manufacturing/shop-floor/work-centers/$workCenterId'
     | '/manufacturing/shop-floor/work-orders/$workOrderId'
+    | '/accounting/bank/$bankAccountId/'
     | '/energy/metering-points/import/'
     | '/inventory/transfers/$transferId/'
     | '/manufacturing/boms/$bomId/'
@@ -3893,6 +3955,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceUsersRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/accounting/bank/': {
+      id: '/accounting/bank/'
+      path: '/bank'
+      fullPath: '/accounting/bank/'
+      preLoaderRoute: typeof AccountingBankIndexRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/bank/import': {
+      id: '/accounting/bank/import'
+      path: '/bank/import'
+      fullPath: '/accounting/bank/import'
+      preLoaderRoute: typeof AccountingBankImportRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/bank/rules': {
+      id: '/accounting/bank/rules'
+      path: '/bank/rules'
+      fullPath: '/accounting/bank/rules'
+      preLoaderRoute: typeof AccountingBankRulesRouteImport
+      parentRoute: typeof AccountingRoute
+    }
     '/accounting/supplier-invoices/': {
       id: '/accounting/supplier-invoices/'
       path: '/supplier-invoices'
@@ -4537,6 +4620,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceGoogleConnectionRouteImport
       parentRoute: typeof WorkspaceGoogleRoute
     }
+    '/accounting/bank/$bankAccountId/': {
+      id: '/accounting/bank/$bankAccountId/'
+      path: '/bank/$bankAccountId'
+      fullPath: '/accounting/bank/$bankAccountId/'
+      preLoaderRoute: typeof AccountingBankBankAccountIdIndexRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/bank/$bankAccountId/settings': {
+      id: '/accounting/bank/$bankAccountId/settings'
+      path: '/bank/$bankAccountId/settings'
+      fullPath: '/accounting/bank/$bankAccountId/settings'
+      preLoaderRoute: typeof AccountingBankBankAccountIdSettingsRouteImport
+      parentRoute: typeof AccountingRoute
+    }
     '/accounting/vat/$year/$number': {
       id: '/accounting/vat/$year/$number'
       path: '/vat/$year/$number'
@@ -4651,16 +4748,21 @@ interface AccountingRouteChildren {
   AccountingSetupRoute: typeof AccountingSetupRoute
   AccountingTaxCodesRoute: typeof AccountingTaxCodesRoute
   AccountingIndexRoute: typeof AccountingIndexRoute
+  AccountingBankImportRoute: typeof AccountingBankImportRoute
+  AccountingBankRulesRoute: typeof AccountingBankRulesRoute
   AccountingSupplierInvoicesSupplierInvoiceIdRoute: typeof AccountingSupplierInvoicesSupplierInvoiceIdRoute
   AccountingSupplierInvoicesNewRoute: typeof AccountingSupplierInvoicesNewRoute
   AccountingSuppliersSupplierIdRoute: typeof AccountingSuppliersSupplierIdRoute
   AccountingVatPostingsRoute: typeof AccountingVatPostingsRoute
   AccountingVouchersVoucherIdRoute: typeof AccountingVouchersVoucherIdRoute
+  AccountingBankIndexRoute: typeof AccountingBankIndexRoute
   AccountingSupplierInvoicesIndexRoute: typeof AccountingSupplierInvoicesIndexRoute
   AccountingSuppliersIndexRoute: typeof AccountingSuppliersIndexRoute
   AccountingVatIndexRoute: typeof AccountingVatIndexRoute
   AccountingVouchersIndexRoute: typeof AccountingVouchersIndexRoute
+  AccountingBankBankAccountIdSettingsRoute: typeof AccountingBankBankAccountIdSettingsRoute
   AccountingVatYearNumberRoute: typeof AccountingVatYearNumberRoute
+  AccountingBankBankAccountIdIndexRoute: typeof AccountingBankBankAccountIdIndexRoute
 }
 
 const AccountingRouteChildren: AccountingRouteChildren = {
@@ -4676,17 +4778,23 @@ const AccountingRouteChildren: AccountingRouteChildren = {
   AccountingSetupRoute: AccountingSetupRoute,
   AccountingTaxCodesRoute: AccountingTaxCodesRoute,
   AccountingIndexRoute: AccountingIndexRoute,
+  AccountingBankImportRoute: AccountingBankImportRoute,
+  AccountingBankRulesRoute: AccountingBankRulesRoute,
   AccountingSupplierInvoicesSupplierInvoiceIdRoute:
     AccountingSupplierInvoicesSupplierInvoiceIdRoute,
   AccountingSupplierInvoicesNewRoute: AccountingSupplierInvoicesNewRoute,
   AccountingSuppliersSupplierIdRoute: AccountingSuppliersSupplierIdRoute,
   AccountingVatPostingsRoute: AccountingVatPostingsRoute,
   AccountingVouchersVoucherIdRoute: AccountingVouchersVoucherIdRoute,
+  AccountingBankIndexRoute: AccountingBankIndexRoute,
   AccountingSupplierInvoicesIndexRoute: AccountingSupplierInvoicesIndexRoute,
   AccountingSuppliersIndexRoute: AccountingSuppliersIndexRoute,
   AccountingVatIndexRoute: AccountingVatIndexRoute,
   AccountingVouchersIndexRoute: AccountingVouchersIndexRoute,
+  AccountingBankBankAccountIdSettingsRoute:
+    AccountingBankBankAccountIdSettingsRoute,
   AccountingVatYearNumberRoute: AccountingVatYearNumberRoute,
+  AccountingBankBankAccountIdIndexRoute: AccountingBankBankAccountIdIndexRoute,
 }
 
 const AccountingRouteWithChildren = AccountingRoute._addFileChildren(

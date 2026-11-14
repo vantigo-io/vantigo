@@ -1562,7 +1562,8 @@ describe("the dashboard's accounting card", () => {
   });
 
   // What waits, the most pressing first: Needs attention, a VAT term past its
-  // due date and not filed, one ended and not closed (A22), then payables.
+  // due date and not filed, one ended and not closed (A22), a bank feed that
+  // cannot read (A29), payables, then bank lines not matched (A28).
   it("names what waits in the books, the most pressing first", () => {
     const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count ?? values?.overdue ?? ""}`;
     const meta = {
@@ -1572,6 +1573,8 @@ describe("the dashboard's accounting card", () => {
       vatTermsToClose: 0,
       payablesOverdue: 0,
       payablesDueSoon: 0,
+      openBankLines: 0,
+      bankFeedProblems: 0,
     } as NonNullable<Parameters<typeof accountingAttentionHint>[0]>;
     expect(accountingAttentionHint(undefined, t)).toBeUndefined();
     expect(accountingAttentionHint(meta, t)).toBeUndefined();
@@ -1579,6 +1582,11 @@ describe("the dashboard's accounting card", () => {
     expect(accountingAttentionHint({ ...meta, payablesOverdue: 2, vatTermsToClose: 1 }, t)).toBe("vatTermsToClose:1");
     expect(accountingAttentionHint({ ...meta, vatTermsToClose: 1, vatTermsToFile: 3 }, t)).toBe("vatTermsToFile:3");
     expect(accountingAttentionHint({ ...meta, vatTermsToFile: 3, unposted: 4 }, t)).toBe("needsAttentionCount:4");
+    expect(accountingAttentionHint({ ...meta, openBankLines: 7 }, t)).toBe("openBankLinesCount:7");
+    expect(accountingAttentionHint({ ...meta, openBankLines: 7, payablesOverdue: 2 }, t)).toBe("payablesCount:2");
+    expect(accountingAttentionHint({ ...meta, payablesOverdue: 2, bankFeedProblems: 1 }, t)).toBe(
+      "bankFeedProblemsCount:1",
+    );
     expect(accountingAttentionHint({ ...meta, setUp: false, unposted: 4 }, t)).toBeUndefined();
   });
 });

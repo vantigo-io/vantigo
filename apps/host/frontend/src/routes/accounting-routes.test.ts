@@ -4,6 +4,11 @@ import {
   ACCOUNTING_HOME_ROUTE_PATH,
   ACCOUNTS_ROUTE_PATH,
   accountingNavItems,
+  BANK_ACCOUNT_ROUTE_PATH,
+  BANK_ACCOUNT_SETTINGS_ROUTE_PATH,
+  BANK_IMPORT_ROUTE_PATH,
+  BANK_ROUTE_PATH,
+  BANK_RULES_ROUTE_PATH,
   JOURNAL_ROUTE_PATH,
   NEEDS_ATTENTION_ROUTE_PATH,
   NEW_SUPPLIER_INVOICE_ROUTE_PATH,
@@ -58,6 +63,11 @@ describe("the Accounting routes", () => {
       SETTINGS_ROUTE_PATH,
       POSTING_RULES_ROUTE_PATH,
       NEEDS_ATTENTION_ROUTE_PATH,
+      BANK_ROUTE_PATH,
+      BANK_IMPORT_ROUTE_PATH,
+      BANK_RULES_ROUTE_PATH,
+      BANK_ACCOUNT_ROUTE_PATH,
+      BANK_ACCOUNT_SETTINGS_ROUTE_PATH,
       SUPPLIERS_ROUTE_PATH,
       SUPPLIER_ROUTE_PATH,
       SUPPLIER_INVOICES_ROUTE_PATH,
@@ -73,7 +83,8 @@ describe("the Accounting routes", () => {
         .replace("$supplierId", "7")
         .replace("$supplierInvoiceId", "7")
         .replace("$year", "2026")
-        .replace("$number", "3");
+        .replace("$number", "3")
+        .replace("$bankAccountId", "7");
       const ids = matchedRouteIds(concrete);
       expect(ids, concrete).toContain("/accounting");
       expect(ids.at(-1), concrete).toBe(path);
