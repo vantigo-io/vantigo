@@ -2,7 +2,9 @@ import {
   ACCOUNTING_HOME_ROUTE_PATH,
   ACCOUNTS_ROUTE_PATH,
   JOURNAL_ROUTE_PATH,
+  NEEDS_ATTENTION_ROUTE_PATH,
   OPEN_ITEMS_ROUTE_PATH,
+  POSTING_RULES_ROUTE_PATH,
   REPORTS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   TAX_CODES_ROUTE_PATH,
@@ -11,7 +13,17 @@ import {
 
 /** One sidebar destination of the app; the host owns its label and icon. */
 export interface AccountingNavItem {
-  key: "overview" | "journal" | "vouchers" | "openItems" | "reports" | "accounts" | "taxCodes" | "settings";
+  key:
+    | "overview"
+    | "journal"
+    | "vouchers"
+    | "needsAttention"
+    | "openItems"
+    | "reports"
+    | "accounts"
+    | "taxCodes"
+    | "postingRules"
+    | "settings";
   /** The key of the destination's label in the package catalog. */
   label: string;
   to: string;
@@ -23,18 +35,20 @@ const read = ["accounting:read"] as const;
 
 /**
  * The sidebar: the overview, a new journal entry for those who post, the
- * vouchers, the open items, the reports, then the chart, the tax codes and
- * the books' settings. Set up the books and the opening balances have no
+ * vouchers, what needs attention, the open items, the reports, then the
+ * chart, the tax codes, the posting rules and the books' settings. Set up the books and the opening balances have no
  * entry: the overview leads to them.
  */
 export const accountingNavItems: readonly AccountingNavItem[] = [
   { key: "overview", label: "navOverview", to: ACCOUNTING_HOME_ROUTE_PATH, requiredPermissions: read },
   { key: "journal", label: "navJournal", to: JOURNAL_ROUTE_PATH, requiredPermissions: ["accounting:post"] },
   { key: "vouchers", label: "navVouchers", to: VOUCHERS_ROUTE_PATH, requiredPermissions: read },
+  { key: "needsAttention", label: "navNeedsAttention", to: NEEDS_ATTENTION_ROUTE_PATH, requiredPermissions: read },
   { key: "openItems", label: "navOpenItems", to: OPEN_ITEMS_ROUTE_PATH, requiredPermissions: read },
   { key: "reports", label: "navReports", to: REPORTS_ROUTE_PATH, requiredPermissions: read },
   { key: "accounts", label: "navAccounts", to: ACCOUNTS_ROUTE_PATH, requiredPermissions: read },
   { key: "taxCodes", label: "navTaxCodes", to: TAX_CODES_ROUTE_PATH, requiredPermissions: read },
+  { key: "postingRules", label: "navPostingRules", to: POSTING_RULES_ROUTE_PATH, requiredPermissions: read },
   { key: "settings", label: "navSettings", to: SETTINGS_ROUTE_PATH, requiredPermissions: read },
 ];
 

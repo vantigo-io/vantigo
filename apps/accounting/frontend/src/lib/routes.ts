@@ -10,6 +10,11 @@ export const OPEN_ITEMS_ROUTE_PATH = "/accounting/open-items";
 export const OPENING_ROUTE_PATH = "/accounting/opening";
 export const REPORTS_ROUTE_PATH = "/accounting/reports";
 export const SETTINGS_ROUTE_PATH = "/accounting/settings";
+export const POSTING_RULES_ROUTE_PATH = "/accounting/posting-rules";
+export const NEEDS_ATTENTION_ROUTE_PATH = "/accounting/needs-attention";
 
 /** A voucher's page. */
 export const voucherPath = (id: number) => `/accounting/vouchers/${id}`;
+
+/** An invoice's page in the Invoices app, which a voucher and a report row link to (A13). */
+export const invoicePath = (id: number) => `/invoices/${id}`;

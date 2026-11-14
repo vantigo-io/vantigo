@@ -6,6 +6,6 @@ describe("the sidebar", () => {
     expect(visibleAccountingNavItems(["accounting:read"]).map((i) => i.key)).not.toContain("journal");
     expect(visibleAccountingNavItems(["accounting:read", "accounting:post"]).map((i) => i.key)).toContain("journal");
     expect(visibleAccountingNavItems([])).toEqual([]);
-    expect(visibleAccountingNavItems(["*"]).length).toBe(8);
+    expect(visibleAccountingNavItems(["*"]).length).toBe(10);
   });
 });

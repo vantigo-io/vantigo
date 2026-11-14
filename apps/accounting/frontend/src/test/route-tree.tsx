@@ -15,8 +15,10 @@ import {
   ACCOUNTING_HOME_ROUTE_PATH,
   ACCOUNTS_ROUTE_PATH,
   JOURNAL_ROUTE_PATH,
+  NEEDS_ATTENTION_ROUTE_PATH,
   OPEN_ITEMS_ROUTE_PATH,
   OPENING_ROUTE_PATH,
+  POSTING_RULES_ROUTE_PATH,
   REPORTS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETUP_ROUTE_PATH,
@@ -27,9 +29,11 @@ import {
 import { validateJournalSearch } from "../lib/search";
 import { AccountsPage } from "../pages/accounts";
 import { JournalEntryPage } from "../pages/journal";
+import { NeedsAttentionPage } from "../pages/needs-attention";
 import { OpenItemsPage } from "../pages/open-items";
 import { OpeningPage } from "../pages/opening";
 import { AccountingOverviewPage } from "../pages/overview";
+import { PostingRulesPage } from "../pages/posting-rules";
 import { ReportsPage } from "../pages/reports";
 import { SettingsPage } from "../pages/settings";
 import { SetupPage } from "../pages/setup";
@@ -61,6 +65,8 @@ export const makeRouteTree = () => {
     route(OPENING_ROUTE_PATH, OpeningPage),
     route(REPORTS_ROUTE_PATH, ReportsPage),
     route(SETTINGS_ROUTE_PATH, SettingsPage),
+    route(POSTING_RULES_ROUTE_PATH, PostingRulesPage),
+    route(NEEDS_ATTENTION_ROUTE_PATH, NeedsAttentionPage),
   ]);
 };
 
