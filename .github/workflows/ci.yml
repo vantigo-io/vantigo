@@ -342,7 +342,7 @@ jobs:
           # stop covering a .yaml-suffixed workflow the day someone adds one,
           # and would do it silently.
           actionlint
-          shellcheck scripts/*.sh tools/ehf/*.sh tools/mva/*.sh
+          shellcheck scripts/*.sh tools/ehf/*.sh tools/mva/*.sh tools/saft/*.sh
 
       - name: 📥 Download Go modules
         working-directory: apps/server
@@ -575,6 +575,32 @@ jobs:
         # job needs only the JDK.
         run: bash tools/mva/validate.sh
 
+  validate_saft:
+    # The SAF-T oracle (tools/saft): Skatteetaten's SAF-T Financial 1.40 XSD,
+    # kept in the repository, over the accounting module's export goldens, and
+    # Skatteetaten's 1.30 and 1.40 examples against their own. The Go tests
+    # validate every file the export writes only when xmllint is on the PATH.
+    needs: metadata
+    name: 🧾 Validate SAF-T files
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 💾 Set up toolchain
+        uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: "java"
+
+      - name: 🧾 Run the SAF-T oracle
+        # The script, not `mise run saft:validate`, as for the VAT return
+        # oracle: this job needs only the JDK.
+        run: bash tools/saft/validate.sh
+
   validate_compose:
     needs: metadata
     name: 🔍 Validate Docker Compose stack
@@ -796,7 +822,7 @@ jobs:
     # fine — CodeQL while dormant, the image outside a pull request or the
     # queue — and a gate that ran and found nothing to test passes.
     name: ✅ CI passed
-    needs: [metadata, build_and_test_frontend, test_frontend, docs, lint_server, test_server, validate_ehf, validate_vat, validate_compose, codeql, build_images]
+    needs: [metadata, build_and_test_frontend, test_frontend, docs, lint_server, test_server, validate_ehf, validate_vat, validate_saft, validate_compose, codeql, build_images]
     if: always()
     runs-on: ubuntu-latest
     permissions: {}

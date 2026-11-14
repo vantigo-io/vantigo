@@ -46,7 +46,7 @@ description = "golangci-lint, govulncheck, shellcheck, actionlint and the GoRele
 run = [
   "cd apps/server && golangci-lint run",
   "cd apps/server && go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
-  "shellcheck scripts/*.sh tools/ehf/*.sh tools/mva/*.sh",
+  "shellcheck scripts/*.sh tools/ehf/*.sh tools/mva/*.sh tools/saft/*.sh",
   "actionlint",
   "goreleaser check",
 ]
@@ -86,6 +86,10 @@ run = "bash tools/ehf/validate.sh"
 [tasks."mva:validate"]
 description = "The VAT return oracle: Skatteetaten's skattemeldingformerverdiavgift v1.0 XSD over the accounting module's goldens and Skatteetaten's examples"
 run = "bash tools/mva/validate.sh"
+
+[tasks."saft:validate"]
+description = "The SAF-T oracle: Skatteetaten's SAF-T Financial 1.40 XSD over the accounting module's export goldens, and Skatteetaten's 1.30 and 1.40 examples"
+run = "bash tools/saft/validate.sh"
 
 [tasks.artifacts]
 description = "SPA + native server binaries → dist/server/linux/<arch>/vantigo"
