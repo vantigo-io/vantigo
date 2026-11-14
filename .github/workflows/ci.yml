@@ -488,6 +488,13 @@ jobs:
               -c "ALTER SYSTEM SET full_page_writes = off" \
               -c "SELECT pg_reload_conf()"
 
+      - name: 🧾 xmllint for the XML goldens
+        # The accounting tests validate every SAF-T file and VAT return they
+        # write against Skatteetaten's XSDs with xmllint, and fail without it
+        # when CI is set.
+        if: steps.affected.outputs.packages != ''
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libxml2-utils
+
       - name: 🧪 Go tests with the race detector
         working-directory: apps/server
         # The race detector makes the identity suite several times slower than
