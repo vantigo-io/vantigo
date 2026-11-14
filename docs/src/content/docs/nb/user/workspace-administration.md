@@ -139,7 +139,8 @@ administratorene.
    skjemaet det og lagrer ikke; lukk det og prøv igjen.
 4. Å slå av **Krev PIN-kode sammen med kort** ber om **Nåværende passord** med mindre du
    logget inn for under ti minutter siden, og administratorene får e-post.
-5. Ved hver person som er **Pålogget**, logger **Avslutt** dem av den nettbrettstasjonen med en gang.
+5. Ved hver person som er **Pålogget**, logger **Avslutt** dem av den nettbrettstasjonen med en gang;
+   nettbrettet viser brikken deres som **Logget av** i løpet av noen sekunder.
    En person med flere mislykkede pålogginger på rad der vises med hvor mange; **Nullstill**
    lar dem prøve igjen med en gang.
 
