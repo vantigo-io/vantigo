@@ -30,13 +30,17 @@ type server struct {
 	// objectsErr the error it was built with.
 	objects    storage.ObjectStore
 	objectsErr error
+	// storageConfigured is whether the deployment has an object store at all
+	// (an unset STORAGE_PROVIDER answers ErrNotConfigured on every use).
+	storageConfigured bool
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
 
 func newServer(d module.Deps) *server {
 	objects, objectsErr := moduleObjectStore(d)
-	return &server{deps: d, objects: objects, objectsErr: objectsErr}
+	configured := objectsErr == nil && (d.ObjectStore != nil || (d.Config != nil && d.Config.StorageProvider != ""))
+	return &server{deps: d, objects: objects, objectsErr: objectsErr, storageConfigured: configured}
 }
 
 // has reports whether the caller holds a permission key. It fails closed.

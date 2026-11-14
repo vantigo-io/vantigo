@@ -166,11 +166,15 @@ func (d fakeDirectory) Customers(_ context.Context, ids []int32) ([]contracts.Cu
 	return out, nil
 }
 
-// fakeJournal is Invoices' sales journal: the open invoices a test sets.
+// fakeJournal is Invoices' sales journal: the open invoices a test sets, in
+// number order and pages of the limit asked, call n answering seqs[n] as its
+// AsOfSeq (the last again past the end, 0 without any).
 type fakeJournal struct {
 	mu    sync.Mutex
 	open  []contracts.OpenDocument
+	seqs  []int64
 	asked []time.Time
+	calls int
 }
 
 func (j *fakeJournal) Documents(context.Context, int64, int) ([]contracts.JournalDocument, error) {
@@ -181,11 +185,22 @@ func (j *fakeJournal) Facts(context.Context, int64, int) ([]contracts.JournalFac
 	return nil, nil
 }
 
-func (j *fakeJournal) OpenAt(_ context.Context, day time.Time) ([]contracts.OpenDocument, error) {
+func (j *fakeJournal) OpenAt(_ context.Context, day time.Time, afterNumber int64, limit int) (contracts.OpenPage, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.asked = append(j.asked, day)
-	return append([]contracts.OpenDocument(nil), j.open...), nil
+	size := min(limit, contracts.MaxJournalPage)
+	page := contracts.OpenPage{Documents: []contracts.OpenDocument{}}
+	if len(j.seqs) > 0 {
+		page.AsOfSeq = j.seqs[min(j.calls, len(j.seqs)-1)]
+	}
+	j.calls++
+	for _, d := range j.open {
+		if d.Number > afterNumber && len(page.Documents) < size {
+			page.Documents = append(page.Documents, d)
+		}
+	}
+	return page, nil
 }
 
 // memoryStore is an object store in memory.

@@ -17,7 +17,9 @@
 -- can write books that do not balance:
 --   * a voucher's postings sum to zero, and a voucher has postings — two
 --     deferred constraint triggers, checked at commit;
---   * vouchers, postings and attachments are never updated or deleted;
+--   * vouchers, postings and attachments are never updated, deleted or
+--     truncated, and a posting is added only to the voucher its own
+--     transaction has just inserted;
 --   * a voucher is dated on or after books_start and after locked_through,
 --     read from settings FOR SHARE, so a lock move (which takes the row FOR
 --     UPDATE) and a post cannot pass each other.
@@ -28,10 +30,12 @@ CREATE SCHEMA accounting;
 -- month a fiscal year begins; vat_term the VAT terms (delivery D); and
 -- locked_through the last day of the last locked month (A8), NULL before the
 -- first lock. chart_language is the language the default chart was seeded in.
--- opening_as_of_seq is the highest Invoices journal fact the opening voucher's
--- open invoices reflect (SalesJournal.OpenAt), NULL when the opening was not
--- built from it: delivery B posts a fact at or below it only when it is dated
--- on or after books_start.
+-- opening_as_of_seq is the lowest of the Invoices journal facts the opening's
+-- pages of open invoices reflect (SalesJournal.OpenAt's AsOfSeq per page),
+-- NULL when the opening was not entered with Invoices present. Delivery B
+-- posts a fact about an invoice with an opening item (open_items'
+-- opening_as_of_seq) when it is dated on or after books_start or its seq is
+-- after that item's value; about any other invoice, with this one.
 CREATE TABLE accounting.settings (
     id                      smallint    PRIMARY KEY DEFAULT 1,
     books_start             date        NOT NULL,
@@ -193,7 +197,10 @@ CREATE INDEX ix_vouchers_date ON accounting.vouchers (voucher_date);
 -- it, and it is settled when that is zero. source_document_id is the document
 -- in Invoices it stands for, so a later payment finds it. A posting on
 -- receivables or payables that names no item lands on the party's unallocated
--- item: one per party and kind.
+-- item: one per party and kind. opening_as_of_seq is, for an item the opening
+-- balances made for an invoice in Invoices, the AsOfSeq of the OpenAt page the
+-- invoice was read on: a journal fact with a seq at or below it is already in
+-- the opening amount (R14). NULL for every other item.
 CREATE TABLE accounting.open_items (
     id                 bigint        GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     kind               varchar(10)   NOT NULL,
@@ -205,13 +212,15 @@ CREATE TABLE accounting.open_items (
     due_date           date,
     original_amount    numeric(14,2) NOT NULL DEFAULT 0,
     source_document_id bigint,
+    opening_as_of_seq  bigint,
     created_at         timestamptz   NOT NULL,
     CONSTRAINT ck_open_items_kind CHECK (kind IN ('customer', 'supplier')),
     CONSTRAINT ck_open_items_party CHECK (
         (kind = 'customer' AND customer_id IS NOT NULL AND supplier_id IS NULL)
         OR (kind = 'supplier' AND supplier_id IS NOT NULL AND customer_id IS NULL)),
     CONSTRAINT ck_open_items_unallocated CHECK (
-        NOT unallocated OR (document_number IS NULL AND source_document_id IS NULL AND original_amount = 0))
+        NOT unallocated OR (document_number IS NULL AND source_document_id IS NULL AND original_amount = 0)),
+    CONSTRAINT ck_open_items_opening_seq CHECK (opening_as_of_seq IS NULL OR source_document_id IS NOT NULL)
 );
 CREATE UNIQUE INDEX ux_open_items_unallocated
     ON accounting.open_items (kind, coalesce(customer_id::bigint, supplier_id)) WHERE unallocated;
@@ -308,6 +317,20 @@ CREATE TRIGGER tr_attachments_immutable
 CREATE TRIGGER tr_lock_events_immutable
     BEFORE UPDATE OR DELETE ON accounting.lock_events
     FOR EACH ROW EXECUTE FUNCTION accounting.refuse_change();
+-- TRUNCATE fires no row trigger, so each append-only table refuses it as a
+-- statement.
+CREATE TRIGGER tr_vouchers_no_truncate
+    BEFORE TRUNCATE ON accounting.vouchers
+    FOR EACH STATEMENT EXECUTE FUNCTION accounting.refuse_change();
+CREATE TRIGGER tr_postings_no_truncate
+    BEFORE TRUNCATE ON accounting.postings
+    FOR EACH STATEMENT EXECUTE FUNCTION accounting.refuse_change();
+CREATE TRIGGER tr_attachments_no_truncate
+    BEFORE TRUNCATE ON accounting.attachments
+    FOR EACH STATEMENT EXECUTE FUNCTION accounting.refuse_change();
+CREATE TRIGGER tr_lock_events_no_truncate
+    BEFORE TRUNCATE ON accounting.lock_events
+    FOR EACH STATEMENT EXECUTE FUNCTION accounting.refuse_change();
 
 -- The lock and the books' start (A4, A8, R10): read FOR SHARE, so a lock move,
 -- which takes the row FOR UPDATE, waits for a post in flight and a post waits
@@ -338,6 +361,49 @@ $function$;
 CREATE TRIGGER tr_vouchers_date
     BEFORE INSERT ON accounting.vouchers
     FOR EACH ROW EXECUTE FUNCTION accounting.check_voucher_date();
+
+-- A posting is added only to the voucher its own transaction has just
+-- inserted (A4, R10): never to a committed voucher, whose date the lock was
+-- checked against when it was inserted and may since have passed. The vouchers'
+-- insert trigger records the new voucher's id in a transaction-local setting,
+-- accounting.open_voucher, and the postings' insert trigger refuses any other
+-- voucher id. A setting rather than xmin = pg_current_xact_id(): a row
+-- inserted inside a savepoint carries the subtransaction's xid, not the top
+-- transaction's, and the engine may run inside one. set_config(..., true) is
+-- subtransaction-aware: rolled back with a savepoint, kept when it is
+-- released, gone at the transaction's end, so a pooled connection carries
+-- nothing to its next transaction. The setting guards code paths; a session
+-- that sets it by hand could as well drop the trigger.
+-- +goose StatementBegin
+CREATE FUNCTION accounting.mark_open_voucher()
+RETURNS trigger LANGUAGE plpgsql AS $function$
+BEGIN
+    PERFORM set_config('accounting.open_voucher', NEW.id::text, true);
+    RETURN NULL;
+END;
+$function$;
+-- +goose StatementEnd
+
+CREATE TRIGGER tr_vouchers_open
+    AFTER INSERT ON accounting.vouchers
+    FOR EACH ROW EXECUTE FUNCTION accounting.mark_open_voucher();
+
+-- +goose StatementBegin
+CREATE FUNCTION accounting.check_posting_voucher()
+RETURNS trigger LANGUAGE plpgsql AS $function$
+BEGIN
+    IF NEW.voucher_id::text IS DISTINCT FROM nullif(current_setting('accounting.open_voucher', true), '') THEN
+        RAISE EXCEPTION 'accounting: voucher % was not inserted by this transaction; a posted voucher takes no new postings',
+            NEW.voucher_id USING ERRCODE = 'P0001';
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+-- +goose StatementEnd
+
+CREATE TRIGGER tr_postings_open_voucher
+    BEFORE INSERT ON accounting.postings
+    FOR EACH ROW EXECUTE FUNCTION accounting.check_posting_voucher();
 
 -- A voucher's postings sum to zero (A4), checked at commit once its every
 -- posting is in.

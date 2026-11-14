@@ -24,8 +24,9 @@ RETURNING *;
 UPDATE accounting.settings SET locked_through = sqlc.narg(locked_through), updated_at = sqlc.arg(now) WHERE id = 1;
 
 -- name: SetOpeningAsOfSeq :exec
--- SetOpeningAsOfSeq records the journal fact the opening's open invoices
--- reflect (delivery B's rule for facts at or below it).
+-- SetOpeningAsOfSeq records the lowest AsOfSeq of the OpenAt pages the
+-- opening was entered from (R14): delivery B's rule for a fact about an
+-- invoice without an opening item. NULL when Invoices was not present.
 UPDATE accounting.settings SET opening_as_of_seq = sqlc.narg(seq), updated_at = sqlc.arg(now) WHERE id = 1;
 
 -- name: InsertLockEvent :exec
@@ -34,3 +35,8 @@ VALUES (sqlc.narg(locked_from), sqlc.narg(locked_to), sqlc.narg(reason), sqlc.ar
 
 -- name: ListLockEvents :many
 SELECT * FROM accounting.lock_events ORDER BY changed_at DESC, id DESC LIMIT 200;
+
+-- name: EverLocked :one
+-- EverLocked reports whether the lock has ever been set (A9): the opening is
+-- final from the first lock on, even when the lock is later lifted.
+SELECT EXISTS (SELECT 1 FROM accounting.lock_events WHERE locked_to IS NOT NULL)::boolean;

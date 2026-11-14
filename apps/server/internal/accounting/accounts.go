@@ -90,7 +90,9 @@ func (s *server) GetAccountingAccount(ctx context.Context, req gen.GetAccounting
 	return gen.GetAccountingAccount200JSONResponse(a), nil
 }
 
-// checkAccountFields holds an account's number, name and kind to A3.
+// checkAccountFields holds an account's number, name and kind to A3: the
+// kind is the one its number's class gives (kindAllowed), so every account
+// lands on its side of the statements.
 func checkAccountFields(f *fieldErrors, number, name, kind string) {
 	if !accountNumberPattern.MatchString(number) {
 		f.add("number", "4 to 6 digits.")
@@ -98,9 +100,42 @@ func checkAccountFields(f *fieldErrors, number, name, kind string) {
 	if strings.TrimSpace(name) == "" || len([]rune(name)) > 200 {
 		f.add("name", "A name of at most 200 characters.")
 	}
-	if !slices.Contains(accountKinds, kind) {
+	switch {
+	case !slices.Contains(accountKinds, kind):
 		f.add("kind", "asset, liability, equity, income or expense.")
+	case accountNumberPattern.MatchString(number) && (number[0] == '0' || number[0] == '9'):
+		f.addCoded("number", codeAccountKindMismatch, "The chart's classes are 1 to 8.")
+	case accountNumberPattern.MatchString(number) && !kindAllowed(number, kind):
+		f.addCoded("kind", codeAccountKindMismatch, "Account "+number+"'s class makes it "+allowedKinds(number)+".")
 	}
+}
+
+// kindAllowed reports whether kind is one number's class allows (A3): class
+// 1 asset; 20 equity and 21–29 liability; 3 income; 4–7 expense; 8 income or
+// expense.
+func kindAllowed(number, kind string) bool {
+	if number[0] == '8' {
+		return kind == "income" || kind == "expense"
+	}
+	return kind == kindOf(number)
+}
+
+// allowedKinds is the kinds number's class allows, as a refusal says them.
+func allowedKinds(number string) string {
+	if number[0] == '8' {
+		return "income or expense"
+	}
+	return kindOf(number)
+}
+
+// roleKinds is the kind of account each system role may sit on (A3): a role
+// posts as its kind does, so it never moves to the other side.
+var roleKinds = map[string]string{
+	"bank": "asset", "receivables": "asset", "clearing_vipps": "asset",
+	"payables": "liability", "vat_settlement": "liability", "employee_payables": "liability",
+	"opening": "equity", "year_result": "equity",
+	"charge_income": "income", "currency_gain": "income",
+	"rounding": "expense", "bad_debt": "expense", "currency_loss": "expense", "payment_fees": "expense",
 }
 
 // numberTaken reports whether err is the unique number's violation.
@@ -316,6 +351,32 @@ func (s *server) AssignAccountingRole(ctx context.Context, req gen.AssignAccount
 		if a.SystemRole != nil && *a.SystemRole != role {
 			return invalidField("The role cannot be moved", "accountId", codeAccountHasRole,
 				"The account holds the role "+*a.SystemRole+"; an account holds one role.")
+		}
+		if want := roleKinds[role]; a.Kind != want {
+			return invalidField("The role cannot be moved", "accountId", codeAccountKindMismatch,
+				"The role "+role+" sits on an account of kind "+want+".")
+		}
+		// The control accounts' open items are the postings on them: moving
+		// receivables or payables off an account with postings would leave
+		// the party ledgers on an account the module no longer reads.
+		if role == roleReceivables || role == rolePayables {
+			holders, err := q.RoleAccounts(ctx)
+			if err != nil {
+				return err
+			}
+			for _, h := range holders {
+				if h.Role != role || h.ID == a.ID {
+					continue
+				}
+				holder, err := q.GetAccount(ctx, h.ID)
+				if err != nil {
+					return err
+				}
+				if holder.HasPostings {
+					return conflict(codeAccountHasPostings, "The role's account has postings",
+						"Account "+holder.Number+" has postings on "+role+"; the role stays on it.")
+				}
+			}
 		}
 		if err := q.ClearRole(ctx, store.ClearRoleParams{Role: &role, Now: s.now()}); err != nil {
 			return err

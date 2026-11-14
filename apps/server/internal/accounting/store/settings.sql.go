@@ -12,6 +12,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const everLocked = `-- name: EverLocked :one
+SELECT EXISTS (SELECT 1 FROM accounting.lock_events WHERE locked_to IS NOT NULL)::boolean
+`
+
+// EverLocked reports whether the lock has ever been set (A9): the opening is
+// final from the first lock on, even when the lock is later lifted.
+func (q *Queries) EverLocked(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, everLocked)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const getSettings = `-- name: GetSettings :one
 SELECT id, books_start, fiscal_year_start_month, vat_term, locked_through, chart_language, opening_as_of_seq, set_up_at, set_up_by_user_id, updated_at FROM accounting.settings WHERE id = 1
 `
@@ -204,8 +217,9 @@ type SetOpeningAsOfSeqParams struct {
 	Now time.Time
 }
 
-// SetOpeningAsOfSeq records the journal fact the opening's open invoices
-// reflect (delivery B's rule for facts at or below it).
+// SetOpeningAsOfSeq records the lowest AsOfSeq of the OpenAt pages the
+// opening was entered from (R14): delivery B's rule for a fact about an
+// invoice without an opening item. NULL when Invoices was not present.
 func (q *Queries) SetOpeningAsOfSeq(ctx context.Context, arg SetOpeningAsOfSeqParams) error {
 	_, err := q.db.Exec(ctx, setOpeningAsOfSeq, arg.Seq, arg.Now)
 	return err

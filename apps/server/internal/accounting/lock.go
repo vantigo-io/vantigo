@@ -45,7 +45,7 @@ func (s *server) GetAccountingLock(ctx context.Context, _ gen.GetAccountingLockR
 }
 
 // PutAccountingLock moves the lock (A8). A month end on or after the books'
-// first month; back, a reason. The VAT terms of delivery D will bound how far
+// first month and no later than this month's end; back, a reason. The VAT terms of delivery D will bound how far
 // back it may move: not behind the last filed term.
 func (s *server) PutAccountingLock(ctx context.Context, req gen.PutAccountingLockRequestObject) (gen.PutAccountingLockResponseObject, error) {
 	if req.Body == nil {
@@ -59,8 +59,16 @@ func (s *server) PutAccountingLock(ctx context.Context, req gen.PutAccountingLoc
 	if len([]rune(reason)) > 500 {
 		return nil, invalidField("The lock cannot be moved", "reason", "", "At most 500 characters.")
 	}
+	today, err := s.today(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if target != nil && target.After(monthEnd(today)) {
+		return nil, invalidField("The lock cannot be moved", "lockedThrough", codeLockInFuture,
+			"The lock reaches at most the end of this month, "+monthEnd(today).Format(time.DateOnly)+".")
+	}
 	var out gen.AccountingLock
-	err := s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
+	err = s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
 		settings, err := q.GetSettingsForUpdate(ctx)
 		if err != nil {
 			return err

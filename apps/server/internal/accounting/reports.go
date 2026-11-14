@@ -21,6 +21,17 @@ import (
 // maxJournalDays is the longest period the journal answers.
 const maxJournalDays = 366
 
+// maxReportLines is the most postings the journal or an account's
+// specification lists; the queries read one more, so a longer one is refused
+// (report_too_large) rather than cut short. A variable for the tests.
+var maxReportLines = 50000
+
+// tooLarge is the refusal of a report over maxReportLines.
+func tooLarge() error {
+	return invalidField("The report cannot be made", "to", codeReportTooLarge,
+		fmt.Sprintf("More than %d postings: choose a shorter period.", maxReportLines))
+}
+
 // reportInput is a report's parameters, the contract's two operations' alike.
 type reportInput struct {
 	kind                   gen.AccountingReportKind
@@ -54,6 +65,7 @@ var words = map[string]map[string]string{
 		"preTax": "Ordinary result before tax", "tax": "Tax and appropriations", "result": "Result",
 		"fixedAssets": "Fixed assets", "currentAssets": "Current assets", "assets": "Total assets",
 		"equity": "Equity", "yearResult": "Result for the year, not yet closed", "longTerm": "Long-term liabilities",
+		"otherAssets": "Other assets", "otherLiabilities": "Other liabilities", "otherResult": "Other income and costs",
 		"shortTerm": "Current liabilities", "equityAndLiabilities": "Total equity and liabilities",
 		"period": "Period", "produced": "Produced",
 	},
@@ -72,6 +84,7 @@ var words = map[string]map[string]string{
 		"preTax": "Ordinært resultat før skatt", "tax": "Skatt og disponeringer", "result": "Resultat",
 		"fixedAssets": "Anleggsmidler", "currentAssets": "Omløpsmidler", "assets": "Sum eiendeler",
 		"equity": "Egenkapital", "yearResult": "Årets resultat, ikke avsluttet", "longTerm": "Langsiktig gjeld",
+		"otherAssets": "Andre eiendeler", "otherLiabilities": "Annen gjeld", "otherResult": "Andre inntekter og kostnader",
 		"shortTerm": "Kortsiktig gjeld", "equityAndLiabilities": "Sum egenkapital og gjeld",
 		"period": "Periode", "produced": "Laget",
 	},
@@ -212,9 +225,13 @@ func (t *table) journal(ctx context.Context, q *store.Queries, in reportInput) e
 	t.column("text", t.w("text"), gen.Text)
 	t.column("debit", t.w("debit"), gen.Amount)
 	t.column("credit", t.w("credit"), gen.Amount)
-	rows, err := q.JournalPostings(ctx, store.JournalPostingsParams{FromDate: in.from, ToDate: in.to, ProjectID: in.projectID})
+	rows, err := q.JournalPostings(ctx, store.JournalPostingsParams{FromDate: in.from, ToDate: in.to, ProjectID: in.projectID,
+		RowLimit: int32(maxReportLines + 1)})
 	if err != nil {
 		return err
+	}
+	if len(rows) > maxReportLines {
+		return tooLarge()
 	}
 	debit, credit := new(big.Rat), new(big.Rat)
 	for _, r := range rows {
@@ -258,9 +275,13 @@ func (t *table) accountSpec(ctx context.Context, q *store.Queries, in reportInpu
 	}
 	balance := mustRat(opening)
 	t.row(gen.Subtotal, 0, map[string]string{"description": t.w("opening"), "balance": money(balance)}).AccountId = &a.ID
-	rows, err := q.AccountPostings(ctx, store.AccountPostingsParams{AccountID: a.ID, FromDate: in.from, ToDate: in.to, ProjectID: in.projectID})
+	rows, err := q.AccountPostings(ctx, store.AccountPostingsParams{AccountID: a.ID, FromDate: in.from, ToDate: in.to, ProjectID: in.projectID,
+		RowLimit: int32(maxReportLines + 1)})
 	if err != nil {
 		return err
+	}
+	if len(rows) > maxReportLines {
+		return tooLarge()
 	}
 	debit, credit := new(big.Rat), new(big.Rat)
 	for _, r := range rows {
@@ -445,10 +466,13 @@ func (t *table) trialBalance(ctx context.Context, q *store.Queries, in reportInp
 	return nil
 }
 
-// statementGroup is a group of a statement's accounts by number prefix.
+// statementGroup is a group of a statement's accounts by number prefix. The
+// group with other set takes every account no other group of the statement
+// does, so none is left out (M3); it is shown only when it has one.
 type statementGroup struct {
 	key      string
 	prefixes []string
+	other    bool
 }
 
 func inGroup(number string, g statementGroup) bool {
@@ -458,6 +482,19 @@ func inGroup(number string, g statementGroup) bool {
 		}
 	}
 	return false
+}
+
+// groupOf is the group of groups an account number falls in.
+func groupOf(number string, groups []statementGroup) string {
+	other := ""
+	for _, g := range groups {
+		if g.other {
+			other = g.key
+		} else if inGroup(number, g) {
+			return g.key
+		}
+	}
+	return other
 }
 
 // statement adds groups of accounts, each line's amount from value, with a
@@ -470,9 +507,19 @@ func (t *table) statement(groups []statementGroup, after map[string]string, rows
 		sum, sumCmp := new(big.Rat), new(big.Rat)
 		var lines []store.AccountTotalsRow
 		for _, r := range rows {
-			if inGroup(r.Number, g) {
+			if groupOf(r.Number, groups) == g.key {
 				lines = append(lines, r)
 			}
+		}
+		if g.other && len(lines) == 0 {
+			if label, ok := after[g.key]; ok {
+				cells := map[string]string{"name": t.w(label), "amount": money(running)}
+				if withCompare {
+					cells["compare"] = money(runningCmp)
+				}
+				t.row(gen.Total, 0, cells)
+			}
+			continue
 		}
 		if len(lines) > 0 || withCompare {
 			t.row(gen.Heading, 0, map[string]string{"name": t.w(g.key)})
@@ -550,109 +597,133 @@ func (t *table) profitAndLoss(ctx context.Context, q *store.Queries, in reportIn
 		}
 	}
 	groups := []statementGroup{
-		{"opIncome", []string{"3"}}, {"goods", []string{"4"}}, {"payroll", []string{"5"}}, {"otherCosts", []string{"6", "7"}},
-		{"finIncome", []string{"80"}}, {"finCosts", []string{"81"}}, {"tax", []string{"82", "83", "84", "85", "86", "87", "88", "89"}},
+		{key: "opIncome", prefixes: []string{"3"}}, {key: "goods", prefixes: []string{"4"}}, {key: "payroll", prefixes: []string{"5"}},
+		{key: "otherCosts", prefixes: []string{"6", "7"}}, {key: "finIncome", prefixes: []string{"80"}},
+		{key: "finCosts", prefixes: []string{"81"}}, {key: "tax", prefixes: []string{"82", "83", "84", "85", "86", "87", "88", "89"}},
+		{key: "otherResult", other: true},
 	}
-	t.statement(groups, map[string]string{"otherCosts": "opResult", "finCosts": "preTax", "tax": "result"}, pl, value, compare, withCompare)
+	t.statement(groups, map[string]string{"otherCosts": "opResult", "finCosts": "preTax", "otherResult": "result"}, pl, value, compare, withCompare)
 	return nil
 }
 
-// balanceSheet is the balances at to by class: assets as they stand, equity
-// and liabilities shown positive, with the result not yet closed as a
-// computed line in equity (R13).
+// balanceSheet is the balances at to: the asset accounts as they stand, the
+// equity and liability accounts shown positive, each side by its accounts'
+// kind and grouped by class, with an Other group for an account no group
+// takes, so the sheet always balances (M3). The result not yet closed is two
+// computed lines in equity (R13, M2): the earlier fiscal years' and this
+// one's.
 func (t *table) balanceSheet(ctx context.Context, q *store.Queries, in reportInput, month int32) error {
 	withCompare := in.compareFrom != nil
 	t.statementColumns(withCompare)
-	at := func(to time.Time) ([]store.AccountTotalsRow, *big.Rat, error) {
+	type side struct {
+		assets, equity, debts []store.AccountTotalsRow
+		earlier, year         *big.Rat
+	}
+	at := func(to time.Time) (side, error) {
+		var out side
 		rows, err := totalsAt(ctx, q, to, to, month, in.projectID)
 		if err != nil {
-			return nil, nil, err
+			return out, err
 		}
-		result, err := q.UnclosedResult(ctx, store.UnclosedResultParams{ToDate: to, ProjectID: in.projectID})
-		if err != nil {
-			return nil, nil, err
-		}
-		var out []store.AccountTotalsRow
 		for _, r := range rows {
-			if r.Kind == "asset" || r.Kind == "liability" || r.Kind == "equity" {
-				out = append(out, r)
+			switch r.Kind {
+			case "asset":
+				out.assets = append(out.assets, r)
+			case "equity":
+				out.equity = append(out.equity, r)
+			case "liability":
+				out.debts = append(out.debts, r)
 			}
 		}
-		return out, neg(mustRat(result)), nil
+		yearStart := fiscalYearStart(to, month)
+		earlier, err := q.UnclosedResult(ctx, store.UnclosedResultParams{ToDate: yearStart.AddDate(0, 0, -1), ProjectID: in.projectID})
+		if err != nil {
+			return out, err
+		}
+		total, err := q.UnclosedResult(ctx, store.UnclosedResultParams{ToDate: to, ProjectID: in.projectID})
+		if err != nil {
+			return out, err
+		}
+		out.earlier = neg(mustRat(earlier))
+		out.year = sub(neg(mustRat(total)), out.earlier)
+		return out, nil
 	}
-	rows, result, err := at(in.to)
+	cur, err := at(in.to)
 	if err != nil {
 		return err
 	}
-	compare := map[int32]*big.Rat{}
-	cmpResult := new(big.Rat)
-	assetValue := func(r store.AccountTotalsRow) *big.Rat { return mustRat(r.Closing) }
-	claimValue := func(r store.AccountTotalsRow) *big.Rat { return neg(mustRat(r.Closing)) }
-	var cmpRows []store.AccountTotalsRow
+	var cmp side
 	if withCompare {
-		if cmpRows, cmpResult, err = at(*in.compareTo); err != nil {
+		if cmp, err = at(*in.compareTo); err != nil {
 			return err
 		}
+	} else {
+		cmp = side{earlier: new(big.Rat), year: new(big.Rat)}
 	}
-	cmpOf := func(value func(store.AccountTotalsRow) *big.Rat) map[int32]*big.Rat {
-		for k := range compare {
-			delete(compare, k)
+	assetValue := func(r store.AccountTotalsRow) *big.Rat { return mustRat(r.Closing) }
+	claimValue := func(r store.AccountTotalsRow) *big.Rat { return neg(mustRat(r.Closing)) }
+	byID := func(rows []store.AccountTotalsRow, value func(store.AccountTotalsRow) *big.Rat) map[int32]*big.Rat {
+		out := map[int32]*big.Rat{}
+		for _, r := range rows {
+			out[r.ID] = value(r)
 		}
-		for _, r := range cmpRows {
-			compare[r.ID] = value(r)
+		return out
+	}
+	total := func(name string, amount, compare *big.Rat) {
+		cells := map[string]string{"name": name, "amount": money(amount)}
+		if withCompare {
+			cells["compare"] = money(compare)
 		}
-		return compare
+		t.row(gen.Total, 0, cells)
 	}
-	assets, assetsCmp := t.statement([]statementGroup{{"fixedAssets", []string{"10", "11", "12", "13"}},
-		{"currentAssets", []string{"14", "15", "16", "17", "18", "19"}}}, nil, rows, assetValue, cmpOf(assetValue), withCompare)
-	cells := map[string]string{"name": t.w("assets"), "amount": money(assets)}
-	if withCompare {
-		cells["compare"] = money(assetsCmp)
-	}
-	t.row(gen.Total, 0, cells)
-	// Equity, with the computed result line before its subtotal.
+	assets, assetsCmp := t.statement([]statementGroup{
+		{key: "fixedAssets", prefixes: []string{"10", "11", "12", "13"}},
+		{key: "currentAssets", prefixes: []string{"14", "15", "16", "17", "18", "19"}},
+		{key: "otherAssets", other: true},
+	}, nil, cur.assets, assetValue, byID(cmp.assets, assetValue), withCompare)
+	total(t.w("assets"), assets, assetsCmp)
+
+	// Equity: its accounts, then the two computed result lines, then its
+	// subtotal.
 	equity, equityCmp := new(big.Rat), new(big.Rat)
 	t.row(gen.Heading, 0, map[string]string{"name": t.w("equity")})
-	cmpClaims := cmpOf(claimValue)
-	for _, r := range rows {
-		if !strings.HasPrefix(r.Number, "20") {
-			continue
+	equityCompare := byID(cmp.equity, claimValue)
+	line := func(account *store.AccountTotalsRow, name string, amount, compare *big.Rat) {
+		if compare == nil {
+			compare = new(big.Rat)
 		}
-		v := claimValue(r)
-		if v.Sign() == 0 {
-			continue
-		}
-		equity.Add(equity, v)
-		c := map[string]string{"account": r.Number, "name": r.Name, "amount": money(v)}
+		equity.Add(equity, amount)
+		equityCmp.Add(equityCmp, compare)
+		c := map[string]string{"name": name, "amount": money(amount)}
 		if withCompare {
-			cv := cmpClaims[r.ID]
-			if cv == nil {
-				cv = new(big.Rat)
-			}
-			equityCmp.Add(equityCmp, cv)
-			c["compare"] = money(cv)
+			c["compare"] = money(compare)
 		}
-		t.row(gen.Line, 1, c).AccountId = ptr(r.ID)
+		row := t.row(gen.Line, 1, c)
+		if account != nil {
+			row.Cells["account"] = account.Number
+			row.AccountId = ptr(account.ID)
+		}
 	}
-	equity.Add(equity, result)
-	c := map[string]string{"name": t.w("yearResult"), "amount": money(result)}
-	if withCompare {
-		equityCmp.Add(equityCmp, cmpResult)
-		c["compare"] = money(cmpResult)
+	for i, r := range cur.equity {
+		v := claimValue(r)
+		if v.Sign() == 0 && (equityCompare[r.ID] == nil || equityCompare[r.ID].Sign() == 0) {
+			continue
+		}
+		line(&cur.equity[i], r.Name, v, equityCompare[r.ID])
 	}
-	t.row(gen.Line, 1, c)
-	c = map[string]string{"name": t.w("total") + " " + strings.ToLower(t.w("equity")), "amount": money(equity)}
+	line(nil, t.w("earlierResult"), cur.earlier, cmp.earlier)
+	line(nil, t.w("yearResult"), cur.year, cmp.year)
+	c := map[string]string{"name": t.w("total") + " " + strings.ToLower(t.w("equity")), "amount": money(equity)}
 	if withCompare {
 		c["compare"] = money(equityCmp)
 	}
 	t.row(gen.Subtotal, 0, c)
-	debts, debtsCmp := t.statement([]statementGroup{{"longTerm", []string{"21", "22"}},
-		{"shortTerm", []string{"23", "24", "25", "26", "27", "28", "29"}}}, nil, rows, claimValue, cmpClaims, withCompare)
-	c = map[string]string{"name": t.w("equityAndLiabilities"), "amount": money(add(equity, debts))}
-	if withCompare {
-		c["compare"] = money(add(equityCmp, debtsCmp))
-	}
-	t.row(gen.Total, 0, c)
+	debts, debtsCmp := t.statement([]statementGroup{
+		{key: "longTerm", prefixes: []string{"21", "22"}},
+		{key: "shortTerm", prefixes: []string{"23", "24", "25", "26", "27", "28", "29"}},
+		{key: "otherLiabilities", other: true},
+	}, nil, cur.debts, claimValue, byID(cmp.debts, claimValue), withCompare)
+	total(t.w("equityAndLiabilities"), add(equity, debts), add(equityCmp, debtsCmp))
 	return nil
 }
 

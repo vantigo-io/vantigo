@@ -141,19 +141,63 @@ const (
 // The settings row is read FOR SHARE and held to the caller's commit (R10),
 // so the lock cannot move past a voucher in flight; the voucher number's
 // counter row is held to the commit too, so a failed post gives its number
-// back.
+// back. Every open item the voucher names is taken FOR UPDATE, in id order.
+//
+// Post writes inside a savepoint of tx: a refusal, or a source another
+// transaction posted at the same moment (the source index's violation, read
+// back as Repeat), undoes what it wrote and leaves the caller's transaction
+// usable.
 func Post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
-	q := store.New(tx)
 	if v.Source != nil {
-		got, err := q.VoucherBySource(ctx, store.VoucherBySourceParams{SourceModule: &v.Source.Module,
-			SourceKind: &v.Source.Kind, SourceID: &v.Source.ID, SourcePart: v.Source.Part})
-		if err == nil {
-			return Posted{ID: got.ID, FiscalYear: got.FiscalYear, Number: got.Number, VoucherDate: got.VoucherDate, Repeat: true}, nil
-		}
-		if !noRows(err) {
-			return Posted{}, err
+		if got, ok, err := postedSource(ctx, store.New(tx), v.Source); err != nil || ok {
+			return got, err
 		}
 	}
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return Posted{}, err
+	}
+	posted, err := post(ctx, sp, v)
+	if err != nil {
+		if rbErr := sp.Rollback(ctx); rbErr != nil {
+			return Posted{}, errors.Join(err, rbErr)
+		}
+		if v.Source != nil && violates(err, "ux_vouchers_source") {
+			if got, ok, err := postedSource(ctx, store.New(tx), v.Source); err != nil || ok {
+				return got, err
+			}
+		}
+		return Posted{}, err
+	}
+	if err := sp.Commit(ctx); err != nil {
+		return Posted{}, err
+	}
+	return posted, nil
+}
+
+// postedSource is the voucher a source already has, with Repeat; ok is false
+// when it has none.
+func postedSource(ctx context.Context, q *store.Queries, src *Source) (Posted, bool, error) {
+	got, err := q.VoucherBySource(ctx, store.VoucherBySourceParams{SourceModule: &src.Module,
+		SourceKind: &src.Kind, SourceID: &src.ID, SourcePart: src.Part})
+	if noRows(err) {
+		return Posted{}, false, nil
+	}
+	if err != nil {
+		return Posted{}, false, err
+	}
+	return Posted{ID: got.ID, FiscalYear: got.FiscalYear, Number: got.Number, VoucherDate: got.VoucherDate, Repeat: true}, true, nil
+}
+
+// violates reports whether err is a unique violation of the named index.
+func violates(err error, constraint string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == constraint
+}
+
+// post is Post's work, on the savepoint tx.
+func post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
+	q := store.New(tx)
 	settings, err := q.GetSettingsForShare(ctx)
 	if noRows(err) {
 		return Posted{}, conflict(codeBooksNotSetUp, "The books are not set up", "")
@@ -183,7 +227,7 @@ func Post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 		date, moved = settings.LockedThrough.AddDate(0, 0, 1), true
 	}
 
-	lines, err := resolveLines(ctx, q, v.Lines)
+	lines, err := resolveLines(ctx, q, v.Lines, v.Reverses != nil)
 	if err != nil {
 		return Posted{}, err
 	}
@@ -204,8 +248,22 @@ func Post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 	if now.IsZero() {
 		now = time.Now()
 	}
+	// A person's voucher names no item that stands for a document in
+	// Invoices: that item moves with Invoices' own facts (M5). The opening
+	// reaches one by its source document, and a reversal turns back what was.
+	personal := v.Source == nil && v.Reverses == nil
+	var items []int64
 	for i := range lines {
-		if err := attachOpenItem(ctx, q, &lines[i], documentDate, now); err != nil {
+		if err := attachOpenItem(ctx, tx, &lines[i], documentDate, now, personal); err != nil {
+			return Posted{}, err
+		}
+		if id := lines[i].OpenItemID; id != nil && !slices.Contains(items, *id) {
+			items = append(items, *id)
+		}
+	}
+	if len(items) > 0 {
+		slices.Sort(items)
+		if err := q.LockOpenItems(ctx, items); err != nil {
 			return Posted{}, err
 		}
 	}
@@ -229,8 +287,7 @@ func Post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 	}
 	id, err := q.InsertVoucher(ctx, params)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "ux_vouchers_reverses" {
+		if violates(err, "ux_vouchers_reverses") {
 			return Posted{}, conflict(codeAlreadyReversed, "The voucher is already reversed", "")
 		}
 		return Posted{}, fmt.Errorf("accounting: insert the voucher: %w", err)
@@ -260,12 +317,16 @@ func Post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 type resolvedLine struct {
 	Line
 	controlRole string
+	// index is the line's position in the voucher as given, zero lines
+	// counted, for the field a refusal names.
+	index int
 }
 
 // resolveLines resolves every line's account, leaves out the zero lines and
-// holds each line to its account: known and active, a control account's party
+// holds each line to its account: known and active (inactive too for a
+// reversal, which turns back what was posted, M8), a control account's party
 // named and of the right kind, an open item only on a control account.
-func resolveLines(ctx context.Context, q *store.Queries, in []Line) ([]resolvedLine, error) {
+func resolveLines(ctx context.Context, q *store.Queries, in []Line, reversal bool) ([]resolvedLine, error) {
 	roles, err := q.RoleAccounts(ctx)
 	if err != nil {
 		return nil, err
@@ -301,7 +362,7 @@ func resolveLines(ctx context.Context, q *store.Queries, in []Line) ([]resolvedL
 			continue
 		}
 		ids = append(ids, l.AccountID)
-		out = append(out, resolvedLine{Line: l, controlRole: roleOf[l.AccountID]})
+		out = append(out, resolvedLine{Line: l, controlRole: roleOf[l.AccountID], index: i})
 	}
 	accounts, err := q.AccountsForPosting(ctx, ids)
 	if err != nil {
@@ -311,14 +372,14 @@ func resolveLines(ctx context.Context, q *store.Queries, in []Line) ([]resolvedL
 	for _, a := range accounts {
 		known[a.ID] = a
 	}
-	for i, l := range out {
-		field := l.field(i)
+	for _, l := range out {
+		field := l.field(l.index)
 		a, ok := known[l.AccountID]
 		switch {
 		case !ok:
 			f.addCoded(field+".accountId", codeAccountUnknown, "No such account.")
 			continue
-		case !a.Active:
+		case !a.Active && !reversal:
 			f.addCoded(field+".accountId", codeAccountInactive, "Account "+a.Number+" is inactive.")
 		}
 		if l.CustomerID != nil && l.SupplierID != nil {
@@ -356,35 +417,57 @@ func resolveLines(ctx context.Context, q *store.Queries, in []Line) ([]resolvedL
 
 // attachOpenItem sets a control line's open item (A10, R5): the one named,
 // the one standing for its source document (made when missing), a new one,
-// or the party's unallocated item.
-func attachOpenItem(ctx context.Context, q *store.Queries, l *resolvedLine, documentDate, now time.Time) error {
+// or the party's unallocated item. An item named, or found by its source
+// document, is the line's party's; on a person's voucher (personal) an item
+// named stands for no document in Invoices.
+func attachOpenItem(ctx context.Context, tx pgx.Tx, l *resolvedLine, documentDate, now time.Time, personal bool) error {
 	if l.controlRole != roleReceivables && l.controlRole != rolePayables {
 		return nil
 	}
+	q := store.New(tx)
+	field := l.field(l.index)
 	kind, party := "customer", int64(deref(l.CustomerID))
 	if l.controlRole == rolePayables {
 		kind, party = "supplier", deref(l.SupplierID)
+	}
+	partys := func(customer *int32, supplier *int64) bool {
+		if kind == "customer" {
+			return deref(customer) == int32(party)
+		}
+		return deref(supplier) == party
 	}
 	if l.OpenItemID != nil {
 		items, err := q.OpenItemsForPosting(ctx, []int64{*l.OpenItemID})
 		if err != nil {
 			return err
 		}
-		if len(items) != 1 || items[0].Kind != kind ||
-			(kind == "customer" && deref(items[0].CustomerID) != int32(party)) ||
-			(kind == "supplier" && deref(items[0].SupplierID) != party) {
-			return invalidField("The voucher cannot be posted", "openItemId", codeOpenItemUnknown,
+		if len(items) != 1 || items[0].Kind != kind || !partys(items[0].CustomerID, items[0].SupplierID) {
+			return invalidField("The voucher cannot be posted", field+".openItemId", codeOpenItemUnknown,
 				"The open item is not this party's.")
+		}
+		if personal && items[0].SourceDocumentID != nil {
+			return invalidField("The voucher cannot be posted", field+".openItemId", codeOpenItemSourceDocument,
+				"The open item stands for an invoice in Invoices: register the payment or the credit note there.")
 		}
 		return nil
 	}
-	if l.SourceDocumentID != nil {
-		id, err := q.OpenItemBySourceDocument(ctx, store.OpenItemBySourceDocumentParams{Kind: kind, SourceDocumentID: l.SourceDocumentID})
-		if err == nil {
-			l.OpenItemID = &id
-			return nil
+	bySource := func() (bool, error) {
+		got, err := q.OpenItemBySourceDocument(ctx, store.OpenItemBySourceDocumentParams{Kind: kind, SourceDocumentID: l.SourceDocumentID})
+		if noRows(err) {
+			return false, nil
 		}
-		if !noRows(err) {
+		if err != nil {
+			return false, err
+		}
+		if !partys(got.CustomerID, got.SupplierID) {
+			return false, invalidField("The voucher cannot be posted", field+".sourceDocumentId", codeOpenItemUnknown,
+				"The document's open item is another party's.")
+		}
+		l.OpenItemID = &got.ID
+		return true, nil
+	}
+	if l.SourceDocumentID != nil {
+		if found, err := bySource(); err != nil || found {
 			return err
 		}
 	}
@@ -404,9 +487,26 @@ func attachOpenItem(ctx context.Context, q *store.Queries, l *resolvedLine, docu
 		params := store.InsertOpenItemParams{Kind: kind, DocumentNumber: number, DocumentDate: docDate, DueDate: spec.DueDate,
 			OriginalAmount: money(l.Amount), SourceDocumentID: l.SourceDocumentID, Now: now}
 		params.CustomerID, params.SupplierID = l.CustomerID, l.SupplierID
-		id, err := q.InsertOpenItem(ctx, params)
+		// A savepoint, so another transaction's item for the same document,
+		// committed while this one waited on the index, is read back (L4).
+		sp, err := tx.Begin(ctx)
 		if err != nil {
+			return err
+		}
+		id, err := store.New(sp).InsertOpenItem(ctx, params)
+		if err != nil {
+			if rbErr := sp.Rollback(ctx); rbErr != nil {
+				return errors.Join(err, rbErr)
+			}
+			if l.SourceDocumentID != nil && violates(err, "ux_open_items_source_document") {
+				if found, err := bySource(); err != nil || found {
+					return err
+				}
+			}
 			return fmt.Errorf("accounting: open an item: %w", err)
+		}
+		if err := sp.Commit(ctx); err != nil {
+			return err
 		}
 		l.OpenItemID = &id
 		return nil

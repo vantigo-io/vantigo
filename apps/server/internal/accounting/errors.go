@@ -59,6 +59,13 @@ const (
 	codeStorageNotConfigured = "storage_not_configured"
 	codeReportAccountNeeded  = "report_account_required"
 	codePeriodInvalid        = "period_invalid"
+	// After the review of delivery A.
+	codeOpenItemSourceDocument = "open_item_source_document"
+	codeReportTooLarge         = "report_too_large"
+	codeLockInFuture           = "lock_in_future"
+	codeBooksStartTooEarly     = "books_start_too_early"
+	codeAccountKindMismatch    = "account_kind_mismatch"
+	codeReverseChargeGross     = "reverse_charge_gross"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -71,7 +78,8 @@ var refusalCodes = []string{
 	codeAlreadyReversed, codeOpeningExists, codeOpeningLocked, codeLockNotMonthEnd, codeLockReasonRequired,
 	codeLockBeforeBooksStart, codeSettlementSourceDoc, codeSettlementExceeds, codeSettlementSettled,
 	codeBankAccountInvalid, codeAttachmentTooLarge, codeStorageNotConfigured, codeReportAccountNeeded,
-	codePeriodInvalid,
+	codePeriodInvalid, codeOpenItemSourceDocument, codeReportTooLarge, codeLockInFuture, codeBooksStartTooEarly,
+	codeAccountKindMismatch, codeReverseChargeGross,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a
