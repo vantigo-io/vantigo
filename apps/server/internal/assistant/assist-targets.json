@@ -1,5 +1,120 @@
 [
   {
+    "key": "accounting.accounts.grouping",
+    "route": "/accounting/accounts",
+    "description": "The picker in an account's editor that sets the SAF-T grouping code from Skatteetaten's list."
+  },
+  {
+    "key": "accounting.accounts.new",
+    "route": "/accounting/accounts",
+    "description": "The button on the chart of accounts that adds an account."
+  },
+  {
+    "key": "accounting.accounts.table",
+    "route": "/accounting/accounts",
+    "description": "The list of accounts with their kind, default tax code, grouping code and system role; a row opens the account."
+  },
+  {
+    "key": "accounting.journal.entry-mode",
+    "route": "/accounting/journal",
+    "description": "The switch that says whether lines with a tax code are entered net or gross."
+  },
+  {
+    "key": "accounting.journal.lines",
+    "route": "/accounting/journal",
+    "description": "The journal entry's lines: account, debit, credit, tax code, party, project and text."
+  },
+  {
+    "key": "accounting.journal.post",
+    "route": "/accounting/journal",
+    "description": "The button that posts the journal entry as a voucher."
+  },
+  {
+    "key": "accounting.journal.preview",
+    "route": "/accounting/journal",
+    "description": "The live preview of the postings with the VAT lines the server computes."
+  },
+  {
+    "key": "accounting.open-items.table",
+    "route": "/accounting/open-items",
+    "description": "The open items per customer or supplier with their balance; Register settles one."
+  },
+  {
+    "key": "accounting.opening.add-invoices",
+    "route": "/accounting/opening",
+    "description": "The button that adds Invoices' open invoices at the books' start as receivables lines."
+  },
+  {
+    "key": "accounting.opening.post",
+    "route": "/accounting/opening",
+    "description": "The button that posts the opening balances as one voucher."
+  },
+  {
+    "key": "accounting.overview.cards",
+    "route": "/accounting",
+    "description": "The cards on the Accounting overview: the year's vouchers, the open customer items and the lock date."
+  },
+  {
+    "key": "accounting.overview.new-entry",
+    "route": "/accounting",
+    "description": "The button on the Accounting overview that opens a new journal entry."
+  },
+  {
+    "key": "accounting.reports.csv",
+    "route": "/accounting/reports",
+    "description": "The button that downloads the report as a CSV file."
+  },
+  {
+    "key": "accounting.reports.picker",
+    "route": "/accounting/reports",
+    "description": "The report picker with the period, the account, the project and the comparison."
+  },
+  {
+    "key": "accounting.reports.table",
+    "route": "/accounting/reports",
+    "description": "The chosen report's table, with when it was produced."
+  },
+  {
+    "key": "accounting.settings.lock",
+    "route": "/accounting/settings",
+    "description": "The lock date, the way to move it and its history."
+  },
+  {
+    "key": "accounting.setup.start",
+    "route": "/accounting",
+    "description": "The button that opens Set up the books, shown until the books are set up."
+  },
+  {
+    "key": "accounting.setup.submit",
+    "route": "/accounting/setup",
+    "description": "The button that sets the books up with the chosen start, fiscal year and VAT term."
+  },
+  {
+    "key": "accounting.tax-codes.table",
+    "route": "/accounting/tax-codes",
+    "description": "The standard tax codes with direction, rate and VAT account; a row opens the code."
+  },
+  {
+    "key": "accounting.voucher.copy",
+    "route": "/accounting/vouchers/{voucherId}",
+    "description": "The button that opens a new journal entry with this voucher's lines."
+  },
+  {
+    "key": "accounting.voucher.postings",
+    "route": "/accounting/vouchers/{voucherId}",
+    "description": "A voucher's postings with account, text, tax code, party, project, debit and credit."
+  },
+  {
+    "key": "accounting.voucher.reverse",
+    "route": "/accounting/vouchers/{voucherId}",
+    "description": "The button that reverses a voucher a person posted."
+  },
+  {
+    "key": "accounting.vouchers.filters",
+    "route": "/accounting/vouchers",
+    "description": "The filters on the vouchers list: period, kind and text or number."
+  },
+  {
     "key": "customers.customer.add-contact",
     "route": "/customers/{customerId}",
     "description": "The button on a customer's Contacts card that links a contact to the customer."
