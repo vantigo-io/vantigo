@@ -52,13 +52,14 @@ const (
 var bankFeedWorkerLease = bankFeedWorkerDefaultLease
 
 // bankFeedBackoff is the wait after the n-th failure in a row: the interval
-// doubled n times, at most six hours (F7; plan C4's interval << failures).
+// doubled n times, at most six hours (F7; plan C4's interval << failures) —
+// and never shorter than the interval, however long it is.
 func bankFeedBackoff(interval time.Duration, failures int32) time.Duration {
 	wait := interval
 	for i := int32(0); i < failures && wait < maxBankFeedBackoff; i++ {
 		wait *= 2
 	}
-	return min(wait, maxBankFeedBackoff)
+	return max(interval, min(wait, maxBankFeedBackoff))
 }
 
 // BankFeedWorker reads the accounts the bank feed is switched on for. It
@@ -167,13 +168,18 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 	switch {
 	case errors.Is(syncErr, errFeedClaimLost):
 		return syncErr
-	case errors.Is(syncErr, bankfeed.ErrUnauthorized):
-		w.logger().WarnContext(ctx, "invoices: the bank refused the stored API key; the bank feed stops until a new key is stored",
+	case errors.Is(syncErr, bankfeed.ErrUnauthorized) && w.keyReplaced(ctx, q, outcome.keyVersion):
+		// The key refused is one a manager has replaced since: the account
+		// is read at once with the new one.
+		w.logger().InfoContext(ctx, "invoices: the bank refused a key replaced since; the account is read again with the new one",
 			"worker", bankFeedWorkerName, "account", account)
-		if _, err := q.ReleaseBankFeedClaim(ctx, store.ReleaseBankFeedClaimParams{Now: c.now, Account: account, LeaseID: c.lease}); err != nil {
-			return fmt.Errorf("invoices: end the bank feed claim on %s: %w", account, err)
-		}
-		return nil
+		return w.release(ctx, q, c)
+	case errors.Is(syncErr, errBankFileRaced):
+		// The same batch committed meanwhile: nothing failed, and the next
+		// claim reads the account again.
+		w.logger().InfoContext(ctx, "invoices: a bank feed batch was stored meanwhile; the account is read again",
+			"worker", bankFeedWorkerName, "account", account)
+		return w.release(ctx, q, c)
 	case errors.As(syncErr, &limited):
 		wait := max(limited.RetryAfter, interval)
 		// Fetch now may not ask before the bank's wait is over — a minute
@@ -184,13 +190,23 @@ func (w *BankFeedWorker) end(ctx context.Context, c feedClaim, outcome syncOutco
 			Account: account, LeaseID: c.lease,
 		})
 	case syncErr != nil:
+		// A refused key the refusal was recorded for has stopped every
+		// account already, and this write finds the lease gone; one whose
+		// record failed backs off as any failure — never read again at once
+		// with the refused key.
+		if errors.Is(syncErr, bankfeed.ErrUnauthorized) {
+			w.logger().WarnContext(ctx, "invoices: the bank refused the stored API key; the bank feed stops until a new key is stored",
+				"worker", bankFeedWorkerName, "account", account)
+		}
 		failures := c.row.Failures + 1
 		var reason *string
-		if errors.Is(syncErr, errFeedAnswerTooLarge) {
+		switch {
+		case errors.Is(syncErr, bankfeed.ErrUnauthorized):
+		case errors.Is(syncErr, errFeedAnswerTooLarge):
 			reason = ptr(failedAnswerTooLarge)
 			w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; the bank's answer for one day is too large",
 				"worker", bankFeedWorkerName, "account", account, "failures", failures)
-		} else {
+		default:
 			w.logger().WarnContext(ctx, "invoices: a bank feed sync failed; the bank could not be reached or did not answer as it should",
 				"worker", bankFeedWorkerName, "account", account, "failures", failures, "error", syncErr.Error())
 		}
@@ -242,12 +258,33 @@ func feedFailureDetail(err error) string {
 		return "The stored bank API key cannot be read on this server. Store the key again."
 	case errors.Is(err, errFeedAnswerTooLarge):
 		return "The bank's answer for one day is too large to read."
+	case errors.Is(err, bankfeed.ErrUnauthorized):
+		return "The bank refused the API key, and the refusal could not be recorded; it is tried again later."
 	case errors.Is(err, context.DeadlineExceeded):
 		return "The bank did not answer in time."
 	case errors.Is(err, errFeedStorage):
 		return "The batch could not be kept in the object store."
 	}
 	return "The bank could not be reached, or did not answer as it should."
+}
+
+// keyReplaced reports whether the stored key is another than the version
+// the cycle read with: replaced by a manager while the call was out.
+func (w *BankFeedWorker) keyReplaced(ctx context.Context, q *store.Queries, version *time.Time) bool {
+	if version == nil {
+		return false
+	}
+	conn, err := q.GetBankFeedConnection(ctx)
+	return err == nil && !conn.UpdatedAt.Equal(*version)
+}
+
+// release ends the claim with nothing written but the lease cleared and the
+// account due now.
+func (w *BankFeedWorker) release(ctx context.Context, q *store.Queries, c feedClaim) error {
+	if _, err := q.ReleaseBankFeedClaim(ctx, store.ReleaseBankFeedClaimParams{Now: c.now, Account: c.row.Account, LeaseID: c.lease}); err != nil {
+		return fmt.Errorf("invoices: end the bank feed claim on %s: %w", c.row.Account, err)
+	}
+	return nil
 }
 
 func (w *BankFeedWorker) logger() *slog.Logger {

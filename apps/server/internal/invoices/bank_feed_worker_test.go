@@ -2,6 +2,7 @@ package invoices_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -43,6 +44,11 @@ func TestBankFeedWorker_Backoff(t *testing.T) {
 	}
 	if got := invoices.BankFeedBackoff(5*time.Hour, 1); got != 6*time.Hour {
 		t.Errorf("a 5-hour interval after one failure: %v, want the 6-hour cap", got)
+	}
+	for _, failures := range []int32{1, 3, 10} {
+		if got := invoices.BankFeedBackoff(24*time.Hour, failures); got != 24*time.Hour {
+			t.Errorf("a 24-hour interval after %d failures: %v, want never shorter than the interval", failures, got)
+		}
 	}
 }
 
@@ -464,5 +470,50 @@ func TestBankFeedWorker_FetchNowRespectsTheBank(t *testing.T) {
 	fetch()
 	if s := feedStateOf(t, h, sellerAccount); s.next == nil || !s.next.Equal(h.Now()) {
 		t.Errorf("Fetch now after a failure: %+v, want due now", s)
+	}
+}
+
+// A refused key whose refusal could not be recorded (plan C review, item
+// 7): the account backs off as a failure — never read again at once with the
+// refused key — and a refusal of a key a manager replaced while the call was
+// out reads the account again at once with the new one.
+func TestBankFeedWorker_ARefusedKeyNeverLoops(t *testing.T) {
+	h, _ := syncHarness(t)
+	feedReady(t, h)
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Status: http.StatusUnauthorized})
+	restore := invoices.SetBankFeedBeforeMark(func(context.Context) error { return errors.New("the database is away") })
+	defer restore()
+	syncNow(t, h)
+	restore()
+	s := feedStateOf(t, h, sellerAccount)
+	if s.status != "ok" || s.failures != 1 || s.next == nil || !s.next.Equal(h.Now().Add(time.Hour)) || s.leased {
+		t.Errorf("a refusal not recorded: %+v, want one failure, due in an hour", s)
+	}
+	syncNow(t, h)
+	if n := transactionReads(h); n != 1 {
+		t.Errorf("the bank was asked %d times with the refused key, want once", n)
+	}
+
+	// The key is replaced while the call is out: the refusal records
+	// nothing, and the account is read again at once — with the new key,
+	// which the bank accepts.
+	h.Advance(time.Hour)
+	h.folio.Fail(foliotest.OpTransactions, foliotest.Failure{Status: http.StatusUnauthorized, Times: 1})
+	restore = invoices.SetBankFeedBeforeMark(func(ctx context.Context) error {
+		_, err := h.Pool().Exec(ctx, `UPDATE invoices.bank_feed_connections SET updated_at = updated_at + interval '1 second'`)
+		return err
+	})
+	defer restore()
+	syncNow(t, h)
+	restore()
+	if n := transactionReads(h); n != 3 {
+		t.Errorf("after a refusal of a replaced key the bank was read %d times in all, want 3: the refusal and the read again", n)
+	}
+	s = feedStateOf(t, h, sellerAccount)
+	if s.status != "ok" || s.failures != 0 || s.leased {
+		t.Errorf("a refusal of a replaced key, then the read with the new one: %+v, want ok", s)
+	}
+	if got := modtest1(t, h, `SELECT status FROM invoices.bank_feed_connections`); got != "ok" {
+		t.Errorf("the connection = %s, want ok: the new key was not refused", got)
 	}
 }

@@ -885,3 +885,11 @@ func JudgeFeedBatch(txs []bankfeed.Transaction, account string, today, startDay 
 	}
 	return refs, counts, ""
 }
+
+// SetBankFeedBeforeMark installs a hook that runs before the bank's refusal
+// of a key is recorded; an error it answers is the record failing. A test
+// using it does not run in parallel: the hook is the package's.
+func SetBankFeedBeforeMark(hook func(ctx context.Context) error) func() {
+	bankFeedBeforeMark = hook
+	return func() { bankFeedBeforeMark = nil }
+}

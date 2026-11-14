@@ -638,14 +638,29 @@ func (s *server) bankFeedKeyOf(row store.InvoicesBankFeedConnection) (string, er
 	return key, nil
 }
 
+// bankFeedBeforeMark, when a test installs it, runs before the bank's
+// refusal of a key is recorded; an error it answers is the record failing.
+// Nil in production.
+var bankFeedBeforeMark func(ctx context.Context) error
+
 // flagBankFeedUnauthorized records the bank's refusal of the key of version
 // (the connection's updated_at it was opened from). It writes on the pool,
 // never inside a caller's transaction, so a rolled-back operation still leaves
-// the flag.
-func (s *server) flagBankFeedUnauthorized(ctx context.Context, version time.Time) {
-	if err := store.New(s.deps.Pool).MarkBankFeedUnauthorized(ctx, store.MarkBankFeedUnauthorizedParams{
-		Now: s.deps.Clock(), Version: version,
-	}); err != nil {
-		s.deps.Logger.ErrorContext(ctx, "invoices: flag the bank key as refused", "error", err.Error())
+// the flag. A record that fails is logged and answered: the sync then backs
+// off rather than read again with the refused key.
+func (s *server) flagBankFeedUnauthorized(ctx context.Context, version time.Time) error {
+	err := error(nil)
+	if hook := bankFeedBeforeMark; hook != nil {
+		err = hook(ctx)
 	}
+	if err == nil {
+		err = store.New(s.deps.Pool).MarkBankFeedUnauthorized(ctx, store.MarkBankFeedUnauthorizedParams{
+			Now: s.deps.Clock(), Version: version,
+		})
+	}
+	if err != nil {
+		s.deps.Logger.ErrorContext(ctx, "invoices: flag the bank key as refused", "error", err.Error())
+		return fmt.Errorf("invoices: flag the bank key as refused: %w", err)
+	}
+	return nil
 }
