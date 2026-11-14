@@ -2071,15 +2071,18 @@ func TestConfig_InvoicesVipps(t *testing.T) {
 }
 
 // The bank feed's switch and Folio's base URL (invoices bank feed design
-// F3): the switch defaults on and is strict; the base URL defaults to Folio's
+// F3): the switch defaults off until the sync exists, and is strict; the base URL defaults to Folio's
 // API and must be https — the adapter sends the API key on every request.
 func TestConfig_InvoicesBankFeed(t *testing.T) {
 	cfg := mustLoad(t, validEnv())
-	if !cfg.InvoicesBankFeedEnabled {
-		t.Error("INVOICES_BANK_FEED_ENABLED unset did not default to on")
+	if cfg.InvoicesBankFeedEnabled {
+		t.Error("INVOICES_BANK_FEED_ENABLED unset did not default to off")
 	}
 	if cfg.InvoicesFolioBaseURL != "https://api.folio.no/v2" {
 		t.Errorf("InvoicesFolioBaseURL = %q, want Folio's API", cfg.InvoicesFolioBaseURL)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVOICES_BANK_FEED_ENABLED", "1")); !cfg.InvoicesBankFeedEnabled {
+		t.Error("INVOICES_BANK_FEED_ENABLED=1 left the switch off")
 	}
 	if cfg := mustLoad(t, with(validEnv(), "INVOICES_BANK_FEED_ENABLED", "0")); cfg.InvoicesBankFeedEnabled {
 		t.Error("INVOICES_BANK_FEED_ENABLED=0 left the switch on")
