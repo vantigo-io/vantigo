@@ -720,6 +720,9 @@ func TestVatTerms_YearlyAndNone(t *testing.T) {
 func validateXML(t *testing.T, file string) {
 	t.Helper()
 	if _, err := exec.LookPath("xmllint"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("xmllint is not on the PATH in CI: %s is not validated", file)
+		}
 		t.Logf("xmllint is not on the PATH: %s is validated by tools/mva/validate.sh", file)
 		return
 	}

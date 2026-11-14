@@ -157,6 +157,10 @@ type fakeDirectory struct {
 	contracts.CustomerDirectory
 	names map[int32]string
 	legal map[int32]string
+	// merged names a customer merged away and the one it went into.
+	merged map[int32]int32
+	// byLegalID counts the CustomersByLegalID calls, when set.
+	byLegalID *int
 }
 
 func (d fakeDirectory) BillingProfile(_ context.Context, id int32, _ contracts.BillingProfileOptions) (*contracts.CustomerBillingProfile, error) {
@@ -171,6 +175,9 @@ func (d fakeDirectory) BillingProfile(_ context.Context, id int32, _ contracts.B
 }
 
 func (d fakeDirectory) CustomersByLegalID(_ context.Context, _ string, ids []string) (map[string][]contracts.CustomerEntry, error) {
+	if d.byLegalID != nil {
+		*d.byLegalID++
+	}
 	out := map[string][]contracts.CustomerEntry{}
 	for _, want := range ids {
 		for id, legal := range d.legal {
@@ -186,7 +193,11 @@ func (d fakeDirectory) Customers(_ context.Context, ids []int32) ([]contracts.Cu
 	out := []contracts.CustomerEntry{}
 	for _, id := range ids {
 		if name, ok := d.names[id]; ok {
-			out = append(out, contracts.CustomerEntry{ID: id, Name: name})
+			e := contracts.CustomerEntry{ID: id, Name: name}
+			if into, ok := d.merged[id]; ok {
+				e.MergedInto, e.Archived = &into, true
+			}
+			out = append(out, e)
 		}
 	}
 	return out, nil

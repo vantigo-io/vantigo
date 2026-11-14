@@ -2292,7 +2292,7 @@ func TestLoad_AgentsConcurrency(t *testing.T) {
 // size and the export's split threshold, each with its default and bounds.
 func TestLoad_AccountingSaft(t *testing.T) {
 	cfg := mustLoad(t, validEnv())
-	if cfg.AccountingSaftImportMaxBytes != 512<<20 || cfg.AccountingSaftSplitBytes != 2_000_000_000 {
+	if cfg.AccountingSaftImportMaxBytes != 512<<20 || cfg.AccountingSaftSplitBytes != 2_000_000_000 || cfg.AccountingSaftExportRetentionDays != 90 {
 		t.Errorf("defaults = %d, %d", cfg.AccountingSaftImportMaxBytes, cfg.AccountingSaftSplitBytes)
 	}
 	cfg = mustLoad(t, with(with(validEnv(), "ACCOUNTING_SAFT_IMPORT_MAX_BYTES", "2097152"), "ACCOUNTING_SAFT_SPLIT_BYTES", "4096"))
@@ -2303,6 +2303,17 @@ func TestLoad_AccountingSaft(t *testing.T) {
 		t.Errorf("error = %q", msg)
 	}
 	if msg := loadError(t, with(validEnv(), "ACCOUNTING_SAFT_IMPORT_MAX_BYTES", "1")); !strings.Contains(msg, "ACCOUNTING_SAFT_IMPORT_MAX_BYTES") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+// TestLoad_AccountingSaftRetention: the export files' retention, 0 to keep
+// them, at most ten years.
+func TestLoad_AccountingSaftRetention(t *testing.T) {
+	if cfg := mustLoad(t, with(validEnv(), "ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS", "0")); cfg.AccountingSaftExportRetentionDays != 0 {
+		t.Errorf("retention = %d", cfg.AccountingSaftExportRetentionDays)
+	}
+	if msg := loadError(t, with(validEnv(), "ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS", "-1")); !strings.Contains(msg, "ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS") {
 		t.Errorf("error = %q", msg)
 	}
 }

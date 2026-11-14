@@ -24,6 +24,11 @@ var XSD = filepath.Join("testdata", "xsd", "no.skatteetaten.fastsetting.avgift.m
 func validate(t *testing.T, file string) {
 	t.Helper()
 	if _, err := exec.LookPath("xmllint"); err != nil {
+		// In CI the test job installs it: a missing xmllint there is a
+		// failure, not a file left unvalidated.
+		if os.Getenv("CI") != "" {
+			t.Fatalf("xmllint is not on the PATH in CI: %s is not validated", file)
+		}
 		t.Logf("xmllint is not on the PATH: %s is validated by tools/mva/validate.sh", file)
 		return
 	}

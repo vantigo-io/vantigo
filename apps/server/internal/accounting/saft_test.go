@@ -931,14 +931,21 @@ func TestSaftImport_SkatteetatensExamples(t *testing.T) {
 			if !unmatched || p.CanApply || len(p.Blockers) == 0 {
 				t.Fatalf("the unmatched customer: %+v, blockers %v", p.Customers, p.Blockers)
 			}
-			apply := map[string]any{"vatTerm": "bimonthly", "language": "en"}
-			expectProblem(t, c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), apply), http.StatusConflict, "saft_import_unmatched_customers")
-			links := map[string]int32{}
-			for _, cu := range p.Customers {
-				links[cu.FileCustomerId] = customerAcme
+			// The examples name their selection by periods: the month is asked.
+			if !p.NeedsFiscalYearStartMonth {
+				t.Error("the periods' month is not asked for")
 			}
-			apply["customerLinks"] = links
+			apply := map[string]any{"vatTerm": "bimonthly", "language": "en"}
 			res := c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), apply)
+			if res.Status != http.StatusBadRequest || !strings.Contains(string(res.Body), "fiscalYearStartMonth") {
+				t.Fatalf("apply without the month = %d %s", res.Status, res.Body)
+			}
+			apply["fiscalYearStartMonth"] = 1
+			expectProblem(t, c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), apply), http.StatusConflict, "saft_import_unmatched_customers")
+			for _, cu := range attention(t, c, p.Id) {
+				link(t, c, p.Id, cu.Position, customerAcme)
+			}
+			res = c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), apply)
 			if res.Status != http.StatusCreated {
 				t.Fatalf("apply with links = %d %s", res.Status, res.Body)
 			}
@@ -997,10 +1004,13 @@ func TestSaftImport_PartiesThatDoNotAddUp(t *testing.T) {
 	if !found {
 		t.Errorf("accounts = %+v", p.Accounts)
 	}
+	for _, cu := range attention(t, c, p.Id) {
+		link(t, c, p.Id, cu.Position, customerAcme)
+	}
 	expectProblem(t, c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), map[string]any{"vatTerm": "none", "language": "en",
-		"customerLinks": map[string]int32{"15000": customerAcme}}), http.StatusConflict, "saft_import_parties_mismatch")
+		"fiscalYearStartMonth": 1}), http.StatusConflict, "saft_import_parties_mismatch")
 	expectProblem(t, c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), map[string]any{"vatTerm": "none", "language": "en",
-		"booksStart": "2026-02-01"}), http.StatusBadRequest, "saft_import_books_start_mismatch")
+		"fiscalYearStartMonth": 1, "booksStart": "2026-02-01"}), http.StatusBadRequest, "saft_import_books_start_mismatch")
 }
 
 // TestSaftExport_TaxInformationReproducesTheVatSpecification: summed per
@@ -1138,5 +1148,216 @@ func TestSaftExport_GivesUpAfterFiveAttempts(t *testing.T) {
 	b.c.Do(http.MethodGet, fmt.Sprintf("%s/saft-exports/%d", base, created.Export.Id), nil).JSON(&got)
 	if got.State != gen.Failed || got.Error == nil || !strings.Contains(*got.Error, "5 attempts") {
 		t.Errorf("export = %s %v", got.State, deref(got.Error))
+	}
+}
+
+// attention is the import's customers with a balance that are not matched
+// or linked.
+func attention(t *testing.T, c *modtest.Client, id int64) []gen.AccountingSaftImportCustomer {
+	t.Helper()
+	res := c.Do(http.MethodGet, fmt.Sprintf("%s/saft-imports/%d/customers?attention=true", base, id), nil)
+	if res.Status != http.StatusOK {
+		t.Fatalf("customers = %d %s", res.Status, res.Body)
+	}
+	var list gen.AccountingSaftImportCustomerList
+	res.JSON(&list)
+	return list.Items
+}
+
+// link links a file customer to a customer in Customers.
+func link(t *testing.T, c *modtest.Client, id int64, position, customer int32) gen.AccountingSaftImportCustomer {
+	t.Helper()
+	res := c.Do(http.MethodPut, fmt.Sprintf("%s/saft-imports/%d/customers/%d/link", base, id, position), map[string]any{"customerId": customer})
+	if res.Status != http.StatusOK {
+		t.Fatalf("link = %d %s", res.Status, res.Body)
+	}
+	var cu gen.AccountingSaftImportCustomer
+	res.JSON(&cu)
+	return cu
+}
+
+// TestSaftImport_LinksAreCustomersPicked (H3): a link names a customer of
+// Customers by its id, as the picker found it: an id Customers does not hold
+// is refused, a customer merged away links to the one it went into, and the
+// preview shows the linked customer's name and organisation number.
+func TestSaftImport_LinksAreCustomersPicked(t *testing.T) {
+	h := newHarness(t, modtest.WithDirectory(fakeDirectory{
+		names:  map[int32]string{customerAcme: "Acme AS", customerBeta: "Beta AS"},
+		legal:  map[int32]string{customerAcme: "914778271", customerBeta: "987654325"},
+		merged: map[int32]int32{customerBeta: customerAcme}}))
+	c := h.SignIn(t, accountant...)
+	data, _ := os.ReadFile(filepath.Join("saft", "testdata", "examples", "example-1.40.xml"))
+	p := uploadOK(t, c, "x.xml", data)
+	need := attention(t, c, p.Id)
+	if len(need) != 1 {
+		t.Fatalf("attention = %+v", need)
+	}
+	expectProblem(t, c.Do(http.MethodPut, fmt.Sprintf("%s/saft-imports/%d/customers/%d/link", base, p.Id, need[0].Position),
+		map[string]any{"customerId": 10501}), http.StatusBadRequest, "saft_import_link_unknown")
+	got := link(t, c, p.Id, need[0].Position, customerBeta)
+	if got.Match != "linked" || deref(got.CustomerId) != customerAcme || deref(got.CustomerName) != "Acme AS" ||
+		deref(got.CustomerOrganisationNumber) != "914778271" {
+		t.Errorf("linked = %+v", got)
+	}
+	var again gen.AccountingSaftImport
+	c.Do(http.MethodGet, fmt.Sprintf("%s/saft-imports/%d", base, p.Id), nil).JSON(&again)
+	if again.Customers[0].Match != "linked" || deref(again.Customers[0].CustomerOrganisationNumber) != "914778271" || len(attention(t, c, p.Id)) != 0 {
+		t.Errorf("preview after the link = %+v", again.Customers)
+	}
+}
+
+// TestSaftImport_MatchedOnceAndOnAsk (M6): the customers are matched at the
+// upload and when a person asks — not on every read — and the lists are
+// paged.
+func TestSaftImport_MatchedOnceAndOnAsk(t *testing.T) {
+	calls := 0
+	h := newHarness(t, modtest.WithDirectory(fakeDirectory{names: map[int32]string{customerAcme: "Acme AS"},
+		legal: map[int32]string{customerAcme: "914778271"}, byLegalID: &calls}))
+	c := h.SignIn(t, accountant...)
+	data, _ := os.ReadFile(filepath.Join("saft", "testdata", "examples", "example-1.40.xml"))
+	// Skatteetaten's example customer's number does not pass mod 11: one
+	// that does, Acme's.
+	data = []byte(strings.Replace(string(data), "<RegistrationNumber>922222229</RegistrationNumber>", "<RegistrationNumber>914778271</RegistrationNumber>", 1))
+	p := uploadOK(t, c, "x.xml", data)
+	if calls != 1 || p.Customers[0].Match != "matched" || p.MatchedAt == nil || p.CustomersTotal != 1 {
+		t.Fatalf("after the upload: %d calls, %+v", calls, p.Customers)
+	}
+	for range 3 {
+		c.Do(http.MethodGet, fmt.Sprintf("%s/saft-imports/%d", base, p.Id), nil)
+	}
+	if calls != 1 {
+		t.Errorf("reads matched again: %d calls", calls)
+	}
+	if res := c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/match", base, p.Id), nil); res.Status != http.StatusOK || calls != 2 {
+		t.Errorf("match = %d, %d calls", res.Status, calls)
+	}
+	var sup gen.AccountingSaftImportSupplierList
+	c.Do(http.MethodGet, fmt.Sprintf("%s/saft-imports/%d/suppliers?offset=0&limit=1", base, p.Id), nil).JSON(&sup)
+	if sup.Total != 1 || len(sup.Items) != 1 {
+		t.Errorf("suppliers = %+v", sup)
+	}
+}
+
+// TestSaftImport_RefusesTooMuchAndWhatIsNotAnAmount (M6, M7): a file with
+// more accounts than a company has is refused, and so is a balance that is
+// not the XSD's monetary type, named by its element.
+func TestSaftImport_RefusesTooMuchAndWhatIsNotAnAmount(t *testing.T) {
+	h := newHarness(t)
+	c := h.SignIn(t, accountant...)
+	data, _ := os.ReadFile(filepath.Join("saft", "testdata", "examples", "example-1.40.xml"))
+	comma := strings.Replace(string(data), "<ClosingDebitBalance>12500.00</ClosingDebitBalance>", "<ClosingDebitBalance>12500,00</ClosingDebitBalance>", 1)
+	res := upload(c, "comma.xml", []byte(comma))
+	expectProblem(t, res, http.StatusBadRequest, "saft_file_invalid")
+	if !strings.Contains(string(res.Body), "Account[1500]/Closing") {
+		t.Errorf("the refusal does not name the element: %s", res.Body)
+	}
+	var many strings.Builder
+	i := strings.Index(string(data), "<Account>")
+	j := strings.Index(string(data), "</GeneralLedgerAccounts>")
+	many.WriteString(string(data)[:i])
+	for n := range 20001 {
+		fmt.Fprintf(&many, "<Account><AccountID>%d</AccountID><AccountDescription>A</AccountDescription><GroupingCategory>NA</GroupingCategory><GroupingCode>NA</GroupingCode><AccountType>GL</AccountType><OpeningDebitBalance>0</OpeningDebitBalance><ClosingDebitBalance>0</ClosingDebitBalance></Account>", 100000+n)
+	}
+	many.WriteString(string(data)[j:])
+	expectProblem(t, upload(c, "many.xml", []byte(many.String())), http.StatusBadRequest, "saft_file_too_large")
+}
+
+// TestSaftImport_AnotherCompanysFile (L2): a file of another company than
+// the seller in Invoices needs a person's confirmation.
+func TestSaftImport_AnotherCompanysFile(t *testing.T) {
+	h := newHarness(t, modtest.WithSalesTax(fakeSalesTax{seller: fjordSeller}))
+	c := h.SignIn(t, accountant...)
+	data, _ := os.ReadFile(filepath.Join("saft", "testdata", "examples", "example-1.40.xml"))
+	p := uploadOK(t, c, "x.xml", data)
+	if !p.CompanyMismatch || deref(p.SellerOrganisationNumber) != "923609016" {
+		t.Fatalf("preview = %v %v", p.CompanyMismatch, p.SellerOrganisationNumber)
+	}
+	for _, cu := range attention(t, c, p.Id) {
+		link(t, c, p.Id, cu.Position, customerAcme)
+	}
+	body := map[string]any{"vatTerm": "bimonthly", "language": "nb", "fiscalYearStartMonth": 1}
+	expectProblem(t, c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), body), http.StatusConflict, "saft_import_other_company")
+	body["confirmOtherCompany"] = true
+	if res := c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), body); res.Status != http.StatusCreated {
+		t.Fatalf("confirmed = %d %s", res.Status, res.Body)
+	}
+}
+
+// TestSaftImport_MidYear (H4): a file of January to June sets up books from
+// 1 July that keep the year's result where it was: each income and expense
+// account opens with its year-to-date balance, and nothing goes to equity.
+func TestSaftImport_MidYear(t *testing.T) {
+	old := saftBooks(t)
+	old.ledger(t)
+	_, files := old.export(t, map[string]any{"fiscalYear": 2026, "toPeriod": 6})
+	h := newHarness(t, modtest.WithSalesTax(fakeSalesTax{seller: fjordSeller}))
+	c := h.SignIn(t, accountant...)
+	p := uploadOK(t, c, "h1.xml", files[0])
+	if !p.MidYear || p.BooksStart.String() != "2026-07-01" || p.FiscalYearStartMonth != 1 || p.Opening.Result != "0.00" {
+		t.Fatalf("preview = midYear %v, %s, month %d, result %s", p.MidYear, p.BooksStart, p.FiscalYearStartMonth, p.Opening.Result)
+	}
+	if res := c.Do(http.MethodPost, fmt.Sprintf("%s/saft-imports/%d/apply", base, p.Id), map[string]any{"vatTerm": "bimonthly", "language": "nb"}); res.Status != http.StatusCreated {
+		t.Fatalf("apply = %d %s", res.Status, res.Body)
+	}
+	nb := &books{h: h, c: c}
+	result := func(b *books, from, to string) map[string]string {
+		out := map[string]string{}
+		for _, r := range b.report(t, "trial_balance", from, to).Rows {
+			if acc := r.Cells["account"]; acc != "" && (acc[0] >= '3') {
+				out[acc] = r.Cells["closing"]
+			}
+		}
+		return out
+	}
+	was, is := result(old, "2026-01-01", "2026-06-30"), result(nb, "2026-07-01", "2026-07-01")
+	for acc, v := range was {
+		if v != "0.00" && is[acc] != v {
+			t.Errorf("account %s: the year so far %s in the file's books, %s after the import", acc, v, is[acc])
+		}
+	}
+	if len(was) == 0 {
+		t.Fatal("no income or expense in the half year")
+	}
+}
+
+// TestSaftExport_FilesRemovedAfterTheirRetention (M5): an export's files
+// carry personal data and are deleted once the retention has passed; the
+// record of the export and its hash stay, and the download says so.
+func TestSaftExport_FilesRemovedAfterTheirRetention(t *testing.T) {
+	b := saftBooks(t, modtest.WithEnv("ACCOUNTING_SAFT_EXPORT_RETENTION_DAYS", "30"))
+	b.ledger(t)
+	e, _ := b.export(t, map[string]any{"fiscalYear": 2026})
+	key := ""
+	for k := range b.h.objects.data {
+		if strings.HasPrefix(k, "accounting/saft-exports/") || strings.Contains(k, "saft-exports/") {
+			key = k
+		}
+	}
+	if key == "" {
+		t.Fatal("no object written")
+	}
+	b.h.Advance(29 * 24 * time.Hour)
+	if err := saftWorker(t, b.h).RunOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.h.objects.data[key]; !ok {
+		t.Fatal("removed before its retention")
+	}
+	b.h.Advance(2 * 24 * time.Hour)
+	if err := saftWorker(t, b.h).RunOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.h.objects.data[key]; ok {
+		t.Error("the object is still there")
+	}
+	c := b.h.SignIn(t, accountant...)
+	var got gen.AccountingSaftExport
+	c.Do(http.MethodGet, fmt.Sprintf("%s/saft-exports/%d", base, e.Id), nil).JSON(&got)
+	if got.Files[0].RemovedAt == nil || got.Files[0].Sha256 != e.Files[0].Sha256 {
+		t.Errorf("file = %+v", got.Files[0])
+	}
+	expectProblem(t, c.Do(http.MethodGet, fmt.Sprintf("%s/saft-exports/%d/files/1", base, e.Id), nil), http.StatusConflict, "saft_export_file_removed")
+	if _, err := b.h.Pool().Exec(t.Context(), `UPDATE accounting.saft_export_files SET sha256 = 'x' WHERE export_id = $1`, e.Id); err == nil {
+		t.Error("a file's row was changed")
 	}
 }
