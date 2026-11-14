@@ -9,13 +9,15 @@ const colours: Record<string, string> = {
   partially_paid: "yellow",
   overdue: "red",
   paid: "green",
+  written_off: "orange",
   credited: "gray",
   issued: "gray",
 };
 
 /**
  * A document's derived state (D3) as a badge: grey draft, blue open, yellow
- * partially paid, red overdue, green paid, grey credited, and grey issued for
+ * partially paid, red overdue, green paid, orange written off, grey credited,
+ * and grey issued for
  * a credit note. The server judges the state; this only words and colours it.
  */
 export const StateBadge = ({ state }: { state: string }) => {

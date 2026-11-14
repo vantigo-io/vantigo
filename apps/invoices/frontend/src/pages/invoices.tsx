@@ -40,7 +40,7 @@ export interface InvoicesPageProps {
 }
 
 /** The states an issued invoice can be filtered by (D3); a draft and a credit note never match one. */
-const filterStates = ["open", "partially_paid", "overdue", "paid", "credited"] as const;
+const filterStates = ["open", "partially_paid", "overdue", "paid", "written_off", "credited"] as const;
 
 /**
  * The list (D4, D12): drafts first, then by number descending, with the

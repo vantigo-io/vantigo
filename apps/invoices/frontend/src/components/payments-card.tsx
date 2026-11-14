@@ -1,5 +1,5 @@
 import { Alert, Anchor, Button, Group, Stack, Table, Text, Title } from "@mantine/core";
-import { IconInfoCircle, IconPlus } from "@tabler/icons-react";
+import { IconInfoCircle, IconPlus, IconReceiptOff } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import { appUrl, PageSection } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -10,6 +10,7 @@ import { useInvoiceFormat } from "../lib/format";
 import { PAYMENTS_ROUTE_PATH } from "../lib/routes";
 import { RegisterPaymentModal } from "../pages/-register-payment-modal";
 import { RemovePaymentModal } from "../pages/-remove-payment-modal";
+import { UndoWriteOffModal, WriteOffModal } from "../pages/-write-off-modals";
 
 export interface PaymentsCardProps {
   /** An issued invoice: a credit note takes no payments. */
@@ -21,7 +22,7 @@ export interface PaymentsCardProps {
 }
 
 /** A state in which nothing is left to pay: no registration is offered (D10). */
-const settled = new Set(["paid", "credited"]);
+const settled = new Set(["paid", "credited", "written_off"]);
 
 /**
  * An issued invoice's payments (D2, D10): each registration with the day the
@@ -35,25 +36,90 @@ const settled = new Set(["paid", "credited"]);
  * live registration. While the invoice is handed off to a collection agency
  * a payment is still registered here, and the card says to report one
  * received directly to the agency (invoices payments and reminders design D11).
+ *
+ * The write-off (accounting design A16, R4): "Write off" while something is
+ * open, the standing write-off with its day, amount, reason and whether its
+ * VAT was taken back, "Undo write-off" and "Register recovered payment" while
+ * it stands, an undone one struck through with its reason, and a recovered
+ * payment named as one in the list — all under `invoices:payments`.
  */
 export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps) => {
   const { t, money, date, dateTime } = useInvoiceFormat();
   const navigate = useNavigate() as (options: unknown) => void;
   const [registering, setRegistering] = useState(false);
   const [removing, setRemoving] = useState<InvoicePayment | null>(null);
+  const [writingOff, setWritingOff] = useState(false);
+  const [undoing, setUndoing] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const payments = invoice.payments ?? [];
+  const writeOffs = invoice.writeOffs ?? [];
+  const standing = writeOffs.find((w) => !w.undoneAt);
+  const canWriteOff = canRegister && !standing && (invoice.openAmount ?? 0) > 0;
   const handoff = invoice.handoff && !invoice.handoff.withdrawnOn ? invoice.handoff : undefined;
   return (
     <PageSection data-testid="payments-card">
       <Stack gap="xs">
         <Group justify="space-between">
           <Title order={4}>{t("payments")}</Title>
-          {canRegister && !settled.has(invoice.state) && (
-            <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setRegistering(true)}>
-              {t("registerPayment")}
-            </Button>
-          )}
+          <Group gap="xs">
+            {canWriteOff && (
+              <Button
+                size="xs"
+                variant="default"
+                leftSection={<IconReceiptOff size={14} />}
+                onClick={() => setWritingOff(true)}
+              >
+                {t("writeOff.button")}
+              </Button>
+            )}
+            {canRegister && !settled.has(invoice.state) && (
+              <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setRegistering(true)}>
+                {t("registerPayment")}
+              </Button>
+            )}
+          </Group>
         </Group>
+        {writeOffs.map((w) => {
+          const undone = Boolean(w.undoneAt);
+          return (
+            <Alert
+              key={w.id}
+              color={undone ? "gray" : "orange"}
+              icon={<IconReceiptOff size={16} />}
+              data-testid={`write-off-${w.id}`}
+              data-undone={undone ? "true" : undefined}
+            >
+              <Stack gap={4}>
+                <Text size="sm" style={undone ? { textDecoration: "line-through" } : undefined}>
+                  {t("writeOff.standing", {
+                    date: date(w.writtenOffOn),
+                    amount: money(w.amount, w.currency),
+                    reason: t(`writeOff.reason.${w.reason}`),
+                  })}
+                  {w.vatCorrection ? ` · ${t("writeOff.vatCorrected")}` : ""}
+                </Text>
+                {w.recoveredAmount > 0 && (
+                  <Text size="sm">
+                    {t("writeOff.recoveredSoFar", { amount: money(w.recoveredAmount, w.currency) })}
+                  </Text>
+                )}
+                {undone && <Text size="sm">{t("writeOff.undoneBecause", { reason: w.undoReason ?? "" })}</Text>}
+                {!undone && canRegister && (
+                  <Group gap="xs">
+                    {w.recoveredAmount < w.amount && (
+                      <Button size="xs" variant="light" onClick={() => setRecovering(true)}>
+                        {t("writeOff.registerRecovered")}
+                      </Button>
+                    )}
+                    <Button size="xs" variant="subtle" onClick={() => setUndoing(true)}>
+                      {t("writeOff.undo")}
+                    </Button>
+                  </Group>
+                )}
+              </Stack>
+            </Alert>
+          );
+        })}
         {handoff && (
           <Alert color="grape" icon={<IconInfoCircle size={16} />} data-testid="report-to-agency">
             {t("handoff.reportPayments", { agency: handoff.agency })}
@@ -90,7 +156,7 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
                       </Table.Td>
                       <Table.Td data-testid={`payment-source-${p.id}`}>
                         <Text size="sm" style={struck}>
-                          {t(`paymentSource.${p.source}`)}
+                          {p.kind === "recovered" ? t("writeOff.recoveredKind") : t(`paymentSource.${p.source}`)}
                         </Text>
                         {p.bankTransactionId !== undefined &&
                           (canRegister ? (
@@ -148,6 +214,11 @@ export const PaymentsCard = ({ invoice, canRegister, today }: PaymentsCardProps)
       </Stack>
       {registering && <RegisterPaymentModal invoice={invoice} today={today} onClose={() => setRegistering(false)} />}
       {removing && <RemovePaymentModal invoice={invoice} payment={removing} onClose={() => setRemoving(null)} />}
+      {writingOff && <WriteOffModal invoice={invoice} today={today} onClose={() => setWritingOff(false)} />}
+      {undoing && <UndoWriteOffModal invoice={invoice} onClose={() => setUndoing(false)} />}
+      {recovering && (
+        <RegisterPaymentModal invoice={invoice} today={today} recovered onClose={() => setRecovering(false)} />
+      )}
     </PageSection>
   );
 };

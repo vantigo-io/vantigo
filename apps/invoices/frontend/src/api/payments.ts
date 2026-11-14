@@ -19,3 +19,16 @@ export const registerPayment = (id: number, input: PaymentInput): Promise<Invoic
 /** Removes a registration with a reason; it stays on the document, struck through. Never undone. */
 export const removePayment = (id: number, paymentId: number, reason: string): Promise<InvoiceDocument> =>
   request<InvoiceDocument>(`/api/v1/invoices/${id}/payments/${paymentId}/remove`, json("POST", { reason }));
+
+/** One write-off of an issued invoice, an undone one included (accounting design A16). */
+export type InvoiceWriteOff = Schemas["InvoicesWriteOff"];
+export type WriteOffInput = Schemas["InvoicesWriteOffRequest"];
+export type WriteOffReason = Schemas["InvoicesWriteOffReason"];
+
+/** Writes the invoice's whole open amount off. The caller invalidates the document. */
+export const writeOff = (id: number, input: WriteOffInput): Promise<InvoiceDocument> =>
+  request<InvoiceDocument>(`/api/v1/invoices/${id}/write-off`, json("POST", input));
+
+/** Undoes the standing write-off with a reason; it stays on the document, struck through. */
+export const undoWriteOff = (id: number, reason: string): Promise<InvoiceDocument> =>
+  request<InvoiceDocument>(`/api/v1/invoices/${id}/write-off/undo`, json("POST", { reason }));
