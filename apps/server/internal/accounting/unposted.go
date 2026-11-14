@@ -8,6 +8,8 @@ package accounting
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -42,6 +44,15 @@ func unpostedView(r store.GetUnpostedRow, names map[int32]string) gen.Accounting
 	if r.PostedVoucherID != nil && r.VoucherYear != nil && r.VoucherNumber != nil {
 		out.PostedVoucher = &gen.AccountingVoucherRef{Id: *r.PostedVoucherID, Display: display(*r.VoucherYear, *r.VoucherNumber)}
 	}
+	out.OrderKey, out.Informational, out.ResolvedAt, out.SupplierInvoiceId = r.OrderKey, r.Informational, r.ResolvedAt, r.SupplierInvoiceID
+	out.ExpenseLines = []gen.AccountingUnpostedExpenseLine{}
+	notes := parseLineNotes(r.NokAmounts)
+	for _, k := range sortedEntryIDs(notes) {
+		n := notes[k]
+		id, _ := strconv.ParseInt(k, 10, 64)
+		out.ExpenseLines = append(out.ExpenseLines, gen.AccountingUnpostedExpenseLine{EntryId: id, Kind: n.Kind,
+			Currency: n.Currency, Gross: n.Gross, AmountNok: n.AmountNOK})
+	}
 	return out
 }
 
@@ -75,7 +86,9 @@ func (s *server) ListAccountingUnposted(ctx context.Context, req gen.ListAccount
 			FactDate: r.FactDate, DocumentID: r.DocumentID, DocumentNumber: r.DocumentNumber, CustomerID: r.CustomerID,
 			Amount: r.Amount, Reason: r.Reason, Detail: r.Detail, Attempts: r.Attempts, FirstSeenAt: r.FirstSeenAt,
 			LastTriedAt: r.LastTriedAt, PostedVoucherID: r.PostedVoucherID, PostedAt: r.PostedAt, VoucherYear: r.VoucherYear,
-			VoucherNumber: r.VoucherNumber, InvoiceID: r.InvoiceID, WaitingOn: r.WaitingOn}, names))
+			VoucherNumber: r.VoucherNumber, InvoiceID: r.InvoiceID, WaitingOn: r.WaitingOn, OrderKey: r.OrderKey,
+			Informational: r.Informational, ResolvedAt: r.ResolvedAt, SupplierInvoiceID: r.SupplierInvoiceID,
+			NokAmounts: r.NokAmounts}, names))
 	}
 	return out, nil
 }
@@ -98,32 +111,61 @@ func (s *server) RetryAccountingUnposted(ctx context.Context, req gen.RetryAccou
 	if row.PostedAt != nil {
 		return nil, conflict(codeUnpostedPosted, "The fact has posted", "")
 	}
-	got, err := s.retry(ctx, row)
+	if row.ResolvedAt != nil {
+		return nil, conflict(codeUnpostedWrongReason, "The fact is resolved", "It was made into a supplier invoice, or undone before it posted.")
+	}
+	out, err := s.retryAndDependants(ctx, row)
 	if err != nil {
 		return nil, err
 	}
-	if got == outcomePosted && row.InvoiceID != nil {
-		dependants, err := q.UnpostedDependants(ctx, store.UnpostedDependantsParams{InvoiceID: row.InvoiceID, AfterID: row.ID})
-		if err != nil {
-			return nil, err
+	return gen.RetryAccountingUnposted200JSONResponse(out), nil
+}
+
+// retryAndDependants retries a row and, when it posts, the rows of its
+// invoice — or its entry or claim — recorded after it, in order, until one
+// does not post (R15); it answers the row as it stands then.
+func (s *server) retryAndDependants(ctx context.Context, row store.GetUnpostedRow) (gen.AccountingUnposted, error) {
+	q := store.New(s.deps.Pool)
+	got, err := s.retry(ctx, row)
+	if err != nil {
+		return gen.AccountingUnposted{}, err
+	}
+	if got == outcomePosted && (row.InvoiceID != nil || row.OrderKey != nil) {
+		var dependants []store.GetUnpostedRow
+		if row.InvoiceID != nil {
+			rows, err := q.UnpostedDependants(ctx, store.UnpostedDependantsParams{InvoiceID: row.InvoiceID, AfterID: row.ID})
+			if err != nil {
+				return gen.AccountingUnposted{}, err
+			}
+			for _, d := range rows {
+				dependants = append(dependants, store.GetUnpostedRow(d))
+			}
+		} else {
+			rows, err := q.UnpostedDependantsByKey(ctx, store.UnpostedDependantsByKeyParams{OrderKey: row.OrderKey, AfterID: row.ID})
+			if err != nil {
+				return gen.AccountingUnposted{}, err
+			}
+			for _, d := range rows {
+				dependants = append(dependants, store.GetUnpostedRow(d))
+			}
 		}
 		for _, d := range dependants {
-			if got, err := s.retry(ctx, store.GetUnpostedRow(d)); err != nil {
-				return nil, err
+			if got, err := s.retry(ctx, d); err != nil {
+				return gen.AccountingUnposted{}, err
 			} else if got != outcomePosted {
 				break
 			}
 		}
 	}
-	row, err = q.GetUnposted(ctx, req.Id)
+	row, err = q.GetUnposted(ctx, row.ID)
 	if err != nil {
-		return nil, err
+		return gen.AccountingUnposted{}, err
 	}
 	var ids []int32
 	if row.CustomerID != nil {
 		ids = append(ids, *row.CustomerID)
 	}
-	return gen.RetryAccountingUnposted200JSONResponse(unpostedView(row, s.customerNames(ctx, ids))), nil
+	return unpostedView(row, s.customerNames(ctx, ids)), nil
 }
 
 // retry reads a row's fact again, with no transaction open, and posts it in
@@ -136,6 +178,13 @@ func (s *server) retry(ctx context.Context, row store.GetUnpostedRow) (outcome, 
 	now := s.now()
 	got := outcomeUnposted
 	err = s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		if it == nil && row.Stream == streamExpenses {
+			subject, occurrence, _ := strings.Cut(row.SourceKind, ".")
+			return recordUnposted(ctx, q, sourceItem{stream: row.Stream, position: row.Position,
+				expense: &contracts.ExpenseFact{Seq: row.Position, Subject: subject, Occurrence: occurrence,
+					SubjectID: row.SourceID, Date: deref(row.FactDate)}},
+				reasonDocumentUnknown, "Expenses' journal no longer answers this fact.", nil, now)
+		}
 		if it == nil {
 			return recordUnposted(ctx, q, sourceItem{stream: row.Stream, position: row.Position, fact: &contracts.JournalFact{
 				Seq: row.Position, Kind: row.SourceKind, SubjectID: row.SourceID, AmountNOK: row.Amount,
@@ -152,6 +201,17 @@ func (s *server) retry(ctx context.Context, row store.GetUnpostedRow) (outcome, 
 // reread is the fact a row stands for, read again through the journal: nil
 // when the journal no longer answers it (or Invoices is off).
 func (s *server) reread(ctx context.Context, row store.GetUnpostedRow) (*sourceItem, error) {
+	if row.Stream == streamExpenses {
+		items, err := readExpenseStream(ctx, s.deps.ExpenseJournal, row.Position-1, 1)
+		if err != nil {
+			return nil, err
+		}
+		if len(items) != 1 || items[0].expense.Seq != row.Position || items[0].expense.SubjectID != row.SourceID {
+			return nil, nil
+		}
+		items[0].nok = noteAmounts(row.NokAmounts)
+		return &items[0], nil
+	}
 	journal := s.deps.SalesJournal
 	if journal == nil {
 		return nil, nil
@@ -203,8 +263,12 @@ func (s *server) GetAccountingCatchUp(ctx context.Context, _ gen.GetAccountingCa
 				v.RequestedAt = &at
 			}
 		}
-		if s.deps.SalesJournal != nil {
-			items, err := readStream(ctx, countingJournal{s.deps.SalesJournal}, stream, r.Position, contracts.MaxJournalPage)
+		if composed(s.deps, stream) {
+			deps := s.deps
+			if deps.SalesJournal != nil {
+				deps.SalesJournal = countingJournal{deps.SalesJournal}
+			}
+			items, err := readAny(ctx, deps, stream, r.Position, contracts.MaxJournalPage)
 			if err != nil {
 				s.logger().WarnContext(ctx, "accounting: read how far the books are behind", "stream", stream, "error", err)
 			} else {

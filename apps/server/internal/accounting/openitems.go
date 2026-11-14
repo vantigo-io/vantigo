@@ -106,6 +106,14 @@ func (s *server) SettleAccountingOpenItem(ctx context.Context, req gen.SettleAcc
 			return conflict(codeSettlementSourceDoc, "The item is paid in Invoices",
 				"It stands for an invoice in Invoices: register the payment on the invoice there.")
 		}
+		if item.Kind == "supplier" {
+			if _, err := q.SupplierInvoiceOfItem(ctx, item.ID); err == nil {
+				return conflict(codeSettlementSupplierInv, "The item is a supplier invoice's",
+					"Register the payment on the supplier invoice, where its currency and its state are kept.")
+			} else if !noRows(err) {
+				return err
+			}
+		}
 		balance := mustRat(item.Balance)
 		if balance.Sign() == 0 {
 			return conflict(codeSettlementSettled, "The item is settled", "Nothing is left on it.")
@@ -113,16 +121,9 @@ func (s *server) SettleAccountingOpenItem(ctx context.Context, req gen.SettleAcc
 		if amount.Cmp(abs(balance)) > 0 {
 			return conflict(codeSettlementExceeds, "More than the item's balance", "The balance is "+money(abs(balance))+".")
 		}
-		bank := Line{Role: "bank"}
-		if b.BankAccountId != nil {
-			accounts, err := q.AccountsForPosting(ctx, []int32{*b.BankAccountId})
-			if err != nil {
-				return err
-			}
-			if len(accounts) != 1 || accounts[0].Kind != "asset" || !accounts[0].Active {
-				return invalidField(title, "bankAccountId", codeBankAccountInvalid, "An active asset account.")
-			}
-			bank = Line{AccountID: *b.BankAccountId}
+		bank, err := bankLine(ctx, q, title, b.BankAccountId)
+		if err != nil {
+			return err
 		}
 		// The item moves toward zero by amount; the bank takes the other side.
 		toItem := neg(amount)

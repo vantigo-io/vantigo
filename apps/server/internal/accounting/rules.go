@@ -7,8 +7,10 @@ package accounting
 // income account (R15). Each revenue line's posting names the rule and the
 // version that placed it; changing a rule's name or account is a new
 // version, kept in posting_rule_versions, and changes future vouchers only.
-// A rule is archived, never deleted. Expense rules (scope expense) arrive
-// with purchases, delivery C.
+// A rule is archived, never deleted. An expense rule (scope expense, delivery
+// C) matches an expense category of Expenses, names an expense account, and
+// says whether the category's VAT may be deducted (R2); a change of that is
+// a new version too.
 
 import (
 	"context"
@@ -114,7 +116,7 @@ func ruleView(r store.GetPostingRuleRow) gen.AccountingPostingRule {
 	return gen.AccountingPostingRule{Id: r.ID, Name: r.Name, Scope: gen.AccountingRuleScope(r.Scope),
 		Match: gen.AccountingRuleMatch(r.Match), LineKind: r.LineKind, TaxCategoryId: r.TaxCategoryID, TaxCode: r.TaxCode,
 		AccountId: r.AccountID, AccountNumber: r.AccountNumber, AccountName: r.AccountName, Version: r.Version,
-		Revision: r.Revision, UpdatedAt: r.UpdatedAt}
+		Revision: r.Revision, UpdatedAt: r.UpdatedAt, ExpenseCategoryId: r.ExpenseCategoryID, VatDeductible: r.VatDeductible}
 }
 
 // ListAccountingPostingRules is every rule in force in precedence order. It
@@ -148,6 +150,9 @@ func checkRuleAccount(ctx context.Context, q *store.Queries, scope string, id in
 	case scope == "sales" && accounts[0].Kind != "income":
 		return invalidField("The rule cannot be saved", "accountId", codeAccountKindMismatch,
 			"A sales rule credits an income account; account "+accounts[0].Number+" is "+accounts[0].Kind+".")
+	case scope == "expense" && accounts[0].Kind != "expense":
+		return invalidField("The rule cannot be saved", "accountId", codeAccountKindMismatch,
+			"An expense rule debits an expense account; account "+accounts[0].Number+" is "+accounts[0].Kind+".")
 	}
 	return nil
 }
@@ -181,12 +186,27 @@ func (s *server) CreateAccountingPostingRule(ctx context.Context, req gen.Create
 	b := *req.Body
 	var f fieldErrors
 	name := ruleName(b.Name, &f)
-	if b.Scope != gen.AccountingRuleScopeSales {
-		f.add("scope", "Only sales rules in this version; expense rules arrive with purchases.")
-	}
 	params := store.InsertPostingRuleParams{Name: name, Scope: string(b.Scope), Match: string(b.Match), AccountID: b.AccountId, Now: s.now()}
 	q := store.New(s.deps.Pool)
+	switch b.Scope {
+	case gen.AccountingRuleScopeSales:
+		if b.Match == gen.ExpenseCategory {
+			f.add("match", "A sales rule matches line_kind, tax_category or tax_code.")
+		}
+	case gen.AccountingRuleScopeExpense:
+		if b.Match != gen.ExpenseCategory {
+			f.add("match", "An expense rule matches expense_category.")
+		}
+		params.VatDeductible = ptr(b.VatDeductible == nil || *b.VatDeductible)
+	default:
+		f.add("scope", "sales or expense.")
+	}
 	switch b.Match {
+	case gen.ExpenseCategory:
+		if b.ExpenseCategoryId == nil || *b.ExpenseCategoryId <= 0 {
+			f.add("expenseCategoryId", "An expense category from Expenses.")
+		}
+		params.ExpenseCategoryID = b.ExpenseCategoryId
 	case gen.LineKind:
 		if b.LineKind == nil || !slices.Contains(lineKinds, *b.LineKind) {
 			f.add("lineKind", "One of "+strings.Join(lineKinds, ", ")+".")
@@ -207,7 +227,7 @@ func (s *server) CreateAccountingPostingRule(ctx context.Context, req gen.Create
 		}
 		params.TaxCode = b.TaxCode
 	default:
-		f.add("match", "line_kind, tax_category or tax_code; the default rules are seeded with the books.")
+		f.add("match", "line_kind, tax_category, tax_code or expense_category; the default rules are seeded with the books.")
 	}
 	if err := f.refusal("The rule cannot be saved"); err != nil {
 		return nil, err
@@ -253,8 +273,12 @@ func (s *server) UpdateAccountingPostingRule(ctx context.Context, req gen.Update
 			return nil, err
 		}
 	}
-	_, err = q.UpdatePostingRule(ctx, store.UpdatePostingRuleParams{ID: req.Id, Name: name, AccountID: req.Body.AccountId,
-		Revision: req.Body.Revision, Now: s.now()})
+	params := store.UpdatePostingRuleParams{ID: req.Id, Name: name, AccountID: req.Body.AccountId,
+		Revision: req.Body.Revision, Now: s.now()}
+	if current.Scope == "expense" {
+		params.VatDeductible = req.Body.VatDeductible
+	}
+	_, err = q.UpdatePostingRule(ctx, params)
 	if c := ruleConflict(err); c != nil {
 		return nil, c
 	}

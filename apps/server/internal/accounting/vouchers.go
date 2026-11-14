@@ -160,7 +160,10 @@ func (s *server) voucher(ctx context.Context, id int64) (gen.AccountingVoucher, 
 			Amount: money(mustRat(p.Amount)), TaxCodeId: p.TaxCodeID, TaxCode: p.TaxCode, TaxBase: numText(p.TaxBase),
 			CustomerId: p.CustomerID, SupplierId: p.SupplierID, OpenItemId: p.OpenItemID, ProjectId: p.ProjectID, Description: p.Description,
 			TaxSpecification: p.TaxSpecification, PostingRuleId: p.PostingRuleID, PostingRuleVersion: p.PostingRuleVersion,
-			PostingRuleName: p.PostingRuleName}
+			PostingRuleName: p.PostingRuleName, Currency: p.Currency}
+		if p.Currency != nil {
+			g.CurrencyAmount, g.ExchangeRate = ptr(money(mustRat(p.CurrencyAmount))), ptr(rateText(mustRat(p.ExchangeRate)))
+		}
 		if p.TaxRole != nil {
 			g.TaxRole = ptr(gen.AccountingTaxRole(*p.TaxRole))
 		}

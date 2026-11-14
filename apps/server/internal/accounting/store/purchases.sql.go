@@ -142,9 +142,12 @@ SELECT s.id, s.number, s.name, s.organisation_number, s.country, s.address_line,
     coalesce((SELECT sum(p.amount) FROM accounting.postings p
               JOIN accounting.accounts a ON a.id = p.account_id AND a.system_role = 'payables'
               WHERE p.supplier_id = s.id), 0)::text AS balance,
-    (SELECT max(v.voucher_date) FROM accounting.postings p JOIN accounting.vouchers v ON v.id = p.voucher_id
-     WHERE p.supplier_id = s.id)::date AS last_voucher_date
-FROM accounting.suppliers s WHERE s.id = $1
+    coalesce(lv.last_voucher_date::text, '')::text AS last_voucher_date
+FROM accounting.suppliers s
+LEFT JOIN LATERAL (SELECT v.voucher_date AS last_voucher_date FROM accounting.postings p
+    JOIN accounting.vouchers v ON v.id = p.voucher_id WHERE p.supplier_id = s.id
+    ORDER BY v.voucher_date DESC LIMIT 1) lv ON true
+WHERE s.id = $1
 `
 
 type GetSupplierRow struct {
@@ -171,7 +174,7 @@ type GetSupplierRow struct {
 	Revision           int32
 	HasPostings        bool
 	Balance            string
-	LastVoucherDate    time.Time
+	LastVoucherDate    string
 }
 
 // GetSupplier is a supplier with whether it has postings, its balance on
@@ -341,6 +344,33 @@ func (q *Queries) GetSupplierInvoices(ctx context.Context, ids []int64) ([]GetSu
 		return nil, err
 	}
 	return items, nil
+}
+
+const initUnpostedLines = `-- name: InitUnpostedLines :exec
+UPDATE accounting.unposted SET nok_amounts = coalesce(nok_amounts, $1::text::jsonb)
+WHERE source_module = $2 AND source_kind = $3
+  AND source_id = $4 AND source_part = $5
+`
+
+type InitUnpostedLinesParams struct {
+	Lines        string
+	SourceModule string
+	SourceKind   string
+	SourceID     int64
+	SourcePart   string
+}
+
+// InitUnpostedLines keeps, on an expense fact's row, its lines in another
+// currency, for the amounts in NOK a person enters; once.
+func (q *Queries) InitUnpostedLines(ctx context.Context, arg InitUnpostedLinesParams) error {
+	_, err := q.db.Exec(ctx, initUnpostedLines,
+		arg.Lines,
+		arg.SourceModule,
+		arg.SourceKind,
+		arg.SourceID,
+		arg.SourcePart,
+	)
+	return err
 }
 
 const inputRates = `-- name: InputRates :many
@@ -617,6 +647,28 @@ func (q *Queries) InsertSupplierPayment(ctx context.Context, arg InsertSupplierP
 	return id, err
 }
 
+const latestExpenseCost = `-- name: LatestExpenseCost :one
+SELECT v.id FROM accounting.vouchers v
+WHERE v.source_module = 'expenses' AND v.source_kind = $1 AND v.source_id = $2
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers r WHERE r.reverses_voucher_id = v.id)
+ORDER BY v.id DESC LIMIT 1
+`
+
+type LatestExpenseCostParams struct {
+	SourceKind *string
+	SourceID   *int64
+}
+
+// LatestExpenseCost is the voucher an entry's or a claim's last approval
+// posted as and that no unapproval has turned back: what its reimbursement
+// pays out of employee_payables.
+func (q *Queries) LatestExpenseCost(ctx context.Context, arg LatestExpenseCostParams) (int64, error) {
+	row := q.db.QueryRow(ctx, latestExpenseCost, arg.SourceKind, arg.SourceID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const listSupplierInvoiceIDs = `-- name: ListSupplierInvoiceIDs :many
 SELECT si.id, count(*) OVER () AS total
 FROM accounting.supplier_invoices si
@@ -693,10 +745,12 @@ SELECT s.id, s.number, s.name, s.organisation_number, s.country, s.address_line,
     coalesce((SELECT sum(p.amount) FROM accounting.postings p
               JOIN accounting.accounts a ON a.id = p.account_id AND a.system_role = 'payables'
               WHERE p.supplier_id = s.id), 0)::text AS balance,
-    (SELECT max(v.voucher_date) FROM accounting.postings p JOIN accounting.vouchers v ON v.id = p.voucher_id
-     WHERE p.supplier_id = s.id)::date AS last_voucher_date,
+    coalesce(lv.last_voucher_date::text, '')::text AS last_voucher_date,
     count(*) OVER () AS total
 FROM accounting.suppliers s
+LEFT JOIN LATERAL (SELECT v.voucher_date AS last_voucher_date FROM accounting.postings p
+    JOIN accounting.vouchers v ON v.id = p.voucher_id WHERE p.supplier_id = s.id
+    ORDER BY v.voucher_date DESC LIMIT 1) lv ON true
 WHERE ($1::boolean IS NULL OR s.active = $1::boolean)
   AND ($2::text IS NULL OR s.name ILIKE '%' || $2::text || '%'
        OR s.number::text = $2::text OR s.organisation_number = $2::text)
@@ -735,7 +789,7 @@ type ListSuppliersRow struct {
 	Revision           int32
 	HasPostings        bool
 	Balance            string
-	LastVoucherDate    time.Time
+	LastVoucherDate    string
 	Total              int64
 }
 
@@ -948,23 +1002,23 @@ func (q *Queries) MarkSupplierPaymentRemoved(ctx context.Context, arg MarkSuppli
 }
 
 const objectKeyInUse = `-- name: ObjectKeyInUse :one
-SELECT EXISTS (SELECT 1 FROM accounting.supplier_invoice_files f WHERE f.object_key = $1::varchar)
-    OR EXISTS (SELECT 1 FROM accounting.attachments a WHERE a.object_key = $1::varchar)
+SELECT (EXISTS (SELECT 1 FROM accounting.supplier_invoice_files f WHERE f.object_key = $1::varchar)
+    OR EXISTS (SELECT 1 FROM accounting.attachments a WHERE a.object_key = $1::varchar))::boolean AS used
 `
 
 // ObjectKeyInUse is whether any file or attachment still names an object:
 // one that none names is deleted from the store.
-func (q *Queries) ObjectKeyInUse(ctx context.Context, objectKey string) (*bool, error) {
+func (q *Queries) ObjectKeyInUse(ctx context.Context, objectKey string) (bool, error) {
 	row := q.db.QueryRow(ctx, objectKeyInUse, objectKey)
-	var column_1 *bool
-	err := row.Scan(&column_1)
-	return column_1, err
+	var used bool
+	err := row.Scan(&used)
+	return used, err
 }
 
 const openItemCurrencyBalance = `-- name: OpenItemCurrencyBalance :one
 SELECT coalesce(sum(p.amount), 0)::text AS balance,
     coalesce(sum(coalesce(p.currency_amount, p.amount)), 0)::text AS balance_currency
-FROM accounting.postings p WHERE p.open_item_id = $1
+FROM accounting.postings p WHERE p.open_item_id = $1::bigint
 `
 
 type OpenItemCurrencyBalanceRow struct {
@@ -974,7 +1028,7 @@ type OpenItemCurrencyBalanceRow struct {
 
 // OpenItemCurrencyBalance is an item's balance in NOK and in its currency
 // (the postings' currency amounts; a NOK posting counts its amount).
-func (q *Queries) OpenItemCurrencyBalance(ctx context.Context, id *int64) (OpenItemCurrencyBalanceRow, error) {
+func (q *Queries) OpenItemCurrencyBalance(ctx context.Context, id int64) (OpenItemCurrencyBalanceRow, error) {
 	row := q.db.QueryRow(ctx, openItemCurrencyBalance, id)
 	var i OpenItemCurrencyBalanceRow
 	err := row.Scan(&i.Balance, &i.BalanceCurrency)
@@ -1089,6 +1143,18 @@ func (q *Queries) RecordInformational(ctx context.Context, arg RecordInformation
 	return err
 }
 
+const reopenUnpostedOfDraft = `-- name: ReopenUnpostedOfDraft :exec
+UPDATE accounting.unposted SET resolved_at = NULL, supplier_invoice_id = NULL
+WHERE supplier_invoice_id = $1 AND posted_at IS NULL
+`
+
+// ReopenUnpostedOfDraft gives an expense of the supplier_invoice kind back to
+// Needs attention when the draft made from it is deleted.
+func (q *Queries) ReopenUnpostedOfDraft(ctx context.Context, supplierInvoiceID *int64) error {
+	_, err := q.db.Exec(ctx, reopenUnpostedOfDraft, supplierInvoiceID)
+	return err
+}
+
 const resolveUnposted = `-- name: ResolveUnposted :execrows
 UPDATE accounting.unposted
 SET resolved_at = $1, supplier_invoice_id = $2, last_tried_at = $1
@@ -1107,6 +1173,35 @@ func (q *Queries) ResolveUnposted(ctx context.Context, arg ResolveUnpostedParams
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const resolveUnpostedBySource = `-- name: ResolveUnpostedBySource :exec
+UPDATE accounting.unposted SET resolved_at = $1, last_tried_at = $1,
+    detail = $2
+WHERE source_module = $3 AND source_kind = $4
+  AND source_id = $5 AND source_part = $6
+  AND posted_at IS NULL AND resolved_at IS NULL
+`
+
+type ResolveUnpostedBySourceParams struct {
+	Now          *time.Time
+	Detail       string
+	SourceModule string
+	SourceKind   string
+	SourceID     int64
+	SourcePart   string
+}
+
+func (q *Queries) ResolveUnpostedBySource(ctx context.Context, arg ResolveUnpostedBySourceParams) error {
+	_, err := q.db.Exec(ctx, resolveUnpostedBySource,
+		arg.Now,
+		arg.Detail,
+		arg.SourceModule,
+		arg.SourceKind,
+		arg.SourceID,
+		arg.SourcePart,
+	)
+	return err
 }
 
 const setUnpostedNokAmounts = `-- name: SetUnpostedNokAmounts :exec
@@ -1128,7 +1223,7 @@ const sourcePostingsByKey = `-- name: SourcePostingsByKey :many
 SELECT v.id AS voucher_id, p.line_no, p.account_id, p.amount::text AS amount, p.tax_code_id, p.tax_role,
     coalesce(p.tax_base::text, '')::text AS tax_base, p.tax_specification, p.customer_id, p.supplier_id,
     p.open_item_id, p.project_id, p.description, p.posting_rule_id, p.posting_rule_version, p.currency,
-    p.currency_amount::text AS currency_amount, p.exchange_rate::text AS exchange_rate
+    coalesce(p.currency_amount::text, '')::text AS currency_amount, coalesce(p.exchange_rate::text, '')::text AS exchange_rate
 FROM accounting.vouchers v
 JOIN accounting.postings p ON p.voucher_id = v.id
 WHERE v.source_module = $1 AND v.source_kind = $2
@@ -1225,16 +1320,16 @@ func (q *Queries) SupplierByName(ctx context.Context, name string) (int64, error
 }
 
 const supplierHasHistory = `-- name: SupplierHasHistory :one
-SELECT EXISTS (SELECT 1 FROM accounting.postings p WHERE p.supplier_id = $1::bigint)
+SELECT (EXISTS (SELECT 1 FROM accounting.postings p WHERE p.supplier_id = $1::bigint)
     OR EXISTS (SELECT 1 FROM accounting.open_items o WHERE o.supplier_id = $1::bigint)
-    OR EXISTS (SELECT 1 FROM accounting.supplier_invoices si WHERE si.supplier_id = $1::bigint)
+    OR EXISTS (SELECT 1 FROM accounting.supplier_invoices si WHERE si.supplier_id = $1::bigint))::boolean AS used
 `
 
-func (q *Queries) SupplierHasHistory(ctx context.Context, id int64) (*bool, error) {
+func (q *Queries) SupplierHasHistory(ctx context.Context, id int64) (bool, error) {
 	row := q.db.QueryRow(ctx, supplierHasHistory, id)
-	var column_1 *bool
-	err := row.Scan(&column_1)
-	return column_1, err
+	var used bool
+	err := row.Scan(&used)
+	return used, err
 }
 
 const supplierInvoiceFiles = `-- name: SupplierInvoiceFiles :many
@@ -1331,10 +1426,10 @@ func (q *Queries) SupplierInvoiceLines(ctx context.Context, ids []int64) ([]Supp
 }
 
 const supplierInvoiceOfItem = `-- name: SupplierInvoiceOfItem :one
-SELECT id FROM accounting.supplier_invoices WHERE open_item_id = $1 ORDER BY id LIMIT 1
+SELECT id FROM accounting.supplier_invoices WHERE open_item_id = $1::bigint ORDER BY id LIMIT 1
 `
 
-func (q *Queries) SupplierInvoiceOfItem(ctx context.Context, openItemID *int64) (int64, error) {
+func (q *Queries) SupplierInvoiceOfItem(ctx context.Context, openItemID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, supplierInvoiceOfItem, openItemID)
 	var id int64
 	err := row.Scan(&id)
@@ -1417,7 +1512,7 @@ SELECT v.id AS voucher_id, v.fiscal_year, v.number, v.voucher_date, a.number AS 
 FROM accounting.postings p
 JOIN accounting.vouchers v ON v.id = p.voucher_id
 JOIN accounting.accounts a ON a.id = p.account_id
-WHERE p.supplier_id = $1
+WHERE p.supplier_id = $1::bigint
 ORDER BY v.voucher_date, v.id, p.line_no
 `
 
@@ -1432,7 +1527,7 @@ type SupplierPostingsRow struct {
 }
 
 // SupplierPostings is every posting naming a supplier, for its export.
-func (q *Queries) SupplierPostings(ctx context.Context, id *int64) ([]SupplierPostingsRow, error) {
+func (q *Queries) SupplierPostings(ctx context.Context, id int64) ([]SupplierPostingsRow, error) {
 	rows, err := q.db.Query(ctx, supplierPostings, id)
 	if err != nil {
 		return nil, err
@@ -1731,7 +1826,7 @@ const voucherPostingsForTurn = `-- name: VoucherPostingsForTurn :many
 SELECT p.voucher_id, p.line_no, p.account_id, p.amount::text AS amount, p.tax_code_id, p.tax_role,
     coalesce(p.tax_base::text, '')::text AS tax_base, p.tax_specification, p.customer_id, p.supplier_id,
     p.open_item_id, p.project_id, p.description, p.posting_rule_id, p.posting_rule_version, p.currency,
-    p.currency_amount::text AS currency_amount, p.exchange_rate::text AS exchange_rate
+    coalesce(p.currency_amount::text, '')::text AS currency_amount, coalesce(p.exchange_rate::text, '')::text AS exchange_rate
 FROM accounting.postings p WHERE p.voucher_id = $1 ORDER BY p.line_no
 `
 
@@ -1794,4 +1889,23 @@ func (q *Queries) VoucherPostingsForTurn(ctx context.Context, voucherID int64) (
 		return nil, err
 	}
 	return items, nil
+}
+
+const voucherRoleTotal = `-- name: VoucherRoleTotal :one
+SELECT coalesce(sum(p.amount), 0)::text AS total FROM accounting.postings p
+JOIN accounting.accounts a ON a.id = p.account_id
+WHERE p.voucher_id = $1 AND a.system_role = $2::varchar
+`
+
+type VoucherRoleTotalParams struct {
+	VoucherID int64
+	Role      string
+}
+
+// VoucherRoleTotal is what a voucher posted on the account holding a role.
+func (q *Queries) VoucherRoleTotal(ctx context.Context, arg VoucherRoleTotalParams) (string, error) {
+	row := q.db.QueryRow(ctx, voucherRoleTotal, arg.VoucherID, arg.Role)
+	var total string
+	err := row.Scan(&total)
+	return total, err
 }

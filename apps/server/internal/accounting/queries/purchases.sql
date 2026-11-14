@@ -30,9 +30,12 @@ SELECT s.*,
     coalesce((SELECT sum(p.amount) FROM accounting.postings p
               JOIN accounting.accounts a ON a.id = p.account_id AND a.system_role = 'payables'
               WHERE p.supplier_id = s.id), 0)::text AS balance,
-    (SELECT max(v.voucher_date) FROM accounting.postings p JOIN accounting.vouchers v ON v.id = p.voucher_id
-     WHERE p.supplier_id = s.id)::date AS last_voucher_date
-FROM accounting.suppliers s WHERE s.id = sqlc.arg(id);
+    coalesce(lv.last_voucher_date::text, '')::text AS last_voucher_date
+FROM accounting.suppliers s
+LEFT JOIN LATERAL (SELECT v.voucher_date AS last_voucher_date FROM accounting.postings p
+    JOIN accounting.vouchers v ON v.id = p.voucher_id WHERE p.supplier_id = s.id
+    ORDER BY v.voucher_date DESC LIMIT 1) lv ON true
+WHERE s.id = sqlc.arg(id);
 
 -- name: ListSuppliers :many
 SELECT s.*,
@@ -40,10 +43,12 @@ SELECT s.*,
     coalesce((SELECT sum(p.amount) FROM accounting.postings p
               JOIN accounting.accounts a ON a.id = p.account_id AND a.system_role = 'payables'
               WHERE p.supplier_id = s.id), 0)::text AS balance,
-    (SELECT max(v.voucher_date) FROM accounting.postings p JOIN accounting.vouchers v ON v.id = p.voucher_id
-     WHERE p.supplier_id = s.id)::date AS last_voucher_date,
+    coalesce(lv.last_voucher_date::text, '')::text AS last_voucher_date,
     count(*) OVER () AS total
 FROM accounting.suppliers s
+LEFT JOIN LATERAL (SELECT v.voucher_date AS last_voucher_date FROM accounting.postings p
+    JOIN accounting.vouchers v ON v.id = p.voucher_id WHERE p.supplier_id = s.id
+    ORDER BY v.voucher_date DESC LIMIT 1) lv ON true
 WHERE (sqlc.narg(active)::boolean IS NULL OR s.active = sqlc.narg(active)::boolean)
   AND (sqlc.narg(q)::text IS NULL OR s.name ILIKE '%' || sqlc.narg(q)::text || '%'
        OR s.number::text = sqlc.narg(q)::text OR s.organisation_number = sqlc.narg(q)::text)
@@ -51,9 +56,9 @@ ORDER BY s.number
 LIMIT sqlc.arg(row_limit) OFFSET sqlc.arg(row_offset);
 
 -- name: SupplierHasHistory :one
-SELECT EXISTS (SELECT 1 FROM accounting.postings p WHERE p.supplier_id = sqlc.arg(id)::bigint)
+SELECT (EXISTS (SELECT 1 FROM accounting.postings p WHERE p.supplier_id = sqlc.arg(id)::bigint)
     OR EXISTS (SELECT 1 FROM accounting.open_items o WHERE o.supplier_id = sqlc.arg(id)::bigint)
-    OR EXISTS (SELECT 1 FROM accounting.supplier_invoices si WHERE si.supplier_id = sqlc.arg(id)::bigint);
+    OR EXISTS (SELECT 1 FROM accounting.supplier_invoices si WHERE si.supplier_id = sqlc.arg(id)::bigint))::boolean AS used;
 
 -- name: DeleteSupplier :execrows
 DELETE FROM accounting.suppliers WHERE id = sqlc.arg(id);
@@ -71,7 +76,7 @@ SELECT v.id AS voucher_id, v.fiscal_year, v.number, v.voucher_date, a.number AS 
 FROM accounting.postings p
 JOIN accounting.vouchers v ON v.id = p.voucher_id
 JOIN accounting.accounts a ON a.id = p.account_id
-WHERE p.supplier_id = sqlc.arg(id)
+WHERE p.supplier_id = sqlc.arg(id)::bigint
 ORDER BY v.voucher_date, v.id, p.line_no;
 
 -- name: InsertSupplierInvoice :one
@@ -183,8 +188,8 @@ RETURNING object_key;
 -- name: ObjectKeyInUse :one
 -- ObjectKeyInUse is whether any file or attachment still names an object:
 -- one that none names is deleted from the store.
-SELECT EXISTS (SELECT 1 FROM accounting.supplier_invoice_files f WHERE f.object_key = sqlc.arg(object_key)::varchar)
-    OR EXISTS (SELECT 1 FROM accounting.attachments a WHERE a.object_key = sqlc.arg(object_key)::varchar);
+SELECT (EXISTS (SELECT 1 FROM accounting.supplier_invoice_files f WHERE f.object_key = sqlc.arg(object_key)::varchar)
+    OR EXISTS (SELECT 1 FROM accounting.attachments a WHERE a.object_key = sqlc.arg(object_key)::varchar))::boolean AS used;
 
 -- name: DeleteSupplierInvoice :many
 -- DeleteSupplierInvoice deletes a draft with its lines and files, answering
@@ -253,10 +258,10 @@ WHERE id = sqlc.arg(id) AND removed_at IS NULL;
 -- (the postings' currency amounts; a NOK posting counts its amount).
 SELECT coalesce(sum(p.amount), 0)::text AS balance,
     coalesce(sum(coalesce(p.currency_amount, p.amount)), 0)::text AS balance_currency
-FROM accounting.postings p WHERE p.open_item_id = sqlc.arg(id);
+FROM accounting.postings p WHERE p.open_item_id = sqlc.arg(id)::bigint;
 
 -- name: SupplierInvoiceOfItem :one
-SELECT id FROM accounting.supplier_invoices WHERE open_item_id = sqlc.arg(open_item_id) ORDER BY id LIMIT 1;
+SELECT id FROM accounting.supplier_invoices WHERE open_item_id = sqlc.arg(open_item_id)::bigint ORDER BY id LIMIT 1;
 
 -- name: PayablesDue :one
 -- PayablesDue is the posted supplier invoices not settled that are overdue at
@@ -273,7 +278,7 @@ WHERE si.state = 'posted' AND si.kind = 'invoice'
 SELECT v.id AS voucher_id, p.line_no, p.account_id, p.amount::text AS amount, p.tax_code_id, p.tax_role,
     coalesce(p.tax_base::text, '')::text AS tax_base, p.tax_specification, p.customer_id, p.supplier_id,
     p.open_item_id, p.project_id, p.description, p.posting_rule_id, p.posting_rule_version, p.currency,
-    p.currency_amount::text AS currency_amount, p.exchange_rate::text AS exchange_rate
+    coalesce(p.currency_amount::text, '')::text AS currency_amount, coalesce(p.exchange_rate::text, '')::text AS exchange_rate
 FROM accounting.vouchers v
 JOIN accounting.postings p ON p.voucher_id = v.id
 WHERE v.source_module = sqlc.arg(source_module) AND v.source_kind = sqlc.arg(source_kind)
@@ -285,7 +290,7 @@ ORDER BY p.line_no;
 SELECT p.voucher_id, p.line_no, p.account_id, p.amount::text AS amount, p.tax_code_id, p.tax_role,
     coalesce(p.tax_base::text, '')::text AS tax_base, p.tax_specification, p.customer_id, p.supplier_id,
     p.open_item_id, p.project_id, p.description, p.posting_rule_id, p.posting_rule_version, p.currency,
-    p.currency_amount::text AS currency_amount, p.exchange_rate::text AS exchange_rate
+    coalesce(p.currency_amount::text, '')::text AS currency_amount, coalesce(p.exchange_rate::text, '')::text AS exchange_rate
 FROM accounting.postings p WHERE p.voucher_id = sqlc.arg(voucher_id) ORDER BY p.line_no;
 
 -- name: ExpenseRules :many
@@ -361,3 +366,38 @@ WHERE id = sqlc.arg(id) AND posted_at IS NULL;
 UPDATE accounting.unposted
 SET resolved_at = sqlc.arg(now), supplier_invoice_id = sqlc.narg(supplier_invoice_id), last_tried_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND resolved_at IS NULL;
+
+-- name: ReopenUnpostedOfDraft :exec
+-- ReopenUnpostedOfDraft gives an expense of the supplier_invoice kind back to
+-- Needs attention when the draft made from it is deleted.
+UPDATE accounting.unposted SET resolved_at = NULL, supplier_invoice_id = NULL
+WHERE supplier_invoice_id = sqlc.narg(supplier_invoice_id) AND posted_at IS NULL;
+
+-- name: InitUnpostedLines :exec
+-- InitUnpostedLines keeps, on an expense fact's row, its lines in another
+-- currency, for the amounts in NOK a person enters; once.
+UPDATE accounting.unposted SET nok_amounts = coalesce(nok_amounts, sqlc.arg(lines)::text::jsonb)
+WHERE source_module = sqlc.arg(source_module) AND source_kind = sqlc.arg(source_kind)
+  AND source_id = sqlc.arg(source_id) AND source_part = sqlc.arg(source_part);
+
+-- name: ResolveUnpostedBySource :exec
+UPDATE accounting.unposted SET resolved_at = sqlc.arg(now), last_tried_at = sqlc.arg(now),
+    detail = sqlc.arg(detail)
+WHERE source_module = sqlc.arg(source_module) AND source_kind = sqlc.arg(source_kind)
+  AND source_id = sqlc.arg(source_id) AND source_part = sqlc.arg(source_part)
+  AND posted_at IS NULL AND resolved_at IS NULL;
+
+-- name: LatestExpenseCost :one
+-- LatestExpenseCost is the voucher an entry's or a claim's last approval
+-- posted as and that no unapproval has turned back: what its reimbursement
+-- pays out of employee_payables.
+SELECT v.id FROM accounting.vouchers v
+WHERE v.source_module = 'expenses' AND v.source_kind = sqlc.arg(source_kind) AND v.source_id = sqlc.arg(source_id)
+  AND NOT EXISTS (SELECT 1 FROM accounting.vouchers r WHERE r.reverses_voucher_id = v.id)
+ORDER BY v.id DESC LIMIT 1;
+
+-- name: VoucherRoleTotal :one
+-- VoucherRoleTotal is what a voucher posted on the account holding a role.
+SELECT coalesce(sum(p.amount), 0)::text AS total FROM accounting.postings p
+JOIN accounting.accounts a ON a.id = p.account_id
+WHERE p.voucher_id = sqlc.arg(voucher_id) AND a.system_role = sqlc.arg(role)::varchar;

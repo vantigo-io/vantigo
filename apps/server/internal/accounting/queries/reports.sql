@@ -74,18 +74,20 @@ LIMIT sqlc.arg(row_limit);
 -- its movement in the period, the items with a balance or a movement only.
 SELECT o.id, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
     o.source_document_id,
-    (SELECT s.name FROM accounting.suppliers s WHERE s.id = o.supplier_id)::varchar AS supplier_name,
-    (SELECT min(si.id) FROM accounting.supplier_invoices si WHERE si.open_item_id = o.id)::bigint AS supplier_invoice_id,
+    sup.name AS supplier_name, coalesce(inv.supplier_invoice_id, 0)::bigint AS supplier_invoice_id,
     coalesce(sum(p.amount), 0)::text AS balance,
     coalesce(sum(p.amount) FILTER (WHERE v.voucher_date >= sqlc.arg(from_date)::date), 0)::text AS movement
 FROM accounting.open_items o
 JOIN accounting.postings p ON p.open_item_id = o.id
 JOIN accounting.vouchers v ON v.id = p.voucher_id
+LEFT JOIN accounting.suppliers sup ON sup.id = o.supplier_id
+LEFT JOIN LATERAL (SELECT si.id AS supplier_invoice_id FROM accounting.supplier_invoices si
+    WHERE si.open_item_id = o.id ORDER BY si.id LIMIT 1) inv ON true
 WHERE o.kind = sqlc.arg(kind) AND v.voucher_date <= sqlc.arg(to_date)::date
   AND (sqlc.narg(customer_id)::int IS NULL OR o.customer_id = sqlc.narg(customer_id)::int)
   AND (sqlc.narg(supplier_id)::bigint IS NULL OR o.supplier_id = sqlc.narg(supplier_id)::bigint)
   AND (sqlc.narg(project_id)::int IS NULL OR p.project_id = sqlc.narg(project_id)::int)
-GROUP BY o.id
+GROUP BY o.id, sup.name, inv.supplier_invoice_id
 HAVING coalesce(sum(p.amount), 0) <> 0
     OR coalesce(sum(p.amount) FILTER (WHERE v.voucher_date >= sqlc.arg(from_date)::date), 0) <> 0
 ORDER BY coalesce(o.customer_id::bigint, o.supplier_id), o.due_date NULLS FIRST, o.id;

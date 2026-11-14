@@ -66,6 +66,25 @@ const (
 	codeBooksStartTooEarly     = "books_start_too_early"
 	codeAccountKindMismatch    = "account_kind_mismatch"
 	codeReverseChargeGross     = "reverse_charge_gross"
+	// Delivery C, purchases.
+	codeSupplierOrgNumberTaken  = "supplier_organisation_number_taken"
+	codeSupplierBankAccount     = "supplier_bank_account_invalid"
+	codeSupplierHasPostings     = "supplier_has_postings"
+	codeSupplierInactive        = "supplier_inactive"
+	codeDuplicateSupplierInv    = "duplicate_supplier_invoice"
+	codeSupplierInvNotDraft     = "supplier_invoice_not_draft"
+	codeSupplierInvNotPosted    = "supplier_invoice_not_posted"
+	codeSupplierInvFileRequired = "supplier_invoice_file_required"
+	codeSupplierInvTotal        = "supplier_invoice_total_mismatch"
+	codeTaxCodeNotPurchase      = "tax_code_not_purchase"
+	codeExchangeRateRequired    = "exchange_rate_required"
+	codeSupplierInvSettled      = "supplier_invoice_settled"
+	codePaymentExceedsBalance   = "payment_exceeds_balance"
+	codePaymentRemoved          = "payment_removed"
+	codeSettlementSupplierInv   = "settlement_supplier_invoice"
+	codeUnpostedWrongReason     = "unposted_wrong_reason"
+	codeBrregUnavailable        = "brreg_unavailable"
+	codeSupplierInvHasPayments  = "supplier_invoice_has_payments"
 )
 
 // refusalCodes is every code above, for the test that holds the contract's
@@ -80,7 +99,11 @@ var refusalCodes = []string{
 	codeBankAccountInvalid, codeAttachmentTooLarge, codeStorageNotConfigured, codeReportAccountNeeded,
 	codePeriodInvalid, codeOpenItemSourceDocument, codeReportTooLarge, codeLockInFuture, codeBooksStartTooEarly,
 	codeAccountKindMismatch, codeReverseChargeGross, codeRuleNameTaken, codeRuleMatchTaken, codeRuleDefault,
-	codeUnpostedPosted,
+	codeUnpostedPosted, codeSupplierOrgNumberTaken, codeSupplierBankAccount, codeSupplierHasPostings, codeSupplierInactive,
+	codeDuplicateSupplierInv, codeSupplierInvNotDraft, codeSupplierInvNotPosted, codeSupplierInvFileRequired,
+	codeSupplierInvTotal, codeTaxCodeNotPurchase, codeExchangeRateRequired, codeSupplierInvSettled,
+	codePaymentExceedsBalance, codePaymentRemoved, codeSettlementSupplierInv, codeUnpostedWrongReason,
+	codeBrregUnavailable, codeSupplierInvHasPayments,
 }
 
 // refusal is a request's answer that is not a success. Returned from inside a

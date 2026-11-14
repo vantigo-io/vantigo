@@ -100,6 +100,12 @@ type Line struct {
 	// line.
 	PostingRuleID      *int32
 	PostingRuleVersion *int32
+	// Currency, CurrencyAmount and ExchangeRate are, on a posting of a
+	// purchase in another currency (R8), the currency, the amount in it with
+	// the NOK amount's sign, and NOK per unit; all three or none.
+	Currency       string
+	CurrencyAmount *big.Rat
+	ExchangeRate   *big.Rat
 
 	// origin is the request line this one comes from, plus one, for the
 	// field a refusal names; 0 is the line's own position.
@@ -310,6 +316,10 @@ func post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 		p := store.InsertPostingParams{VoucherID: id, LineNo: int32(i + 1), AccountID: l.AccountID, Amount: money(l.Amount),
 			TaxCodeID: l.TaxCodeID, CustomerID: l.CustomerID, SupplierID: l.SupplierID, OpenItemID: l.OpenItemID,
 			ProjectID: l.ProjectID, Description: l.Text, PostingRuleID: l.PostingRuleID, PostingRuleVersion: l.PostingRuleVersion}
+		if l.Currency != "" && l.CurrencyAmount != nil && l.ExchangeRate != nil {
+			p.Currency, p.CurrencyAmount = &l.Currency, ptr(money(l.CurrencyAmount))
+			p.ExchangeRate = ptr(l.ExchangeRate.FloatString(6))
+		}
 		if l.TaxCodeID != nil {
 			role := l.TaxRole
 			if role == "" {
@@ -570,6 +580,9 @@ func reversal(ctx context.Context, q *store.Queries, id int64, date time.Time, r
 		}
 		if base := numText(p.TaxBase); base != nil {
 			l.TaxBase = neg(mustRat(*base))
+		}
+		if p.Currency != nil && p.CurrencyAmount != "" && p.ExchangeRate != "" {
+			l.Currency, l.CurrencyAmount, l.ExchangeRate = *p.Currency, neg(mustRat(p.CurrencyAmount)), mustRat(p.ExchangeRate)
 		}
 		out.Lines = append(out.Lines, l)
 	}
