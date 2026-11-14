@@ -745,9 +745,18 @@ type AccountingPosting struct {
 	Description  string  `json:"description"`
 	LineNo       int32   `json:"lineNo"`
 	OpenItemId   *int64  `json:"openItemId"`
-	ProjectId    *int32  `json:"projectId"`
-	ProjectName  *string `json:"projectName"`
-	SupplierId   *int64  `json:"supplierId"`
+
+	// PostingRuleId On a revenue line, the posting rule that placed it (A14, R15); null on every other line.
+	PostingRuleId *int32 `json:"postingRuleId"`
+
+	// PostingRuleName The rule's name in the version that placed the line, whatever it is called now or whether it is archived.
+	PostingRuleName *string `json:"postingRuleName"`
+
+	// PostingRuleVersion The version of the rule that placed the line.
+	PostingRuleVersion *int32  `json:"postingRuleVersion"`
+	ProjectId          *int32  `json:"projectId"`
+	ProjectName        *string `json:"projectName"`
+	SupplierId         *int64  `json:"supplierId"`
 
 	// TaxBase On a tax line, the base it was computed from.
 	TaxBase   *string            `json:"taxBase"`
@@ -759,7 +768,7 @@ type AccountingPosting struct {
 	TaxSpecification *string `json:"taxSpecification"`
 }
 
-// AccountingPostingRule A posting rule (A14): the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its account; a voucher names the rule and version that made each revenue line, and a change affects future vouchers only.
+// AccountingPostingRule A posting rule (A14): the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its name or account (R15), each kept; a sales rule credits an income account; a revenue line's posting names the rule and the version that placed it, and a change affects future vouchers only. A rule is archived, never deleted: an archived one matches nothing and is not listed, and what it placed still names it.
 type AccountingPostingRule struct {
 	AccountId     int32  `json:"accountId"`
 	AccountName   string `json:"accountName"`
@@ -1012,7 +1021,7 @@ type AccountingTaxRateInput struct {
 // AccountingTaxRole defines model for AccountingTaxRole.
 type AccountingTaxRole string
 
-// AccountingUnposted A source fact that could not be posted (A15), under Needs attention: the stream and position it was read at, its source key, what it is about, why — tax_code_unknown (the document's standard tax code is not in the books, or inactive), account_inactive or account_unknown (a rule's or a role's account), unknown_kind (a fact of a kind this version does not post), document_unknown (the invoice a fact is about is not in the journal), or an engine refusal's code — and, once a retry posted it, the voucher.
+// AccountingUnposted A source fact that could not be posted (A15), under Needs attention: the stream and position it was read at, its source key, what it is about, why — tax_code_unknown (the document's standard tax code is not in the books, or inactive), account_inactive or account_unknown (a rule's or a role's account), account_kind_mismatch (a rule's account is not an income account), waiting_on (another row of the same invoice is under Needs attention and was met first: this one waits behind it, waitingOn names it, and a retry that posts that row retries this one after it — R15), unknown_kind (a fact of a kind this version does not post), document_unknown (the invoice a fact is about is not in the journal), or an engine refusal's code — and, once a retry posted it, the voucher.
 type AccountingUnposted struct {
 	Amount       *string `json:"amount"`
 	Attempts     int32   `json:"attempts"`
@@ -1021,20 +1030,26 @@ type AccountingUnposted struct {
 	Detail       string  `json:"detail"`
 
 	// DocumentId The document in Invoices the fact is about.
-	DocumentId     *int64                `json:"documentId"`
-	DocumentNumber *string               `json:"documentNumber"`
-	FactDate       *openapi_types.Date   `json:"factDate"`
-	FirstSeenAt    time.Time             `json:"firstSeenAt"`
-	Id             int64                 `json:"id"`
-	LastTriedAt    time.Time             `json:"lastTriedAt"`
-	Position       int64                 `json:"position"`
-	PostedAt       *time.Time            `json:"postedAt"`
-	PostedVoucher  *AccountingVoucherRef `json:"postedVoucher"`
-	Reason         string                `json:"reason"`
+	DocumentId     *int64              `json:"documentId"`
+	DocumentNumber *string             `json:"documentNumber"`
+	FactDate       *openapi_types.Date `json:"factDate"`
+	FirstSeenAt    time.Time           `json:"firstSeenAt"`
+	Id             int64               `json:"id"`
+
+	// InvoiceId The invoice in Invoices the fact is about — a credit note's, the invoice it credits.
+	InvoiceId     *int64                `json:"invoiceId"`
+	LastTriedAt   time.Time             `json:"lastTriedAt"`
+	Position      int64                 `json:"position"`
+	PostedAt      *time.Time            `json:"postedAt"`
+	PostedVoucher *AccountingVoucherRef `json:"postedVoucher"`
+	Reason        string                `json:"reason"`
 
 	// Source The fact a system voucher records (A4).
 	Source AccountingSource `json:"source"`
 	Stream string           `json:"stream"`
+
+	// WaitingOn With reason waiting_on, the row under Needs attention this one waits behind.
+	WaitingOn *int64 `json:"waitingOn"`
 }
 
 // AccountingUnpostedList defines model for AccountingUnpostedList.
@@ -1219,7 +1234,7 @@ type ListAccountingVouchersParams struct {
 	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
 	SupplierId *int64 `form:"supplierId,omitempty" json:"supplierId,omitempty"`
 
-	// SourceDocumentId The system vouchers of a document in Invoices (an invoice, its credit notes, payments and write-offs).
+	// SourceDocumentId The system vouchers of a document in Invoices — an invoice's own, its credit notes', payments' and write-offs'; a credit note's own voucher, which belongs to the invoice it credits, too.
 	SourceDocumentId *int64 `form:"sourceDocumentId,omitempty" json:"sourceDocumentId,omitempty"`
 
 	// Q Matched against the description, a posting's text and the number (2027-000123).
@@ -1336,7 +1351,7 @@ type ServerInterface interface {
 	// CreateAccountingPostingRule Create a posting rule
 	// (POST /api/v1/accounting/posting-rules)
 	CreateAccountingPostingRule(w http.ResponseWriter, r *http.Request)
-	// DeleteAccountingPostingRule Delete a posting rule
+	// DeleteAccountingPostingRule Archive a posting rule
 	// (DELETE /api/v1/accounting/posting-rules/{id})
 	DeleteAccountingPostingRule(w http.ResponseWriter, r *http.Request, id int32)
 	// UpdateAccountingPostingRule Change a posting rule's name or account
@@ -5484,7 +5499,7 @@ type StrictServerInterface interface {
 	// CreateAccountingPostingRule Create a posting rule
 	// (POST /api/v1/accounting/posting-rules)
 	CreateAccountingPostingRule(ctx context.Context, request CreateAccountingPostingRuleRequestObject) (CreateAccountingPostingRuleResponseObject, error)
-	// DeleteAccountingPostingRule Delete a posting rule
+	// DeleteAccountingPostingRule Archive a posting rule
 	// (DELETE /api/v1/accounting/posting-rules/{id})
 	DeleteAccountingPostingRule(ctx context.Context, request DeleteAccountingPostingRuleRequestObject) (DeleteAccountingPostingRuleResponseObject, error)
 	// UpdateAccountingPostingRule Change a posting rule's name or account

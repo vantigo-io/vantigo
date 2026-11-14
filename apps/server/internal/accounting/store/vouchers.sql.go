@@ -183,27 +183,30 @@ func (q *Queries) InsertAttachment(ctx context.Context, arg InsertAttachmentPara
 
 const insertPosting = `-- name: InsertPosting :exec
 INSERT INTO accounting.postings (voucher_id, line_no, account_id, amount, tax_code_id, tax_role, tax_base,
-    customer_id, supplier_id, open_item_id, project_id, description, tax_specification)
+    customer_id, supplier_id, open_item_id, project_id, description, tax_specification, posting_rule_id,
+    posting_rule_version)
 VALUES ($1, $2, $3, $4::text::numeric,
     $5, $6, $7::text::numeric, $8,
     $9, $10, $11, $12,
-    $13)
+    $13, $14, $15)
 `
 
 type InsertPostingParams struct {
-	VoucherID        int64
-	LineNo           int32
-	AccountID        int32
-	Amount           string
-	TaxCodeID        *int32
-	TaxRole          *string
-	TaxBase          *string
-	CustomerID       *int32
-	SupplierID       *int64
-	OpenItemID       *int64
-	ProjectID        *int32
-	Description      string
-	TaxSpecification *string
+	VoucherID          int64
+	LineNo             int32
+	AccountID          int32
+	Amount             string
+	TaxCodeID          *int32
+	TaxRole            *string
+	TaxBase            *string
+	CustomerID         *int32
+	SupplierID         *int64
+	OpenItemID         *int64
+	ProjectID          *int32
+	Description        string
+	TaxSpecification   *string
+	PostingRuleID      *int32
+	PostingRuleVersion *int32
 }
 
 func (q *Queries) InsertPosting(ctx context.Context, arg InsertPostingParams) error {
@@ -221,6 +224,8 @@ func (q *Queries) InsertPosting(ctx context.Context, arg InsertPostingParams) er
 		arg.ProjectID,
 		arg.Description,
 		arg.TaxSpecification,
+		arg.PostingRuleID,
+		arg.PostingRuleVersion,
 	)
 	return err
 }
@@ -318,8 +323,10 @@ func (q *Queries) ListAttachments(ctx context.Context, voucherID int64) ([]Accou
 const listPostings = `-- name: ListPostings :many
 SELECT p.voucher_id, p.line_no, p.account_id, a.number AS account_number, a.name AS account_name,
     p.amount::text AS amount, p.tax_code_id, t.code AS tax_code, p.tax_role, p.tax_base,
-    p.customer_id, p.supplier_id, p.open_item_id, p.project_id, p.description, p.tax_specification
+    p.customer_id, p.supplier_id, p.open_item_id, p.project_id, p.description, p.tax_specification,
+    p.posting_rule_id, p.posting_rule_version, rv.name AS posting_rule_name
 FROM accounting.postings p
+LEFT JOIN accounting.posting_rule_versions rv ON rv.rule_id = p.posting_rule_id AND rv.version = p.posting_rule_version
 JOIN accounting.accounts a ON a.id = p.account_id
 LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
 WHERE p.voucher_id = ANY($1::bigint[])
@@ -327,22 +334,25 @@ ORDER BY p.voucher_id, p.line_no
 `
 
 type ListPostingsRow struct {
-	VoucherID        int64
-	LineNo           int32
-	AccountID        int32
-	AccountNumber    string
-	AccountName      string
-	Amount           string
-	TaxCodeID        *int32
-	TaxCode          *string
-	TaxRole          *string
-	TaxBase          pgtype.Numeric
-	CustomerID       *int32
-	SupplierID       *int64
-	OpenItemID       *int64
-	ProjectID        *int32
-	Description      string
-	TaxSpecification *string
+	VoucherID          int64
+	LineNo             int32
+	AccountID          int32
+	AccountNumber      string
+	AccountName        string
+	Amount             string
+	TaxCodeID          *int32
+	TaxCode            *string
+	TaxRole            *string
+	TaxBase            pgtype.Numeric
+	CustomerID         *int32
+	SupplierID         *int64
+	OpenItemID         *int64
+	ProjectID          *int32
+	Description        string
+	TaxSpecification   *string
+	PostingRuleID      *int32
+	PostingRuleVersion *int32
+	PostingRuleName    *string
 }
 
 func (q *Queries) ListPostings(ctx context.Context, voucherIds []int64) ([]ListPostingsRow, error) {
@@ -371,6 +381,9 @@ func (q *Queries) ListPostings(ctx context.Context, voucherIds []int64) ([]ListP
 			&i.ProjectID,
 			&i.Description,
 			&i.TaxSpecification,
+			&i.PostingRuleID,
+			&i.PostingRuleVersion,
+			&i.PostingRuleName,
 		); err != nil {
 			return nil, err
 		}
@@ -393,7 +406,12 @@ LEFT JOIN accounting.vouchers r ON r.reverses_voucher_id = v.id
 WHERE ($1::date IS NULL OR v.voucher_date >= $1::date)
   AND ($2::date IS NULL OR v.voucher_date <= $2::date)
   AND ($3::text IS NULL OR v.kind = $3::text)
-  AND ($4::bigint IS NULL OR v.source_document_id = $4::bigint)
+  -- A document's vouchers: those that belong to it — an invoice's own, its
+  -- payments', credit notes' and write-offs' — and the one it posted as
+  -- itself, which for a credit note belongs to the invoice it credits.
+  AND ($4::bigint IS NULL OR v.source_document_id = $4::bigint
+       OR (v.source_module = 'invoices' AND v.source_kind IN ('invoice', 'credit_note')
+           AND v.source_id = $4::bigint))
   AND ($5::int IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p
        WHERE p.voucher_id = v.id AND p.account_id = $5::int))
   AND ($6::int IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p

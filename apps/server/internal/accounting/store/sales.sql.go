@@ -51,6 +51,26 @@ func (q *Queries) AdvanceCursor(ctx context.Context, arg AdvanceCursorParams) (i
 	return result.RowsAffected(), nil
 }
 
+const archivePostingRule = `-- name: ArchivePostingRule :execrows
+UPDATE accounting.posting_rules SET archived_at = $1, revision = revision + 1, updated_at = $1
+WHERE id = $2 AND match <> 'default' AND archived_at IS NULL
+`
+
+type ArchivePostingRuleParams struct {
+	Now *time.Time
+	ID  int32
+}
+
+// ArchivePostingRule takes a rule that is not a default one out of force
+// (R15); its versions stay, and so does what it placed.
+func (q *Queries) ArchivePostingRule(ctx context.Context, arg ArchivePostingRuleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, archivePostingRule, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimCursor = `-- name: ClaimCursor :one
 UPDATE accounting.cursors c
 SET lease_id = $1, lease_until = $2, updated_at = $3
@@ -108,18 +128,6 @@ func (q *Queries) CountUnposted(ctx context.Context) (int32, error) {
 	return column_1, err
 }
 
-const deletePostingRule = `-- name: DeletePostingRule :execrows
-DELETE FROM accounting.posting_rules WHERE id = $1 AND match <> 'default'
-`
-
-func (q *Queries) DeletePostingRule(ctx context.Context, id int32) (int64, error) {
-	result, err := q.db.Exec(ctx, deletePostingRule, id)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const ensureCursor = `-- name: EnsureCursor :exec
 INSERT INTO accounting.cursors (stream, updated_at) VALUES ($1, $2)
 ON CONFLICT (stream) DO NOTHING
@@ -136,10 +144,10 @@ func (q *Queries) EnsureCursor(ctx context.Context, arg EnsureCursorParams) erro
 }
 
 const getPostingRule = `-- name: GetPostingRule :one
-SELECT r.id, r.name, r.scope, r.match, r.line_kind, r.tax_category_id, r.expense_category_id, r.tax_code, r.account_id, r.version, r.created_at, r.updated_at, r.revision, a.number AS account_number, a.name AS account_name
+SELECT r.id, r.name, r.scope, r.match, r.line_kind, r.tax_category_id, r.expense_category_id, r.tax_code, r.account_id, r.version, r.created_at, r.updated_at, r.revision, r.archived_at, a.number AS account_number, a.name AS account_name
 FROM accounting.posting_rules r
 JOIN accounting.accounts a ON a.id = r.account_id
-WHERE r.id = $1
+WHERE r.id = $1 AND r.archived_at IS NULL
 `
 
 type GetPostingRuleRow struct {
@@ -156,6 +164,7 @@ type GetPostingRuleRow struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	Revision          int32
+	ArchivedAt        *time.Time
 	AccountNumber     string
 	AccountName       string
 }
@@ -177,6 +186,7 @@ func (q *Queries) GetPostingRule(ctx context.Context, id int32) (GetPostingRuleR
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Revision,
+		&i.ArchivedAt,
 		&i.AccountNumber,
 		&i.AccountName,
 	)
@@ -186,7 +196,8 @@ func (q *Queries) GetPostingRule(ctx context.Context, id int32) (GetPostingRuleR
 const getUnposted = `-- name: GetUnposted :one
 SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
     u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
-    u.last_tried_at, u.posted_voucher_id, u.posted_at, v.fiscal_year AS voucher_year, v.number AS voucher_number
+    u.last_tried_at, u.posted_voucher_id, u.posted_at, v.fiscal_year AS voucher_year, v.number AS voucher_number,
+    u.invoice_id, u.waiting_on
 FROM accounting.unposted u
 LEFT JOIN accounting.vouchers v ON v.id = u.posted_voucher_id
 WHERE u.id = $1
@@ -214,6 +225,8 @@ type GetUnpostedRow struct {
 	PostedAt        *time.Time
 	VoucherYear     *int32
 	VoucherNumber   *int32
+	InvoiceID       *int64
+	WaitingOn       *int64
 }
 
 func (q *Queries) GetUnposted(ctx context.Context, id int64) (GetUnpostedRow, error) {
@@ -241,6 +254,8 @@ func (q *Queries) GetUnposted(ctx context.Context, id int64) (GetUnpostedRow, er
 		&i.PostedAt,
 		&i.VoucherYear,
 		&i.VoucherNumber,
+		&i.InvoiceID,
+		&i.WaitingOn,
 	)
 	return i, err
 }
@@ -366,9 +381,10 @@ func (q *Queries) ListCursors(ctx context.Context) ([]ListCursorsRow, error) {
 }
 
 const listPostingRules = `-- name: ListPostingRules :many
-SELECT r.id, r.name, r.scope, r.match, r.line_kind, r.tax_category_id, r.expense_category_id, r.tax_code, r.account_id, r.version, r.created_at, r.updated_at, r.revision, a.number AS account_number, a.name AS account_name
+SELECT r.id, r.name, r.scope, r.match, r.line_kind, r.tax_category_id, r.expense_category_id, r.tax_code, r.account_id, r.version, r.created_at, r.updated_at, r.revision, r.archived_at, a.number AS account_number, a.name AS account_name
 FROM accounting.posting_rules r
 JOIN accounting.accounts a ON a.id = r.account_id
+WHERE r.archived_at IS NULL
 ORDER BY CASE r.match WHEN 'line_kind' THEN 1 WHEN 'tax_category' THEN 2 WHEN 'expense_category' THEN 3
     WHEN 'tax_code' THEN 4 ELSE 5 END, r.scope, r.name
 `
@@ -387,10 +403,13 @@ type ListPostingRulesRow struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	Revision          int32
+	ArchivedAt        *time.Time
 	AccountNumber     string
 	AccountName       string
 }
 
+// ListPostingRules is the rules in force; an archived rule is kept for its
+// versions only.
 func (q *Queries) ListPostingRules(ctx context.Context) ([]ListPostingRulesRow, error) {
 	rows, err := q.db.Query(ctx, listPostingRules)
 	if err != nil {
@@ -414,6 +433,7 @@ func (q *Queries) ListPostingRules(ctx context.Context) ([]ListPostingRulesRow, 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Revision,
+			&i.ArchivedAt,
 			&i.AccountNumber,
 			&i.AccountName,
 		); err != nil {
@@ -431,7 +451,7 @@ const listUnposted = `-- name: ListUnposted :many
 SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
     u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
     u.last_tried_at, u.posted_voucher_id, u.posted_at, v.fiscal_year AS voucher_year, v.number AS voucher_number,
-    count(*) OVER () AS total
+    u.invoice_id, u.waiting_on, count(*) OVER () AS total
 FROM accounting.unposted u
 LEFT JOIN accounting.vouchers v ON v.id = u.posted_voucher_id
 WHERE (NOT $1::boolean OR u.posted_at IS NULL)
@@ -467,6 +487,8 @@ type ListUnpostedRow struct {
 	PostedAt        *time.Time
 	VoucherYear     *int32
 	VoucherNumber   *int32
+	InvoiceID       *int64
+	WaitingOn       *int64
 	Total           int64
 }
 
@@ -501,6 +523,8 @@ func (q *Queries) ListUnposted(ctx context.Context, arg ListUnpostedParams) ([]L
 			&i.PostedAt,
 			&i.VoucherYear,
 			&i.VoucherNumber,
+			&i.InvoiceID,
+			&i.WaitingOn,
 			&i.Total,
 		); err != nil {
 			return nil, err
@@ -576,14 +600,16 @@ func (q *Queries) PendingRequest(ctx context.Context, stream string) (time.Time,
 
 const recordUnposted = `-- name: RecordUnposted :exec
 INSERT INTO accounting.unposted (stream, position, source_module, source_kind, source_id, source_part, fact_date,
-    document_id, document_number, customer_id, amount, reason, detail, first_seen_at, last_tried_at)
+    document_id, document_number, customer_id, amount, reason, detail, first_seen_at, last_tried_at, invoice_id,
+    waiting_on)
 VALUES ($1, $2, $3, $4, $5,
     $6, $7, $8, $9,
     $10, $11::text::numeric, $12, $13, $14,
-    $14)
+    $14, $15, $16)
 ON CONFLICT (source_module, source_kind, source_id, source_part) DO UPDATE
 SET reason = EXCLUDED.reason, detail = EXCLUDED.detail, attempts = accounting.unposted.attempts + 1,
-    last_tried_at = EXCLUDED.last_tried_at
+    last_tried_at = EXCLUDED.last_tried_at, invoice_id = coalesce(EXCLUDED.invoice_id, accounting.unposted.invoice_id),
+    waiting_on = EXCLUDED.waiting_on
 WHERE accounting.unposted.posted_at IS NULL
 `
 
@@ -602,6 +628,8 @@ type RecordUnpostedParams struct {
 	Reason         string
 	Detail         string
 	Now            time.Time
+	InvoiceID      *int64
+	WaitingOn      *int64
 }
 
 // RecordUnposted keeps a fact that could not be posted, or its new reason
@@ -622,6 +650,8 @@ func (q *Queries) RecordUnposted(ctx context.Context, arg RecordUnpostedParams) 
 		arg.Reason,
 		arg.Detail,
 		arg.Now,
+		arg.InvoiceID,
+		arg.WaitingOn,
 	)
 	return err
 }
@@ -675,10 +705,10 @@ func (q *Queries) RequestCatchUp(ctx context.Context, arg RequestCatchUpParams) 
 
 const salesRules = `-- name: SalesRules :many
 SELECT r.id, r.name, r.match, r.line_kind, r.tax_category_id, r.tax_code, r.account_id, r.version,
-    a.active AS account_active, a.number AS account_number
+    a.active AS account_active, a.number AS account_number, a.kind AS account_kind
 FROM accounting.posting_rules r
 JOIN accounting.accounts a ON a.id = r.account_id
-WHERE r.scope = 'sales'
+WHERE r.scope = 'sales' AND r.archived_at IS NULL
 `
 
 type SalesRulesRow struct {
@@ -692,9 +722,11 @@ type SalesRulesRow struct {
 	Version       int32
 	AccountActive bool
 	AccountNumber string
+	AccountKind   string
 }
 
-// SalesRules is every sales rule with its account.
+// SalesRules is every sales rule in force — archived ones match nothing —
+// with its account.
 func (q *Queries) SalesRules(ctx context.Context) ([]SalesRulesRow, error) {
 	rows, err := q.db.Query(ctx, salesRules)
 	if err != nil {
@@ -715,6 +747,81 @@ func (q *Queries) SalesRules(ctx context.Context) ([]SalesRulesRow, error) {
 			&i.Version,
 			&i.AccountActive,
 			&i.AccountNumber,
+			&i.AccountKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sourcePostings = `-- name: SourcePostings :many
+SELECT v.id AS voucher_id, p.line_no, p.account_id, p.amount::text AS amount, p.tax_code_id, p.tax_role,
+    coalesce(p.tax_base::text, '')::text AS tax_base, p.tax_specification, p.customer_id, p.supplier_id,
+    p.open_item_id, p.project_id, p.description, p.posting_rule_id, p.posting_rule_version
+FROM accounting.vouchers v
+JOIN accounting.postings p ON p.voucher_id = v.id
+WHERE v.source_module = $1 AND v.source_kind = $2
+  AND v.source_id = $3 AND v.source_part = ''
+ORDER BY p.line_no
+`
+
+type SourcePostingsParams struct {
+	SourceModule *string
+	SourceKind   *string
+	SourceID     *int64
+}
+
+type SourcePostingsRow struct {
+	VoucherID          int64
+	LineNo             int32
+	AccountID          int32
+	Amount             string
+	TaxCodeID          *int32
+	TaxRole            *string
+	TaxBase            string
+	TaxSpecification   *string
+	CustomerID         *int32
+	SupplierID         *int64
+	OpenItemID         *int64
+	ProjectID          *int32
+	Description        string
+	PostingRuleID      *int32
+	PostingRuleVersion *int32
+}
+
+// SourcePostings is the postings of the voucher a source posted as, with
+// the voucher's id: what an undo or a removal turns back line for line
+// (R15). No rows when the source has no voucher.
+func (q *Queries) SourcePostings(ctx context.Context, arg SourcePostingsParams) ([]SourcePostingsRow, error) {
+	rows, err := q.db.Query(ctx, sourcePostings, arg.SourceModule, arg.SourceKind, arg.SourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SourcePostingsRow
+	for rows.Next() {
+		var i SourcePostingsRow
+		if err := rows.Scan(
+			&i.VoucherID,
+			&i.LineNo,
+			&i.AccountID,
+			&i.Amount,
+			&i.TaxCodeID,
+			&i.TaxRole,
+			&i.TaxBase,
+			&i.TaxSpecification,
+			&i.CustomerID,
+			&i.SupplierID,
+			&i.OpenItemID,
+			&i.ProjectID,
+			&i.Description,
+			&i.PostingRuleID,
+			&i.PostingRuleVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -774,12 +881,143 @@ func (q *Queries) TaxCodesByCode(ctx context.Context) ([]TaxCodesByCodeRow, erro
 	return items, nil
 }
 
+const unpostedBlocker = `-- name: UnpostedBlocker :one
+SELECT u.id, u.document_number, u.source_kind FROM accounting.unposted u
+WHERE u.invoice_id = $1 AND u.posted_at IS NULL
+  AND NOT (u.source_module = $2 AND u.source_kind = $3
+           AND u.source_id = $4 AND u.source_part = $5)
+  AND u.id < coalesce((SELECT o.id FROM accounting.unposted o
+                       WHERE o.source_module = $2 AND o.source_kind = $3
+                         AND o.source_id = $4 AND o.source_part = $5),
+                      9223372036854775807)
+ORDER BY u.id
+LIMIT 1
+`
+
+type UnpostedBlockerParams struct {
+	InvoiceID    *int64
+	SourceModule string
+	SourceKind   string
+	SourceID     int64
+	SourcePart   string
+}
+
+type UnpostedBlockerRow struct {
+	ID             int64
+	DocumentNumber *string
+	SourceKind     string
+}
+
+// UnpostedBlocker is the row under Needs attention a source of the invoice
+// waits behind (R15): the earliest open row of the same invoice that is not
+// the source's own and was recorded before it — any, for a source with no
+// row yet.
+func (q *Queries) UnpostedBlocker(ctx context.Context, arg UnpostedBlockerParams) (UnpostedBlockerRow, error) {
+	row := q.db.QueryRow(ctx, unpostedBlocker,
+		arg.InvoiceID,
+		arg.SourceModule,
+		arg.SourceKind,
+		arg.SourceID,
+		arg.SourcePart,
+	)
+	var i UnpostedBlockerRow
+	err := row.Scan(&i.ID, &i.DocumentNumber, &i.SourceKind)
+	return i, err
+}
+
+const unpostedDependants = `-- name: UnpostedDependants :many
+SELECT u.id, u.stream, u.position, u.source_module, u.source_kind, u.source_id, u.source_part, u.fact_date, u.document_id,
+    u.document_number, u.customer_id, coalesce(u.amount, 0)::text AS amount, u.reason, u.detail, u.attempts, u.first_seen_at,
+    u.last_tried_at, u.posted_voucher_id, u.posted_at, NULL::integer AS voucher_year, NULL::integer AS voucher_number,
+    u.invoice_id, u.waiting_on
+FROM accounting.unposted u
+WHERE u.invoice_id = $1 AND u.posted_at IS NULL AND u.id > $2
+ORDER BY u.id
+`
+
+type UnpostedDependantsParams struct {
+	InvoiceID *int64
+	AfterID   int64
+}
+
+type UnpostedDependantsRow struct {
+	ID              int64
+	Stream          string
+	Position        int64
+	SourceModule    string
+	SourceKind      string
+	SourceID        int64
+	SourcePart      string
+	FactDate        *time.Time
+	DocumentID      *int64
+	DocumentNumber  *string
+	CustomerID      *int32
+	Amount          string
+	Reason          string
+	Detail          string
+	Attempts        int32
+	FirstSeenAt     time.Time
+	LastTriedAt     time.Time
+	PostedVoucherID *int64
+	PostedAt        *time.Time
+	VoucherYear     *int32
+	VoucherNumber   *int32
+	InvoiceID       *int64
+	WaitingOn       *int64
+}
+
+// UnpostedDependants is the open rows of an invoice recorded after the row
+// after_id, in the order they were met: what waits behind it (R15).
+func (q *Queries) UnpostedDependants(ctx context.Context, arg UnpostedDependantsParams) ([]UnpostedDependantsRow, error) {
+	rows, err := q.db.Query(ctx, unpostedDependants, arg.InvoiceID, arg.AfterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UnpostedDependantsRow
+	for rows.Next() {
+		var i UnpostedDependantsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Stream,
+			&i.Position,
+			&i.SourceModule,
+			&i.SourceKind,
+			&i.SourceID,
+			&i.SourcePart,
+			&i.FactDate,
+			&i.DocumentID,
+			&i.DocumentNumber,
+			&i.CustomerID,
+			&i.Amount,
+			&i.Reason,
+			&i.Detail,
+			&i.Attempts,
+			&i.FirstSeenAt,
+			&i.LastTriedAt,
+			&i.PostedVoucherID,
+			&i.PostedAt,
+			&i.VoucherYear,
+			&i.VoucherNumber,
+			&i.InvoiceID,
+			&i.WaitingOn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updatePostingRule = `-- name: UpdatePostingRule :one
 UPDATE accounting.posting_rules
-SET name = $1, account_id = $2,
-    version = version + CASE WHEN account_id <> $2 THEN 1 ELSE 0 END,
+SET name = $1::varchar, account_id = $2,
+    version = version + CASE WHEN account_id <> $2 OR name <> $1::varchar THEN 1 ELSE 0 END,
     revision = revision + 1, updated_at = $3
-WHERE id = $4 AND revision = $5
+WHERE id = $4 AND revision = $5 AND archived_at IS NULL
 RETURNING id
 `
 
@@ -792,7 +1030,8 @@ type UpdatePostingRuleParams struct {
 }
 
 // UpdatePostingRule changes a rule's name and account under its revision; a
-// changed account is a new version.
+// changed name or account is a new version, which tr_posting_rules_version
+// keeps (R15).
 func (q *Queries) UpdatePostingRule(ctx context.Context, arg UpdatePostingRuleParams) (int32, error) {
 	row := q.db.QueryRow(ctx, updatePostingRule,
 		arg.Name,

@@ -95,6 +95,11 @@ type Line struct {
 	Item             *OpenItemSpec
 	ProjectID        *int32
 	Text             string
+	// PostingRuleID and PostingRuleVersion name the posting rule and the
+	// version of it that placed a revenue line (A14, R15); nil on every other
+	// line.
+	PostingRuleID      *int32
+	PostingRuleVersion *int32
 
 	// origin is the request line this one comes from, plus one, for the
 	// field a refusal names; 0 is the line's own position.
@@ -304,7 +309,7 @@ func post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 	for i, l := range lines {
 		p := store.InsertPostingParams{VoucherID: id, LineNo: int32(i + 1), AccountID: l.AccountID, Amount: money(l.Amount),
 			TaxCodeID: l.TaxCodeID, CustomerID: l.CustomerID, SupplierID: l.SupplierID, OpenItemID: l.OpenItemID,
-			ProjectID: l.ProjectID, Description: l.Text}
+			ProjectID: l.ProjectID, Description: l.Text, PostingRuleID: l.PostingRuleID, PostingRuleVersion: l.PostingRuleVersion}
 		if l.TaxCodeID != nil {
 			role := l.TaxRole
 			if role == "" {

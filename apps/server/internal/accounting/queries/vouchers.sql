@@ -18,11 +18,12 @@ RETURNING id;
 
 -- name: InsertPosting :exec
 INSERT INTO accounting.postings (voucher_id, line_no, account_id, amount, tax_code_id, tax_role, tax_base,
-    customer_id, supplier_id, open_item_id, project_id, description, tax_specification)
+    customer_id, supplier_id, open_item_id, project_id, description, tax_specification, posting_rule_id,
+    posting_rule_version)
 VALUES (sqlc.arg(voucher_id), sqlc.arg(line_no), sqlc.arg(account_id), sqlc.arg(amount)::text::numeric,
     sqlc.narg(tax_code_id), sqlc.narg(tax_role), sqlc.narg(tax_base)::text::numeric, sqlc.narg(customer_id),
     sqlc.narg(supplier_id), sqlc.narg(open_item_id), sqlc.narg(project_id), sqlc.arg(description),
-    sqlc.narg(tax_specification));
+    sqlc.narg(tax_specification), sqlc.narg(posting_rule_id), sqlc.narg(posting_rule_version));
 
 -- name: VoucherBySource :one
 SELECT id, fiscal_year, number, voucher_date FROM accounting.vouchers
@@ -42,8 +43,10 @@ SELECT id, fiscal_year, number FROM accounting.vouchers WHERE id = ANY(sqlc.arg(
 -- name: ListPostings :many
 SELECT p.voucher_id, p.line_no, p.account_id, a.number AS account_number, a.name AS account_name,
     p.amount::text AS amount, p.tax_code_id, t.code AS tax_code, p.tax_role, p.tax_base,
-    p.customer_id, p.supplier_id, p.open_item_id, p.project_id, p.description, p.tax_specification
+    p.customer_id, p.supplier_id, p.open_item_id, p.project_id, p.description, p.tax_specification,
+    p.posting_rule_id, p.posting_rule_version, rv.name AS posting_rule_name
 FROM accounting.postings p
+LEFT JOIN accounting.posting_rule_versions rv ON rv.rule_id = p.posting_rule_id AND rv.version = p.posting_rule_version
 JOIN accounting.accounts a ON a.id = p.account_id
 LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
 WHERE p.voucher_id = ANY(sqlc.arg(voucher_ids)::bigint[])
@@ -62,7 +65,12 @@ LEFT JOIN accounting.vouchers r ON r.reverses_voucher_id = v.id
 WHERE (sqlc.narg(from_date)::date IS NULL OR v.voucher_date >= sqlc.narg(from_date)::date)
   AND (sqlc.narg(to_date)::date IS NULL OR v.voucher_date <= sqlc.narg(to_date)::date)
   AND (sqlc.narg(kind)::text IS NULL OR v.kind = sqlc.narg(kind)::text)
-  AND (sqlc.narg(source_document_id)::bigint IS NULL OR v.source_document_id = sqlc.narg(source_document_id)::bigint)
+  -- A document's vouchers: those that belong to it — an invoice's own, its
+  -- payments', credit notes' and write-offs' — and the one it posted as
+  -- itself, which for a credit note belongs to the invoice it credits.
+  AND (sqlc.narg(source_document_id)::bigint IS NULL OR v.source_document_id = sqlc.narg(source_document_id)::bigint
+       OR (v.source_module = 'invoices' AND v.source_kind IN ('invoice', 'credit_note')
+           AND v.source_id = sqlc.narg(source_document_id)::bigint))
   AND (sqlc.narg(account_id)::int IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p
        WHERE p.voucher_id = v.id AND p.account_id = sqlc.narg(account_id)::int))
   AND (sqlc.narg(customer_id)::int IS NULL OR EXISTS (SELECT 1 FROM accounting.postings p

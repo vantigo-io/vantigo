@@ -88,23 +88,25 @@ type AccountingOpenItem struct {
 }
 
 type AccountingPosting struct {
-	ID               int64
-	VoucherID        int64
-	LineNo           int32
-	AccountID        int32
-	Amount           pgtype.Numeric
-	Currency         *string
-	CurrencyAmount   pgtype.Numeric
-	ExchangeRate     pgtype.Numeric
-	TaxCodeID        *int32
-	TaxRole          *string
-	TaxBase          pgtype.Numeric
-	CustomerID       *int32
-	SupplierID       *int64
-	OpenItemID       *int64
-	ProjectID        *int32
-	Description      string
-	TaxSpecification *string
+	ID                 int64
+	VoucherID          int64
+	LineNo             int32
+	AccountID          int32
+	Amount             pgtype.Numeric
+	Currency           *string
+	CurrencyAmount     pgtype.Numeric
+	ExchangeRate       pgtype.Numeric
+	TaxCodeID          *int32
+	TaxRole            *string
+	TaxBase            pgtype.Numeric
+	CustomerID         *int32
+	SupplierID         *int64
+	OpenItemID         *int64
+	ProjectID          *int32
+	Description        string
+	TaxSpecification   *string
+	PostingRuleID      *int32
+	PostingRuleVersion *int32
 }
 
 type AccountingPostingRule struct {
@@ -121,6 +123,15 @@ type AccountingPostingRule struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	Revision          int32
+	ArchivedAt        *time.Time
+}
+
+type AccountingPostingRuleVersion struct {
+	RuleID    int32
+	Version   int32
+	Name      string
+	AccountID int32
+	ValidFrom time.Time
 }
 
 type AccountingSetting struct {
@@ -180,6 +191,8 @@ type AccountingUnposted struct {
 	LastTriedAt     time.Time
 	PostedVoucherID *int64
 	PostedAt        *time.Time
+	InvoiceID       *int64
+	WaitingOn       *int64
 }
 
 type AccountingVoucher struct {

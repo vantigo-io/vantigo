@@ -3,10 +3,12 @@ package accounting
 // The posting rules (A14): which account a sales line's net is credited to,
 // matched on exactly one of its line kind, its product's tax category or its
 // standard tax code — in that order of precedence — and then the default
-// rules, one per tax code, seeded with the books. A voucher names the rule
-// and version that made each revenue line; changing a rule's account is a new
-// version and changes future vouchers only. Expense rules (scope expense)
-// arrive with purchases, delivery C.
+// rules, one per tax code, seeded with the books. A sales rule names an
+// income account (R15). Each revenue line's posting names the rule and the
+// version that placed it; changing a rule's name or account is a new
+// version, kept in posting_rule_versions, and changes future vouchers only.
+// A rule is archived, never deleted. Expense rules (scope expense) arrive
+// with purchases, delivery C.
 
 import (
 	"context"
@@ -115,11 +117,10 @@ func ruleView(r store.GetPostingRuleRow) gen.AccountingPostingRule {
 		Revision: r.Revision, UpdatedAt: r.UpdatedAt}
 }
 
-// ListAccountingPostingRules is every rule in precedence order.
+// ListAccountingPostingRules is every rule in force in precedence order. It
+// writes nothing: the default rules are seeded by Set up the books, and for
+// books set up before they existed by the catch-up worker (L1).
 func (s *server) ListAccountingPostingRules(ctx context.Context, _ gen.ListAccountingPostingRulesRequestObject) (gen.ListAccountingPostingRulesResponseObject, error) {
-	if err := ensureDefaultRules(ctx, s.deps.Pool, s.now()); err != nil {
-		return nil, err
-	}
 	rows, err := store.New(s.deps.Pool).ListPostingRules(ctx)
 	if err != nil {
 		return nil, err
@@ -131,8 +132,10 @@ func (s *server) ListAccountingPostingRules(ctx context.Context, _ gen.ListAccou
 	return out, nil
 }
 
-// checkRuleAccount refuses an account that is not there or not active.
-func checkRuleAccount(ctx context.Context, q *store.Queries, id int32) error {
+// checkRuleAccount refuses an account that is not there, not active, or —
+// for a sales rule — not an income account (R15): a sale's net is credited
+// to income.
+func checkRuleAccount(ctx context.Context, q *store.Queries, scope string, id int32) error {
 	accounts, err := q.AccountsForPosting(ctx, []int32{id})
 	if err != nil {
 		return err
@@ -142,6 +145,9 @@ func checkRuleAccount(ctx context.Context, q *store.Queries, id int32) error {
 		return invalidField("The rule cannot be saved", "accountId", codeAccountUnknown, "No such account.")
 	case !accounts[0].Active:
 		return invalidField("The rule cannot be saved", "accountId", codeAccountInactive, "Account "+accounts[0].Number+" is inactive.")
+	case scope == "sales" && accounts[0].Kind != "income":
+		return invalidField("The rule cannot be saved", "accountId", codeAccountKindMismatch,
+			"A sales rule credits an income account; account "+accounts[0].Number+" is "+accounts[0].Kind+".")
 	}
 	return nil
 }
@@ -206,7 +212,7 @@ func (s *server) CreateAccountingPostingRule(ctx context.Context, req gen.Create
 	if err := f.refusal("The rule cannot be saved"); err != nil {
 		return nil, err
 	}
-	if err := checkRuleAccount(ctx, q, b.AccountId); err != nil {
+	if err := checkRuleAccount(ctx, q, string(b.Scope), b.AccountId); err != nil {
 		return nil, err
 	}
 	id, err := q.InsertPostingRuleStrict(ctx, store.InsertPostingRuleStrictParams(params))
@@ -224,7 +230,7 @@ func (s *server) CreateAccountingPostingRule(ctx context.Context, req gen.Create
 }
 
 // UpdateAccountingPostingRule changes a rule's name and account under its
-// revision; a changed account is a new version.
+// revision; a changed name or account is a new version.
 func (s *server) UpdateAccountingPostingRule(ctx context.Context, req gen.UpdateAccountingPostingRuleRequestObject) (gen.UpdateAccountingPostingRuleResponseObject, error) {
 	if req.Body == nil {
 		return nil, invalidField("The rule cannot be saved", "body", "", "A body is required.")
@@ -243,7 +249,7 @@ func (s *server) UpdateAccountingPostingRule(ctx context.Context, req gen.Update
 		return nil, err
 	}
 	if req.Body.AccountId != current.AccountID {
-		if err := checkRuleAccount(ctx, q, req.Body.AccountId); err != nil {
+		if err := checkRuleAccount(ctx, q, current.Scope, req.Body.AccountId); err != nil {
 			return nil, err
 		}
 	}
@@ -265,8 +271,9 @@ func (s *server) UpdateAccountingPostingRule(ctx context.Context, req gen.Update
 	return gen.UpdateAccountingPostingRule200JSONResponse(ruleView(row)), nil
 }
 
-// DeleteAccountingPostingRule deletes a rule that is not a default one; the
-// vouchers it made keep its name and version.
+// DeleteAccountingPostingRule archives a rule that is not a default one
+// (R15): it matches nothing from now on, and its versions stay, so every
+// posting it placed still names it.
 func (s *server) DeleteAccountingPostingRule(ctx context.Context, req gen.DeleteAccountingPostingRuleRequestObject) (gen.DeleteAccountingPostingRuleResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	current, err := q.GetPostingRule(ctx, req.Id)
@@ -277,11 +284,11 @@ func (s *server) DeleteAccountingPostingRule(ctx context.Context, req gen.Delete
 		return nil, err
 	}
 	if current.Match == "default" {
-		return nil, conflict(codeRuleDefault, "A default rule is not deleted", "Point it at another account instead.")
+		return nil, conflict(codeRuleDefault, "A default rule is not archived", "Point it at another account instead.")
 	}
-	if _, err := q.DeletePostingRule(ctx, req.Id); err != nil {
+	if _, err := q.ArchivePostingRule(ctx, store.ArchivePostingRuleParams{ID: req.Id, Now: ptr(s.now())}); err != nil {
 		return nil, err
 	}
-	s.logger().InfoContext(ctx, "accounting: a posting rule was deleted", "rule", current.Name, "status", http.StatusNoContent)
+	s.logger().InfoContext(ctx, "accounting: a posting rule was archived", "rule", current.Name, "status", http.StatusNoContent)
 	return gen.DeleteAccountingPostingRule204Response{}, nil
 }

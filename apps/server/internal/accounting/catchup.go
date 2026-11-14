@@ -12,8 +12,13 @@ package accounting
 //  2. reads the journal after the cursor with no transaction open;
 //  3. posts each document or fact in its own transaction, which also moves
 //     the cursor under the lease — one that cannot be posted goes under Needs
-//     attention (unposted) and the cursor still moves (A15);
-//  4. releases the lease, saying how the run ended.
+//     attention (unposted) and the cursor still moves (A15), and one of an
+//     invoice that has a row there waits behind it (R15); a transaction that
+//     meets a deadlock — a person settling the same item — is tried once
+//     more, and any other error stops the run for the next to take up;
+//  4. releases the lease, saying how the run ended — leaving a wake-up
+//     behind when it stopped at the lease's margin with more to read (R15),
+//     so a backlog drains at the poll's cadence, not the sweep's.
 //
 // The source index (A4) makes a fact delivered twice, or posted by two
 // workers, harmless: the second post is a Repeat. A late handler, a pruned
@@ -30,6 +35,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -218,7 +224,7 @@ func (w *CatchUpWorker) runStream(ctx context.Context, stream string) error {
 	if err != nil || !claimed {
 		return err
 	}
-	runErr := w.read(ctx, stream, lease, until, position)
+	more, runErr := w.read(ctx, stream, lease, until, position)
 	// The release, on a context the worker's shutdown does not reach, so a
 	// claim stopped early does not hold the stream for its lease.
 	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), catchupReleaseTimeout)
@@ -227,7 +233,14 @@ func (w *CatchUpWorker) runStream(ctx context.Context, stream string) error {
 	if runErr != nil {
 		lastError = ptr(truncate(runErr.Error(), 500))
 	}
-	if err := store.New(w.deps.Pool).ReleaseCursor(releaseCtx, store.ReleaseCursorParams{Stream: stream, LeaseID: &lease,
+	q := store.New(w.deps.Pool)
+	if more && runErr == nil {
+		// A backlog asks for itself again (R15), before the lease is let go.
+		if err := q.RequestCatchUp(releaseCtx, store.RequestCatchUpParams{Stream: stream, Now: now()}); err != nil {
+			runErr = err
+		}
+	}
+	if err := q.ReleaseCursor(releaseCtx, store.ReleaseCursorParams{Stream: stream, LeaseID: &lease,
 		Now: ptr(now()), LastError: lastError}); err != nil {
 		return errors.Join(runErr, err)
 	}
@@ -235,19 +248,20 @@ func (w *CatchUpWorker) runStream(ctx context.Context, stream string) error {
 }
 
 // read is one claimed run: page after page from position, each item posted
-// in its own transaction, until a short page or the lease's end.
-func (w *CatchUpWorker) read(ctx context.Context, stream string, lease uuid.UUID, until time.Time, position int64) error {
+// in its own transaction, until a short page or the lease's end. more is true
+// when it stopped at the lease's margin with items still to post.
+func (w *CatchUpWorker) read(ctx context.Context, stream string, lease uuid.UUID, until time.Time, position int64) (more bool, err error) {
 	now := clockOf(w.deps)
 	for {
 		items, err := readStream(ctx, w.deps.SalesJournal, stream, position, catchupPage)
 		if err != nil {
-			return err
+			return false, err
 		}
 		for _, it := range items {
 			if !now().Before(until.Add(-catchupMargin)) {
-				return nil
+				return true, nil
 			}
-			if err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+			post := func(tx pgx.Tx) error {
 				if _, err := postSource(ctx, tx, it, now()); err != nil {
 					return err
 				}
@@ -260,30 +274,60 @@ func (w *CatchUpWorker) read(ctx context.Context, stream string, lease uuid.UUID
 					return errLeaseLost
 				}
 				return nil
-			}); err != nil {
-				return err
+			}
+			err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, post)
+			if deadlocked(err) {
+				err = db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, post)
+			}
+			if err != nil {
+				return false, err
 			}
 			position = it.position
 		}
 		if len(items) < catchupPage {
-			return nil
+			return false, nil
 		}
 	}
 }
 
+// deadlocked reports whether err is a deadlock Postgres broke (40P01): the
+// item's transaction met a person's settlement of the same open item, and is
+// tried once more.
+func deadlocked(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
+}
+
 // sourceItem is one item of a stream: an issued document, or a fact with the
-// invoice it is about when a write-off's VAT needs it.
+// invoice it is about and that invoice's credit notes when a write-off's VAT
+// needs them.
 type sourceItem struct {
 	stream   string
 	position int64
 	doc      *contracts.JournalDocument
 	fact     *contracts.JournalFact
 	invoice  *contracts.JournalDocument
+	credits  []contracts.JournalDocument
+}
+
+// invoiceID is the invoice the item is about: a document's own id, or for a
+// credit note the invoice it credits; a fact's invoice.
+func (it sourceItem) invoiceID() int64 {
+	switch {
+	case it.doc != nil && it.doc.Kind == contracts.JournalCreditNote && it.doc.CreditsID != 0:
+		return it.doc.CreditsID
+	case it.doc != nil:
+		return it.doc.ID
+	case it.fact != nil:
+		return it.fact.InvoiceID
+	}
+	return 0
 }
 
 // readStream reads up to limit items of a stream after position, with no
 // transaction open: the documents by number, or the facts by seq with the
-// invoice of each write-off or recovery whose VAT is corrected.
+// invoice of each write-off or recovery whose VAT is corrected, and its credit
+// notes.
 func readStream(ctx context.Context, journal contracts.SalesJournal, stream string, position int64, limit int) ([]sourceItem, error) {
 	var out []sourceItem
 	switch stream {
@@ -306,6 +350,11 @@ func readStream(ctx context.Context, journal contracts.SalesJournal, stream stri
 				if it.invoice, err = journal.Document(ctx, facts[i].InvoiceID); err != nil {
 					return nil, err
 				}
+				if it.invoice != nil {
+					if it.credits, err = journal.CreditNotesOf(ctx, facts[i].InvoiceID); err != nil {
+						return nil, err
+					}
+				}
 			}
 			out = append(out, it)
 		}
@@ -324,11 +373,12 @@ const (
 	outcomeUnposted
 )
 
-// postSource posts one item on tx (A13–A15): its voucher through the engine,
-// with its source key; nothing when it is outside the books or all zeros; a
-// row under Needs attention when it cannot be posted, its reason the
-// builder's or the engine's refusal's code. Any other error rolls the item
-// back, and the stream stops there.
+// postSource posts one item on tx (A13–A15, R15): its voucher through the
+// engine, with its source key; nothing when it is outside the books or all
+// zeros; a row under Needs attention when it cannot be posted, its reason the
+// builder's or the engine's refusal's code, or waiting_on when its invoice
+// has an earlier row there. Any other error rolls the item back, and the
+// stream stops there.
 func postSource(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (outcome, error) {
 	q := store.New(tx)
 	books, err := readSalesBooks(ctx, q)
@@ -345,34 +395,102 @@ func postSource(ctx context.Context, tx pgx.Tx, it sourceItem, now time.Time) (o
 			return outcomeSkipped, ferr
 		}
 		if in {
-			v, err = factVoucher(books, *it.fact, it.invoice)
+			inputs, ferr := readFactInputs(ctx, q, it)
+			if ferr != nil {
+				return outcomeSkipped, ferr
+			}
+			v, err = factVoucher(books, *it.fact, inputs)
 		}
 	}
 	var why *unpostable
-	if errors.As(err, &why) {
-		return outcomeUnposted, recordUnposted(ctx, q, it, why.reason, why.detail, now)
-	}
-	if err != nil {
+	if !errors.As(err, &why) && err != nil {
 		return outcomeSkipped, err
 	}
-	if v == nil {
+	if v == nil && why == nil {
 		return outcomeSkipped, nil
 	}
+	// What waits, waits in order (R15): an item of an invoice with an
+	// earlier row under Needs attention is held behind it — unless it is in
+	// the books already, which Post answers as a repeat.
+	src := itemSource(it)
+	_, posted, err := postedSource(ctx, q, src)
+	if err != nil {
+		return outcomeSkipped, err
+	}
+	if id := it.invoiceID(); id != 0 && !posted {
+		blocker, err := q.UnpostedBlocker(ctx, store.UnpostedBlockerParams{InvoiceID: &id, SourceModule: src.Module,
+			SourceKind: src.Kind, SourceID: src.ID, SourcePart: src.Part})
+		switch {
+		case noRows(err):
+		case err != nil:
+			return outcomeSkipped, err
+		default:
+			detail := fmt.Sprintf("Waits for the %s of invoice %s, which is under Needs attention: fix and retry that first.",
+				blocker.SourceKind, deref(blocker.DocumentNumber))
+			return outcomeUnposted, recordUnposted(ctx, q, it, reasonWaitingOn, detail, &blocker.ID, now)
+		}
+	}
+	if why != nil {
+		return outcomeUnposted, recordUnposted(ctx, q, it, why.reason, why.detail, nil, now)
+	}
 	v.At = now
-	posted, err := Post(ctx, tx, *v)
+	voucher, err := Post(ctx, tx, *v)
 	var refused *refusal
 	if errors.As(err, &refused) {
-		return outcomeUnposted, recordUnposted(ctx, q, it, refusalReason(refused), refusalDetail(refused), now)
+		return outcomeUnposted, recordUnposted(ctx, q, it, refusalReason(refused), refusalDetail(refused), nil, now)
 	}
 	if err != nil {
 		return outcomeSkipped, err
 	}
-	src := itemSource(it)
-	if err := q.MarkUnpostedPosted(ctx, store.MarkUnpostedPostedParams{VoucherID: &posted.ID, Now: &now,
+	if err := q.MarkUnpostedPosted(ctx, store.MarkUnpostedPostedParams{VoucherID: &voucher.ID, Now: &now,
 		SourceModule: src.Module, SourceKind: src.Kind, SourceID: src.ID, SourcePart: src.Part}); err != nil {
 		return outcomeSkipped, err
 	}
 	return outcomePosted, nil
+}
+
+// readFactInputs reads what a fact's voucher is built from in the books (R15):
+// for a recovery the write-off's voucher, for an undoing of a write-off or a
+// removal of a recovery the voucher it turns back; with the invoice and its
+// credit notes the journal answered.
+func readFactInputs(ctx context.Context, q *store.Queries, it sourceItem) (factInputs, error) {
+	f := it.fact
+	in := factInputs{invoice: it.invoice, credits: it.credits}
+	var err error
+	switch f.Kind {
+	case contracts.FactWriteOffUndone:
+		in.original, err = readStoredVoucher(ctx, q, contracts.FactWriteOff, f.SubjectID)
+	case contracts.FactRecoveredPaymentRemoved:
+		in.original, err = readStoredVoucher(ctx, q, contracts.FactRecoveredPayment, f.SubjectID)
+	case contracts.FactRecoveredPayment:
+		if f.WriteOff != nil {
+			in.writeOff, err = readStoredVoucher(ctx, q, contracts.FactWriteOff, f.WriteOff.ID)
+		}
+	}
+	return in, err
+}
+
+// readStoredVoucher is the voucher Invoices' source of that kind and id posted
+// as, its postings as lines; nil when it has none.
+func readStoredVoucher(ctx context.Context, q *store.Queries, kind string, id int64) (*storedVoucher, error) {
+	rows, err := q.SourcePostings(ctx, store.SourcePostingsParams{SourceModule: ptr(sourceInvoices), SourceKind: &kind, SourceID: &id})
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	out := &storedVoucher{id: rows[0].VoucherID}
+	for _, p := range rows {
+		l := Line{AccountID: p.AccountID, Amount: mustRat(p.Amount), TaxCodeID: p.TaxCodeID, CustomerID: p.CustomerID,
+			SupplierID: p.SupplierID, OpenItemID: p.OpenItemID, ProjectID: p.ProjectID, Text: p.Description,
+			TaxSpecification: deref(p.TaxSpecification), PostingRuleID: p.PostingRuleID, PostingRuleVersion: p.PostingRuleVersion}
+		if p.TaxRole != nil {
+			l.TaxRole = *p.TaxRole
+		}
+		if p.TaxBase != "" {
+			l.TaxBase = mustRat(p.TaxBase)
+		}
+		out.lines = append(out.lines, l)
+	}
+	return out, nil
 }
 
 // itemSource is an item's source key.
@@ -383,11 +501,16 @@ func itemSource(it sourceItem) *Source {
 	return factSource(*it.fact)
 }
 
-// recordUnposted writes the item under Needs attention, or its new reason.
-func recordUnposted(ctx context.Context, q *store.Queries, it sourceItem, reason, detail string, now time.Time) error {
+// recordUnposted writes the item under Needs attention, or its new reason;
+// waitingOn is the row it waits behind, with reason waiting_on.
+func recordUnposted(ctx context.Context, q *store.Queries, it sourceItem, reason, detail string, waitingOn *int64, now time.Time) error {
 	src := itemSource(it)
 	p := store.RecordUnpostedParams{Stream: it.stream, Position: it.position, SourceModule: src.Module, SourceKind: src.Kind,
-		SourceID: src.ID, SourcePart: src.Part, Reason: truncate(reason, 40), Detail: truncate(detail, 500), Now: now}
+		SourceID: src.ID, SourcePart: src.Part, Reason: truncate(reason, 40), Detail: truncate(detail, 500), Now: now,
+		WaitingOn: waitingOn}
+	if id := it.invoiceID(); id != 0 {
+		p.InvoiceID = &id
+	}
 	switch {
 	case it.doc != nil:
 		d := it.doc
