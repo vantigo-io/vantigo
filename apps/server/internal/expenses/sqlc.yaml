@@ -12,6 +12,7 @@ sql:
       - ../db/migrations/00033_expenses_supplier_invoices.sql
       - ../db/migrations/00038_expenses_invoiced_by.sql
       - ../db/migrations/00054_expenses_time_zone_to_workspace.sql
+      - ../db/migrations/00184_expenses_journal.sql
     queries: queries
     gen:
       go:

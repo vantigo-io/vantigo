@@ -9,6 +9,7 @@ sql:
     schema:
       - ../db/migrations/00181_accounting_baseline.sql
       - ../db/migrations/00183_accounting_sales.sql
+      - ../db/migrations/00185_accounting_purchases.sql
     queries: queries
     gen:
       go:

@@ -124,14 +124,16 @@ type AccountingPostingRule struct {
 	UpdatedAt         time.Time
 	Revision          int32
 	ArchivedAt        *time.Time
+	VatDeductible     *bool
 }
 
 type AccountingPostingRuleVersion struct {
-	RuleID    int32
-	Version   int32
-	Name      string
-	AccountID int32
-	ValidFrom time.Time
+	RuleID        int32
+	Version       int32
+	Name          string
+	AccountID     int32
+	ValidFrom     time.Time
+	VatDeductible *bool
 }
 
 type AccountingSetting struct {
@@ -145,6 +147,98 @@ type AccountingSetting struct {
 	SetUpAt              time.Time
 	SetUpByUserID        uuid.UUID
 	UpdatedAt            time.Time
+}
+
+type AccountingSupplier struct {
+	ID                 int64
+	Number             int32
+	Name               string
+	OrganisationNumber *string
+	Country            string
+	AddressLine        *string
+	PostalCode         *string
+	City               *string
+	Email              *string
+	BankAccount        *string
+	Iban               *string
+	Bic                *string
+	PaymentTermsDays   int16
+	DefaultAccountID   *int32
+	DefaultTaxCodeID   *int32
+	Currency           string
+	IsPerson           bool
+	Active             bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	Revision           int32
+}
+
+type AccountingSupplierInvoice struct {
+	ID                   int64
+	SupplierID           int64
+	Kind                 string
+	SupplierNumber       string
+	InvoiceDate          time.Time
+	DueDate              *time.Time
+	Currency             string
+	ExchangeRate         pgtype.Numeric
+	Total                pgtype.Numeric
+	TotalNok             pgtype.Numeric
+	Kid                  *string
+	Reference            *string
+	Description          string
+	State                string
+	CreditsInvoiceID     *int64
+	VoucherID            *int64
+	OpenItemID           *int64
+	ReversalVoucherID    *int64
+	CopiedFromID         *int64
+	SourceExpenseEntryID *int64
+	CreatedAt            time.Time
+	CreatedByUserID      uuid.UUID
+	UpdatedAt            time.Time
+	PostedAt             *time.Time
+	PostedByUserID       *uuid.UUID
+	Revision             int32
+}
+
+type AccountingSupplierInvoiceFile struct {
+	ID                int64
+	SupplierInvoiceID int64
+	ObjectKey         string
+	FileName          string
+	ContentType       string
+	SizeBytes         int64
+	Sha256            string
+	UploadedAt        time.Time
+	UploadedByUserID  uuid.UUID
+}
+
+type AccountingSupplierInvoiceLine struct {
+	ID                int64
+	SupplierInvoiceID int64
+	Position          int32
+	AccountID         int32
+	TaxCodeID         *int32
+	Amount            pgtype.Numeric
+	Entry             string
+	ProjectID         *int32
+	Text              string
+}
+
+type AccountingSupplierPayment struct {
+	ID                int64
+	SupplierInvoiceID int64
+	PaidOn            time.Time
+	AmountNok         pgtype.Numeric
+	AmountCurrency    pgtype.Numeric
+	BankAccountID     int32
+	VoucherID         int64
+	RemovedAt         *time.Time
+	RemovedByUserID   *uuid.UUID
+	RemovalVoucherID  *int64
+	CreatedAt         time.Time
+	CreatedByUserID   uuid.UUID
 }
 
 type AccountingTaxCode struct {
@@ -172,27 +266,32 @@ type AccountingTaxCodeRate struct {
 }
 
 type AccountingUnposted struct {
-	ID              int64
-	Stream          string
-	Position        int64
-	SourceModule    string
-	SourceKind      string
-	SourceID        int64
-	SourcePart      string
-	FactDate        *time.Time
-	DocumentID      *int64
-	DocumentNumber  *string
-	CustomerID      *int32
-	Amount          pgtype.Numeric
-	Reason          string
-	Detail          string
-	Attempts        int32
-	FirstSeenAt     time.Time
-	LastTriedAt     time.Time
-	PostedVoucherID *int64
-	PostedAt        *time.Time
-	InvoiceID       *int64
-	WaitingOn       *int64
+	ID                int64
+	Stream            string
+	Position          int64
+	SourceModule      string
+	SourceKind        string
+	SourceID          int64
+	SourcePart        string
+	FactDate          *time.Time
+	DocumentID        *int64
+	DocumentNumber    *string
+	CustomerID        *int32
+	Amount            pgtype.Numeric
+	Reason            string
+	Detail            string
+	Attempts          int32
+	FirstSeenAt       time.Time
+	LastTriedAt       time.Time
+	PostedVoucherID   *int64
+	PostedAt          *time.Time
+	InvoiceID         *int64
+	WaitingOn         *int64
+	OrderKey          *string
+	Informational     bool
+	ResolvedAt        *time.Time
+	SupplierInvoiceID *int64
+	NokAmounts        []byte
 }
 
 type AccountingVoucher struct {

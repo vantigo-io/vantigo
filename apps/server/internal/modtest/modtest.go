@@ -151,6 +151,7 @@ type setup struct {
 	receivables       contracts.CustomerReceivables
 	salesTax          contracts.SalesTax
 	salesJournal      contracts.SalesJournal
+	expenseJournal    contracts.ExpenseJournal
 	holders           []contracts.CustomerReferenceHolder
 	variantHolders    []contracts.VariantReferenceHolder
 	personalData      []contracts.CustomerPersonalDataHolder
@@ -385,6 +386,17 @@ func WithSalesTax(p contracts.SalesTax) Option {
 // it out is the installation without invoices: Deps.SalesJournal stays nil.
 func WithSalesJournal(p contracts.SalesJournal) Option {
 	return func(s *setup) { s.salesJournal = p }
+}
+
+// WithExpenseJournal sets Deps.ExpenseJournal directly to p, for a module
+// under test that reads what Expenses approved and reimbursed
+// (contracts.ExpenseJournal, accounting design A20). module.Compose only ever
+// overwrites Deps.ExpenseJournal when one of the composed modules declares
+// Module.ExpenseJournal, so a value set here survives Compose untouched.
+// Leaving it out is the installation without expenses: Deps.ExpenseJournal
+// stays nil.
+func WithExpenseJournal(p contracts.ExpenseJournal) Option {
+	return func(s *setup) { s.expenseJournal = p }
 }
 
 // WithCustomerReferenceHolders adds holders to Deps.CustomerReferenceHolders,
@@ -904,6 +916,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Receivables:              s.receivables,
 		SalesTax:                 s.salesTax,
 		SalesJournal:             s.salesJournal,
+		ExpenseJournal:           s.expenseJournal,
 		CustomerReferenceHolders: s.holders,
 		VariantReferenceHolders:  s.variantHolders,
 		CustomerPersonalData:     s.personalData,

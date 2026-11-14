@@ -184,11 +184,12 @@ func (q *Queries) InsertAttachment(ctx context.Context, arg InsertAttachmentPara
 const insertPosting = `-- name: InsertPosting :exec
 INSERT INTO accounting.postings (voucher_id, line_no, account_id, amount, tax_code_id, tax_role, tax_base,
     customer_id, supplier_id, open_item_id, project_id, description, tax_specification, posting_rule_id,
-    posting_rule_version)
+    posting_rule_version, currency, currency_amount, exchange_rate)
 VALUES ($1, $2, $3, $4::text::numeric,
     $5, $6, $7::text::numeric, $8,
     $9, $10, $11, $12,
-    $13, $14, $15)
+    $13, $14, $15,
+    $16::varchar, $17::text::numeric, $18::text::numeric)
 `
 
 type InsertPostingParams struct {
@@ -207,6 +208,9 @@ type InsertPostingParams struct {
 	TaxSpecification   *string
 	PostingRuleID      *int32
 	PostingRuleVersion *int32
+	Currency           *string
+	CurrencyAmount     *string
+	ExchangeRate       *string
 }
 
 func (q *Queries) InsertPosting(ctx context.Context, arg InsertPostingParams) error {
@@ -226,6 +230,9 @@ func (q *Queries) InsertPosting(ctx context.Context, arg InsertPostingParams) er
 		arg.TaxSpecification,
 		arg.PostingRuleID,
 		arg.PostingRuleVersion,
+		arg.Currency,
+		arg.CurrencyAmount,
+		arg.ExchangeRate,
 	)
 	return err
 }

@@ -130,6 +130,19 @@ func TestExpensesInvoicedBy_AppliesAndIsIdempotent(t *testing.T) {
 		}
 	}
 
+	// 00184's Down refuses while the expense journal holds a fact, and the
+	// approved lines above wrote some: the log is emptied by hand first, past
+	// its append-only trigger, as only a test may.
+	for _, sql := range []string{
+		`ALTER TABLE expenses.journal_facts DISABLE TRIGGER tr_journal_facts_immutable`,
+		`DELETE FROM expenses.journal_facts`,
+		`DELETE FROM expenses.counters WHERE counter_name = 'journal'`,
+	} {
+		if _, err := pool.Exec(ctx, sql); err != nil {
+			t.Fatalf("empty the journal: %v", err)
+		}
+	}
+
 	migrateTo(t, url, 37)
 	var functions, left, indexes int
 	if err := pool.QueryRow(ctx, `

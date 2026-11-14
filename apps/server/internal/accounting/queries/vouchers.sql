@@ -19,11 +19,12 @@ RETURNING id;
 -- name: InsertPosting :exec
 INSERT INTO accounting.postings (voucher_id, line_no, account_id, amount, tax_code_id, tax_role, tax_base,
     customer_id, supplier_id, open_item_id, project_id, description, tax_specification, posting_rule_id,
-    posting_rule_version)
+    posting_rule_version, currency, currency_amount, exchange_rate)
 VALUES (sqlc.arg(voucher_id), sqlc.arg(line_no), sqlc.arg(account_id), sqlc.arg(amount)::text::numeric,
     sqlc.narg(tax_code_id), sqlc.narg(tax_role), sqlc.narg(tax_base)::text::numeric, sqlc.narg(customer_id),
     sqlc.narg(supplier_id), sqlc.narg(open_item_id), sqlc.narg(project_id), sqlc.arg(description),
-    sqlc.narg(tax_specification), sqlc.narg(posting_rule_id), sqlc.narg(posting_rule_version));
+    sqlc.narg(tax_specification), sqlc.narg(posting_rule_id), sqlc.narg(posting_rule_version),
+    sqlc.narg(currency)::varchar, sqlc.narg(currency_amount)::text::numeric, sqlc.narg(exchange_rate)::text::numeric);
 
 -- name: VoucherBySource :one
 SELECT id, fiscal_year, number, voucher_date FROM accounting.vouchers

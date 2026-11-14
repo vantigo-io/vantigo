@@ -619,6 +619,27 @@ func TestWorkers_ResolvesTheSalesJournal(t *testing.T) {
 	}
 }
 
+// Workers resolves the expense journal as Compose does: the ledger's catch-up
+// reads it in worker mode. A disabled owner leaves the caller's preset.
+func TestWorkers_ResolvesTheExpenseJournal(t *testing.T) {
+	var seen Deps
+	reader := Module{Name: "reader", Workers: func(d Deps) []worker.Worker {
+		seen = d
+		return nil
+	}}
+	journal := &fakeExpenseJournal{}
+	owner := Module{Name: "owner", ExpenseJournal: func(Deps) contracts.ExpenseJournal { return journal }}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader", "owner"}}}, reader, owner)
+	if seen.ExpenseJournal != journal {
+		t.Errorf("the workers saw Deps.ExpenseJournal = %v, want the enabled owner's", seen.ExpenseJournal)
+	}
+	preset := &fakeExpenseJournal{}
+	Workers(Deps{Config: &config.Config{Modules: []string{"reader"}}, ExpenseJournal: preset}, reader, owner)
+	if seen.ExpenseJournal != preset {
+		t.Errorf("the workers saw Deps.ExpenseJournal = %v, want the caller's, the owner being disabled", seen.ExpenseJournal)
+	}
+}
+
 // Two enabled providers of one of the slots Workers learned for the billing
 // worker are a bug in the binary's module list, which Compose refuses at
 // startup; Workers has no error to return, so it panics, naming the slot.

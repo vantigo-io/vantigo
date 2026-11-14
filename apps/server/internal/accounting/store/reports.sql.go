@@ -281,6 +281,8 @@ func (q *Queries) JournalPostings(ctx context.Context, arg JournalPostingsParams
 const partyItemsAt = `-- name: PartyItemsAt :many
 SELECT o.id, o.customer_id, o.supplier_id, o.unallocated, o.document_number, o.document_date, o.due_date,
     o.source_document_id,
+    (SELECT s.name FROM accounting.suppliers s WHERE s.id = o.supplier_id)::varchar AS supplier_name,
+    (SELECT min(si.id) FROM accounting.supplier_invoices si WHERE si.open_item_id = o.id)::bigint AS supplier_invoice_id,
     coalesce(sum(p.amount), 0)::text AS balance,
     coalesce(sum(p.amount) FILTER (WHERE v.voucher_date >= $1::date), 0)::text AS movement
 FROM accounting.open_items o
@@ -306,16 +308,18 @@ type PartyItemsAtParams struct {
 }
 
 type PartyItemsAtRow struct {
-	ID               int64
-	CustomerID       *int32
-	SupplierID       *int64
-	Unallocated      bool
-	DocumentNumber   *string
-	DocumentDate     *time.Time
-	DueDate          *time.Time
-	SourceDocumentID *int64
-	Balance          string
-	Movement         string
+	ID                int64
+	CustomerID        *int32
+	SupplierID        *int64
+	Unallocated       bool
+	DocumentNumber    *string
+	DocumentDate      *time.Time
+	DueDate           *time.Time
+	SourceDocumentID  *int64
+	SupplierName      string
+	SupplierInvoiceID int64
+	Balance           string
+	Movement          string
 }
 
 // PartyItemsAt is every open item of a kind with its balance at to_date and
@@ -345,6 +349,8 @@ func (q *Queries) PartyItemsAt(ctx context.Context, arg PartyItemsAtParams) ([]P
 			&i.DocumentDate,
 			&i.DueDate,
 			&i.SourceDocumentID,
+			&i.SupplierName,
+			&i.SupplierInvoiceID,
 			&i.Balance,
 			&i.Movement,
 		); err != nil {

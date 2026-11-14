@@ -51,7 +51,7 @@ func EventHandlers(deps Deps, mods ...Module) ([]events.Handler, error) {
 // through Compose's return value. It resolves each module's contribution from
 // deps as the caller passes it, plus Deps.CustomerPersonalData,
 // Deps.InvoicedWork, Deps.Directory, Deps.Users, Deps.Accounts,
-// Deps.Products, Deps.SalesTax, Deps.SalesJournal, Deps.Workforce, Deps.Stock, Deps.StockLedger,
+// Deps.Products, Deps.SalesTax, Deps.SalesJournal, Deps.ExpenseJournal, Deps.Workforce, Deps.Stock, Deps.StockLedger,
 // Deps.SalesOrderLines, Deps.Production, Deps.DeliveryTrace, Deps.KitStructure, Deps.CalendarSources,
 // Deps.IdentityProvisioners, Deps.MailboxCalendars, Deps.ChannelMailboxes and
 // Deps.PersonalMailboxes, which it resolves from the enabled modules the way
@@ -124,6 +124,10 @@ func Workers(deps Deps, mods ...Module) []worker.Worker {
 	// tax: the ledger's catch-up worker reads it, and worker mode never
 	// composes.
 	if deps, err = withSalesJournal(deps, enabled); err != nil {
+		panic(err.Error())
+	}
+	// The expense journal, likewise: the ledger's catch-up reads it too.
+	if deps, err = withExpenseJournal(deps, enabled); err != nil {
 		panic(err.Error())
 	}
 	// The stock read and the stock ledger, resolved as Compose resolves
@@ -269,6 +273,21 @@ func withSalesJournal(deps Deps, enabled []Module) (Deps, error) {
 	}
 	if provider != nil {
 		deps.SalesJournal = provider.SalesJournal(deps)
+	}
+	return deps, nil
+}
+
+// withExpenseJournal resolves contracts.ExpenseJournal from the enabled
+// modules — at most one may declare it — keeping a preset value when none
+// does (the seam modtest.WithExpenseJournal fills). Compose and Workers both
+// call it right after withSalesJournal.
+func withExpenseJournal(deps Deps, enabled []Module) (Deps, error) {
+	provider, err := soleProvider(enabled, "an expense journal", func(m Module) bool { return m.ExpenseJournal != nil })
+	if err != nil {
+		return deps, err
+	}
+	if provider != nil {
+		deps.ExpenseJournal = provider.ExpenseJournal(deps)
 	}
 	return deps, nil
 }

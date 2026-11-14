@@ -50,6 +50,7 @@ func (e AccountingAccountKind) Valid() bool {
 
 // Defines values for AccountingCatchUpStreamStream.
 const (
+	ExpensesFacts     AccountingCatchUpStreamStream = "expenses.facts"
 	InvoicesDocuments AccountingCatchUpStreamStream = "invoices.documents"
 	InvoicesFacts     AccountingCatchUpStreamStream = "invoices.facts"
 )
@@ -57,6 +58,8 @@ const (
 // Valid indicates whether the value is a known member of the AccountingCatchUpStreamStream enum.
 func (e AccountingCatchUpStreamStream) Valid() bool {
 	switch e {
+	case ExpensesFacts:
+		return true
 	case InvoicesDocuments:
 		return true
 	case InvoicesFacts:
@@ -237,6 +240,48 @@ func (e AccountingRuleScope) Valid() bool {
 	case AccountingRuleScopeExpense:
 		return true
 	case AccountingRuleScopeSales:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingSupplierInvoiceKind.
+const (
+	CreditNote AccountingSupplierInvoiceKind = "credit_note"
+	Invoice    AccountingSupplierInvoiceKind = "invoice"
+)
+
+// Valid indicates whether the value is a known member of the AccountingSupplierInvoiceKind enum.
+func (e AccountingSupplierInvoiceKind) Valid() bool {
+	switch e {
+	case CreditNote:
+		return true
+	case Invoice:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountingSupplierInvoiceState.
+const (
+	Draft    AccountingSupplierInvoiceState = "draft"
+	Paid     AccountingSupplierInvoiceState = "paid"
+	Posted   AccountingSupplierInvoiceState = "posted"
+	Reversed AccountingSupplierInvoiceState = "reversed"
+)
+
+// Valid indicates whether the value is a known member of the AccountingSupplierInvoiceState enum.
+func (e AccountingSupplierInvoiceState) Valid() bool {
+	switch e {
+	case Draft:
+		return true
+	case Paid:
+		return true
+	case Posted:
+		return true
+	case Reversed:
 		return true
 	default:
 		return false
@@ -471,6 +516,25 @@ type AccountingAttachment struct {
 	UploadedAt  time.Time `json:"uploadedAt"`
 }
 
+// AccountingBrregEntity defines model for AccountingBrregEntity.
+type AccountingBrregEntity struct {
+	AddressLine *string `json:"addressLine"`
+	City        *string `json:"city"`
+	Country     *string `json:"country"`
+
+	// Deleted Struck off the register.
+	Deleted            bool    `json:"deleted"`
+	Name               string  `json:"name"`
+	OrganisationNumber string  `json:"organisationNumber"`
+	PostalCode         *string `json:"postalCode"`
+	VatRegistered      *bool   `json:"vatRegistered"`
+}
+
+// AccountingBrregList defines model for AccountingBrregList.
+type AccountingBrregList struct {
+	Items []AccountingBrregEntity `json:"items"`
+}
+
 // AccountingCatchUp Where the catch-up stands (A12, R7): each stream's cursor, when it last ran, whether a wake-up waits, and how far the books are behind Invoices — the facts after the cursor, counted up to 500.
 type AccountingCatchUp struct {
 	Streams []AccountingCatchUpStream `json:"streams"`
@@ -489,7 +553,7 @@ type AccountingCatchUpStream struct {
 	LastError *string    `json:"lastError"`
 	LastRunAt *time.Time `json:"lastRunAt"`
 
-	// Position The last document number (invoices.documents) or fact seq (invoices.facts) the books have read.
+	// Position The last document number (invoices.documents) or fact seq (invoices.facts, expenses.facts) the books have read.
 	Position int64 `json:"position"`
 
 	// RequestedAt When a wake-up for the stream was asked for and not yet taken; null when none waits.
@@ -622,11 +686,23 @@ type AccountingMeta struct {
 	// Currency NOK.
 	Currency string `json:"currency"`
 
+	// ExpensesEnabled Whether Expenses' journal is composed: approved expenses post themselves.
+	ExpensesEnabled bool `json:"expensesEnabled"`
+
+	// Informational Rows under Needs attention that posted and say something (vat_not_deducted), not acknowledged.
+	Informational int32 `json:"informational"`
+
 	// InvoicesEnabled Whether Invoices' sales journal is composed: open invoices are offered on the opening form, and sales post themselves.
 	InvoicesEnabled bool `json:"invoicesEnabled"`
 
 	// OpenCustomerItems Customer open items with a balance.
 	OpenCustomerItems int32 `json:"openCustomerItems"`
+
+	// PayablesDueSoon Posted supplier invoices not settled due today or in the next seven days.
+	PayablesDueSoon int32 `json:"payablesDueSoon"`
+
+	// PayablesOverdue Posted supplier invoices not settled whose due date has passed.
+	PayablesOverdue int32 `json:"payablesOverdue"`
 
 	// ProjectsEnabled Whether Projects is composed: the project dimension is offered.
 	ProjectsEnabled bool `json:"projectsEnabled"`
@@ -645,6 +721,15 @@ type AccountingMeta struct {
 
 	// VouchersThisYear Vouchers in the fiscal year of today.
 	VouchersThisYear int32 `json:"vouchersThisYear"`
+}
+
+// AccountingNokAmountsInput defines model for AccountingNokAmountsInput.
+type AccountingNokAmountsInput struct {
+	Amounts []struct {
+		// AmountNok Positive, two decimals.
+		AmountNok string `json:"amountNok"`
+		EntryId   int64  `json:"entryId"`
+	} `json:"amounts"`
 }
 
 // AccountingOpenInvoice defines model for AccountingOpenInvoice.
@@ -768,12 +853,15 @@ type AccountingPosting struct {
 	TaxSpecification *string `json:"taxSpecification"`
 }
 
-// AccountingPostingRule A posting rule (A14): the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. version counts the changes of its name or account (R15), each kept; a sales rule credits an income account; a revenue line's posting names the rule and the version that placed it, and a change affects future vouchers only. A rule is archived, never deleted: an archived one matches nothing and is not listed, and what it placed still names it.
+// AccountingPostingRule A posting rule (A14): for a sales rule, the account a sales line's net is credited to, matched on exactly one of the line's kind, its product's tax category or its standard tax code; a default rule (match default) is seeded per tax code and is the last resort. For an expense rule (delivery C), the expense account an expense category's cost is debited to, and whether its VAT may be deducted. version counts the changes of its name, account or deductibility (R15), each kept; a sales rule credits an income account and an expense rule debits an expense account; a posting names the rule and the version that placed it, and a change affects future vouchers only. A rule is archived, never deleted: an archived one matches nothing and is not listed, and what it placed still names it.
 type AccountingPostingRule struct {
 	AccountId     int32  `json:"accountId"`
 	AccountName   string `json:"accountName"`
 	AccountNumber string `json:"accountNumber"`
-	Id            int32  `json:"id"`
+
+	// ExpenseCategoryId On an expense_category rule, Expenses' category id.
+	ExpenseCategoryId *int32 `json:"expenseCategoryId"`
+	Id                int32  `json:"id"`
 
 	// LineKind On a line_kind rule, the line kind (hours, expense, milestone, settlement, order_line, subscription_period, deduction, manual, mixed).
 	LineKind *string             `json:"lineKind"`
@@ -781,7 +869,7 @@ type AccountingPostingRule struct {
 	Name     string              `json:"name"`
 	Revision int32               `json:"revision"`
 
-	// Scope sales for Invoices' lines; expense arrives with purchases (delivery C).
+	// Scope sales for Invoices' lines; expense for Expenses' categories (delivery C).
 	Scope AccountingRuleScope `json:"scope"`
 
 	// TaxCategoryId On a tax_category rule, Products' tax category id.
@@ -790,20 +878,27 @@ type AccountingPostingRule struct {
 	// TaxCode On a tax_code or default rule, the standard tax code.
 	TaxCode   *string   `json:"taxCode"`
 	UpdatedAt time.Time `json:"updatedAt"`
-	Version   int32     `json:"version"`
+
+	// VatDeductible On an expense rule: whether the VAT on the category's expenses may be deducted (R2).
+	VatDeductible *bool `json:"vatDeductible"`
+	Version       int32 `json:"version"`
 }
 
-// AccountingPostingRuleInput A new rule: a name (1–100, unique), the scope (sales in this delivery), a match of line_kind, tax_category or tax_code with its one value, and an active account.
+// AccountingPostingRuleInput A new rule: a name (1–100, unique), the scope, a match — for sales line_kind, tax_category or tax_code, for expense expense_category — with its one value, an active account of the scope's kind, and for an expense rule vatDeductible.
 type AccountingPostingRuleInput struct {
-	AccountId int32               `json:"accountId"`
-	LineKind  *string             `json:"lineKind,omitempty"`
-	Match     AccountingRuleMatch `json:"match"`
-	Name      string              `json:"name"`
+	AccountId         int32               `json:"accountId"`
+	ExpenseCategoryId *int32              `json:"expenseCategoryId,omitempty"`
+	LineKind          *string             `json:"lineKind,omitempty"`
+	Match             AccountingRuleMatch `json:"match"`
+	Name              string              `json:"name"`
 
-	// Scope sales for Invoices' lines; expense arrives with purchases (delivery C).
+	// Scope sales for Invoices' lines; expense for Expenses' categories (delivery C).
 	Scope         AccountingRuleScope `json:"scope"`
 	TaxCategoryId *int32              `json:"taxCategoryId,omitempty"`
 	TaxCode       *string             `json:"taxCode,omitempty"`
+
+	// VatDeductible On an expense rule; default true.
+	VatDeductible *bool `json:"vatDeductible,omitempty"`
 }
 
 // AccountingPostingRuleList defines model for AccountingPostingRuleList.
@@ -812,11 +907,14 @@ type AccountingPostingRuleList struct {
 	Items []AccountingPostingRule `json:"items"`
 }
 
-// AccountingPostingRuleUpdate A rule's name and account under its revision; its match never changes. A changed account is a new version.
+// AccountingPostingRuleUpdate A rule's name and account (and an expense rule's deductibility) under its revision; its match never changes. A change of any of them is a new version.
 type AccountingPostingRuleUpdate struct {
 	AccountId int32  `json:"accountId"`
 	Name      string `json:"name"`
 	Revision  int32  `json:"revision"`
+
+	// VatDeductible On an expense rule; unchanged when left out.
+	VatDeductible *bool `json:"vatDeductible,omitempty"`
 }
 
 // AccountingPreviewLine defines model for AccountingPreviewLine.
@@ -837,7 +935,7 @@ type AccountingPreviewLine struct {
 	TaxRole   *AccountingTaxRole `json:"taxRole"`
 }
 
-// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
+// AccountingProblem An RFC 9457 problem with this module's refusal code (accounting design §2, §13). code names the rule that refused and is what a client keys off, never the words: books_not_set_up (409: every operation but the meta and the setup, until Set up the books has run, R12), books_already_set_up (409: a second setup), revision_conflict (409: the revision has moved on), account_number_taken (409), account_has_postings (409: a delete of an account with postings, or a change of its number or kind), account_has_role (409: a delete of an account holding a system role; move the role first), account_inactive (400: a line on an inactive account), account_unknown (400), tax_code_unknown (400: an unknown or inactive tax code), tax_code_no_rate (400: no rate period covers the voucher's date), rate_period_invalid (400: a new rate period that does not start after the current one's start), party_required (400: a line on receivables or payables without a customer or supplier), party_not_allowed (400: a party on a line of another account, or both a customer and a supplier), open_item_unknown (400: an open item of another party or kind), voucher_unbalanced (400: the lines and their computed tax do not sum to zero; the detail names the difference), voucher_empty (400: no line, or every line zero), amount_invalid (400: not an exact decimal with at most two places, or zero), date_before_books_start (400), period_locked (409: a voucher a person posts dated on or before the lock, A8), voucher_owned_by_source (409: a reversal of a voucher the system posted, which only its source reverses, A7), voucher_already_reversed (409), opening_exists (409: an opening voucher stands and is not reversed), opening_locked (409: an opening entered or reversed after the first lock, A9), lock_not_month_end (400), lock_reason_required (400: a lock moved back without a reason), lock_before_books_start (400), settlement_source_document (409: an item that stands for a document in Invoices is paid there, R5), settlement_exceeds_balance (409: more than the item's balance), settlement_settled (409: an item with nothing left), bank_account_invalid (400: not an active asset account), attachment_too_large (400: over 20 MB), storage_not_configured (503: no object store for attachments), report_account_required (400: the account report without accountId), period_invalid (400: from after to, or a period over 366 days for the journal), open_item_source_document (400: a person's voucher naming an open item that stands for a document in Invoices, which moves with Invoices' own facts), report_too_large (400: the journal or an account's specification over 50 000 postings; choose a shorter period), lock_in_future (400: a lock after the end of the current month), books_start_too_early (400: books that start before 2022-01-01, the first day the seeded rates are known to hold), account_kind_mismatch (400: an account whose kind is not its number's class's — 1 asset, 20 equity, 21–29 liability, 3 income, 4–7 expense, 8 income or expense — or a number outside the classes 1 to 8; a system role moved to an account of another kind than the role's), reverse_charge_gross (400: a gross journal with a reverse-charge code, which is entered net), posting_rule_name_taken (409), posting_rule_match_taken (409: a rule with the same scope and match exists), posting_rule_default (409: a default rule is never deleted, only pointed at another account), unposted_already_posted (409: a retry of a fact that has posted), supplier_organisation_number_taken (409: another supplier has that organisation number), supplier_bank_account_invalid (400: not eleven digits passing mod 11), supplier_has_postings (409: a delete of a supplier with postings or invoices; make it inactive), supplier_inactive (400: a new invoice for an inactive supplier), duplicate_supplier_invoice (409: the same supplier's number of the same kind on another invoice that is not reversed), supplier_invoice_not_draft (409: a change, a delete, a post or a file removed on an invoice that is not a draft), supplier_invoice_not_posted (409: a payment or Reverse and copy on an invoice that is not posted), supplier_invoice_file_required (409: Post without an attached file), supplier_invoice_total_mismatch (400: the lines' gross does not sum to the total), tax_code_not_purchase (400: an output code on a purchase line), exchange_rate_required (400: another currency without the rate or the NOK total), supplier_invoice_settled (409: a payment on an invoice with nothing left), payment_exceeds_balance (409: a payment of more than is left), payment_removed (409: a payment removed already), settlement_supplier_invoice (409: an item that stands for a supplier invoice is paid on the invoice), unposted_wrong_reason (409: an action for another reason than the row's), brreg_unavailable (502: Brønnøysundregisteret could not be reached). errors carries the field errors of a 400, keyed by the camelCase path (lines[2].accountId).
 type AccountingProblem struct {
 	Code     *string              `json:"code,omitempty"`
 	Detail   *string              `json:"detail,omitempty"`
@@ -885,11 +983,26 @@ type AccountingReportRow struct {
 	// DocumentId The document in Invoices the row stands for (a customer's open item for an invoice), which the screen links to.
 	DocumentId *int64                   `json:"documentId"`
 	Style      AccountingReportRowStyle `json:"style"`
-	VoucherId  *int64                   `json:"voucherId"`
+
+	// SupplierId On the suppliers report, the supplier a row belongs to.
+	SupplierId *int64 `json:"supplierId"`
+
+	// SupplierInvoiceId The supplier invoice an item row stands for, which the screen links to.
+	SupplierInvoiceId *int64 `json:"supplierInvoiceId"`
+	VoucherId         *int64 `json:"voucherId"`
 }
 
 // AccountingReportRowStyle defines model for AccountingReportRow.Style.
 type AccountingReportRowStyle string
+
+// AccountingReverseCopyInput defines model for AccountingReverseCopyInput.
+type AccountingReverseCopyInput struct {
+	// Date The reversal's date.
+	Date openapi_types.Date `json:"date"`
+
+	// Reason 1 to 500.
+	Reason string `json:"reason"`
+}
 
 // AccountingReverseInput defines model for AccountingReverseInput.
 type AccountingReverseInput struct {
@@ -906,7 +1019,7 @@ type AccountingRoleInput struct {
 // AccountingRuleMatch defines model for AccountingRuleMatch.
 type AccountingRuleMatch string
 
-// AccountingRuleScope sales for Invoices' lines; expense arrives with purchases (delivery C).
+// AccountingRuleScope sales for Invoices' lines; expense for Expenses' categories (delivery C).
 type AccountingRuleScope string
 
 // AccountingSettings defines model for AccountingSettings.
@@ -955,6 +1068,300 @@ type AccountingSource struct {
 	Kind   string `json:"kind"`
 	Module string `json:"module"`
 	Part   string `json:"part"`
+}
+
+// AccountingSupplier A supplier (A17).
+type AccountingSupplier struct {
+	Active      bool    `json:"active"`
+	AddressLine *string `json:"addressLine"`
+
+	// Balance The supplier's balance on payables in NOK: negative is owed to the supplier.
+	Balance string `json:"balance"`
+
+	// BankAccount A Norwegian account number, eleven digits (mod 11).
+	BankAccount *string `json:"bankAccount"`
+	Bic         *string `json:"bic"`
+	City        *string `json:"city"`
+
+	// Country ISO 3166 alpha-2.
+	Country   string    `json:"country"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Currency The currency a new invoice proposes.
+	Currency string `json:"currency"`
+
+	// DefaultAccountId The cost account a new invoice line proposes.
+	DefaultAccountId *int32 `json:"defaultAccountId"`
+
+	// DefaultTaxCodeId The tax code a new invoice line proposes.
+	DefaultTaxCodeId *int32  `json:"defaultTaxCodeId"`
+	Email            *string `json:"email"`
+
+	// HasPostings A supplier with postings is never deleted, only made inactive.
+	HasPostings bool    `json:"hasPostings"`
+	Iban        *string `json:"iban"`
+	Id          int64   `json:"id"`
+
+	// IsPerson A sole proprietor: personal data, kept five years after the last voucher (A17).
+	IsPerson bool `json:"isPerson"`
+
+	// LastVoucherDate The date of the supplier's last voucher.
+	LastVoucherDate *openapi_types.Date `json:"lastVoucherDate"`
+	Name            string              `json:"name"`
+
+	// Number Gap-free, from the supplier counter.
+	Number int32 `json:"number"`
+
+	// OrganisationNumber Nine digits for a Norwegian entity.
+	OrganisationNumber *string `json:"organisationNumber"`
+
+	// PaymentTermsDays Days from the invoice date to the due date a new invoice proposes.
+	PaymentTermsDays int32   `json:"paymentTermsDays"`
+	PostalCode       *string `json:"postalCode"`
+
+	// RetainedUntil For a person: five years after the end of the year of the last voucher, until when the bookkeeping keeps them.
+	RetainedUntil *openapi_types.Date `json:"retainedUntil"`
+	Revision      int32               `json:"revision"`
+	UpdatedAt     time.Time           `json:"updatedAt"`
+}
+
+// AccountingSupplierExport Everything the books hold about one supplier: what a person's access request is answered with (A17).
+type AccountingSupplierExport struct {
+	Invoices   []AccountingSupplierInvoice       `json:"invoices"`
+	Postings   []AccountingSupplierExportPosting `json:"postings"`
+	ProducedAt time.Time                         `json:"producedAt"`
+
+	// Supplier A supplier (A17).
+	Supplier AccountingSupplier `json:"supplier"`
+}
+
+// AccountingSupplierExportPosting defines model for AccountingSupplierExportPosting.
+type AccountingSupplierExportPosting struct {
+	AccountNumber string               `json:"accountNumber"`
+	Amount        string               `json:"amount"`
+	Description   string               `json:"description"`
+	Voucher       AccountingVoucherRef `json:"voucher"`
+	VoucherDate   openapi_types.Date   `json:"voucherDate"`
+}
+
+// AccountingSupplierInput A supplier's fields; on an update, with its revision.
+type AccountingSupplierInput struct {
+	// Active On an update; default true.
+	Active      *bool   `json:"active,omitempty"`
+	AddressLine *string `json:"addressLine,omitempty"`
+
+	// BankAccount Eleven digits, spaces and dots allowed; mod 11.
+	BankAccount *string `json:"bankAccount,omitempty"`
+	Bic         *string `json:"bic,omitempty"`
+	City        *string `json:"city,omitempty"`
+
+	// Country Default NO.
+	Country *string `json:"country,omitempty"`
+
+	// Currency Default NOK.
+	Currency         *string `json:"currency,omitempty"`
+	DefaultAccountId *int32  `json:"defaultAccountId,omitempty"`
+	DefaultTaxCodeId *int32  `json:"defaultTaxCodeId,omitempty"`
+	Email            *string `json:"email,omitempty"`
+	Iban             *string `json:"iban,omitempty"`
+	IsPerson         *bool   `json:"isPerson,omitempty"`
+
+	// Name 1 to 200 characters.
+	Name               string  `json:"name"`
+	OrganisationNumber *string `json:"organisationNumber,omitempty"`
+
+	// PaymentTermsDays 0 to 365, default 14.
+	PaymentTermsDays *int32  `json:"paymentTermsDays,omitempty"`
+	PostalCode       *string `json:"postalCode,omitempty"`
+
+	// Revision Required on an update.
+	Revision *int32 `json:"revision,omitempty"`
+}
+
+// AccountingSupplierInvoice A supplier invoice or credit note (A18, R8).
+type AccountingSupplierInvoice struct {
+	// Balance The open item's balance in NOK, negative while owed; null for a draft.
+	Balance *string `json:"balance"`
+
+	// BalanceCurrency The open item's balance in the invoice's currency; null for a draft.
+	BalanceCurrency  *string             `json:"balanceCurrency"`
+	CopiedFromId     *int64              `json:"copiedFromId"`
+	CreatedAt        time.Time           `json:"createdAt"`
+	CreditsInvoiceId *int64              `json:"creditsInvoiceId"`
+	Currency         string              `json:"currency"`
+	Description      string              `json:"description"`
+	DueDate          *openapi_types.Date `json:"dueDate"`
+
+	// ExchangeRate NOK per unit of the currency, six decimals; 1 for NOK.
+	ExchangeRate string                 `json:"exchangeRate"`
+	Files        []AccountingAttachment `json:"files"`
+	Id           int64                  `json:"id"`
+	InvoiceDate  openapi_types.Date     `json:"invoiceDate"`
+
+	// InvoiceNumber The supplier's own number.
+	InvoiceNumber string                          `json:"invoiceNumber"`
+	Kid           *string                         `json:"kid"`
+	Kind          AccountingSupplierInvoiceKind   `json:"kind"`
+	Lines         []AccountingSupplierInvoiceLine `json:"lines"`
+
+	// LinesTotal The lines' gross summed, in the invoice's currency: Post needs it to equal total.
+	LinesTotal string `json:"linesTotal"`
+	OpenItemId *int64 `json:"openItemId"`
+
+	// Overdue Posted, not settled, and due before today.
+	Overdue         bool                        `json:"overdue"`
+	Payments        []AccountingSupplierPayment `json:"payments"`
+	PostedAt        *time.Time                  `json:"postedAt"`
+	Reference       *string                     `json:"reference"`
+	ReversalVoucher *AccountingVoucherRef       `json:"reversalVoucher"`
+	Revision        int32                       `json:"revision"`
+
+	// SourceExpenseEntryId The expense of Expenses' supplier_invoice kind the draft was made from.
+	SourceExpenseEntryId *int64 `json:"sourceExpenseEntryId"`
+
+	// State paid is derived from the open item: a posted invoice whose balance is zero.
+	State          AccountingSupplierInvoiceState `json:"state"`
+	SupplierId     int64                          `json:"supplierId"`
+	SupplierName   string                         `json:"supplierName"`
+	SupplierNumber int32                          `json:"supplierNumber"`
+
+	// Total In the invoice's currency.
+	Total     string    `json:"total"`
+	TotalNok  string    `json:"totalNok"`
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	// Vat The VAT the lines carry, in the invoice's currency.
+	Vat     string                `json:"vat"`
+	Voucher *AccountingVoucherRef `json:"voucher"`
+}
+
+// AccountingSupplierInvoiceInput defines model for AccountingSupplierInvoiceInput.
+type AccountingSupplierInvoiceInput struct {
+	// CreditsInvoiceId On a credit note: the posted invoice it credits.
+	CreditsInvoiceId *int64 `json:"creditsInvoiceId,omitempty"`
+
+	// Currency Default the supplier's.
+	Currency    *string `json:"currency,omitempty"`
+	Description *string `json:"description,omitempty"`
+
+	// DueDate Default the invoice date plus the supplier's terms.
+	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
+
+	// ExchangeRate NOK per unit, for another currency; give it or totalNok.
+	ExchangeRate *string            `json:"exchangeRate,omitempty"`
+	InvoiceDate  openapi_types.Date `json:"invoiceDate"`
+
+	// InvoiceNumber The supplier's number, 1 to 60.
+	InvoiceNumber string                        `json:"invoiceNumber"`
+	Kid           *string                       `json:"kid,omitempty"`
+	Kind          AccountingSupplierInvoiceKind `json:"kind"`
+
+	// Lines At most 200.
+	Lines     []AccountingSupplierInvoiceLineInput `json:"lines"`
+	Reference *string                              `json:"reference,omitempty"`
+
+	// Revision Required on an update.
+	Revision   *int32 `json:"revision,omitempty"`
+	SupplierId int64  `json:"supplierId"`
+
+	// Total In the invoice's currency.
+	Total string `json:"total"`
+
+	// TotalNok The total in NOK, for another currency; give it or exchangeRate.
+	TotalNok *string `json:"totalNok,omitempty"`
+}
+
+// AccountingSupplierInvoiceKind defines model for AccountingSupplierInvoiceKind.
+type AccountingSupplierInvoiceKind string
+
+// AccountingSupplierInvoiceLine defines model for AccountingSupplierInvoiceLine.
+type AccountingSupplierInvoiceLine struct {
+	AccountId     int32  `json:"accountId"`
+	AccountName   string `json:"accountName"`
+	AccountNumber string `json:"accountNumber"`
+
+	// Amount As entered, in the invoice's currency.
+	Amount string `json:"amount"`
+
+	// Entry How a line with a tax code is entered (A6): net of VAT, or gross with the VAT in it.
+	Entry AccountingEntryMode `json:"entry"`
+
+	// Gross Net plus the invoice's VAT: what the line adds to the total.
+	Gross string `json:"gross"`
+	Id    int64  `json:"id"`
+
+	// Net The line's net in the invoice's currency.
+	Net         string  `json:"net"`
+	Position    int32   `json:"position"`
+	ProjectId   *int32  `json:"projectId"`
+	ProjectName *string `json:"projectName"`
+	TaxCode     *string `json:"taxCode"`
+	TaxCodeId   *int32  `json:"taxCodeId"`
+	Text        string  `json:"text"`
+
+	// Vat The VAT the invoice carries on the line, in its currency; 0.00 for a reverse-charge code, whose VAT is the buyer's to calculate.
+	Vat string `json:"vat"`
+}
+
+// AccountingSupplierInvoiceLineInput defines model for AccountingSupplierInvoiceLineInput.
+type AccountingSupplierInvoiceLineInput struct {
+	AccountId int32 `json:"accountId"`
+
+	// Amount Exact, two decimals, in the invoice's currency; negative on a discount line.
+	Amount string `json:"amount"`
+
+	// Entry Default gross; a reverse-charge code is entered net.
+	Entry     *AccountingEntryMode `json:"entry,omitempty"`
+	ProjectId *int32               `json:"projectId,omitempty"`
+	TaxCodeId *int32               `json:"taxCodeId,omitempty"`
+	Text      *string              `json:"text,omitempty"`
+}
+
+// AccountingSupplierInvoiceList defines model for AccountingSupplierInvoiceList.
+type AccountingSupplierInvoiceList struct {
+	Items []AccountingSupplierInvoice `json:"items"`
+	Total int32                       `json:"total"`
+}
+
+// AccountingSupplierInvoiceState paid is derived from the open item: a posted invoice whose balance is zero.
+type AccountingSupplierInvoiceState string
+
+// AccountingSupplierList defines model for AccountingSupplierList.
+type AccountingSupplierList struct {
+	Items []AccountingSupplier `json:"items"`
+	Total int32                `json:"total"`
+}
+
+// AccountingSupplierPayment defines model for AccountingSupplierPayment.
+type AccountingSupplierPayment struct {
+	// AmountCurrency The share of the invoice it settles, in the invoice's currency.
+	AmountCurrency string `json:"amountCurrency"`
+
+	// AmountNok What the bank took, in NOK.
+	AmountNok         string `json:"amountNok"`
+	BankAccountId     int32  `json:"bankAccountId"`
+	BankAccountNumber string `json:"bankAccountNumber"`
+
+	// CurrencyDifference To currency_loss (positive) or currency_gain (negative); 0.00 for a NOK invoice.
+	CurrencyDifference string                `json:"currencyDifference"`
+	Id                 int64                 `json:"id"`
+	PaidOn             openapi_types.Date    `json:"paidOn"`
+	RemovalVoucher     *AccountingVoucherRef `json:"removalVoucher"`
+	RemovedAt          *time.Time            `json:"removedAt"`
+	Voucher            AccountingVoucherRef  `json:"voucher"`
+}
+
+// AccountingSupplierPaymentInput defines model for AccountingSupplierPaymentInput.
+type AccountingSupplierPaymentInput struct {
+	// AmountCurrency For an invoice in another currency: the share settled, default what is left.
+	AmountCurrency *string `json:"amountCurrency,omitempty"`
+
+	// AmountNok Positive, as the bank took it.
+	AmountNok string `json:"amountNok"`
+
+	// BankAccountId An active asset account; default the bank role's.
+	BankAccountId *int32             `json:"bankAccountId,omitempty"`
+	Date          openapi_types.Date `json:"date"`
 }
 
 // AccountingSystemRole The accounts the module posts to by itself (A3, R8, R11). Every charge payment posts to charge_income; interest income is an ordinary account.
@@ -1030,26 +1437,51 @@ type AccountingUnposted struct {
 	Detail       string  `json:"detail"`
 
 	// DocumentId The document in Invoices the fact is about.
-	DocumentId     *int64              `json:"documentId"`
-	DocumentNumber *string             `json:"documentNumber"`
-	FactDate       *openapi_types.Date `json:"factDate"`
-	FirstSeenAt    time.Time           `json:"firstSeenAt"`
-	Id             int64               `json:"id"`
+	DocumentId     *int64  `json:"documentId"`
+	DocumentNumber *string `json:"documentNumber"`
+
+	// ExpenseLines An expense fact's lines in another currency, for amount_in_nok_needed; empty otherwise.
+	ExpenseLines []AccountingUnpostedExpenseLine `json:"expenseLines"`
+	FactDate     *openapi_types.Date             `json:"factDate"`
+	FirstSeenAt  time.Time                       `json:"firstSeenAt"`
+	Id           int64                           `json:"id"`
+
+	// Informational A row that posted but says something a person should see (vat_not_deducted): it never blocks and is not counted in unposted.
+	Informational bool `json:"informational"`
 
 	// InvoiceId The invoice in Invoices the fact is about — a credit note's, the invoice it credits.
-	InvoiceId     *int64                `json:"invoiceId"`
-	LastTriedAt   time.Time             `json:"lastTriedAt"`
+	InvoiceId   *int64    `json:"invoiceId"`
+	LastTriedAt time.Time `json:"lastTriedAt"`
+
+	// OrderKey What an expense fact waits behind: entry:<id> or claim:<id>.
+	OrderKey      *string               `json:"orderKey"`
 	Position      int64                 `json:"position"`
 	PostedAt      *time.Time            `json:"postedAt"`
 	PostedVoucher *AccountingVoucherRef `json:"postedVoucher"`
 	Reason        string                `json:"reason"`
 
+	// ResolvedAt When an informational row was acknowledged, or the expense was made into a supplier invoice.
+	ResolvedAt *time.Time `json:"resolvedAt"`
+
 	// Source The fact a system voucher records (A4).
 	Source AccountingSource `json:"source"`
 	Stream string           `json:"stream"`
 
+	// SupplierInvoiceId The draft supplier invoice the row was made into.
+	SupplierInvoiceId *int64 `json:"supplierInvoiceId"`
+
 	// WaitingOn With reason waiting_on, the row under Needs attention this one waits behind.
 	WaitingOn *int64 `json:"waitingOn"`
+}
+
+// AccountingUnpostedExpenseLine defines model for AccountingUnpostedExpenseLine.
+type AccountingUnpostedExpenseLine struct {
+	// AmountNok The amount in NOK a person entered, null until then.
+	AmountNok *string `json:"amountNok"`
+	Currency  string  `json:"currency"`
+	EntryId   int64   `json:"entryId"`
+	Gross     string  `json:"gross"`
+	Kind      string  `json:"kind"`
 }
 
 // AccountingUnpostedList defines model for AccountingUnpostedList.
@@ -1213,6 +1645,49 @@ type ExportAccountingReportParams struct {
 	ProjectId *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
 }
 
+// ListAccountingSupplierInvoicesParams defines parameters for ListAccountingSupplierInvoices.
+type ListAccountingSupplierInvoicesParams struct {
+	State      *AccountingSupplierInvoiceState `form:"state,omitempty" json:"state,omitempty"`
+	SupplierId *int64                          `form:"supplierId,omitempty" json:"supplierId,omitempty"`
+
+	// SupplierNumber The supplier's own number, for the duplicate warning; with supplierId.
+	SupplierNumber *string             `form:"supplierNumber,omitempty" json:"supplierNumber,omitempty"`
+	DueFrom        *openapi_types.Date `form:"dueFrom,omitempty" json:"dueFrom,omitempty"`
+	DueTo          *openapi_types.Date `form:"dueTo,omitempty" json:"dueTo,omitempty"`
+	Overdue        *bool               `form:"overdue,omitempty" json:"overdue,omitempty"`
+	Offset         *int32              `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit Default 100, at most 500.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// UploadAccountingSupplierInvoiceFileMultipartBody defines parameters for UploadAccountingSupplierInvoiceFile.
+type UploadAccountingSupplierInvoiceFileMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
+// ListAccountingSuppliersParams defines parameters for ListAccountingSuppliers.
+type ListAccountingSuppliersParams struct {
+	// Q By name, number or organisation number.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Active Default: every supplier.
+	Active *bool  `form:"active,omitempty" json:"active,omitempty"`
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit Default 100, at most 500.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// LookupAccountingSupplierBrregParams defines parameters for LookupAccountingSupplierBrreg.
+type LookupAccountingSupplierBrregParams struct {
+	// OrganisationNumber Nine digits: the entity itself, with its address.
+	OrganisationNumber *string `form:"organisationNumber,omitempty" json:"organisationNumber,omitempty"`
+
+	// Q A name, at least two characters.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
 // ListAccountingUnpostedParams defines parameters for ListAccountingUnposted.
 type ListAccountingUnpostedParams struct {
 	// Open Default true: only the facts not yet posted.
@@ -1280,11 +1755,35 @@ type AssignAccountingRoleJSONRequestBody = AccountingRoleInput
 // SetUpAccountingBooksJSONRequestBody defines body for SetUpAccountingBooks for application/json ContentType.
 type SetUpAccountingBooksJSONRequestBody = AccountingSetupInput
 
+// CreateAccountingSupplierInvoiceJSONRequestBody defines body for CreateAccountingSupplierInvoice for application/json ContentType.
+type CreateAccountingSupplierInvoiceJSONRequestBody = AccountingSupplierInvoiceInput
+
+// UpdateAccountingSupplierInvoiceJSONRequestBody defines body for UpdateAccountingSupplierInvoice for application/json ContentType.
+type UpdateAccountingSupplierInvoiceJSONRequestBody = AccountingSupplierInvoiceInput
+
+// UploadAccountingSupplierInvoiceFileMultipartRequestBody defines body for UploadAccountingSupplierInvoiceFile for multipart/form-data ContentType.
+type UploadAccountingSupplierInvoiceFileMultipartRequestBody UploadAccountingSupplierInvoiceFileMultipartBody
+
+// PayAccountingSupplierInvoiceJSONRequestBody defines body for PayAccountingSupplierInvoice for application/json ContentType.
+type PayAccountingSupplierInvoiceJSONRequestBody = AccountingSupplierPaymentInput
+
+// ReverseAndCopyAccountingSupplierInvoiceJSONRequestBody defines body for ReverseAndCopyAccountingSupplierInvoice for application/json ContentType.
+type ReverseAndCopyAccountingSupplierInvoiceJSONRequestBody = AccountingReverseCopyInput
+
+// CreateAccountingSupplierJSONRequestBody defines body for CreateAccountingSupplier for application/json ContentType.
+type CreateAccountingSupplierJSONRequestBody = AccountingSupplierInput
+
+// UpdateAccountingSupplierJSONRequestBody defines body for UpdateAccountingSupplier for application/json ContentType.
+type UpdateAccountingSupplierJSONRequestBody = AccountingSupplierInput
+
 // UpdateAccountingTaxCodeJSONRequestBody defines body for UpdateAccountingTaxCode for application/json ContentType.
 type UpdateAccountingTaxCodeJSONRequestBody = AccountingTaxCodeUpdate
 
 // AddAccountingTaxCodeRateJSONRequestBody defines body for AddAccountingTaxCodeRate for application/json ContentType.
 type AddAccountingTaxCodeRateJSONRequestBody = AccountingTaxRateInput
+
+// EnterAccountingUnpostedNokAmountsJSONRequestBody defines body for EnterAccountingUnpostedNokAmounts for application/json ContentType.
+type EnterAccountingUnpostedNokAmountsJSONRequestBody = AccountingNokAmountsInput
 
 // PostAccountingVoucherJSONRequestBody defines body for PostAccountingVoucher for application/json ContentType.
 type PostAccountingVoucherJSONRequestBody = AccountingJournalInput
@@ -1369,6 +1868,63 @@ type ServerInterface interface {
 	// SetUpAccountingBooks Set up the books
 	// (POST /api/v1/accounting/setup)
 	SetUpAccountingBooks(w http.ResponseWriter, r *http.Request)
+	// ListAccountingSupplierInvoices List the supplier invoices
+	// (GET /api/v1/accounting/supplier-invoices)
+	ListAccountingSupplierInvoices(w http.ResponseWriter, r *http.Request, params ListAccountingSupplierInvoicesParams)
+	// CreateAccountingSupplierInvoice Enter a supplier invoice as a draft
+	// (POST /api/v1/accounting/supplier-invoices)
+	CreateAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request)
+	// DeleteAccountingSupplierInvoice Delete a draft supplier invoice
+	// (DELETE /api/v1/accounting/supplier-invoices/{id})
+	DeleteAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64)
+	// GetAccountingSupplierInvoice Read a supplier invoice
+	// (GET /api/v1/accounting/supplier-invoices/{id})
+	GetAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateAccountingSupplierInvoice Change a draft supplier invoice
+	// (PUT /api/v1/accounting/supplier-invoices/{id})
+	UpdateAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64)
+	// UploadAccountingSupplierInvoiceFile Attach a file to a draft supplier invoice
+	// (POST /api/v1/accounting/supplier-invoices/{id}/files)
+	UploadAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request, id int64)
+	// DeleteAccountingSupplierInvoiceFile Remove a file from a draft supplier invoice
+	// (DELETE /api/v1/accounting/supplier-invoices/{id}/files/{fileId})
+	DeleteAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request, id int64, fileId int64)
+	// GetAccountingSupplierInvoiceFile Download a supplier invoice's file
+	// (GET /api/v1/accounting/supplier-invoices/{id}/files/{fileId})
+	GetAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request, id int64, fileId int64)
+	// PayAccountingSupplierInvoice Register a payment of a supplier invoice
+	// (POST /api/v1/accounting/supplier-invoices/{id}/payments)
+	PayAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64)
+	// RemoveAccountingSupplierPayment Remove a payment of a supplier invoice
+	// (DELETE /api/v1/accounting/supplier-invoices/{id}/payments/{paymentId})
+	RemoveAccountingSupplierPayment(w http.ResponseWriter, r *http.Request, id int64, paymentId int64)
+	// PostAccountingSupplierInvoice Post a supplier invoice
+	// (POST /api/v1/accounting/supplier-invoices/{id}/post)
+	PostAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64)
+	// ReverseAndCopyAccountingSupplierInvoice Reverse a posted supplier invoice and copy it to a new draft
+	// (POST /api/v1/accounting/supplier-invoices/{id}/reverse-and-copy)
+	ReverseAndCopyAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64)
+	// ListAccountingSuppliers List the suppliers
+	// (GET /api/v1/accounting/suppliers)
+	ListAccountingSuppliers(w http.ResponseWriter, r *http.Request, params ListAccountingSuppliersParams)
+	// CreateAccountingSupplier Create a supplier
+	// (POST /api/v1/accounting/suppliers)
+	CreateAccountingSupplier(w http.ResponseWriter, r *http.Request)
+	// LookupAccountingSupplierBrreg Look a supplier up in Brønnøysundregisteret
+	// (GET /api/v1/accounting/suppliers/lookup/brreg)
+	LookupAccountingSupplierBrreg(w http.ResponseWriter, r *http.Request, params LookupAccountingSupplierBrregParams)
+	// DeleteAccountingSupplier Delete a supplier with no postings
+	// (DELETE /api/v1/accounting/suppliers/{id})
+	DeleteAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64)
+	// GetAccountingSupplier Read a supplier
+	// (GET /api/v1/accounting/suppliers/{id})
+	GetAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64)
+	// UpdateAccountingSupplier Change a supplier
+	// (PUT /api/v1/accounting/suppliers/{id})
+	UpdateAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64)
+	// ExportAccountingSupplier Export what the books hold about a supplier
+	// (GET /api/v1/accounting/suppliers/{id}/export)
+	ExportAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64)
 	// ListAccountingTaxCodes List the tax codes
 	// (GET /api/v1/accounting/tax-codes)
 	ListAccountingTaxCodes(w http.ResponseWriter, r *http.Request)
@@ -1381,9 +1937,18 @@ type ServerInterface interface {
 	// ListAccountingUnposted List the facts that could not be posted
 	// (GET /api/v1/accounting/unposted)
 	ListAccountingUnposted(w http.ResponseWriter, r *http.Request, params ListAccountingUnpostedParams)
+	// AcknowledgeAccountingUnposted Acknowledge an informational row
+	// (POST /api/v1/accounting/unposted/{id}/acknowledge)
+	AcknowledgeAccountingUnposted(w http.ResponseWriter, r *http.Request, id int64)
+	// EnterAccountingUnpostedNokAmounts Enter the amount in NOK of an expense in another currency, and post it
+	// (POST /api/v1/accounting/unposted/{id}/nok-amounts)
+	EnterAccountingUnpostedNokAmounts(w http.ResponseWriter, r *http.Request, id int64)
 	// RetryAccountingUnposted Retry posting a fact
 	// (POST /api/v1/accounting/unposted/{id}/retry)
 	RetryAccountingUnposted(w http.ResponseWriter, r *http.Request, id int64)
+	// MakeAccountingUnpostedSupplierInvoice Make a supplier invoice from an expense of the supplier_invoice kind
+	// (POST /api/v1/accounting/unposted/{id}/supplier-invoice)
+	MakeAccountingUnpostedSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64)
 	// ListAccountingVouchers List vouchers
 	// (GET /api/v1/accounting/vouchers)
 	ListAccountingVouchers(w http.ResponseWriter, r *http.Request, params ListAccountingVouchersParams)
@@ -2220,6 +2785,667 @@ func (siw *ServerInterfaceWrapper) SetUpAccountingBooks(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// ListAccountingSupplierInvoices operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingSupplierInvoices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAccountingSupplierInvoicesParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "supplierId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "supplierId", r.URL.Query(), &params.SupplierId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "supplierId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "supplierId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "supplierNumber" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "supplierNumber", r.URL.Query(), &params.SupplierNumber, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "supplierNumber"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "supplierNumber", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dueFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dueFrom", r.URL.Query(), &params.DueFrom, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dueFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dueFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "dueTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "dueTo", r.URL.Query(), &params.DueTo, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "dueTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dueTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "overdue" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "overdue", r.URL.Query(), &params.Overdue, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "overdue"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "overdue", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingSupplierInvoices(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccountingSupplierInvoice operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccountingSupplierInvoice(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccountingSupplierInvoice operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccountingSupplierInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingSupplierInvoice operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingSupplierInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAccountingSupplierInvoice operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAccountingSupplierInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadAccountingSupplierInvoiceFile operation middleware
+func (siw *ServerInterfaceWrapper) UploadAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadAccountingSupplierInvoiceFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccountingSupplierInvoiceFile operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fileId" -------------
+	var fileId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fileId", r.PathValue("fileId"), &fileId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fileId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccountingSupplierInvoiceFile(w, r, id, fileId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingSupplierInvoiceFile operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fileId" -------------
+	var fileId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fileId", r.PathValue("fileId"), &fileId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fileId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingSupplierInvoiceFile(w, r, id, fileId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PayAccountingSupplierInvoice operation middleware
+func (siw *ServerInterfaceWrapper) PayAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PayAccountingSupplierInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveAccountingSupplierPayment operation middleware
+func (siw *ServerInterfaceWrapper) RemoveAccountingSupplierPayment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "paymentId" -------------
+	var paymentId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "paymentId", r.PathValue("paymentId"), &paymentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "paymentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveAccountingSupplierPayment(w, r, id, paymentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostAccountingSupplierInvoice operation middleware
+func (siw *ServerInterfaceWrapper) PostAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostAccountingSupplierInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReverseAndCopyAccountingSupplierInvoice operation middleware
+func (siw *ServerInterfaceWrapper) ReverseAndCopyAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReverseAndCopyAccountingSupplierInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccountingSuppliers operation middleware
+func (siw *ServerInterfaceWrapper) ListAccountingSuppliers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAccountingSuppliersParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "active" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "active", r.URL.Query(), &params.Active, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "active"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "active", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccountingSuppliers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccountingSupplier operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccountingSupplier(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccountingSupplier(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LookupAccountingSupplierBrreg operation middleware
+func (siw *ServerInterfaceWrapper) LookupAccountingSupplierBrreg(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LookupAccountingSupplierBrregParams
+
+	// ------------- Optional query parameter "organisationNumber" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organisationNumber", r.URL.Query(), &params.OrganisationNumber, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organisationNumber"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organisationNumber", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupAccountingSupplierBrreg(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccountingSupplier operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccountingSupplier(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccountingSupplier(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountingSupplier operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountingSupplier(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountingSupplier(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAccountingSupplier operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAccountingSupplier(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAccountingSupplier(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportAccountingSupplier operation middleware
+func (siw *ServerInterfaceWrapper) ExportAccountingSupplier(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportAccountingSupplier(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListAccountingTaxCodes operation middleware
 func (siw *ServerInterfaceWrapper) ListAccountingTaxCodes(w http.ResponseWriter, r *http.Request) {
 
@@ -2345,6 +3571,58 @@ func (siw *ServerInterfaceWrapper) ListAccountingUnposted(w http.ResponseWriter,
 	handler.ServeHTTP(w, r)
 }
 
+// AcknowledgeAccountingUnposted operation middleware
+func (siw *ServerInterfaceWrapper) AcknowledgeAccountingUnposted(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcknowledgeAccountingUnposted(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnterAccountingUnpostedNokAmounts operation middleware
+func (siw *ServerInterfaceWrapper) EnterAccountingUnpostedNokAmounts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnterAccountingUnpostedNokAmounts(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RetryAccountingUnposted operation middleware
 func (siw *ServerInterfaceWrapper) RetryAccountingUnposted(w http.ResponseWriter, r *http.Request) {
 
@@ -2362,6 +3640,32 @@ func (siw *ServerInterfaceWrapper) RetryAccountingUnposted(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RetryAccountingUnposted(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MakeAccountingUnpostedSupplierInvoice operation middleware
+func (siw *ServerInterfaceWrapper) MakeAccountingUnpostedSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MakeAccountingUnpostedSupplierInvoice(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2805,18 +4109,40 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/reports/{report}/csv", wrapper.ExportAccountingReport)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/roles/{role}", wrapper.AssignAccountingRole)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/setup", wrapper.SetUpAccountingBooks)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices", wrapper.ListAccountingSupplierInvoices)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices", wrapper.CreateAccountingSupplierInvoice)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}", wrapper.DeleteAccountingSupplierInvoice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}", wrapper.GetAccountingSupplierInvoice)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}", wrapper.UpdateAccountingSupplierInvoice)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}/files", wrapper.UploadAccountingSupplierInvoiceFile)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}/files/{fileId}", wrapper.DeleteAccountingSupplierInvoiceFile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}/files/{fileId}", wrapper.GetAccountingSupplierInvoiceFile)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}/payments", wrapper.PayAccountingSupplierInvoice)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}/payments/{paymentId}", wrapper.RemoveAccountingSupplierPayment)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}/post", wrapper.PostAccountingSupplierInvoice)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/supplier-invoices/{id}/reverse-and-copy", wrapper.ReverseAndCopyAccountingSupplierInvoice)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/suppliers", wrapper.ListAccountingSuppliers)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/suppliers", wrapper.CreateAccountingSupplier)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/suppliers/lookup/brreg", wrapper.LookupAccountingSupplierBrreg)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}", wrapper.DeleteAccountingSupplier)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}", wrapper.GetAccountingSupplier)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}", wrapper.UpdateAccountingSupplier)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/suppliers/{id}/export", wrapper.ExportAccountingSupplier)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/tax-codes", wrapper.ListAccountingTaxCodes)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/accounting/tax-codes/{id}", wrapper.UpdateAccountingTaxCode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/tax-codes/{id}/rates", wrapper.AddAccountingTaxCodeRate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/unposted", wrapper.ListAccountingUnposted)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/unposted/{id}/acknowledge", wrapper.AcknowledgeAccountingUnposted)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/unposted/{id}/nok-amounts", wrapper.EnterAccountingUnpostedNokAmounts)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/unposted/{id}/retry", wrapper.RetryAccountingUnposted)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/unposted/{id}/supplier-invoice", wrapper.MakeAccountingUnpostedSupplierInvoice)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vouchers", wrapper.ListAccountingVouchers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vouchers", wrapper.PostAccountingVoucher)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vouchers/preview", wrapper.PreviewAccountingVoucher)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vouchers/{id}", wrapper.GetAccountingVoucher)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vouchers/{id}/attachments", wrapper.UploadAccountingAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/accounting/vouchers/{id}/attachments/{attachmentId}", wrapper.GetAccountingAttachment)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vouchers/{id}/reverse", wrapper.ReverseAccountingVoucher)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/accounting/vouchers/preview", wrapper.PreviewAccountingVoucher)
 
 	return m
 }
@@ -4499,6 +5825,1507 @@ func (response SetUpAccountingBooks409ApplicationProblemPlusJSONResponse) VisitS
 	return err
 }
 
+type ListAccountingSupplierInvoicesRequestObject struct {
+	Params ListAccountingSupplierInvoicesParams
+}
+
+type ListAccountingSupplierInvoicesResponseObject interface {
+	VisitListAccountingSupplierInvoicesResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingSupplierInvoices200JSONResponse AccountingSupplierInvoiceList
+
+func (response ListAccountingSupplierInvoices200JSONResponse) VisitListAccountingSupplierInvoicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSupplierInvoices401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingSupplierInvoices401JSONResponse) VisitListAccountingSupplierInvoicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSupplierInvoices403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingSupplierInvoices403JSONResponse) VisitListAccountingSupplierInvoicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSupplierInvoices409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingSupplierInvoices409ApplicationProblemPlusJSONResponse) VisitListAccountingSupplierInvoicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplierInvoiceRequestObject struct {
+	Body *CreateAccountingSupplierInvoiceJSONRequestBody
+}
+
+type CreateAccountingSupplierInvoiceResponseObject interface {
+	VisitCreateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error
+}
+
+type CreateAccountingSupplierInvoice201JSONResponse AccountingSupplierInvoice
+
+func (response CreateAccountingSupplierInvoice201JSONResponse) VisitCreateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse) VisitCreateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplierInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingSupplierInvoice401JSONResponse) VisitCreateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplierInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingSupplierInvoice403JSONResponse) VisitCreateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse) VisitCreateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplierInvoiceRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteAccountingSupplierInvoiceResponseObject interface {
+	VisitDeleteAccountingSupplierInvoiceResponse(w http.ResponseWriter) error
+}
+
+type DeleteAccountingSupplierInvoice204Response struct {
+}
+
+func (response DeleteAccountingSupplierInvoice204Response) VisitDeleteAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAccountingSupplierInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingSupplierInvoice401JSONResponse) VisitDeleteAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplierInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingSupplierInvoice403JSONResponse) VisitDeleteAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplierInvoice404Response struct {
+}
+
+func (response DeleteAccountingSupplierInvoice404Response) VisitDeleteAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DeleteAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse) VisitDeleteAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierInvoiceRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetAccountingSupplierInvoiceResponseObject interface {
+	VisitGetAccountingSupplierInvoiceResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingSupplierInvoice200JSONResponse AccountingSupplierInvoice
+
+func (response GetAccountingSupplierInvoice200JSONResponse) VisitGetAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSupplierInvoice401JSONResponse) VisitGetAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSupplierInvoice403JSONResponse) VisitGetAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierInvoice404Response struct {
+}
+
+func (response GetAccountingSupplierInvoice404Response) VisitGetAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse) VisitGetAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplierInvoiceRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateAccountingSupplierInvoiceJSONRequestBody
+}
+
+type UpdateAccountingSupplierInvoiceResponseObject interface {
+	VisitUpdateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error
+}
+
+type UpdateAccountingSupplierInvoice200JSONResponse AccountingSupplierInvoice
+
+func (response UpdateAccountingSupplierInvoice200JSONResponse) VisitUpdateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse) VisitUpdateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplierInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingSupplierInvoice401JSONResponse) VisitUpdateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplierInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingSupplierInvoice403JSONResponse) VisitUpdateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplierInvoice404Response struct {
+}
+
+func (response UpdateAccountingSupplierInvoice404Response) VisitUpdateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse) VisitUpdateAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSupplierInvoiceFileRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *multipart.Reader
+}
+
+type UploadAccountingSupplierInvoiceFileResponseObject interface {
+	VisitUploadAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error
+}
+
+type UploadAccountingSupplierInvoiceFile201JSONResponse AccountingAttachment
+
+func (response UploadAccountingSupplierInvoiceFile201JSONResponse) VisitUploadAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSupplierInvoiceFile400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UploadAccountingSupplierInvoiceFile400ApplicationProblemPlusJSONResponse) VisitUploadAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSupplierInvoiceFile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UploadAccountingSupplierInvoiceFile401JSONResponse) VisitUploadAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSupplierInvoiceFile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UploadAccountingSupplierInvoiceFile403JSONResponse) VisitUploadAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSupplierInvoiceFile404Response struct {
+}
+
+func (response UploadAccountingSupplierInvoiceFile404Response) VisitUploadAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UploadAccountingSupplierInvoiceFile409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UploadAccountingSupplierInvoiceFile409ApplicationProblemPlusJSONResponse) VisitUploadAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadAccountingSupplierInvoiceFile503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UploadAccountingSupplierInvoiceFile503ApplicationProblemPlusJSONResponse) VisitUploadAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplierInvoiceFileRequestObject struct {
+	Id     int64 `json:"id"`
+	FileId int64 `json:"fileId"`
+}
+
+type DeleteAccountingSupplierInvoiceFileResponseObject interface {
+	VisitDeleteAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error
+}
+
+type DeleteAccountingSupplierInvoiceFile204Response struct {
+}
+
+func (response DeleteAccountingSupplierInvoiceFile204Response) VisitDeleteAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAccountingSupplierInvoiceFile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingSupplierInvoiceFile401JSONResponse) VisitDeleteAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplierInvoiceFile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingSupplierInvoiceFile403JSONResponse) VisitDeleteAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplierInvoiceFile404Response struct {
+}
+
+func (response DeleteAccountingSupplierInvoiceFile404Response) VisitDeleteAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteAccountingSupplierInvoiceFile409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DeleteAccountingSupplierInvoiceFile409ApplicationProblemPlusJSONResponse) VisitDeleteAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierInvoiceFileRequestObject struct {
+	Id     int64 `json:"id"`
+	FileId int64 `json:"fileId"`
+}
+
+type GetAccountingSupplierInvoiceFileResponseObject interface {
+	VisitGetAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingSupplierInvoiceFile200AsteriskResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetAccountingSupplierInvoiceFile200AsteriskResponse) VisitGetAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetAccountingSupplierInvoiceFile401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSupplierInvoiceFile401JSONResponse) VisitGetAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierInvoiceFile403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSupplierInvoiceFile403JSONResponse) VisitGetAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierInvoiceFile404Response struct {
+}
+
+func (response GetAccountingSupplierInvoiceFile404Response) VisitGetAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetAccountingSupplierInvoiceFile409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingSupplierInvoiceFile409ApplicationProblemPlusJSONResponse) VisitGetAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierInvoiceFile503ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingSupplierInvoiceFile503ApplicationProblemPlusJSONResponse) VisitGetAccountingSupplierInvoiceFileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PayAccountingSupplierInvoiceRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PayAccountingSupplierInvoiceJSONRequestBody
+}
+
+type PayAccountingSupplierInvoiceResponseObject interface {
+	VisitPayAccountingSupplierInvoiceResponse(w http.ResponseWriter) error
+}
+
+type PayAccountingSupplierInvoice201JSONResponse AccountingSupplierInvoice
+
+func (response PayAccountingSupplierInvoice201JSONResponse) VisitPayAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PayAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response PayAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse) VisitPayAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PayAccountingSupplierInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PayAccountingSupplierInvoice401JSONResponse) VisitPayAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PayAccountingSupplierInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PayAccountingSupplierInvoice403JSONResponse) VisitPayAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PayAccountingSupplierInvoice404Response struct {
+}
+
+func (response PayAccountingSupplierInvoice404Response) VisitPayAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PayAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response PayAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse) VisitPayAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAccountingSupplierPaymentRequestObject struct {
+	Id        int64 `json:"id"`
+	PaymentId int64 `json:"paymentId"`
+}
+
+type RemoveAccountingSupplierPaymentResponseObject interface {
+	VisitRemoveAccountingSupplierPaymentResponse(w http.ResponseWriter) error
+}
+
+type RemoveAccountingSupplierPayment200JSONResponse AccountingSupplierInvoice
+
+func (response RemoveAccountingSupplierPayment200JSONResponse) VisitRemoveAccountingSupplierPaymentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAccountingSupplierPayment401JSONResponse externalRef0.AuthErrorResponse
+
+func (response RemoveAccountingSupplierPayment401JSONResponse) VisitRemoveAccountingSupplierPaymentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAccountingSupplierPayment403JSONResponse externalRef0.AuthErrorResponse
+
+func (response RemoveAccountingSupplierPayment403JSONResponse) VisitRemoveAccountingSupplierPaymentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAccountingSupplierPayment404Response struct {
+}
+
+func (response RemoveAccountingSupplierPayment404Response) VisitRemoveAccountingSupplierPaymentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type RemoveAccountingSupplierPayment409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response RemoveAccountingSupplierPayment409ApplicationProblemPlusJSONResponse) VisitRemoveAccountingSupplierPaymentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAccountingSupplierInvoiceRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type PostAccountingSupplierInvoiceResponseObject interface {
+	VisitPostAccountingSupplierInvoiceResponse(w http.ResponseWriter) error
+}
+
+type PostAccountingSupplierInvoice200JSONResponse AccountingSupplierInvoice
+
+func (response PostAccountingSupplierInvoice200JSONResponse) VisitPostAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response PostAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse) VisitPostAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAccountingSupplierInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostAccountingSupplierInvoice401JSONResponse) VisitPostAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAccountingSupplierInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostAccountingSupplierInvoice403JSONResponse) VisitPostAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostAccountingSupplierInvoice404Response struct {
+}
+
+func (response PostAccountingSupplierInvoice404Response) VisitPostAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response PostAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse) VisitPostAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReverseAndCopyAccountingSupplierInvoiceRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *ReverseAndCopyAccountingSupplierInvoiceJSONRequestBody
+}
+
+type ReverseAndCopyAccountingSupplierInvoiceResponseObject interface {
+	VisitReverseAndCopyAccountingSupplierInvoiceResponse(w http.ResponseWriter) error
+}
+
+type ReverseAndCopyAccountingSupplierInvoice201JSONResponse AccountingSupplierInvoice
+
+func (response ReverseAndCopyAccountingSupplierInvoice201JSONResponse) VisitReverseAndCopyAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReverseAndCopyAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ReverseAndCopyAccountingSupplierInvoice400ApplicationProblemPlusJSONResponse) VisitReverseAndCopyAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReverseAndCopyAccountingSupplierInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReverseAndCopyAccountingSupplierInvoice401JSONResponse) VisitReverseAndCopyAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReverseAndCopyAccountingSupplierInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ReverseAndCopyAccountingSupplierInvoice403JSONResponse) VisitReverseAndCopyAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReverseAndCopyAccountingSupplierInvoice404Response struct {
+}
+
+func (response ReverseAndCopyAccountingSupplierInvoice404Response) VisitReverseAndCopyAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ReverseAndCopyAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ReverseAndCopyAccountingSupplierInvoice409ApplicationProblemPlusJSONResponse) VisitReverseAndCopyAccountingSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSuppliersRequestObject struct {
+	Params ListAccountingSuppliersParams
+}
+
+type ListAccountingSuppliersResponseObject interface {
+	VisitListAccountingSuppliersResponse(w http.ResponseWriter) error
+}
+
+type ListAccountingSuppliers200JSONResponse AccountingSupplierList
+
+func (response ListAccountingSuppliers200JSONResponse) VisitListAccountingSuppliersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSuppliers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingSuppliers401JSONResponse) VisitListAccountingSuppliersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSuppliers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ListAccountingSuppliers403JSONResponse) VisitListAccountingSuppliersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccountingSuppliers409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ListAccountingSuppliers409ApplicationProblemPlusJSONResponse) VisitListAccountingSuppliersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplierRequestObject struct {
+	Body *CreateAccountingSupplierJSONRequestBody
+}
+
+type CreateAccountingSupplierResponseObject interface {
+	VisitCreateAccountingSupplierResponse(w http.ResponseWriter) error
+}
+
+type CreateAccountingSupplier201JSONResponse AccountingSupplier
+
+func (response CreateAccountingSupplier201JSONResponse) VisitCreateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplier400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingSupplier400ApplicationProblemPlusJSONResponse) VisitCreateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplier401JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingSupplier401JSONResponse) VisitCreateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplier403JSONResponse externalRef0.AuthErrorResponse
+
+func (response CreateAccountingSupplier403JSONResponse) VisitCreateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccountingSupplier409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response CreateAccountingSupplier409ApplicationProblemPlusJSONResponse) VisitCreateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupAccountingSupplierBrregRequestObject struct {
+	Params LookupAccountingSupplierBrregParams
+}
+
+type LookupAccountingSupplierBrregResponseObject interface {
+	VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error
+}
+
+type LookupAccountingSupplierBrreg200JSONResponse AccountingBrregList
+
+func (response LookupAccountingSupplierBrreg200JSONResponse) VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupAccountingSupplierBrreg400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response LookupAccountingSupplierBrreg400ApplicationProblemPlusJSONResponse) VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupAccountingSupplierBrreg401JSONResponse externalRef0.AuthErrorResponse
+
+func (response LookupAccountingSupplierBrreg401JSONResponse) VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupAccountingSupplierBrreg403JSONResponse externalRef0.AuthErrorResponse
+
+func (response LookupAccountingSupplierBrreg403JSONResponse) VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupAccountingSupplierBrreg409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response LookupAccountingSupplierBrreg409ApplicationProblemPlusJSONResponse) VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LookupAccountingSupplierBrreg429Response struct {
+}
+
+func (response LookupAccountingSupplierBrreg429Response) VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error {
+	w.WriteHeader(429)
+	return nil
+}
+
+type LookupAccountingSupplierBrreg502ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response LookupAccountingSupplierBrreg502ApplicationProblemPlusJSONResponse) VisitLookupAccountingSupplierBrregResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplierRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteAccountingSupplierResponseObject interface {
+	VisitDeleteAccountingSupplierResponse(w http.ResponseWriter) error
+}
+
+type DeleteAccountingSupplier204Response struct {
+}
+
+func (response DeleteAccountingSupplier204Response) VisitDeleteAccountingSupplierResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAccountingSupplier401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingSupplier401JSONResponse) VisitDeleteAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplier403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteAccountingSupplier403JSONResponse) VisitDeleteAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccountingSupplier404Response struct {
+}
+
+func (response DeleteAccountingSupplier404Response) VisitDeleteAccountingSupplierResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteAccountingSupplier409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response DeleteAccountingSupplier409ApplicationProblemPlusJSONResponse) VisitDeleteAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplierRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetAccountingSupplierResponseObject interface {
+	VisitGetAccountingSupplierResponse(w http.ResponseWriter) error
+}
+
+type GetAccountingSupplier200JSONResponse AccountingSupplier
+
+func (response GetAccountingSupplier200JSONResponse) VisitGetAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplier401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSupplier401JSONResponse) VisitGetAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplier403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetAccountingSupplier403JSONResponse) VisitGetAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountingSupplier404Response struct {
+}
+
+func (response GetAccountingSupplier404Response) VisitGetAccountingSupplierResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetAccountingSupplier409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response GetAccountingSupplier409ApplicationProblemPlusJSONResponse) VisitGetAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplierRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *UpdateAccountingSupplierJSONRequestBody
+}
+
+type UpdateAccountingSupplierResponseObject interface {
+	VisitUpdateAccountingSupplierResponse(w http.ResponseWriter) error
+}
+
+type UpdateAccountingSupplier200JSONResponse AccountingSupplier
+
+func (response UpdateAccountingSupplier200JSONResponse) VisitUpdateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplier400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingSupplier400ApplicationProblemPlusJSONResponse) VisitUpdateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplier401JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingSupplier401JSONResponse) VisitUpdateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplier403JSONResponse externalRef0.AuthErrorResponse
+
+func (response UpdateAccountingSupplier403JSONResponse) VisitUpdateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccountingSupplier404Response struct {
+}
+
+func (response UpdateAccountingSupplier404Response) VisitUpdateAccountingSupplierResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type UpdateAccountingSupplier409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response UpdateAccountingSupplier409ApplicationProblemPlusJSONResponse) VisitUpdateAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportAccountingSupplierRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type ExportAccountingSupplierResponseObject interface {
+	VisitExportAccountingSupplierResponse(w http.ResponseWriter) error
+}
+
+type ExportAccountingSupplier200JSONResponse AccountingSupplierExport
+
+func (response ExportAccountingSupplier200JSONResponse) VisitExportAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportAccountingSupplier401JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportAccountingSupplier401JSONResponse) VisitExportAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportAccountingSupplier403JSONResponse externalRef0.AuthErrorResponse
+
+func (response ExportAccountingSupplier403JSONResponse) VisitExportAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportAccountingSupplier404Response struct {
+}
+
+func (response ExportAccountingSupplier404Response) VisitExportAccountingSupplierResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type ExportAccountingSupplier409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response ExportAccountingSupplier409ApplicationProblemPlusJSONResponse) VisitExportAccountingSupplierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAccountingTaxCodesRequestObject struct {
 }
 
@@ -4800,6 +7627,165 @@ func (response ListAccountingUnposted409ApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type AcknowledgeAccountingUnpostedRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type AcknowledgeAccountingUnpostedResponseObject interface {
+	VisitAcknowledgeAccountingUnpostedResponse(w http.ResponseWriter) error
+}
+
+type AcknowledgeAccountingUnposted200JSONResponse AccountingUnposted
+
+func (response AcknowledgeAccountingUnposted200JSONResponse) VisitAcknowledgeAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeAccountingUnposted401JSONResponse externalRef0.AuthErrorResponse
+
+func (response AcknowledgeAccountingUnposted401JSONResponse) VisitAcknowledgeAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeAccountingUnposted403JSONResponse externalRef0.AuthErrorResponse
+
+func (response AcknowledgeAccountingUnposted403JSONResponse) VisitAcknowledgeAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcknowledgeAccountingUnposted404Response struct {
+}
+
+func (response AcknowledgeAccountingUnposted404Response) VisitAcknowledgeAccountingUnpostedResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type AcknowledgeAccountingUnposted409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response AcknowledgeAccountingUnposted409ApplicationProblemPlusJSONResponse) VisitAcknowledgeAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnterAccountingUnpostedNokAmountsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *EnterAccountingUnpostedNokAmountsJSONRequestBody
+}
+
+type EnterAccountingUnpostedNokAmountsResponseObject interface {
+	VisitEnterAccountingUnpostedNokAmountsResponse(w http.ResponseWriter) error
+}
+
+type EnterAccountingUnpostedNokAmounts200JSONResponse AccountingUnposted
+
+func (response EnterAccountingUnpostedNokAmounts200JSONResponse) VisitEnterAccountingUnpostedNokAmountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnterAccountingUnpostedNokAmounts400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response EnterAccountingUnpostedNokAmounts400ApplicationProblemPlusJSONResponse) VisitEnterAccountingUnpostedNokAmountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnterAccountingUnpostedNokAmounts401JSONResponse externalRef0.AuthErrorResponse
+
+func (response EnterAccountingUnpostedNokAmounts401JSONResponse) VisitEnterAccountingUnpostedNokAmountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnterAccountingUnpostedNokAmounts403JSONResponse externalRef0.AuthErrorResponse
+
+func (response EnterAccountingUnpostedNokAmounts403JSONResponse) VisitEnterAccountingUnpostedNokAmountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnterAccountingUnpostedNokAmounts404Response struct {
+}
+
+func (response EnterAccountingUnpostedNokAmounts404Response) VisitEnterAccountingUnpostedNokAmountsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type EnterAccountingUnpostedNokAmounts409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response EnterAccountingUnpostedNokAmounts409ApplicationProblemPlusJSONResponse) VisitEnterAccountingUnpostedNokAmountsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RetryAccountingUnpostedRequestObject struct {
 	Id int64 `json:"id"`
 }
@@ -4861,6 +7847,92 @@ func (response RetryAccountingUnposted404Response) VisitRetryAccountingUnpostedR
 type RetryAccountingUnposted409ApplicationProblemPlusJSONResponse AccountingProblem
 
 func (response RetryAccountingUnposted409ApplicationProblemPlusJSONResponse) VisitRetryAccountingUnpostedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MakeAccountingUnpostedSupplierInvoiceRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type MakeAccountingUnpostedSupplierInvoiceResponseObject interface {
+	VisitMakeAccountingUnpostedSupplierInvoiceResponse(w http.ResponseWriter) error
+}
+
+type MakeAccountingUnpostedSupplierInvoice201JSONResponse AccountingSupplierInvoice
+
+func (response MakeAccountingUnpostedSupplierInvoice201JSONResponse) VisitMakeAccountingUnpostedSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MakeAccountingUnpostedSupplierInvoice400ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response MakeAccountingUnpostedSupplierInvoice400ApplicationProblemPlusJSONResponse) VisitMakeAccountingUnpostedSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MakeAccountingUnpostedSupplierInvoice401JSONResponse externalRef0.AuthErrorResponse
+
+func (response MakeAccountingUnpostedSupplierInvoice401JSONResponse) VisitMakeAccountingUnpostedSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MakeAccountingUnpostedSupplierInvoice403JSONResponse externalRef0.AuthErrorResponse
+
+func (response MakeAccountingUnpostedSupplierInvoice403JSONResponse) VisitMakeAccountingUnpostedSupplierInvoiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MakeAccountingUnpostedSupplierInvoice404Response struct {
+}
+
+func (response MakeAccountingUnpostedSupplierInvoice404Response) VisitMakeAccountingUnpostedSupplierInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type MakeAccountingUnpostedSupplierInvoice409ApplicationProblemPlusJSONResponse AccountingProblem
+
+func (response MakeAccountingUnpostedSupplierInvoice409ApplicationProblemPlusJSONResponse) VisitMakeAccountingUnpostedSupplierInvoiceResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5517,6 +8589,63 @@ type StrictServerInterface interface {
 	// SetUpAccountingBooks Set up the books
 	// (POST /api/v1/accounting/setup)
 	SetUpAccountingBooks(ctx context.Context, request SetUpAccountingBooksRequestObject) (SetUpAccountingBooksResponseObject, error)
+	// ListAccountingSupplierInvoices List the supplier invoices
+	// (GET /api/v1/accounting/supplier-invoices)
+	ListAccountingSupplierInvoices(ctx context.Context, request ListAccountingSupplierInvoicesRequestObject) (ListAccountingSupplierInvoicesResponseObject, error)
+	// CreateAccountingSupplierInvoice Enter a supplier invoice as a draft
+	// (POST /api/v1/accounting/supplier-invoices)
+	CreateAccountingSupplierInvoice(ctx context.Context, request CreateAccountingSupplierInvoiceRequestObject) (CreateAccountingSupplierInvoiceResponseObject, error)
+	// DeleteAccountingSupplierInvoice Delete a draft supplier invoice
+	// (DELETE /api/v1/accounting/supplier-invoices/{id})
+	DeleteAccountingSupplierInvoice(ctx context.Context, request DeleteAccountingSupplierInvoiceRequestObject) (DeleteAccountingSupplierInvoiceResponseObject, error)
+	// GetAccountingSupplierInvoice Read a supplier invoice
+	// (GET /api/v1/accounting/supplier-invoices/{id})
+	GetAccountingSupplierInvoice(ctx context.Context, request GetAccountingSupplierInvoiceRequestObject) (GetAccountingSupplierInvoiceResponseObject, error)
+	// UpdateAccountingSupplierInvoice Change a draft supplier invoice
+	// (PUT /api/v1/accounting/supplier-invoices/{id})
+	UpdateAccountingSupplierInvoice(ctx context.Context, request UpdateAccountingSupplierInvoiceRequestObject) (UpdateAccountingSupplierInvoiceResponseObject, error)
+	// UploadAccountingSupplierInvoiceFile Attach a file to a draft supplier invoice
+	// (POST /api/v1/accounting/supplier-invoices/{id}/files)
+	UploadAccountingSupplierInvoiceFile(ctx context.Context, request UploadAccountingSupplierInvoiceFileRequestObject) (UploadAccountingSupplierInvoiceFileResponseObject, error)
+	// DeleteAccountingSupplierInvoiceFile Remove a file from a draft supplier invoice
+	// (DELETE /api/v1/accounting/supplier-invoices/{id}/files/{fileId})
+	DeleteAccountingSupplierInvoiceFile(ctx context.Context, request DeleteAccountingSupplierInvoiceFileRequestObject) (DeleteAccountingSupplierInvoiceFileResponseObject, error)
+	// GetAccountingSupplierInvoiceFile Download a supplier invoice's file
+	// (GET /api/v1/accounting/supplier-invoices/{id}/files/{fileId})
+	GetAccountingSupplierInvoiceFile(ctx context.Context, request GetAccountingSupplierInvoiceFileRequestObject) (GetAccountingSupplierInvoiceFileResponseObject, error)
+	// PayAccountingSupplierInvoice Register a payment of a supplier invoice
+	// (POST /api/v1/accounting/supplier-invoices/{id}/payments)
+	PayAccountingSupplierInvoice(ctx context.Context, request PayAccountingSupplierInvoiceRequestObject) (PayAccountingSupplierInvoiceResponseObject, error)
+	// RemoveAccountingSupplierPayment Remove a payment of a supplier invoice
+	// (DELETE /api/v1/accounting/supplier-invoices/{id}/payments/{paymentId})
+	RemoveAccountingSupplierPayment(ctx context.Context, request RemoveAccountingSupplierPaymentRequestObject) (RemoveAccountingSupplierPaymentResponseObject, error)
+	// PostAccountingSupplierInvoice Post a supplier invoice
+	// (POST /api/v1/accounting/supplier-invoices/{id}/post)
+	PostAccountingSupplierInvoice(ctx context.Context, request PostAccountingSupplierInvoiceRequestObject) (PostAccountingSupplierInvoiceResponseObject, error)
+	// ReverseAndCopyAccountingSupplierInvoice Reverse a posted supplier invoice and copy it to a new draft
+	// (POST /api/v1/accounting/supplier-invoices/{id}/reverse-and-copy)
+	ReverseAndCopyAccountingSupplierInvoice(ctx context.Context, request ReverseAndCopyAccountingSupplierInvoiceRequestObject) (ReverseAndCopyAccountingSupplierInvoiceResponseObject, error)
+	// ListAccountingSuppliers List the suppliers
+	// (GET /api/v1/accounting/suppliers)
+	ListAccountingSuppliers(ctx context.Context, request ListAccountingSuppliersRequestObject) (ListAccountingSuppliersResponseObject, error)
+	// CreateAccountingSupplier Create a supplier
+	// (POST /api/v1/accounting/suppliers)
+	CreateAccountingSupplier(ctx context.Context, request CreateAccountingSupplierRequestObject) (CreateAccountingSupplierResponseObject, error)
+	// LookupAccountingSupplierBrreg Look a supplier up in Brønnøysundregisteret
+	// (GET /api/v1/accounting/suppliers/lookup/brreg)
+	LookupAccountingSupplierBrreg(ctx context.Context, request LookupAccountingSupplierBrregRequestObject) (LookupAccountingSupplierBrregResponseObject, error)
+	// DeleteAccountingSupplier Delete a supplier with no postings
+	// (DELETE /api/v1/accounting/suppliers/{id})
+	DeleteAccountingSupplier(ctx context.Context, request DeleteAccountingSupplierRequestObject) (DeleteAccountingSupplierResponseObject, error)
+	// GetAccountingSupplier Read a supplier
+	// (GET /api/v1/accounting/suppliers/{id})
+	GetAccountingSupplier(ctx context.Context, request GetAccountingSupplierRequestObject) (GetAccountingSupplierResponseObject, error)
+	// UpdateAccountingSupplier Change a supplier
+	// (PUT /api/v1/accounting/suppliers/{id})
+	UpdateAccountingSupplier(ctx context.Context, request UpdateAccountingSupplierRequestObject) (UpdateAccountingSupplierResponseObject, error)
+	// ExportAccountingSupplier Export what the books hold about a supplier
+	// (GET /api/v1/accounting/suppliers/{id}/export)
+	ExportAccountingSupplier(ctx context.Context, request ExportAccountingSupplierRequestObject) (ExportAccountingSupplierResponseObject, error)
 	// ListAccountingTaxCodes List the tax codes
 	// (GET /api/v1/accounting/tax-codes)
 	ListAccountingTaxCodes(ctx context.Context, request ListAccountingTaxCodesRequestObject) (ListAccountingTaxCodesResponseObject, error)
@@ -5529,9 +8658,18 @@ type StrictServerInterface interface {
 	// ListAccountingUnposted List the facts that could not be posted
 	// (GET /api/v1/accounting/unposted)
 	ListAccountingUnposted(ctx context.Context, request ListAccountingUnpostedRequestObject) (ListAccountingUnpostedResponseObject, error)
+	// AcknowledgeAccountingUnposted Acknowledge an informational row
+	// (POST /api/v1/accounting/unposted/{id}/acknowledge)
+	AcknowledgeAccountingUnposted(ctx context.Context, request AcknowledgeAccountingUnpostedRequestObject) (AcknowledgeAccountingUnpostedResponseObject, error)
+	// EnterAccountingUnpostedNokAmounts Enter the amount in NOK of an expense in another currency, and post it
+	// (POST /api/v1/accounting/unposted/{id}/nok-amounts)
+	EnterAccountingUnpostedNokAmounts(ctx context.Context, request EnterAccountingUnpostedNokAmountsRequestObject) (EnterAccountingUnpostedNokAmountsResponseObject, error)
 	// RetryAccountingUnposted Retry posting a fact
 	// (POST /api/v1/accounting/unposted/{id}/retry)
 	RetryAccountingUnposted(ctx context.Context, request RetryAccountingUnpostedRequestObject) (RetryAccountingUnpostedResponseObject, error)
+	// MakeAccountingUnpostedSupplierInvoice Make a supplier invoice from an expense of the supplier_invoice kind
+	// (POST /api/v1/accounting/unposted/{id}/supplier-invoice)
+	MakeAccountingUnpostedSupplierInvoice(ctx context.Context, request MakeAccountingUnpostedSupplierInvoiceRequestObject) (MakeAccountingUnpostedSupplierInvoiceResponseObject, error)
 	// ListAccountingVouchers List vouchers
 	// (GET /api/v1/accounting/vouchers)
 	ListAccountingVouchers(ctx context.Context, request ListAccountingVouchersRequestObject) (ListAccountingVouchersResponseObject, error)
@@ -6244,6 +9382,548 @@ func (sh *strictHandler) SetUpAccountingBooks(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// ListAccountingSupplierInvoices operation middleware
+func (sh *strictHandler) ListAccountingSupplierInvoices(w http.ResponseWriter, r *http.Request, params ListAccountingSupplierInvoicesParams) {
+	var request ListAccountingSupplierInvoicesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingSupplierInvoices(ctx, request.(ListAccountingSupplierInvoicesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingSupplierInvoices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingSupplierInvoicesResponseObject); ok {
+		if err := validResponse.VisitListAccountingSupplierInvoicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccountingSupplierInvoice operation middleware
+func (sh *strictHandler) CreateAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request) {
+	var request CreateAccountingSupplierInvoiceRequestObject
+
+	var body CreateAccountingSupplierInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccountingSupplierInvoice(ctx, request.(CreateAccountingSupplierInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccountingSupplierInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccountingSupplierInvoiceResponseObject); ok {
+		if err := validResponse.VisitCreateAccountingSupplierInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAccountingSupplierInvoice operation middleware
+func (sh *strictHandler) DeleteAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteAccountingSupplierInvoiceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAccountingSupplierInvoice(ctx, request.(DeleteAccountingSupplierInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAccountingSupplierInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAccountingSupplierInvoiceResponseObject); ok {
+		if err := validResponse.VisitDeleteAccountingSupplierInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingSupplierInvoice operation middleware
+func (sh *strictHandler) GetAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetAccountingSupplierInvoiceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingSupplierInvoice(ctx, request.(GetAccountingSupplierInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingSupplierInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingSupplierInvoiceResponseObject); ok {
+		if err := validResponse.VisitGetAccountingSupplierInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAccountingSupplierInvoice operation middleware
+func (sh *strictHandler) UpdateAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateAccountingSupplierInvoiceRequestObject
+
+	request.Id = id
+
+	var body UpdateAccountingSupplierInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAccountingSupplierInvoice(ctx, request.(UpdateAccountingSupplierInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAccountingSupplierInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAccountingSupplierInvoiceResponseObject); ok {
+		if err := validResponse.VisitUpdateAccountingSupplierInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UploadAccountingSupplierInvoiceFile operation middleware
+func (sh *strictHandler) UploadAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UploadAccountingSupplierInvoiceFileRequestObject
+
+	request.Id = id
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadAccountingSupplierInvoiceFile(ctx, request.(UploadAccountingSupplierInvoiceFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadAccountingSupplierInvoiceFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UploadAccountingSupplierInvoiceFileResponseObject); ok {
+		if err := validResponse.VisitUploadAccountingSupplierInvoiceFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAccountingSupplierInvoiceFile operation middleware
+func (sh *strictHandler) DeleteAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request, id int64, fileId int64) {
+	var request DeleteAccountingSupplierInvoiceFileRequestObject
+
+	request.Id = id
+	request.FileId = fileId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAccountingSupplierInvoiceFile(ctx, request.(DeleteAccountingSupplierInvoiceFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAccountingSupplierInvoiceFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAccountingSupplierInvoiceFileResponseObject); ok {
+		if err := validResponse.VisitDeleteAccountingSupplierInvoiceFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingSupplierInvoiceFile operation middleware
+func (sh *strictHandler) GetAccountingSupplierInvoiceFile(w http.ResponseWriter, r *http.Request, id int64, fileId int64) {
+	var request GetAccountingSupplierInvoiceFileRequestObject
+
+	request.Id = id
+	request.FileId = fileId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingSupplierInvoiceFile(ctx, request.(GetAccountingSupplierInvoiceFileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingSupplierInvoiceFile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingSupplierInvoiceFileResponseObject); ok {
+		if err := validResponse.VisitGetAccountingSupplierInvoiceFileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PayAccountingSupplierInvoice operation middleware
+func (sh *strictHandler) PayAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PayAccountingSupplierInvoiceRequestObject
+
+	request.Id = id
+
+	var body PayAccountingSupplierInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PayAccountingSupplierInvoice(ctx, request.(PayAccountingSupplierInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PayAccountingSupplierInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PayAccountingSupplierInvoiceResponseObject); ok {
+		if err := validResponse.VisitPayAccountingSupplierInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveAccountingSupplierPayment operation middleware
+func (sh *strictHandler) RemoveAccountingSupplierPayment(w http.ResponseWriter, r *http.Request, id int64, paymentId int64) {
+	var request RemoveAccountingSupplierPaymentRequestObject
+
+	request.Id = id
+	request.PaymentId = paymentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveAccountingSupplierPayment(ctx, request.(RemoveAccountingSupplierPaymentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveAccountingSupplierPayment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveAccountingSupplierPaymentResponseObject); ok {
+		if err := validResponse.VisitRemoveAccountingSupplierPaymentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostAccountingSupplierInvoice operation middleware
+func (sh *strictHandler) PostAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostAccountingSupplierInvoiceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostAccountingSupplierInvoice(ctx, request.(PostAccountingSupplierInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostAccountingSupplierInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostAccountingSupplierInvoiceResponseObject); ok {
+		if err := validResponse.VisitPostAccountingSupplierInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReverseAndCopyAccountingSupplierInvoice operation middleware
+func (sh *strictHandler) ReverseAndCopyAccountingSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ReverseAndCopyAccountingSupplierInvoiceRequestObject
+
+	request.Id = id
+
+	var body ReverseAndCopyAccountingSupplierInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReverseAndCopyAccountingSupplierInvoice(ctx, request.(ReverseAndCopyAccountingSupplierInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReverseAndCopyAccountingSupplierInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReverseAndCopyAccountingSupplierInvoiceResponseObject); ok {
+		if err := validResponse.VisitReverseAndCopyAccountingSupplierInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccountingSuppliers operation middleware
+func (sh *strictHandler) ListAccountingSuppliers(w http.ResponseWriter, r *http.Request, params ListAccountingSuppliersParams) {
+	var request ListAccountingSuppliersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccountingSuppliers(ctx, request.(ListAccountingSuppliersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccountingSuppliers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccountingSuppliersResponseObject); ok {
+		if err := validResponse.VisitListAccountingSuppliersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccountingSupplier operation middleware
+func (sh *strictHandler) CreateAccountingSupplier(w http.ResponseWriter, r *http.Request) {
+	var request CreateAccountingSupplierRequestObject
+
+	var body CreateAccountingSupplierJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccountingSupplier(ctx, request.(CreateAccountingSupplierRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccountingSupplier")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccountingSupplierResponseObject); ok {
+		if err := validResponse.VisitCreateAccountingSupplierResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LookupAccountingSupplierBrreg operation middleware
+func (sh *strictHandler) LookupAccountingSupplierBrreg(w http.ResponseWriter, r *http.Request, params LookupAccountingSupplierBrregParams) {
+	var request LookupAccountingSupplierBrregRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LookupAccountingSupplierBrreg(ctx, request.(LookupAccountingSupplierBrregRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LookupAccountingSupplierBrreg")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LookupAccountingSupplierBrregResponseObject); ok {
+		if err := validResponse.VisitLookupAccountingSupplierBrregResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAccountingSupplier operation middleware
+func (sh *strictHandler) DeleteAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteAccountingSupplierRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAccountingSupplier(ctx, request.(DeleteAccountingSupplierRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAccountingSupplier")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAccountingSupplierResponseObject); ok {
+		if err := validResponse.VisitDeleteAccountingSupplierResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountingSupplier operation middleware
+func (sh *strictHandler) GetAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetAccountingSupplierRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountingSupplier(ctx, request.(GetAccountingSupplierRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountingSupplier")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountingSupplierResponseObject); ok {
+		if err := validResponse.VisitGetAccountingSupplierResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAccountingSupplier operation middleware
+func (sh *strictHandler) UpdateAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64) {
+	var request UpdateAccountingSupplierRequestObject
+
+	request.Id = id
+
+	var body UpdateAccountingSupplierJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAccountingSupplier(ctx, request.(UpdateAccountingSupplierRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAccountingSupplier")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAccountingSupplierResponseObject); ok {
+		if err := validResponse.VisitUpdateAccountingSupplierResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportAccountingSupplier operation middleware
+func (sh *strictHandler) ExportAccountingSupplier(w http.ResponseWriter, r *http.Request, id int64) {
+	var request ExportAccountingSupplierRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportAccountingSupplier(ctx, request.(ExportAccountingSupplierRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportAccountingSupplier")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportAccountingSupplierResponseObject); ok {
+		if err := validResponse.VisitExportAccountingSupplierResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListAccountingTaxCodes operation middleware
 func (sh *strictHandler) ListAccountingTaxCodes(w http.ResponseWriter, r *http.Request) {
 	var request ListAccountingTaxCodesRequestObject
@@ -6360,6 +10040,65 @@ func (sh *strictHandler) ListAccountingUnposted(w http.ResponseWriter, r *http.R
 	}
 }
 
+// AcknowledgeAccountingUnposted operation middleware
+func (sh *strictHandler) AcknowledgeAccountingUnposted(w http.ResponseWriter, r *http.Request, id int64) {
+	var request AcknowledgeAccountingUnpostedRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcknowledgeAccountingUnposted(ctx, request.(AcknowledgeAccountingUnpostedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcknowledgeAccountingUnposted")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcknowledgeAccountingUnpostedResponseObject); ok {
+		if err := validResponse.VisitAcknowledgeAccountingUnpostedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EnterAccountingUnpostedNokAmounts operation middleware
+func (sh *strictHandler) EnterAccountingUnpostedNokAmounts(w http.ResponseWriter, r *http.Request, id int64) {
+	var request EnterAccountingUnpostedNokAmountsRequestObject
+
+	request.Id = id
+
+	var body EnterAccountingUnpostedNokAmountsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EnterAccountingUnpostedNokAmounts(ctx, request.(EnterAccountingUnpostedNokAmountsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EnterAccountingUnpostedNokAmounts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EnterAccountingUnpostedNokAmountsResponseObject); ok {
+		if err := validResponse.VisitEnterAccountingUnpostedNokAmountsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RetryAccountingUnposted operation middleware
 func (sh *strictHandler) RetryAccountingUnposted(w http.ResponseWriter, r *http.Request, id int64) {
 	var request RetryAccountingUnpostedRequestObject
@@ -6379,6 +10118,32 @@ func (sh *strictHandler) RetryAccountingUnposted(w http.ResponseWriter, r *http.
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RetryAccountingUnpostedResponseObject); ok {
 		if err := validResponse.VisitRetryAccountingUnpostedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MakeAccountingUnpostedSupplierInvoice operation middleware
+func (sh *strictHandler) MakeAccountingUnpostedSupplierInvoice(w http.ResponseWriter, r *http.Request, id int64) {
+	var request MakeAccountingUnpostedSupplierInvoiceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MakeAccountingUnpostedSupplierInvoice(ctx, request.(MakeAccountingUnpostedSupplierInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MakeAccountingUnpostedSupplierInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MakeAccountingUnpostedSupplierInvoiceResponseObject); ok {
+		if err := validResponse.VisitMakeAccountingUnpostedSupplierInvoiceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
