@@ -30,7 +30,7 @@ var bankFeedTables = []string{"bank_feed_connections", "bank_feed_accounts"}
 var bankFeedChecks = []string{
 	"ck_bank_files_format", "ck_bank_files_origin", "ck_bank_transactions_format", "ck_bank_import_accounts_format",
 	"ck_bank_import_accounts_previous_format", "ck_payments_source", "ck_payments_origin", "ck_charge_payments_source",
-	"ck_charge_payments_origin", "ck_charge_waivers_by",
+	"ck_charge_payments_origin", "ck_charge_waivers_by", "ck_bank_transaction_events_by",
 }
 
 // bankFeedObjects is what 00178 adds or changes, as found: the new tables'
@@ -89,7 +89,7 @@ func bankFeedObjects(t *testing.T, ctx context.Context, pool *pgxpool.Pool) map[
 // and pins every object it adds or changes: the two tables with every column,
 // CHECK, key and foreign key and their index, no trigger on either; the bank
 // files' provider and nullable uploader; the users of charge payments,
-// waivers and line events nullable; and the ten CHECKs. The Down restores
+// waivers and line events nullable; and the eleven CHECKs. The Down restores
 // 00041's and 00046's CHECKs and NOT NULLs exactly, and leaves every other
 // object of 00041 and 00046 as it was.
 func TestInvoicesBankFeed_AppliesAndIsIdempotent(t *testing.T) {
@@ -218,7 +218,7 @@ var bankFeedColumns = []string{
 	"charge_waivers.waived_by_user_id:uuid::YES:",
 }
 
-// bankFeedConstraints is every constraint of the two tables and the ten
+// bankFeedConstraints is every constraint of the two tables and the eleven
 // CHECKs, as Postgres prints them after 00178.
 var bankFeedConstraints = []string{
 	"invoices.bank_feed_accounts:bank_feed_accounts_last_bank_file_id_fkey:FOREIGN KEY (last_bank_file_id) REFERENCES invoices.bank_files(id)",
@@ -233,6 +233,7 @@ var bankFeedConstraints = []string{
 	"invoices.bank_files:ck_bank_files_origin:CHECK (((((format)::text = 'feed'::text) = (uploaded_by_user_id IS NULL)) AND (((format)::text = 'feed'::text) = (provider IS NOT NULL))))",
 	"invoices.bank_import_accounts:ck_bank_import_accounts_format:CHECK (((format)::text = ANY ((ARRAY['ocr'::character varying, 'camt054'::character varying, 'feed'::character varying])::text[])))",
 	"invoices.bank_import_accounts:ck_bank_import_accounts_previous_format:CHECK (((previous_format)::text = ANY ((ARRAY['ocr'::character varying, 'camt054'::character varying, 'feed'::character varying])::text[])))",
+	"invoices.bank_transaction_events:ck_bank_transaction_events_by:CHECK (((by_user_id IS NOT NULL) OR ((event)::text = ANY ((ARRAY['matched'::character varying, 'queued'::character varying])::text[]))))",
 	"invoices.bank_transactions:ck_bank_transactions_format:CHECK (((format)::text = ANY ((ARRAY['ocr'::character varying, 'camt054'::character varying, 'feed'::character varying])::text[])))",
 	"invoices.charge_payments:ck_charge_payments_origin:CHECK (((((source)::text = 'manual'::text) = (bank_transaction_id IS NULL)) AND ((registered_by_user_id IS NOT NULL) OR ((source)::text = 'bank_feed'::text))))",
 	"invoices.charge_payments:ck_charge_payments_source:CHECK (((source)::text = ANY ((ARRAY['manual'::character varying, 'ocr'::character varying, 'camt054'::character varying, 'bank_feed'::character varying])::text[])))",
@@ -424,15 +425,32 @@ func TestChargeWaivers_ByNoUserOnlyForADeadlineMet(t *testing.T) {
 	}
 }
 
-// TestBankTransactionEvents_ByNoUser: a line's event may be by no user — the
-// feed's matched and queued.
+// TestBankTransactionEvents_ByNoUser: a line's matched and queued events may
+// be by no user — the feed's — and every other event, a person's queue
+// action, keeps its user (ck_bank_transaction_events_by).
 func TestBankTransactionEvents_ByNoUser(t *testing.T) {
 	t.Parallel()
 	f := newReceivablesFixture(t)
 	line := f.mustBankLine(f.bankFile(), strings.Repeat("c", 64))
-	if err := f.exec(`INSERT INTO invoices.bank_transaction_events (bank_transaction_id, event, at)
-		VALUES ($1, 'matched', now())`, line); err != nil {
-		t.Errorf("an event by no user: %v, want it allowed", err)
+	insert := `INSERT INTO invoices.bank_transaction_events (bank_transaction_id, event, reason, by_user_id, at)
+		VALUES ($1, $2, $3, $4, now())`
+	reason := "no_kid"
+	for _, c := range []struct {
+		event  string
+		reason *string
+	}{{"matched", nil}, {"queued", &reason}} {
+		if err := f.exec(insert, line, c.event, c.reason, nil); err != nil {
+			t.Errorf("a %s event by no user: %v, want it allowed", c.event, err)
+		}
+	}
+	for _, event := range []string{"applied", "dismissed", "reversal_handled", "reopened", "duplicate_confirmed",
+		"treated_as_distinct", "reversed"} {
+		if err := f.exec(insert, line, event, nil, nil); !checkViolationOf(err, "ck_bank_transaction_events_by") {
+			t.Errorf("a %s event by no user: %v, want ck_bank_transaction_events_by", event, err)
+		}
+	}
+	if err := f.exec(insert, line, "applied", nil, "6f1c7a64-9c4f-4c43-9a51-2a8d4a1f0c11"); err != nil {
+		t.Errorf("an applied event by a person: %v, want it allowed still", err)
 	}
 }
 

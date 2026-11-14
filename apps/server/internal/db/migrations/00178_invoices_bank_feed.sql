@@ -110,9 +110,11 @@ ALTER TABLE invoices.charge_waivers
     ALTER COLUMN waived_by_user_id DROP NOT NULL,
     ADD CONSTRAINT ck_charge_waivers_by CHECK (waived_by_user_id IS NOT NULL OR reason = 'deadline_met');
 
--- A line's matched and queued events are by no user when the feed matched it.
+-- A line's matched and queued events are by no user when the feed matched it;
+-- every other event is a person's queue action and keeps its user.
 ALTER TABLE invoices.bank_transaction_events
-    ALTER COLUMN by_user_id DROP NOT NULL;
+    ALTER COLUMN by_user_id DROP NOT NULL,
+    ADD CONSTRAINT ck_bank_transaction_events_by CHECK (by_user_id IS NOT NULL OR event IN ('matched', 'queued'));
 
 -- +goose Down
 -- Everything 00178 added, in reverse: every user required again and every
@@ -121,6 +123,7 @@ ALTER TABLE invoices.bank_transaction_events
 -- the honest answer: a Down never deletes bookkeeping — then the provider
 -- column and the two tables.
 ALTER TABLE invoices.bank_transaction_events
+    DROP CONSTRAINT ck_bank_transaction_events_by,
     ALTER COLUMN by_user_id SET NOT NULL;
 
 ALTER TABLE invoices.charge_waivers
