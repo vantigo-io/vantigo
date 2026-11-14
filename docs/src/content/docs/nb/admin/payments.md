@@ -13,6 +13,9 @@ sources:
   - apps/server/internal/invoices/payment_worker.go
   - apps/server/internal/payments
   - apps/server/internal/security/publichost.go
+  - apps/server/internal/bankfeed
+  - apps/server/internal/invoices/bank_feed.go
+  - apps/host/frontend/src/routes/workspace/bank.tsx
 ---
 
 Vantigo leser bankens egen oversikt over pengene som kom inn på selgerens konto: en fil
@@ -100,6 +103,11 @@ av bank er en ny konto, med sitt eget format.
 **Bankkontoer** på samme side — eller `GET /api/v1/invoices/bank-accounts` — lister hver
 konto med formatet, det forrige formatet og overgangsdagen, og den siste filen.
 
+Et tredje format, `feed` (**Bankintegrasjon** på skjermen), er en konto bankintegrasjonen
+leser ([under](#bankintegrasjonen)). Bare det å slå på integrasjonen setter det;
+formatvalget tilbyr bare de to filformatene, og avviser en endring bort fra `feed` med
+`bank_feed_enabled` mens integrasjonen er på for kontoen.
+
 ## Før du importerer
 
 - **Kontoene.** Hver konto en fil nevner, må være selgerens **Bankkonto** i
@@ -148,6 +156,83 @@ konto med formatet, det forrige formatet og overgangsdagen, og den siste filen.
   Etter at en kontos format er byttet, bekreftes innbetalingene som skjæringsdagen holdt
   tilbake, som duplikater der, eller føres når de likevel ikke var med i det gamle
   formatets filer.
+
+## Bankintegrasjonen
+
+I stedet for å laste ned filer kan innbetalingene til en konto leses fra banken gjennom
+API-et dens. Den ene banken i dag er **Folio**, lest med en API-nøkkel selskapet lager i
+Folio. Denne versjonen kobler til banken og velger kontoene; å lese innbetalingene fra dem
+kommer i neste. **Inntil da får en konto som er slått på, ingen innbetalinger fra
+integrasjonen, og det importeres ikke lenger filer for den** — koble til banken, men slå på
+en konto først når versjonen som leser den, er installert.
+
+**Hva en nøkkel kan gjøre.** En API-nøkkel fra Folio leser alle kontoer og alle
+transaksjoner i selskapet. Den kan ikke flytte penger: en betaling laget med den er et
+utkast til en person signerer den med BankID i Folio. Behandle den som et passord: lag den
+bare for Vantigo, og slett den i Folio når den ikke lenger brukes eller kan ha lekket.
+
+**Installasjonens innstillinger** (`vantigo.env`, [Konfigurasjon](/nb/admin/configuration/)):
+
+- `INVOICES_BANK_FEED_ENABLED` — standard `1`. `0` sender ingen forespørsel til noen bank:
+  en nøkkel avvises med `bank_feed_disabled`, bankens kontoer leses ikke, og det som er
+  lagret, beholdes. Siden sier at integrasjonen er slått av.
+- `INVOICES_FOLIO_BASE_URL` — standard `https://api.folio.no/v2`. Den må være en
+  `https`-URL: serveren nekter å starte med noe annet, fordi nøkkelen følger med hver
+  forespørsel. Den er driftsansvarliges innstilling; ingen i arbeidsområdet kan sende
+  nøkkelen til en annen vert.
+
+Serveren når Folio over utgående HTTPS; Folio sender ingenting inn, så det trengs ingen
+offentlig vert.
+
+**Koble til banken.** Noen med `invoices:access` og `invoices:manage`:
+
+1. lager en API-nøkkel i Folio;
+2. åpner avatar-menyen › **Administrer arbeidsområde** › **Integrasjoner** › **Bank**,
+   velger **Folio**, limer inn nøkkelen og klikker **Koble til** (eller
+   `PUT /api/v1/invoices/bank-feed`).
+
+Vantigo leser først kontoene med nøkkelen, og lagrer den bare hvis Folio godtar den:
+forseglet av hemmelighetsboksen under `invoices/bank-feed-credential`, med de fire siste
+tegnene i klartekst for skjermen. Den vises, logges eller returneres aldri igjen, og
+Assistenten kaller aldri denne operasjonen, så en nøkkel skrives aldri inn i en samtale.
+At Folio avviser nøkkelen, er `422 bank_feed_credential_rejected`; at Folio ikke svarer, er
+`503 bank_feed_unavailable`; ingenting lagres i noen av tilfellene. En ny nøkkel lagres på
+samme måte og erstatter den gamle.
+
+**Velg kontoene og startdagen.** Under **Kontoer** lister siden kontoene nøkkelen leser,
+slik Folio svarer nå. En konto kan slås på når den er selgerens **Bankkonto** i
+**Fakturainnstillinger** eller en som en utstedt faktura har skrevet ut — regelen en
+bankfils kontoer holdes til — og aldri når den er en kortkonto. Å slå en på ber om en
+**startdag**, i dag som standard og aldri senere: ingenting som er bokført før den, leses,
+så betalinger som allerede er registrert fra filer, registreres ikke på nytt.
+
+**Overgangen fra filer.** Å slå på en konto setter formatet til **feed**, slik en endring
+av formatet gjør ([formatet til hver konto](#formatet-til-hver-konto)): en konto som hadde
+`ocr` eller `camt054`, beholder det som forrige format, med den siste bokføringsdagen for
+innbetalingene i det som overgangsdag, og en innbetaling fra integrasjonen bokført på eller
+før overgangsdagen vil holdes tilbake som et mulig duplikat. Fra da av avvises en fil som
+lastes opp for kontoen, med `bank_import_format_mismatch`. Formatvalget setter aldri `feed`,
+og avviser en endring bort fra det med `bank_feed_enabled` mens integrasjonen er på for
+kontoen; slå integrasjonen av først.
+
+**Koble fra.** **Koble fra** på siden (eller `DELETE /api/v1/invoices/bank-feed`) fjerner
+nøkkelen og slår av alle kontoer. Bankfilene, innbetalingene deres og formatet til hver
+konto blir stående: for å gå tilbake til filer endrer du formatet til hver konto under
+**Innbetalinger**. Slett nøkkelen i Folio også.
+
+**Hva som kan gå galt.**
+
+- **`bank_feed_credential_rejected`** når kontoene leses eller en slås på: Folio avviste
+  den lagrede nøkkelen. Tilkoblingen viser **Nøkkel avvist**; lag en ny nøkkel og lagre
+  den.
+- **`bank_feed_unavailable`**: Folio svarte ikke, eller svarte noe Vantigo ikke leser,
+  logget som en advarsel med statusen (aldri nøkkelen). Eller den lagrede nøkkelen kan ikke
+  åpnes på denne serveren — `APP_SECRET` er endret — logget som en feil: lagre nøkkelen på
+  nytt.
+- **`bank_account_unknown`** når en konto slås på: den er ikke selgerens; sjekk
+  **Fakturainnstillinger**.
+- **`bank_feed_account_not_offered`**: Folio svarer ikke den kontoen for nøkkelen, eller
+  den er en kortkonto.
 
 ## Purrejobben og e-post
 

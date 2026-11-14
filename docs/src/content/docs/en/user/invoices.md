@@ -1165,6 +1165,40 @@ possible duplicate, since the old format may already have brought it in. Make th
 once the last file in the old format is imported. Without `invoices:manage` the formats
 are shown, and the page says that changing one needs it.
 
+An account the bank feed reads (Workspace admin › **Integrations** › **Bank**,
+[below](#connecting-the-bank)) shows the format **Bank feed**. Files are no longer imported
+for it, and **Change the format** does not offer **Bank feed**: only switching the feed on
+sets it. While the feed is on for the account, a change of format is refused, saying so;
+switch the feed off first, then change the format back to the files.
+
+### Connecting the bank
+
+Instead of importing files, an account can be read from the bank itself. Today that bank is
+**Folio**. Someone with `invoices:manage` opens the avatar menu › **Workspace admin** ›
+**Integrations** › **Bank**:
+
+1. Under **Connection**, choose the **Bank** — **Folio** — paste the **API key** created in
+   the bank, and click **Connect**. The key is checked with the bank first and saved only if
+   the bank accepts it; afterwards only its last four characters are shown. The card says
+   what a key can do: it reads every account and transaction of the company, and it cannot
+   move money — a payment made with it is a draft until a person signs it with BankID.
+2. Under **Accounts**, the bank's accounts are listed as the bank answers them now. Pick the
+   **Start day** — nothing booked before it is read, so payments already registered are not
+   registered again — and turn on the switch. Only the seller's **Bank account**, or one an
+   issued invoice printed, can be switched on, and never a card account; the row says why
+   when one cannot.
+3. The account's format becomes **Bank feed**. An account that had **OCR giro** or
+   **camt.054** keeps the old format as its earlier one, with its cutover, as a change of
+   format does.
+
+**Replace the key** saves a new key the same way, and brings back an account the bank had
+refused the old key for. **Disconnect** removes the key and switches every account off;
+the bank files, the payments registered from them and each account's format stay. When the
+installation allows no bank feed, the page says so and offers no **Connect**. In this
+release the feed does not yet read the payments: an account switched on gets nothing from
+the bank, and files are no longer imported for it, so switch the feed on for an account
+only when Vantigo reads the payments ([Payments from the bank](/en/admin/payments/#the-bank-feed)).
+
 **A genuine second payment that looks like a repeat.** A payment is held back as **A
 possible duplicate**, and not registered, when a payment from **another file** to the
 same account, booked on the same day, of the same amount and with the same KID is
@@ -2071,7 +2105,7 @@ No built-in role holds these; an Owner holds everything
 | Issue a draft — which marks its work invoiced in Time, Expenses and Projects, its consumption in Energy and its order lines in Orders, without asking for their permissions — make a credit note, send a document by e-mail or as EHF, see where each send went, cancel or resolve an EHF transmission, record a delivery by hand or remove one, make or revoke a pay link and see its address and QR code while payment on site is offered, take a Vipps payment on site | `invoices:issue` |
 | Register a payment or remove one with a reason; import bank files, and use **Payments** and its exception queue; set a customer's reminder policy; preview and make reminder runs, print paper letters, confirm a batch posted or reprint it; withdraw a letter or send a failed one again; register a charge payment, remove one, waive a charge; put an invoice on hold and lift the hold, record a hand-off to a collection agency and withdraw it, export the collection file; mark a day's Vipps payments reconciled; see the dashboard's notices about bank lines, letters, print batches and Vipps payments | `invoices:payments` |
 | Make a quick invoice — created and issued in one step, recorded as handed over — and take payment for it with Vipps on the spot | `invoices:create` and `invoices:issue` |
-| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the cards **Work to invoice** and **Consumption to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open; set up Vipps and the payment settings, acknowledge kontantsalg, abandon a stuck Vipps payment | `invoices:manage` |
+| Edit the seller record, the number series, the Peppol id, the access point, the KID agreement, the VAT codes, the cards **Work to invoice** and **Consumption to invoice**, the collection rates and the reminder settings, the regime's review among them; change a bank account's file format under **Payments**, which also needs `invoices:payments` to open; set up Vipps and the payment settings, acknowledge kontantsalg, abandon a stuck Vipps payment; connect the bank, switch its accounts on and off, and disconnect it, under **Workspace admin** › **Integrations** › **Bank** | `invoices:manage` |
 
 Payments and reminders add no permission of their own. Reminders, the exception queue,
 holds and hand-offs need `invoices:payments`, not `invoices:issue`: a reminder is not a

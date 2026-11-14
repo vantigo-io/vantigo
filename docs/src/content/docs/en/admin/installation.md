@@ -717,6 +717,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   and `INVOICES_STORECOVE_BASE_URL`, beside the Peppol lookup's; setting up sending as
   EHF — the Storecove account, the credentials and the KID agreement — is its own
   procedure ([E-invoicing](/en/admin/e-invoicing/)).
+- `vantigo.env.example` also documents, commented out, the bank feed's settings,
+  `INVOICES_BANK_FEED_ENABLED` (default on) and `INVOICES_FOLIO_BASE_URL` (default
+  `https://api.folio.no/v2`, https only). With a workspace's Folio key stored, the server
+  calls that host over outbound HTTPS — let it through any egress filter; it needs no
+  public host, since Folio sends nothing in ([The bank feed](/en/admin/payments/#the-bank-feed)).
 - `vantigo.env.example` also documents, commented out, the settings for Vipps MobilePay
   payments of invoices: `PUBLIC_BASE_URL`, where the pay page is reachable from the
   internet, and `INVOICES_VIPPS_ENABLED` (default on) and `INVOICES_VIPPS_BASE_URL`

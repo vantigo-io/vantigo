@@ -99,6 +99,11 @@ application.
   the customer numbers, the test mode, the default account per site, the freight product
   and the markup. `SHIPPING_CARRIERS` in `vantigo.env` withholds a carrier; the accounts
   are under **Integrations** in Workspace admin.
+- **Bank.** [The bank feed](/en/admin/payments/#the-bank-feed) connects the company's
+  Folio account with an API key, sealed and shown only as its last four characters, and
+  chooses the accounts Invoices reads incoming payments from. `INVOICES_BANK_FEED_ENABLED`
+  and `INVOICES_FOLIO_BASE_URL` in `vantigo.env` are the installation's; the key and the
+  accounts are under **Integrations** in Workspace admin.
 
 ## Configuration
 
