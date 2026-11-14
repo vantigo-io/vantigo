@@ -45,7 +45,8 @@ are not set up*, and every other page says the same. A person with **Manage the 
 
 1. **The books start on** — the first day the books cover. Nothing dated before it is
    posted. A company that has kept its books elsewhere until now chooses the first day of a
-   month after its last closed period there.
+   month after its last closed period there. The earliest is 1 January 2022: the VAT rates
+   the books start with are known from then.
 2. **The fiscal year starts in** — January for most companies.
 3. **VAT term** — *Bimonthly* for most, *Yearly* for a company the tax office allows it,
    *Not VAT-registered* for a company outside the VAT register.
@@ -53,7 +54,8 @@ are not set up*, and every other page says the same. A person with **Manage the 
    Norwegian or in English. They can be renamed one by one later.
 
 **Set up the books** makes the default chart of accounts, Skatteetaten's standard tax
-codes with the 2026 rates and the system accounts, and opens **Opening balances**. The
+codes with their rates — 25, 15, 12 and 11.11 %, unchanged since 2022 — and the system
+accounts, and opens **Opening balances**. The
 four choices cannot be changed afterwards; **Settings** shows them.
 
 ## The chart of accounts
@@ -70,7 +72,10 @@ codes come from Skatteetaten's list for the tax return's business specification
 (næringsspesifikasjonen).
 
 - **New account** adds one: a number of 4 to 6 digits that no other account has, a name, a
-  kind, an optional default tax code and a grouping code.
+  kind, an optional default tax code and a grouping code. The kind follows the number's
+  class, and the form fills it in as you type: 1 asset, 20 equity, 21–29 liability, 3
+  income, 4–7 expense, and 8 income or expense — choose which. A number begins with 1 to
+  8; another kind than its class's is refused.
 - **Grouping code** is the code SAF-T reports the account under, picked from Skatteetaten's
   list for the year. An account without one is reported as *NA*.
 - An account's **name** can always change. Its **number** and **kind** are fixed once it
@@ -80,9 +85,12 @@ codes come from Skatteetaten's list for the tax return's business specification
   accounts payable, the bank, the VAT settlement, rounding, bad debt, what is owed to
   employees, the opening balance, the result for the year, Vipps clearing, fees and
   interest, currency gain and loss, and payment fees. **Make it a system account** on an
-  account moves a role to it; the role leaves the account that had it. A role is never
-  removed, so an account holding one cannot be deleted or made inactive until its role
-  has moved.
+  account moves a role to it; the role leaves the account that had it. A role moves only
+  to an account of its kind — the bank to an asset account, the VAT settlement to a
+  liability, rounding to an expense — and accounts receivable and accounts payable stay on
+  their account once it has postings, since what each customer and supplier owes is those
+  postings. A role is never removed, so an account holding one cannot be deleted or made
+  inactive until its role has moved.
 
 Changing the chart needs **Manage the books**.
 
@@ -104,22 +112,28 @@ from a payroll system, rent, a loan, a correction.
 
 1. Choose the **Voucher date** and write a **Description**.
 2. On each line choose the **Account** and type the amount under **Debit** or **Credit**.
-   The account's default tax code is filled in; change or clear it as needed.
+   The account's default tax code is filled in, and follows the account when you choose
+   another — until you choose a tax code yourself, which then stays.
 3. A line on accounts receivable names its **Customer**. A line with a **Project** shows in
    the project's figures, when Projects is on.
 4. Choose **Net** or **Gross**. With *Net* the amount on a line is without VAT, and the VAT
    is added on its own line; with *Gross* the amount includes the VAT, and the line is split
-   into the net and the VAT.
+   into the net and the VAT. A reverse-charge code (services bought abroad, imports) is
+   always entered net: the invoice carries no Norwegian VAT, so *Gross* with one is
+   refused.
 5. **Postings** shows, while you type, exactly what will be posted: every line, the VAT
    lines the server computes, and whether the voucher balances.
-6. Add the receipt or the document under **Attachments**, then **Post**.
+6. Add the receipt or the document under **Attachments**, then **Post**. A file over 20 MB,
+   or any file when the installation has no file storage, is pointed out before you post,
+   and **Post** waits until it is removed.
 
 The voucher is numbered in its fiscal year without gaps (2026-000123) and opens. There is
 no draft: posted means posted. A voucher dated on or before the lock date, or before the
-books start, is refused.
+books start, is refused. If a file cannot be kept after the voucher is posted, the voucher
+opens anyway with a notice naming the file: attach it again there with **Attach a file**.
 
-The VAT on a line is rounded to the øre, half away from zero: 1 000,00 net at 25 % gives
-250,00; 1 000,00 gross at 25 % gives 800,00 and 200,00.
+The VAT is computed line by line and rounded to the øre, half away from zero: 1 000,00 net
+at 25 % gives 250,00; 1 000,00 gross at 25 % gives 800,00 and 200,00.
 
 **Copy from a voucher.** For the entries that come back every month, open a voucher you
 posted by hand and click **Copy**. The form opens with its lines, entered net — the VAT
@@ -143,7 +157,8 @@ another app recorded says so, and names its source.
 A mistake is never edited away. On the voucher click **Reverse**, give the date and the
 reason, and **Reverse**: a new voucher with every sign turned is posted, naming the
 original, and both show the link — *Reverses* and *Reversed by*. A voucher is reversed
-only once. Then post the right one, with **Copy** if it helps.
+only once, on the same accounts, even one made inactive since. Then post the right one,
+with **Copy** if it helps.
 
 A voucher the system posted cannot be reversed here: its source reverses it — a credit
 note in Invoices, a payment removed there. Otherwise the books and the other app would
@@ -153,7 +168,8 @@ disagree.
 
 **Settings** shows the **Lock date**: every voucher on or before it is final. To lock,
 choose the month under **Lock through the end of** and click **Lock**. Lock a month once
-its vouchers are in and checked — at the latest when its VAT term is reported.
+its vouchers are in and checked — at the latest when its VAT term is reported. The lock
+reaches at most the end of the current month.
 
 A month locked too early can be opened again: choose an earlier month, give the
 **Reason**, and click **Move the lock back** (or **Lift the lock**). Every move is kept in
@@ -180,13 +196,19 @@ the day the books start, as one voucher dated that day.
 4. What the lines do not balance goes to the opening balance account; the form shows how
    much. **Post the opening balances**.
 
+An invoice added from Invoices keeps its customer and the amount open on that day; a line
+that names it with another customer or amount is refused.
+
 The opening balances can be reversed from their voucher and entered again until the first
-month is locked; after that they are final. Entering them needs **Manage the books**.
+month is locked; after that they are final, even if the lock is later moved back or
+lifted. Entering them, and reversing them, needs **Manage the books**: someone who may only
+post vouchers sees no **Reverse** on the opening voucher.
 
 ## Open items
 
 **Open items** lists, per customer, every document not yet settled: its number, dates, the
-original amount and the balance. **Show settled** shows the settled ones too. A posting on
+original amount and the balance, 200 at a time with **Previous** and **Next**. **Show
+settled** shows the settled ones too. A posting on
 accounts receivable that names no document lands on the customer's **Unallocated** item.
 
 **Register** on an item records money moved: a receipt from the customer, or a refund of a
@@ -208,11 +230,17 @@ Registering needs **Post vouchers**.
 - **Customers** and **Suppliers** — per party, the items with a balance or a movement in the
   period, and the balance aged by due date: not due, 1–30, 31–60, 61–90 and over 90 days.
 - **Trial balance** (saldobalanse), **Profit and loss** and **Balance sheet**. **Compare
-  with the year before** adds the same period a year earlier. The balance sheet shows the
-  result not yet closed to equity as its own line, *Result for the year, not yet closed*.
+  with the year before** adds the same period a year earlier (29 February compares with 28
+  February). The balance sheet shows the result not yet closed to equity as two lines in
+  equity: *Earlier years' result, not yet closed* and *Result for the year, not yet
+  closed*. Every account is on the side of its kind; one outside the usual number groups
+  is under *Other assets*, *Other liabilities* or *Other income and costs*, so the
+  balance sheet always balances.
 
-Choose the report, the period and, for **Account**, the account; with Projects on, a
-**Project** limits it to that project's postings. **Download CSV** gives the file a
+The period starts on the first day of the current fiscal year. Choose the report, the
+period and, for **Account**, the account; with Projects on, a **Project** limits it to that
+project's postings. A journal or an account with more than 50 000 postings in the period is
+not shown cut short: choose a shorter period. **Download CSV** gives the file a
 spreadsheet opens directly: semicolons and the decimal comma. Downloading needs **Export
 the books** (`accounting:export`), because the files carry customers' names.
 
