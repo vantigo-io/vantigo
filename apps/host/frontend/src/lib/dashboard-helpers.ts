@@ -986,6 +986,26 @@ export const accountingKpi = (
   };
 };
 
+/**
+ * What the Accounting card's hint says waits, the most pressing first: facts
+ * under Needs attention (A15); VAT terms past their due date and not marked as
+ * filed, then terms that have ended and are not closed (A22); supplier
+ * invoices overdue or due within the week (A19). Undefined when nothing waits,
+ * and the KPI's own hint stands.
+ */
+export const accountingAttentionHint = (
+  meta: AccountingMeta | undefined,
+  t: (key: string, values?: Record<string, unknown>) => string,
+): string | undefined => {
+  if (!meta?.setUp) return undefined;
+  if (meta.unposted > 0) return t("needsAttentionCount", { count: meta.unposted });
+  if (meta.vatTermsToFile > 0) return t("vatTermsToFile", { count: meta.vatTermsToFile });
+  if (meta.vatTermsToClose > 0) return t("vatTermsToClose", { count: meta.vatTermsToClose });
+  if (meta.payablesOverdue + meta.payablesDueSoon > 0)
+    return t("payablesCount", { overdue: meta.payablesOverdue, soon: meta.payablesDueSoon });
+  return undefined;
+};
+
 /** Inventory's KPI: the stock lines, with this week's receipts as the hint. */
 export const inventoryKpi = (
   stats: InventoryStats | undefined,

@@ -18,6 +18,9 @@ import {
   SUPPLIER_ROUTE_PATH,
   SUPPLIERS_ROUTE_PATH,
   TAX_CODES_ROUTE_PATH,
+  VAT_POSTINGS_ROUTE_PATH,
+  VAT_ROUTE_PATH,
+  VAT_TERM_ROUTE_PATH,
   VOUCHER_ROUTE_PATH,
   VOUCHERS_ROUTE_PATH,
 } from "@vantigo/accounting-ui";
@@ -59,8 +62,16 @@ describe("the Accounting routes", () => {
       SUPPLIER_INVOICES_ROUTE_PATH,
       NEW_SUPPLIER_INVOICE_ROUTE_PATH,
       SUPPLIER_INVOICE_ROUTE_PATH,
+      VAT_ROUTE_PATH,
+      VAT_POSTINGS_ROUTE_PATH,
+      VAT_TERM_ROUTE_PATH,
     ]) {
-      const concrete = path.replace("$voucherId", "7").replace("$supplierId", "7").replace("$supplierInvoiceId", "7");
+      const concrete = path
+        .replace("$voucherId", "7")
+        .replace("$supplierId", "7")
+        .replace("$supplierInvoiceId", "7")
+        .replace("$year", "2026")
+        .replace("$number", "3");
       const ids = matchedRouteIds(concrete);
       expect(ids, concrete).toContain("/accounting");
       expect(ids.at(-1), concrete).toBe(path);
