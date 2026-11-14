@@ -596,3 +596,27 @@ export const applySaftImport = (id: number, body: AccountingSaftImportApply) =>
 
 /** The address an imported file downloads from, as it was uploaded. */
 export const saftImportFileUrl = (id: number) => appUrl(`${BASE}/saft-imports/${id}/file`);
+
+export type AccountingSaftImportCustomer = Schemas["AccountingSaftImportCustomer"];
+export type AccountingSaftImportCustomerList = Schemas["AccountingSaftImportCustomerList"];
+
+/** The file's customers with a balance that are not matched or linked in Customers. */
+export const saftImportAttentionQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: [ACCOUNTING_QUERY_KEY, "saft", "import", id, "attention"],
+    queryFn: ({ signal }) =>
+      request<AccountingSaftImportCustomerList>(`${BASE}/saft-imports/${id}/customers?attention=true&limit=500`, {
+        signal,
+      }),
+  });
+
+/** Links a file customer to the customer picked in Customers. */
+export const linkSaftImportCustomer = (id: number, position: number, customerId: number) =>
+  send<AccountingSaftImportCustomer>(
+    `${BASE}/saft-imports/${id}/customers/${position}/link`,
+    json("PUT", { customerId }),
+  );
+
+/** Matches the file's customers to Customers again. */
+export const matchSaftImport = (id: number) =>
+  send<AccountingSaftImport>(`${BASE}/saft-imports/${id}/match`, { method: "POST" });

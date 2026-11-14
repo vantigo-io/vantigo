@@ -209,14 +209,20 @@ const Exports = () => {
             </Table.Td>
             <Table.Td>
               <Stack gap={4}>
-                {e.files.map((f) => (
-                  <Anchor key={f.part} href={saftExportFileUrl(e.id, f.part)} size="sm">
-                    <Group gap={4} wrap="nowrap">
-                      <IconDownload size={14} />
-                      {f.fileName} ({t("saftSize", { size: (f.sizeBytes / 1024 / 1024).toFixed(1) })})
-                    </Group>
-                  </Anchor>
-                ))}
+                {e.files.map((f) =>
+                  f.removedAt ? (
+                    <Text key={f.part} size="sm" c="dimmed">
+                      {f.fileName} — {t("saftFileRemoved")}
+                    </Text>
+                  ) : (
+                    <Anchor key={f.part} href={saftExportFileUrl(e.id, f.part)} size="sm">
+                      <Group gap={4} wrap="nowrap">
+                        <IconDownload size={14} />
+                        {f.fileName} ({t("saftSize", { size: (f.sizeBytes / 1024 / 1024).toFixed(1) })})
+                      </Group>
+                    </Anchor>
+                  ),
+                )}
               </Stack>
             </Table.Td>
           </Table.Tr>

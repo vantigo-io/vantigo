@@ -3,9 +3,10 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   FileInput,
+  Group,
   List,
-  NumberInput,
   Select,
   Stack,
   Table,
@@ -21,11 +22,15 @@ import {
   type AccountingSaftImport,
   type AccountingVatTerm,
   applySaftImport,
+  linkSaftImportCustomer,
+  matchSaftImport,
+  saftImportAttentionQueryOptions,
   saftImportQueryOptions,
   uploadSaftImport,
   vatTerms,
 } from "../api/accounting";
 import { ACCOUNTING_QUERY_KEY } from "../api/request";
+import { CustomerSelect } from "../components/pickers";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
 import { ACCOUNTING_HOME_ROUTE_PATH } from "../lib/routes";
 
@@ -90,14 +95,27 @@ const Preview = ({ id }: { id: number }) => {
   const preview = useQuery(saftImportQueryOptions(id));
   const [vatTerm, setVatTerm] = useState<string | null>("bimonthly");
   const [language, setLanguage] = useState<string | null>(locale === "nb" ? "nb" : "en");
-  const [links, setLinks] = useState<Record<string, number>>({});
+  const [month, setMonth] = useState<string | null>(null);
+  const [otherCompany, setOtherCompany] = useState(false);
   const [answer, setAnswer] = useState<AccountingSaftImport | null>(null);
+  const attention = useQuery(saftImportAttentionQueryOptions(id));
+  const refresh = async () => {
+    setAnswer(null);
+    await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY, "saft", "import", id] });
+  };
+  const linkCustomer = useMutation({
+    mutationFn: ({ position, customerId }: { position: number; customerId: number }) =>
+      linkSaftImportCustomer(id, position, customerId),
+    onSuccess: refresh,
+  });
+  const match = useMutation({ mutationFn: () => matchSaftImport(id), onSuccess: refresh });
   const apply = useMutation({
     mutationFn: () =>
       applySaftImport(id, {
         vatTerm: (vatTerm ?? "bimonthly") as AccountingVatTerm,
         language: language === "nb" ? "nb" : "en",
-        customerLinks: links,
+        fiscalYearStartMonth: Number(month ?? preview.data?.fiscalYearStartMonth ?? 1),
+        ...(otherCompany ? { confirmOtherCompany: true } : {}),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
@@ -114,7 +132,8 @@ const Preview = ({ id }: { id: number }) => {
     );
   if (!preview.data) return <Text c="dimmed">…</Text>;
   const p = answer ?? preview.data;
-  const needsLink = p.customers.filter((c) => c.match === "unmatched" || c.match === "ambiguous");
+  const needsLink = attention.data?.items ?? [];
+  const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: t(`month_${i + 1}`) }));
   return (
     <Stack gap="md">
       <Text size="sm">
@@ -220,25 +239,36 @@ const Preview = ({ id }: { id: number }) => {
               </Table.Td>
               <Table.Td>{money(c.closingBalance)}</Table.Td>
               <Table.Td>
-                <Badge color={matchColor[c.match]}>{t(`saftMatch_${c.match}`)}</Badge> {c.customerName ?? ""}
+                <Badge color={matchColor[c.match]}>{t(`saftMatch_${c.match}`)}</Badge> {c.customerName ?? ""}{" "}
+                {c.customerOrganisationNumber ?? ""}
               </Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
       </Table>
+      <Group>
+        <Button variant="light" size="xs" loading={match.isPending} onClick={() => match.mutate()}>
+          {t("saftImportMatchAgain")}
+        </Button>
+        {p.customersTotal > p.customers.length && (
+          <Text size="sm" c="dimmed">
+            {t("saftImportShowing", { shown: p.customers.length, total: p.customersTotal })}
+          </Text>
+        )}
+      </Group>
       {needsLink.length > 0 && (
         <Stack gap="xs">
           <Text size="sm">{t("saftImportLinkHint")}</Text>
           {needsLink.map((c) => (
-            <NumberInput
-              key={c.fileCustomerId}
+            <CustomerSelect
+              key={c.position}
               label={t("saftImportLink", { name: c.name })}
-              value={links[c.fileCustomerId] ?? ""}
-              onChange={(v) => setLinks({ ...links, [c.fileCustomerId]: Number(v) })}
-              min={1}
-              w={260}
+              value={c.customerId ? String(c.customerId) : null}
+              onChange={(value) => value && linkCustomer.mutate({ position: c.position, customerId: Number(value) })}
+              w={360}
             />
           ))}
+          {linkCustomer.error && <Text c="red">{refusalMessage(t, linkCustomer.error)}</Text>}
         </Stack>
       )}
       <Title order={5}>{t("saftImportOpening", { date: day(p.booksStart) })}</Title>
@@ -261,6 +291,32 @@ const Preview = ({ id }: { id: number }) => {
           })}
         </Text>
       )}
+      {p.companyMismatch && (
+        <Alert color="red" icon={<IconAlertTriangle size={16} />} title={t("saftImportOtherCompany")}>
+          <Stack gap="xs">
+            <Text size="sm">
+              {t("saftImportOtherCompanyHint", {
+                file: p.companyOrganisationNumber,
+                seller: p.sellerOrganisationNumber ?? "",
+              })}
+            </Text>
+            <Checkbox
+              label={t("saftImportConfirmOtherCompany")}
+              checked={otherCompany}
+              onChange={(event) => setOtherCompany(event.currentTarget.checked)}
+            />
+          </Stack>
+        </Alert>
+      )}
+      <Select
+        label={t("fiscalYearStartMonth")}
+        description={p.needsFiscalYearStartMonth ? t("saftImportConfirmMonth") : undefined}
+        data={months}
+        value={month ?? String(p.fiscalYearStartMonth)}
+        onChange={setMonth}
+        allowDeselect={false}
+        w={260}
+      />
       <Select
         label={t("vatTerm")}
         data={vatTerms.map((term) => ({ value: term, label: t(`vatTerm_${term}`) }))}
@@ -290,7 +346,7 @@ const Preview = ({ id }: { id: number }) => {
       </Text>
       <Button
         loading={apply.isPending}
-        disabled={p.state !== "preview" || (p.blockers.length > 0 && needsLink.length === 0)}
+        disabled={p.state !== "preview" || (p.companyMismatch && !otherCompany)}
         onClick={() => apply.mutate()}
         data-assist="accounting.saft.apply"
       >
