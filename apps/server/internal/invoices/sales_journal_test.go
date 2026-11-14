@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -343,7 +344,8 @@ func TestSalesJournal_BankFeedPaymentsMakeFactsWithTheirAccount(t *testing.T) {
 		amount  string
 	}{{contracts.FactPayment, payment, "1000.00"}, {contracts.FactChargePayment, charge, "35.00"}} {
 		if f := facts[i]; f.Kind != w.kind || f.SubjectID != w.subject || f.AmountNOK != w.amount || f.InvoiceID != inv.ID ||
-			f.Source != contracts.PaymentSourceBankFeed || f.BankAccount != sellerAccount || f.Date.Format(time.DateOnly) != "2026-10-06" {
+			f.Source != contracts.PaymentSourceBankFeed || f.BankAccount != sellerAccount || f.Date.Format(time.DateOnly) != "2026-10-06" ||
+			f.BankReference != strings.ReplaceAll(txID(1), "-", "") {
 			t.Errorf("fact %d = %+v, want the bank_feed %s on the feed's account", i+1, f, w.kind)
 		}
 	}
