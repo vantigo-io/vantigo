@@ -1,3 +1,4 @@
+import * as accounting from "@vantigo/accounting-ui/api/request";
 import * as agents from "@vantigo/agents-ui/api/request";
 import * as assistant from "@vantigo/assistant-ui/api/request";
 import * as calendar from "@vantigo/calendar-ui/api/request";
@@ -36,6 +37,7 @@ type SessionClient = {
  */
 export const sessionClients: Record<string, SessionClient> = {
   "@vantigo/app": host,
+  "@vantigo/accounting-ui": accounting,
   "@vantigo/assistant-ui": assistant,
   "@vantigo/calendar-ui": calendar,
   "@vantigo/communications-ui": communications,

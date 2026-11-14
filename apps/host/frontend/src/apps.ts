@@ -13,12 +13,14 @@ import {
   IconBuildingFactory2,
   IconBuildingWarehouse,
   IconBulb,
+  IconCalculator,
   IconCalendar,
   IconCalendarDue,
   IconCalendarEvent,
   IconCalendarStats,
   IconCalendarTime,
   IconCalendarUser,
+  IconCash,
   IconCashBanknote,
   IconCategory,
   IconCertificate,
@@ -43,18 +45,22 @@ import {
   IconLayoutDashboard,
   IconListCheck,
   IconListDetails,
+  IconListNumbers,
   IconMailbox,
   IconMailOff,
   IconMessageChatbot,
   IconPackage,
   IconPackageImport,
+  IconPercentage,
   IconPlugConnected,
   IconPuzzle,
   IconReceipt2,
   IconReceiptTax,
   IconRepeat,
+  IconReportAnalytics,
   IconReportMoney,
   IconRobot,
+  IconSettings,
   IconShieldCheck,
   IconShieldLock,
   IconShoppingCart,
@@ -74,6 +80,7 @@ import {
   IconUsersGroup,
   IconZoomExclamation,
 } from "@tabler/icons-react";
+import { type AccountingNavItem, accountingNavItems } from "@vantigo/accounting-ui";
 import { type AgentsNavItem, agentsNavItems } from "@vantigo/agents-ui";
 import { type InventoryNavItem, inventoryNavItems } from "@vantigo/inventory-ui";
 import { type KnowledgeNavItem, knowledgeNavItems } from "@vantigo/knowledge-ui";
@@ -279,6 +286,22 @@ const manufacturingNavPresentation: Record<ManufacturingNavItem["key"], Pick<Nav
   deviations: { label: "navigation.manufacturingDeviations", icon: IconZoomExclamation },
   boms: { label: "navigation.manufacturingBoms", icon: IconListDetails },
   workCenters: { label: "navigation.manufacturingWorkCenters", icon: IconTool },
+};
+
+/**
+ * The host's half of an Accounting sidebar entry: where each destination is
+ * and which permission offers it are the package's (`accountingNavItems`,
+ * accounting design A1); the label and the icon are the host's.
+ */
+const accountingNavPresentation: Record<AccountingNavItem["key"], Pick<NavItem, "label" | "icon">> = {
+  overview: { label: "navigation.accountingOverview", icon: IconCalculator },
+  journal: { label: "navigation.accountingJournal", icon: IconFilePlus },
+  vouchers: { label: "navigation.accountingVouchers", icon: IconReceipt2 },
+  openItems: { label: "navigation.accountingOpenItems", icon: IconCash },
+  reports: { label: "navigation.accountingReports", icon: IconReportAnalytics },
+  accounts: { label: "navigation.accountingAccounts", icon: IconListNumbers },
+  taxCodes: { label: "navigation.accountingTaxCodes", icon: IconPercentage },
+  settings: { label: "navigation.accountingSettings", icon: IconSettings },
 };
 
 /** Every app, in switcher order. Home has no module and no sidebar. */
@@ -694,6 +717,19 @@ export const apps: readonly AppDefinition[] = [
     "/manufacturing",
     manufacturingNavItems.map(({ key, to, requiredPermissions }) => ({
       ...manufacturingNavPresentation[key],
+      to,
+      requiredPermissions,
+    })),
+  ),
+  // Every Accounting read asks for accounting:read (accounting design A1); a
+  // new journal entry is offered to those who post.
+  moduleApp(
+    "accounting",
+    "navigation.accounting",
+    IconCalculator,
+    "/accounting",
+    accountingNavItems.map(({ key, to, requiredPermissions }) => ({
+      ...accountingNavPresentation[key],
       to,
       requiredPermissions,
     })),

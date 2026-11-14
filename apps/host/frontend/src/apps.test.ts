@@ -21,6 +21,7 @@ import {
   IconUsersGroup,
   IconZoomExclamation,
 } from "@tabler/icons-react";
+import { accountingNavItems } from "@vantigo/accounting-ui";
 import { inventoryNavItems } from "@vantigo/inventory-ui";
 import { manufacturingNavItems } from "@vantigo/manufacturing-ui";
 import { planningNavItems } from "@vantigo/planning-ui";
@@ -85,6 +86,7 @@ describe("the app registry", () => {
       "products",
       "inventory",
       "manufacturing",
+      "accounting",
       "energy",
     ]);
     for (const app of apps.slice(1)) expect(app.module).toBe(app.key);
@@ -177,6 +179,14 @@ describe("the app registry", () => {
       "/manufacturing/deviations",
       "/manufacturing/boms",
       "/manufacturing/work-centers",
+      "/accounting",
+      "/accounting/journal",
+      "/accounting/vouchers",
+      "/accounting/open-items",
+      "/accounting/reports",
+      "/accounting/accounts",
+      "/accounting/tax-codes",
+      "/accounting/settings",
       "/energy/metering-points",
       "/energy/prices",
       "/energy/tariffs",
@@ -797,6 +807,21 @@ describe("the app registry", () => {
     expect(paths(["inventory:locations-view", "inventory:counts-manage"])).toEqual(["navigation.inventoryOverview"]);
   });
 
+  // Accounting's destinations are the package's (`accountingNavItems`, A1):
+  // every one is accounting:read's but a new journal entry, which posts.
+  it("registers Accounting with the package's eight destinations", () => {
+    const accounting = appForKey("accounting");
+    expect(accounting).toMatchObject({ module: "accounting", label: "navigation.accounting", home: "/accounting" });
+    const items = accounting.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => item.to)).toEqual(accountingNavItems.map((item) => item.to));
+    expect(items.find((item) => item.to === "/accounting/journal")?.requiredPermissions).toEqual(["accounting:post"]);
+    expect(navigationCatalog.nb["navigation.accounting"]).toBe("Regnskap");
+    const keys = (permissions: string[], enabled: readonly ModuleKey[]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["accounting:read"], ["accounting"])).toContainEqual(["accounting", true]);
+    expect(keys(["accounting:read"], ["customers"])).toContainEqual(["accounting", false]);
+  });
+
   // Manufacturing's destinations are the package's (`manufacturingNavItems`,
   // M7): Overview, Manufacturing orders, Shop floor, Production schedule,
   // Bills of materials and Work centers, each offered by manufacturing:access;
@@ -888,6 +913,7 @@ describe("the administration areas", () => {
       "products",
       "inventory",
       "manufacturing",
+      "accounting",
       "energy",
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
@@ -1209,6 +1235,7 @@ describe("switcherTiles", () => {
       ["products", false],
       ["inventory", false],
       ["manufacturing", false],
+      ["accounting", false],
       ["energy", false],
     ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
+import { Route as AccountingRouteImport } from './routes/accounting'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AgentsRouteImport } from './routes/agents'
 import { Route as AssistantRouteImport } from './routes/assistant'
@@ -42,6 +43,15 @@ import { Route as StaffRouteImport } from './routes/staff'
 import { Route as StationRouteImport } from './routes/station'
 import { Route as TimeRouteImport } from './routes/time'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
+import { Route as AccountingIndexRouteImport } from './routes/accounting/index'
+import { Route as AccountingAccountsRouteImport } from './routes/accounting/accounts'
+import { Route as AccountingJournalRouteImport } from './routes/accounting/journal'
+import { Route as AccountingOpenItemsRouteImport } from './routes/accounting/open-items'
+import { Route as AccountingOpeningRouteImport } from './routes/accounting/opening'
+import { Route as AccountingReportsRouteImport } from './routes/accounting/reports'
+import { Route as AccountingSettingsRouteImport } from './routes/accounting/settings'
+import { Route as AccountingSetupRouteImport } from './routes/accounting/setup'
+import { Route as AccountingTaxCodesRouteImport } from './routes/accounting/tax-codes'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
 import { Route as AgentsSettingsRouteImport } from './routes/agents/settings'
@@ -129,6 +139,8 @@ import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceShippingRouteImport } from './routes/workspace/shipping'
 import { Route as WorkspaceStationsRouteImport } from './routes/workspace/stations'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
+import { Route as AccountingVouchersIndexRouteImport } from './routes/accounting/vouchers.index'
+import { Route as AccountingVouchersVoucherIdRouteImport } from './routes/accounting/vouchers.$voucherId'
 import { Route as AgentsAgentIdIndexRouteImport } from './routes/agents/$agentId.index'
 import { Route as AgentsReviewIndexRouteImport } from './routes/agents/review.index'
 import { Route as AgentsReviewItemIdRouteImport } from './routes/agents/review.$itemId'
@@ -234,6 +246,11 @@ const IndexRoute = IndexRouteImport.update({
 const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
   id: '/accept-invitation',
   path: '/accept-invitation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountingRoute = AccountingRouteImport.update({
+  id: '/accounting',
+  path: '/accounting',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -390,6 +407,51 @@ const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
   path: '/workspace',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AccountingIndexRoute = AccountingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingAccountsRoute = AccountingAccountsRouteImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingJournalRoute = AccountingJournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingOpenItemsRoute = AccountingOpenItemsRouteImport.update({
+  id: '/open-items',
+  path: '/open-items',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingOpeningRoute = AccountingOpeningRouteImport.update({
+  id: '/opening',
+  path: '/opening',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingReportsRoute = AccountingReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingSettingsRoute = AccountingSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingSetupRoute = AccountingSetupRouteImport.update({
+  id: '/setup',
+  path: '/setup',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingTaxCodesRoute = AccountingTaxCodesRouteImport.update({
+  id: '/tax-codes',
+  path: '/tax-codes',
+  getParentRoute: () => AccountingRoute,
 } as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
@@ -828,6 +890,17 @@ const WorkspaceUsersRoute = WorkspaceUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const AccountingVouchersIndexRoute = AccountingVouchersIndexRouteImport.update({
+  id: '/vouchers/',
+  path: '/vouchers/',
+  getParentRoute: () => AccountingRoute,
+} as any)
+const AccountingVouchersVoucherIdRoute =
+  AccountingVouchersVoucherIdRouteImport.update({
+    id: '/vouchers/$voucherId',
+    path: '/vouchers/$voucherId',
+    getParentRoute: () => AccountingRoute,
+  } as any)
 const AgentsAgentIdIndexRoute = AgentsAgentIdIndexRouteImport.update({
   id: '/$agentId/',
   path: '/$agentId/',
@@ -1363,6 +1436,7 @@ const ManufacturingShopFloorWorkOrdersWorkOrderIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/accounting': typeof AccountingRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
   '/agents': typeof AgentsRouteWithChildren
   '/assistant': typeof AssistantRouteWithChildren
@@ -1394,6 +1468,14 @@ export interface FileRoutesByFullPath {
   '/station': typeof StationRoute
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
+  '/accounting/accounts': typeof AccountingAccountsRoute
+  '/accounting/journal': typeof AccountingJournalRoute
+  '/accounting/open-items': typeof AccountingOpenItemsRoute
+  '/accounting/opening': typeof AccountingOpeningRoute
+  '/accounting/reports': typeof AccountingReportsRoute
+  '/accounting/settings': typeof AccountingSettingsRoute
+  '/accounting/setup': typeof AccountingSetupRoute
+  '/accounting/tax-codes': typeof AccountingTaxCodesRoute
   '/agents/settings': typeof AgentsSettingsRoute
   '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
@@ -1460,6 +1542,7 @@ export interface FileRoutesByFullPath {
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/stations': typeof WorkspaceStationsRoute
   '/workspace/users': typeof WorkspaceUsersRoute
+  '/accounting/': typeof AccountingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/agents/': typeof AgentsIndexRoute
   '/assistant/': typeof AssistantIndexRoute
@@ -1481,6 +1564,7 @@ export interface FileRoutesByFullPath {
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
+  '/accounting/vouchers/$voucherId': typeof AccountingVouchersVoucherIdRoute
   '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
   '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
@@ -1537,6 +1621,7 @@ export interface FileRoutesByFullPath {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/vouchers/': typeof AccountingVouchersIndexRoute
   '/agents/$agentId/': typeof AgentsAgentIdIndexRoute
   '/agents/review/': typeof AgentsReviewIndexRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
@@ -1591,6 +1676,14 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/station': typeof StationRoute
+  '/accounting/accounts': typeof AccountingAccountsRoute
+  '/accounting/journal': typeof AccountingJournalRoute
+  '/accounting/open-items': typeof AccountingOpenItemsRoute
+  '/accounting/opening': typeof AccountingOpeningRoute
+  '/accounting/reports': typeof AccountingReportsRoute
+  '/accounting/settings': typeof AccountingSettingsRoute
+  '/accounting/setup': typeof AccountingSetupRoute
+  '/accounting/tax-codes': typeof AccountingTaxCodesRoute
   '/agents/settings': typeof AgentsSettingsRoute
   '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
@@ -1653,6 +1746,7 @@ export interface FileRoutesByTo {
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/stations': typeof WorkspaceStationsRoute
   '/workspace/users': typeof WorkspaceUsersRoute
+  '/accounting': typeof AccountingIndexRoute
   '/admin': typeof AdminIndexRoute
   '/agents': typeof AgentsIndexRoute
   '/assistant': typeof AssistantIndexRoute
@@ -1674,6 +1768,7 @@ export interface FileRoutesByTo {
   '/staff': typeof StaffIndexRoute
   '/time': typeof TimeIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
+  '/accounting/vouchers/$voucherId': typeof AccountingVouchersVoucherIdRoute
   '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
   '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
@@ -1730,6 +1825,7 @@ export interface FileRoutesByTo {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/vouchers': typeof AccountingVouchersIndexRoute
   '/agents/$agentId': typeof AgentsAgentIdIndexRoute
   '/agents/review': typeof AgentsReviewIndexRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
@@ -1775,6 +1871,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/accounting': typeof AccountingRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
   '/agents': typeof AgentsRouteWithChildren
   '/assistant': typeof AssistantRouteWithChildren
@@ -1806,6 +1903,14 @@ export interface FileRoutesById {
   '/station': typeof StationRoute
   '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
+  '/accounting/accounts': typeof AccountingAccountsRoute
+  '/accounting/journal': typeof AccountingJournalRoute
+  '/accounting/open-items': typeof AccountingOpenItemsRoute
+  '/accounting/opening': typeof AccountingOpeningRoute
+  '/accounting/reports': typeof AccountingReportsRoute
+  '/accounting/settings': typeof AccountingSettingsRoute
+  '/accounting/setup': typeof AccountingSetupRoute
+  '/accounting/tax-codes': typeof AccountingTaxCodesRoute
   '/agents/settings': typeof AgentsSettingsRoute
   '/assistant/$conversationId': typeof AssistantConversationIdRoute
   '/calendar/settings': typeof CalendarSettingsRoute
@@ -1872,6 +1977,7 @@ export interface FileRoutesById {
   '/workspace/shipping': typeof WorkspaceShippingRoute
   '/workspace/stations': typeof WorkspaceStationsRoute
   '/workspace/users': typeof WorkspaceUsersRoute
+  '/accounting/': typeof AccountingIndexRoute
   '/admin/': typeof AdminIndexRoute
   '/agents/': typeof AgentsIndexRoute
   '/assistant/': typeof AssistantIndexRoute
@@ -1893,6 +1999,7 @@ export interface FileRoutesById {
   '/staff/': typeof StaffIndexRoute
   '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
+  '/accounting/vouchers/$voucherId': typeof AccountingVouchersVoucherIdRoute
   '/agents/review/$itemId': typeof AgentsReviewItemIdRoute
   '/agents/runs/$runId': typeof AgentsRunsRunIdRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
@@ -1949,6 +2056,7 @@ export interface FileRoutesById {
   '/workspace/google/accounts': typeof WorkspaceGoogleAccountsRoute
   '/workspace/google/calendar-gmail': typeof WorkspaceGoogleCalendarGmailRoute
   '/workspace/google/connection': typeof WorkspaceGoogleConnectionRoute
+  '/accounting/vouchers/': typeof AccountingVouchersIndexRoute
   '/agents/$agentId/': typeof AgentsAgentIdIndexRoute
   '/agents/review/': typeof AgentsReviewIndexRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
@@ -1995,6 +2103,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accept-invitation'
+    | '/accounting'
     | '/admin'
     | '/agents'
     | '/assistant'
@@ -2026,6 +2135,14 @@ export interface FileRouteTypes {
     | '/station'
     | '/time'
     | '/workspace'
+    | '/accounting/accounts'
+    | '/accounting/journal'
+    | '/accounting/open-items'
+    | '/accounting/opening'
+    | '/accounting/reports'
+    | '/accounting/settings'
+    | '/accounting/setup'
+    | '/accounting/tax-codes'
     | '/agents/settings'
     | '/assistant/$conversationId'
     | '/calendar/settings'
@@ -2092,6 +2209,7 @@ export interface FileRouteTypes {
     | '/workspace/shipping'
     | '/workspace/stations'
     | '/workspace/users'
+    | '/accounting/'
     | '/admin/'
     | '/agents/'
     | '/assistant/'
@@ -2113,6 +2231,7 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/time/'
     | '/workspace/'
+    | '/accounting/vouchers/$voucherId'
     | '/agents/review/$itemId'
     | '/agents/runs/$runId'
     | '/customers/$customerId/energy'
@@ -2169,6 +2288,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/vouchers/'
     | '/agents/$agentId/'
     | '/agents/review/'
     | '/customers/$customerId/'
@@ -2223,6 +2343,14 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/station'
+    | '/accounting/accounts'
+    | '/accounting/journal'
+    | '/accounting/open-items'
+    | '/accounting/opening'
+    | '/accounting/reports'
+    | '/accounting/settings'
+    | '/accounting/setup'
+    | '/accounting/tax-codes'
     | '/agents/settings'
     | '/assistant/$conversationId'
     | '/calendar/settings'
@@ -2285,6 +2413,7 @@ export interface FileRouteTypes {
     | '/workspace/shipping'
     | '/workspace/stations'
     | '/workspace/users'
+    | '/accounting'
     | '/admin'
     | '/agents'
     | '/assistant'
@@ -2306,6 +2435,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/time'
     | '/workspace'
+    | '/accounting/vouchers/$voucherId'
     | '/agents/review/$itemId'
     | '/agents/runs/$runId'
     | '/customers/$customerId/energy'
@@ -2362,6 +2492,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/vouchers'
     | '/agents/$agentId'
     | '/agents/review'
     | '/customers/$customerId'
@@ -2406,6 +2537,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/accept-invitation'
+    | '/accounting'
     | '/admin'
     | '/agents'
     | '/assistant'
@@ -2437,6 +2569,14 @@ export interface FileRouteTypes {
     | '/station'
     | '/time'
     | '/workspace'
+    | '/accounting/accounts'
+    | '/accounting/journal'
+    | '/accounting/open-items'
+    | '/accounting/opening'
+    | '/accounting/reports'
+    | '/accounting/settings'
+    | '/accounting/setup'
+    | '/accounting/tax-codes'
     | '/agents/settings'
     | '/assistant/$conversationId'
     | '/calendar/settings'
@@ -2503,6 +2643,7 @@ export interface FileRouteTypes {
     | '/workspace/shipping'
     | '/workspace/stations'
     | '/workspace/users'
+    | '/accounting/'
     | '/admin/'
     | '/agents/'
     | '/assistant/'
@@ -2524,6 +2665,7 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/time/'
     | '/workspace/'
+    | '/accounting/vouchers/$voucherId'
     | '/agents/review/$itemId'
     | '/agents/runs/$runId'
     | '/customers/$customerId/energy'
@@ -2580,6 +2722,7 @@ export interface FileRouteTypes {
     | '/workspace/google/accounts'
     | '/workspace/google/calendar-gmail'
     | '/workspace/google/connection'
+    | '/accounting/vouchers/'
     | '/agents/$agentId/'
     | '/agents/review/'
     | '/customers/$customerId/'
@@ -2625,6 +2768,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcceptInvitationRoute: typeof AcceptInvitationRoute
+  AccountingRoute: typeof AccountingRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
   AgentsRoute: typeof AgentsRouteWithChildren
   AssistantRoute: typeof AssistantRouteWithChildren
@@ -2673,6 +2817,13 @@ declare module '@tanstack/react-router' {
       path: '/accept-invitation'
       fullPath: '/accept-invitation'
       preLoaderRoute: typeof AcceptInvitationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accounting': {
+      id: '/accounting'
+      path: '/accounting'
+      fullPath: '/accounting'
+      preLoaderRoute: typeof AccountingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -2891,6 +3042,69 @@ declare module '@tanstack/react-router' {
       fullPath: '/workspace'
       preLoaderRoute: typeof WorkspaceRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/accounting/': {
+      id: '/accounting/'
+      path: '/'
+      fullPath: '/accounting/'
+      preLoaderRoute: typeof AccountingIndexRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/accounts': {
+      id: '/accounting/accounts'
+      path: '/accounts'
+      fullPath: '/accounting/accounts'
+      preLoaderRoute: typeof AccountingAccountsRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/journal': {
+      id: '/accounting/journal'
+      path: '/journal'
+      fullPath: '/accounting/journal'
+      preLoaderRoute: typeof AccountingJournalRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/open-items': {
+      id: '/accounting/open-items'
+      path: '/open-items'
+      fullPath: '/accounting/open-items'
+      preLoaderRoute: typeof AccountingOpenItemsRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/opening': {
+      id: '/accounting/opening'
+      path: '/opening'
+      fullPath: '/accounting/opening'
+      preLoaderRoute: typeof AccountingOpeningRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/reports': {
+      id: '/accounting/reports'
+      path: '/reports'
+      fullPath: '/accounting/reports'
+      preLoaderRoute: typeof AccountingReportsRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/settings': {
+      id: '/accounting/settings'
+      path: '/settings'
+      fullPath: '/accounting/settings'
+      preLoaderRoute: typeof AccountingSettingsRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/setup': {
+      id: '/accounting/setup'
+      path: '/setup'
+      fullPath: '/accounting/setup'
+      preLoaderRoute: typeof AccountingSetupRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/tax-codes': {
+      id: '/accounting/tax-codes'
+      path: '/tax-codes'
+      fullPath: '/accounting/tax-codes'
+      preLoaderRoute: typeof AccountingTaxCodesRouteImport
+      parentRoute: typeof AccountingRoute
     }
     '/admin/': {
       id: '/admin/'
@@ -3500,6 +3714,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/workspace/users'
       preLoaderRoute: typeof WorkspaceUsersRouteImport
       parentRoute: typeof WorkspaceRoute
+    }
+    '/accounting/vouchers/': {
+      id: '/accounting/vouchers/'
+      path: '/vouchers'
+      fullPath: '/accounting/vouchers/'
+      preLoaderRoute: typeof AccountingVouchersIndexRouteImport
+      parentRoute: typeof AccountingRoute
+    }
+    '/accounting/vouchers/$voucherId': {
+      id: '/accounting/vouchers/$voucherId'
+      path: '/vouchers/$voucherId'
+      fullPath: '/accounting/vouchers/$voucherId'
+      preLoaderRoute: typeof AccountingVouchersVoucherIdRouteImport
+      parentRoute: typeof AccountingRoute
     }
     '/agents/$agentId/': {
       id: '/agents/$agentId/'
@@ -4176,6 +4404,38 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AccountingRouteChildren {
+  AccountingAccountsRoute: typeof AccountingAccountsRoute
+  AccountingJournalRoute: typeof AccountingJournalRoute
+  AccountingOpenItemsRoute: typeof AccountingOpenItemsRoute
+  AccountingOpeningRoute: typeof AccountingOpeningRoute
+  AccountingReportsRoute: typeof AccountingReportsRoute
+  AccountingSettingsRoute: typeof AccountingSettingsRoute
+  AccountingSetupRoute: typeof AccountingSetupRoute
+  AccountingTaxCodesRoute: typeof AccountingTaxCodesRoute
+  AccountingIndexRoute: typeof AccountingIndexRoute
+  AccountingVouchersVoucherIdRoute: typeof AccountingVouchersVoucherIdRoute
+  AccountingVouchersIndexRoute: typeof AccountingVouchersIndexRoute
+}
+
+const AccountingRouteChildren: AccountingRouteChildren = {
+  AccountingAccountsRoute: AccountingAccountsRoute,
+  AccountingJournalRoute: AccountingJournalRoute,
+  AccountingOpenItemsRoute: AccountingOpenItemsRoute,
+  AccountingOpeningRoute: AccountingOpeningRoute,
+  AccountingReportsRoute: AccountingReportsRoute,
+  AccountingSettingsRoute: AccountingSettingsRoute,
+  AccountingSetupRoute: AccountingSetupRoute,
+  AccountingTaxCodesRoute: AccountingTaxCodesRoute,
+  AccountingIndexRoute: AccountingIndexRoute,
+  AccountingVouchersVoucherIdRoute: AccountingVouchersVoucherIdRoute,
+  AccountingVouchersIndexRoute: AccountingVouchersIndexRoute,
+}
+
+const AccountingRouteWithChildren = AccountingRoute._addFileChildren(
+  AccountingRouteChildren,
+)
+
 interface AdminRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
 }
@@ -4789,6 +5049,7 @@ const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcceptInvitationRoute: AcceptInvitationRoute,
+  AccountingRoute: AccountingRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
   AgentsRoute: AgentsRouteWithChildren,
   AssistantRoute: AssistantRouteWithChildren,

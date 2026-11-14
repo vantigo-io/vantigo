@@ -25,6 +25,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { metaQueryOptions } from "@vantigo/accounting-ui/api/accounting";
 import { reviewCountQueryOptions } from "@vantigo/agents-ui/api/agents";
 import { AgendaWidget } from "@vantigo/calendar-ui/components/agenda-widget";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
@@ -56,6 +57,7 @@ import {
   type TimeSummary,
 } from "../api/dashboard";
 import {
+  accountingKpi,
   attentionHref,
   attentionTitle,
   awaitingApprovalHint,
@@ -188,6 +190,14 @@ const DashboardPage = () => {
     queryKey: ["dashboard", "inventory", "stats"],
     queryFn: ({ signal }) => fetchInventoryStats(signal),
     enabled: allowed("inventory") && canReadInventoryStats(permissions),
+    retry: false,
+  });
+
+  // Accounting's figures are the fiscal year's, from its meta (accounting design A1).
+  const accountingMeta = useQuery({
+    ...metaQueryOptions(),
+    queryKey: ["dashboard", "accounting", "meta"],
+    enabled: allowed("accounting"),
     retry: false,
   });
 
@@ -689,6 +699,17 @@ const DashboardPage = () => {
                 {...inventoryKpi(inventoryStats.data, formatters.formatNumber, t)}
                 href={href}
                 loading={inventoryStats.isPending}
+              />
+            );
+          }
+          if (module.module === "accounting") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.accountingVouchers")}
+                {...accountingKpi(accountingMeta.data, formatters.formatNumber, t)}
+                href={href}
+                loading={accountingMeta.isPending}
               />
             );
           }

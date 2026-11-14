@@ -597,6 +597,30 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.knowledgeManage",
     descriptionKey: "admin.permission.knowledgeManageDescription",
   },
+  "accounting:read": {
+    moduleKey: "admin.permission.module.accounting",
+    categoryKey: "admin.permission.category.accounting",
+    displayNameKey: "admin.permission.accountingRead",
+    descriptionKey: "admin.permission.accountingReadDescription",
+  },
+  "accounting:post": {
+    moduleKey: "admin.permission.module.accounting",
+    categoryKey: "admin.permission.category.accounting",
+    displayNameKey: "admin.permission.accountingPost",
+    descriptionKey: "admin.permission.accountingPostDescription",
+  },
+  "accounting:close": {
+    moduleKey: "admin.permission.module.accounting",
+    categoryKey: "admin.permission.category.accounting",
+    displayNameKey: "admin.permission.accountingClose",
+    descriptionKey: "admin.permission.accountingCloseDescription",
+  },
+  "accounting:export": {
+    moduleKey: "admin.permission.module.accounting",
+    categoryKey: "admin.permission.category.accounting",
+    displayNameKey: "admin.permission.accountingExport",
+    descriptionKey: "admin.permission.accountingExportDescription",
+  },
   "manufacturing:access": {
     moduleKey: "admin.permission.module.manufacturing",
     categoryKey: "admin.permission.category.manufacturing",
@@ -885,6 +909,7 @@ const en = {
   "admin.permission.module.inventory": "Inventory",
   "admin.permission.module.orders": "Orders",
   "admin.permission.module.knowledge": "Knowledge",
+  "admin.permission.module.accounting": "Accounting",
   "admin.permission.module.manufacturing": "Manufacturing",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
@@ -911,6 +936,7 @@ const en = {
   "admin.permission.category.inventory": "Inventory",
   "admin.permission.category.orders": "Orders",
   "admin.permission.category.knowledge": "Knowledge",
+  "admin.permission.category.accounting": "Accounting",
   "admin.permission.category.manufacturing": "Manufacturing",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
@@ -1153,6 +1179,18 @@ const en = {
   "admin.permission.knowledgeManage": "Administer Knowledge",
   "admin.permission.knowledgeManageDescription":
     "See and change the access of every article that is not private, restore anyone's trashed article and empty the trash. Private articles stay private.",
+  "admin.permission.accountingRead": "Use Accounting",
+  "admin.permission.accountingReadDescription":
+    "See the Accounting app: the chart, the tax codes, every voucher, the open items and every report.",
+  "admin.permission.accountingPost": "Post vouchers",
+  "admin.permission.accountingPostDescription":
+    "Post manual journals, reverse vouchers, attach files and register payments on open items.",
+  "admin.permission.accountingClose": "Manage the books",
+  "admin.permission.accountingCloseDescription":
+    "Set up the books, change the chart of accounts, the tax codes and the system roles, enter the opening balances and move the lock date.",
+  "admin.permission.accountingExport": "Export the books",
+  "admin.permission.accountingExportDescription":
+    "Download the specifications as files, which carry customers' and suppliers' names.",
   "admin.permission.manufacturingAccess": "Use Manufacturing",
   "admin.permission.manufacturingAccessDescription":
     "See the Manufacturing app and read work centers, bills of materials and manufacturing orders.",
@@ -1649,6 +1687,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.inventory": "Lager",
   "admin.permission.module.orders": "Ordre",
   "admin.permission.module.knowledge": "Kunnskap",
+  "admin.permission.module.accounting": "Regnskap",
   "admin.permission.module.manufacturing": "Produksjon",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
@@ -1675,6 +1714,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.inventory": "Lager",
   "admin.permission.category.orders": "Ordre",
   "admin.permission.category.knowledge": "Kunnskap",
+  "admin.permission.category.accounting": "Regnskap",
   "admin.permission.category.manufacturing": "Produksjon",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
@@ -1924,6 +1964,18 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.knowledgeManage": "Administrere Kunnskap",
   "admin.permission.knowledgeManageDescription":
     "Se og endre tilgangen til alle artikler som ikke er private, gjenopprette andres artikler fra papirkurven og tømme papirkurven. Private artikler forblir private.",
+  "admin.permission.accountingRead": "Bruke Regnskap",
+  "admin.permission.accountingReadDescription":
+    "Se Regnskap-appen: kontoplanen, mva-kodene, alle bilag, de åpne postene og alle rapporter.",
+  "admin.permission.accountingPost": "Bokføre bilag",
+  "admin.permission.accountingPostDescription":
+    "Bokføre posteringer, tilbakeføre bilag, legge ved filer og registrere betalinger på åpne poster.",
+  "admin.permission.accountingClose": "Forvalte regnskapet",
+  "admin.permission.accountingCloseDescription":
+    "Sette opp regnskapet, endre kontoplanen, mva-kodene og systemrollene, registrere inngående balanse og flytte sperredatoen.",
+  "admin.permission.accountingExport": "Eksportere regnskapet",
+  "admin.permission.accountingExportDescription":
+    "Laste ned spesifikasjonene som filer, med kunders og leverandørers navn.",
   "admin.permission.manufacturingAccess": "Bruke Produksjon",
   "admin.permission.manufacturingAccessDescription":
     "Se Produksjon-appen og lese arbeidsstasjoner, stykklister og produksjonsordrer.",

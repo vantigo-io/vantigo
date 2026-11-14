@@ -4,6 +4,7 @@ import {
   IconBriefcase,
   IconBuildingFactory2,
   IconBuildingWarehouse,
+  IconCalculator,
   IconCalendar,
   IconCalendarStats,
   IconClock,
@@ -16,6 +17,7 @@ import {
   IconUsers,
   IconUsersGroup,
 } from "@tabler/icons-react";
+import type { AccountingMeta } from "@vantigo/accounting-ui/api/accounting";
 import type { InventoryStats } from "@vantigo/inventory-ui/api/stats";
 import {
   COUNTS_ROUTE_PATH,
@@ -142,6 +144,15 @@ export const moduleCards = [
     module: "manufacturing" as ModuleKey,
     // Every Manufacturing read asks for the app's own key (manufacturing design §8).
     requiredPermissions: ["manufacturing:access"],
+  },
+  {
+    title: "dashboard.accounting",
+    description: "dashboard.manageAccounting",
+    path: "/accounting",
+    icon: IconCalculator,
+    module: "accounting" as ModuleKey,
+    // Every Accounting read asks for the app's own key (accounting design A1).
+    requiredPermissions: ["accounting:read"],
   },
   {
     title: "dashboard.orders",
@@ -951,6 +962,23 @@ export const manufacturingKpi = (
           .join(" · "),
       }
     : { value: "—", hint: undefined };
+
+/**
+ * Accounting's KPI: the vouchers of the fiscal year, with the open customer
+ * items as the hint; until the books are set up, the card says so.
+ */
+export const accountingKpi = (
+  meta: AccountingMeta | undefined,
+  formatNumber: (value: number) => string,
+  t: (key: string, values?: Record<string, unknown>) => string,
+) => {
+  if (!meta) return { value: "—", hint: undefined };
+  if (!meta.setUp) return { value: "—", hint: t("dashboard.accountingNotSetUp") };
+  return {
+    value: formatNumber(meta.vouchersThisYear),
+    hint: t("dashboard.accountingOpenItemsHint", { count: meta.openCustomerItems }),
+  };
+};
 
 /** Inventory's KPI: the stock lines, with this week's receipts as the hint. */
 export const inventoryKpi = (

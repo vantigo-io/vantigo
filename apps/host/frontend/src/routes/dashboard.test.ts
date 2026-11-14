@@ -2,6 +2,7 @@ import { i18n } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
 import { dashboardCatalog } from "../catalogs/dashboard";
 import {
+  accountingKpi,
   attentionHref,
   attentionTitle,
   attentionTitleKey,
@@ -1483,6 +1484,41 @@ describe("the dashboard's inventory card", () => {
       "{{count}} lots in stock expire within 14 days",
     );
     expect(dashboardCatalog.nb["dashboard.inventoryLotsExpired_one"]).toBe("{{count}} parti på lager har utløpt");
+  });
+});
+
+/**
+ * Accounting's cards (accounting design A1): the module card with
+ * accounting:read, and a KPI card from the meta — the fiscal year's vouchers,
+ * the open customer items as the hint, or that the books are not set up.
+ */
+describe("the dashboard's accounting card", () => {
+  it("shows the card with the module and accounting:read, and not otherwise", () => {
+    const card = (modules: Parameters<typeof visibleModuleCards>[0], permissions: string[] | undefined) =>
+      visibleModuleCards(modules, permissions).find((one) => one.module === "accounting");
+    expect(card(["accounting"], ["accounting:read"])).toMatchObject({
+      path: "/accounting",
+      requiredPermissions: ["accounting:read"],
+    });
+    expect(card(["accounting"], ["accounting:post"])).toBeUndefined();
+    expect(
+      kpiCards(visibleModuleCards(["accounting"], ["accounting:read"]), ["accounting:read"]).map((one) => one.module),
+    ).toEqual(["accounting"]);
+    expect(dashboardCatalog.nb["dashboard.accounting"]).toBe("Regnskap");
+  });
+
+  it("shows the year's vouchers with the open items, or that the books are not set up", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count ?? ""}`;
+    const formatNumber = (value: number) => String(value);
+    expect(accountingKpi(undefined, formatNumber, t)).toEqual({ value: "—", hint: undefined });
+    const meta = { setUp: true, vouchersThisYear: 12, openCustomerItems: 3 } as NonNullable<
+      Parameters<typeof accountingKpi>[0]
+    >;
+    expect(accountingKpi(meta, formatNumber, t)).toEqual({ value: "12", hint: "dashboard.accountingOpenItemsHint:3" });
+    expect(accountingKpi({ ...meta, setUp: false }, formatNumber, t)).toEqual({
+      value: "—",
+      hint: "dashboard.accountingNotSetUp:",
+    });
   });
 });
 
