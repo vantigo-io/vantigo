@@ -555,14 +555,19 @@ func (s *server) switchBankFeedOn(ctx context.Context, account string, startDay 
 	return gen.PutInvoicesBankFeedAccountsByAccount200JSONResponse(bankFeedAccountResponse(row)), nil
 }
 
+// fetchNowAfterRead is how long after a read Fetch now leaves an account as
+// it is: a read that recent is the fetch.
+const fetchNowAfterRead = 2 * time.Minute
+
 // PostInvoicesBankFeedSync Fetch the bank feed's accounts now
 // (POST /api/v1/invoices/bank-feed/sync)
 //
 // Fetch now (F5): the account named, or every account the feed is switched
-// on for, made due now — one statement on the pool, no lock taken and no call
-// to the bank. The worker's claim then reads it, so a fetch and the worker
-// never read one account together; a cycle in flight keeps its lease and
-// finishes first. 202 with the accounts made due as they now stand.
+// on for, made due now — never before the bank's 429 allows, and not when it
+// was read in the last two minutes — one statement on the pool, no lock taken
+// and no call to the bank. The worker's claim then reads it, so a fetch and
+// the worker never read one account together; a cycle in flight keeps its
+// lease, finishes first and leaves the account due for the next claim. 202 with the accounts made due as they now stand.
 func (s *server) PostInvoicesBankFeedSync(ctx context.Context, req gen.PostInvoicesBankFeedSyncRequestObject) (gen.PostInvoicesBankFeedSyncResponseObject, error) {
 	if s.deps.Config == nil || !s.deps.Config.InvoicesBankFeedEnabled {
 		return gen.PostInvoicesBankFeedSync409ApplicationProblemPlusJSONResponse(s.bankFeedRefusal(ctx, errBankFeedSwitchedOff)), nil
@@ -581,7 +586,10 @@ func (s *server) PostInvoicesBankFeedSync(ctx context.Context, req gen.PostInvoi
 	} else if err != nil {
 		return nil, fmt.Errorf("invoices: read the bank connection: %w", err)
 	}
-	if err := q.MakeBankFeedAccountsDue(ctx, store.MakeBankFeedAccountsDueParams{Now: s.deps.Clock(), Account: account}); err != nil {
+	now := s.deps.Clock()
+	if err := q.MakeBankFeedAccountsDue(ctx, store.MakeBankFeedAccountsDueParams{
+		Now: now, ReadBefore: now.Add(-fetchNowAfterRead), Account: account,
+	}); err != nil {
 		return nil, fmt.Errorf("invoices: make the bank feed's accounts due: %w", err)
 	}
 	rows, err := q.ListBankFeedAccounts(ctx)

@@ -118,14 +118,20 @@ RETURNING *;
 -- name: MakeBankFeedAccountsDue :exec
 -- MakeBankFeedAccountsDue is Fetch now (POST /invoices/bank-feed/sync, F5):
 -- the account named, or every one when @account is NULL, that the feed is
--- switched on for and the bank did not refuse the key for, due now where it
--- was due later. The lease is left: a cycle in flight finishes and the next
--- claim takes the account. A refused account is made due too — its next read
--- is its own — and an unauthorized one waits for a new key.
-UPDATE invoices.bank_feed_accounts SET next_sync_at = @now::timestamptz
+-- switched on for and the bank did not refuse the key for, due now — never
+-- before the bank's 429 said it may be asked again (rate_limited_until), and
+-- not at all when it was read after @read_before (two minutes ago). It overrides a
+-- failure's backoff. The lease is left: a cycle in flight finishes, keeps
+-- the next_sync_at moved after its claim, and the next claim reads the
+-- account again. A refused account is made due too — its next read is its
+-- own — and an unauthorized one waits for a new key.
+UPDATE invoices.bank_feed_accounts
+SET next_sync_at = greatest(@now::timestamptz, coalesce(rate_limited_until, @now::timestamptz))
 WHERE enabled AND status <> 'unauthorized'
   AND (sqlc.narg(account)::text IS NULL OR account = sqlc.narg(account)::text)
-  AND (next_sync_at IS NULL OR next_sync_at > @now::timestamptz);
+  AND (last_synced_at IS NULL OR last_synced_at <= @read_before::timestamptz)
+  AND (next_sync_at IS NULL OR lease_id IS NOT NULL
+       OR next_sync_at > greatest(@now::timestamptz, coalesce(rate_limited_until, @now::timestamptz)));
 
 -- name: StoredFeedLines :many
 -- StoredFeedLines is what a sync already stored of the transactions it read
@@ -172,20 +178,25 @@ RETURNING *;
 -- the reason and detail cleared, last_synced_at the claim's time, the batch
 -- it stored when it stored one, read again at @next_sync_at. Only under the
 -- claim's lease, which it clears; no row is a claim lost. updated_at moves
--- only with the status, so attention dates an item by its change.
+-- only with the status, so attention dates an item by its change. Like the
+-- claim's other ends, it keeps a next_sync_at Fetch now moved after the
+-- claim (@now), and clears the bank's wait.
 UPDATE invoices.bank_feed_accounts SET
     status = 'ok', reason = NULL, detail = '', failures = 0, last_synced_at = @now::timestamptz,
     last_bank_file_id = coalesce(sqlc.narg(last_bank_file_id)::bigint, last_bank_file_id),
-    next_sync_at = @next_sync_at::timestamptz, lease_id = NULL, lease_until = NULL,
+    next_sync_at = CASE WHEN next_sync_at > @now::timestamptz THEN next_sync_at ELSE @next_sync_at::timestamptz END,
+    rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
     updated_at = CASE WHEN status <> 'ok' THEN @now::timestamptz ELSE updated_at END
 WHERE account = @account AND lease_id = @lease_id::text;
 
 -- name: BankFeedRateLimited :execrows
 -- BankFeedRateLimited ends a claim the bank asked to wait (a 429; F7): the
 -- status and the failures as they were, the wait in detail, read again at
--- @next_sync_at.
+-- @next_sync_at, and @rate_limited_until kept, before which Fetch now does
+-- not make the account due.
 UPDATE invoices.bank_feed_accounts SET
-    detail = @detail, next_sync_at = @next_sync_at::timestamptz, lease_id = NULL, lease_until = NULL
+    detail = @detail, next_sync_at = @next_sync_at::timestamptz, rate_limited_until = @rate_limited_until::timestamptz,
+    lease_id = NULL, lease_until = NULL
 WHERE account = @account AND lease_id = @lease_id::text;
 
 -- name: BankFeedFailed :execrows
@@ -197,7 +208,8 @@ UPDATE invoices.bank_feed_accounts SET
     failures = failures + 1,
     reason = coalesce(sqlc.narg(reason)::text, CASE WHEN status = 'refused' AND failures + 1 < @failing_after::integer THEN reason END),
     status = CASE WHEN failures + 1 >= @failing_after::integer THEN 'failing' ELSE status END,
-    detail = @detail, next_sync_at = @next_sync_at::timestamptz, lease_id = NULL, lease_until = NULL,
+    detail = @detail, next_sync_at = CASE WHEN next_sync_at > @now::timestamptz THEN next_sync_at ELSE @next_sync_at::timestamptz END,
+    rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
     updated_at = CASE WHEN failures + 1 >= @failing_after::integer AND status <> 'failing'
         THEN @now::timestamptz ELSE updated_at END
 WHERE account = @account AND lease_id = @lease_id::text;
@@ -208,7 +220,8 @@ WHERE account = @account AND lease_id = @lease_id::text;
 -- failures, read again at @next_sync_at. Nothing of the batch was stored.
 UPDATE invoices.bank_feed_accounts SET
     status = 'refused', reason = @reason::text, detail = @detail, failures = 0,
-    next_sync_at = @next_sync_at::timestamptz, lease_id = NULL, lease_until = NULL,
+    next_sync_at = CASE WHEN next_sync_at > @now::timestamptz THEN next_sync_at ELSE @next_sync_at::timestamptz END,
+    rate_limited_until = NULL, lease_id = NULL, lease_until = NULL,
     updated_at = CASE WHEN status <> 'refused' OR reason IS DISTINCT FROM @reason::text THEN @now::timestamptz ELSE updated_at END
 WHERE account = @account AND lease_id = @lease_id::text;
 
