@@ -152,8 +152,10 @@ func TestWriteOff_ClosesTheOpenAmountRecoversAndUndoes(t *testing.T) {
 }
 
 // A write-off and its undoing, and a recovery and its removal, are facts in
-// the sales journal with what a ledger needs; OpenAt leaves a written-off
-// invoice out; Document reads one document by its id.
+// the sales journal with what a ledger needs — a recovery with what the
+// write-off had recovered before it (R15); OpenAt leaves a written-off
+// invoice out; Document reads one document by its id, CreditNotesOf an
+// invoice's credit notes.
 func TestWriteOff_TheSalesJournal(t *testing.T) {
 	t.Parallel()
 	h := readyToIssue(t)
@@ -169,10 +171,23 @@ func TestWriteOff_TheSalesJournal(t *testing.T) {
 	if err != nil || len(page.Documents) != 0 {
 		t.Errorf("open at the day = %+v, %v; want the written-off invoice left out", page, err)
 	}
-	res := c.Do(http.MethodPost, paymentsPath(inv.ID), map[string]any{"amount": 150, "paidOn": "2026-09-12", "kind": "recovered"})
-	got := writtenOff(t, "recover", res, res.Status, http.StatusOK)
-	if res := c.Do(http.MethodPost, removalPath(inv.ID, got.Payments[1].ID), map[string]any{"reason": "Feil"}); res.Status != http.StatusOK {
-		t.Fatalf("remove = %d", res.Status)
+	recover := func(amount float64) writtenOffJSON {
+		t.Helper()
+		res := c.Do(http.MethodPost, paymentsPath(inv.ID), map[string]any{"amount": amount, "paidOn": "2026-09-12", "kind": "recovered"})
+		return writtenOff(t, "recover", res, res.Status, http.StatusOK)
+	}
+	remove := func(id int64) {
+		t.Helper()
+		if res := c.Do(http.MethodPost, removalPath(inv.ID, id), map[string]any{"reason": "Feil"}); res.Status != http.StatusOK {
+			t.Fatalf("remove = %d", res.Status)
+		}
+	}
+	got := recover(150)
+	recover(100)
+	remove(got.Payments[1].ID)
+	got = recover(50)
+	for _, p := range got.Payments[2:] {
+		remove(p.ID)
 	}
 	if res := c.Do(http.MethodPost, undoPath(inv.ID), map[string]any{"reason": "Angret"}); res.Status != http.StatusOK {
 		t.Fatalf("undo = %d %s", res.Status, res.Body)
@@ -181,7 +196,7 @@ func TestWriteOff_TheSalesJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var kinds []string
+	var kinds, recoveries []string
 	for _, f := range facts {
 		kinds = append(kinds, f.Kind)
 		switch f.Kind {
@@ -191,18 +206,27 @@ func TestWriteOff_TheSalesJournal(t *testing.T) {
 				t.Errorf("%s fact = %+v %+v", f.Kind, f, f.WriteOff)
 			}
 		case contracts.FactRecoveredPayment, contracts.FactRecoveredPaymentRemoved:
-			if f.WriteOff == nil || f.WriteOff.ID != got.WriteOffs[0].ID || f.AmountNOK != "150.00" {
+			if f.WriteOff == nil || f.WriteOff.ID != got.WriteOffs[0].ID {
 				t.Errorf("%s fact = %+v %+v", f.Kind, f, f.WriteOff)
+				continue
 			}
+			recoveries = append(recoveries, f.Kind+" "+f.AmountNOK+" after "+f.WriteOff.RecoveredBeforeNOK)
 		case contracts.FactPayment:
 			if f.WriteOff != nil {
 				t.Errorf("a payment carries a write-off: %+v", f)
 			}
 		}
 	}
-	want := []string{"payment", "write_off", "recovered_payment", "recovered_payment_removed", "write_off_undone"}
+	want := []string{"payment", "write_off", "recovered_payment", "recovered_payment", "recovered_payment_removed",
+		"recovered_payment", "recovered_payment_removed", "recovered_payment_removed", "write_off_undone"}
 	if !slices.Equal(kinds, want) {
 		t.Errorf("facts = %v, want %v", kinds, want)
+	}
+	// The third recovery comes after the second alone: the first was removed.
+	if want := []string{"recovered_payment 150.00 after 0.00", "recovered_payment 100.00 after 150.00",
+		"recovered_payment_removed 150.00 after 0.00", "recovered_payment 50.00 after 100.00",
+		"recovered_payment_removed 100.00 after 0.00", "recovered_payment_removed 50.00 after 0.00"}; !slices.Equal(recoveries, want) {
+		t.Errorf("recoveries = %q, want %q", recoveries, want)
 	}
 	doc, err := j.Document(ctx, inv.ID)
 	if err != nil || doc == nil || inv.Number == nil || doc.Number != *inv.Number || len(doc.VATSummaries) != 1 || doc.VATSummaries[0].VATNOK != "200.00" {
@@ -210,6 +234,19 @@ func TestWriteOff_TheSalesJournal(t *testing.T) {
 	}
 	if none, err := j.Document(ctx, 999999); err != nil || none != nil {
 		t.Errorf("an unknown document = %+v, %v; want nil", none, err)
+	}
+	if credits, err := j.CreditNotesOf(ctx, inv.ID); err != nil || len(credits) != 0 {
+		t.Errorf("CreditNotesOf before a credit note = %+v, %v", credits, err)
+	}
+	draft := creditDraft(t, h, inv.ID)
+	if credits, err := j.CreditNotesOf(ctx, inv.ID); err != nil || len(credits) != 0 {
+		t.Errorf("CreditNotesOf a draft = %+v, %v; want none", credits, err)
+	}
+	note := issued(t, h, draft.ID)
+	credits, err := j.CreditNotesOf(ctx, inv.ID)
+	if err != nil || len(credits) != 1 || credits[0].ID != note.ID || credits[0].Kind != contracts.JournalCreditNote ||
+		credits[0].CreditsID != inv.ID || len(credits[0].VATSummaries) != 1 || credits[0].VATSummaries[0].VATNOK != "200.00" {
+		t.Errorf("CreditNotesOf = %+v, %v", credits, err)
 	}
 }
 
@@ -247,9 +284,10 @@ func TestWriteOff_NeverOpenOverdueOrReminded(t *testing.T) {
 	}
 }
 
-// A written-off invoice has nothing open (accounting design A16, R4): a line
-// paying it is queued invoice_settled and registers nothing, whether a bank
-// file brought it or the bank feed read it (bank feed design F6) — the feed's
+// A written-off invoice has nothing open (accounting design A16, R4, R15): a
+// line paying it is queued invoice_written_off and registers nothing —
+// neither principal nor the charges a letter claimed — whether a bank file
+// brought it or the bank feed read it (bank feed design F6): the feed's
 // lines are judged by the same rule as a file's. Money that arrives after a
 // write-off is a person's to register, as a recovered payment, which is
 // always manual (ck_payments_recovered).
@@ -258,11 +296,13 @@ func TestWriteOff_ALineForAWrittenOffInvoiceIsQueued(t *testing.T) {
 	h, _ := matchHarness(t)
 	byFile, byFeed := kidInvoice(t, h), kidInvoice(t, h)
 	for _, inv := range []invoiceJSON{byFile, byFeed} {
+		// A fee of 35 is outstanding: a line of 35 would otherwise pay it.
+		plantSent(t, h, inv.ID, sentFacts{1, "2026-09-28", "reminder_fee", "35", "", "0"})
 		h.Exec(t, `INSERT INTO invoices.write_offs (invoice_id, written_off_on, amount, currency, reason, registered_by_user_id, registered_at)
 			VALUES ($1, DATE '2026-09-12', 1000, 'NOK', 'loss', gen_random_uuid(), now())`, inv.ID)
 	}
 	toMatchDay(h)
-	r := imported(t, importer(t, h), bankfiletest.OCR("1", kidPay(sellerAccount, 6, 1000, *byFile.Kid, "1")))
+	r := imported(t, importer(t, h), bankfiletest.OCR("1", kidPay(sellerAccount, 6, 35, *byFile.Kid, "1")))
 	fileLine := lineID(t, h, r.File.ID, "1")
 
 	batch := plantID(t, h, `INSERT INTO invoices.bank_files (format, sha256, file_identity, object_key, byte_size, accounts,
@@ -271,15 +311,15 @@ func TestWriteOff_ALineForAWrittenOffInvoiceIsQueued(t *testing.T) {
 		RETURNING id`, sellerAccount)
 	feedLine := plantID(t, h, `INSERT INTO invoices.bank_transactions (bank_file_id, line_ref, format, account, direction, booked_on,
 		    amount, currency, kid, fingerprint, ordinal)
-		VALUES ($1, 'feed-1', 'feed', $2, 'credit', DATE '2026-10-06', 1000, 'NOK', $3, repeat('e', 64), 1) RETURNING id`,
+		VALUES ($1, 'feed-1', 'feed', $2, 'credit', DATE '2026-10-06', 35, 'NOK', $3, repeat('e', 64), 1) RETURNING id`,
 		batch, sellerAccount, *byFeed.Kid)
 	if err := invoices.MatchFile(context.Background(), h.Deps(), batch, uuid.New(), h.Now()); err != nil {
 		t.Fatalf("matching the feed batch: %v", err)
 	}
 
 	for name, id := range map[string]int64{"the file's line": fileLine, "the feed's line": feedLine} {
-		if got := stateOf(t, h, id); got != "exception invoice_settled" {
-			t.Errorf("%s = %s, want exception invoice_settled", name, got)
+		if got := stateOf(t, h, id); got != "exception invoice_written_off" {
+			t.Errorf("%s = %s, want exception invoice_written_off", name, got)
 		}
 		if got := paymentsFrom(t, h, id); len(got) != 0 {
 			t.Errorf("%s's payments = %v, want none", name, got)
@@ -292,5 +332,34 @@ func TestWriteOff_ALineForAWrittenOffInvoiceIsQueued(t *testing.T) {
 		if got := getInvoice(t, h, inv.ID); got.State != "written_off" {
 			t.Errorf("invoice %d = %s, want still written_off", inv.ID, got.State)
 		}
+	}
+}
+
+// No credit note while a write-off stands (accounting design R15): a new
+// credit-note draft, the save of one made before the write-off and its issue
+// are each refused invoice_written_off, judged under the original's lock;
+// once the write-off is undone the draft is saved and issued.
+func TestWriteOff_NoCreditNoteWhileAWriteOffStands(t *testing.T) {
+	t.Parallel()
+	h := readyToIssue(t)
+	c := payer(t, h)
+	inv := thousand(t, h)
+	draft := creditDraft(t, h, inv.ID)
+	res := c.Do(http.MethodPost, writeOffPath(inv.ID), map[string]any{"writtenOffOn": "2026-09-12", "reason": "loss", "vatCorrection": true})
+	writtenOff(t, "write off", res, res.Status, http.StatusOK)
+
+	refusedAs(t, "a new credit-note draft", issuer(t, h).Do(http.MethodPost, creditPath(inv.ID), nil), "invoice_written_off")
+	refusedAs(t, "the save of a credit-note draft", creator(t, h).Do(http.MethodPut, invoicePath(draft.ID),
+		creditBody(draft, creditLine(draft.Lines[0]))), "invoice_written_off")
+	refusedAs(t, "the issue of a credit note", issueWith(t, h, draft.ID, ""), "invoice_written_off")
+	if n := h.Count(t, `SELECT count(*) FROM invoices.invoices WHERE credits_invoice_id = $1`, inv.ID); n != 1 {
+		t.Errorf("%d credit notes of the invoice, want the one draft", n)
+	}
+
+	res = c.Do(http.MethodPost, undoPath(inv.ID), map[string]any{"reason": "Kreditnota i stedet"})
+	writtenOff(t, "undo", res, res.Status, http.StatusOK)
+	saved := saveCredit(t, h, draft, creditBody(draft, creditLine(draft.Lines[0])))
+	if got := issued(t, h, saved.ID); got.Number == nil {
+		t.Errorf("the credit note was not issued: %+v", got)
 	}
 }

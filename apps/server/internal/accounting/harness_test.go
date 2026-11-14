@@ -229,6 +229,18 @@ func (j *fakeJournal) Document(_ context.Context, id int64) (*contracts.JournalD
 	return nil, nil
 }
 
+func (j *fakeJournal) CreditNotesOf(_ context.Context, invoiceID int64) ([]contracts.JournalDocument, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	out := []contracts.JournalDocument{}
+	for _, d := range j.docs {
+		if d.Kind == contracts.JournalCreditNote && d.CreditsID == invoiceID {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
 func (j *fakeJournal) Facts(_ context.Context, after int64, limit int) ([]contracts.JournalFact, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()

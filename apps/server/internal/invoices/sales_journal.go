@@ -21,7 +21,8 @@ import (
 // This file is the module's contracts.SalesJournal (accounting design A12,
 // R1): its issued documents in number order with their lines and VAT
 // summaries, one by its id, the fact log (invoices.journal_facts, migrations
-// 00180 and 00182) in seq order, and the invoices open at a day.
+// 00180 and 00182) in seq order, an invoice's credit notes, and the invoices
+// open at a day.
 //
 // It serves from this module's own tables and nothing else, on the pool, and
 // holds no lock, as salesTax does; OpenAt alone opens a transaction, read-only
@@ -119,6 +120,20 @@ func (j *salesJournal) Document(ctx context.Context, id int64) (*contracts.Journ
 		return nil, err
 	}
 	return &out[0], nil
+}
+
+// CreditNotesOf is the issued credit notes of the invoice with that id, in
+// number order.
+func (j *salesJournal) CreditNotesOf(ctx context.Context, invoiceID int64) ([]contracts.JournalDocument, error) {
+	rows, err := j.q.JournalCreditNotesOf(ctx, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("invoices: read the credit notes of %d: %w", invoiceID, err)
+	}
+	docs := make([]store.JournalDocumentsRow, 0, len(rows))
+	for _, r := range rows {
+		docs = append(docs, store.JournalDocumentsRow(r))
+	}
+	return j.documents(ctx, docs)
 }
 
 // documents is rows with their lines and VAT summaries, as the contract
@@ -258,8 +273,13 @@ func (j *salesJournal) Facts(ctx context.Context, afterSeq int64, limit int) ([]
 			if err != nil {
 				return nil, err
 			}
+			before, err := nok(r.RecoveredBefore, r.ExchangeRate)
+			if err != nil {
+				return nil, err
+			}
 			f.WriteOff = &contracts.JournalWriteOff{ID: *r.WriteOffID, Reason: deref(r.WriteOffReason),
-				VATCorrection: r.WriteOffVatCorrection != nil && *r.WriteOffVatCorrection, AmountNOK: written}
+				VATCorrection: r.WriteOffVatCorrection != nil && *r.WriteOffVatCorrection, AmountNOK: written,
+				RecoveredBeforeNOK: before}
 		}
 		facts = append(facts, f)
 	}

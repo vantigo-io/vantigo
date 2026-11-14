@@ -222,6 +222,22 @@ CREATE CONSTRAINT TRIGGER tr_write_offs_journal_undone
     FOR EACH ROW WHEN (OLD.undone_at IS NULL AND NEW.undone_at IS NOT NULL)
     EXECUTE FUNCTION invoices.record_write_off_fact();
 
+-- A bank line for a written-off invoice (R15), from a file or the feed, is
+-- queued invoice_written_off and registers nothing: money after a write-off
+-- is a recovery, which a person registers.
+ALTER TABLE invoices.bank_transactions
+    DROP CONSTRAINT ck_bank_transactions_reason,
+    ADD CONSTRAINT ck_bank_transactions_reason CHECK (reason IS NULL OR reason IN ('kid_invalid', 'kid_unknown',
+        'invoice_credited', 'invoice_settled', 'exceeds_open', 'no_kid', 'negative_amount', 'reversal',
+        'vipps_payout', 'paid_before_issue', 'account_mismatch', 'possible_duplicate', 'payment_removed',
+        'invoice_written_off'));
+ALTER TABLE invoices.bank_transaction_events
+    DROP CONSTRAINT ck_bank_transaction_events_reason,
+    ADD CONSTRAINT ck_bank_transaction_events_reason CHECK (reason IS NULL OR reason IN ('kid_invalid', 'kid_unknown',
+        'invoice_credited', 'invoice_settled', 'exceeds_open', 'no_kid', 'negative_amount', 'reversal',
+        'vipps_payout', 'paid_before_issue', 'account_mismatch', 'possible_duplicate', 'payment_removed',
+        'invoice_written_off'));
+
 -- +goose Down
 -- A write-off and a recovery are bookkeeping: the Down refuses while one
 -- exists, as 00180's does while the log holds a fact.
@@ -236,6 +252,16 @@ END;
 $down$;
 -- +goose StatementEnd
 
+ALTER TABLE invoices.bank_transaction_events
+    DROP CONSTRAINT ck_bank_transaction_events_reason,
+    ADD CONSTRAINT ck_bank_transaction_events_reason CHECK (reason IS NULL OR reason IN ('kid_invalid', 'kid_unknown',
+        'invoice_credited', 'invoice_settled', 'exceeds_open', 'no_kid', 'negative_amount', 'reversal',
+        'vipps_payout', 'paid_before_issue', 'account_mismatch', 'possible_duplicate', 'payment_removed'));
+ALTER TABLE invoices.bank_transactions
+    DROP CONSTRAINT ck_bank_transactions_reason,
+    ADD CONSTRAINT ck_bank_transactions_reason CHECK (reason IS NULL OR reason IN ('kid_invalid', 'kid_unknown',
+        'invoice_credited', 'invoice_settled', 'exceeds_open', 'no_kid', 'negative_amount', 'reversal',
+        'vipps_payout', 'paid_before_issue', 'account_mismatch', 'possible_duplicate', 'payment_removed'));
 DROP TRIGGER tr_write_offs_journal_undone ON invoices.write_offs;
 DROP TRIGGER tr_write_offs_journal_made ON invoices.write_offs;
 DROP FUNCTION invoices.record_write_off_fact();

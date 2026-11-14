@@ -12,6 +12,69 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const journalCreditNotesOf = `-- name: JournalCreditNotesOf :many
+SELECT i.id, i.number::bigint AS number, i.kind, i.issue_date, i.due_date, i.customer_id, i.currency, i.exchange_rate,
+    i.credits_invoice_id, o.number AS credits_number, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok
+FROM invoices.invoices i
+LEFT JOIN invoices.invoices o ON o.id = i.credits_invoice_id
+WHERE i.status = 'issued' AND i.kind = 'credit_note' AND i.credits_invoice_id = $1::bigint
+ORDER BY i.number
+`
+
+type JournalCreditNotesOfRow struct {
+	ID               int64
+	Number           int64
+	Kind             string
+	IssueDate        pgtype.Date
+	DueDate          pgtype.Date
+	CustomerID       int32
+	Currency         string
+	ExchangeRate     pgtype.Numeric
+	CreditsInvoiceID *int64
+	CreditsNumber    *int64
+	NetTotal         pgtype.Numeric
+	VatTotal         pgtype.Numeric
+	GrossTotal       pgtype.Numeric
+	VatTotalNok      pgtype.Numeric
+}
+
+// JournalCreditNotesOf is the issued credit notes of an invoice, as
+// JournalDocuments answers them, in number order.
+func (q *Queries) JournalCreditNotesOf(ctx context.Context, invoiceID int64) ([]JournalCreditNotesOfRow, error) {
+	rows, err := q.db.Query(ctx, journalCreditNotesOf, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []JournalCreditNotesOfRow
+	for rows.Next() {
+		var i JournalCreditNotesOfRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Kind,
+			&i.IssueDate,
+			&i.DueDate,
+			&i.CustomerID,
+			&i.Currency,
+			&i.ExchangeRate,
+			&i.CreditsInvoiceID,
+			&i.CreditsNumber,
+			&i.NetTotal,
+			&i.VatTotal,
+			&i.GrossTotal,
+			&i.VatTotalNok,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const journalDocumentByID = `-- name: JournalDocumentByID :many
 SELECT i.id, i.number::bigint AS number, i.kind, i.issue_date, i.due_date, i.customer_id, i.currency, i.exchange_rate,
     i.credits_invoice_id, o.number AS credits_number, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok
@@ -156,7 +219,14 @@ SELECT f.seq, f.kind, f.subject_id, f.invoice_id, f.business_date, f.removed_at,
     COALESCE(p.source, c.source, 'manual')::text AS source,
     COALESCE(t.account, '')::text AS bank_account,
     w.id AS write_off_id, w.reason AS write_off_reason, w.vat_correction AS write_off_vat_correction,
-    w.amount AS write_off_amount
+    w.amount AS write_off_amount,
+    COALESCE(CASE WHEN f.kind = 'recovered_payment' THEN (
+        SELECT sum(r.amount) FROM invoices.payments r
+        JOIN invoices.journal_facts rf ON rf.kind = 'recovered_payment' AND rf.subject_id = r.id
+        WHERE r.write_off_id = p.write_off_id AND rf.seq < f.seq
+          AND NOT EXISTS (SELECT 1 FROM invoices.journal_facts xf
+                          WHERE xf.kind = 'recovered_payment_removed' AND xf.subject_id = r.id AND xf.seq < f.seq))
+    END, 0)::numeric AS recovered_before
 FROM invoices.journal_facts f
 JOIN invoices.invoices i ON i.id = f.invoice_id
 LEFT JOIN invoices.payments p
@@ -192,6 +262,7 @@ type JournalFactsRow struct {
 	WriteOffReason        *string
 	WriteOffVatCorrection *bool
 	WriteOffAmount        pgtype.Numeric
+	RecoveredBefore       pgtype.Numeric
 }
 
 // JournalFacts is up to row_limit facts after after_seq, in seq order, each
@@ -225,6 +296,7 @@ func (q *Queries) JournalFacts(ctx context.Context, arg JournalFactsParams) ([]J
 			&i.WriteOffReason,
 			&i.WriteOffVatCorrection,
 			&i.WriteOffAmount,
+			&i.RecoveredBefore,
 		); err != nil {
 			return nil, err
 		}

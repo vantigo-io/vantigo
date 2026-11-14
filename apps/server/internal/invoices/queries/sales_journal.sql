@@ -44,7 +44,14 @@ SELECT f.seq, f.kind, f.subject_id, f.invoice_id, f.business_date, f.removed_at,
     COALESCE(p.source, c.source, 'manual')::text AS source,
     COALESCE(t.account, '')::text AS bank_account,
     w.id AS write_off_id, w.reason AS write_off_reason, w.vat_correction AS write_off_vat_correction,
-    w.amount AS write_off_amount
+    w.amount AS write_off_amount,
+    COALESCE(CASE WHEN f.kind = 'recovered_payment' THEN (
+        SELECT sum(r.amount) FROM invoices.payments r
+        JOIN invoices.journal_facts rf ON rf.kind = 'recovered_payment' AND rf.subject_id = r.id
+        WHERE r.write_off_id = p.write_off_id AND rf.seq < f.seq
+          AND NOT EXISTS (SELECT 1 FROM invoices.journal_facts xf
+                          WHERE xf.kind = 'recovered_payment_removed' AND xf.subject_id = r.id AND xf.seq < f.seq))
+    END, 0)::numeric AS recovered_before
 FROM invoices.journal_facts f
 JOIN invoices.invoices i ON i.id = f.invoice_id
 LEFT JOIN invoices.payments p
@@ -90,6 +97,16 @@ WHERE i.kind = 'invoice' AND i.status = 'issued' AND i.issue_date <= sqlc.arg(da
   AND i.gross_total - COALESCE(cr.credited, 0) - COALESCE(pd.paid, 0) <> 0
 ORDER BY i.number
 LIMIT sqlc.arg(row_limit)::int;
+
+-- name: JournalCreditNotesOf :many
+-- JournalCreditNotesOf is the issued credit notes of an invoice, as
+-- JournalDocuments answers them, in number order.
+SELECT i.id, i.number::bigint AS number, i.kind, i.issue_date, i.due_date, i.customer_id, i.currency, i.exchange_rate,
+    i.credits_invoice_id, o.number AS credits_number, i.net_total, i.vat_total, i.gross_total, i.vat_total_nok
+FROM invoices.invoices i
+LEFT JOIN invoices.invoices o ON o.id = i.credits_invoice_id
+WHERE i.status = 'issued' AND i.kind = 'credit_note' AND i.credits_invoice_id = sqlc.arg(invoice_id)::bigint
+ORDER BY i.number;
 
 -- name: JournalDocumentByID :many
 -- JournalDocumentByID is the issued document with that id, as
