@@ -13,12 +13,12 @@ Workspace administration is where an **Owner** manages who can use Vantigo and w
 they may do. Open the avatar menu at the top right and choose **Workspace admin**;
 its sidebar has **Overview**, **Users**, **Invitations**, **Roles & access** and, while
 Manufacturing is on, **Stations**, and,
-under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping** and, once Vantigo has set up AI for the
+under **Integrations**, **Microsoft Entra ID**, **Google Workspace**, **Meta**, **Shipping**, **Bank** and, once Vantigo has set up AI for the
 installation, **AI models** and **Assistant**.
 
 Everything here needs the Owner role, with one exception: a person to whom an Owner
 has delegated role administration sees **Roles & access** alone, both in the avatar
-menu and in the sidebar; someone who holds `entra:manage`, `google:manage` or `orders:carriers-manage` without being an Owner
+menu and in the sidebar; someone who holds `entra:manage`, `google:manage`, `orders:carriers-manage` or `invoices:manage` without being an Owner
 sees **Integrations** alone ([below](#integrations)); and someone who holds `identity:manage`
 sees **Stations** ([below](#shop-floor-stations)). The last active Owner can never be
 demoted, disabled or deleted, so the workspace always has one.
@@ -596,20 +596,26 @@ there only while the Meta module is on.
 Mybring user and API key, the customer numbers, the test mode — and the default account per
 site, described in [Shipping](/en/admin/shipping/). It is there only while the Orders module
 is on, and only for someone who holds `orders:carriers-manage`.
+**Bank** connects the company's bank — Folio, with an API key — and chooses the
+accounts Invoices reads incoming payments from and from which day, described in [Connecting
+the bank](/en/user/invoices/#connecting-the-bank). It is there only while the Invoices
+module is on, and only for someone who holds `invoices:access` and `invoices:manage`.
 **AI models** is the Owner's
 alone, and is there only while Vantigo has set up AI for this installation
 ([below](#ai-models)). **Assistant** is the Owner's alone too, and is there while the Assistant
 module is on and AI is set up ([below](#assistant)).
 
 - An Owner sees all of Workspace admin, with **Integrations** after the rest.
-- Someone who holds `entra:manage`, `google:manage` or `orders:carriers-manage` but is not
-  an Owner sees **Integrations** alone in the sidebar — the way a person with delegated role
-  administration sees **Roles & access** alone — with the pages their permissions open,
-  and finds **Microsoft Entra ID**, **Google Workspace** or **Shipping** in the avatar menu. The steps that
+- Someone who holds `entra:manage`, `google:manage`, `orders:carriers-manage` or
+  `invoices:manage` but is not an Owner sees **Integrations** alone in the sidebar — the way
+  a person with delegated role administration sees **Roles & access** alone — with the pages
+  their permissions open, and finds **Microsoft Entra ID**, **Google Workspace**,
+  **Shipping** or **Bank** in the avatar menu. The steps that
   are an Owner's they read without their forms. They do not see **AI models** or **Assistant**.
-- Without `entra:manage`, `google:manage` or `orders:carriers-manage` (and not an Owner),
-  there is no **Integrations** section. For an Owner there is none either while the
-  Microsoft Entra ID, Google Workspace and Orders modules are off and AI is not set up.
+- Without `entra:manage`, `google:manage`, `orders:carriers-manage` or `invoices:manage`
+  (and not an Owner), there is no **Integrations** section. For an Owner there is none
+  either while the Microsoft Entra ID, Google Workspace, Orders and Invoices modules are off
+  and AI is not set up.
 
 Your own accounts elsewhere, such as your Outlook, are connected under **Settings** ›
 **Connections** ([Connections](/en/user/connections/)); the mailboxes Communications
