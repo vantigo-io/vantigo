@@ -136,6 +136,8 @@ kjører, hvert 5. sekund ([Bakgrunnsjobber og skalering](/nb/admin/installation/
 | Innstilling | Standard | Betydning |
 | --- | --- | --- |
 | `BRREG_BASE_URL`, `BRREG_TIMEOUT` | `https://data.brreg.no`, `15s` | Oppslaget i foretaksregisteret |
+| `ACCOUNTING_SAFT_IMPORT_MAX_BYTES` | 512 MiB, fra 1 MiB til 4 GiB | Den største SAF-T-filen Regnskap tar imot for å sette opp regnskapet ([Kommer du fra et annet system?](/nb/user/accounting/#kommer-du-fra-et-annet-system)) |
+| `ACCOUNTING_SAFT_SPLIT_BYTES` | 2 000 000 000, fra 1024 | Størrelsen der en SAF-T-eksport deles etter periode i filer som hver er gyldige alene; Skatteetaten tar imot filer på opptil 2 GB |
 | `PEPPOL_LOOKUP_ENABLED`, `PEPPOL_SML_ZONE`, `PEPPOL_DNS_SERVER`, `PEPPOL_TIMEOUT` | `1`, produksjonssonen, ikke satt, `10s` | Oppslaget av Peppol-evne |
 | `INVOICES_EHF_ENABLED`, `INVOICES_STORECOVE_BASE_URL` | `1`, Storecoves API | Å sende fakturaer som EHF ([E-faktura](/nb/admin/e-invoicing/)) |
 | `INVOICES_VIPPS_ENABLED`, `INVOICES_VIPPS_BASE_URL` | `1`, Vipps' API | Betaling med Vipps MobilePay ([Betalinger](/nb/admin/payments/)) |

@@ -1,6 +1,6 @@
 ---
 title: Accounting
-description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, suppliers and the Brønnøysund lookup, entering, posting and paying a supplier invoice, another currency, reverse charge and import of goods, credit notes, Reverse and copy, how expenses arrive from Expenses, the posting rules for sales and expense categories, Needs attention with Retry, the amount in NOK and Make a supplier invoice, open items and registering a receipt, payment or refund, the VAT term — checking its figures, closing it, downloading the return, filing it at Skatteetaten and marking it as filed, reopening it, correcting after filing and paying the VAT — the reports and their CSV, and inviting an accountant.
+description: The Accounting app — setting up the books, the chart of accounts with its grouping codes and system accounts, the tax codes and their rates, posting a journal entry net or gross with its VAT lines, copying a voucher, attaching files, reversing a voucher, locking a period and moving the lock back, the opening balances and Invoices' open invoices, how invoices, payments, charges and write-offs post themselves, suppliers and the Brønnøysund lookup, entering, posting and paying a supplier invoice, another currency, reverse charge and import of goods, credit notes, Reverse and copy, how expenses arrive from Expenses, the posting rules for sales and expense categories, Needs attention with Retry, the amount in NOK and Make a supplier invoice, open items and registering a receipt, payment or refund, the VAT term — checking its figures, closing it, downloading the return, filing it at Skatteetaten and marking it as filed, reopening it, correcting after filing and paying the VAT — the reports and their CSV, the SAF-T file an audit asks for and the grouping codes it needs, coming from another system with its SAF-T file, and inviting an accountant.
 sidebar:
   order: 67
 sources:
@@ -42,6 +42,7 @@ the permission each request is checked against — are in the
 | **Open items** | What customers owe and what is owed to suppliers, document by document. |
 | **VAT** | The VAT terms: each term's return, its close, the XML and the filing mark. Not shown when the company is not VAT-registered. |
 | **Reports** | The journal, an account, customers, suppliers, the trial balance, profit and loss, the balance sheet and the VAT specification. |
+| **SAF-T** | The file Skatteetaten asks for in an audit, and every export made. Shown to those who may export the books. |
 | **Chart of accounts** | The accounts, their grouping codes and the system accounts. |
 | **Tax codes** | The standard VAT codes, their accounts and their rates. |
 | **Posting rules** | Which revenue account each sales line goes to, and which cost account each expense category goes to. |
@@ -67,6 +68,59 @@ are not set up*, and every other page says the same. A person with **Manage the 
 codes with their rates — 25, 15, 12 and 11.11 %, unchanged since 2022 — and the system
 accounts, and opens **Opening balances**. The
 four choices cannot be changed afterwards; **Settings** shows them.
+
+A company coming from another accounting system sets the books up from that system's SAF-T
+file instead, on the same page: see [Coming from another system](#coming-from-another-system).
+
+## Coming from another system
+
+A company that kept its books in Fiken, Tripletex, Visma or any other system brings its
+chart, its suppliers and its balances with the **SAF-T Financial** file that system
+exports. Do it **before** the books are set up: it is the other way to set them up, and it
+needs **Manage the books**.
+
+1. In the old system, close the last period you keep there and export the SAF-T Financial
+   file for it — version 1.30 or 1.40, for the fiscal year or up to the last day of a
+   month. The books here start the day after the file's period ends.
+2. In Vantigo, open **Accounting**, **Set up the books**, and under **Coming from another
+   system?** choose the file and click **Read the file**. Nothing is written yet: you see
+   a preview.
+3. Read the preview:
+   - **The chart** — every account in the file with the number it gets here, its kind,
+     its grouping code and its closing balance. A number that does not fit the chart here
+     (4 to 6 digits beginning with 1 to 8) is listed with its fix: taken without its dots
+     or dashes, left out when it has no balance, or *Needs a number* when it has one.
+   - **Accounts added from the default chart** — the accounts the books need and the file
+     has not, such as the opening balance account or the separate VAT accounts.
+   - **System roles** — which account is accounts receivable, accounts payable, the bank
+     and so on. The customers' and suppliers' account in the file decides the first two.
+   - **Tax codes** — the file's codes and the standard code each maps to. The books here
+     use Skatteetaten's standard codes.
+   - **Suppliers** — made from the file with their organisation number, address and bank
+     account. A number that is not valid is left out and said so.
+   - **Customers** — matched to the customers in **Customers** by organisation number.
+     Accounting does not make customers: one with a balance that Customers does not hold,
+     or holds twice, must be created or found there first; then give its customer number
+     in the field under the list.
+   - **The opening balances** — the voucher the books start with: each balance-sheet
+     account's closing balance, one open item per customer and supplier with a balance,
+     and the result of the period to the opening balance account. The VAT accounts'
+     balances are put on the VAT settlement account (2740) together — *VAT owed at the
+     start* — since that is what is left to pay or to receive.
+4. Choose the **VAT term** and the language of the names, and click **Set up the books
+   from the file**. Everything is written at once; it cannot be undone.
+
+Apply is refused while an account needs a number, a customer with a balance is not in
+Customers, or the customers' or suppliers' balances do not add up to their account's
+balance in the file (the difference is shown): correct it in the old system and export
+again.
+
+**The transactions are not imported.** The old system's vouchers stay in its file: the
+law asks you to keep the books of earlier years for five years, and the file is that
+record. Vantigo keeps the uploaded file with the books — **Settings** shows it under *Set
+up from a SAF-T file*, to download — but keep your own copy from the old system too. A customer's open balance arrives as
+one item per customer: when it is paid, register the receipt under **Open items**, or
+split it there.
 
 ## The chart of accounts
 
@@ -726,6 +780,43 @@ not shown cut short: choose a shorter period. **Download CSV** gives the file a
 spreadsheet opens directly: semicolons and the decimal comma. Downloading needs **Export
 the books** (`accounting:export`), because the files carry customers' names.
 
+## The file an audit asks for (SAF-T)
+
+When Skatteetaten asks for the books in a tax audit (bokettersyn), it asks for a **SAF-T
+Financial** file: every voucher of the period with its lines, the chart with each
+account's balances, the customers, the suppliers and the tax codes. Vantigo writes version
+1.40, the one required for periods from 2027. Exporting needs **Export the books**
+(`accounting:export`), since the file names customers and suppliers — people among them.
+
+1. Open **Accounting**, **SAF-T**.
+2. Choose the **Fiscal year**, and to send part of it, **From period** and **To period**.
+   Skatteetaten usually asks for a whole year; a file holds one fiscal year at most.
+3. Read the warnings:
+   - *accounts have no grouping code* — they are exported with the code **NA**. Open the
+     chart, give each its **Grouping code** for the year, and come back.
+   - *The company's details are missing* — enter the company's name and organisation number
+     in Invoices' settings: the file names the company by its number.
+4. Click **Export SAF-T**. The file is written in the background; the list below shows it
+   as *Queued*, *Writing* and then *Done*, with who asked for it and when. A failed export
+   says why.
+5. Click the file's name to download it: `SAF-T Financial_<organisation number>_<date and
+   time>_1_1.xml`. A very large year — over 2 GB — comes as several files, split by
+   period, each complete on its own: `…_1_2.xml`, `…_2_2.xml`.
+
+**Handing it over.** Upload the file in the audit case on skatteetaten.no, as the
+case officer asks; don't send it by e-mail. To check a file first, Skatteetaten's test
+submission route for SAF-T takes it without starting a case. Every export is kept in the
+list with the file's checksum, as the record of what was handed over.
+
+### Grouping codes
+
+Every account in a SAF-T file carries a **grouping code** from Skatteetaten's list for the
+tax return's business specification (næringsspesifikasjonen) — 1920 bank deposits, 3000
+sales revenue and so on. The default chart has one on every account. An account you add
+without one, or an imported one whose code is not on the year's list, exports *NA*: open
+it in the chart and pick its code in **Grouping code**. The code is kept per year, so a
+new year's list can change it without changing earlier years' files.
+
 ## Inviting an accountant
 
 An accountant is an ordinary user. Invite them under
@@ -736,8 +827,8 @@ the permissions they need:
 | --- | --- |
 | **Use Accounting** (`accounting:read`) | Every screen and report. |
 | **Post vouchers** (`accounting:post`) | Journal entries, reversals, attachments, settlements, suppliers, supplier invoices and their payments, the actions under Needs attention, and marking a VAT term as filed. |
-| **Manage the books** (`accounting:close`) | Setting up the books, the chart, the tax codes, the posting rules, the opening balances, the lock, and closing and reopening VAT terms and removing a filing mark. Only an Owner can give it. |
-| **Export the books** (`accounting:export`) | The reports as CSV, and a supplier's data. |
+| **Manage the books** (`accounting:close`) | Setting up the books (from a SAF-T file too), the chart, the tax codes, the posting rules, the opening balances, the lock, and closing and reopening VAT terms and removing a filing mark. Only an Owner can give it. |
+| **Export the books** (`accounting:export`) | The reports as CSV, a supplier's data, and the SAF-T file. |
 
 When the engagement ends, remove the role or disable the user: everything they posted
 stays in the books under their name.

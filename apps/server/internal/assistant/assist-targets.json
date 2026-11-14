@@ -75,6 +75,31 @@
     "description": "The chosen report's table, with when it was produced."
   },
   {
+    "key": "accounting.saft.apply",
+    "route": "/accounting/setup",
+    "description": "The button that sets the books up from the SAF-T file's preview."
+  },
+  {
+    "key": "accounting.saft.export",
+    "route": "/accounting/saft",
+    "description": "The button that asks for the SAF-T Financial file of the selection."
+  },
+  {
+    "key": "accounting.saft.exports",
+    "route": "/accounting/saft",
+    "description": "The list of exports with who asked, when, the state and the files to download."
+  },
+  {
+    "key": "accounting.saft.import",
+    "route": "/accounting/setup",
+    "description": "Where the SAF-T file from the old system is uploaded to set up the books."
+  },
+  {
+    "key": "accounting.saft.year",
+    "route": "/accounting/saft",
+    "description": "The fiscal year, and the periods beside it, a SAF-T export covers."
+  },
+  {
     "key": "accounting.settings.lock",
     "route": "/accounting/settings",
     "description": "The lock date, the way to move it and its history."
