@@ -87,6 +87,13 @@ CREATE TRIGGER tr_journal_facts_immutable
     BEFORE UPDATE OR DELETE ON invoices.journal_facts
     FOR EACH ROW EXECUTE FUNCTION invoices.refuse_journal_fact_change();
 
+-- No payment or charge payment may commit between the backfill's read and
+-- the triggers' creation, or it would be in neither — a binary still running
+-- the release before registers them, the bank feed's sync among it: the two
+-- tables are held in SHARE ROW EXCLUSIVE — reads go on, writes wait — to the
+-- migration's commit, as 00184 holds Expenses' for its journal.
+LOCK TABLE invoices.payments, invoices.charge_payments IN SHARE ROW EXCLUSIVE MODE;
+
 -- The facts that exist when this migration runs, so a company that turns the
 -- ledger on later finds its history in the log: every registration and every
 -- removal, payments and charge payments together, in the order they happened

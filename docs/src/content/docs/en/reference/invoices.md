@@ -5756,7 +5756,11 @@ set, and one fact of each kind exists for a row (`ux_journal_facts_subject`).
   happened in: every registration at its `registered_at` and every removal at its
   `removed_at`, payments and charge payments together, a registration before a removal at
   the same moment, then by id. A removal that came before a later registration keeps its
-  place. A company that turns the ledger on later finds its whole history.
+  place. A company that turns the ledger on later finds its whole history. It takes
+  `invoices.payments` and `invoices.charge_payments` in SHARE ROW EXCLUSIVE mode first, so
+  no payment can commit between the backfill and the triggers that record the next — not
+  one registered by a server still running the release before, nor by the bank feed's
+  sync: reads go on, writes wait for the migration's commit.
 - **Kept.** The migration's Down refuses while the log holds a fact: a Down never deletes
   bookkeeping.
 
