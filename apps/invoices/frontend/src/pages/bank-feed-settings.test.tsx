@@ -122,6 +122,10 @@ describe("BankFeedSettings_ConnectAndAccounts", () => {
 
     const seller = within(accounts).getByTestId("bank-feed-account-86011117947");
     expect(within(seller).getByText("8601.11.17947")).toBeInTheDocument();
+    // The start day is today once meta has answered.
+    await waitFor(() =>
+      expect(within(seller).getByLabelText("Start day for 8601.11.17947 · Drift")).not.toHaveValue(""),
+    );
     await userEvent.click(within(seller).getByRole("switch", { name: "Bank feed for 8601.11.17947 · Drift" }));
     await waitFor(() =>
       expect(bodyOf(fetchMock, "PUT", "/api/v1/invoices/bank-feed/accounts/86011117947")).toEqual({
@@ -173,5 +177,53 @@ describe("BankFeedSettings_ConnectAndAccounts", () => {
     expect(
       within(accounts).getByText("The bank refused the API key. Create a new key in the bank and save it."),
     ).toBeInTheDocument();
+  });
+
+  it.each([
+    [422, "bank_feed_credential_rejected"],
+    [503, "bank_feed_unavailable"],
+  ])("keeps an enabled account's switch off working when the accounts read answers %i", async (status, code) => {
+    const fetchMock = bankServer({
+      bankFeed: connected({
+        accounts: [{ account: "86011117947", enabled: true, startDay: "2026-09-01", status: "ok" }],
+      }),
+      answers: {
+        "GET /api/v1/invoices/bank-feed/accounts": () => refusal(status, code),
+        "PUT /api/v1/invoices/bank-feed/accounts/86011117947": () =>
+          jsonResponse(200, { account: "86011117947", enabled: false, startDay: "2026-09-01", status: "ok" }),
+      },
+    });
+    renderWithProviders(<BankFeedSettingsPage />);
+    const accounts = await screen.findByTestId("bank-feed-accounts");
+    expect(await within(accounts).findByText("Could not read the bank's accounts")).toBeInTheDocument();
+    const seller = within(accounts).getByTestId("bank-feed-account-86011117947");
+    const toggle = within(seller).getByRole("switch");
+    expect(toggle).toBeChecked();
+    expect(toggle).toBeEnabled();
+    await userEvent.click(toggle);
+    await waitFor(() =>
+      expect(bodyOf(fetchMock, "PUT", "/api/v1/invoices/bank-feed/accounts/86011117947")).toEqual({ enabled: false }),
+    );
+  });
+
+  it("lists an enabled account with its switch off while the installation allows no bank feed, and asks the bank nothing", async () => {
+    const fetchMock = bankServer({
+      bankFeed: connected({
+        enabledOnInstance: false,
+        accounts: [{ account: "86011117947", enabled: true, startDay: "2026-09-01", status: "ok" }],
+      }),
+      answers: {
+        "PUT /api/v1/invoices/bank-feed/accounts/86011117947": () =>
+          jsonResponse(200, { account: "86011117947", enabled: false, startDay: "2026-09-01", status: "ok" }),
+      },
+    });
+    renderWithProviders(<BankFeedSettingsPage />);
+    expect(await screen.findByText("The bank feed is switched off")).toBeInTheDocument();
+    const seller = await screen.findByTestId("bank-feed-account-86011117947");
+    await userEvent.click(within(seller).getByRole("switch"));
+    await waitFor(() =>
+      expect(bodyOf(fetchMock, "PUT", "/api/v1/invoices/bank-feed/accounts/86011117947")).toEqual({ enabled: false }),
+    );
+    expect(fetchMock.actualCalls.some(([u]) => path(u) === "/api/v1/invoices/bank-feed/accounts")).toBe(false);
   });
 });

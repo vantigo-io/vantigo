@@ -5,6 +5,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlugConnectedX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader, PageSection } from "@vantigo/frontend-shell";
+import dayjs from "dayjs";
 import { useState } from "react";
 import {
   BANK_FEED_PROVIDERS,
@@ -23,6 +24,9 @@ import "../i18n";
 import { accountNumber } from "../lib/bank";
 import { fieldRefusals, refusalMessage } from "../lib/errors";
 import { useInvoiceFormat } from "../lib/format";
+
+/** How far back a start day may lie, as the server judges it. */
+const START_DAY_MONTHS = 13;
 
 const statusColours: Record<string, string> = { ok: "green", unauthorized: "red", failing: "yellow", refused: "red" };
 
@@ -51,7 +55,10 @@ export const BankFeedSettingsPage = () => {
         </Alert>
       )}
       {feed.data && <ConnectionCard feed={feed.data} />}
-      {feed.data?.connected && feed.data.enabledOnInstance && <AccountsCard feed={feed.data} />}
+      {feed.data &&
+        ((feed.data.connected && feed.data.enabledOnInstance) || feed.data.accounts.some((a) => a.enabled)) && (
+          <AccountsCard feed={feed.data} />
+        )}
     </Stack>
   );
 };
@@ -196,23 +203,25 @@ const ConnectionCard = ({ feed }: { feed: BankFeed }) => {
 /**
  * The bank's accounts, read now: each with its switch — and why one cannot be
  * switched on — a start day for one being switched on, and the status of each
- * the feed reads.
+ * the feed reads. An account the feed is switched on for is always listed
+ * with a working switch off — when the bank does not answer it, refuses the
+ * key or cannot be reached, and while the installation allows no bank feed —
+ * so none is ever stranded on; the bank is asked only while a key is stored
+ * and the installation allows the feed.
  */
 const AccountsCard = ({ feed }: { feed: BankFeed }) => {
   const { t, date } = useInvoiceFormat();
-  const offers = useQuery(bankFeedOffersQueryOptions());
+  const canRead = feed.connected && feed.enabledOnInstance;
+  const offers = useQuery({ ...bankFeedOffersQueryOptions(), enabled: canRead });
   const meta = useQuery(invoicesMetaQueryOptions());
   const byAccount = new Map(feed.accounts.map((a) => [a.account, a]));
-  // An account the feed reads that the bank no longer answers is still listed,
-  // so it can be switched off.
-  const rows: BankFeedOffer[] = offers.data
-    ? [
-        ...offers.data.data,
-        ...feed.accounts
-          .filter((a) => a.enabled && !offers.data.data.some((o) => o.account === a.account))
-          .map((a) => ({ account: a.account, name: "", kind: "other", canEnable: false })),
-      ]
-    : [];
+  const offered = offers.data?.data ?? [];
+  const rows: BankFeedOffer[] = [
+    ...offered,
+    ...feed.accounts
+      .filter((a) => a.enabled && !offered.some((o) => o.account === a.account))
+      .map((a) => ({ account: a.account, name: "", kind: "other", canEnable: false })),
+  ];
   return (
     <PageSection data-testid="bank-feed-accounts">
       <Stack gap="sm">
@@ -225,13 +234,13 @@ const AccountsCard = ({ feed }: { feed: BankFeed }) => {
             {refusalMessage(offers.error, t, date)}
           </Alert>
         )}
-        {offers.isPending && <ContentSkeleton rows={2} rowHeight={32} />}
+        {canRead && offers.isPending && <ContentSkeleton rows={2} rowHeight={32} />}
         {offers.data && rows.length === 0 && (
           <Text size="sm" c="dimmed">
             {t("bankFeed.noAccounts")}
           </Text>
         )}
-        {rows.length > 0 && meta.data && (
+        {rows.length > 0 && (
           <Table.ScrollContainer minWidth={720}>
             <Table>
               <Table.Thead>
@@ -249,7 +258,7 @@ const AccountsCard = ({ feed }: { feed: BankFeed }) => {
                     key={offer.account}
                     offer={offer}
                     reading={byAccount.get(offer.account)}
-                    today={meta.data.today}
+                    today={meta.data?.today}
                   />
                 ))}
               </Table.Tbody>
@@ -269,15 +278,17 @@ const AccountRow = ({
 }: {
   offer: BankFeedOffer;
   reading: BankFeedAccount | undefined;
-  today: string;
+  /** Today in the business time zone, from meta; until meta answers, the server's own today. */
+  today: string | undefined;
 }) => {
   const { t, date, dateTime } = useInvoiceFormat();
   const queryClient = useQueryClient();
   const enabled = reading?.enabled === true;
-  const [startDay, setStartDay] = useState<string | null>(today);
+  const [picked, setPicked] = useState<string | null>(null);
+  const startDay = picked ?? today ?? null;
   const toggle = useMutation({
     mutationFn: (on: boolean) =>
-      putBankFeedAccount(offer.account, on ? { enabled: true, startDay: startDay ?? today } : { enabled: false }),
+      putBankFeedAccount(offer.account, on ? { enabled: true, ...(startDay ? { startDay } : {}) } : { enabled: false }),
     onSuccess: async (_, on) => {
       await queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
       notifications.show({ color: "green", message: on ? t("bankFeed.switchedOn") : t("bankFeed.switchedOff") });
@@ -313,8 +324,9 @@ const AccountRow = ({
             size="xs"
             valueFormat={t("dateInputFormat")}
             maxDate={today}
+            minDate={today ? dayjs(today).subtract(START_DAY_MONTHS, "month").format("YYYY-MM-DD") : undefined}
             value={startDay}
-            onChange={setStartDay}
+            onChange={setPicked}
           />
         ) : (
           t("notAvailable")

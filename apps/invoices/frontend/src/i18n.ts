@@ -504,6 +504,8 @@ export const invoicesCatalog = {
       "The bank does not offer this account for the key, or it is a card account. Nothing was changed.",
     "refusal.bank_feed_enabled":
       "The bank feed reads this account. Switch it off under Workspace admin → Integrations → Bank before you change the format.",
+    "refusal.bank_feed_key_changed":
+      "Another bank key was saved while the account was being switched on. Nothing was changed; try again.",
     "refusal.no_charges_outstanding":
       "No reminder charge is outstanding on this invoice: none was claimed, or every charge is waived or paid.",
     "refusal.charge_payment_exceeds_outstanding":
@@ -1955,7 +1957,7 @@ export const invoicesCatalog = {
     "bankFeed.couldNotDisconnect": "The bank was not disconnected",
     "bankFeed.accounts": "Accounts",
     "bankFeed.accountsDescription":
-      "Switch the feed on for an account to read its incoming payments from the start day on. Nothing booked before the start day is read, so payments already registered are not registered again. The account's format becomes Bank feed, and files are no longer imported for it.",
+      "Switching the feed on for an account sets its format to Bank feed from the start day, so files are no longer imported for it. In this release the feed does not read the account's payments yet; switch an account off to import its files again. Nothing booked before the start day will be read.",
     "bankFeed.couldNotReadAccounts": "Could not read the bank's accounts",
     "bankFeed.noAccounts": "The bank answers no account for this key.",
     "bankFeed.kind": "Kind",
@@ -1981,7 +1983,7 @@ export const invoicesCatalog = {
     "bankFeed.accountStatus.unauthorized": "Key refused",
     "fieldInvalid.bankFeed.provider": "Choose the bank.",
     "fieldInvalid.bankFeed.apiKey": "Enter the API key: 12 to 1 000 letters, digits or punctuation, without spaces.",
-    "fieldInvalid.bankFeed.startDay": "The start day may not be after today.",
+    "fieldInvalid.bankFeed.startDay": "The start day may be neither after today nor more than 13 months before it.",
     "fieldInvalid.bankFeed.account": "The account is not a valid Norwegian account number.",
 
     "paymentSettings.title": "Pay links and payment on site",
@@ -2736,6 +2738,8 @@ export const invoicesCatalog = {
       "Banken tilbyr ikke denne kontoen for nøkkelen, eller den er en kortkonto. Ingenting ble endret.",
     "refusal.bank_feed_enabled":
       "Bankintegrasjonen leser denne kontoen. Slå den av under Administrer arbeidsområde → Integrasjoner → Bank før du endrer formatet.",
+    "refusal.bank_feed_key_changed":
+      "En annen banknøkkel ble lagret mens kontoen ble slått på. Ingenting ble endret; prøv igjen.",
     "refusal.no_charges_outstanding":
       "Ingen purrekrav står ute på denne fakturaen: ingen er krevd, eller alle er ettergitt eller betalt.",
     "refusal.charge_payment_exceeds_outstanding":
@@ -4199,7 +4203,7 @@ export const invoicesCatalog = {
     "bankFeed.couldNotDisconnect": "Banken ble ikke koblet fra",
     "bankFeed.accounts": "Kontoer",
     "bankFeed.accountsDescription":
-      "Slå på integrasjonen for en konto for å lese innbetalingene fra startdagen av. Ingenting som er bokført før startdagen, leses, så betalinger som allerede er registrert, registreres ikke på nytt. Kontoens format blir Bankintegrasjon, og det importeres ikke lenger filer for den.",
+      "Å slå på integrasjonen for en konto setter formatet til Bankintegrasjon fra startdagen, så det importeres ikke lenger filer for den. I denne versjonen leser integrasjonen ennå ikke kontoens innbetalinger; slå en konto av for å importere filene igjen. Ingenting som er bokført før startdagen, vil bli lest.",
     "bankFeed.couldNotReadAccounts": "Kunne ikke lese bankens kontoer",
     "bankFeed.noAccounts": "Banken svarer ingen kontoer for denne nøkkelen.",
     "bankFeed.kind": "Type",
@@ -4225,7 +4229,7 @@ export const invoicesCatalog = {
     "bankFeed.accountStatus.unauthorized": "Nøkkel avvist",
     "fieldInvalid.bankFeed.provider": "Velg banken.",
     "fieldInvalid.bankFeed.apiKey": "Skriv inn API-nøkkelen: 12 til 1 000 bokstaver, sifre eller tegn, uten mellomrom.",
-    "fieldInvalid.bankFeed.startDay": "Startdagen kan ikke være etter i dag.",
+    "fieldInvalid.bankFeed.startDay": "Startdagen kan verken være etter i dag eller mer enn 13 måneder før.",
     "fieldInvalid.bankFeed.account": "Kontoen er ikke et gyldig norsk kontonummer.",
 
     "paymentSettings.title": "Betalingslenker og betaling på stedet",
