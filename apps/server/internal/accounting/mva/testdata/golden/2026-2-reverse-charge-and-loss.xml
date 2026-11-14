@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mvaMeldingDto xmlns="no:skatteetaten:fastsetting:avgift:mva:skattemeldingformerverdiavgift:v1.0">
+    <innsending>
+        <regnskapssystemsreferanse>vantigo-2026-2-1</regnskapssystemsreferanse>
+        <regnskapssystem>
+            <systemnavn>Vantigo</systemnavn>
+            <systemversjon>dev</systemversjon>
+        </regnskapssystem>
+    </innsending>
+    <skattegrunnlagOgBeregnetSkatt>
+        <skattleggingsperiode>
+            <periode>
+                <skattleggingsperiodeToMaaneder>mars-april</skattleggingsperiodeToMaaneder>
+            </periode>
+            <aar>2026</aar>
+        </skattleggingsperiode>
+        <fastsattMerverdiavgift>1162</fastsattMerverdiavgift>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>3</mvaKode>
+            <mvaKodeRegnskapsystem>Utgående merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <grunnlag>4000</grunnlag>
+            <sats>25</sats>
+            <merverdiavgift>1000</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>1</mvaKode>
+            <spesifikasjon>tapPåKrav</spesifikasjon>
+            <mvaKodeRegnskapsystem>Utgående merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>-200</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>13</mvaKode>
+            <mvaKodeRegnskapsystem>Fradragsberettiget innenlands inngående merverdiavgift, 12 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>12</merverdiavgift>
+            <merknad>
+                <utvalgtMerknad>kreditnota</utvalgtMerknad>
+            </merknad>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>81</mvaKode>
+            <mvaKodeRegnskapsystem>Grunnlag innførsel av varer med fradragsrett for innførselsmerverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <grunnlag>5000</grunnlag>
+            <sats>25</sats>
+            <merverdiavgift>1250</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>81</mvaKode>
+            <mvaKodeRegnskapsystem>Grunnlag innførsel av varer med fradragsrett for innførselsmerverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>-1250</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>82</mvaKode>
+            <mvaKodeRegnskapsystem>Grunnlag innførsel av varer uten fradragsrett for innførselsmerverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <grunnlag>400</grunnlag>
+            <sats>25</sats>
+            <merverdiavgift>100</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>85</mvaKode>
+            <mvaKodeRegnskapsystem>Grunnlag innførsel av varer som det ikke skal beregnes merverdiavgift av</mvaKodeRegnskapsystem>
+            <grunnlag>300</grunnlag>
+            <sats>0</sats>
+            <merverdiavgift>0</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>86</mvaKode>
+            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet med fradragsrett for merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <grunnlag>2000</grunnlag>
+            <sats>25</sats>
+            <merverdiavgift>500</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>86</mvaKode>
+            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet med fradragsrett for merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>-500</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>87</mvaKode>
+            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet uten fradragsrett for merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <grunnlag>1000</grunnlag>
+            <sats>25</sats>
+            <merverdiavgift>250</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>88</mvaKode>
+            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet med fradragsrett for merverdiavgift, 12 %</mvaKodeRegnskapsystem>
+            <grunnlag>150</grunnlag>
+            <sats>12</sats>
+            <merverdiavgift>18</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>88</mvaKode>
+            <mvaKodeRegnskapsystem>Tjenester kjøpt fra utlandet med fradragsrett for merverdiavgift, 12 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>-18</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+    </skattegrunnlagOgBeregnetSkatt>
+    <betalingsinformasjon></betalingsinformasjon>
+    <skattepliktig>
+        <organisasjonsnummer>923609016</organisasjonsnummer>
+    </skattepliktig>
+    <meldingskategori>alminnelig</meldingskategori>
+</mvaMeldingDto>

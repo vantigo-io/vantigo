@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mvaMeldingDto xmlns="no:skatteetaten:fastsetting:avgift:mva:skattemeldingformerverdiavgift:v1.0">
+    <innsending>
+        <regnskapssystemsreferanse>vantigo-2026-1-1</regnskapssystemsreferanse>
+        <regnskapssystem>
+            <systemnavn>Vantigo</systemnavn>
+            <systemversjon>dev</systemversjon>
+        </regnskapssystem>
+    </innsending>
+    <skattegrunnlagOgBeregnetSkatt>
+        <skattleggingsperiode>
+            <periode>
+                <skattleggingsperiodeToMaaneder>januar-februar</skattleggingsperiodeToMaaneder>
+            </periode>
+            <aar>2026</aar>
+        </skattleggingsperiode>
+        <fastsattMerverdiavgift>1654</fastsattMerverdiavgift>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>3</mvaKode>
+            <mvaKodeRegnskapsystem>Utgående merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <grunnlag>9000</grunnlag>
+            <sats>25</sats>
+            <merverdiavgift>2250</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>31</mvaKode>
+            <mvaKodeRegnskapsystem>Utgående merverdiavgift, 15 %</mvaKodeRegnskapsystem>
+            <grunnlag>2000</grunnlag>
+            <sats>15</sats>
+            <merverdiavgift>300</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>33</mvaKode>
+            <mvaKodeRegnskapsystem>Utgående merverdiavgift, 12 %</mvaKodeRegnskapsystem>
+            <grunnlag>1500</grunnlag>
+            <sats>12</sats>
+            <merverdiavgift>180</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>5</mvaKode>
+            <mvaKodeRegnskapsystem>Innenlands omsetning og uttak fritatt for merverdiavgift</mvaKodeRegnskapsystem>
+            <grunnlag>800</grunnlag>
+            <sats>0</sats>
+            <merverdiavgift>0</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>6</mvaKode>
+            <mvaKodeRegnskapsystem>Omsetning og uttak utenfor merverdiavgiftsloven</mvaKodeRegnskapsystem>
+            <grunnlag>300</grunnlag>
+            <sats>0</sats>
+            <merverdiavgift>0</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>52</mvaKode>
+            <mvaKodeRegnskapsystem>Utførsel av varer og tjenester</mvaKodeRegnskapsystem>
+            <grunnlag>1200</grunnlag>
+            <sats>0</sats>
+            <merverdiavgift>0</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>1</mvaKode>
+            <mvaKodeRegnskapsystem>Fradragsberettiget innenlands inngående merverdiavgift, 25 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>-1000</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>11</mvaKode>
+            <mvaKodeRegnskapsystem>Fradragsberettiget innenlands inngående merverdiavgift, 15 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>-90</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>13</mvaKode>
+            <mvaKodeRegnskapsystem>Fradragsberettiget innenlands inngående merverdiavgift, 12 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>-42</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>32</mvaKode>
+            <mvaKodeRegnskapsystem>Utgående merverdiavgift, 11,11 %</mvaKodeRegnskapsystem>
+            <grunnlag>1000</grunnlag>
+            <sats>11,11</sats>
+            <merverdiavgift>111</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+        <mvaSpesifikasjonslinje>
+            <mvaKode>12</mvaKode>
+            <mvaKodeRegnskapsystem>Fradragsberettiget innenlands inngående merverdiavgift, 11,11 %</mvaKodeRegnskapsystem>
+            <merverdiavgift>-55</merverdiavgift>
+        </mvaSpesifikasjonslinje>
+    </skattegrunnlagOgBeregnetSkatt>
+    <betalingsinformasjon></betalingsinformasjon>
+    <skattepliktig>
+        <organisasjonsnummer>923609016</organisasjonsnummer>
+    </skattepliktig>
+    <meldingskategori>alminnelig</meldingskategori>
+</mvaMeldingDto>
