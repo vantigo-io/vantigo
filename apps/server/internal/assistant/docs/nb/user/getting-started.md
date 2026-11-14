@@ -256,6 +256,9 @@ nøkkeltallene for valgt datoperiode (**7d**, **30d**, **90d**, **12m** eller
 der overtakelsen venter på å bli bekreftet — og
 **Hurtighandlinger** for det du gjør oftest. Kortene for Ansatte og Bemanning har tallene
 sine for dem som kan lese dem — `staff:view` eller `staff:manage`, og `planning:view`.
+Kortet for Regnskap viser bilagene i regnskapsåret og, når det finnes noen, hvor mange salg
+som venter under [Trenger oppmerksomhet](/nb/user/accounting/#trenger-oppmerksomhet) i
+regnskapet; sidemenyen har også **Trenger oppmerksomhet** og **Posteringsregler**.
 Et nytt arbeidsområde viser også
 **Fullfør oppsettet**, en kort liste over de første stegene (den første kunden, en
 postkasse, et produkt, et prosjekt …) som forsvinner når alle er gjort.
