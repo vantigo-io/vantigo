@@ -32,15 +32,27 @@ import { ACCOUNTING_QUERY_KEY, refusedFields } from "../api/request";
 import { BooksGate } from "../components/books-gate";
 import { AccountSelect, CustomerSelect, ProjectSelect, TaxCodeSelect } from "../components/pickers";
 import { refusalMessage, useAccountingFormat } from "../lib/format";
-import { emptyLine, type FormLine, fromOre, linesFromVoucher, toJournalInput, typedDifference } from "../lib/journal";
+import {
+  emptyLine,
+  type FormLine,
+  fromOre,
+  linesFromVoucher,
+  sentKeys,
+  toJournalInput,
+  typedDifference,
+  withAccount,
+} from "../lib/journal";
 import { voucherPath } from "../lib/routes";
 import type { JournalSearch } from "../lib/search";
+
+/** An attachment's most, as the server holds it: 20 MB. */
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 /**
  * A manual journal (A6): lines with debit or credit, a tax code entered net
  * or gross, a party and a project, previewed live with the tax lines the
  * server computes, and posted at once — there is no draft (A4). Files are
- * attached once it is posted.
+ * checked first and attached once it is posted.
  */
 export const JournalEntryPage = () => {
   const { t } = useAccountingFormat();
@@ -82,6 +94,7 @@ const JournalEditor = ({ meta, copied }: { meta: AccountingMeta; copied: Account
     copied ? [...linesFromVoucher(copied), emptyLine()] : [emptyLine(), emptyLine()],
   );
   const [files, setFiles] = useState<File[]>([]);
+  const [sent, setSent] = useState<string[]>([]);
 
   const controlRole = (accountId: string | null) =>
     accounts.data?.find((a) => String(a.id) === accountId)?.systemRole ?? null;
@@ -101,15 +114,38 @@ const JournalEditor = ({ meta, copied }: { meta: AccountingMeta; copied: Account
     retry: false,
   });
 
+  // The files are checked before the voucher is posted: posted means posted,
+  // so a file that cannot be kept must not be found out afterwards (M9).
+  const fileProblems = [
+    ...(files.length > 0 && !meta.attachmentsEnabled ? [t("attachmentsUnavailable")] : []),
+    ...files
+      .filter((file) => file.size > MAX_ATTACHMENT_BYTES)
+      .map((file) => t("attachmentTooBig", { name: file.name })),
+  ];
   const post = useMutation({
     mutationFn: async () => {
+      setSent(sentKeys(lines));
       const voucher = await postVoucher({ ...input, description: description.trim() });
-      for (const file of files) await uploadAttachment(voucher.id, file);
-      return voucher;
+      // The voucher stands once posted: a file that fails after it is said
+      // on the voucher's page, where it can be attached again.
+      for (const file of files) {
+        try {
+          await uploadAttachment(voucher.id, file);
+        } catch (error) {
+          return { voucher, failed: { name: file.name, reason: refusalMessage(t, error as Error) } };
+        }
+      }
+      return { voucher, failed: null };
     },
-    onSuccess: async (voucher) => {
+    onSuccess: async ({ voucher, failed }) => {
       await queryClient.invalidateQueries({ queryKey: [ACCOUNTING_QUERY_KEY] });
-      notifications.show({ color: "green", message: t("posted", { voucher: voucher.display }) });
+      if (failed)
+        notifications.show({
+          color: "yellow",
+          autoClose: false,
+          message: t("postedWithoutAttachment", { voucher: voucher.display, ...failed }),
+        });
+      else notifications.show({ color: "green", message: t("posted", { voucher: voucher.display }) });
       await navigate({ to: voucherPath(voucher.id) });
     },
   });
@@ -170,9 +206,11 @@ const JournalEditor = ({ meta, copied }: { meta: AccountingMeta; copied: Account
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {lines.map((line, index) => {
+          {lines.map((line) => {
             const role = controlRole(line.accountId);
-            const field = (name: string) => fields[`lines[${index}].${name}`];
+            // A refusal names the line as it was sent, blank lines left out.
+            const sentIndex = sent.indexOf(line.key);
+            const field = (name: string) => (sentIndex < 0 ? undefined : fields[`lines[${sentIndex}].${name}`]);
             return (
               <Table.Tr key={line.key}>
                 <Table.Td miw={220}>
@@ -181,11 +219,11 @@ const JournalEditor = ({ meta, copied }: { meta: AccountingMeta; copied: Account
                     value={line.accountId}
                     onChange={(value) => {
                       const account = accounts.data?.find((a) => String(a.id) === value);
-                      update(line.key, {
-                        accountId: value,
-                        taxCodeId:
-                          line.taxCodeId ?? (account?.defaultTaxCodeId ? String(account.defaultTaxCodeId) : null),
-                      });
+                      setLines((current) =>
+                        current.map((l) =>
+                          l.key === line.key ? withAccount(l, value, account?.defaultTaxCodeId ?? null) : l,
+                        ),
+                      );
                     }}
                     error={field("accountId")}
                   />
@@ -211,7 +249,7 @@ const JournalEditor = ({ meta, copied }: { meta: AccountingMeta; copied: Account
                   <TaxCodeSelect
                     aria-label={t("taxCode")}
                     value={line.taxCodeId}
-                    onChange={(value) => update(line.key, { taxCodeId: value })}
+                    onChange={(value) => update(line.key, { taxCodeId: value, taxCodeChosen: true })}
                     error={field("taxCodeId")}
                   />
                 </Table.Td>
@@ -322,6 +360,7 @@ const JournalEditor = ({ meta, copied }: { meta: AccountingMeta; copied: Account
         description={t("attachmentsHint")}
         value={files}
         onChange={setFiles}
+        error={fileProblems.length > 0 ? fileProblems.join(" ") : undefined}
       />
       {post.error && (
         <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotPost")}>
@@ -333,7 +372,7 @@ const JournalEditor = ({ meta, copied }: { meta: AccountingMeta; copied: Account
           data-assist="accounting.journal.post"
           onClick={() => post.mutate()}
           loading={post.isPending}
-          disabled={!complete || !description.trim()}
+          disabled={!complete || !description.trim() || fileProblems.length > 0}
         >
           {t("post")}
         </Button>

@@ -225,12 +225,18 @@ export const openingQueryOptions = () =>
 export const postOpening = (body: AccountingOpeningInput) =>
   send<AccountingVoucher>(`${BASE}/opening`, json("POST", body));
 
-export const openItemsQueryOptions = (filters: { kind?: "customer" | "supplier"; open?: boolean }) =>
+export const openItemsQueryOptions = (filters: {
+  kind?: "customer" | "supplier";
+  open?: boolean;
+  offset?: number;
+  limit?: number;
+}) =>
   queryOptions({
     queryKey: [ACCOUNTING_QUERY_KEY, "open-items", filters],
     queryFn: ({ signal }) =>
-      request<{ items: AccountingOpenItem[] }>(`${BASE}/open-items${queryString({ ...filters })}`, { signal }),
-    select: (answer) => answer.items,
+      request<{ items: AccountingOpenItem[]; total: number }>(`${BASE}/open-items${queryString({ ...filters })}`, {
+        signal,
+      }),
   });
 
 export const settleOpenItem = (

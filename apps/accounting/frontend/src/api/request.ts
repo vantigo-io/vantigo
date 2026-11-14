@@ -107,6 +107,12 @@ export const refusalCodes = [
   "storage_not_configured",
   "report_account_required",
   "period_invalid",
+  "open_item_source_document",
+  "report_too_large",
+  "lock_in_future",
+  "books_start_too_early",
+  "account_kind_mismatch",
+  "reverse_charge_gross",
 ] as const;
 export type RefusalCode = (typeof refusalCodes)[number];
 
