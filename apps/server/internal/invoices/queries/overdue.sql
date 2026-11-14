@@ -66,6 +66,16 @@ ORDER BY id;
 -- bank data's freshness (D10, I3); NULL when no file was ever imported.
 SELECT max(last_booked_on)::date AS last_booked_on FROM invoices.bank_files;
 
+-- name: FeedFreshness :one
+-- FeedFreshness is the bank feed's part of the bank data's freshness
+-- (invoices bank feed plan, delivery C's review): the latest day an account
+-- the feed reads and whose last read was ok was read through, NULL with
+-- none, and whether any account it reads is not ok — refused, failing or
+-- unauthorized — whose payments may then be missing.
+SELECT max(read_through) FILTER (WHERE status = 'ok')::date AS read_through,
+       (count(*) FILTER (WHERE status <> 'ok') > 0)::boolean AS any_not_ok
+FROM invoices.bank_feed_accounts WHERE enabled;
+
 -- name: OcrAccounts :many
 -- OcrAccounts is every account whose import format is OCR giro: payments
 -- without a KID never reach such a file (D10's standing note).

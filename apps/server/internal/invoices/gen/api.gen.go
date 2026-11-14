@@ -1838,7 +1838,7 @@ type InvoicesBankFileDetail struct {
 	Transactions []InvoicesBankTransaction `json:"transactions"`
 }
 
-// InvoicesBankFreshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in the business time zone — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
+// InvoicesBankFreshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, or the latest day an account the bank feed reads was read through while its reads are ok, whichever is later, absent when there is neither; stale when it is more than staleImportDays before today in the business time zone, always when there is neither, and whenever an account the bank feed reads is refused, failing or unauthorized (invoices bank feed design F7). ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
 type InvoicesBankFreshness struct {
 	LastBookedOn    *openapi_types.Date `json:"lastBookedOn,omitempty"`
 	OcrAccounts     []string            `json:"ocrAccounts"`
@@ -3319,7 +3319,7 @@ type InvoicesOverdueItemPolicyMode string
 
 // InvoicesOverdueResponse GET /invoices/overdue (D12): one page of the overdue invoices, judged whole before the action filter and the page apply; total counts them after the filter. freshness is the bank data's. warnings: collection_rates_outdated (a rate a letter in use needs has no row for the current half-year, or a letter is blocked by one), collection_regime_unreviewed (the regime review has lapsed under the 1988 regime: fee letters and collection notices wait), collection_rate_differs_from_release (a release seeded another value over a rate a manager added), bank_data_stale and ocr_without_kid_payments (an account is imported as OCR giro).
 type InvoicesOverdueResponse struct {
-	// Freshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in the business time zone — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
+	// Freshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, or the latest day an account the bank feed reads was read through while its reads are ok, whichever is later, absent when there is neither; stale when it is more than staleImportDays before today in the business time zone, always when there is neither, and whenever an account the bank feed reads is refused, failing or unauthorized (invoices bank feed design F7). ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
 	Freshness InvoicesBankFreshness             `json:"freshness"`
 	Items     []InvoicesOverdueItem             `json:"items"`
 	Total     int32                             `json:"total"`
@@ -3712,7 +3712,7 @@ type InvoicesReminderRunItemAction string
 type InvoicesReminderRunPreview struct {
 	BlockedOrWaiting []InvoicesRunPreviewHeld `json:"blockedOrWaiting"`
 
-	// Freshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in the business time zone — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
+	// Freshness The bank data's freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, or the latest day an account the bank feed reads was read through while its reads are ok, whichever is later, absent when there is neither; stale when it is more than staleImportDays before today in the business time zone, always when there is neither, and whenever an account the bank feed reads is refused, failing or unauthorized (invoices bank feed design F7). ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.
 	Freshness InvoicesBankFreshness                `json:"freshness"`
 	Letters   []InvoicesRunPreviewLetter           `json:"letters"`
 	Warnings  []InvoicesReminderRunPreviewWarnings `json:"warnings"`

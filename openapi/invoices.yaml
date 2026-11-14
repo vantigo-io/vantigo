@@ -1114,7 +1114,7 @@ components:
                 - revision
             type: object
         InvoicesBankFreshness:
-            description: 'The bank data''s freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, absent when none was ever imported; stale when it is more than staleImportDays before today in the business time zone — and always when no file was ever imported. ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.'
+            description: 'The bank data''s freshness (invoices payments and reminders design D10, I3): lastBookedOn is the latest booking day of any imported bank file, or the latest day an account the bank feed reads was read through while its reads are ok, whichever is later, absent when there is neither; stale when it is more than staleImportDays before today in the business time zone, always when there is neither, and whenever an account the bank feed reads is refused, failing or unauthorized (invoices bank feed design F7). ocrAccounts are the accounts whose import format is OCR giro: payments without a KID never reach an OCR file and must be registered by hand before a run.'
             properties:
                 lastBookedOn:
                     format: date
