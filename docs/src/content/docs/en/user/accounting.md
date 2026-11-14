@@ -861,8 +861,11 @@ read too. There is one connection and one key, Invoices'; nothing is entered twi
 
 The settings show how the feed stands: when it last read the bank, when it reads next, and
 what went wrong — **the bank refused the key** (store a new key in Invoices' Bank
-integration), **the bank asked to wait** (it is read again after the bank's wait), or **no
-bank connected**. The Overview and the dashboard say so too.
+integration), **the bank asked to wait** (it is read again after the bank's wait), **the
+bank's answer is too large** (the bank cannot answer a single day of the account in one
+reply; it is tried again, and if it persists, ask the bank), or **no bank connected**. A
+start day far back is read a few weeks at a time, so the older lines may take a few minutes
+to arrive. The Overview and the dashboard say so too.
 
 ### Reconciling a bank account
 
