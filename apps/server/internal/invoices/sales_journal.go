@@ -260,7 +260,7 @@ func (j *salesJournal) Facts(ctx context.Context, afterSeq int64, limit int) ([]
 		}
 		f := contracts.JournalFact{
 			Seq: r.Seq, Kind: r.Kind, SubjectID: r.SubjectID, InvoiceID: r.InvoiceID, InvoiceNumber: r.InvoiceNumber,
-			CustomerID: r.CustomerID, AmountNOK: amount, Source: r.Source, BankAccount: r.BankAccount,
+			CustomerID: r.CustomerID, AmountNOK: amount, Source: r.Source, BankAccount: r.BankAccount, BankReference: r.BankReference,
 		}
 		switch {
 		case r.BusinessDate.Valid:
