@@ -144,10 +144,11 @@ func clockOf(d module.Deps) func() time.Time {
 	return time.Now
 }
 
-// workers is the module's background work: the catch-up and the SAF-T
-// exports.
+// workers is the module's background work: the catch-up, the SAF-T exports
+// and the bank feed's reads (A29), which do nothing while the feed is not
+// composed.
 func workers(d module.Deps) []worker.Worker {
-	return []worker.Worker{NewCatchUpWorker(d), NewSaftWorker(d)}
+	return []worker.Worker{NewCatchUpWorker(d), NewSaftWorker(d), NewBankFeedWorker(d)}
 }
 
 // CatchUpWorker posts Invoices' sales journal into the books. It implements
@@ -508,6 +509,10 @@ func readFactInputs(ctx context.Context, q *store.Queries, it sourceItem) (factI
 	in := factInputs{invoice: it.invoice, credits: it.credits}
 	var err error
 	switch f.Kind {
+	case contracts.FactPaymentRemoved:
+		in.original, err = readStoredVoucher(ctx, q, contracts.FactPayment, f.SubjectID)
+	case contracts.FactChargePaymentRemoved:
+		in.original, err = readStoredVoucher(ctx, q, contracts.FactChargePayment, f.SubjectID)
 	case contracts.FactWriteOffUndone:
 		in.original, err = readStoredVoucher(ctx, q, contracts.FactWriteOff, f.SubjectID)
 	case contracts.FactRecoveredPaymentRemoved:

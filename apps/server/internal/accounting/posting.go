@@ -62,6 +62,15 @@ type Voucher struct {
 	// At is when it is posted; zero is now.
 	At    time.Time
 	Lines []Line
+	// BankRef is, on a payment that came from a bank line in Invoices, the
+	// receiving account, the line's reference and the payment's source: what
+	// reconciliation matches the statement's line to (A29). nil for none.
+	BankRef *BankRef
+}
+
+// BankRef is a payment voucher's bank line, as Invoices registered it.
+type BankRef struct {
+	Account, Reference, Source string
 }
 
 // Line is one posting of a Voucher.
@@ -340,6 +349,12 @@ func post(ctx context.Context, tx pgx.Tx, v Voucher) (Posted, error) {
 		}
 		if err := q.InsertPosting(ctx, p); err != nil {
 			return Posted{}, fmt.Errorf("accounting: insert posting %d: %w", i+1, err)
+		}
+	}
+	if v.BankRef != nil {
+		if err := q.InsertVoucherBankRef(ctx, store.InsertVoucherBankRefParams{VoucherID: id, BankAccount: v.BankRef.Account,
+			Reference: v.BankRef.Reference, Source: v.BankRef.Source}); err != nil {
+			return Posted{}, fmt.Errorf("accounting: insert the voucher's bank reference: %w", err)
 		}
 	}
 	return Posted{ID: id, FiscalYear: year, Number: number, VoucherDate: date, Moved: moved}, nil

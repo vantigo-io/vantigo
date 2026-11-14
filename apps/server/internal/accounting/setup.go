@@ -34,6 +34,7 @@ func (s *server) GetAccountingMeta(ctx context.Context, _ gen.GetAccountingMetaR
 		Currency: currency, Today: apiDate(today),
 		ProjectsEnabled: s.deps.Projects != nil, InvoicesEnabled: s.deps.SalesJournal != nil,
 		ExpensesEnabled: s.deps.ExpenseJournal != nil, AttachmentsEnabled: s.storageConfigured,
+		BankFeedEnabled: s.deps.BankFeed != nil,
 	}
 	q := store.New(s.deps.Pool)
 	settings, err := q.GetSettings(ctx)
@@ -55,6 +56,12 @@ func (s *server) GetAccountingMeta(ctx context.Context, _ gen.GetAccountingMetaR
 		return nil, err
 	}
 	if out.Informational, err = q.CountInformational(ctx); err != nil {
+		return nil, err
+	}
+	if out.OpenBankLines, err = q.OpenLinesCount(ctx); err != nil {
+		return nil, err
+	}
+	if out.BankFeedProblems, err = q.FeedAttention(ctx); err != nil {
 		return nil, err
 	}
 	due, err := q.PayablesDue(ctx, store.PayablesDueParams{Today: today, Soon: today.AddDate(0, 0, payablesSoonDays)})

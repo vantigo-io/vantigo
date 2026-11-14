@@ -44,7 +44,9 @@ func (s *server) GetAccountingLock(ctx context.Context, _ gen.GetAccountingLockR
 	return gen.GetAccountingLock200JSONResponse(out), nil
 }
 
-// PutAccountingLock moves the lock (A8). A month end on or after the books'
+// PutAccountingLock moves the lock (A8). Forward over a bank account's lines
+// not matched or its balances that differ, only with confirmUnreconciled
+// (A28). A month end on or after the books'
 // first month and no later than this month's end; back, a reason, and never
 // behind the last VAT term filed at Skatteetaten (A8 as R10 amends it) nor
 // behind any closed term (H1): a closed term's return stands as it was
@@ -69,6 +71,20 @@ func (s *server) PutAccountingLock(ctx context.Context, req gen.PutAccountingLoc
 	if target != nil && target.After(monthEnd(today)) {
 		return nil, invalidField("The lock cannot be moved", "lockedThrough", codeLockInFuture,
 			"The lock reaches at most the end of this month, "+monthEnd(today).Format(time.DateOnly)+".")
+	}
+	// Moving forward over bank lines not matched, or a statement balance
+	// that differs from the ledger's, is done only knowingly (A28): read
+	// before the transaction, a warning, not a lock of the bank.
+	if target != nil && (req.Body.ConfirmUnreconciled == nil || !*req.Body.ConfirmUnreconciled) {
+		current, err := s.settings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if current.LockedThrough == nil || target.After(*current.LockedThrough) {
+			if err := s.unreconciledRefusal(ctx, *target); err != nil {
+				return nil, err
+			}
+		}
 	}
 	var out gen.AccountingLock
 	err = s.withTx(ctx, func(_ pgx.Tx, q *store.Queries) error {
