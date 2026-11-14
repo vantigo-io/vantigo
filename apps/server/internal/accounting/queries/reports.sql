@@ -47,7 +47,7 @@ LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
 WHERE v.voucher_date BETWEEN sqlc.arg(from_date)::date AND sqlc.arg(to_date)::date
   AND (sqlc.narg(project_id)::int IS NULL OR p.project_id = sqlc.narg(project_id)::int)
 ORDER BY v.fiscal_year, v.number, p.line_no
-LIMIT 50001;
+LIMIT sqlc.arg(row_limit);
 
 -- name: AccountOpening :one
 SELECT coalesce(sum(p.amount), 0)::text AS opening
@@ -67,7 +67,7 @@ WHERE p.account_id = sqlc.arg(account_id)
   AND v.voucher_date BETWEEN sqlc.arg(from_date)::date AND sqlc.arg(to_date)::date
   AND (sqlc.narg(project_id)::int IS NULL OR p.project_id = sqlc.narg(project_id)::int)
 ORDER BY v.voucher_date, v.fiscal_year, v.number, p.line_no
-LIMIT 50001;
+LIMIT sqlc.arg(row_limit);
 
 -- name: PartyItemsAt :many
 -- PartyItemsAt is every open item of a kind with its balance at to_date and

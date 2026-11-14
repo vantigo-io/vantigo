@@ -15,10 +15,24 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/accounting/store"
 )
 
-// ListAccountingOpenItems is the open items, by party and due date.
+const (
+	defaultOpenItemLimit = 200
+	maxOpenItemLimit     = 1000
+)
+
+// ListAccountingOpenItems is a page of the open items, by party and due
+// date, with the count of every match.
 func (s *server) ListAccountingOpenItems(ctx context.Context, req gen.ListAccountingOpenItemsRequestObject) (gen.ListAccountingOpenItemsResponseObject, error) {
 	p := req.Params
-	params := store.ListOpenItemsParams{CustomerID: p.CustomerId, SupplierID: p.SupplierId, OnlyOpen: p.Open == nil || *p.Open}
+	limit, offset := int32(defaultOpenItemLimit), int32(0)
+	if p.Limit != nil {
+		limit = min(max(*p.Limit, 1), maxOpenItemLimit)
+	}
+	if p.Offset != nil && *p.Offset > 0 {
+		offset = *p.Offset
+	}
+	params := store.ListOpenItemsParams{CustomerID: p.CustomerId, SupplierID: p.SupplierId, OnlyOpen: p.Open == nil || *p.Open,
+		RowLimit: limit, RowOffset: offset}
 	if p.Kind != nil {
 		params.Kind = ptr(string(*p.Kind))
 	}
@@ -35,7 +49,10 @@ func (s *server) ListAccountingOpenItems(ctx context.Context, req gen.ListAccoun
 	names := s.customerNames(ctx, ids)
 	out := gen.ListAccountingOpenItems200JSONResponse{Items: []gen.AccountingOpenItem{}}
 	for _, r := range rows {
-		out.Items = append(out.Items, openItemView(store.GetOpenItemRow(r), names))
+		out.Total = int32(r.Total)
+		out.Items = append(out.Items, openItemView(store.GetOpenItemRow{ID: r.ID, Kind: r.Kind, CustomerID: r.CustomerID,
+			SupplierID: r.SupplierID, Unallocated: r.Unallocated, DocumentNumber: r.DocumentNumber, DocumentDate: r.DocumentDate,
+			DueDate: r.DueDate, OriginalAmount: r.OriginalAmount, SourceDocumentID: r.SourceDocumentID, Balance: r.Balance}, names))
 	}
 	return out, nil
 }

@@ -52,7 +52,7 @@ func TestJournal_TaxLinesToTheOre(t *testing.T) {
 		{"gross 12 %", "gross", "13", "7000", "0.05", []posting{{"7000", "0.04"}, {"2712", "0.01"}}},
 		{"output credit net", "net", "3", "3000", "-1234.56", []posting{{"3000", "-1234.56"}, {"2700", "-308.64"}}},
 		{"output credit gross", "gross", "31", "3010", "-115.00", []posting{{"3010", "-100.00"}, {"2701", "-15.00"}}},
-		{"reverse charge, gross is net", "gross", "86", "6700", "400.00", []posting{{"6700", "400.00"}, {"2715", "100.00"}, {"2705", "-100.00"}}},
+		{"reverse charge", "net", "86", "6700", "400.00", []posting{{"6700", "400.00"}, {"2715", "100.00"}, {"2705", "-100.00"}}},
 		{"reverse charge without deduction", "net", "87", "6700", "400.00", []posting{{"6700", "400.00"}, {"6700", "100.00"}, {"2705", "-100.00"}}},
 		{"zero rate", "net", "5", "3100", "-500.00", []posting{{"3100", "-500.00"}}},
 		{"outside the law", "net", "6", "3200", "-500.00", []posting{{"3200", "-500.00"}}},
@@ -82,6 +82,15 @@ func TestJournal_TaxLinesToTheOre(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A reverse-charge code is entered net: a gross journal naming one is
+// refused, not read as net (L7).
+func TestJournal_ReverseChargeIsNeverGross(t *testing.T) {
+	b := newBooks(t)
+	res := b.c.Do(http.MethodPost, base+"/vouchers/preview", map[string]any{"voucherDate": "2026-03-10", "description": "Import",
+		"entry": "gross", "lines": []line{{"accountId": b.acc("6700"), "amount": "400.00", "taxCodeId": b.code("86")}}})
+	expectProblem(t, res, http.StatusBadRequest, "reverse_charge_gross")
 }
 
 // A journal posts its lines and their tax lines, balanced, numbered from 1 in

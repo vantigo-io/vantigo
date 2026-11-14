@@ -28,6 +28,7 @@ func (s *server) GetAccountingMeta(ctx context.Context, _ gen.GetAccountingMetaR
 		CanPost: s.has(ctx, permPost), CanClose: s.has(ctx, permClose), CanExport: s.has(ctx, permExport),
 		Currency: currency, Today: apiDate(today),
 		ProjectsEnabled: s.deps.Projects != nil, InvoicesEnabled: s.deps.SalesJournal != nil,
+		AttachmentsEnabled: s.storageConfigured,
 	}
 	q := store.New(s.deps.Pool)
 	settings, err := q.GetSettings(ctx)
@@ -83,8 +84,12 @@ func (s *server) SetUpAccountingBooks(ctx context.Context, req gen.SetUpAccounti
 		f.add("language", "en or nb.")
 	}
 	start := day(b.BooksStart)
-	if start.Year() < 2000 || start.Year() > 2100 {
-		f.add("booksStart", "A day between 2000 and 2100.")
+	switch {
+	case start.Before(firstRateDay):
+		f.addCoded("booksStart", codeBooksStartTooEarly,
+			"The books start on "+firstRateDay.Format(time.DateOnly)+" or later: the tax codes' rates are known from then.")
+	case start.Year() > 2100:
+		f.add("booksStart", "A day before 2101.")
 	}
 	if err := f.refusal("The books cannot be set up"); err != nil {
 		return nil, err

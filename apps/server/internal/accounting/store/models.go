@@ -68,6 +68,7 @@ type AccountingOpenItem struct {
 	DueDate          *time.Time
 	OriginalAmount   pgtype.Numeric
 	SourceDocumentID *int64
+	OpeningAsOfSeq   *int64
 	CreatedAt        time.Time
 }
 

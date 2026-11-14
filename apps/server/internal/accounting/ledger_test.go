@@ -96,6 +96,7 @@ func TestOpening(t *testing.T) {
 // more than its balance, and never on an item that is Invoices' document.
 func TestSettlements(t *testing.T) {
 	b := newBooks(t)
+	b.h.journal.open = []contracts.OpenDocument{{ID: 1001, Number: 1001, CustomerID: customerBeta, OpenNOK: "500.00"}}
 	res := b.c.Do(http.MethodPost, base+"/opening", map[string]any{"lines": []map[string]any{
 		{"accountId": b.acc("1500"), "amount": "1000", "customerId": customerAcme, "documentNumber": "A-1", "dueDate": "2026-01-20"},
 		{"accountId": b.acc("1500"), "amount": "-200", "customerId": customerBeta, "documentNumber": "CN-3"},

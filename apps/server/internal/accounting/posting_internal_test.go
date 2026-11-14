@@ -465,3 +465,326 @@ func TestTaxOf(t *testing.T) {
 		}
 	}
 }
+
+// A posting is added only to the voucher its own transaction has just
+// inserted (H2): never to a committed one, in the lock or out of it, and the
+// rule holds when the voucher was inserted inside a savepoint — released, it
+// counts; rolled back, the voucher before it is the open one again.
+func TestDatabase_PostingsJoinOnlyTheVoucherJustInserted(t *testing.T) {
+	l := newLedger(t)
+	ctx := context.Background()
+	p, err := l.post(t, l.simple("2026-02-01", "100", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	addPair := func(tx pgx.Tx, voucher int64, first int) error {
+		if err := rawPosting(ctx, tx, voucher, first, l.chart["6300"], "5"); err != nil {
+			return err
+		}
+		return rawPosting(ctx, tx, voucher, first+1, l.chart["1920"], "-5")
+	}
+	// A balanced pair on the committed voucher.
+	err = db.WithTx(ctx, l.pool, pgx.TxOptions{}, func(tx pgx.Tx) error { return addPair(tx, p.ID, 3) })
+	if err == nil || !strings.Contains(err.Error(), "not inserted by this transaction") {
+		t.Fatalf("a pair added to a committed voucher: %v", err)
+	}
+	// The same once its period is locked.
+	if _, err := l.pool.Exec(ctx, "UPDATE accounting.settings SET locked_through = '2026-02-28'"); err != nil {
+		t.Fatal(err)
+	}
+	err = db.WithTx(ctx, l.pool, pgx.TxOptions{}, func(tx pgx.Tx) error { return addPair(tx, p.ID, 3) })
+	if err == nil || !strings.Contains(err.Error(), "not inserted by this transaction") {
+		t.Fatalf("a pair added to a voucher in the locked period: %v", err)
+	}
+	// Another voucher inserted first does not open the committed one either.
+	err = db.WithTx(ctx, l.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		id, err := rawVoucher(ctx, tx, 900, "2026-03-02")
+		if err != nil {
+			return err
+		}
+		if err := addPair(tx, id, 1); err != nil {
+			return err
+		}
+		return addPair(tx, p.ID, 3)
+	})
+	if err == nil || !strings.Contains(err.Error(), "not inserted by this transaction") {
+		t.Fatalf("a pair added to a committed voucher beside a new one: %v", err)
+	}
+	if n := countRows(t, l.pool, "SELECT count(*) FROM accounting.postings WHERE voucher_id = $1", p.ID); n != 2 {
+		t.Fatalf("the committed voucher has %d postings, want its 2", n)
+	}
+
+	// Inside savepoints: a voucher inserted in a released savepoint takes its
+	// postings after it; one in a rolled-back savepoint leaves the voucher
+	// before it open.
+	var inSavepoint, kept int64
+	err = db.WithTx(ctx, l.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		if inSavepoint, err = rawVoucher(ctx, sp, 901, "2026-03-03"); err != nil {
+			return err
+		}
+		var differs bool
+		if err := sp.QueryRow(ctx, `SELECT xmin::text <> pg_current_xact_id()::text FROM accounting.vouchers WHERE id = $1`,
+			inSavepoint).Scan(&differs); err != nil {
+			return err
+		}
+		if !differs {
+			t.Error("the savepoint's row carries the top transaction's xid; the test no longer shows why xmin is not used")
+		}
+		if err := sp.Commit(ctx); err != nil {
+			return err
+		}
+		if err := addPair(tx, inSavepoint, 1); err != nil {
+			return err
+		}
+		if kept, err = rawVoucher(ctx, tx, 902, "2026-03-03"); err != nil {
+			return err
+		}
+		if err := addPair(tx, kept, 1); err != nil {
+			return err
+		}
+		sp, err = tx.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		if _, err := rawVoucher(ctx, sp, 903, "2026-03-03"); err != nil {
+			return err
+		}
+		if err := sp.Rollback(ctx); err != nil {
+			return err
+		}
+		return addPair(tx, kept, 3)
+	})
+	if err != nil {
+		t.Fatalf("postings after savepoints: %v", err)
+	}
+	if n := countRows(t, l.pool, "SELECT count(*) FROM accounting.postings WHERE voucher_id = ANY($1)", []int64{inSavepoint, kept}); n != 6 {
+		t.Errorf("%d postings on the savepoints' vouchers, want 6", n)
+	}
+	// The engine inside a caller's savepoint.
+	err = db.WithTx(ctx, l.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		if _, err := Post(ctx, sp, l.simple("2026-03-04", "7", nil)); err != nil {
+			return err
+		}
+		return sp.Commit(ctx)
+	})
+	if err != nil {
+		t.Fatalf("the engine inside a savepoint: %v", err)
+	}
+	// Nothing carries to the connection's next transaction.
+	var marker *string
+	if err := l.pool.QueryRow(ctx, "SELECT nullif(current_setting('accounting.open_voucher', true), '')").Scan(&marker); err != nil {
+		t.Fatal(err)
+	}
+	if marker != nil {
+		t.Errorf("the marker outlived its transaction: %q", *marker)
+	}
+}
+
+// TRUNCATE fires no row trigger; each append-only table refuses it (H2).
+func TestDatabase_NeverTruncatesTheBooks(t *testing.T) {
+	l := newLedger(t)
+	if _, err := l.post(t, l.simple("2026-02-01", "100", nil)); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"vouchers", "postings", "attachments", "lock_events"} {
+		_, err := l.pool.Exec(context.Background(), "TRUNCATE accounting."+table+" CASCADE")
+		if err == nil || !strings.Contains(err.Error(), "never changed or deleted") {
+			t.Errorf("TRUNCATE %s: %v", table, err)
+		}
+	}
+	if n := countRows(t, l.pool, "SELECT count(*) FROM accounting.postings"); n != 2 {
+		t.Errorf("%d postings left, want 2", n)
+	}
+}
+
+// An existing item found by its source document is the line's party's (M6).
+func TestPost_ASourceDocumentsItemIsItsPartys(t *testing.T) {
+	l := newLedger(t)
+	acme, beta, doc := int32(7), int32(8), int64(4321)
+	sale := Voucher{Kind: "sales_invoice", Date: d("2026-02-02"), Description: "Invoice", Source: &Source{Module: "invoices", Kind: "document", ID: doc},
+		Lines: []Line{{Role: "receivables", Amount: rat("50"), CustomerID: &acme, SourceDocumentID: &doc},
+			{AccountID: l.chart["3000"], Amount: rat("-50")}}}
+	if _, err := l.post(t, sale); err != nil {
+		t.Fatal(err)
+	}
+	pay := Voucher{Kind: "customer_payment", Date: d("2026-02-03"), Description: "Paid", Source: &Source{Module: "invoices", Kind: "payment", ID: 1},
+		Lines: []Line{{Role: "bank", Amount: rat("50")}, {Role: "receivables", Amount: rat("-50"), CustomerID: &beta, SourceDocumentID: &doc}}}
+	if _, err := l.post(t, pay); codeOf(err) != codeOpenItemUnknown {
+		t.Fatalf("another customer's document item: %v", err)
+	}
+}
+
+// Every post takes the items it names FOR UPDATE (M5): one waits while
+// another transaction holds an item, though the posting's foreign key alone
+// would not.
+func TestPost_TakesTheItemsItNames(t *testing.T) {
+	l := newLedger(t)
+	ctx := context.Background()
+	cust := int32(7)
+	open := Voucher{Kind: "manual", Date: d("2026-02-01"), Description: "Opening item", PostedBy: ptr(uuid.New()),
+		Lines: []Line{{Role: "receivables", Amount: rat("100"), CustomerID: &cust, Item: &OpenItemSpec{DocumentNumber: "A-1"}},
+			{AccountID: l.chart["3000"], Amount: rat("-100")}}}
+	if _, err := l.post(t, open); err != nil {
+		t.Fatal(err)
+	}
+	var item int64
+	if err := l.pool.QueryRow(ctx, "SELECT id FROM accounting.open_items WHERE document_number = 'A-1'").Scan(&item); err != nil {
+		t.Fatal(err)
+	}
+	hold, err := l.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hold.Rollback(ctx) }()
+	if _, err := hold.Exec(ctx, "SELECT 1 FROM accounting.open_items WHERE id = $1 FOR NO KEY UPDATE", item); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := l.post(t, Voucher{Kind: "manual", Date: d("2026-02-05"), Description: "Paid", PostedBy: ptr(uuid.New()),
+			Lines: []Line{{Role: "bank", Amount: rat("100")}, {Role: "receivables", Amount: rat("-100"), CustomerID: &cust, OpenItemID: &item}}})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("the post did not wait for the item: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if err := hold.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A person's voucher names no item that stands for a document in Invoices
+// (M5); a reversal of a system voucher, which turns back such a line, may.
+func TestPost_APersonsVoucherNamesNoInvoicesItem(t *testing.T) {
+	l := newLedger(t)
+	cust, doc := int32(7), int64(99)
+	sale := Voucher{Kind: "sales_invoice", Date: d("2026-02-02"), Description: "Invoice", Source: &Source{Module: "invoices", Kind: "document", ID: doc},
+		Lines: []Line{{Role: "receivables", Amount: rat("50"), CustomerID: &cust, SourceDocumentID: &doc},
+			{AccountID: l.chart["3000"], Amount: rat("-50")}}}
+	posted, err := l.post(t, sale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var item int64
+	if err := l.pool.QueryRow(context.Background(), "SELECT id FROM accounting.open_items WHERE source_document_id = 99").Scan(&item); err != nil {
+		t.Fatal(err)
+	}
+	manual := Voucher{Kind: "manual", Date: d("2026-02-05"), Description: "Paid by hand", PostedBy: ptr(uuid.New()),
+		Lines: []Line{{Role: "bank", Amount: rat("50")}, {Role: "receivables", Amount: rat("-50"), CustomerID: &cust, OpenItemID: &item}}}
+	if _, err := l.post(t, manual); codeOf(err) != codeOpenItemSourceDocument {
+		t.Fatalf("a manual line on Invoices' item: %v", err)
+	}
+	err = db.WithTx(context.Background(), l.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		rev, err := reversal(context.Background(), store.New(tx), posted.ID, d("2026-02-06"), "test", "en", nil)
+		if err != nil {
+			return err
+		}
+		rev.Source = &Source{Module: "invoices", Kind: "credit_note", ID: 1}
+		_, err = Post(context.Background(), tx, rev)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("the source's reversal: %v", err)
+	}
+}
+
+// A reversal posts on an account made inactive since (M8).
+func TestPost_AReversalPostsOnAnInactiveAccount(t *testing.T) {
+	l := newLedger(t)
+	p, err := l.post(t, l.simple("2026-02-01", "100", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.pool.Exec(context.Background(), "UPDATE accounting.accounts SET active = false WHERE number = '6300'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.post(t, l.simple("2026-02-02", "1", nil)); codeOf(err) != codeAccountInactive {
+		t.Fatalf("a new voucher on the inactive account: %v", err)
+	}
+	err = db.WithTx(context.Background(), l.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		rev, err := reversal(context.Background(), store.New(tx), p.ID, d("2026-02-03"), "wrong", "en", ptr(uuid.New()))
+		if err != nil {
+			return err
+		}
+		_, err = Post(context.Background(), tx, rev)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("the reversal on the inactive account: %v", err)
+	}
+}
+
+// Two transactions posting one source at once: the second waits on the index,
+// then answers the first's voucher as a Repeat, and its own transaction goes
+// on (L4).
+func TestPost_ASourcePostedAtOnceIsARepeat(t *testing.T) {
+	l := newLedger(t)
+	ctx := context.Background()
+	src := &Source{Module: "invoices", Kind: "document", ID: 77}
+	first, err := l.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = first.Rollback(ctx) }()
+	p1, err := Post(ctx, first, l.simple("2026-02-01", "100", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan Posted, 1)
+	go func() {
+		var p Posted
+		err := db.WithTx(ctx, l.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			var err error
+			if p, err = Post(ctx, tx, l.simple("2026-02-01", "100", src)); err != nil {
+				return err
+			}
+			_, err = tx.Exec(ctx, "SELECT 1")
+			return err
+		})
+		if err != nil {
+			t.Errorf("the second post: %v", err)
+		}
+		done <- p
+	}()
+	time.Sleep(300 * time.Millisecond)
+	if err := first.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	p2 := <-done
+	if !p2.Repeat || p2.ID != p1.ID {
+		t.Fatalf("the second post = %+v, want a repeat of %d", p2, p1.ID)
+	}
+	if n := countRows(t, l.pool, "SELECT count(*) FROM accounting.vouchers"); n != 1 {
+		t.Errorf("%d vouchers", n)
+	}
+	if n := countRows(t, l.pool, "SELECT next_value FROM accounting.counters WHERE counter_name = 'voucher:2026'"); n != 2 {
+		t.Errorf("the counter is at %d: the repeat took a number", n)
+	}
+}
+
+// Every system role sits on an account of its kind in the default chart (M7).
+func TestDefaultChart_RolesSitOnTheirKind(t *testing.T) {
+	for _, a := range defaultChart {
+		if a.role != "" && roleKinds[a.role] != kindOf(a.number) {
+			t.Errorf("role %s on %s (%s), want %s", a.role, a.number, kindOf(a.number), roleKinds[a.role])
+		}
+	}
+	for _, r := range systemRoles {
+		if roleKinds[r] == "" {
+			t.Errorf("role %s has no kind", r)
+		}
+	}
+}

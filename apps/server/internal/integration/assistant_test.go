@@ -351,6 +351,16 @@ func TestOperations_TheRealContract(t *testing.T) {
 		t.Errorf("x-vantigo-assistant is written on %v\nwant exactly %v\n(add an operation here only when its mode is meant to differ from S4's default)", sortedPairs(marked), sortedPairs(markedByHand))
 	}
 
+	// Accounting's writes of consequence are asked before they are made: a
+	// manual journal, a reversal, the opening and the lock (the last two under
+	// accounting:close, which no agent level can raise, reference/agents.md).
+	for _, id := range []string{"postAccountingVoucher", "reverseAccountingVoucher", "postAccountingOpening", "putAccountingLock",
+		"settleAccountingOpenItem"} {
+		if got, _ := ops.Effective(context.Background(), id); got != operations.ModeConfirm {
+			t.Errorf("%s: the default gate's mode %q, want confirm", id, got)
+		}
+	}
+
 	// What a model is shown fits a small context window: every operation that
 	// can be called describes in at most 8 KB of JSON.
 	for _, info := range all {

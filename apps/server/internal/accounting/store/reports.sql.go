@@ -50,7 +50,7 @@ WHERE p.account_id = $1
   AND v.voucher_date BETWEEN $2::date AND $3::date
   AND ($4::int IS NULL OR p.project_id = $4::int)
 ORDER BY v.voucher_date, v.fiscal_year, v.number, p.line_no
-LIMIT 50001
+LIMIT $5
 `
 
 type AccountPostingsParams struct {
@@ -58,6 +58,7 @@ type AccountPostingsParams struct {
 	FromDate  time.Time
 	ToDate    time.Time
 	ProjectID *int32
+	RowLimit  int32
 }
 
 type AccountPostingsRow struct {
@@ -80,6 +81,7 @@ func (q *Queries) AccountPostings(ctx context.Context, arg AccountPostingsParams
 		arg.FromDate,
 		arg.ToDate,
 		arg.ProjectID,
+		arg.RowLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -203,13 +205,14 @@ LEFT JOIN accounting.tax_codes t ON t.id = p.tax_code_id
 WHERE v.voucher_date BETWEEN $1::date AND $2::date
   AND ($3::int IS NULL OR p.project_id = $3::int)
 ORDER BY v.fiscal_year, v.number, p.line_no
-LIMIT 50001
+LIMIT $4
 `
 
 type JournalPostingsParams struct {
 	FromDate  time.Time
 	ToDate    time.Time
 	ProjectID *int32
+	RowLimit  int32
 }
 
 type JournalPostingsRow struct {
@@ -234,7 +237,12 @@ type JournalPostingsRow struct {
 // JournalPostings is every posting of the vouchers dated in the period, in
 // voucher number order (the bokføringsspesifikasjon).
 func (q *Queries) JournalPostings(ctx context.Context, arg JournalPostingsParams) ([]JournalPostingsRow, error) {
-	rows, err := q.db.Query(ctx, journalPostings, arg.FromDate, arg.ToDate, arg.ProjectID)
+	rows, err := q.db.Query(ctx, journalPostings,
+		arg.FromDate,
+		arg.ToDate,
+		arg.ProjectID,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

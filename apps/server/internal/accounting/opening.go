@@ -5,11 +5,14 @@ package accounting
 // one open document, so the party ledgers start with real open items; for a
 // company already invoicing in Vantigo the form offers the invoices open at
 // the day before books_start, read from Invoices' journal. The opening can be
-// reversed and entered again until the first lock.
+// reversed and entered again until the first lock — the
+// first ever: lifting the lock does not open it again.
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,18 +23,54 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
 
-// openAtSnapshot is Invoices' open invoices at the end of day and the highest
-// journal fact the answer reflects (nil while the contract does not say).
-// The one call site of SalesJournal.OpenAt, made with no transaction open.
-func (s *server) openAtSnapshot(ctx context.Context, day time.Time) ([]contracts.OpenDocument, *int64, error) {
+// openInvoice is one invoice Invoices' OpenAt answered, with the AsOfSeq of
+// the page it was read on: the facts its open amount reflects (R14).
+type openInvoice struct {
+	contracts.OpenDocument
+	asOfSeq int64
+}
+
+// openAtSnapshot is Invoices' open invoices at the end of day, read page by
+// page until a short page, and the lowest AsOfSeq of the pages read; nil, nil
+// without Invoices. Each page is its own snapshot, so each invoice carries
+// its page's AsOfSeq. The one call site of SalesJournal.OpenAt, made with no
+// transaction open.
+func (s *server) openAtSnapshot(ctx context.Context, day time.Time) ([]openInvoice, *int64, error) {
 	if s.deps.SalesJournal == nil {
 		return nil, nil, nil
 	}
-	docs, err := s.deps.SalesJournal.OpenAt(ctx, day)
-	if err != nil {
-		return nil, nil, err
+	var out []openInvoice
+	var lowest *int64
+	after := int64(0)
+	for {
+		page, err := s.deps.SalesJournal.OpenAt(ctx, day, after, contracts.MaxJournalPage)
+		if err != nil {
+			return nil, nil, err
+		}
+		if lowest == nil || page.AsOfSeq < *lowest {
+			lowest = ptr(page.AsOfSeq)
+		}
+		for _, d := range page.Documents {
+			if d.Number <= after {
+				return nil, nil, fmt.Errorf("accounting: OpenAt answered invoice %d after %d", d.Number, after)
+			}
+			after = d.Number
+			out = append(out, openInvoice{OpenDocument: d, asOfSeq: page.AsOfSeq})
+		}
+		if len(page.Documents) < contracts.MaxJournalPage {
+			return out, lowest, nil
+		}
 	}
-	return docs, nil, nil
+}
+
+// openingFinal reports whether the opening balances are final (A9): the
+// books are locked, or have been locked once, even if the lock was lifted
+// since.
+func openingFinal(ctx context.Context, q *store.Queries, settings store.AccountingSetting) (bool, error) {
+	if settings.LockedThrough != nil {
+		return true, nil
+	}
+	return q.EverLocked(ctx)
 }
 
 // GetAccountingOpening is the standing opening voucher, whether one may be
@@ -42,7 +81,11 @@ func (s *server) GetAccountingOpening(ctx context.Context, _ gen.GetAccountingOp
 	if err != nil {
 		return nil, err
 	}
-	out := gen.GetAccountingOpening200JSONResponse{BooksStart: apiDate(settings.BooksStart), Locked: settings.LockedThrough != nil,
+	final, err := openingFinal(ctx, q, settings)
+	if err != nil {
+		return nil, err
+	}
+	out := gen.GetAccountingOpening200JSONResponse{BooksStart: apiDate(settings.BooksStart), Locked: final,
 		InvoicesAvailable: s.deps.SalesJournal != nil, OpenInvoices: []gen.AccountingOpenInvoice{}}
 	id, err := q.StandingOpening(ctx)
 	switch {
@@ -87,7 +130,6 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 	var f fieldErrors
 	lines := make([]Line, 0, len(req.Body.Lines)+1)
 	total := new(big.Rat)
-	fromInvoices := false
 	for i, l := range req.Body.Lines {
 		amount, ok := parseAmount(l.Amount)
 		if !ok || amount.Sign() == 0 {
@@ -97,9 +139,6 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 		total.Add(total, amount)
 		line := Line{AccountID: l.AccountId, Amount: amount, CustomerID: l.CustomerId, SupplierID: l.SupplierId,
 			SourceDocumentID: l.SourceDocumentId, Text: strings.TrimSpace(deref(l.Text)), origin: i + 1}
-		if l.SourceDocumentId != nil {
-			fromInvoices = true
-		}
 		if l.DocumentNumber != nil || l.DocumentDate != nil || l.DueDate != nil || l.SourceDocumentId != nil {
 			line.Item = &OpenItemSpec{DocumentNumber: strings.TrimSpace(deref(l.DocumentNumber)),
 				DocumentDate: datePtr(l.DocumentDate), DueDate: datePtr(l.DueDate)}
@@ -112,23 +151,57 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 	if err := f.refusal(title); err != nil {
 		return nil, err
 	}
-	var asOfSeq *int64
-	if fromInvoices {
-		settings, err := s.settings(ctx)
-		if err != nil {
-			return nil, err
+	// With Invoices present the open invoices are read every time: their
+	// lowest AsOfSeq is the settings' rule for every invoice without an
+	// opening item, and a line naming one must be it, its customer's and its
+	// amount (R5, R14).
+	settings, err := s.settings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	open, asOfSeq, err := s.openAtSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1))
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]openInvoice, len(open))
+	for _, d := range open {
+		byID[d.ID] = d
+	}
+	var documentIDs, documentSeqs []int64
+	for i, l := range req.Body.Lines {
+		if l.SourceDocumentId == nil {
+			continue
 		}
-		if _, asOfSeq, err = s.openAtSnapshot(ctx, settings.BooksStart.AddDate(0, 0, -1)); err != nil {
-			return nil, err
+		field := "lines[" + itoa(i) + "].sourceDocumentId"
+		d, ok := byID[*l.SourceDocumentId]
+		amount, _ := parseAmount(l.Amount)
+		switch {
+		case !ok:
+			f.addCoded(field, codeOpenItemUnknown, "Not an invoice open in Invoices at the day before the books start.")
+		case l.CustomerId == nil || *l.CustomerId != d.CustomerID:
+			f.addCoded(field, codeOpenItemUnknown, "The invoice is another customer's.")
+		case amount == nil || amount.Cmp(mustRat(d.OpenNOK)) != 0:
+			f.addCoded(field, codeOpenItemUnknown, "The invoice's open amount is "+money(mustRat(d.OpenNOK))+".")
+		case slices.Contains(documentIDs, d.ID):
+			f.addCoded(field, codeOpenItemUnknown, "The invoice is on another line already.")
+		default:
+			documentIDs, documentSeqs = append(documentIDs, d.ID), append(documentSeqs, d.asOfSeq)
 		}
 	}
+	if err := f.refusal(title); err != nil {
+		return nil, err
+	}
 	var posted Posted
-	err := s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
-		settings, err := q.GetSettingsForShare(ctx)
+	err = s.withTx(ctx, func(tx pgx.Tx, q *store.Queries) error {
+		// FOR UPDATE, not FOR SHARE: two openings entered at once wait for
+		// each other here, and the second sees the first (H1).
+		settings, err := q.GetSettingsForUpdate(ctx)
 		if err != nil {
 			return err
 		}
-		if settings.LockedThrough != nil {
+		if final, err := openingFinal(ctx, q, settings); err != nil {
+			return err
+		} else if final {
 			return conflict(codeOpeningLocked, "The opening balances are final", "They cannot be entered after the first lock.")
 		}
 		if _, err := q.StandingOpening(ctx); err == nil {
@@ -148,10 +221,13 @@ func (s *server) PostAccountingOpening(ctx context.Context, req gen.PostAccounti
 		if posted, err = Post(ctx, tx, v); err != nil {
 			return err
 		}
-		if asOfSeq != nil {
-			return q.SetOpeningAsOfSeq(ctx, store.SetOpeningAsOfSeqParams{Seq: asOfSeq, Now: s.now()})
+		if err := q.SetOpeningAsOfSeq(ctx, store.SetOpeningAsOfSeqParams{Seq: asOfSeq, Now: s.now()}); err != nil {
+			return err
 		}
-		return nil
+		if len(documentIDs) == 0 {
+			return nil
+		}
+		return q.SetOpeningAsOfSeqs(ctx, store.SetOpeningAsOfSeqsParams{DocumentIds: documentIDs, Seqs: documentSeqs})
 	})
 	if err != nil {
 		return nil, err
