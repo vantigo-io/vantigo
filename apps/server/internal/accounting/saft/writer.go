@@ -2,8 +2,8 @@
 // (Norwegian SAF-T Financial data, schema 1.40 for the writer, 1.30 and 1.40
 // for the reader). It knows nothing of the ledger: the accounting module
 // hands the writer the header, the master files and one transaction at a
-// time, and the writer streams the document to an io.Writer as it goes, so a
-// file of any size is written in constant memory. The rules the XSD does not
+// time, and the writer streams the document to an io.Writer as it goes: the
+// transactions are never held, the master files only while they are written. The rules the XSD does not
 // express are Skatteetaten's technical description's (v1.7, 31 August 2026):
 // no signs on amounts — debit and credit are separate elements; "NA" for a
 // mandatory string with no value; UTF-8.
@@ -60,11 +60,12 @@ type Header struct {
 	Created                                      time.Time
 	SoftwareCompany, SoftwareID, SoftwareVersion string
 	Company                                      Company
-	// The selection, as accounting periods of the fiscal year (the
-	// technical description: the deviating fiscal year's own periods).
-	PeriodStart, PeriodStartYear, PeriodEnd, PeriodEndYear int
-	Comment                                                string
-	UserID                                                 string
+	// From and To are the selection's first and last days, written as
+	// SelectionStartDate and SelectionEndDate: unlike periods, dates say the
+	// same thing whatever month a fiscal year starts in.
+	From, To time.Time
+	Comment  string
+	UserID   string
 }
 
 // Account is a general ledger account with its balances, debit positive.
@@ -318,10 +319,8 @@ func (w *Writer) Start(h Header) {
 	w.close("Company")
 	w.text("DefaultCurrencyCode", "NOK", 3, true)
 	w.open("SelectionCriteria")
-	w.number("PeriodStart", h.PeriodStart)
-	w.number("PeriodStartYear", h.PeriodStartYear)
-	w.number("PeriodEnd", h.PeriodEnd)
-	w.number("PeriodEndYear", h.PeriodEndYear)
+	w.date("SelectionStartDate", h.From)
+	w.date("SelectionEndDate", h.To)
 	w.close("SelectionCriteria")
 	w.text("HeaderComment", h.Comment, longLen, false)
 	w.text("TaxAccountingBasis", "A", shortLen, true)

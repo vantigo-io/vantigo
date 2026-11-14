@@ -6,10 +6,13 @@ package accounting
 // one short transaction under a lease, then writes with no transaction and
 // no pooled connection held: every read is one query on the pool, a page of
 // vouchers at a time, and the document streams through a pipe into the
-// object store as it is written, so a file of any size is written in
-// constant memory. Every read is bounded by the highest voucher committed
-// when the run began, and the run holds what it streamed to the totals it
-// wrote first. A file that would pass the split threshold is written again
+// object store as it is written: the transactions, however many, are
+// streamed, while the master files — the accounts and the parties with a
+// balance or a posting — are held while they are written, bounded by the
+// number of parties. Every read is bounded by the highest voucher committed
+// when the run began, taken under the settings row FOR UPDATE, and the run
+// holds what it streamed to the totals it wrote first and to the balances
+// read again after it. A file that would pass the split threshold is written again
 // as parts, split by period, each a valid file alone.
 
 import (
@@ -23,6 +26,7 @@ import (
 	"math/big"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +40,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/buildinfo"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/docmath"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
@@ -51,6 +56,13 @@ const (
 	saftDefaultSplit = 2_000_000_000
 	// saftPerCycle bounds the exports one cycle takes up.
 	saftPerCycle = 5
+	// saftProfileBatch is how many customers' billing profiles are read
+	// between two renewals of the lease.
+	saftProfileBatch = 200
+	// saftMaxAttempts is how many times an export is taken up before it is
+	// given up as failed: a run that keeps stopping (a crash, a lost lease)
+	// is not retried for ever.
+	saftMaxAttempts = 5
 )
 
 // saftLease is the lease a claim takes, renewed at every page. A test may
@@ -444,6 +456,11 @@ func (w *SaftWorker) RunOnce(ctx context.Context) error {
 		return err
 	}
 	now := clockOf(w.deps)
+	// An export whose runs keep stopping is given up, its reason kept.
+	if err := store.New(w.deps.Pool).GiveUpSaftExports(ctx, store.GiveUpSaftExportsParams{Now: ptr(now()),
+		MaxAttempts: saftMaxAttempts, Error: ptr(fmt.Sprintf("Given up after %d attempts: the export stopped each time before it was written. Ask for it again.", saftMaxAttempts))}); err != nil {
+		return err
+	}
 	for range saftPerCycle {
 		lease := uuid.New()
 		var row store.AccountingSaftExport
@@ -523,10 +540,7 @@ func (w *SaftWorker) record(ctx context.Context, row store.AccountingSaftExport,
 		org = "000000000"
 	}
 	at := clockOf(w.deps)()
-	stamp := at
-	if loc, err := time.LoadLocation("Europe/Oslo"); err == nil {
-		stamp = at.In(loc)
-	}
+	stamp := at.In(w.zone(ctx))
 	var total int64
 	err = db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		q := store.New(tx)
@@ -580,7 +594,7 @@ func (w *SaftWorker) write(ctx context.Context, row store.AccountingSaftExport, 
 	if err != nil {
 		return nil, err
 	}
-	through, err := q.MaxVoucherID(ctx)
+	through, err := w.bound(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -595,7 +609,8 @@ func (w *SaftWorker) write(ctx context.Context, row store.AccountingSaftExport, 
 		fiscalStart: time.Date(int(row.FiscalYear), time.Month(settings.FiscalYearStartMonth), 1, 0, 0, 0, 0, time.UTC)}
 	whole = whole.sub(int(row.FromPeriod), int(row.ToPeriod))
 	gen := &saftGenerator{w: w, q: q, lease: lease, exportID: row.ID, through: through, seller: *seller, org: org,
-		language: settings.ChartLanguage, userID: row.RequestedByUserID, customers: map[int32]*contracts.CustomerBillingProfile{}}
+		language: settings.ChartLanguage, userID: row.RequestedByUserID, customers: map[int32]*contracts.CustomerBillingProfile{},
+		zone: w.zone(ctx)}
 	limit := w.splitThreshold()
 	queue := []saftSelection{whole}
 	var done []writtenPart
@@ -619,8 +634,38 @@ func (w *SaftWorker) write(ctx context.Context, row store.AccountingSaftExport, 
 	return done, nil
 }
 
+// bound is the highest voucher every read of the run is bounded by, read in
+// a short transaction that holds the settings row FOR UPDATE: every post in
+// flight holds it FOR SHARE to its commit, so none is still uncommitted below
+// the bound once it is read (R10's lock, used as a barrier).
+func (w *SaftWorker) bound(ctx context.Context) (int64, error) {
+	var through int64
+	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		if _, err := q.GetSettingsForUpdate(ctx); err != nil {
+			return err
+		}
+		var err error
+		through, err = q.MaxVoucherID(ctx)
+		return err
+	})
+	return through, err
+}
+
+// zone is the workspace's business time zone, the days of SystemEntryDate
+// and of the file's name; UTC without a calendar.
+func (w *SaftWorker) zone(ctx context.Context) *time.Location {
+	if w.deps.Calendar != nil {
+		if loc, err := w.deps.Calendar.Zone(ctx); err == nil && loc != nil {
+			return loc
+		}
+	}
+	return time.UTC
+}
+
 // saftGenerator holds what every part of one export shares.
 type saftGenerator struct {
+	zone      *time.Location
 	w         *SaftWorker
 	q         *store.Queries
 	lease     uuid.UUID
@@ -709,7 +754,7 @@ func (g *saftGenerator) document(ctx context.Context, out io.Writer, sel saftSel
 	header := saft.Header{Created: at, SoftwareCompany: "Vantigo", SoftwareID: "Vantigo", SoftwareVersion: buildinfo.Version,
 		Company: saft.Company{RegistrationNumber: g.org, Name: g.seller.LegalName, Telephone: g.seller.Phone, Email: g.seller.Email,
 			BankAccount: digitsOnly(g.seller.BankAccount), IBAN: g.seller.IBAN, BIC: g.seller.BIC},
-		PeriodStart: sel.fromP, PeriodStartYear: int(sel.year), PeriodEnd: sel.toP, PeriodEndYear: int(sel.year),
+		From: sel.from, To: sel.to,
 		Comment: fmt.Sprintf("%s %s–%s", g.word("General ledger and master files,", "Hovedbok og grunndata,"),
 			sel.from.Format(time.DateOnly), sel.to.Format(time.DateOnly))}
 	if g.seller.VATRegistered {
@@ -800,15 +845,26 @@ func (g *saftGenerator) document(ctx context.Context, out io.Writer, sel saftSel
 			w.EndJournal()
 		}
 	}
-	if err := w.End(true); err != nil {
-		return err
-	}
 	n, d, c := w.Written()
 	if n != totals.Vouchers || d.Cmp(debit) != 0 || c.Cmp(credit) != 0 {
 		return fmt.Errorf("the books changed while the file was written (%d vouchers, %s/%s, against %d, %s/%s); export again",
 			n, d.FloatString(2), c.FloatString(2), totals.Vouchers, debit.FloatString(2), credit.FloatString(2))
 	}
-	return nil
+	// The balances the master files were written with, read again: a
+	// difference is a voucher the bound let through after them.
+	again, err := g.accounts(ctx, sel)
+	if err != nil {
+		return err
+	}
+	if len(again) != len(accounts) {
+		return errors.New("the chart changed while the file was written; export again")
+	}
+	for i := range again {
+		if again[i].Opening.Cmp(accounts[i].Opening) != 0 || again[i].Closing.Cmp(accounts[i].Closing) != 0 {
+			return fmt.Errorf("the books changed while the file was written (account %s); export again", again[i].ID)
+		}
+	}
+	return w.End(true)
 }
 
 // digitsOnly is s with everything but digits taken out.
@@ -833,7 +889,9 @@ func countryCode(c string) string {
 // accounts is every account with its grouping and its balances (the whole
 // chart: Skatteetaten's rule for a file sent to it). The earlier years'
 // result the books have not closed is carried on the year_result account, so
-// the file's balances sum to zero as a closed year's would.
+// the file's balances sum to zero as a closed year's would. When phase 3's
+// year-end closing posts the result to year_result, SaftEarlierResult must
+// stop counting the years it closed, or they are counted twice.
 func (g *saftGenerator) accounts(ctx context.Context, sel saftSelection) ([]saft.Account, error) {
 	rows, err := g.q.SaftAccounts(ctx, sel.year)
 	if err != nil {
@@ -896,6 +954,25 @@ func (g *saftGenerator) customerParties(ctx context.Context, sel saftSelection) 
 	if err != nil {
 		return nil, err
 	}
+	// The billing profiles, read before any party is built: the contract
+	// answers one customer a call, so they are read in batches with the
+	// lease renewed between them, once per export.
+	var want []int32
+	for _, r := range rows {
+		if _, ok := g.customers[r.CustomerID]; !ok && !slices.Contains(want, r.CustomerID) {
+			want = append(want, r.CustomerID)
+		}
+	}
+	for start := 0; start < len(want); start += saftProfileBatch {
+		for _, id := range want[start:min(start+saftProfileBatch, len(want))] {
+			if _, err := g.customerProfile(ctx, id); err != nil {
+				return nil, err
+			}
+		}
+		if err := g.renew(ctx); err != nil {
+			return nil, err
+		}
+	}
 	var out []saft.Party
 	index := map[int32]int{}
 	for _, r := range rows {
@@ -905,10 +982,7 @@ func (g *saftGenerator) customerParties(ctx context.Context, sel saftSelection) 
 		}
 		i, seen := index[r.CustomerID]
 		if !seen {
-			p, err := g.customerProfile(ctx, r.CustomerID)
-			if err != nil {
-				return nil, err
-			}
+			p := g.customers[r.CustomerID]
 			party := saft.Party{ID: customerSaftID(r.CustomerID, p), Type: "Company", Active: true}
 			party.Name = fmt.Sprintf("%s %d", g.word("Customer", "Kunde"), r.CustomerID)
 			if p != nil {
@@ -1092,17 +1166,112 @@ func (g *saftGenerator) analysis(ctx context.Context, sel saftSelection) ([]saft
 	return out, nil
 }
 
-// transaction is one voucher as a Transaction. TaxInformation follows each
-// posting as stored (reference: the TaxInformation mapping): a base line
-// carries its code, rate and its own amount as TaxBase with a tax amount of
-// 0.00 on its own side; a tax line (tax or tax_reverse) carries its code,
-// rate, the base it was computed from and its own amount as the tax amount.
+// taxInformation places a voucher's VAT as Skatteetaten's example file does
+// (reference: the TaxInformation mapping): on the base postings only, each
+// with its own amount as TaxBase and the voucher's VAT for its code and rate
+// shared over them in proportion to their bases — rounded to the øre, the
+// remainder on the largest base, so the shares sum to the VAT postings
+// exactly. The VAT is the calculated side for a reverse charge (tax_reverse),
+// counted once, and the tax postings otherwise; a VAT posting on a cost
+// account (VAT not deducted) is part of it as any other. A code and rate with
+// VAT postings and no base posting — a loss's VAT taken back, a VAT correction
+// — keeps the TaxInformation on its VAT postings, each with its own base.
+func taxInformation(postings []store.SaftPostingsRow) map[int]*saft.TaxInformation {
+	type group struct {
+		bases, taxes, reverses []int
+		vat, reverseVat        *big.Rat
+	}
+	groups := map[[2]string]*group{}
+	var keys [][2]string
+	for i, p := range postings {
+		if p.TaxCode == "" {
+			continue
+		}
+		k := [2]string{p.TaxCode, p.RatePercent}
+		gr := groups[k]
+		if gr == nil {
+			gr = &group{vat: new(big.Rat), reverseVat: new(big.Rat)}
+			groups[k] = gr
+			keys = append(keys, k)
+		}
+		switch p.TaxRole {
+		case "tax":
+			gr.taxes = append(gr.taxes, i)
+			gr.vat.Add(gr.vat, mustRat(p.Amount))
+		case roleTaxReverse:
+			gr.reverses = append(gr.reverses, i)
+			gr.reverseVat.Add(gr.reverseVat, mustRat(p.Amount))
+		default:
+			gr.bases = append(gr.bases, i)
+		}
+	}
+	out := map[int]*saft.TaxInformation{}
+	for _, k := range keys {
+		gr := groups[k]
+		vat, vatLines := gr.vat, gr.taxes
+		if len(gr.reverses) > 0 {
+			vat, vatLines = gr.reverseVat, gr.reverses
+		}
+		if len(gr.bases) == 0 {
+			for _, i := range vatLines {
+				t := &saft.TaxInformation{Code: k[0], Percentage: k[1], Amount: mustRat(postings[i].Amount)}
+				if postings[i].TaxBase != "" {
+					t.Base = abs(mustRat(postings[i].TaxBase))
+				}
+				out[i] = t
+			}
+			continue
+		}
+		for i, share := range shareOut(vat, gr.bases, postings) {
+			out[i] = &saft.TaxInformation{Code: k[0], Percentage: k[1], Base: abs(mustRat(postings[i].Amount)), Amount: share}
+		}
+	}
+	return out
+}
+
+// shareOut divides vat over the base postings by their bases (by their sizes
+// when the bases sum to zero), each share rounded to the øre and the
+// remainder on the largest base.
+func shareOut(vat *big.Rat, bases []int, postings []store.SaftPostingsRow) map[int]*big.Rat {
+	total, size := new(big.Rat), new(big.Rat)
+	largest := bases[0]
+	for _, i := range bases {
+		a := mustRat(postings[i].Amount)
+		total.Add(total, a)
+		size.Add(size, abs(a))
+		if abs(a).Cmp(abs(mustRat(postings[largest].Amount))) > 0 {
+			largest = i
+		}
+	}
+	weightOf := func(a *big.Rat) *big.Rat {
+		if total.Sign() != 0 {
+			return new(big.Rat).Quo(a, total)
+		}
+		if size.Sign() == 0 {
+			return new(big.Rat)
+		}
+		return new(big.Rat).Quo(abs(a), size)
+	}
+	out := map[int]*big.Rat{}
+	given := new(big.Rat)
+	for _, i := range bases {
+		if i == largest {
+			continue
+		}
+		share := docmath.Round2(new(big.Rat).Mul(vat, weightOf(mustRat(postings[i].Amount))))
+		out[i] = share
+		given.Add(given, share)
+	}
+	out[largest] = new(big.Rat).Sub(vat, given)
+	return out
+}
+
+// transaction is one voucher as a Transaction, its VAT placed by
+// taxInformation.
 func (g *saftGenerator) transaction(sel saftSelection, v store.SaftVoucherPageRow, postings []store.SaftPostingsRow, customers map[int32]string) saft.Transaction {
 	words := voucherKindWords[v.Kind]
-	entered := v.PostedAt
-	if loc, err := time.LoadLocation("Europe/Oslo"); err == nil {
-		entered = entered.In(loc)
-	}
+	entered := v.PostedAt.In(g.zone)
+	taxes := taxInformation(postings)
 	entryDay := time.Date(entered.Year(), entered.Month(), entered.Day(), 0, 0, 0, 0, time.UTC)
 	t := saft.Transaction{ID: display(v.FiscalYear, v.Number), Period: sel.period(v.VoucherDate), PeriodYear: int(v.FiscalYear),
 		Date: v.VoucherDate, VoucherType: v.Kind, VoucherDescription: g.word(words[0], words[1]), Description: v.Description,
@@ -1111,7 +1280,7 @@ func (g *saftGenerator) transaction(sel saftSelection, v store.SaftVoucherPageRo
 	if v.SourceModule != nil && v.SourceKind != nil && v.SourceID != nil {
 		source = fmt.Sprintf("%s:%s:%d", *v.SourceModule, *v.SourceKind, *v.SourceID)
 	}
-	for _, p := range postings {
+	for i, p := range postings {
 		amount := mustRat(p.Amount)
 		l := saft.Line{RecordID: strconv.Itoa(int(p.LineNo)), AccountID: p.AccountNumber, Description: firstNonEmpty(p.Description, v.Description),
 			Amount: amount, ReferenceNumber: p.DocumentNumber, DueDate: p.DueDate, SourceDocumentID: firstNonEmpty(p.DocumentNumber, source)}
@@ -1134,21 +1303,7 @@ func (g *saftGenerator) transaction(sel saftSelection, v store.SaftVoucherPageRo
 		if p.Currency != "" && p.CurrencyAmount != "" {
 			l.Currency, l.CurrencyAmount, l.ExchangeRate = p.Currency, mustRat(p.CurrencyAmount), p.ExchangeRate
 		}
-		if p.TaxCode != "" {
-			tax := &saft.TaxInformation{Code: p.TaxCode, Percentage: p.RatePercent}
-			if p.TaxRole == "base" {
-				tax.Base, tax.Amount = abs(amount), new(big.Rat)
-			} else {
-				tax.Amount = amount
-				if p.TaxBase != "" {
-					tax.Base = abs(mustRat(p.TaxBase))
-				}
-				if l.Currency != "" {
-					tax.Currency, tax.CurrencyAmount = l.Currency, l.CurrencyAmount
-				}
-			}
-			l.Tax = tax
-		}
+		l.Tax = taxes[i]
 		t.Lines = append(t.Lines, l)
 	}
 	return t
