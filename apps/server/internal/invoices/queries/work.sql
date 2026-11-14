@@ -26,11 +26,12 @@ ORDER BY l.position, s.source_kind, s.source_id;
 -- without one that is not an allocation keeps the snapshot of its metering
 -- point; a work source's is NULL whatever the arrays carry. An allocation
 -- keeps period_from alone: a subscription period's first day, NULL as the
--- array gives it for an order line's part.
+-- array gives it for an order line's part — and its product's tax category
+-- (accounting design R6), 0 for none, which no other kind keeps.
 INSERT INTO invoices.line_sources (
     line_id, invoice_id, source_kind, source_id, source_revision, source_subkind,
     project_id, quantity, amount, currency, source_date, line_count,
-    point_gsrn, point_address, price_area, contract_name, period_from, estimated
+    point_gsrn, point_address, price_area, contract_name, period_from, estimated, tax_category_id
 )
 SELECT u.line_id, @invoice_id::bigint, u.kind, u.id, u.revision, NULLIF(u.subkind, ''),
     NULLIF(u.project_id, 0), u.quantity, u.amount, u.currency, u.source_date, u.line_count,
@@ -39,7 +40,8 @@ SELECT u.line_id, @invoice_id::bigint, u.kind, u.id, u.revision, NULLIF(u.subkin
     CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.price_area END,
     CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.contract_name END,
     CASE WHEN u.project_id = 0 OR u.kind = 'orders.allocation' THEN u.period_from END,
-    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.estimated END
+    CASE WHEN u.project_id = 0 AND u.kind <> 'orders.allocation' THEN u.estimated END,
+    CASE WHEN u.kind = 'orders.allocation' THEN NULLIF(u.tax_category_id, 0) END
 FROM (
     SELECT unnest(@line_ids::bigint[]) AS line_id, unnest(@kinds::text[]) AS kind,
         unnest(@ids::bigint[]) AS id, unnest(@revisions::int[]) AS revision,
@@ -49,7 +51,7 @@ FROM (
         unnest(@line_counts::int[]) AS line_count, unnest(@point_gsrns::text[]) AS point_gsrn,
         unnest(@point_addresses::text[]) AS point_address, unnest(@price_areas::text[]) AS price_area,
         unnest(@contract_names::text[]) AS contract_name, unnest(@period_froms::date[]) AS period_from,
-        unnest(@estimateds::bool[]) AS estimated
+        unnest(@estimateds::bool[]) AS estimated, unnest(@tax_category_ids::int[]) AS tax_category_id
 ) AS u
 ORDER BY u.kind, u.id;
 

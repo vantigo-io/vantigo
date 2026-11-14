@@ -36,6 +36,9 @@ type fakeOrders struct {
 	// periods are the subscription periods Allocate gives a line's
 	// allocation, by line id.
 	periods map[int64][2]*time.Time
+	// variants are the product variants of order lines, by line id; a line
+	// without one is free text.
+	variants map[int64]int32
 }
 
 // fakeOrder is one order as Orders holds it: the header DueOrders answers and
@@ -55,7 +58,7 @@ type ordersCall struct {
 var _ contracts.BillableOrders = (*fakeOrders)(nil)
 
 func newFakeOrders() *fakeOrders {
-	return &fakeOrders{orders: map[int64]fakeOrder{}, allocations: map[int64]contracts.OrderAllocation{}, periods: map[int64][2]*time.Time{}, next: 7001}
+	return &fakeOrders{orders: map[int64]fakeOrder{}, allocations: map[int64]contracts.OrderAllocation{}, periods: map[int64][2]*time.Time{}, variants: map[int64]int32{}, next: 7001}
 }
 
 func (f *fakeOrders) options() []modtest.Option {
@@ -240,6 +243,9 @@ func (f *fakeOrders) Allocate(ctx context.Context, req contracts.AllocateRequest
 		}
 		if p, ok := f.periods[l.LineID]; ok {
 			a.PeriodStart, a.PeriodEnd = p[0], p[1]
+		}
+		if v, ok := f.variants[l.LineID]; ok {
+			a.VariantID = &v
 		}
 		f.next++
 		f.allocations[a.ID] = a

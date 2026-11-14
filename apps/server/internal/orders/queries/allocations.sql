@@ -82,11 +82,11 @@ RETURNING *;
 
 -- name: AllocationsByIDs :many
 -- AllocationsByIDs is the allocations named as they stand, each with its
--- line's text and its order's — or subscription's — references, in id
+-- line's text and variant and its order's — or subscription's — references, in id
 -- order; an id that does not exist is absent.
 SELECT a.id, a.revision, a.kind, coalesce(a.order_id, a.subscription_id)::bigint AS order_id,
        coalesce(o.number, s.number)::bigint AS order_number, a.line_id, a.quantity, a.unit_price,
-       a.discount_percent, a.amount, a.vat_code_id, l.description, l.unit,
+       a.discount_percent, a.amount, a.vat_code_id, l.description, l.unit, l.variant_id,
        coalesce(o.currency, s.currency)::text AS currency, coalesce(o.project_id, s.project_id) AS project_id,
        coalesce(o.your_reference, s.your_reference)::text AS your_reference, a.state, a.period_start, a.period_end
 FROM orders.invoice_allocations a
